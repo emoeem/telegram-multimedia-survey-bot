@@ -18,6 +18,9 @@ export interface SurveyBuilderState {
     | "question_type"
     | "question_title"
     | "question_options"
+    | "import"
+    | "option_media"
+    | "edit_question_title"
     | "ready";
   surveyTitle: string;
   surveyDescription: string;
@@ -25,6 +28,8 @@ export interface SurveyBuilderState {
   currentQuestionTitle: string;
   currentOptions: string[];
   currentMediaAssetId: number | null;
+  targetOptionId: number | null;
+  targetQuestionId: number | null;
   questions: DraftQuestion[];
   updatedAt: string;
 }
@@ -37,6 +42,10 @@ type BuilderAction =
   | { action: "set_question_type"; value: QuestionType }
   | { action: "set_question_title"; value: string }
   | { action: "add_option"; value: string }
+  | { action: "start_import" }
+  | { action: "start_option_media"; optionId: number }
+  | { action: "start_edit_question_title"; questionId: number }
+  | { action: "back" }
   | { action: "set_question_media"; mediaAssetId: number }
   | { action: "finish_options" }
   | { action: "finish_questions" }
@@ -63,6 +72,8 @@ export class SurveyBuilderDO extends DurableObject {
       currentQuestionTitle: "",
       currentOptions: [],
       currentMediaAssetId: null,
+      targetOptionId: null,
+      targetQuestionId: null,
       questions: [],
       updatedAt: new Date().toISOString(),
     };
@@ -79,6 +90,79 @@ export class SurveyBuilderDO extends DurableObject {
           : this.createInitialState(action.userId);
       await this.putState(nextState);
       return Response.json(nextState);
+    }
+
+    if (action.action === "start_import") {
+      if (!state) {
+        return Response.json({ error: "builder_not_found" }, { status: 404 });
+      }
+      state = {
+        ...state,
+        step: "import",
+        surveyTitle: "",
+        surveyDescription: "",
+        currentQuestionType: null,
+        currentQuestionTitle: "",
+        currentOptions: [],
+        currentMediaAssetId: null,
+        questions: [],
+        updatedAt: new Date().toISOString(),
+      };
+      await this.putState(state);
+      return Response.json(state);
+    }
+
+    if (action.action === "start_option_media") {
+      if (!state) {
+        return Response.json({ error: "builder_not_found" }, { status: 404 });
+      }
+      state = {
+        ...state,
+        step: "option_media",
+        targetOptionId: action.optionId,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.putState(state);
+      return Response.json(state);
+    }
+
+    if (action.action === "start_edit_question_title") {
+      if (!state) {
+        return Response.json({ error: "builder_not_found" }, { status: 404 });
+      }
+      state = {
+        ...state,
+        step: "edit_question_title",
+        targetQuestionId: action.questionId,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.putState(state);
+      return Response.json(state);
+    }
+
+    if (action.action === "back") {
+      if (!state) {
+        return Response.json({ error: "builder_not_found" }, { status: 404 });
+      }
+
+      const previousStep =
+        state.step === "survey_description"
+          ? "survey_title"
+          : state.step === "question_type"
+            ? "survey_description"
+            : state.step === "question_title"
+              ? "question_type"
+              : state.step === "question_options"
+                ? "question_title"
+                : state.step;
+
+      state = {
+        ...state,
+        step: previousStep,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.putState(state);
+      return Response.json(state);
     }
 
     if (action.action === "get") {

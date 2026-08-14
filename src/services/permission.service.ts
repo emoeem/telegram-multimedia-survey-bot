@@ -31,7 +31,7 @@ export function canCreateSurvey(
   user: Pick<User, "id" | "telegramUserId" | "systemRole">,
   adminIds: number[],
 ): boolean {
-  return user.id > 0 || isAdmin(user.telegramUserId, adminIds);
+  return user.systemRole === "admin" || isAdmin(user.telegramUserId, adminIds);
 }
 
 export async function canManageSurvey(

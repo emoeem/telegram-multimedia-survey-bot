@@ -133,6 +133,46 @@ export async function finishOptions(
   });
 }
 
+export async function startImport(
+  namespace: SurveyBuilderNamespace,
+  userId: number,
+): Promise<SurveyBuilderState> {
+  return callBuilder(namespace, userId, {
+    action: "start_import",
+  });
+}
+
+export async function startOptionMedia(
+  namespace: SurveyBuilderNamespace,
+  userId: number,
+  optionId: number,
+): Promise<SurveyBuilderState> {
+  return callBuilder(namespace, userId, {
+    action: "start_option_media",
+    optionId,
+  });
+}
+
+export async function startEditQuestionTitle(
+  namespace: SurveyBuilderNamespace,
+  userId: number,
+  questionId: number,
+): Promise<SurveyBuilderState> {
+  return callBuilder(namespace, userId, {
+    action: "start_edit_question_title",
+    questionId,
+  });
+}
+
+export async function builderBack(
+  namespace: SurveyBuilderNamespace,
+  userId: number,
+): Promise<SurveyBuilderState> {
+  return callBuilder(namespace, userId, {
+    action: "back",
+  });
+}
+
 export async function finishQuestions(
   namespace: SurveyBuilderNamespace,
   userId: number,
@@ -154,6 +194,7 @@ export async function resetBuilder(
 export async function saveDraftSurvey(
   db: D1Database,
   state: SurveyBuilderState,
+  ownerId: number,
 ): Promise<number> {
   if (!state.surveyTitle) {
     throw new Error("Survey title is required");
@@ -164,7 +205,7 @@ export async function saveDraftSurvey(
   }
 
   const survey = await createSurvey(db, {
-    ownerId: state.userId,
+    ownerId,
     title: state.surveyTitle,
     description: state.surveyDescription || null,
   });

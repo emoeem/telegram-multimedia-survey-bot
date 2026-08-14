@@ -123,8 +123,16 @@ export async function updateSurveyStatus(
 ): Promise<Survey | null> {
   const timestamp = nowIso();
   await db
-    .prepare("UPDATE surveys SET status = ?, updated_at = ? WHERE id = ?")
-    .bind(status, timestamp, id)
+    .prepare(
+      `UPDATE surveys SET
+        status = ?,
+        version = version + 1,
+        updated_at = ?,
+        published_at = CASE WHEN ? = 'published' THEN ? ELSE published_at END,
+        closed_at = CASE WHEN ? = 'closed' THEN ? ELSE closed_at END
+       WHERE id = ?`,
+    )
+    .bind(status, timestamp, status, timestamp, status, timestamp, id)
     .run();
 
   return getSurveyById(db, id);

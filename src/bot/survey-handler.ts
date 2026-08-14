@@ -1,10 +1,19 @@
-import { getActiveResponse, createResponse, completeResponse, updateResponseCurrentQuestion, upsertMediaAnswer, upsertOptionAnswer, upsertTextAnswer } from "../db/repositories/response.repository";
+import { getActiveResponse, createResponse, cancelResponse, completeResponse, updateResponseCurrentQuestion, upsertMediaAnswer, upsertOptionAnswer, upsertTextAnswer } from "../db/repositories/response.repository";
 import { updateSurveyStatus } from "../db/repositories/survey.repository";
-import { createAnswerMedia } from "../db/repositories/media.repository";
+import { createAnswerMedia, getMediaAssetById, getOptionMediaByOptionId } from "../db/repositories/media.repository";
+import {
+  duplicateQuestion,
+  getQuestionById as getQuestionEntityById,
+  listQuestionsBySurvey,
+  listOptionsForQuestions,
+  swapQuestionOrder,
+  updateQuestionRequired,
+  updateQuestionTitle,
+} from "../db/repositories/question.repository";
 import { registerMediaAsset } from "../services/media.service";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
 import { assertCanFillSurvey, assertCanManageSurvey, canCreateSurvey } from "../services/permission.service";
-import { listMySurveys as listOwnedSurveys } from "../services/survey.service";
+import { duplicateSurvey, listMySurveys as listOwnedSurveys } from "../services/survey.service";
 import {
   getNumericStatistics,
   getOptionStatistics,
@@ -12,6 +21,7 @@ import {
 } from "../services/statistics.service";
 import { listResponses } from "../services/result.service";
 import { buildCsv, buildExportZip, buildXlsx, getExportRows } from "../services/export.service";
+import { exportUnifiedSurveyJson } from "../services/survey-json.service";
 import { getSurveyDetail } from "../services/survey.service";
 import { getSurveyFlow } from "../services/question.service";
 import {
@@ -24,7 +34,7 @@ import {
   toggleSessionOption,
 } from "../services/session.service";
 import { getFirstQuestion, getNextQuestion, getPreviousQuestion, getQuestionById, isLastQuestion, type SurveyQuestionView } from "../survey/engine";
-import { answerCallbackQuery, editMessageReplyMarkup, sendDocument, sendMessage, type InlineKeyboardMarkup } from "./telegram";
+import { answerCallbackQuery, editMessageReplyMarkup, sendAnimation, sendAudio, sendDocument, sendMessage, sendPhoto, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import { handleBuilderCallback, handleBuilderMessage } from "./builder-handler";
 import { handleAdminCallback, handleAdminMessage } from "./admin-handler";
@@ -38,6 +48,13 @@ function buildSingleChoiceKeyboard(
         text: option.label,
         callback_data: `q:single:${question.id}:${option.id}`,
       },
+    ]).concat([
+      [
+        {
+          text: "退出问卷",
+          callback_data: "q:exit",
+        },
+      ],
     ]),
   };
 }
@@ -57,6 +74,12 @@ function buildMultipleChoiceKeyboard(
   return {
     inline_keyboard: [
       ...optionRows,
+      [
+        {
+          text: "退出问卷",
+          callback_data: "q:exit",
+        },
+      ],
       [
         {
           text: "完成选择",
@@ -88,6 +111,13 @@ function buildNavigationKeyboard(
       text: currentIndex === total - 1 ? "✅ 提交" : "下一题 ➡️",
       callback_data:
         currentIndex === total - 1 ? "q:submit" : `q:next:${question.id}`,
+    },
+  ]);
+
+  rows.push([
+    {
+      text: "退出问卷",
+      callback_data: "q:exit",
     },
   ]);
 
@@ -125,6 +155,39 @@ async function renderQuestion(
   userId: number,
   surveyId: number,
 ): Promise<void> {
+  if (question.options.length > 0) {
+    for (const option of question.options) {
+      const optionMedia = await getOptionMediaByOptionId(ctx.db, option.id);
+      for (const relation of optionMedia) {
+        const asset = await getMediaAssetById(ctx.db, relation.mediaAssetId);
+        if (!asset?.telegramFileId) continue;
+        const caption = `选项：${option.label}`;
+
+        if (asset.mediaType === "photo") {
+          await sendPhoto(ctx.botToken, chatId, asset.telegramFileId, caption);
+        } else if (asset.mediaType === "video") {
+          await sendVideo(ctx.botToken, chatId, asset.telegramFileId, caption);
+        } else if (asset.mediaType === "audio") {
+          await sendAudio(ctx.botToken, chatId, asset.telegramFileId, caption);
+        } else if (asset.mediaType === "voice") {
+          await sendVoice(ctx.botToken, chatId, asset.telegramFileId, caption);
+        } else if (asset.mediaType === "animation" || asset.mediaType === "gif") {
+          await sendAnimation(ctx.botToken, chatId, asset.telegramFileId, caption);
+        } else if (asset.mediaType === "sticker") {
+          await sendSticker(ctx.botToken, chatId, asset.telegramFileId);
+        } else {
+          await sendDocument(
+            ctx.botToken,
+            chatId,
+            asset.fileName ?? "document",
+            asset.telegramFileId,
+            asset.mimeType ?? "application/octet-stream",
+          );
+        }
+      }
+    }
+  }
+
   const index = flowQuestions.findIndex((item) => item.id === question.id);
   const total = flowQuestions.length;
 
@@ -300,7 +363,11 @@ async function listMySurveys(
         rows.push([
           {
             text: "发布",
-            callback_data: `owner:publish:${survey.id}`,
+            callback_data: `owner:publish_ask:${survey.id}`,
+          },
+          {
+            text: "编辑",
+            callback_data: `owner:questions:${survey.id}`,
           },
         ]);
       } else if (survey.status === "published") {
@@ -308,6 +375,17 @@ async function listMySurveys(
           {
             text: "关闭",
             callback_data: `owner:close:${survey.id}`,
+          },
+          {
+            text: "编辑",
+            callback_data: `owner:questions:${survey.id}`,
+          },
+        ]);
+      } else {
+        rows.push([
+          {
+            text: "编辑",
+            callback_data: `owner:questions:${survey.id}`,
           },
         ]);
       }
@@ -392,6 +470,90 @@ export async function showSurveyStats(
   await sendMessage(ctx.botToken, chatId, lines.join("\n"));
 }
 
+async function showQuestionList(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) return;
+
+  try {
+    await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  } catch {
+    await sendMessage(ctx.botToken, chatId, "无权编辑该问卷。");
+    return;
+  }
+
+  const questions = await listQuestionsBySurvey(ctx.db, surveyId);
+  if (questions.length === 0) {
+    await sendMessage(ctx.botToken, chatId, "该问卷没有题目。");
+    return;
+  }
+
+  const keyboard: InlineKeyboardMarkup = {
+    inline_keyboard: questions.flatMap((question) => [
+      [
+        {
+          text: `${question.order + 1}. ${question.title}`,
+          callback_data: `qedit:view:${question.id}`,
+        },
+      ],
+      [
+        { text: "⬆️", callback_data: `qedit:up:${question.id}` },
+        { text: "⬇️", callback_data: `qedit:down:${question.id}` },
+        { text: "📋", callback_data: `qedit:copy:${question.id}` },
+        { text: "🗑", callback_data: `qedit:delete:${question.id}` },
+      ],
+    ]),
+  };
+
+  await sendMessage(ctx.botToken, chatId, "题目列表：", keyboard);
+}
+
+async function showQuestionEditor(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  questionId: number,
+): Promise<void> {
+  const question = await getQuestionEntityById(ctx.db, questionId);
+  if (!question) {
+    await sendMessage(ctx.botToken, chatId, "题目不存在。");
+    return;
+  }
+
+  const options = await listOptionsForQuestions(ctx.db, [question.id]);
+  const text = [
+    `题目 ID：${question.id}`,
+    `类型：${question.type}`,
+    `题目：${question.title}`,
+    `必答：${question.required ? "✅" : "⭕"}`,
+    options.length > 0 ? `选项：\n${options.map((option) => `${option.order + 1}. ${option.label} (ID: ${option.id})`).join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const keyboard: InlineKeyboardMarkup = {
+    inline_keyboard: [
+      [
+        {
+          text: question.required ? "设为非必答" : "设为必答",
+          callback_data: `qedit:required:${question.id}`,
+        },
+      ],
+      [
+        { text: "📋 复制", callback_data: `qedit:copy:${question.id}` },
+        { text: "🗑 删除", callback_data: `qedit:delete:${question.id}` },
+      ],
+      [
+        { text: "⬅ 返回题目列表", callback_data: `qedit:list:${question.surveyId}` },
+      ],
+    ],
+  };
+
+  await sendMessage(ctx.botToken, chatId, text, keyboard);
+}
+
 async function listSurveys(
   ctx: BotContext,
   chatId: number,
@@ -469,6 +631,32 @@ export async function handleTelegramMessage(
     return;
   }
 
+  if (text?.startsWith("/duplicate ")) {
+    const surveyId = Number(text.slice("/duplicate ".length));
+    const user = await getUserByTelegramId(ctx.db, userId);
+    if (!user) {
+      await sendMessage(ctx.botToken, message.chat.id, "用户信息不存在。");
+      return;
+    }
+
+    try {
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+      const duplicated = await duplicateSurvey(ctx.db, surveyId, user.id);
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        `已复制问卷，新问卷 ID：${duplicated.id}`,
+      );
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        error instanceof Error ? error.message : "复制失败。",
+      );
+    }
+    return;
+  }
+
   if (text?.startsWith("/export ")) {
     const surveyId = Number(text.slice("/export ".length));
     const user = await getUserByTelegramId(ctx.db, userId);
@@ -522,6 +710,77 @@ export async function handleTelegramMessage(
     return;
   }
 
+  if (text?.startsWith("/export_json ")) {
+    const surveyId = Number(text.slice("/export_json ".length));
+    const user = await getUserByTelegramId(ctx.db, userId);
+    if (!user) {
+      await sendMessage(ctx.botToken, message.chat.id, "用户信息不存在。");
+      return;
+    }
+
+    try {
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        error instanceof Error ? error.message : "无权导出该问卷。",
+      );
+      return;
+    }
+
+    const unified = await exportUnifiedSurveyJson(ctx.db, surveyId);
+    if (!unified) {
+      await sendMessage(ctx.botToken, message.chat.id, "问卷不存在。");
+      return;
+    }
+
+    await sendDocument(
+      ctx.botToken,
+      message.chat.id,
+      `survey-${surveyId}.json`,
+      JSON.stringify(unified, null, 2),
+      "application/json",
+    );
+    return;
+  }
+
+  if (text?.startsWith("/preview ")) {
+    const surveyId = Number(text.slice("/preview ".length));
+    const user = await getUserByTelegramId(ctx.db, userId);
+    if (!user) {
+      await sendMessage(ctx.botToken, message.chat.id, "用户信息不存在。");
+      return;
+    }
+
+    try {
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        error instanceof Error ? error.message : "无权预览该问卷。",
+      );
+      return;
+    }
+
+    const flow = await getSurveyFlow(ctx.db, surveyId);
+    if (flow.questions.length === 0) {
+      await sendMessage(ctx.botToken, message.chat.id, "问卷没有题目。");
+      return;
+    }
+
+    const preview = flow.questions
+      .map((question, index) => {
+        const options = question.options.map((option) => `  ${option.label}`).join("\n");
+        return `第 ${index + 1} 题\n${question.title}${options ? `\n${options}` : ""}`;
+      })
+      .join("\n\n");
+
+    await sendMessage(ctx.botToken, message.chat.id, preview);
+    return;
+  }
+
   if (text === "/create") {
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!user || !canCreateSurvey(user, ctx.adminIds)) {
@@ -530,10 +789,8 @@ export async function handleTelegramMessage(
     }
   }
 
-  if (text) {
-    if (await handleBuilderMessage(ctx, message)) {
-      return;
-    }
+  if (await handleBuilderMessage(ctx, message)) {
+    return;
   }
 
   const response = await ctx.db
@@ -660,8 +917,38 @@ export async function handleTelegramCallback(
     return;
   }
 
-  if (data.startsWith("owner:publish:")) {
-    const surveyId = Number(data.slice("owner:publish:".length));
+  if (data === "owner:cancel") {
+    await answerCallbackQuery(ctx.botToken, callback.id, "已取消");
+    return;
+  }
+
+  if (data.startsWith("owner:publish_ask:")) {
+    const surveyId = Number(data.slice("owner:publish_ask:".length));
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      "⚠️ 确认发布该问卷？",
+      {
+        inline_keyboard: [
+          [
+            {
+              text: "✅ 确认发布",
+              callback_data: `owner:publish_confirm:${surveyId}`,
+            },
+            {
+              text: "取消",
+              callback_data: "owner:cancel",
+            },
+          ],
+        ],
+      },
+    );
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:publish_confirm:")) {
+    const surveyId = Number(data.slice("owner:publish_confirm:".length));
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!user) {
       await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在");
@@ -875,6 +1162,107 @@ export async function handleTelegramCallback(
       await completeResponse(ctx.db, response.id);
       await completeSession(ctx.session, userId, response.survey_id);
       await sendMessage(ctx.botToken, chatId, "问卷已提交，感谢参与。");
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "q:exit") {
+    const response = await ctx.db
+      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
+      .bind(userId)
+      .first<{ id: number; survey_id: number }>();
+
+    if (response) {
+      await cancelResponse(ctx.db, response.id);
+      await completeSession(ctx.session, userId, response.survey_id);
+      await sendMessage(ctx.botToken, chatId, "已退出当前问卷。");
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:questions:")) {
+    const surveyId = Number(data.slice("owner:questions:".length));
+    await showQuestionList(ctx, chatId, userId, surveyId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:list:")) {
+    const surveyId = Number(data.slice("qedit:list:".length));
+    await showQuestionList(ctx, chatId, userId, surveyId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:view:")) {
+    const questionId = Number(data.slice("qedit:view:".length));
+    await showQuestionEditor(ctx, chatId, userId, questionId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:required:")) {
+    const questionId = Number(data.slice("qedit:required:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (question) {
+      await updateQuestionRequired(ctx.db, questionId, !question.required);
+      await showQuestionEditor(ctx, chatId, userId, questionId);
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:copy:")) {
+    const questionId = Number(data.slice("qedit:copy:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (question) {
+      await duplicateQuestion(ctx.db, questionId);
+      await showQuestionList(ctx, chatId, userId, question.surveyId);
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:delete:")) {
+    const questionId = Number(data.slice("qedit:delete:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (question) {
+      await ctx.db.prepare("DELETE FROM survey_questions WHERE id = ?").bind(questionId).run();
+      await showQuestionList(ctx, chatId, userId, question.surveyId);
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:up:")) {
+    const questionId = Number(data.slice("qedit:up:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (question) {
+      const questions = await listQuestionsBySurvey(ctx.db, question.surveyId);
+      const index = questions.findIndex((item) => item.id === questionId);
+      const previous = questions[index - 1];
+      if (previous) {
+        await swapQuestionOrder(ctx.db, questionId, previous.id);
+      }
+      await showQuestionList(ctx, chatId, userId, question.surveyId);
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:down:")) {
+    const questionId = Number(data.slice("qedit:down:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (question) {
+      const questions = await listQuestionsBySurvey(ctx.db, question.surveyId);
+      const index = questions.findIndex((item) => item.id === questionId);
+      const next = questions[index + 1];
+      if (next) {
+        await swapQuestionOrder(ctx.db, questionId, next.id);
+      }
+      await showQuestionList(ctx, chatId, userId, question.surveyId);
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;

@@ -52,7 +52,7 @@ describe("permission service", () => {
     ).toBe("participant");
   });
 
-  it("allows a known user to create surveys", () => {
+  it("does not allow a normal participant to create surveys", () => {
     expect(
       canCreateSurvey(
         {
@@ -62,6 +62,6 @@ describe("permission service", () => {
         },
         adminIds,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });

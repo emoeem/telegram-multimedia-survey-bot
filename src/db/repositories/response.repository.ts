@@ -194,6 +194,18 @@ export async function completeResponse(
     .run();
 }
 
+export async function cancelResponse(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE survey_responses SET status = 'cancelled', updated_at = ? WHERE id = ?",
+    )
+    .bind(nowIso(), id)
+    .run();
+}
+
 export async function upsertTextAnswer(
   db: D1Database,
   input: {

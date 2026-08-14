@@ -141,3 +141,50 @@ export async function createAnswerMedia(
     .bind(input.answerId, input.mediaAssetId, input.sortOrder ?? 0, timestamp)
     .run();
 }
+
+export async function createOptionMedia(
+  db: D1Database,
+  input: {
+    questionOptionId: number;
+    mediaAssetId: number;
+    sortOrder?: number;
+  },
+): Promise<void> {
+  const timestamp = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO option_media (
+        question_option_id, media_asset_id, sort_order, created_at
+      ) VALUES (?, ?, ?, ?)`,
+    )
+    .bind(input.questionOptionId, input.mediaAssetId, input.sortOrder ?? 0, timestamp)
+    .run();
+}
+
+export async function getOptionMediaByOptionId(
+  db: D1Database,
+  questionOptionId: number,
+): Promise<Array<{ id: number; mediaAssetId: number; sortOrder: number }>> {
+  const result = await db
+    .prepare(
+      `SELECT id, media_asset_id, sort_order
+       FROM option_media
+       WHERE question_option_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+    )
+    .bind(questionOptionId)
+    .all<{ id: number; media_asset_id: number; sort_order: number }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    mediaAssetId: row.media_asset_id,
+    sortOrder: row.sort_order,
+  }));
+}
+
+export async function deleteOptionMedia(
+  db: D1Database,
+  optionMediaId: number,
+): Promise<void> {
+  await db.prepare("DELETE FROM option_media WHERE id = ?").bind(optionMediaId).run();
+}

@@ -1,5 +1,11 @@
 import type { Survey } from "../db/schema";
-import { getSurveyById, listSurveysByOwner } from "../db/repositories/survey.repository";
+import { createSurvey, getSurveyById, listSurveysByOwner } from "../db/repositories/survey.repository";
+import {
+  createQuestion,
+  createQuestionOption,
+  listOptionsForQuestions,
+  listQuestionsBySurvey,
+} from "../db/repositories/question.repository";
 
 export async function getPublishedSurveys(
   db: D1Database,
@@ -44,4 +50,65 @@ export async function listMySurveys(
   ownerId: number,
 ): Promise<Survey[]> {
   return listSurveysByOwner(db, ownerId);
+}
+
+export async function duplicateSurvey(
+  db: D1Database,
+  surveyId: number,
+  ownerId: number,
+): Promise<Survey> {
+  const original = await getSurveyById(db, surveyId);
+  if (!original) {
+    throw new Error("Survey not found");
+  }
+
+  const duplicate = await createSurvey(db, {
+    ownerId,
+    title: `${original.title} (副本)`,
+    description: original.description,
+    anonymous: original.anonymous,
+    allowMultipleResponses: original.allowMultipleResponses,
+    maxResponsesPerUser: original.maxResponsesPerUser,
+  });
+
+  const questions = await listQuestionsBySurvey(db, surveyId);
+  const options = await listOptionsForQuestions(
+    db,
+    questions.map((question) => question.id),
+  );
+  const optionsByQuestion = new Map<number, typeof options>();
+
+  for (const option of options) {
+    const list = optionsByQuestion.get(option.questionId) ?? [];
+    list.push(option);
+    optionsByQuestion.set(option.questionId, list);
+  }
+
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
+    if (!question) continue;
+
+    const questionId = await createQuestion(db, {
+      surveyId: duplicate.id,
+      type: question.type,
+      title: question.title,
+      description: question.description,
+      required: question.required,
+      order: index,
+    });
+
+    const questionOptions = optionsByQuestion.get(question.id) ?? [];
+    for (let optionIndex = 0; optionIndex < questionOptions.length; optionIndex += 1) {
+      const option = questionOptions[optionIndex];
+      if (!option) continue;
+      await createQuestionOption(db, {
+        questionId,
+        label: option.label,
+        value: option.value,
+        order: optionIndex,
+      });
+    }
+  }
+
+  return duplicate;
 }
