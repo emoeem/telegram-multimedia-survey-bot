@@ -1,0 +1,35 @@
+name = "telegram-multimedia-survey-bot"
+main = "src/index.ts"
+compatibility_date = "2026-08-14"
+workers_dev = true
+preview_urls = true
+
+[vars]
+ENVIRONMENT = "production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "telegram-survey-db"
+database_id = "159e8169-a233-4bd7-b3e9-723586f850c2"
+migrations_dir = "db/migrations"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "0e659a11ec914cfa9d4922e45ab40ec4"
+preview_id = "0e659a11ec914cfa9d4922e45ab40ec4"
+
+[[queues.producers]]
+binding = "EXPORT_QUEUE"
+queue = "telegram-survey-export"
+
+[[durable_objects.bindings]]
+name = "SESSION"
+class_name = "SurveySessionDO"
+
+[[durable_objects.bindings]]
+name = "BUILDER"
+class_name = "SurveyBuilderDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]

@@ -1,0 +1,104 @@
+import type { Answer, SurveyResponse } from "../db/schema";
+
+export interface ResponseListItem {
+  id: number;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface ResponseDetail {
+  response: SurveyResponse;
+  answers: Answer[];
+}
+
+export async function listResponses(
+  db: D1Database,
+  surveyId: number,
+  limit = 20,
+): Promise<ResponseListItem[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, status, started_at, completed_at
+       FROM survey_responses
+       WHERE survey_id = ?
+       ORDER BY id DESC
+       LIMIT ?`,
+    )
+    .bind(surveyId, limit)
+    .all<{
+      id: number;
+      status: string;
+      started_at: string;
+      completed_at: string | null;
+    }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    status: row.status,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }));
+}
+
+export async function getResponseDetail(
+  db: D1Database,
+  responseId: number,
+  anonymous = false,
+): Promise<ResponseDetail | null> {
+  const response = await db
+    .prepare("SELECT * FROM survey_responses WHERE id = ? LIMIT 1")
+    .bind(responseId)
+    .first<Record<string, unknown>>();
+
+  if (!response) {
+    return null;
+  }
+
+  const answersResult = await db
+    .prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC")
+    .bind(responseId)
+    .all<Record<string, unknown>>();
+
+  const answers: Answer[] = (answersResult.results ?? []).map((row) => ({
+    id: Number(row["id"]),
+    responseId: Number(row["response_id"]),
+    questionId: Number(row["question_id"]),
+    textValue: row["text_value"] === null ? null : String(row["text_value"]),
+    numberValue: row["number_value"] === null ? null : Number(row["number_value"]),
+    booleanValue: row["boolean_value"] === null ? null : Number(row["boolean_value"]) === 1,
+    ratingValue: row["rating_value"] === null ? null : Number(row["rating_value"]),
+    dateValue: row["date_value"] === null ? null : String(row["date_value"]),
+    timeValue: row["time_value"] === null ? null : String(row["time_value"]),
+    jsonValue: row["json_value"] === null ? null : String(row["json_value"]),
+    createdAt: String(row["created_at"]),
+    updatedAt: String(row["updated_at"]),
+  }));
+
+  const mappedResponse = {
+    response: {
+      id: Number(response["id"]),
+      surveyId: Number(response["survey_id"]),
+      userId: anonymous ? null : response["user_id"] === null ? null : Number(response["user_id"]),
+      participantHash: anonymous ? "" : String(response["participant_hash"]),
+      status: String(response["status"]) as SurveyResponse["status"],
+      startedAt: String(response["started_at"]),
+      completedAt: response["completed_at"] === null ? null : String(response["completed_at"]),
+      submittedAt: response["submitted_at"] === null ? null : String(response["submitted_at"]),
+      currentQuestionId: response["current_question_id"] === null ? null : Number(response["current_question_id"]),
+      version: Number(response["version"]),
+      createdAt: String(response["created_at"]),
+      updatedAt: String(response["updated_at"]),
+    },
+    answers,
+  };
+
+  return {
+    response: {
+      ...mappedResponse.response,
+      userId: anonymous ? null : mappedResponse.response.userId,
+      participantHash: anonymous ? "" : mappedResponse.response.participantHash,
+    },
+    answers,
+  };
+}
