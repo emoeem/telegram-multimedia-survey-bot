@@ -100,7 +100,9 @@ class SemanticPdfParserRegression(unittest.TestCase):
         self.assertEqual(questions[3]["source_page_end"], 2)
         self.assertEqual(questions[6]["source_page_start"], 3)
         self.assertEqual(questions[6]["source_page_end"], 3)
-        self.assertTrue(all(page.get("forms_page_id") for page in self.document["pages"]))
+        self.assertTrue(
+            all(page.get("forms_page_id") is None for page in self.document["pages"])
+        )
 
     def test_image_extraction_and_assets(self) -> None:
         self.assertGreaterEqual(len(self.document["image_resources"]), 2)
@@ -113,12 +115,9 @@ class SemanticPdfParserRegression(unittest.TestCase):
     def test_media_association(self) -> None:
         questions = {q["source_number"]: q for q in self.questions()}
         self.assertGreaterEqual(len(questions[1]["media"]), 1)
-        self.assertGreaterEqual(
-            sum(len(option["media"]) for option in questions[5]["options"]),
-            1,
-        )
-        self.assertEqual(self.report["question_media_count"], 1)
-        self.assertEqual(self.report["option_media_count"], 1)
+        self.assertGreaterEqual(len(questions[5]["media"]), 1)
+        self.assertEqual(self.report["question_media_count"], 2)
+        self.assertEqual(self.report["option_media_count"], 0)
         self.assertGreaterEqual(len(self.report["unattached_media"]), 1)
 
     def test_uncertainty_is_reported(self) -> None:

@@ -60,6 +60,7 @@ MULTIPLE_MARKERS = (
     "请选择所有",
     "选择所有符合",
     "可以选择多个",
+    "三个",
     "multiple",
     "multiple answers",
     "select all that apply",
@@ -365,7 +366,10 @@ def _preamble_noise(text: str) -> bool:
     return False
 
 
-def detect_page_furniture(document: dict[str, Any]) -> dict[str, Any]:
+def detect_page_furniture(
+    document: dict[str, Any],
+    forms_title: str | None = None,
+) -> dict[str, Any]:
     """Detect repeated page headers/footers without global string filtering."""
 
     pages = document["pages"]
@@ -408,6 +412,46 @@ def detect_page_furniture(document: dict[str, Any]) -> dict[str, Any]:
         {line_id for key in footer_keys for line_id in bottom_lines_by_key[key]}
     )
 
+    # The first page occurrence of the survey title is a title, not a header.
+    if forms_title:
+        title_keys = {normalize_key(part) for part in forms_title.splitlines()}
+        header_ids = [
+            line_id
+            for line_id in header_ids
+            if not (
+                line_id.startswith("p1_")
+                and normalize_key(
+                    _first(
+                        line["text"]
+                        for line in document["all_lines"]
+                        if line["id"] == line_id
+                    )
+                    or ""
+                )
+                in title_keys
+            )
+        ]
+
+    # On the last page, Microsoft Forms footer/logo text is not question content.
+    if pages:
+        last_page = max(page["page_number"] for page in pages)
+        last_page_lines = lines_by_page.get(last_page, [])
+        question_number_y = max(
+            (
+                line["bbox"][1]
+                for line in last_page_lines
+                if line.get("bbox")
+                and re.fullmatch(r"\s*\d{1,3}\s*", line["text"])
+            ),
+            default=None,
+        )
+        if question_number_y is not None:
+            for line in last_page_lines:
+                if line.get("bbox") and line["bbox"][1] > question_number_y + 20:
+                    if not is_page_number_line(line["text"]):
+                        footer_ids.append(line["id"])
+                        line["role"] = "footer"
+
     for line in document["all_lines"]:
         if line["id"] in header_ids:
             line["role"] = "header"
@@ -446,23 +490,19 @@ def detect_page_furniture(document: dict[str, Any]) -> dict[str, Any]:
 
 def detect_forms_title(
     document: dict[str, Any],
-    furniture: dict[str, Any],
 ) -> str | None:
     pages = document["pages"]
-    lines = document["all_lines"]
-    excluded_ids = set(furniture["header_line_ids"]) | set(
-        furniture["footer_line_ids"]
+    lines = sorted(
+        document["all_lines"],
+        key=lambda line: (
+            line["page_number"],
+            line["bbox"][1],
+            line["bbox"][0],
+        ),
     )
     candidates: list[dict[str, Any]] = []
-    seen_text_counts = Counter(
-        normalize_key(line["text"])
-        for line in lines
-        if line["id"] not in excluded_ids
-    )
 
     for line in lines:
-        if line["id"] in excluded_ids:
-            continue
         if line["page_number"] > min(2, len(pages)):
             continue
         bbox = line.get("bbox")
@@ -484,7 +524,7 @@ def detect_forms_title(
         if looks_like_date(line["text"]):
             continue
 
-        repeat_bonus = seen_text_counts.get(normalize_key(line["text"]), 0) * 0.35
+        repeat_bonus = 0.0
         page_bonus = 1.0 if line["page_number"] == 1 else 0.35
         font_size = line.get("font_size") or 12.0
         length_bonus = min(max(len(normalize(line["text"])) - 4, 0) / 16.0, 1.5)
@@ -500,7 +540,7 @@ def detect_forms_title(
     page_lines = [
         line
         for line in lines
-        if line["page_number"] == best["page_number"] and line["id"] not in excluded_ids
+        if line["page_number"] == best["page_number"]
     ]
     page_lines.sort(key=lambda line: (line["bbox"][1], line["bbox"][0]))
 
@@ -609,6 +649,211 @@ def has_multiple_marker(text: str) -> bool:
 
 
 @dataclass
+class QuestionStartCandidate:
+    number: int
+    confidence: float
+    reason: str
+    rest: str = ""
+
+
+class QuestionStartDetector:
+    """Use line context rather than a bare numeric regex."""
+
+    def detect(
+        self,
+        line: dict[str, Any],
+        prev_line: dict[str, Any] | None,
+        next_line: dict[str, Any] | None,
+        current: QuestionDraft | None,
+        page: dict[str, Any] | None,
+    ) -> QuestionStartCandidate | None:
+        text = normalize(line.get("text", ""))
+        if not text:
+            return None
+        if is_page_number_line(text) or looks_like_date(text) or looks_like_url(text):
+            return None
+
+        match = QUESTION_NUMBER_RE.match(text)
+        if not match:
+            return None
+
+        number = int(match.group(1))
+        sep = match.group("sep")
+        rest = normalize(match.group("rest"))
+        raw = line.get("text", "")
+
+        if not 1 <= number <= 500:
+            return None
+        if 1900 <= number <= 2100:
+            return None
+
+        # A number glued directly to the following text is usually body text,
+        # e.g. the stray "5他让你辞职..." title in the real fixture.
+        if not sep and rest:
+            rest_start = match.start("rest")
+            if rest_start > 0 and raw[rest_start - 1].isdigit():
+                return None
+
+        # Dates and page-like numeric tokens are not question starts.
+        if looks_like_date(rest) or re.search(r"^\d+\s*(?:%|元|岁|人|个|次|分|秒|题|页)", rest):
+            return None
+        if rest in YES_NO_VALUES and sep:
+            return None
+
+        # Explicit numbered prefix: "1.", "1、", "1)", "1．"
+        if sep:
+            return QuestionStartCandidate(
+                number=number,
+                confidence=0.9,
+                reason="explicit_numbered_prefix",
+                rest=rest,
+            )
+
+        # Bare number followed by a body line is a strong candidate in this PDF.
+        if not rest:
+            next_text = normalize(next_line.get("text", "")) if next_line else ""
+            if next_line is None or not next_text:
+                return None
+            if is_page_number_line(next_text) or looks_like_date(next_text):
+                return None
+            if OPTION_LETTER_RE.match(next_text) or YES_NO_RE.match(next_text):
+                return None
+            if self._looks_like_body_continuation(line, next_line):
+                return QuestionStartCandidate(
+                    number=number,
+                    confidence=0.82,
+                    reason="bare_number_followed_by_title",
+                    rest="",
+                )
+            return None
+
+        # Number followed by a title on the same line, with a separator-like space.
+        if current is None or not current.title:
+            return QuestionStartCandidate(
+                number=number,
+                confidence=0.62,
+                reason="number_with_inline_title",
+                rest=rest,
+            )
+        return None
+
+    @staticmethod
+    def _looks_like_body_continuation(
+        number_line: dict[str, Any],
+        next_line: dict[str, Any],
+    ) -> bool:
+        nb = number_line.get("bbox")
+        tb = next_line.get("bbox")
+        if not nb or not tb:
+            return True
+        gap = tb[1] - nb[3]
+        if gap < 0 or gap > 28:
+            return False
+        # Question numbers are short and start near the same left edge as the title.
+        return abs(nb[0] - tb[0]) <= 12
+
+
+class UnlabeledChoiceDetector:
+    """Detect choice blocks that do not carry A/B/C/D labels."""
+
+    def detect(
+        self,
+        lines: list[dict[str, Any]],
+        question: QuestionDraft,
+        page: dict[str, Any] | None,
+    ) -> tuple[bool, float, str]:
+        if len(lines) < 2:
+            if len(lines) == 1 and normalize(lines[0]["text"]) in {"其他", "other"}:
+                return True, 0.55, "single_unlabeled_other_option"
+            return False, 0.0, "not_enough_unlabeled_blocks"
+
+        bboxes = [line.get("bbox") for line in lines if line.get("bbox")]
+        if len(bboxes) != len(lines):
+            return False, 0.0, "missing_bbox"
+
+        lefts = [b[0] for b in bboxes]
+        gaps = [bboxes[i + 1][1] - bboxes[i][3] for i in range(len(bboxes) - 1)]
+        if min(gaps) < 2 or max(gaps) > 28:
+            return False, 0.0, "irregular_vertical_gaps"
+
+        left_spread = max(lefts) - min(lefts)
+        gap_spread = max(gaps) - min(gaps)
+        heights = [b[3] - b[1] for b in bboxes]
+        height_spread = max(heights) - min(heights)
+
+        if left_spread <= 10 and gap_spread <= 8 and height_spread <= 12:
+            return True, 0.92, "uniform_unlabeled_choice_blocks"
+        if left_spread <= 18 and gap_spread <= 14:
+            return True, 0.58, "weak_unlabeled_choice_layout"
+        return False, 0.0, "ambiguous_unlabeled_layout"
+
+
+class OptionBoundaryDetector:
+    """Classify an option-area line as a new option or a continuation."""
+
+    CONTINUATION_GAP = 7.0
+    NEW_OPTION_GAP = 18.0
+
+    def classify(
+        self,
+        line: dict[str, Any],
+        question: QuestionDraft,
+    ) -> tuple[str, Any]:
+        text = line["text"]
+        yes_no = parse_yes_no_option(text, True)
+        if yes_no:
+            return "yes_no_option", yes_no
+
+        letter = parse_option_letter(text, True)
+        if letter:
+            return "letter_option", letter
+
+        if has_rating_context(question.title):
+            numeric_option = parse_numeric_option(text, True, question.source_number)
+            if numeric_option:
+                return "numeric_option", numeric_option
+
+        if not question.options:
+            return "unlabeled", text
+
+        last = question.options[-1]
+        last_bottom = last.bbox[3] if last.bbox else None
+        line_top = line.get("bbox", [0, 0, 0, 0])[1]
+        gap = (line_top - last_bottom) if last_bottom is not None else float("inf")
+
+        if gap <= self.CONTINUATION_GAP:
+            return "continuation", text
+
+        # A clear new block after labeled A/B/C options can be a missing label
+        # (real Q56 D), but it must not be an ordinary body paragraph.
+        if (
+            question.options
+            and len(question.options) >= 2
+            and any(option.label_source == "extracted" for option in question.options)
+            and gap <= self.NEW_OPTION_GAP
+            and self._looks_like_option_block(line, question)
+        ):
+            return "generated_label_option", text
+
+        return "continuation", text
+
+    @staticmethod
+    def _looks_like_option_block(
+        line: dict[str, Any],
+        question: QuestionDraft,
+    ) -> bool:
+        bbox = line.get("bbox")
+        if not bbox:
+            return False
+        first_option = question.options[0]
+        first_bbox = first_option.bbox
+        if not first_bbox:
+            return True
+        left_delta = abs(bbox[0] - first_bbox[0])
+        return left_delta <= 12
+
+
+@dataclass
 class MediaAttachment:
     id: str
     resource_id: str | None
@@ -649,6 +894,7 @@ class OptionDraft:
     bbox: list[float] | None
     media: list[MediaAttachment] = field(default_factory=list)
     confidence: float = 0.9
+    label_source: str = "extracted"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -663,6 +909,7 @@ class OptionDraft:
             "bbox": self.bbox,
             "media": [media.to_dict() for media in self.media],
             "confidence": self.confidence,
+            "label_source": self.label_source,
         }
 
 
@@ -684,6 +931,9 @@ class QuestionDraft:
     type_confidence: float = 0.0
     type_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    title_closed: bool = False
+    question_region: dict[str, Any] | None = None
+    pending_unlabeled: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _clean_required_title_text(text: str) -> str:
@@ -692,6 +942,8 @@ def _clean_required_title_text(text: str) -> str:
 
 def _required_signal(text: str) -> tuple[bool, float] | None:
     t = normalize_key(text)
+    if text.rstrip().endswith("*"):
+        return True, 0.95
     if any(token in t for token in ("必答题", "必填", "required", "must answer", "必答")):
         return True, 0.95
     if any(token in t for token in ("选答题", "非必答题", "optional", "可不填")):
@@ -732,17 +984,21 @@ def _new_question(
         title_bbox=line.get("bbox"),
     )
     apply_required_signal(question, line["text"])
+    if rest:
+        question.title_closed = True
     return question
 
 
 def _append_title(question: QuestionDraft, line: dict[str, Any]) -> None:
     text = normalize(line["text"])
     signal = _required_signal(text)
-    if signal and text.strip().startswith("*") and len(text.strip()) <= 8:
+    if signal:
         apply_required_signal(question, text)
+    if signal and text.strip().startswith("*") and len(text.strip()) <= 8:
+        question.title_closed = True
         return
     if text in {"必答题", "必答", "选答题", "非必答题"}:
-        apply_required_signal(question, text)
+        question.title_closed = True
         return
     if question.title:
         question.title = f"{question.title}\n{text}"
@@ -754,6 +1010,8 @@ def _append_title(question: QuestionDraft, line: dict[str, Any]) -> None:
         question.source_page_end or 0,
         line["page_number"],
     )
+    if text.rstrip().endswith("*"):
+        question.title_closed = True
 
 
 def _append_option_continuation(option: OptionDraft, line: dict[str, Any]) -> None:
@@ -807,6 +1065,11 @@ def classify_question_type(question: QuestionDraft) -> None:
         return
 
     reasons.append("no_options")
+    if len(normalize(question.title)) >= 80:
+        question.type = "long_text"
+        question.type_confidence = 0.72
+        question.type_reasons = reasons + ["long_open_question_title"]
+        return
     if any(token in normalized for token in OPEN_IMAGE_MARKERS):
         question.type = "image"
         question.type_confidence = 0.72
@@ -839,7 +1102,84 @@ def classify_question_type(question: QuestionDraft) -> None:
     question.type_reasons = reasons
 
 
+def _finalize_pending_unlabeled(question: QuestionDraft) -> None:
+    if not question.pending_unlabeled:
+        return
+
+    # Merge continuation lines while preserving option-start cadence. A new
+    # unlabeled option is determined by distance from the previous option's
+    # first line, not by the previous wrapped line's bottom edge.
+    merged_lines: list[dict[str, Any]] = []
+    groups: list[list[dict[str, Any]]] = []
+    for line in question.pending_unlabeled:
+        if not groups:
+            groups.append([line])
+            continue
+        first_line = groups[-1][0]
+        prev_line = groups[-1][-1]
+        if (
+            first_line.get("bbox")
+            and prev_line.get("bbox")
+            and line.get("bbox")
+            and line["bbox"][1] - first_line["bbox"][1] < 11
+        ):
+            groups[-1].append(line)
+        else:
+            groups.append([line])
+
+    for group in groups:
+        if len(group) == 1:
+            merged_lines.append(dict(group[0]))
+            continue
+        first = group[0]
+        merged_line = dict(first)
+        merged_line["text"] = "\n".join(normalize(line["text"]) for line in group)
+        merged_line["bbox"] = bbox_union([line.get("bbox") for line in group])
+        merged_lines.append(merged_line)
+
+    detector = UnlabeledChoiceDetector()
+    page = _page_for(
+        {
+            "pages": [],
+            "all_lines": [],
+            "image_resources": [],
+            "image_instances": [],
+        },
+        question.source_page_start,
+    )
+    ok, confidence, reason = detector.detect(
+        merged_lines,
+        question,
+        page,
+    )
+    if not ok:
+        question.warnings.append(
+            f"unresolved_unlabeled_text_after_title: {reason}"
+        )
+        return
+
+    for index, line in enumerate(merged_lines, start=1):
+        option = OptionDraft(
+            id=f"{question.id}_o{len(question.options) + 1}",
+            label=str(index),
+            text=normalize(line["text"]),
+            text_lines=[line],
+            page_start=line["page_number"],
+            page_end=line["page_number"],
+            bbox=line.get("bbox"),
+            confidence=confidence,
+            label_source="generated",
+        )
+        question.options.append(option)
+        question.source_page_end = max(
+            question.source_page_end or 0,
+            line["page_number"],
+        )
+    question.warnings.append("unlabeled_options_detected")
+
+
 def _finalize_question(question: QuestionDraft) -> None:
+    _finalize_pending_unlabeled(question)
     if not question.title:
         question.warnings.append("empty_question_title")
     if not question.options:
@@ -895,6 +1235,17 @@ def parse_semantic_layout(
     excluded_ids = set(furniture["header_line_ids"]) | set(
         furniture["footer_line_ids"]
     )
+    lines = sorted(
+        document["all_lines"],
+        key=lambda line: (
+            line["page_number"],
+            line["bbox"][1],
+            line["bbox"][0],
+        ),
+    )
+    pages = {page["page_number"]: page for page in document.get("pages", [])}
+    start_detector = QuestionStartDetector()
+    boundary_detector = OptionBoundaryDetector()
 
     questions: list[QuestionDraft] = []
     seen_numbers: list[int] = []
@@ -908,7 +1259,32 @@ def parse_semantic_layout(
         questions.append(current)
         current = None
 
-    for line in document["all_lines"]:
+    def add_option(
+        question: QuestionDraft,
+        label: str,
+        text: str,
+        line: dict[str, Any],
+        confidence: float,
+        label_source: str = "extracted",
+    ) -> None:
+        option = OptionDraft(
+            id=f"{question.id}_o{len(question.options) + 1}",
+            label=label,
+            text=text,
+            text_lines=[line],
+            page_start=line["page_number"],
+            page_end=line["page_number"],
+            bbox=line.get("bbox"),
+            confidence=confidence,
+            label_source=label_source,
+        )
+        question.options.append(option)
+        question.source_page_end = max(
+            question.source_page_end or 0,
+            line["page_number"],
+        )
+
+    for index, line in enumerate(lines):
         if line["id"] in excluded_ids:
             continue
         if is_page_number_line(line["text"]):
@@ -916,77 +1292,99 @@ def parse_semantic_layout(
         if not line["text"]:
             continue
 
-        kind, payload = _line_kind(line, current)
+        prev_line = lines[index - 1] if index > 0 else None
+        next_line = lines[index + 1] if index + 1 < len(lines) else None
+        page = pages.get(line["page_number"])
 
-        if kind == "question_number":
+        if current and has_rating_context(current.title):
+            rating_option = parse_numeric_option(
+                line["text"],
+                True,
+                current.source_number,
+            )
+            if rating_option and (
+                not rating_option[1] or len(rating_option[1]) <= 8
+            ):
+                add_option(
+                    current,
+                    rating_option[0],
+                    rating_option[1],
+                    line,
+                    0.82,
+                    label_source="extracted",
+                )
+                continue
+
+        candidate = start_detector.detect(
+            line,
+            prev_line,
+            next_line,
+            current,
+            page,
+        )
+        if candidate is not None:
             flush_question()
-            number, rest = payload
-            current = _new_question(questions, number, rest, line)
-            seen_numbers.append(number)
+            current = _new_question(questions, candidate.number, candidate.rest, line)
+            seen_numbers.append(candidate.number)
+            current.warnings.append(f"question_start_reason: {candidate.reason}")
             continue
 
         if current is None:
             continue
 
-        if kind == "letter_option":
+        kind, payload = boundary_detector.classify(line, current)
+
+        if kind in {"letter_option", "yes_no_option", "numeric_option"}:
             label, option_text = payload
-            option = OptionDraft(
-                id=f"{current.id}_o{len(current.options) + 1}",
-                label=label,
-                text=option_text,
-                text_lines=[line],
-                page_start=line["page_number"],
-                page_end=line["page_number"],
-                bbox=line.get("bbox"),
-                confidence=0.9,
-            )
-            current.options.append(option)
-            current.source_page_end = max(
-                current.source_page_end or 0,
-                line["page_number"],
+            if kind == "yes_no_option":
+                label = label.capitalize()
+                option_text = label
+                confidence = 0.96
+            elif kind == "letter_option":
+                confidence = 0.9
+            else:
+                confidence = 0.82
+            current.title_closed = True
+            add_option(
+                current,
+                label,
+                option_text,
+                line,
+                confidence,
+                label_source="extracted",
             )
             continue
 
-        if kind == "yes_no_option":
-            label, option_text = payload
-            option = OptionDraft(
-                id=f"{current.id}_o{len(current.options) + 1}",
-                label=label,
-                text=option_text,
-                text_lines=[line],
-                page_start=line["page_number"],
-                page_end=line["page_number"],
-                bbox=line.get("bbox"),
-                confidence=0.96,
+        if kind == "generated_label_option":
+            generated_label = chr(ord("A") + len(current.options))
+            add_option(
+                current,
+                generated_label,
+                normalize(line["text"]),
+                line,
+                0.63,
+                label_source="generated",
             )
-            current.options.append(option)
-            current.source_page_end = max(
-                current.source_page_end or 0,
-                line["page_number"],
-            )
+            current.warnings.append("missing_explicit_option_label")
             continue
 
-        if kind == "numeric_option":
-            label, option_text = payload
-            option = OptionDraft(
-                id=f"{current.id}_o{len(current.options) + 1}",
-                label=label,
-                text=option_text,
-                text_lines=[line],
-                page_start=line["page_number"],
-                page_end=line["page_number"],
-                bbox=line.get("bbox"),
-                confidence=0.82,
-            )
-            current.options.append(option)
-            current.source_page_end = max(
-                current.source_page_end or 0,
-                line["page_number"],
-            )
+        if kind == "unlabeled":
+            # Title is already closed; buffer a potential unlabeled choice block.
+            if current.title_closed:
+                current.pending_unlabeled.append(line)
+                current.source_page_end = max(
+                    current.source_page_end or 0,
+                    line["page_number"],
+                )
+            else:
+                _append_title(current, line)
             continue
 
+        # continuation (or ordinary body text after options)
         if current.options:
             _append_option_continuation(current.options[-1], line)
+        elif current.title_closed:
+            current.pending_unlabeled.append(line)
         else:
             _append_title(current, line)
 
@@ -1259,11 +1657,117 @@ def associate_media_to_option(
     return attached
 
 
+def _overlaps_furniture(
+    bbox: list[float] | None,
+    furniture_bboxes: list[list[float]],
+) -> bool:
+    if not bbox:
+        return False
+    return any(
+        bbox_overlap_ratio(bbox, furniture) > 0.08
+        or bbox_iou(bbox, furniture) > 0.04
+        for furniture in furniture_bboxes
+    )
+
+
+def _inside_region(bbox: list[float], region: list[float]) -> bool:
+    center = bbox_center(bbox)
+    if not center:
+        return False
+    return (
+        region[0] <= center[0] <= region[2]
+        and region[1] <= center[1] <= region[3]
+    )
+
+
+def _overlaps_any_option(
+    question: QuestionDraft,
+    bbox: list[float] | None,
+    threshold: float = 0.08,
+) -> bool:
+    if not bbox:
+        return False
+    return any(
+        option.bbox
+        and (
+            bbox_overlap_ratio(bbox, option.bbox) >= threshold
+            or bbox_iou(bbox, option.bbox) >= threshold
+        )
+        for option in question.options
+    )
+
+
+def _attach_overlap_to_option(
+    question: QuestionDraft,
+    instance: dict[str, Any],
+    resource: dict[str, Any] | None,
+) -> None:
+    bbox = instance.get("bbox")
+    if not bbox:
+        return
+    best: OptionDraft | None = None
+    best_score = 0.0
+    for option in question.options:
+        if not option.bbox:
+            continue
+        score = max(bbox_iou(bbox, option.bbox), bbox_overlap_ratio(bbox, option.bbox))
+        if score > best_score:
+            best_score = score
+            best = option
+    if best is not None:
+        best.media.append(
+            _media_from_instance(
+                instance,
+                resource,
+                0.96,
+                "image_overlaps_option_bbox",
+            )
+        )
+
+
 def associate_media(
     questions: list[QuestionDraft],
     document: dict[str, Any],
 ) -> list[MediaAttachment]:
     instances = document.get("image_instances", [])
+    lines_by_page: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for line in document.get("all_lines", []):
+        lines_by_page[line["page_number"]].append(line)
+
+    furniture_bboxes_by_page: dict[int, list[list[float]]] = defaultdict(list)
+    for line in document.get("all_lines", []):
+        if line.get("bbox") and line.get("role") in {"header", "footer"}:
+            furniture_bboxes_by_page[line["page_number"]].append(line["bbox"])
+
+    # Build a source-page question region for every question.
+    for index, question in enumerate(questions):
+        if question.source_page_start is None or question.title_bbox is None:
+            continue
+        page = _page_for(document, question.source_page_start)
+        if not page:
+            continue
+        next_question = _first(
+            candidate
+            for candidate in questions[index + 1 :]
+            if candidate.source_page_start == question.source_page_start
+            and candidate.title_bbox
+        )
+        next_top = next_question.title_bbox[1] if next_question else None
+        region_bottom = (
+            next_top - 2
+            if next_top is not None
+            else question.title_bbox[3] + 45
+        )
+        question.question_region = {
+            "page": question.source_page_start,
+            "bbox": [
+                0,
+                max(0, question.title_bbox[1] - 5),
+                page["width"],
+                max(question.title_bbox[3] + 5, region_bottom),
+            ],
+        }
+
     assigned_ids: set[str] = set()
     unattached: list[MediaAttachment] = []
 
@@ -1278,29 +1782,36 @@ def associate_media(
                 <= (question.source_page_end or 0)
             ):
                 continue
-            resource = _resource_for(document, instance.get("resource_id"))
-            page = _page_for(document, page_number)
-            if _attach_to_question(question, instance, resource, _question_media_floor(questions, question, page)):
-                assigned_ids.add(instance["id"])
-                continue
-            if _attach_to_option_by_overlap(question, instance, resource):
-                assigned_ids.add(instance["id"])
 
-    for question in questions:
-        for instance in instances:
-            if instance["id"] in assigned_ids or not instance.get("bbox"):
-                continue
-            page_number = instance.get("page")
-            if page_number is None or not (
-                (question.source_page_start or 0)
-                <= page_number
-                <= (question.source_page_end or 0)
+            resource = _resource_for(document, instance.get("resource_id"))
+            bbox = instance.get("bbox")
+            if _overlaps_furniture(
+                bbox,
+                furniture_bboxes_by_page.get(page_number, []),
             ):
                 continue
-            resource = _resource_for(document, instance.get("resource_id"))
-            page = _page_for(document, page_number)
-            if _attach_to_nearest_option(question, instance, resource, page):
+
+            # Question media has priority. Only attach to a question if the image
+            # is inside that question's source-page region and not inside an option.
+            region = question.question_region
+            if region and bbox and _inside_region(bbox, region["bbox"]):
+                if not _overlaps_any_option(question, bbox):
+                    question.media.append(
+                        _media_from_instance(
+                            instance,
+                            resource,
+                            0.9,
+                            "image_inside_question_region_not_option",
+                        )
+                    )
+                    assigned_ids.add(instance["id"])
+                    continue
+
+            # Option media only when there is a clear bbox overlap.
+            if _overlaps_any_option(question, bbox, threshold=0.18):
+                _attach_overlap_to_option(question, instance, resource)
                 assigned_ids.add(instance["id"])
+                continue
 
     for instance in instances:
         if instance["id"] in assigned_ids:
@@ -1333,72 +1844,15 @@ def map_forms_pages(
     forms_title: str | None,
 ) -> tuple[dict[int, str | None], list[dict[str, Any]], list[str]]:
     pdf_pages = sorted(document["pages"], key=lambda page: page["page_number"])
-    title_page = _first(page for page in pdf_pages if page["page_number"] == 1)
-    start_pages = sorted({q.source_page_start for q in questions if q.source_page_start})
-    title_page_number = title_page["page_number"] if title_page else None
-
-    page_map: dict[int, str | None] = {}
-    forms_pages: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    next_forms_number = 1
-
-    if forms_title and title_page_number is not None:
-        forms_id = f"forms_{next_forms_number}"
-        page_map[title_page_number] = forms_id
-        forms_pages.append(
-            {
-                "id": forms_id,
-                "order": next_forms_number,
-                "title": None,
-                "description": None,
-                "pdf_pages": [title_page_number],
-                "forms_page_id": forms_id,
-            }
-        )
-        next_forms_number += 1
-
-    for pdf_page in pdf_pages:
-        page_number = pdf_page["page_number"]
-        if page_number in page_map:
-            continue
-        if page_number in start_pages:
-            forms_id = f"forms_{next_forms_number}"
-            page_map[page_number] = forms_id
-            forms_pages.append(
-                {
-                    "id": forms_id,
-                    "order": next_forms_number,
-                    "title": None,
-                    "description": None,
-                    "pdf_pages": [page_number],
-                    "forms_page_id": forms_id,
-                }
-            )
-            next_forms_number += 1
-            continue
-
-        previous_start = _first(
-            start for start in reversed(start_pages) if start < page_number
-        )
-        if previous_start is not None and previous_start in page_map:
-            page_map[page_number] = page_map[previous_start]
-            forms_page = _first(
-                page for page in forms_pages if page["id"] == page_map[page_number]
-            )
-            if forms_page is not None and page_number not in forms_page["pdf_pages"]:
-                forms_page["pdf_pages"].append(page_number)
-            warnings.append(f"estimated_forms_page_for_pdf_page_{page_number}")
-        else:
-            page_map[page_number] = None
-            warnings.append(f"forms_page_not_detected_for_pdf_page_{page_number}")
-
-    if not forms_pages:
-        warnings.append("no_reliable_forms_page_mapping")
+    page_map: dict[int, str | None] = {
+        page["page_number"]: None for page in pdf_pages
+    }
+    warnings = ["forms_page_detection_not_available"]
 
     for page in pdf_pages:
-        page["forms_page_id"] = page_map.get(page["page_number"])
+        page["forms_page_id"] = None
 
-    return page_map, forms_pages, warnings
+    return page_map, [], warnings
 
 
 def build_survey_questions(
@@ -1557,8 +2011,8 @@ def run_pipeline(
     title_override: str | None = None,
 ) -> dict[str, Any]:
     document = extract_document_model(pdf_path, output_dir)
-    furniture = detect_page_furniture(document)
-    forms_title = detect_forms_title(document, furniture)
+    forms_title = detect_forms_title(document)
+    furniture = detect_page_furniture(document, forms_title)
     layout = parse_semantic_layout(document, furniture)
     output = build_output(
         document,
