@@ -142,9 +142,9 @@ export async function createQuestionOption(
     value: string;
     order: number;
   },
-): Promise<void> {
+): Promise<number> {
   const timestamp = new Date().toISOString();
-  await db
+  const result = await db
     .prepare(
       `INSERT INTO question_options (
         question_id, label, value, "order", created_at, updated_at
@@ -159,6 +159,13 @@ export async function createQuestionOption(
       timestamp,
     )
     .run();
+
+  const id = result.meta?.last_row_id;
+  if (typeof id !== "number") {
+    throw new Error("Failed to create question option");
+  }
+
+  return id;
 }
 
 export async function getQuestionById(
@@ -173,6 +180,18 @@ export async function getQuestionById(
   return row ? mapQuestion(row) : null;
 }
 
+export async function getQuestionOptionById(
+  db: D1Database,
+  id: number,
+): Promise<QuestionOption | null> {
+  const row = await db
+    .prepare("SELECT * FROM question_options WHERE id = ? LIMIT 1")
+    .bind(id)
+    .first<QuestionOptionRow>();
+
+  return row ? mapOption(row) : null;
+}
+
 export async function updateQuestionTitle(
   db: D1Database,
   id: number,
@@ -182,6 +201,43 @@ export async function updateQuestionTitle(
     .prepare("UPDATE survey_questions SET title = ?, updated_at = ? WHERE id = ?")
     .bind(title, new Date().toISOString(), id)
     .run();
+}
+
+export async function updateQuestionOptionLabel(
+  db: D1Database,
+  id: number,
+  label: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE question_options
+       SET label = ?, value = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(label, label, new Date().toISOString(), id)
+    .run();
+}
+
+export async function deleteQuestionOption(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  const option = await getQuestionOptionById(db, id);
+  if (!option) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  await db.batch([
+    db.prepare("DELETE FROM question_options WHERE id = ?").bind(id),
+    db
+      .prepare(
+        `UPDATE question_options
+         SET "order" = "order" - 1, updated_at = ?
+         WHERE question_id = ? AND "order" > ?`,
+      )
+      .bind(timestamp, option.questionId, option.order),
+  ]);
 }
 
 export async function updateQuestionRequired(
@@ -195,6 +251,58 @@ export async function updateQuestionRequired(
     .run();
 }
 
+export async function deleteQuestion(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  const question = await getQuestionById(db, id);
+  if (!question) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  await db.batch([
+    db.prepare("DELETE FROM survey_questions WHERE id = ?").bind(id),
+    db
+      .prepare(
+        `UPDATE survey_questions
+         SET "order" = "order" - 1, updated_at = ?
+         WHERE survey_id = ? AND "order" > ?`,
+      )
+      .bind(timestamp, question.surveyId, question.order),
+  ]);
+}
+
+export async function swapQuestionOptionOrder(
+  db: D1Database,
+  firstId: number,
+  secondId: number,
+): Promise<void> {
+  const first = await getQuestionOptionById(db, firstId);
+  const second = await getQuestionOptionById(db, secondId);
+  if (
+    !first ||
+    !second ||
+    first.questionId !== second.questionId
+  ) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        'UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?',
+      )
+      .bind(second.order, timestamp, firstId),
+    db
+      .prepare(
+        'UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?',
+      )
+      .bind(first.order, timestamp, secondId),
+  ]);
+}
+
 export async function duplicateQuestion(
   db: D1Database,
   questionId: number,
@@ -203,6 +311,15 @@ export async function duplicateQuestion(
   if (!question) {
     throw new Error("Question not found");
   }
+
+  await db
+    .prepare(
+      `UPDATE survey_questions
+       SET "order" = "order" + 1, updated_at = ?
+       WHERE survey_id = ? AND "order" > ?`,
+    )
+    .bind(new Date().toISOString(), question.surveyId, question.order)
+    .run();
 
   const result = await db
     .prepare(
@@ -228,19 +345,39 @@ export async function duplicateQuestion(
     throw new Error("Failed to duplicate question");
   }
 
-  const options = await listOptionsForQuestions(db, [questionId]);
-  const statements = options.map((option, index) =>
-    db
-      .prepare(
-        `INSERT INTO question_options (
-          question_id, label, value, "order", created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
+  await db
+    .prepare(
+      `INSERT INTO question_media (
+        question_id, media_asset_id, sort_order, created_at
       )
-      .bind(id, option.label, option.value, index, new Date().toISOString(), new Date().toISOString()),
-  );
+      SELECT ?, media_asset_id, sort_order, ?
+      FROM question_media
+      WHERE question_id = ?`,
+    )
+    .bind(id, new Date().toISOString(), questionId)
+    .run();
 
-  if (statements.length > 0) {
-    await db.batch(statements);
+  const options = await listOptionsForQuestions(db, [questionId]);
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index];
+    if (!option) continue;
+    const newOptionId = await createQuestionOption(db, {
+      questionId: id,
+      label: option.label,
+      value: option.value,
+      order: index,
+    });
+    await db
+      .prepare(
+        `INSERT INTO option_media (
+          question_option_id, media_asset_id, sort_order, created_at
+        )
+        SELECT ?, media_asset_id, sort_order, ?
+        FROM option_media
+        WHERE question_option_id = ?`,
+      )
+      .bind(newOptionId, new Date().toISOString(), option.id)
+      .run();
   }
 
   return id;

@@ -34,6 +34,7 @@ export async function getPublishedSurveys(
       publishedAt: surveyRow["published_at"] === null ? null : String(surveyRow["published_at"]),
       closedAt: surveyRow["closed_at"] === null ? null : String(surveyRow["closed_at"]),
       archivedAt: surveyRow["archived_at"] === null ? null : String(surveyRow["archived_at"]),
+      accessCode: surveyRow["access_code"] === null ? null : String(surveyRow["access_code"]),
     };
   });
 }
@@ -50,6 +51,70 @@ export async function listMySurveys(
   ownerId: number,
 ): Promise<Survey[]> {
   return listSurveysByOwner(db, ownerId);
+}
+
+export async function assertSurveyCanPublish(
+  db: D1Database,
+  surveyId: number,
+): Promise<void> {
+  const survey = await getSurveyById(db, surveyId);
+  if (!survey) {
+    throw new Error("问卷不存在");
+  }
+  if (!survey.title.trim()) {
+    throw new Error("问卷标题不能为空");
+  }
+
+  const questions = await listQuestionsBySurvey(db, surveyId);
+  if (questions.length === 0) {
+    throw new Error("问卷至少需要一道题");
+  }
+
+  const options = await listOptionsForQuestions(
+    db,
+    questions.map((question) => question.id),
+  );
+  for (const question of questions) {
+    if (!question.title.trim()) {
+      throw new Error(`第 ${question.order + 1} 题的标题不能为空`);
+    }
+    if (
+      question.type === "single" ||
+      question.type === "multiple" ||
+      question.type === "yes_no" ||
+      question.type === "rating"
+    ) {
+      const optionCount = options.filter(
+        (option) => option.questionId === question.id,
+      ).length;
+      if (optionCount < 2) {
+        throw new Error(`第 ${question.order + 1} 题至少需要两个选项`);
+      }
+    }
+  }
+}
+
+export async function assertSurveyQuestionsEditable(
+  db: D1Database,
+  surveyId: number,
+): Promise<void> {
+  const survey = await getSurveyById(db, surveyId);
+  if (!survey) {
+    throw new Error("问卷不存在");
+  }
+
+  const responseCount = await db
+    .prepare(
+      "SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?",
+    )
+    .bind(surveyId)
+    .first<{ count: number }>();
+
+  if ((responseCount?.count ?? 0) > 0) {
+    throw new Error(
+      "该问卷已有答卷，题目和附件已锁定。请复制问卷后再修改。",
+    );
+  }
 }
 
 export async function duplicateSurvey(
@@ -97,16 +162,39 @@ export async function duplicateSurvey(
       order: index,
     });
 
+    await db
+      .prepare(
+        `INSERT INTO question_media (
+          question_id, media_asset_id, sort_order, created_at
+        )
+        SELECT ?, media_asset_id, sort_order, ?
+        FROM question_media
+        WHERE question_id = ?`,
+      )
+      .bind(questionId, new Date().toISOString(), question.id)
+      .run();
+
     const questionOptions = optionsByQuestion.get(question.id) ?? [];
     for (let optionIndex = 0; optionIndex < questionOptions.length; optionIndex += 1) {
       const option = questionOptions[optionIndex];
       if (!option) continue;
-      await createQuestionOption(db, {
+      const optionId = await createQuestionOption(db, {
         questionId,
         label: option.label,
         value: option.value,
         order: optionIndex,
       });
+      await db
+        .prepare(
+          `INSERT INTO option_media (
+            question_option_id, media_asset_id, sort_order, created_at
+          )
+          SELECT ?, media_asset_id, sort_order, ?
+          FROM option_media
+          WHERE question_option_id = ?`,
+        )
+        .bind(optionId, new Date().toISOString(), option.id)
+        .run();
     }
   }
 

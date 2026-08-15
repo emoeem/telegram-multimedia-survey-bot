@@ -123,6 +123,37 @@ export async function createQuestionMedia(
     .run();
 }
 
+export async function getQuestionMediaByQuestionId(
+  db: D1Database,
+  questionId: number,
+): Promise<Array<{ id: number; mediaAssetId: number; sortOrder: number }>> {
+  const result = await db
+    .prepare(
+      `SELECT id, media_asset_id, sort_order
+       FROM question_media
+       WHERE question_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+    )
+    .bind(questionId)
+    .all<{ id: number; media_asset_id: number; sort_order: number }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    mediaAssetId: row.media_asset_id,
+    sortOrder: row.sort_order,
+  }));
+}
+
+export async function deleteQuestionMedia(
+  db: D1Database,
+  questionMediaId: number,
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM question_media WHERE id = ?")
+    .bind(questionMediaId)
+    .run();
+}
+
 export async function createAnswerMedia(
   db: D1Database,
   input: {
@@ -140,6 +171,27 @@ export async function createAnswerMedia(
     )
     .bind(input.answerId, input.mediaAssetId, input.sortOrder ?? 0, timestamp)
     .run();
+}
+
+export async function getAnswerMediaByAnswerId(
+  db: D1Database,
+  answerId: number,
+): Promise<Array<{ id: number; mediaAssetId: number; sortOrder: number }>> {
+  const result = await db
+    .prepare(
+      `SELECT id, media_asset_id, sort_order
+       FROM answer_media
+       WHERE answer_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+    )
+    .bind(answerId)
+    .all<{ id: number; media_asset_id: number; sort_order: number }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    mediaAssetId: row.media_asset_id,
+    sortOrder: row.sort_order,
+  }));
 }
 
 export async function createOptionMedia(
@@ -177,6 +229,45 @@ export async function getOptionMediaByOptionId(
 
   return (result.results ?? []).map((row) => ({
     id: row.id,
+    mediaAssetId: row.media_asset_id,
+    sortOrder: row.sort_order,
+  }));
+}
+
+export async function listOptionMediaByOptionIds(
+  db: D1Database,
+  questionOptionIds: number[],
+): Promise<
+  Array<{
+    id: number;
+    questionOptionId: number;
+    mediaAssetId: number;
+    sortOrder: number;
+  }>
+> {
+  if (questionOptionIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = questionOptionIds.map(() => "?").join(",");
+  const result = await db
+    .prepare(
+      `SELECT id, question_option_id, media_asset_id, sort_order
+       FROM option_media
+       WHERE question_option_id IN (${placeholders})
+       ORDER BY question_option_id ASC, sort_order ASC, id ASC`,
+    )
+    .bind(...questionOptionIds)
+    .all<{
+      id: number;
+      question_option_id: number;
+      media_asset_id: number;
+      sort_order: number;
+    }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    questionOptionId: row.question_option_id,
     mediaAssetId: row.media_asset_id,
     sortOrder: row.sort_order,
   }));

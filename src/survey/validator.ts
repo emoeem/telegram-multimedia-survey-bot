@@ -101,11 +101,11 @@ export function validateUnifiedSurvey(
         question.type === "multiple" ||
         question.type === "yes_no" ||
         question.type === "rating") &&
-      question.options.length === 0
+      question.options.length < 2
     ) {
       issues.push({
         path: `${path}.options`,
-        message: "this question type requires options",
+        message: "this question type requires at least two options",
       });
     }
   });

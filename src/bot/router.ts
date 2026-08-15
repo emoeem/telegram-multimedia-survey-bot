@@ -1,4 +1,5 @@
 import { handleTelegramCallback, handleTelegramMessage } from "./survey-handler";
+import { answerCallbackQuery, sendMessage } from "./telegram";
 import type { BotContext, TelegramUpdate } from "./types";
 import { getUpdateKind } from "./update-parser";
 import { upsertUser } from "../db/repositories/user.repository";
@@ -25,12 +26,28 @@ export async function handleTelegramUpdate(
     if (update.message.from) {
       await ensureUser(ctx, update.message.from);
     }
-    await handleTelegramMessage(ctx, update.message);
+    try {
+      await handleTelegramMessage(ctx, update.message);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        update.message.chat.id,
+        `⚠️ 处理失败：${error instanceof Error ? error.message : "未知错误"}`,
+      );
+    }
     return;
   }
 
   if (kind === "callback_query" && update.callback_query) {
     await ensureUser(ctx, update.callback_query.from);
-    await handleTelegramCallback(ctx, update.callback_query);
+    try {
+      await handleTelegramCallback(ctx, update.callback_query);
+    } catch (error) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        update.callback_query.id,
+        error instanceof Error ? error.message : "处理失败",
+      );
+    }
   }
 }

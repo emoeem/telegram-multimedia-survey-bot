@@ -17,6 +17,7 @@ describe("validateUnifiedSurvey", () => {
           order: 1,
           options: [
             { id: "a", label: "A", value: "a", order: 1 },
+            { id: "b", label: "B", value: "b", order: 2 },
           ],
           media: [],
         },

@@ -30,6 +30,7 @@ export interface Survey {
   publishedAt: string | null;
   closedAt: string | null;
   archivedAt: string | null;
+  accessCode: string | null;
 }
 
 export type QuestionType =
@@ -133,6 +134,53 @@ export interface MediaAsset {
   height: number | null;
   duration: number | null;
   r2Key: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SoftwareLicenseType = "timed" | "perpetual";
+export type SoftwareLicenseStatus = "active" | "suspended" | "revoked";
+
+export interface SoftwareLicense {
+  id: number;
+  publicId: string;
+  licenseKeyHash: string;
+  customerName: string | null;
+  customerContact: string | null;
+  licenseType: SoftwareLicenseType;
+  status: SoftwareLicenseStatus;
+  startsAt: string;
+  expiresAt: string | null;
+  updatesUntil: string | null;
+  maxActivations: number;
+  notes: string | null;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface SoftwareLicenseActivation {
+  id: number;
+  licenseId: number;
+  installationId: string;
+  installationName: string | null;
+  appVersion: string | null;
+  metadataJson: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  deactivatedAt: string | null;
+}
+
+export interface SoftwareRelease {
+  id: number;
+  version: string;
+  channel: string;
+  releasedAt: string;
+  minimumVersion: string | null;
+  downloadUrl: string | null;
+  checksumSha256: string | null;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }

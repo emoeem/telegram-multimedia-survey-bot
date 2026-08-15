@@ -17,6 +17,7 @@ interface SurveyRow {
   published_at: string | null;
   closed_at: string | null;
   archived_at: string | null;
+  access_code: string | null;
 }
 
 function mapSurvey(row: SurveyRow): Survey {
@@ -36,6 +37,7 @@ function mapSurvey(row: SurveyRow): Survey {
     publishedAt: row.published_at,
     closedAt: row.closed_at,
     archivedAt: row.archived_at,
+    accessCode: row.access_code,
   };
 }
 
@@ -56,8 +58,8 @@ export async function createSurvey(
       `INSERT INTO surveys (
         owner_id, title, description, anonymous,
         allow_multiple_responses, max_responses_per_user,
-        version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        version, access_code, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     )
     .bind(
       input.ownerId,
@@ -66,6 +68,7 @@ export async function createSurvey(
       input.anonymous ? 1 : 0,
       input.allowMultipleResponses ? 1 : 0,
       input.maxResponsesPerUser ?? 1,
+      null,
       timestamp,
       timestamp,
     )
@@ -108,6 +111,23 @@ export async function listSurveysByOwner(
   return (result.results ?? []).map(mapSurvey);
 }
 
+export async function getLatestDraftSurveyByOwner(
+  db: D1Database,
+  ownerId: number,
+): Promise<Survey | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM surveys
+       WHERE owner_id = ? AND status = 'draft'
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+    )
+    .bind(ownerId)
+    .first<SurveyRow>();
+
+  return row ? mapSurvey(row) : null;
+}
+
 export async function listAllSurveys(db: D1Database): Promise<Survey[]> {
   const result = await db
     .prepare("SELECT * FROM surveys ORDER BY id DESC")
@@ -135,6 +155,17 @@ export async function updateSurveyStatus(
     .bind(status, timestamp, status, timestamp, status, timestamp, id)
     .run();
 
+  if (status === "closed" || status === "archived") {
+    await db
+      .prepare(
+        `UPDATE survey_responses
+         SET status = 'abandoned', updated_at = ?
+         WHERE survey_id = ? AND status = 'in_progress'`,
+      )
+      .bind(timestamp, id)
+      .run();
+  }
+
   return getSurveyById(db, id);
 }
 
@@ -143,4 +174,44 @@ export async function deleteSurvey(
   id: number,
 ): Promise<void> {
   await db.prepare("DELETE FROM surveys WHERE id = ?").bind(id).run();
+}
+
+export async function setSurveyAccessCode(
+  db: D1Database,
+  id: number,
+  code: string | null,
+): Promise<void> {
+  await db
+    .prepare("UPDATE surveys SET access_code = ?, updated_at = ? WHERE id = ?")
+    .bind(code, nowIso(), id)
+    .run();
+}
+
+export async function updateDraftSurvey(
+  db: D1Database,
+  input: {
+    id: number;
+    ownerId: number;
+    title: string;
+    description: string | null;
+  },
+): Promise<void> {
+  const result = await db
+    .prepare(
+      `UPDATE surveys
+       SET title = ?, description = ?, updated_at = ?
+       WHERE id = ? AND owner_id = ? AND status = 'draft'`,
+    )
+    .bind(
+      input.title,
+      input.description,
+      nowIso(),
+      input.id,
+      input.ownerId,
+    )
+    .run();
+
+  if ((result.meta?.changes ?? 0) === 0) {
+    throw new Error("草稿不存在、已发布，或不属于当前用户");
+  }
 }

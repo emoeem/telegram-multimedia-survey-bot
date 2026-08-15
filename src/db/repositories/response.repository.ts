@@ -151,6 +151,57 @@ export async function getActiveResponseByUser(
   return row ? mapResponse(row) : null;
 }
 
+export async function getActiveResponseBySurveyAndUser(
+  db: D1Database,
+  surveyId: number,
+  userId: number,
+): Promise<SurveyResponse | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM survey_responses
+       WHERE survey_id = ? AND user_id = ? AND status = 'in_progress'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .bind(surveyId, userId)
+    .first<SurveyResponseRow>();
+
+  return row ? mapResponse(row) : null;
+}
+
+export async function countCompletedResponsesBySurveyAndUser(
+  db: D1Database,
+  surveyId: number,
+  userId: number,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM survey_responses
+       WHERE survey_id = ? AND user_id = ? AND status = 'completed'`,
+    )
+    .bind(surveyId, userId)
+    .first<{ count: number }>();
+
+  return row?.count ?? 0;
+}
+
+export async function getResponseBySurveyAndHash(
+  db: D1Database,
+  surveyId: number,
+  participantHash: string,
+): Promise<SurveyResponse | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM survey_responses
+       WHERE survey_id = ? AND participant_hash = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .bind(surveyId, participantHash)
+    .first<SurveyResponseRow>();
+
+  return row ? mapResponse(row) : null;
+}
+
 export async function getAnswer(
   db: D1Database,
   responseId: number,
@@ -206,6 +257,116 @@ export async function cancelResponse(
     .run();
 }
 
+export async function restartResponse(
+  db: D1Database,
+  id: number,
+  currentQuestionId: number,
+): Promise<SurveyResponse> {
+  const timestamp = nowIso();
+  await db.batch([
+    db
+      .prepare(
+        `DELETE FROM answer_media
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        `DELETE FROM answer_options
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db.prepare("DELETE FROM answers WHERE response_id = ?").bind(id),
+    db
+      .prepare(
+        `UPDATE survey_responses
+         SET status = 'in_progress',
+             started_at = ?,
+             completed_at = NULL,
+             submitted_at = NULL,
+             current_question_id = ?,
+             updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(timestamp, currentQuestionId, timestamp, id),
+  ]);
+
+  const response = await getResponseById(db, id);
+  if (!response) {
+    throw new Error("Failed to restart survey response");
+  }
+  return response;
+}
+
+interface AnswerValues {
+  textValue?: string | null;
+  numberValue?: number | null;
+  booleanValue?: boolean | null;
+  ratingValue?: number | null;
+  dateValue?: string | null;
+  timeValue?: string | null;
+  jsonValue?: string | null;
+}
+
+async function upsertAnswerValues(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    values: AnswerValues;
+  },
+): Promise<number> {
+  const timestamp = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO answers (
+        response_id, question_id, text_value, number_value,
+        boolean_value, rating_value, date_value, time_value,
+        json_value, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(response_id, question_id) DO UPDATE SET
+        text_value = excluded.text_value,
+        number_value = excluded.number_value,
+        boolean_value = excluded.boolean_value,
+        rating_value = excluded.rating_value,
+        date_value = excluded.date_value,
+        time_value = excluded.time_value,
+        json_value = excluded.json_value,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      input.responseId,
+      input.questionId,
+      input.values.textValue ?? null,
+      input.values.numberValue ?? null,
+      input.values.booleanValue === undefined ||
+        input.values.booleanValue === null
+        ? null
+        : input.values.booleanValue
+          ? 1
+          : 0,
+      input.values.ratingValue ?? null,
+      input.values.dateValue ?? null,
+      input.values.timeValue ?? null,
+      input.values.jsonValue ?? null,
+      timestamp,
+      timestamp,
+    )
+    .run();
+
+  const answer = await db
+    .prepare(
+      "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
+    )
+    .bind(input.responseId, input.questionId)
+    .first<{ id: number }>();
+
+  if (!answer) {
+    throw new Error("Failed to upsert answer");
+  }
+  return answer.id;
+}
+
 export async function upsertTextAnswer(
   db: D1Database,
   input: {
@@ -214,24 +375,56 @@ export async function upsertTextAnswer(
     textValue: string;
   },
 ): Promise<void> {
-  const timestamp = nowIso();
-  await db
-    .prepare(
-      `INSERT INTO answers (
-        response_id, question_id, text_value, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(response_id, question_id) DO UPDATE SET
-        text_value = excluded.text_value,
-        updated_at = excluded.updated_at`,
-    )
-    .bind(
-      input.responseId,
-      input.questionId,
-      input.textValue,
-      timestamp,
-      timestamp,
-    )
-    .run();
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { textValue: input.textValue },
+  });
+}
+
+export async function upsertNumberAnswer(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    numberValue: number;
+  },
+): Promise<void> {
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { numberValue: input.numberValue },
+  });
+}
+
+export async function upsertDateAnswer(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    dateValue: string;
+  },
+): Promise<void> {
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { dateValue: input.dateValue },
+  });
+}
+
+export async function upsertTimeAnswer(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    timeValue: string;
+  },
+): Promise<void> {
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { timeValue: input.timeValue },
+  });
 }
 
 export async function upsertOptionAnswer(
@@ -240,26 +433,43 @@ export async function upsertOptionAnswer(
     responseId: number;
     questionId: number;
     selectedOptionIds: number[];
+    booleanValue?: boolean | null;
+    ratingValue?: number | null;
   },
 ): Promise<void> {
   const timestamp = nowIso();
+  const answerId = await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: {
+      ...(input.booleanValue !== undefined
+        ? { booleanValue: input.booleanValue }
+        : {}),
+      ...(input.ratingValue !== undefined
+        ? { ratingValue: input.ratingValue }
+        : {}),
+      jsonValue: JSON.stringify(input.selectedOptionIds),
+    },
+  });
+
   await db
-    .prepare(
-      `INSERT INTO answers (
-        response_id, question_id, json_value, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(response_id, question_id) DO UPDATE SET
-        json_value = excluded.json_value,
-        updated_at = excluded.updated_at`,
-    )
-    .bind(
-      input.responseId,
-      input.questionId,
-      JSON.stringify(input.selectedOptionIds),
-      timestamp,
-      timestamp,
-    )
+    .prepare("DELETE FROM answer_options WHERE answer_id = ?")
+    .bind(answerId)
     .run();
+
+  if (input.selectedOptionIds.length > 0) {
+    await db.batch(
+      input.selectedOptionIds.map((optionId) =>
+        db
+          .prepare(
+            `INSERT INTO answer_options (
+              answer_id, question_option_id, created_at
+            ) VALUES (?, ?, ?)`,
+          )
+          .bind(answerId, optionId, timestamp),
+      ),
+    );
+  }
 }
 
 export async function upsertMediaAnswer(
@@ -270,35 +480,40 @@ export async function upsertMediaAnswer(
     mediaAssetId: number;
   },
 ): Promise<number> {
-  const timestamp = nowIso();
-  const result = await db
-    .prepare(
-      `INSERT INTO answers (
-        response_id, question_id, json_value, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(response_id, question_id) DO UPDATE SET
-        json_value = excluded.json_value,
-        updated_at = excluded.updated_at`,
-    )
-    .bind(
-      input.responseId,
-      input.questionId,
-      JSON.stringify({ mediaAssetId: input.mediaAssetId }),
-      timestamp,
-      timestamp,
-    )
+  const answerId = await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: {
+      jsonValue: JSON.stringify({ mediaAssetId: input.mediaAssetId }),
+    },
+  });
+
+  await db
+    .prepare("DELETE FROM answer_media WHERE answer_id = ?")
+    .bind(answerId)
     .run();
 
-  const existing = await db
+  return answerId;
+}
+
+export async function deleteAnswer(
+  db: D1Database,
+  responseId: number,
+  questionId: number,
+): Promise<void> {
+  const answer = await db
     .prepare(
       "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
     )
-    .bind(input.responseId, input.questionId)
+    .bind(responseId, questionId)
     .first<{ id: number }>();
-
-  if (!existing) {
-    throw new Error("Failed to upsert media answer");
+  if (!answer) {
+    return;
   }
 
-  return existing.id;
+  await db.batch([
+    db.prepare("DELETE FROM answer_media WHERE answer_id = ?").bind(answer.id),
+    db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answer.id),
+    db.prepare("DELETE FROM answers WHERE id = ?").bind(answer.id),
+  ]);
 }

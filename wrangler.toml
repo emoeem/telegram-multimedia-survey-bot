@@ -6,6 +6,9 @@ preview_urls = true
 
 [vars]
 ENVIRONMENT = "production"
+APP_VERSION = "0.2.0"
+LICENSE_ENFORCEMENT = "disabled"
+LICENSE_GRACE_SECONDS = "86400"
 
 [[d1_databases]]
 binding = "DB"
@@ -21,6 +24,9 @@ preview_id = "0e659a11ec914cfa9d4922e45ab40ec4"
 [[queues.producers]]
 binding = "EXPORT_QUEUE"
 queue = "telegram-survey-export"
+
+[browser]
+binding = "BROWSER"
 
 [[durable_objects.bindings]]
 name = "SESSION"

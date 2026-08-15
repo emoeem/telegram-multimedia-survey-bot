@@ -1,5 +1,6 @@
 import type { SurveyBuilderNamespace } from "../services/survey-builder.service";
 import type { SurveySessionNamespace } from "../services/session.service";
+import type { BrowserWorker } from "@cloudflare/puppeteer";
 
 export interface TelegramUser {
   id: number;
@@ -59,4 +60,6 @@ export interface BotContext {
   builder: SurveyBuilderNamespace;
   adminIds: number[];
   exportQueue: Queue;
+  licenseServerUrl?: string;
+  browser?: BrowserWorker;
 }

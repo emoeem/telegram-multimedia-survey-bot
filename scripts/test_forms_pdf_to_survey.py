@@ -45,7 +45,7 @@ class SemanticPdfParserRegression(unittest.TestCase):
         cls.tempdir.cleanup()
 
     def questions(self):
-        return self.survey["questions"]
+        return self.survey["survey"]["questions"]
 
     def test_question_numbers_and_order(self) -> None:
         questions = self.questions()

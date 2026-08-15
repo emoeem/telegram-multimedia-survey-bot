@@ -1,4 +1,8 @@
-import type { Answer, SurveyResponse } from "../db/schema";
+import type {
+  Answer,
+  SurveyResponse,
+  SurveyResponseStatus,
+} from "../db/schema";
 
 export interface ResponseListItem {
   id: number;
@@ -10,22 +14,35 @@ export interface ResponseListItem {
 export interface ResponseDetail {
   response: SurveyResponse;
   answers: Answer[];
+  respondent: {
+    telegramUserId: number;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
 }
 
 export async function listResponses(
   db: D1Database,
   surveyId: number,
   limit = 20,
+  offset = 0,
+  status?: SurveyResponseStatus,
 ): Promise<ResponseListItem[]> {
+  const statusClause = status ? "AND status = ?" : "";
+  const bindings = status
+    ? [surveyId, status, limit, offset]
+    : [surveyId, limit, offset];
   const result = await db
     .prepare(
       `SELECT id, status, started_at, completed_at
        FROM survey_responses
        WHERE survey_id = ?
+       ${statusClause}
        ORDER BY id DESC
-       LIMIT ?`,
+       LIMIT ? OFFSET ?`,
     )
-    .bind(surveyId, limit)
+    .bind(...bindings)
     .all<{
       id: number;
       status: string;
@@ -93,6 +110,24 @@ export async function getResponseDetail(
     answers,
   };
 
+  const respondent =
+    !anonymous && mappedResponse.response.userId !== null
+      ? await db
+          .prepare(
+            `SELECT telegram_user_id, username, first_name, last_name
+             FROM users
+             WHERE id = ?
+             LIMIT 1`,
+          )
+          .bind(mappedResponse.response.userId)
+          .first<{
+            telegram_user_id: number;
+            username: string | null;
+            first_name: string | null;
+            last_name: string | null;
+          }>()
+      : null;
+
   return {
     response: {
       ...mappedResponse.response,
@@ -100,5 +135,13 @@ export async function getResponseDetail(
       participantHash: anonymous ? "" : mappedResponse.response.participantHash,
     },
     answers,
+    respondent: respondent
+      ? {
+          telegramUserId: respondent.telegram_user_id,
+          username: respondent.username,
+          firstName: respondent.first_name,
+          lastName: respondent.last_name,
+        }
+      : null,
   };
 }

@@ -7,6 +7,7 @@ interface QuestionColumn {
   id: number;
   title: string;
   type: QuestionType;
+  key: string;
 }
 
 export interface ResponseRow {
@@ -17,7 +18,17 @@ export interface ResponseRow {
   [key: string]: unknown;
 }
 
-function answerValue(row: Record<string, unknown>): unknown {
+function answerValue(
+  row: Record<string, unknown>,
+  optionLabels: Map<number, string>,
+): unknown {
+  if (
+    row["selected_options"] !== null &&
+    row["selected_options"] !== undefined &&
+    String(row["selected_options"]).length > 0
+  ) {
+    return row["selected_options"];
+  }
   if (row["rating_value"] !== null && row["rating_value"] !== undefined) {
     return row["rating_value"];
   }
@@ -34,6 +45,16 @@ function answerValue(row: Record<string, unknown>): unknown {
     return row["time_value"];
   }
   if (row["json_value"] !== null && row["json_value"] !== undefined) {
+    try {
+      const parsed = JSON.parse(String(row["json_value"])) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((optionId) => optionLabels.get(Number(optionId)) ?? String(optionId))
+          .join(" | ");
+      }
+    } catch {
+      // Fall through to the original JSON text.
+    }
     return row["json_value"];
   }
   return row["text_value"] ?? "";
@@ -56,11 +77,35 @@ export async function getExportRows(
     .bind(surveyId)
     .all<{ id: number; title: string; type: string }>();
 
+  const titleCounts = new Map<string, number>();
+  for (const question of questionsResult.results ?? []) {
+    titleCounts.set(
+      question.title,
+      (titleCounts.get(question.title) ?? 0) + 1,
+    );
+  }
   const columns = (questionsResult.results ?? []).map((question) => ({
     id: question.id,
     title: question.title,
     type: question.type as QuestionType,
+    key:
+      (titleCounts.get(question.title) ?? 0) > 1
+        ? `${question.title} (#${question.id})`
+        : question.title,
   }));
+  const optionsResult = columns.length > 0
+    ? await db
+        .prepare(
+          `SELECT id, label
+           FROM question_options
+           WHERE question_id IN (${columns.map(() => "?").join(",")})`,
+        )
+        .bind(...columns.map((column) => column.id))
+        .all<{ id: number; label: string }>()
+    : { results: [] as Array<{ id: number; label: string }> };
+  const optionLabels = new Map(
+    (optionsResult.results ?? []).map((option) => [option.id, option.label]),
+  );
 
   const responsesResult = await db
     .prepare(
@@ -88,7 +133,13 @@ export async function getExportRows(
         rating_value,
         date_value,
         time_value,
-        json_value
+        json_value,
+        (
+          SELECT GROUP_CONCAT(qo.label, ' | ')
+          FROM answer_options ao
+          JOIN question_options qo ON qo.id = ao.question_option_id
+          WHERE ao.answer_id = answers.id
+        ) AS selected_options
        FROM answers
        WHERE response_id IN (
          SELECT id FROM survey_responses WHERE survey_id = ?
@@ -118,7 +169,7 @@ export async function getExportRows(
     const answers = answersByResponse.get(response.response_id);
     for (const column of columns) {
       const answer = answers?.get(column.id);
-      row[column.title] = answer ? answerValue(answer) : "";
+      row[column.key] = answer ? answerValue(answer, optionLabels) : "";
     }
 
     return row;
@@ -132,16 +183,16 @@ export function buildCsv(rows: ResponseRow[]): string {
     return "";
   }
 
+  const csvCell = (value: unknown): string => {
+    const text = value === null || value === undefined ? "" : String(value);
+    return `"${text.replaceAll('"', '""')}"`;
+  };
   const headers = Object.keys(rows[0] ?? {});
   const lines = [
-    headers.join(","),
+    headers.map(csvCell).join(","),
     ...rows.map((row) =>
       headers
-        .map((header) => {
-          const value = row[header];
-          const text = value === null || value === undefined ? "" : String(value);
-          return `"${text.replaceAll('"', '""')}"`;
-        })
+        .map((header) => csvCell(row[header]))
         .join(","),
     ),
   ];

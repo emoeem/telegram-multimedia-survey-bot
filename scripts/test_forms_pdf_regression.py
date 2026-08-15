@@ -44,7 +44,8 @@ class RealFormsPdfRegression(unittest.TestCase):
         cls.tempdir.cleanup()
 
     def test_question_number_integrity(self) -> None:
-        numbers = [q["source_number"] for q in self.survey["questions"]]
+        questions = self.survey["survey"]["questions"]
+        numbers = [q["source_number"] for q in questions]
         self.assertEqual(numbers, list(range(1, 94)))
         self.assertEqual(self.report["missing_question_numbers"], [])
         self.assertEqual(self.report["duplicate_question_numbers"], [])
@@ -60,7 +61,10 @@ class RealFormsPdfRegression(unittest.TestCase):
         )
 
     def test_representative_questions(self) -> None:
-        questions = {q["source_number"]: q for q in self.survey["questions"]}
+        questions = {
+            q["source_number"]: q
+            for q in self.survey["survey"]["questions"]
+        }
         for number in [1, 2, 3, 5, 46, 47, 84, 90, 93]:
             self.assertIn(number, questions)
         self.assertEqual(len(questions[3]["options"]), 4)
@@ -74,7 +78,10 @@ class RealFormsPdfRegression(unittest.TestCase):
         self.assertEqual(questions[93]["options"], [])
 
     def test_unlabeled_options_are_generated(self) -> None:
-        questions = {q["source_number"]: q for q in self.survey["questions"]}
+        questions = {
+            q["source_number"]: q
+            for q in self.survey["survey"]["questions"]
+        }
         self.assertEqual(len(questions[82]["options"]), 7)
         self.assertEqual(len(questions[83]["options"]), 5)
         self.assertEqual(len(questions[84]["options"]), 8)
@@ -86,13 +93,33 @@ class RealFormsPdfRegression(unittest.TestCase):
         )
 
     def test_missing_explicit_option_label(self) -> None:
-        questions = {q["source_number"]: q for q in self.survey["questions"]}
+        questions = {
+            q["source_number"]: q
+            for q in self.survey["survey"]["questions"]
+        }
         self.assertEqual(len(questions[56]["options"]), 4)
         self.assertEqual(questions[56]["options"][-1]["label"], "D")
         self.assertEqual(questions[56]["options"][-1]["label_source"], "generated")
 
+    def test_other_only_fields_become_text_questions(self) -> None:
+        questions = {
+            q["source_number"]: q
+            for q in self.survey["survey"]["questions"]
+        }
+        for number in [23, 54, 78, 86]:
+            with self.subTest(number=number):
+                self.assertEqual(questions[number]["type"], "text")
+                self.assertEqual(questions[number]["options"], [])
+                self.assertIn(
+                    "singleton_other_treated_as_open_text",
+                    questions[number]["warnings"],
+                )
+
     def test_question_media_regression(self) -> None:
-        questions = {q["source_number"]: q for q in self.survey["questions"]}
+        questions = {
+            q["source_number"]: q
+            for q in self.survey["survey"]["questions"]
+        }
         expected = {
             1: 1,
             7: 1,

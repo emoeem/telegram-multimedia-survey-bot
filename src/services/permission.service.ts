@@ -1,6 +1,10 @@
 import type { Survey, User } from "../db/schema";
 import { getSurveyById } from "../db/repositories/survey.repository";
-import { getActiveResponse } from "../db/repositories/response.repository";
+import {
+  countCompletedResponsesBySurveyAndUser,
+  getActiveResponseBySurveyAndUser,
+  getResponseBySurveyAndHash,
+} from "../db/repositories/response.repository";
 
 export type EffectiveRole = "admin" | "owner" | "participant";
 
@@ -69,11 +73,30 @@ export async function canFillSurvey(
     return false;
   }
 
-  if (!survey.allowMultipleResponses) {
-    const existing = await getActiveResponse(db, surveyId, `user_${user.telegramUserId}`);
-    if (existing) {
-      return false;
-    }
+  const active = await getActiveResponseBySurveyAndUser(db, surveyId, user.id);
+  if (active) {
+    return true;
+  }
+
+  if (survey.allowMultipleResponses) {
+    const completedCount = await countCompletedResponsesBySurveyAndUser(
+      db,
+      surveyId,
+      user.id,
+    );
+    return (
+      survey.maxResponsesPerUser <= 0 ||
+      completedCount < survey.maxResponsesPerUser
+    );
+  }
+
+  const existing = await getResponseBySurveyAndHash(
+    db,
+    surveyId,
+    `user_${user.id}`,
+  );
+  if (existing?.status === "completed") {
+    return false;
   }
 
   return true;

@@ -1,3 +1,10 @@
 BOT_TOKEN = "replace-with-telegram-bot-token"
 WEBHOOK_SECRET = "replace-with-a-long-random-secret"
 ADMIN_IDS = "123456789,987654321"
+
+# 厂商授权中心保持 disabled；交付给客户时改为 required。
+LICENSE_ENFORCEMENT = "disabled"
+LICENSE_SERVER_URL = "https://your-license-server.workers.dev"
+LICENSE_KEY = "replace-with-customer-license-key"
+INSTALLATION_ID = "replace-with-a-stable-random-installation-id"
+LICENSE_GRACE_SECONDS = "86400"

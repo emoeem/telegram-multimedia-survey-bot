@@ -10,6 +10,8 @@ ambiguous content.
 from __future__ import annotations
 
 import argparse
+import base64
+import copy
 import json
 import math
 import re
@@ -39,7 +41,7 @@ YES_NO_RE = re.compile(
     re.IGNORECASE,
 )
 PAGE_NUMBER_RE = re.compile(
-    r"^(?:第\s*\d+\s*页|Page\s*\d+|\d+\s*/\s*\d+)$",
+    r"^(?:第\s*\d+\s*[页⻚](?:\s*共\s*\d+\s*[页⻚])?|Page\s*\d+|\d+\s*/\s*\d+)$",
     re.IGNORECASE,
 )
 
@@ -763,8 +765,11 @@ class UnlabeledChoiceDetector:
         page: dict[str, Any] | None,
     ) -> tuple[bool, float, str]:
         if len(lines) < 2:
-            if len(lines) == 1 and normalize(lines[0]["text"]) in {"其他", "other"}:
-                return True, 0.55, "single_unlabeled_other_option"
+            if (
+                len(lines) == 1
+                and normalize_key(lines[0]["text"]) in {"其他", "其它", "other"}
+            ):
+                return False, 0.0, "singleton_other_is_open_text"
             return False, 0.0, "not_enough_unlabeled_blocks"
 
         bboxes = [line.get("bbox") for line in lines if line.get("bbox")]
@@ -1136,6 +1141,13 @@ def _finalize_pending_unlabeled(question: QuestionDraft) -> None:
         merged_line["text"] = "\n".join(normalize(line["text"]) for line in group)
         merged_line["bbox"] = bbox_union([line.get("bbox") for line in group])
         merged_lines.append(merged_line)
+
+    if (
+        len(merged_lines) == 1
+        and normalize_key(merged_lines[0]["text"]) in {"其他", "其它", "other"}
+    ):
+        question.warnings.append("singleton_other_treated_as_open_text")
+        return
 
     detector = UnlabeledChoiceDetector()
     page = _page_for(
@@ -2005,6 +2017,44 @@ def build_output(
     }
 
 
+def _embed_media_urls(survey_file: dict[str, Any], output_dir: Path) -> int:
+    embedded = 0
+    output_root = output_dir.resolve()
+
+    def embed(media: dict[str, Any]) -> None:
+        nonlocal embedded
+        url = media.get("url")
+        if not isinstance(url, str) or not url or url.startswith(("data:", "http://", "https://")):
+            return
+
+        asset_path = (output_dir / url).resolve()
+        try:
+            asset_path.relative_to(output_root)
+        except ValueError:
+            return
+        if not asset_path.is_file():
+            return
+
+        mime = media.get("mime_type") or "application/octet-stream"
+        encoded = base64.b64encode(asset_path.read_bytes()).decode("ascii")
+        media["source"] = "url"
+        media["url"] = f"data:{mime};base64,{encoded}"
+        media["file_name"] = asset_path.name
+        embedded += 1
+
+    for question in survey_file["survey"].get("questions", []):
+        for media in question.get("media", []):
+            embed(media)
+        for option in question.get("options", []):
+            option_media = option.get("media", [])
+            if isinstance(option_media, dict):
+                option_media = [option_media]
+            for media in option_media:
+                embed(media)
+
+    return embedded
+
+
 def run_pipeline(
     pdf_path: str,
     output_dir: Path,
@@ -2026,8 +2076,20 @@ def run_pipeline(
         json.dumps(output["document"], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    survey_file = copy.deepcopy({
+        "schema_version": output["survey"]["schema_version"],
+        "survey": {
+            key: value
+            for key, value in output["survey"].items()
+            if key != "schema_version"
+        },
+    })
+    output["import_report"]["embedded_media_count"] = _embed_media_urls(
+        survey_file,
+        output_dir,
+    )
     (output_dir / "survey.json").write_text(
-        json.dumps(output["survey"], ensure_ascii=False, indent=2),
+        json.dumps(survey_file, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     (output_dir / "import-report.json").write_text(
