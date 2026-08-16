@@ -189,6 +189,80 @@ describe("import service", () => {
     ]);
   });
 
+  it("splits two short options that PDF extraction joined with a line break", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "换行选项",
+        questions: [
+          {
+            type: "single",
+            title: "是否继续",
+            options: [{ label: "是\n还没有", value: "是\n还没有" }],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("single");
+    expect(parsed.questions[0]?.options?.map((option) => option.label)).toEqual([
+      "是",
+      "还没有",
+    ]);
+    expect(parsed.importWarnings).toEqual([
+      "第 1 题“是否继续”检测到两个被换行合并的选项，已自动拆分",
+    ]);
+  });
+
+  it("converts an ambiguous long singleton option to text and preserves it", () => {
+    const longOption = `是
+这是被 PDF 识别到的长选项正文，不能按换行拆成多个选项。`;
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "长选项",
+        questions: [
+          {
+            type: "single",
+            title: "请回答",
+            options: [{ label: longOption, value: longOption }],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("text");
+    expect(parsed.questions[0]?.options).toEqual([]);
+    expect(parsed.questions[0]?.description).toContain(
+      "导入识别到的原选项内容：",
+    );
+    expect(parsed.questions[0]?.description).toContain(
+      "不能按换行拆成多个选项",
+    );
+    expect(parsed.importWarnings).toEqual([
+      "第 1 题“请回答”可识别选项不足两个，已自动转为文本题，请检查题目",
+    ]);
+  });
+
+  it("converts a choice with no recognized options instead of rejecting the import", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "缺少选项",
+        questions: [
+          {
+            type: "multiple",
+            title: "请选择",
+            options: [],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("text");
+    expect(parsed.questions[0]?.options).toEqual([]);
+    expect(parsed.importWarnings).toEqual([
+      "第 1 题“请选择”可识别选项不足两个，已自动转为文本题，请检查题目",
+    ]);
+  });
+
   it("saves a large import through a small batch of JSON1 statements", async () => {
     const { db, statements, batch } = createD1Mock();
     let activeResolvers = 0;

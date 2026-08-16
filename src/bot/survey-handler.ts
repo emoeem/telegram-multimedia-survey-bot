@@ -12,10 +12,16 @@ import {
   upsertMediaAnswer,
   upsertNumberAnswer,
   upsertOptionAnswer,
+  upsertJsonAnswer,
   upsertTextAnswer,
   upsertTimeAnswer,
 } from "../db/repositories/response.repository";
-import { getSurveyById, setSurveyAccessCode, updateSurveyStatus } from "../db/repositories/survey.repository";
+import {
+  getSurveyById,
+  listAllSurveys,
+  setSurveyAccessCode,
+  updateSurveyStatus,
+} from "../db/repositories/survey.repository";
 import {
   createAnswerMedia,
   deleteOptionMedia,
@@ -36,6 +42,7 @@ import {
   swapQuestionOptionOrder,
   swapQuestionOrder,
   updateQuestionRequired,
+  setQuestionSkipRule,
 } from "../db/repositories/question.repository";
 import { registerMediaAsset } from "../services/media.service";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
@@ -53,11 +60,12 @@ import {
   getSurveyStatistics,
 } from "../services/statistics.service";
 import { getResponseDetail, listResponses } from "../services/result.service";
-import { buildCsv, buildExportZip, buildXlsx, getExportRows } from "../services/export.service";
+import { enqueueExportJob, type SurveyExportFormat } from "../services/export-queue.service";
 import {
   renderResponseReport,
   type ResponseReport,
 } from "../services/response-report.service";
+import { renderSurveySummaryReport } from "../services/survey-report.service";
 import { exportUnifiedSurveyJson } from "../services/survey-json.service";
 import { getSurveyDetail } from "../services/survey.service";
 import { getSurveyFlow } from "../services/question.service";
@@ -66,19 +74,23 @@ import {
   completeSession,
   getSession,
   getSessionSelectedOptions,
+  getSessionMatrixSelections,
   initSession,
   setSessionCurrentQuestion,
+  setSessionMatrixSelection,
+  clearSessionMatrixSelections,
   toggleSessionOption,
 } from "../services/session.service";
-import { getFirstQuestion, getNextQuestion, getPreviousQuestion, getQuestionById, type SurveyQuestionView } from "../survey/engine";
-import { answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup, sendAnimation, sendAudio, sendDocument, sendDocumentByFileId, sendLongMessage, sendMessage, sendPhoto, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
+import { getFirstQuestion, getNextQuestion, getNextQuestionAfterOption, getPreviousQuestion, getQuestionById, type SurveyQuestionView } from "../survey/engine";
+import { answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup, getBotUsername, sendAnimation, sendAudio, sendDocument, sendDocumentByFileId, sendLongMessage, sendMessage, sendPhoto, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
-import { handleBuilderCallback, handleBuilderMessage } from "./builder-handler";
+import { handleBuilderCallback, handleBuilderMessage, startBuilder } from "./builder-handler";
 import {
   getBuilderState,
   initBuilder,
   resumeBuilderAfterAuxiliary,
   startAddQuestionOption,
+  startAppendQuestions,
   startEditOptionLabel,
   startEditQuestionTitle,
   startOptionMedia,
@@ -87,11 +99,179 @@ import {
   startSurveyAccessCode,
 } from "../services/survey-builder.service";
 import { handleAdminCallback, handleAdminMessage } from "./admin-handler";
-import { hashSurveyAccessCode, verifySurveyAccessCode } from "../core/security";
+import {
+  decryptSurveyAccessCode,
+  verifySurveyAccessCode,
+} from "../core/security";
 import type { MediaAsset, Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
+import {
+  getCompletionPosterSetting,
+  saveCompletionPosterSetting,
+  type CompletionPosterStyle,
+} from "../db/repositories/completion-poster.repository";
+import { renderCompletionPoster } from "../services/completion-poster.service";
+import { createSurveyFromTemplate, listSurveyTemplates, type SurveyTemplate } from "../services/survey-template.service";
 
-function buildSingleChoiceKeyboard(
+const compactChoiceLabelLength = 18;
+const botUsernameCacheKey = "telegram-bot-username";
+const publicSurveySearchKeyPrefix = "public-survey-search:";
+const publicSurveySearchInputKeyPrefix = "public-survey-search-input:";
+
+function publicSurveySearchKey(userId: number): string {
+  return `${publicSurveySearchKeyPrefix}${userId}`;
+}
+
+function publicSurveySearchInputKey(userId: number): string {
+  return `${publicSurveySearchInputKeyPrefix}${userId}`;
+}
+
+async function getSurveyShareUrl(
+  ctx: BotContext,
+  surveyId: number,
+): Promise<string> {
+  let username = await ctx.cache?.get(botUsernameCacheKey);
+  if (!username) {
+    username = await getBotUsername(ctx.botToken);
+    await ctx.cache?.put(botUsernameCacheKey, username, {
+      expirationTtl: 7 * 24 * 60 * 60,
+    });
+  }
+  return `https://t.me/${username}?start=survey_${surveyId}`;
+}
+
+function bytesToDataUrl(bytes: Uint8Array, contentType: string): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return `data:${contentType};base64,${btoa(binary)}`;
+}
+
+async function sendCompletionPoster(
+  ctx: BotContext,
+  chatId: number,
+  surveyId: number,
+): Promise<void> {
+  if (!ctx.browser) return;
+  const setting = await getCompletionPosterSetting(ctx.db, surveyId);
+  if (!setting.enabled) return;
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) return;
+  let imageDataUrl: string | undefined;
+  try {
+    let mediaId = survey.coverMediaId;
+    if (!mediaId) {
+      const flow = await getSurveyFlow(ctx.db, surveyId);
+      for (const question of flow.questions) {
+        const media = await getQuestionMediaByQuestionId(ctx.db, question.id);
+        if (media[0]) {
+          mediaId = media[0].mediaAssetId;
+          break;
+        }
+      }
+    }
+    const asset = mediaId ? await getMediaAssetById(ctx.db, mediaId) : null;
+    if (asset?.mediaType === "photo" && asset.telegramFileId && (asset.fileSize ?? 0) <= 4 * 1024 * 1024) {
+      const image = await downloadTelegramFile(ctx.botToken, asset.telegramFileId);
+      imageDataUrl = bytesToDataUrl(image.data, image.contentType);
+    }
+  } catch (error) {
+    console.warn("Completion poster cover image unavailable", error);
+  }
+  const posterData = {
+    surveyTitle: survey.title,
+    completedAt: new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+    style: setting.style,
+    ...(imageDataUrl ? { imageDataUrl } : {}),
+  };
+  const png = await renderCompletionPoster(ctx.browser, posterData);
+  await sendPhoto(ctx.botToken, chatId, png, "你的完成海报");
+}
+
+function buildHomeKeyboard(
+  creator: boolean,
+  administrator: boolean,
+  hasPausedSurvey = false,
+): InlineKeyboardMarkup {
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [
+    [{ text: "浏览问卷", callback_data: "home:surveys" }],
+  ];
+  if (hasPausedSurvey) {
+    rows.push([{ text: "▶️ 继续填写", callback_data: "home:resume_survey" }]);
+  }
+  if (creator) {
+    rows.push([
+      { text: "创建与导入", callback_data: "home:create_menu" },
+      { text: "我的问卷", callback_data: "home:my_surveys" },
+    ]);
+  }
+  if (administrator) {
+    rows.push([{ text: "管理员中心", callback_data: "admin:home" }]);
+  }
+  return { inline_keyboard: rows };
+}
+
+async function showCreateMenu(ctx: BotContext, chatId: number, userId: number): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
+    await sendMessage(ctx.botToken, chatId, "你没有创建问卷的权限。");
+    return;
+  }
+  await sendMessage(ctx.botToken, chatId, "创建问卷\n\n选择一种开始方式：", {
+    inline_keyboard: [
+      [{ text: "➕ 新建问卷", callback_data: "home:new_survey" }],
+      [{ text: "📝 继续草稿", callback_data: "home:continue" }],
+      [{ text: "📥 导入或复制", callback_data: "home:import_or_copy" }],
+    ],
+  });
+}
+
+async function showNewSurveyMenu(ctx: BotContext, chatId: number): Promise<void> {
+  await sendMessage(ctx.botToken, chatId, "新建问卷\n\n选择空白问卷，或先从模板开始：", {
+    inline_keyboard: [
+      [{ text: "从空白问卷开始", callback_data: "home:create" }],
+      [{ text: "从模板开始", callback_data: "home:templates" }],
+      [{ text: "⬅️ 返回", callback_data: "home:create_menu" }],
+    ],
+  });
+}
+
+async function showImportOrCopyMenu(
+  ctx: BotContext,
+  chatId: number,
+): Promise<void> {
+  await sendMessage(ctx.botToken, chatId, "导入或复制\n\n导入 JSON 文件，或复制自己已有的问卷：", {
+    inline_keyboard: [
+      [{ text: "导入 JSON 问卷", callback_data: "home:import_json" }],
+      [{ text: "复制已有问卷", callback_data: "home:copy_list" }],
+      [{ text: "⬅️ 返回", callback_data: "home:create_menu" }],
+    ],
+  });
+}
+
+export function usesNumberedChoiceList(
+  question: Pick<SurveyQuestionView, "options">,
+): boolean {
+  return question.options.some(
+    (option) =>
+      option.label.includes("\n") ||
+      Array.from(option.label.trim()).length > compactChoiceLabelLength,
+  );
+}
+
+function choiceButtonLabel(
+  question: Pick<SurveyQuestionView, "options">,
+  optionIndex: number,
+): string {
+  const option = question.options[optionIndex];
+  if (!option) return `选择 ${optionIndex + 1}`;
+  return usesNumberedChoiceList(question)
+    ? `选择 ${optionIndex + 1}`
+    : option.label;
+}
+
+export function buildSingleChoiceKeyboard(
   question: SurveyQuestionView,
   currentIndex: number,
 ): InlineKeyboardMarkup {
@@ -106,9 +286,9 @@ function buildSingleChoiceKeyboard(
   }
 
   rows.push(
-    ...question.options.map((option) => [
+    ...question.options.map((option, optionIndex) => [
       {
-        text: option.label,
+        text: choiceButtonLabel(question, optionIndex),
         callback_data: `q:single:${question.id}:${option.id}`,
       },
     ]),
@@ -125,7 +305,11 @@ function buildSingleChoiceKeyboard(
 
   rows.push([
     {
-      text: "退出问卷",
+      text: "💾 暂存",
+      callback_data: `q:pause:${question.surveyId}`,
+    },
+    {
+      text: "退出并放弃",
       callback_data: `q:exit:${question.surveyId}`,
     },
   ]);
@@ -141,15 +325,70 @@ function usesSingleChoiceKeyboard(question: SurveyQuestionView): boolean {
   );
 }
 
-function buildMultipleChoiceKeyboard(
+function matrixColumns(question: SurveyQuestionView): string[] {
+  try {
+    const parsed = question.settingsJson ? JSON.parse(question.settingsJson) as { columns?: unknown } : null;
+    return Array.isArray(parsed?.columns)
+      ? parsed.columns.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function buildMatrixKeyboard(
+  question: SurveyQuestionView,
+  selections: Record<string, number>,
+  currentIndex: number,
+): InlineKeyboardMarkup {
+  const columns = matrixColumns(question);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
+  if (currentIndex > 0) rows.push([{ text: "⬅️ 上一题", callback_data: `q:prev:${question.id}` }]);
+
+  const completedRows = question.options.filter((row) => selections[String(row.id)] !== undefined).length;
+  rows.push([{ text: `已完成 ${completedRows}/${question.options.length} 行 · 点选一行填写`, callback_data: "q:matrix:label" }]);
+  for (const [rowIndex, row] of question.options.entries()) {
+    const selectedColumn = selections[String(row.id)];
+    const selectedLabel = selectedColumn === undefined ? "未选择" : columns[selectedColumn] ?? "未选择";
+    rows.push([{
+      text: `${selectedColumn === undefined ? "⬜" : "✅"} ${rowIndex + 1}. ${row.label} · ${selectedLabel}`,
+      callback_data: `q:matrix:row:${question.id}:${row.id}`,
+    }]);
+  }
+  if (!question.required) rows.push([{ text: "跳过此题", callback_data: `q:skip:${question.id}` }]);
+  rows.push([{ text: "完成矩阵", callback_data: `q:matrix:confirm:${question.id}` }]);
+  rows.push([
+    { text: "💾 暂存", callback_data: `q:pause:${question.surveyId}` },
+    { text: "退出并放弃", callback_data: `q:exit:${question.surveyId}` },
+  ]);
+  return { inline_keyboard: rows };
+}
+
+export function buildMatrixColumnKeyboard(
+  question: SurveyQuestionView,
+  rowId: number,
+  currentIndex: number,
+  selectedColumnIndex: number | undefined,
+): InlineKeyboardMarkup {
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
+  if (currentIndex > 0) rows.push([{ text: "⬅️ 上一题", callback_data: `q:prev:${question.id}` }]);
+  rows.push(...matrixColumns(question).map((column, columnIndex) => [{
+    text: `${selectedColumnIndex === columnIndex ? "✅" : "⬜"} ${column}`,
+    callback_data: `q:matrix:select:${question.id}:${rowId}:${columnIndex}`,
+  }]));
+  rows.push([{ text: "⬅️ 返回行列表", callback_data: `q:matrix:back:${question.id}` }]);
+  return { inline_keyboard: rows };
+}
+
+export function buildMultipleChoiceKeyboard(
   question: SurveyQuestionView,
   selectedOptionIds: number[],
   currentIndex: number,
 ): InlineKeyboardMarkup {
   const selected = new Set(selectedOptionIds);
-  const optionRows = question.options.map((option) => [
+  const optionRows = question.options.map((option, optionIndex) => [
     {
-      text: `${selected.has(option.id) ? "✅" : "⬜"} ${option.label}`,
+      text: `${selected.has(option.id) ? "✅" : "⬜"} ${choiceButtonLabel(question, optionIndex)}`,
       callback_data: `q:multi:toggle:${question.id}:${option.id}`,
     },
   ]);
@@ -180,7 +419,11 @@ function buildMultipleChoiceKeyboard(
   ]);
   rows.push([
     {
-      text: "退出问卷",
+      text: "💾 暂存",
+      callback_data: `q:pause:${question.surveyId}`,
+    },
+    {
+      text: "退出并放弃",
       callback_data: `q:exit:${question.surveyId}`,
     },
   ]);
@@ -214,7 +457,11 @@ function buildNavigationKeyboard(
 
   rows.push([
     {
-      text: "退出问卷",
+      text: "💾 暂存",
+      callback_data: `q:pause:${question.surveyId}`,
+    },
+    {
+      text: "退出并放弃",
       callback_data: `q:exit:${question.surveyId}`,
     },
   ]);
@@ -222,43 +469,61 @@ function buildNavigationKeyboard(
   return { inline_keyboard: rows };
 }
 
-function formatQuestionText(
+function formatQuestionIntro(
   question: SurveyQuestionView,
   index: number,
   total: number,
 ): string {
   const parts = [`第 ${index + 1} / ${total} 题`, question.title];
-
   if (question.description) {
     parts.push(question.description);
   }
+  return parts.join("\n\n");
+}
 
+function formatQuestionInstruction(question: SurveyQuestionView): string {
   if (usesSingleChoiceKeyboard(question)) {
     if (question.type === "rating") {
-      parts.push("请选择一个分数");
-    } else {
-      parts.push("请选择一个选项");
+      return "请选择一个分数";
     }
-  } else if (question.type === "multiple") {
-    parts.push("可选择多个选项，完成后点击“完成选择”");
-  } else if (
+    return "请选择一个选项";
+  }
+  if (question.type === "multiple") {
+    return "可选择多个选项，完成后点击“完成选择”";
+  }
+  if (question.type === "matrix") {
+    return "请为每一行选择一个选项，完成后点击“完成矩阵”";
+  }
+  if (
     question.type === "image" ||
     question.type === "video" ||
     question.type === "audio" ||
     question.type === "file"
   ) {
-    parts.push("请直接发送对应的媒体文件");
-  } else if (question.type === "number") {
-    parts.push("请输入一个数字");
-  } else if (question.type === "date") {
-    parts.push("请输入日期，格式：YYYY-MM-DD");
-  } else if (question.type === "time") {
-    parts.push("请输入时间，格式：HH:MM");
-  } else {
-    parts.push("请直接发送你的回答");
+    return "请直接发送对应的媒体文件";
   }
+  if (question.type === "number") return "请输入一个数字";
+  if (question.type === "date") return "请输入日期，格式：YYYY-MM-DD";
+  if (question.type === "time") return "请输入时间，格式：HH:MM";
+  return "请直接发送你的回答";
+}
 
-  return parts.join("\n\n");
+export function formatQuestionText(
+  question: SurveyQuestionView,
+  index: number,
+  total: number,
+): string {
+  return [
+    formatQuestionIntro(question, index, total),
+    formatQuestionInstruction(question),
+  ].join("\n\n");
+}
+
+export function formatChoiceOptionText(
+  optionNumber: number,
+  label: string,
+): string {
+  return `【选项 ${optionNumber}】\n\n${label.trim()}`;
 }
 
 async function sendStoredMedia(
@@ -330,40 +595,107 @@ async function sendStoredMedia(
   }
 }
 
-interface QuestionMediaItem {
-  asset: MediaAsset;
-  label: string | null;
+interface QuestionMediaGroups {
+  question: MediaAsset[];
+  options: Map<number, MediaAsset[]>;
 }
 
-async function getQuestionMediaItems(
+async function getQuestionMediaGroups(
   ctx: BotContext,
   question: SurveyQuestionView,
-): Promise<QuestionMediaItem[]> {
-  const items: QuestionMediaItem[] = [];
+): Promise<QuestionMediaGroups> {
+  const groups: QuestionMediaGroups = {
+    question: [],
+    options: new Map(),
+  };
   const questionMedia = await getQuestionMediaByQuestionId(ctx.db, question.id);
   for (const relation of questionMedia) {
     const asset = await getMediaAssetById(ctx.db, relation.mediaAssetId);
     if (asset?.telegramFileId) {
-      items.push({ asset, label: null });
+      groups.question.push(asset);
     }
   }
 
-  for (let index = 0; index < question.options.length; index += 1) {
-    const option = question.options[index];
+  for (const option of question.options) {
     if (!option) continue;
     const optionMedia = await getOptionMediaByOptionId(ctx.db, option.id);
+    const assets: MediaAsset[] = [];
     for (const relation of optionMedia) {
       const asset = await getMediaAssetById(ctx.db, relation.mediaAssetId);
       if (asset?.telegramFileId) {
-        items.push({
-          asset,
-          label: `选项 ${index + 1}：${option.label}`,
-        });
+        assets.push(asset);
       }
     }
+    if (assets.length > 0) groups.options.set(option.id, assets);
   }
 
-  return items;
+  return groups;
+}
+
+async function sendTextWithMedia(
+  ctx: BotContext,
+  chatId: number,
+  text: string,
+  assets: MediaAsset[],
+): Promise<void> {
+  if (assets.length === 0) {
+    await sendLongMessage(ctx.botToken, chatId, text);
+    return;
+  }
+
+  let textSent = false;
+  for (let index = 0; index < assets.length; index += 1) {
+    const asset = assets[index];
+    if (!asset) continue;
+    let caption: string | undefined;
+    if (!textSent && asset.mediaType !== "sticker" && text.length <= 1024) {
+      caption = text;
+      textSent = true;
+    }
+    if (!textSent) {
+      await sendLongMessage(ctx.botToken, chatId, text);
+      textSent = true;
+    }
+    if (!caption && index > 0 && asset.mediaType !== "sticker") {
+      caption = `附件 ${index + 1}`;
+    }
+    await sendStoredMedia(ctx, chatId, asset, caption);
+  }
+}
+
+async function renderNumberedChoiceQuestion(
+  ctx: BotContext,
+  chatId: number,
+  question: SurveyQuestionView,
+  questionIndex: number,
+  total: number,
+  media: QuestionMediaGroups,
+  replyMarkup: InlineKeyboardMarkup,
+): Promise<void> {
+  await sendTextWithMedia(
+    ctx,
+    chatId,
+    formatQuestionIntro(question, questionIndex, total),
+    media.question,
+  );
+
+  for (let optionIndex = 0; optionIndex < question.options.length; optionIndex += 1) {
+    const option = question.options[optionIndex];
+    if (!option) continue;
+    await sendTextWithMedia(
+      ctx,
+      chatId,
+      formatChoiceOptionText(optionIndex + 1, option.label),
+      media.options.get(option.id) ?? [],
+    );
+  }
+
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    formatQuestionInstruction(question),
+    replyMarkup,
+  );
 }
 
 async function renderQuestion(
@@ -377,7 +709,6 @@ async function renderQuestion(
 ): Promise<void> {
   const index = flowQuestions.findIndex((item) => item.id === question.id);
   const total = flowQuestions.length;
-  const prompt = formatQuestionText(question, index, total);
 
   let replyMarkup: InlineKeyboardMarkup;
 
@@ -386,13 +717,49 @@ async function renderQuestion(
   } else if (question.type === "multiple") {
     const selected = await getSessionSelectedOptions(ctx.session, userId, surveyId);
     replyMarkup = buildMultipleChoiceKeyboard(question, selected, index);
+  } else if (question.type === "matrix") {
+    const selected = await getSessionMatrixSelections(ctx.session, userId, surveyId);
+    replyMarkup = buildMatrixKeyboard(question, selected, index);
   } else {
     replyMarkup = buildNavigationKeyboard(question, index);
   }
 
-  const mediaItems = await getQuestionMediaItems(ctx, question);
+  const mediaGroups = await getQuestionMediaGroups(ctx, question);
+  if (
+    (usesSingleChoiceKeyboard(question) || question.type === "multiple") &&
+    usesNumberedChoiceList(question)
+  ) {
+    await renderNumberedChoiceQuestion(
+      ctx,
+      chatId,
+      question,
+      index,
+      total,
+      mediaGroups,
+      replyMarkup,
+    );
+    return;
+  }
+
+  const prompt = formatQuestionText(question, index, total);
+  const mediaItems: Array<{
+    asset: MediaAsset;
+    label: string | null;
+  }> = [
+    ...mediaGroups.question.map((asset) => ({ asset, label: null })),
+  ];
+  for (let optionIndex = 0; optionIndex < question.options.length; optionIndex += 1) {
+    const option = question.options[optionIndex];
+    if (!option) continue;
+    for (const asset of mediaGroups.options.get(option.id) ?? []) {
+      mediaItems.push({
+        asset,
+        label: `选项 ${optionIndex + 1}：${option.label}`,
+      });
+    }
+  }
   if (mediaItems.length === 0) {
-    await sendMessage(ctx.botToken, chatId, prompt, replyMarkup);
+    await sendLongMessage(ctx.botToken, chatId, prompt, replyMarkup);
     return;
   }
 
@@ -412,8 +779,13 @@ async function renderQuestion(
     }
 
     if (!promptSent && (item.asset.mediaType === "sticker" || mediaIndex === 0)) {
-      await sendMessage(ctx.botToken, chatId, prompt);
+      await sendLongMessage(ctx.botToken, chatId, prompt);
       promptSent = true;
+    }
+
+    if (caption && caption.length > 1024) {
+      await sendLongMessage(ctx.botToken, chatId, caption);
+      caption = undefined;
     }
 
     await sendStoredMedia(
@@ -431,7 +803,7 @@ async function renderQuestion(
  * soon as the participant sends a valid text or media answer.
  */
 function isDirectAnswerQuestion(question: SurveyQuestionView): boolean {
-  return !usesSingleChoiceKeyboard(question) && question.type !== "multiple";
+  return !usesSingleChoiceKeyboard(question) && question.type !== "multiple" && question.type !== "matrix";
 }
 
 /*
@@ -514,21 +886,37 @@ async function advanceQuestion(
   flowQuestions: SurveyQuestionView[],
   userId: number,
   surveyId: number,
+  selectedOptionId: number | null = null,
 ): Promise<void> {
-  const next = getNextQuestion(
+  const next = getNextQuestionAfterOption(
     { questions: flowQuestions },
     currentQuestionId,
+    selectedOptionId,
   );
 
   if (!next) {
-    await completeResponse(ctx.db, responseId);
-    await completeSession(ctx.session, userId, surveyId);
-    await sendMessage(ctx.botToken, chatId, "你已完成问卷，感谢参与。");
+    const answered = await ctx.db.prepare(
+      "SELECT COUNT(*) AS count FROM answers WHERE response_id = ?",
+    ).bind(responseId).first<{ count: number }>();
+    await sendMessage(ctx.botToken, chatId, `填写检查\n\n已保存 ${answered?.count ?? 0} 项回答。你可以返回上一题修改，确认后再提交。`, {
+      inline_keyboard: [
+        [{ text: "返回上一题修改", callback_data: `q:prev:${currentQuestionId}` }],
+        [{ text: "确认提交问卷", callback_data: `q:submit:${surveyId}` }],
+        [{ text: "💾 暂存并稍后继续", callback_data: `q:pause:${surveyId}` }],
+        [{ text: "退出并放弃", callback_data: `q:exit:${surveyId}` }],
+      ],
+    });
     return;
   }
 
   await updateResponseCurrentQuestion(ctx.db, responseId, next.id);
   await setSessionCurrentQuestion(ctx.session, userId, surveyId, next.id);
+  const currentIndex = flowQuestions.findIndex((question) => question.id === currentQuestionId);
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    `✅ 已保存，第 ${currentIndex + 1}/${flowQuestions.length} 题完成。`,
+  );
   await renderQuestion(
     ctx,
     chatId,
@@ -676,7 +1064,10 @@ async function startSurvey(
   await sendMessage(
     ctx.botToken,
     chatId,
-    `开始问卷：${survey.title}\n${survey.description ?? ""}`,
+    [
+      `开始问卷：${survey.title}`,
+      cleanSurveyDescription(survey.description) ?? "",
+    ].filter(Boolean).join("\n"),
   );
   await renderQuestion(
     ctx,
@@ -693,6 +1084,7 @@ async function listMySurveys(
   ctx: BotContext,
   chatId: number,
   userId: number,
+  filter?: Survey["status"],
 ): Promise<void> {
   const user = await getUserByTelegramId(ctx.db, userId);
   if (!user) {
@@ -700,74 +1092,194 @@ async function listMySurveys(
     return;
   }
 
-  const surveys = await listOwnedSurveys(ctx.db, user.id);
+  const surveys = (await listOwnedSurveys(ctx.db, user.id)).filter(
+    (survey) => !filter || survey.status === filter,
+  );
   if (surveys.length === 0) {
     await sendMessage(ctx.botToken, chatId, "你还没有创建问卷。");
     return;
   }
 
-  const keyboard: InlineKeyboardMarkup = {
-    inline_keyboard: surveys.flatMap((survey) => {
-      const rows = [
-        [
-          {
-            text: `${survey.status === "draft" ? "📝" : "📋"} ${survey.title}`,
-            callback_data: `owner:survey:${survey.id}`,
-          },
-        ],
-      ];
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [
+    [
+      { text: "全部", callback_data: "owner:list:all" },
+      { text: "草稿", callback_data: "owner:list:draft" },
+      { text: "已发布", callback_data: "owner:list:published" },
+      { text: "已关闭", callback_data: "owner:list:closed" },
+    ],
+    ...surveys.map((survey) => [
+      {
+        text: `${survey.status === "draft" ? "📝" : survey.status === "published" ? "🟢" : "⚫"} ${compactSurveyTitle(survey.title)}`,
+        callback_data: `owner:survey:${survey.id}`,
+      },
+    ]),
+  ];
 
-      if (survey.status === "draft") {
-        rows.push([
-          {
-            text: "发布",
-            callback_data: `owner:publish_ask:${survey.id}`,
-          },
-          {
-            text: "编辑",
-            callback_data: `owner:questions:${survey.id}`,
-          },
-          {
-            text: survey.accessCode ? "🔒 修改密码" : "🔓 设置密码",
-            callback_data: `owner:access_code:${survey.id}`,
-          },
-        ]);
-      } else if (survey.status === "published") {
-        rows.push([
-          {
-            text: "关闭",
-            callback_data: `owner:close:${survey.id}`,
-          },
-          {
-            text: "编辑",
-            callback_data: `owner:questions:${survey.id}`,
-          },
-          {
-            text: survey.accessCode ? "🔒 修改密码" : "🔓 设置密码",
-            callback_data: `owner:access_code:${survey.id}`,
-          },
-        ]);
-      } else {
-        rows.push([
-          {
-            text: "编辑",
-            callback_data: `owner:questions:${survey.id}`,
-          },
-          {
-            text: survey.accessCode ? "🔒 修改密码" : "🔓 设置密码",
-            callback_data: `owner:access_code:${survey.id}`,
-          },
-        ]);
-      }
-
-      return rows;
-    }),
-  };
-
-  await sendMessage(ctx.botToken, chatId, "我的问卷：", keyboard);
+  await sendMessage(ctx.botToken, chatId, `我的问卷${filter ? ` · ${filter === "draft" ? "草稿" : filter === "published" ? "已发布" : "已关闭"}` : ""}\n\n选择一份问卷进入管理。`, { inline_keyboard: rows });
 }
 
-type SurveyExportFormat = "csv" | "xlsx" | "zip";
+function compactSurveyTitle(title: string, maxLength = 32): string {
+  const compact = title.replace(/\s+/g, " ").trim();
+  return Array.from(compact).length <= maxLength
+    ? compact
+    : `${Array.from(compact).slice(0, maxLength - 1).join("")}…`;
+}
+
+export function cleanSurveyDescription(description: string | null): string | null {
+  const compact = description?.replace(/\s+/g, " ").trim() ?? "";
+  if (!compact || /^Imported from Microsoft Forms PDF\.?$/i.test(compact)) {
+    return null;
+  }
+  return compact;
+}
+
+function formatResponseRespondent(
+  respondent: Awaited<ReturnType<typeof listResponses>>[number]["respondent"],
+  anonymous: boolean,
+): string {
+  if (anonymous) return "匿名填写者";
+  if (!respondent) return "未知填写者";
+  const name = [respondent.firstName, respondent.lastName]
+    .filter(Boolean)
+    .join(" ");
+  if (name) return name;
+  if (respondent.username) return `@${respondent.username}`;
+  return `用户 ${respondent.telegramUserId}`;
+}
+
+async function listManageableSurveys(
+  ctx: BotContext,
+  userId: number,
+): Promise<Survey[]> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在，请重新 /start。");
+  if (user.systemRole === "admin" || isAdmin(user.telegramUserId, ctx.adminIds)) {
+    return listAllSurveys(ctx.db);
+  }
+  return listOwnedSurveys(ctx.db, user.id);
+}
+
+export async function showSurveyPasswordMenu(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+): Promise<void> {
+  const surveys = await listManageableSurveys(ctx, userId);
+  if (surveys.length === 0) {
+    await sendMessage(ctx.botToken, chatId, "当前没有可管理的问卷。");
+    return;
+  }
+
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map(
+    (survey, index) => [
+      {
+        text: `${survey.accessCode ? "🔐 已保护" : "🔓 未设置"} · ${compactSurveyTitle(survey.title)}`,
+        callback_data: `owner:access_view:${survey.id}`,
+      },
+    ],
+  );
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "🔐 问卷访问密码",
+      "",
+      `已保护：${surveys.filter((survey) => survey.accessCode).length} 份`,
+      `未设置：${surveys.filter((survey) => !survey.accessCode).length} 份`,
+      "",
+      "点选问卷后可查看、设置、更换或移除访问密码。",
+    ].join("\n"),
+    { inline_keyboard: rows },
+  );
+}
+
+async function showSurveyPasswordDetails(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [
+    [
+      {
+        text: survey.accessCode ? "✏️ 更换密码" : "➕ 设置密码",
+        callback_data: `owner:access_set:${survey.id}`,
+      },
+    ],
+  ];
+  if (survey.accessCode) {
+    if (survey.accessCodeEncrypted) {
+      rows.push([
+        {
+          text: "👁 查看当前密码",
+          callback_data: `owner:access_reveal:${survey.id}`,
+        },
+      ]);
+    }
+    rows.push([
+      {
+        text: "🗑 移除访问密码",
+        callback_data: `owner:access_clear_ask:${survey.id}`,
+      },
+    ]);
+  }
+  rows.push([
+    {
+      text: "⬅️ 返回问卷列表",
+      callback_data: "owner:access_codes",
+    },
+  ]);
+
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "🔐 问卷访问密码",
+      "",
+      `问卷：${survey.title}`,
+      `当前状态：${survey.accessCode ? "已开启保护" : "未设置，任何人都可直接填写"}`,
+      survey.accessCode ? `最后更新：${survey.updatedAt.replace("T", " ").slice(0, 16)}` : "",
+      "",
+      survey.accessCode
+        ? survey.accessCodeEncrypted
+          ? "可点击“查看当前密码”；也可随时更换。"
+          : "这是旧版设置的密码，无法恢复明文；更换一次后即可查看。"
+        : "设置后，参与者开始填写前必须输入正确密码。",
+    ].join("\n"),
+    { inline_keyboard: rows },
+  );
+}
+
+async function beginSurveyPasswordInput(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+  await initBuilder(ctx.builder, userId);
+  await startSetSurveyAccessCode(ctx.builder, userId, surveyId);
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      `正在为问卷“${survey.title}”${survey.accessCode ? "更换" : "设置"}访问密码。`,
+      "",
+      "请直接发送新密码，长度为 4 到 64 个字符；保存后会显示一次，方便复制。",
+      "发送 /cancel 取消。",
+    ].join("\n"),
+  );
+}
 
 const responseStatusLabels = {
   in_progress: "填写中",
@@ -829,6 +1341,19 @@ function formatStoredAnswer(
   if (answer.jsonValue) {
     try {
       const parsed = JSON.parse(answer.jsonValue) as unknown;
+      if (
+        question.type === "matrix" && parsed && typeof parsed === "object" &&
+        (parsed as { kind?: unknown }).kind === "matrix"
+      ) {
+        const selections = (parsed as { selections?: unknown }).selections;
+        const columns = matrixColumns(question);
+        if (selections && typeof selections === "object") {
+          const rowLabels = new Map(question.options.map((row) => [String(row.id), row.label]));
+          return Object.entries(selections as Record<string, unknown>)
+            .map(([rowId, columnIndex]) => `${rowLabels.get(rowId) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`)
+            .join("\n");
+        }
+      }
       if (Array.isArray(parsed)) {
         const optionLabels = new Map(
           question.options.map((option) => [option.id, option.label]),
@@ -1070,7 +1595,7 @@ async function showSurveyResponses(
       const responseNumber = stats.totalCompleted - safeOffset - index;
       return [
         {
-          text: `第 ${responseNumber} 份 · ${formatChinaDateTime(response.completedAt)}`,
+          text: `第 ${responseNumber} 份 · ${formatResponseRespondent(response.respondent, survey.anonymous)}`,
           callback_data: `owner:response:${surveyId}:${response.id}:${responseNumber}:${safeOffset}`,
         },
       ];
@@ -1165,6 +1690,16 @@ async function showResponseDetail(
       ],
       [
         {
+          text: "脱敏 PDF",
+          callback_data: `owner:response_export:pdf_private:${surveyId}:${responseId}:${responseNumber}:${returnOffset}`,
+        },
+        {
+          text: "脱敏 PNG",
+          callback_data: `owner:response_export:png_private:${surveyId}:${responseId}:${responseNumber}:${returnOffset}`,
+        },
+      ],
+      [
+        {
           text: "返回答卷列表",
           callback_data: `owner:responses:${surveyId}:${returnOffset}`,
         },
@@ -1181,6 +1716,7 @@ async function sendResponseReportExport(
   responseId: number,
   responseNumber: number,
   format: "pdf" | "png",
+  anonymize = false,
 ): Promise<void> {
   await assertResponseAccess(ctx, userId, surveyId);
   if (!ctx.browser) {
@@ -1193,11 +1729,15 @@ async function sendResponseReportExport(
     responseNumber,
   );
   const report = await addReportImages(ctx, bundle);
+  if (anonymize) {
+    report.respondent = "已隐藏";
+    report.startedAt = "已隐藏";
+  }
   const content = await renderResponseReport(ctx.browser, report, format);
   await sendDocument(
     ctx.botToken,
     chatId,
-    `survey-${surveyId}-response-${responseNumber}.${format}`,
+    `survey-${surveyId}-response-${responseNumber}${anonymize ? "-private" : ""}.${format}`,
     content,
     format === "pdf" ? "application/pdf" : "image/png",
   );
@@ -1216,33 +1756,51 @@ async function sendSurveyExport(
   }
   await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
 
-  const { rows } = await getExportRows(ctx.db, surveyId);
-  const csv = buildCsv(rows);
-  if (format === "zip") {
-    await sendDocument(
-      ctx.botToken,
-      chatId,
-      `survey-${surveyId}.zip`,
-      buildExportZip(csv, rows),
-      "application/zip",
-    );
-  } else if (format === "xlsx") {
-    await sendDocument(
-      ctx.botToken,
-      chatId,
-      `survey-${surveyId}.xlsx`,
-      buildXlsx(rows),
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-  } else {
-    await sendDocument(
-      ctx.botToken,
-      chatId,
-      `survey-${surveyId}.csv`,
-      csv,
-      "text/csv",
-    );
+  const jobId = await enqueueExportJob(ctx, {
+    surveyId,
+    userId: user.id,
+    chatId,
+    format,
+  });
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    `导出任务 #${jobId} 已创建，文件生成后会自动发送。`,
+  );
+}
+
+async function sendSurveySummaryPdf(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  await assertResponseAccess(ctx, userId, surveyId);
+  if (!ctx.browser) {
+    throw new Error("当前部署未启用 PDF 导出服务");
   }
+  const [survey, statistics, optionStatistics, numericStatistics] = await Promise.all([
+    getSurveyById(ctx.db, surveyId),
+    getSurveyStatistics(ctx.db, surveyId),
+    getOptionStatistics(ctx.db, surveyId),
+    getNumericStatistics(ctx.db, surveyId),
+  ]);
+  if (!survey) throw new Error("问卷不存在");
+  const content = await renderSurveySummaryReport(ctx.browser, {
+    surveyTitle: survey.title,
+    surveyId,
+    generatedAt: formatChinaDateTime(new Date().toISOString()),
+    statistics,
+    optionStatistics,
+    numericStatistics,
+  });
+  await sendDocument(
+    ctx.botToken,
+    chatId,
+    `survey-${surveyId}-statistics.pdf`,
+    content,
+    "application/pdf",
+  );
 }
 
 async function sendSurveyJsonExport(
@@ -1358,6 +1916,9 @@ export async function showSurveyStats(
   const optionStats = await getOptionStatistics(ctx.db, surveyId);
   const numericStats = await getNumericStatistics(ctx.db, surveyId);
   const responses = await listResponses(ctx.db, surveyId, 10);
+  const lastCompleted = await ctx.db.prepare(
+    "SELECT completed_at FROM survey_responses WHERE survey_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1",
+  ).bind(surveyId).first<{ completed_at: string | null }>();
 
   const lines = [
     `📊 ${survey?.title ?? "问卷"}统计`,
@@ -1365,6 +1926,7 @@ export async function showSurveyStats(
     `开始：${stats.totalStarted}`,
     `完成：${stats.totalCompleted}`,
     `完成率：${stats.completionRate.toFixed(1)}%`,
+    `最近答卷：${lastCompleted?.completed_at ? formatChinaDateTime(lastCompleted.completed_at) : "暂无"}`,
   ];
 
   if (optionStats.length > 0) {
@@ -1410,70 +1972,297 @@ export async function showSurveyStats(
       inline_keyboard: [
         [
           {
-            text: "预览",
-            callback_data: `owner:preview:${surveyId}`,
+            text: "📝 内容与发布",
+            callback_data: `owner:content:${surveyId}`,
           },
           {
-            text: "编辑题目",
-            callback_data: `owner:questions:${surveyId}`,
+            text: "📁 答卷与报告",
+            callback_data: `owner:reports:${surveyId}`,
           },
           {
-            text: "复制问卷",
-            callback_data: `owner:duplicate:${surveyId}`,
+            text: `🔐 访问设置${survey?.accessCode ? " · 已保护" : ""}`,
+            callback_data: `owner:access_view:${surveyId}`,
           },
         ],
-        [
-          {
-            text: "查看答卷",
-            callback_data: `owner:responses:${surveyId}:0`,
-          },
-        ],
-        [
-          {
-            text: "CSV",
-            callback_data: `owner:export:csv:${surveyId}`,
-          },
-          {
-            text: "Excel",
-            callback_data: `owner:export:xlsx:${surveyId}`,
-          },
-          {
-            text: "ZIP",
-            callback_data: `owner:export:zip:${surveyId}`,
-          },
-          {
-            text: "JSON",
-            callback_data: `owner:export_json:${surveyId}`,
-          },
-        ],
+        [{ text: "⬅️ 返回我的问卷", callback_data: "home:my_surveys" }],
       ],
     },
   );
 }
 
+async function showSurveyContentMenu(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+
+  const publication = survey.status === "draft"
+    ? { text: "🚀 发布前检查", callback_data: `owner:publish_ask:${surveyId}` }
+    : survey.status === "published"
+      ? { text: "⏹ 关闭问卷", callback_data: `owner:close:${surveyId}` }
+      : { text: "🚀 重新发布", callback_data: `owner:publish_ask:${surveyId}` };
+
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "📝 内容与发布",
+      "",
+      `“${survey.title}”当前为${survey.status === "draft" ? "草稿" : survey.status === "published" ? "已发布" : "已关闭"}状态。`,
+      survey.status === "published"
+        ? "用户提交答卷不会自动关闭问卷，需要时请手动关闭。"
+        : "",
+    ].filter(Boolean).join("\n"),
+    {
+      inline_keyboard: [
+        [{ text: "✏️ 编辑题目", callback_data: `owner:questions:${surveyId}` }],
+        [publication, { text: "👀 预览填写", callback_data: `owner:preview:${surveyId}` }],
+        ...(survey.status === "published"
+          ? [[{ text: "🔗 分享问卷链接", callback_data: `owner:share:${surveyId}` }]]
+          : []),
+        [{ text: "📋 复制为新问卷", callback_data: `owner:duplicate:${surveyId}` }],
+        [{ text: "⬅️ 返回问卷概览", callback_data: `owner:survey:${surveyId}` }],
+      ],
+    },
+  );
+}
+
+async function showSurveyShareLink(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+  if (survey.status !== "published") {
+    throw new Error("请先发布问卷，发布后才能生成分享链接");
+  }
+  const url = await getSurveyShareUrl(ctx, surveyId);
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      `🔗 ${survey.title}`,
+      "",
+      "把下面链接发给对方。对方点击后会自动打开机器人并直接进入这份问卷。",
+      survey.accessCode ? "该问卷已设置访问密码，接收者进入后仍需输入密码。" : "",
+      "",
+      url,
+    ].filter(Boolean).join("\n"),
+    {
+      inline_keyboard: [[{ text: "打开问卷", url }]],
+    },
+  );
+}
+
+async function showSurveyReportsMenu(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+  const poster = await getCompletionPosterSetting(ctx.db, surveyId);
+
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    `📁 答卷与报告\n\n选择“${survey.title}”的查看、报告或导出方式。`,
+    {
+      inline_keyboard: [
+        [{ text: "查看答卷", callback_data: `owner:responses:${surveyId}:0` }],
+        [
+          { text: "统计 PDF", callback_data: `owner:export_summary_pdf:${surveyId}` },
+          { text: `完成海报 · ${poster.enabled ? "已开启" : "未开启"}`, callback_data: `owner:poster_menu:${surveyId}` },
+        ],
+        [
+          { text: "CSV", callback_data: `owner:export:csv:${surveyId}` },
+          { text: "Excel", callback_data: `owner:export:xlsx:${surveyId}` },
+          { text: "ZIP", callback_data: `owner:export:zip:${surveyId}` },
+          { text: "JSON", callback_data: `owner:export_json:${surveyId}` },
+        ],
+        [{ text: "⬅️ 返回问卷概览", callback_data: `owner:survey:${surveyId}` }],
+      ],
+    },
+  );
+}
+
+async function showCompletionPosterMenu(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const setting = await getCompletionPosterSetting(ctx.db, surveyId);
+  const labels: Record<CompletionPosterStyle, string> = {
+    clean: "简洁", cute: "可爱", editorial: "杂志感", bold: "强对比",
+  };
+  await sendMessage(ctx.botToken, chatId, [
+    "完成海报",
+    setting.enabled ? `已开启，当前风格：${labels[setting.style]}。` : "当前未开启。开启后答卷者完成时会收到一张 PNG 海报。",
+    "问卷封面会优先显示；没有封面时自动尝试使用第一张题目图片。",
+  ].join("\n"), {
+    inline_keyboard: [
+      [{ text: setting.enabled ? "关闭海报" : "开启海报", callback_data: `owner:poster_toggle:${surveyId}` }],
+      [
+        { text: "简洁", callback_data: `owner:poster_style:${surveyId}:clean` },
+        { text: "预览", callback_data: `owner:poster_preview:${surveyId}:clean` },
+      ],
+      [
+        { text: "可爱", callback_data: `owner:poster_style:${surveyId}:cute` },
+        { text: "预览", callback_data: `owner:poster_preview:${surveyId}:cute` },
+      ],
+      [
+        { text: "杂志感", callback_data: `owner:poster_style:${surveyId}:editorial` },
+        { text: "预览", callback_data: `owner:poster_preview:${surveyId}:editorial` },
+      ],
+      [
+        { text: "强对比", callback_data: `owner:poster_style:${surveyId}:bold` },
+        { text: "预览", callback_data: `owner:poster_preview:${surveyId}:bold` },
+      ],
+      [{ text: "返回统计", callback_data: `owner:survey:${surveyId}` }],
+    ],
+  });
+}
+
+async function showPublishCheck(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+): Promise<void> {
+  const user = await getUserByTelegramId(ctx.db, userId);
+  if (!user) throw new Error("用户信息不存在");
+  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) throw new Error("问卷不存在");
+  const questions = await listQuestionsBySurvey(ctx.db, surveyId);
+  const options = await listOptionsForQuestions(ctx.db, questions.map((question) => question.id));
+  const issues: string[] = [];
+  if (questions.length === 0) issues.push("没有题目");
+  for (const question of questions) {
+    if (!question.title.trim()) issues.push(`第 ${question.order + 1} 题没有标题`);
+    if (["single", "multiple", "yes_no", "rating"].includes(question.type) && options.filter((option) => option.questionId === question.id).length < 2) {
+      issues.push(`第 ${question.order + 1} 题选项不足两个`);
+    }
+  }
+  const settings = [
+    `题目：${questions.length} 道`,
+    `访问密码：${survey.accessCode ? "已设置" : "未设置"}`,
+    `重复填写：${survey.allowMultipleResponses ? `允许，最多 ${survey.maxResponsesPerUser || "不限"} 次` : "不允许"}`,
+  ];
+  await sendMessage(ctx.botToken, chatId, [
+    "发布前检查",
+    "",
+    ...settings,
+    "",
+    issues.length > 0 ? `发现问题：\n${issues.map((issue) => `- ${issue}`).join("\n")}` : "检查通过，可以发布。",
+  ].join("\n"), {
+    inline_keyboard: issues.length > 0
+      ? [[{ text: "编辑题目", callback_data: `owner:questions:${surveyId}` }], [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }]]
+      : [[{ text: "确认发布", callback_data: `owner:publish_confirm:${surveyId}` }], [{ text: "编辑题目", callback_data: `owner:questions:${surveyId}` }]],
+  });
+}
+
 async function listSurveys(
   ctx: BotContext,
   chatId: number,
+  userId?: number,
+  page = 0,
+  sort: "latest" | "popular" = "latest",
 ): Promise<void> {
-  const result = await ctx.db
-    .prepare("SELECT id, title, description FROM surveys WHERE status = 'published' ORDER BY id DESC")
-    .all<{ id: number; title: string; description: string | null }>();
-
-  if ((result.results ?? []).length === 0) {
-    await sendMessage(ctx.botToken, chatId, "当前没有已发布的问卷。");
+  const search = userId
+    ? (await ctx.cache?.get(publicSurveySearchKey(userId)))?.trim() ?? ""
+    : "";
+  const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
+  const where = search ? "AND (s.title LIKE ? ESCAPE '\\' OR s.description LIKE ? ESCAPE '\\')" : "";
+  const countBindings = search ? [`%${escapedSearch}%`, `%${escapedSearch}%`] : [];
+  const countRow = await ctx.db.prepare(
+    `SELECT COUNT(*) AS count FROM surveys s WHERE s.status = 'published' ${where}`,
+  ).bind(...countBindings).first<{ count: number }>();
+  const total = countRow?.count ?? 0;
+  if (total === 0) {
+    await sendMessage(ctx.botToken, chatId, search ? "没有匹配的已发布问卷。" : "当前没有已发布的问卷。");
     return;
   }
-
-  const keyboard: InlineKeyboardMarkup = {
-    inline_keyboard: result.results.map((survey) => [
-      {
-        text: survey.title,
-        callback_data: `q:start:${survey.id}`,
-      },
-    ]),
-  };
-
-  await sendMessage(ctx.botToken, chatId, "请选择问卷：", keyboard);
+  const pageSize = 8;
+  const lastPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  const safePage = Math.min(Math.max(0, page), lastPage);
+  const orderBy = sort === "popular"
+    ? "completed_count DESC, s.published_at DESC, s.id DESC"
+    : "s.published_at DESC, s.id DESC";
+  const bindings = search
+    ? [`%${escapedSearch}%`, `%${escapedSearch}%`, pageSize, safePage * pageSize]
+    : [pageSize, safePage * pageSize];
+  const result = await ctx.db.prepare(
+    `SELECT s.id, s.title, s.description, s.access_code,
+            SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count
+     FROM surveys s
+     LEFT JOIN survey_responses r ON r.survey_id = s.id
+     WHERE s.status = 'published' ${where}
+     GROUP BY s.id
+     ORDER BY ${orderBy}
+     LIMIT ? OFFSET ?`,
+  ).bind(...bindings).all<{
+    id: number;
+    title: string;
+    description: string | null;
+    access_code: string | null;
+    completed_count: number | null;
+  }>();
+  const surveys = result.results ?? [];
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map((survey) => [
+    {
+      text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
+      callback_data: `q:start:${survey.id}`,
+    },
+  ]);
+  const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];
+  if (safePage > 0) navigation.push({ text: "⬅️ 上一页", callback_data: `public:list:${safePage - 1}:${sort}` });
+  if (safePage < lastPage) navigation.push({ text: "下一页 ➡️", callback_data: `public:list:${safePage + 1}:${sort}` });
+  if (navigation.length) rows.push(navigation);
+  rows.push([
+    { text: "🔎 搜索问卷", callback_data: "public:search" },
+    { text: sort === "latest" ? "🔥 热门优先" : "🕒 最新优先", callback_data: `public:sort:${sort === "latest" ? "popular" : "latest"}` },
+  ]);
+  if (search) rows.push([{ text: "✖️ 清除搜索", callback_data: `public:clear:${sort}` }]);
+  const descriptions = surveys.map((survey, index) => {
+    const description = cleanSurveyDescription(survey.description);
+    return [
+      `${safePage * pageSize + index + 1}. ${compactSurveyTitle(survey.title, 48)}`,
+      description ? `   ${description.slice(0, 56)}` : "",
+      survey.access_code ? "   🔐 需要密码" : "",
+    ].filter(Boolean).join("\n");
+  });
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "浏览问卷",
+      search ? `搜索：${search}` : sort === "popular" ? "排序：热门优先" : "排序：最新发布优先",
+      `第 ${safePage + 1}/${lastPage + 1} 页 · 共 ${total} 份`,
+      "",
+      ...descriptions,
+    ].join("\n"),
+    { inline_keyboard: rows },
+  );
 }
 
 export async function handleTelegramMessage(
@@ -1498,25 +2287,70 @@ export async function handleTelegramMessage(
     return;
   }
 
-  if (text === "/start") {
+  if (text && ctx.cache) {
+    const waitingForSearch = await ctx.cache.get(publicSurveySearchInputKey(userId));
+    if (waitingForSearch === "1") {
+      if (text === "/cancel") {
+        await ctx.cache.delete(publicSurveySearchInputKey(userId));
+        await sendMessage(ctx.botToken, message.chat.id, "已取消搜索。");
+        return;
+      }
+      if (!text.startsWith("/")) {
+        await ctx.cache.put(publicSurveySearchKey(userId), text.slice(0, 80), {
+          expirationTtl: 24 * 60 * 60,
+        });
+        await ctx.cache.delete(publicSurveySearchInputKey(userId));
+        await listSurveys(ctx, message.chat.id, userId);
+        return;
+      }
+    }
+  }
+
+  const startMatch = text?.match(/^\/start(?:\s+([A-Za-z0-9_-]{1,64}))?$/);
+  if (startMatch) {
+    const payload = startMatch[1];
+    const surveyId = Number(payload?.match(/^survey_(\d+)$/)?.[1]);
+    if (Number.isSafeInteger(surveyId) && surveyId > 0) {
+      await startSurvey(ctx, message.chat.id, userId, surveyId);
+      return;
+    }
+    const creator = Boolean(
+      dbUser && await canCreateSurvey(ctx.db, dbUser, ctx.adminIds),
+    );
+    const pausedResponse = dbUserId
+      ? await getActiveResponseByUser(ctx.db, dbUserId)
+      : null;
     await sendMessage(
       ctx.botToken,
       message.chat.id,
-      "欢迎使用问卷机器人。\n\n发送 /create 创建问卷，发送 /surveys 浏览问卷。\n\n需要问卷访问密码或想购买本软件，请联系 @meiebhiebot。",
+      creator
+        ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
+        : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+      buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), Boolean(pausedResponse)),
     );
     return;
   }
 
   if (text === "/surveys") {
-    await listSurveys(ctx, message.chat.id);
+    await listSurveys(ctx, message.chat.id, userId);
     return;
   }
 
   if (text === "/help") {
+    const creator = Boolean(
+      dbUser && await canCreateSurvey(ctx.db, dbUser, ctx.adminIds),
+    );
     await sendMessage(
       ctx.botToken,
       message.chat.id,
-      "命令：\n/start 开始\n/create 创建问卷\n/continue 继续草稿\n/surveys 浏览问卷\n/my_surveys 我的问卷\n/import 导入 JSON\n/admin 管理员面板\n/export <内部编号> [csv|xlsx|zip] 导出\n/license_help 软件授权管理（管理员）",
+      creator
+        ? "快捷入口在下方。\n\n继续草稿发送 /continue；导入 JSON 发送 /import。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
+        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+      buildHomeKeyboard(
+        creator,
+        Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
+        Boolean(dbUserId && await getActiveResponseByUser(ctx.db, dbUserId)),
+      ),
     );
     return;
   }
@@ -1549,87 +2383,17 @@ export async function handleTelegramMessage(
     return;
   }
 
-  if (text === "/set_survey_code") {
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      "用法：/set_survey_code <内部编号> <密码>",
-    );
+  if (
+    text === "/passwords" ||
+    text === "/set_survey_code" ||
+    text === "/get_survey_code"
+  ) {
+    await showSurveyPasswordMenu(ctx, message.chat.id, userId);
     return;
   }
 
-  if (text?.startsWith("/set_survey_code ")) {
-    const match = text.match(/^\/set_survey_code\s+(\d+)\s+(.+)$/);
-    const surveyId = Number(match?.[1]);
-    const code = match?.[2]?.trim();
-    if (!surveyId || !code) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "用法：/set_survey_code <内部编号> <密码>",
-      );
-      return;
-    }
-    const user = await getUserByTelegramId(ctx.db, userId);
-    if (!user) {
-      await sendMessage(ctx.botToken, message.chat.id, "用户不存在。");
-      return;
-    }
-    try {
-      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-      if (code !== "/clear" && (code.length < 4 || code.length > 64)) {
-        throw new Error("密码长度必须为 4 到 64 个字符");
-      }
-      await setSurveyAccessCode(
-        ctx.db,
-        surveyId,
-        code === "/clear" ? null : await hashSurveyAccessCode(code),
-      );
-      await sendMessage(ctx.botToken, message.chat.id, `问卷内部编号 ${surveyId} 的访问密码已更新。`);
-    } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "设置密码失败。",
-      );
-    }
-    return;
-  }
-
-  if (text === "/get_survey_code") {
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      "用法：/get_survey_code <内部编号>",
-    );
-    return;
-  }
-
-  if (text?.startsWith("/get_survey_code ")) {
-    const surveyId = Number(text.slice("/get_survey_code ".length));
-    const user = await getUserByTelegramId(ctx.db, userId);
-    if (!user) {
-      await sendMessage(ctx.botToken, message.chat.id, "用户不存在。");
-      return;
-    }
-    try {
-      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-      const survey = await getSurveyById(ctx.db, surveyId);
-      if (!survey) throw new Error("问卷不存在");
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        survey.accessCode
-          ? `问卷内部编号 ${surveyId} 已设置访问密码。密码不会直接显示。`
-          : `问卷内部编号 ${surveyId} 未设置访问密码。`,
-      );
-    } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "查看密码失败。",
-      );
-    }
+  if (text?.startsWith("/set_survey_code ") || text?.startsWith("/get_survey_code ")) {
+    await sendMessage(ctx.botToken, message.chat.id, "密码功能已整合。请发送 /passwords 后直接点选问卷操作。");
     return;
   }
 
@@ -1706,10 +2470,18 @@ export async function handleTelegramMessage(
     return;
   }
 
-  if (text === "/create") {
+  if (
+    text === "/create" ||
+    text === "/continue" ||
+    text === "/import"
+  ) {
     const user = await getUserByTelegramId(ctx.db, userId);
-    if (!user || !canCreateSurvey(user, ctx.adminIds)) {
-      await sendMessage(ctx.botToken, message.chat.id, "你没有创建问卷的权限。");
+    if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "你没有创建或导入问卷的权限。",
+      );
       return;
     }
   }
@@ -1971,6 +2743,149 @@ export async function handleTelegramCallback(
     return;
   }
 
+  if (data === "home:surveys") {
+    await listSurveys(ctx, chatId, userId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:resume_survey") {
+    const response = await getActiveResponseByUser(ctx.db, dbUserId);
+    if (!response) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "没有可继续的问卷");
+      return;
+    }
+    await startSurvey(ctx, chatId, userId, response.surveyId);
+    await answerCallbackQuery(ctx.botToken, callback.id, "继续填写");
+    return;
+  }
+
+  if (data.startsWith("public:list:")) {
+    const [, , pageRaw, sortRaw] = data.split(":");
+    const page = Number(pageRaw);
+    const sort = sortRaw === "popular" ? "popular" : "latest";
+    if (!Number.isInteger(page) || page < 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "页码无效");
+      return;
+    }
+    await listSurveys(ctx, chatId, userId, page, sort);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "public:search") {
+    if (!ctx.cache) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用搜索功能");
+      return;
+    }
+    await ctx.cache.put(publicSurveySearchInputKey(userId), "1", { expirationTtl: 10 * 60 });
+    await sendMessage(ctx.botToken, chatId, "请发送问卷标题关键词；发送 /cancel 取消搜索。");
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("public:sort:")) {
+    const sort = data.endsWith(":popular") ? "popular" : "latest";
+    await listSurveys(ctx, chatId, userId, 0, sort);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("public:clear:")) {
+    const sort = data.endsWith(":popular") ? "popular" : "latest";
+    await ctx.cache?.delete(publicSurveySearchKey(userId));
+    await listSurveys(ctx, chatId, userId, 0, sort);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:my_surveys") {
+    await listMySurveys(ctx, chatId, userId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:create_menu") {
+    await showCreateMenu(ctx, chatId, userId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:new_survey") {
+    await showNewSurveyMenu(ctx, chatId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:import_or_copy") {
+    await showImportOrCopyMenu(ctx, chatId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:continue") {
+    await handleBuilderMessage(ctx, { message_id: callback.message?.message_id ?? 0, chat: { id: chatId }, from: callback.from, text: "/continue" });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:import_json") {
+    await handleBuilderMessage(ctx, { message_id: callback.message?.message_id ?? 0, chat: { id: chatId }, from: callback.from, text: "/import" });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:copy_list") {
+    const user = await getUserByTelegramId(ctx.db, userId);
+    const surveys = user ? await listOwnedSurveys(ctx.db, user.id) : [];
+    await sendMessage(ctx.botToken, chatId, surveys.length === 0 ? "你还没有可复制的问卷。" : "选择要复制的问卷：", surveys.length === 0 ? undefined : {
+      inline_keyboard: surveys.map((survey) => [{ text: compactSurveyTitle(survey.title), callback_data: `owner:duplicate:${survey.id}` }]),
+    });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "home:templates") {
+    await sendMessage(ctx.botToken, chatId, "问卷模板\n\n选择模板后会生成一份可随意修改的草稿：", {
+      inline_keyboard: listSurveyTemplates().map((template) => [{ text: `${template.title} · ${template.description}`, callback_data: `home:template:${template.id}` }]),
+    });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("home:template:")) {
+    const templateId = data.slice("home:template:".length) as SurveyTemplate["id"];
+    try {
+      if (!dbUser || !(await canCreateSurvey(ctx.db, dbUser, ctx.adminIds))) throw new Error("你没有创建问卷的权限");
+      const survey = await createSurveyFromTemplate(ctx.db, dbUser.id, templateId);
+      await sendMessage(ctx.botToken, chatId, `已创建“${survey.title}”模板草稿，共可继续编辑后再发布。`, {
+        inline_keyboard: [[{ text: "编辑题目", callback_data: `owner:questions:${survey.id}` }, { text: "查看发布检查", callback_data: `owner:publish_ask:${survey.id}` }]],
+      });
+      await answerCallbackQuery(ctx.botToken, callback.id, "模板草稿已创建");
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "模板创建失败");
+    }
+    return;
+  }
+
+  if (data === "home:create") {
+    if (!dbUser || !(await canCreateSurvey(ctx.db, dbUser, ctx.adminIds))) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "你没有创建问卷的权限");
+      return;
+    }
+    await startBuilder(ctx, chatId, userId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:list:")) {
+    const filterRaw = data.slice("owner:list:".length);
+    const filter = filterRaw === "all" ? undefined : ["draft", "published", "closed"].includes(filterRaw) ? filterRaw as Survey["status"] : undefined;
+    await listMySurveys(ctx, chatId, userId, filter);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
   if (await handleBuilderCallback(ctx, callback)) {
     return;
   }
@@ -2079,6 +2994,77 @@ export async function handleTelegramCallback(
     return;
   }
 
+  if (data.startsWith("owner:poster_menu:")) {
+    const surveyId = Number(data.slice("owner:poster_menu:".length));
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    try {
+      await showCompletionPosterMenu(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "无法打开海报设置。");
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:poster_toggle:")) {
+    const surveyId = Number(data.slice("owner:poster_toggle:".length));
+    try {
+      const user = await getUserByTelegramId(ctx.db, userId);
+      if (!user) throw new Error("用户信息不存在");
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+      const setting = await getCompletionPosterSetting(ctx.db, surveyId);
+      await saveCompletionPosterSetting(ctx.db, { ...setting, enabled: !setting.enabled });
+      await answerCallbackQuery(ctx.botToken, callback.id, setting.enabled ? "海报已关闭" : "海报已开启");
+      await showCompletionPosterMenu(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "设置失败");
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:poster_style:")) {
+    const [, , surveyIdRaw, styleRaw] = data.split(":");
+    const styles: CompletionPosterStyle[] = ["clean", "cute", "editorial", "bold"];
+    const style = styles.includes(styleRaw as CompletionPosterStyle) ? styleRaw as CompletionPosterStyle : null;
+    const surveyId = Number(surveyIdRaw);
+    if (!style || !Number.isInteger(surveyId)) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "海报风格无效");
+      return;
+    }
+    try {
+      const user = await getUserByTelegramId(ctx.db, userId);
+      if (!user) throw new Error("用户信息不存在");
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+      const setting = await getCompletionPosterSetting(ctx.db, surveyId);
+      await saveCompletionPosterSetting(ctx.db, { surveyId, enabled: true, style });
+      await answerCallbackQuery(ctx.botToken, callback.id, "海报风格已保存并开启");
+      await showCompletionPosterMenu(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "设置失败");
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:poster_preview:")) {
+    const [, , surveyIdRaw, styleRaw] = data.split(":");
+    const surveyId = Number(surveyIdRaw);
+    const styles: CompletionPosterStyle[] = ["clean", "cute", "editorial", "bold"];
+    const style = styles.includes(styleRaw as CompletionPosterStyle) ? styleRaw as CompletionPosterStyle : null;
+    try {
+      const user = await getUserByTelegramId(ctx.db, userId);
+      if (!user || !style) throw new Error("海报风格无效");
+      await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
+      if (!ctx.browser) throw new Error("当前部署未启用海报服务");
+      const survey = await getSurveyById(ctx.db, surveyId);
+      if (!survey) throw new Error("问卷不存在");
+      await answerCallbackQuery(ctx.botToken, callback.id, "正在生成预览");
+      const png = await renderCompletionPoster(ctx.browser, { surveyTitle: survey.title, completedAt: "预览效果", style });
+      await sendPhoto(ctx.botToken, chatId, png, "完成海报预览");
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "预览失败");
+    }
+    return;
+  }
+
   if (data.startsWith("owner:response_export:")) {
     const [
       ,
@@ -2088,7 +3074,7 @@ export async function handleTelegramCallback(
       responseIdRaw,
       responseNumberRaw,
     ] = data.split(":");
-    if (format !== "pdf" && format !== "png") {
+    if (format !== "pdf" && format !== "png" && format !== "pdf_private" && format !== "png_private") {
       await answerCallbackQuery(ctx.botToken, callback.id, "导出格式无效");
       return;
     }
@@ -2101,7 +3087,8 @@ export async function handleTelegramCallback(
         Number(surveyIdRaw),
         Number(responseIdRaw),
         Number(responseNumberRaw),
-        format,
+        format.startsWith("pdf") ? "pdf" : "png",
+        format.endsWith("_private"),
       );
     } catch (error) {
       await sendMessage(
@@ -2171,6 +3158,51 @@ export async function handleTelegramCallback(
     return;
   }
 
+  if (data.startsWith("owner:content:")) {
+    const surveyId = Number(data.slice("owner:content:".length));
+    try {
+      await showSurveyContentMenu(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "读取问卷设置失败。",
+      );
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:reports:")) {
+    const surveyId = Number(data.slice("owner:reports:".length));
+    try {
+      await showSurveyReportsMenu(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "读取答卷与报告失败。",
+      );
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:share:")) {
+    const surveyId = Number(data.slice("owner:share:".length));
+    await answerCallbackQuery(ctx.botToken, callback.id, "正在生成分享链接");
+    try {
+      await showSurveyShareLink(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "生成分享链接失败。",
+      );
+    }
+    return;
+  }
+
   if (data.startsWith("owner:duplicate:")) {
     const surveyId = Number(data.slice("owner:duplicate:".length));
     await answerCallbackQuery(ctx.botToken, callback.id, "正在复制");
@@ -2232,7 +3264,7 @@ export async function handleTelegramCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "导出格式无效");
       return;
     }
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在生成导出文件");
+    await answerCallbackQuery(ctx.botToken, callback.id, "正在创建导出任务");
     try {
       await sendSurveyExport(
         ctx,
@@ -2251,21 +3283,83 @@ export async function handleTelegramCallback(
     return;
   }
 
-  if (data.startsWith("owner:access_code:")) {
-    const surveyId = Number(data.slice("owner:access_code:".length));
+  if (data.startsWith("owner:export_summary_pdf:")) {
+    const surveyId = Number(data.slice("owner:export_summary_pdf:".length));
+    await answerCallbackQuery(ctx.botToken, callback.id, "正在生成统计 PDF");
+    try {
+      await sendSurveySummaryPdf(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "统计 PDF 导出失败。",
+      );
+    }
+    return;
+  }
+
+  if (data === "owner:access_codes") {
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    try {
+      await showSurveyPasswordMenu(ctx, chatId, userId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "读取密码列表失败。",
+      );
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:access_view:")) {
+    const surveyId = Number(data.slice("owner:access_view:".length));
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    try {
+      await showSurveyPasswordDetails(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        error instanceof Error ? error.message : "读取密码状态失败。",
+      );
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:access_reveal:")) {
+    const surveyId = Number(data.slice("owner:access_reveal:".length));
     if (!dbUser) {
       await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在");
       return;
     }
     try {
       await assertCanManageSurvey(ctx.db, dbUser, surveyId, ctx.adminIds);
-      await initBuilder(ctx.builder, userId);
-      await startSetSurveyAccessCode(ctx.builder, userId, surveyId);
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `请为问卷内部编号 ${surveyId} 输入 4 到 64 个字符的访问密码。\n发送 /clear 可移除现有密码，发送 /cancel 取消。`,
-      );
+      const survey = await getSurveyById(ctx.db, surveyId);
+      if (!survey?.accessCode) throw new Error("该问卷未设置密码");
+      const code = survey.accessCodeEncrypted
+        ? await decryptSurveyAccessCode(survey.accessCodeEncrypted, ctx.botToken)
+        : null;
+      if (!code) throw new Error("这是旧版密码，无法恢复；请点击“更换密码”重新设置");
+      await sendMessage(ctx.botToken, chatId, `🔐 当前访问密码\n\n${code}\n\n请勿转发此消息；如不再需要可删除。`);
+      await answerCallbackQuery(ctx.botToken, callback.id, "密码已显示");
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法查看密码");
+    }
+    return;
+  }
+
+  if (
+    data.startsWith("owner:access_set:") ||
+    data.startsWith("owner:access_code:")
+  ) {
+    const prefix = data.startsWith("owner:access_set:")
+      ? "owner:access_set:"
+      : "owner:access_code:";
+    const surveyId = Number(data.slice(prefix.length));
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    try {
+      await beginSurveyPasswordInput(ctx, chatId, userId, surveyId);
     } catch (error) {
       await sendMessage(
         ctx.botToken,
@@ -2273,7 +3367,67 @@ export async function handleTelegramCallback(
         error instanceof Error ? error.message : "无权设置密码。",
       );
     }
-    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("owner:access_clear_ask:")) {
+    const surveyId = Number(data.slice("owner:access_clear_ask:".length));
+    if (!dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在");
+      return;
+    }
+    try {
+      await assertCanManageSurvey(ctx.db, dbUser, surveyId, ctx.adminIds);
+      const survey = await getSurveyById(ctx.db, surveyId);
+      if (!survey) throw new Error("问卷不存在");
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        `确认移除问卷“${survey.title}”的访问密码？移除后任何人都可以直接开始填写。`,
+        {
+          inline_keyboard: [
+            [
+              {
+                text: "确认移除",
+                callback_data: `owner:access_clear:${survey.id}`,
+              },
+              {
+                text: "取消",
+                callback_data: `owner:access_view:${survey.id}`,
+              },
+            ],
+          ],
+        },
+      );
+      await answerCallbackQuery(ctx.botToken, callback.id);
+    } catch (error) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        callback.id,
+        error instanceof Error ? error.message : "无权移除密码",
+      );
+    }
+    return;
+  }
+
+  if (data.startsWith("owner:access_clear:")) {
+    const surveyId = Number(data.slice("owner:access_clear:".length));
+    if (!dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在");
+      return;
+    }
+    try {
+      await assertCanManageSurvey(ctx.db, dbUser, surveyId, ctx.adminIds);
+      await setSurveyAccessCode(ctx.db, surveyId, null);
+      await answerCallbackQuery(ctx.botToken, callback.id, "密码已移除");
+      await showSurveyPasswordDetails(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        callback.id,
+        error instanceof Error ? error.message : "移除密码失败",
+      );
+    }
     return;
   }
 
@@ -2284,25 +3438,11 @@ export async function handleTelegramCallback(
 
   if (data.startsWith("owner:publish_ask:")) {
     const surveyId = Number(data.slice("owner:publish_ask:".length));
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "⚠️ 确认发布该问卷？",
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "✅ 确认发布",
-              callback_data: `owner:publish_confirm:${surveyId}`,
-            },
-            {
-              text: "取消",
-              callback_data: "owner:cancel",
-            },
-          ],
-        ],
-      },
-    );
+    try {
+      await showPublishCheck(ctx, chatId, userId, surveyId);
+    } catch (error) {
+      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "无法检查发布条件。");
+    }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
@@ -2464,6 +3604,7 @@ export async function handleTelegramCallback(
       flow.questions,
       userId,
       response.survey_id,
+      optionId,
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
@@ -2566,6 +3707,106 @@ export async function handleTelegramCallback(
     return;
   }
 
+  if (data === "q:matrix:label") {
+    await answerCallbackQuery(ctx.botToken, callback.id, "请先选择要填写的行");
+    return;
+  }
+
+  if (data.startsWith("q:matrix:row:")) {
+    const [, , , questionIdRaw, rowIdRaw] = data.split(":");
+    const questionId = Number(questionIdRaw);
+    const rowId = Number(rowIdRaw);
+    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
+    if (!response || response.current_question_id !== questionId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "该题按钮已失效");
+      return;
+    }
+    const flow = await getSurveyFlow(ctx.db, response.survey_id);
+    const question = getQuestionById(flow, questionId);
+    const row = question?.options.find((item) => item.id === rowId);
+    if (!question || question.type !== "matrix" || !row || matrixColumns(question).length === 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵行无效");
+      return;
+    }
+    const selections = await getSessionMatrixSelections(ctx.session, userId, response.survey_id);
+    const index = flow.questions.findIndex((item) => item.id === question.id);
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      `矩阵第 ${question.options.findIndex((item) => item.id === rowId) + 1} 行：${row.label}\n\n请选择一个选项：`,
+      buildMatrixColumnKeyboard(question, rowId, index, selections[String(rowId)]),
+    );
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("q:matrix:back:")) {
+    const questionId = Number(data.slice("q:matrix:back:".length));
+    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
+    if (!response || response.current_question_id !== questionId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "该题按钮已失效");
+      return;
+    }
+    const flow = await getSurveyFlow(ctx.db, response.survey_id);
+    const question = getQuestionById(flow, questionId);
+    if (!question || question.type !== "matrix") {
+      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵题不存在");
+      return;
+    }
+    await renderQuestion(ctx, chatId, response.id, question, flow.questions, userId, response.survey_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("q:matrix:select:")) {
+    const [, , , questionIdRaw, rowIdRaw, columnIndexRaw] = data.split(":");
+    const questionId = Number(questionIdRaw);
+    const rowId = Number(rowIdRaw);
+    const columnIndex = Number(columnIndexRaw);
+    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
+    if (!response || response.current_question_id !== questionId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "该题按钮已失效");
+      return;
+    }
+    const flow = await getSurveyFlow(ctx.db, response.survey_id);
+    const question = getQuestionById(flow, questionId);
+    if (!question || question.type !== "matrix" || !question.options.some((row) => row.id === rowId) || columnIndex < 0 || columnIndex >= matrixColumns(question).length) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵选项无效");
+      return;
+    }
+    await setSessionMatrixSelection(ctx.session, userId, response.survey_id, rowId, columnIndex);
+    const selectedColumn = matrixColumns(question)[columnIndex] ?? "该选项";
+    await answerCallbackQuery(ctx.botToken, callback.id, `已选择：${selectedColumn}`);
+    await renderQuestion(ctx, chatId, response.id, question, flow.questions, userId, response.survey_id);
+    return;
+  }
+
+  if (data.startsWith("q:matrix:confirm:")) {
+    const questionId = Number(data.slice("q:matrix:confirm:".length));
+    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
+    if (!response || response.current_question_id !== questionId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "该题按钮已失效");
+      return;
+    }
+    const flow = await getSurveyFlow(ctx.db, response.survey_id);
+    const question = getQuestionById(flow, questionId);
+    const selections = await getSessionMatrixSelections(ctx.session, userId, response.survey_id);
+    if (!question || question.type !== "matrix") {
+      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵题不存在");
+      return;
+    }
+    if (question.required && question.options.some((row) => selections[String(row.id)] === undefined)) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "请完成每一行的选择");
+      return;
+    }
+    if (Object.keys(selections).length === 0) await deleteAnswer(ctx.db, response.id, questionId);
+    else await upsertJsonAnswer(ctx.db, { responseId: response.id, questionId, jsonValue: JSON.stringify({ kind: "matrix", selections }) });
+    await clearSessionMatrixSelections(ctx.session, userId, response.survey_id);
+    await advanceQuestion(ctx, chatId, response.id, questionId, flow.questions, userId, response.survey_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
   if (data.startsWith("q:prev:")) {
     const questionId = Number(data.slice("q:prev:".length));
     const response = await ctx.db
@@ -2602,8 +3843,42 @@ export async function handleTelegramCallback(
     return;
   }
 
-  if (data === "q:submit") {
-    await answerCallbackQuery(ctx.botToken, callback.id, "请先回答当前题目");
+  if (data.startsWith("q:submit:")) {
+    const surveyId = Number(data.slice("q:submit:".length));
+    const response = await ctx.db.prepare(
+      "SELECT id, survey_id FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1",
+    ).bind(dbUserId).first<{ id: number; survey_id: number }>();
+    if (!response || response.survey_id !== surveyId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "当前没有可提交的问卷");
+      return;
+    }
+    await completeResponse(ctx.db, response.id);
+    await completeSession(ctx.session, userId, surveyId);
+    await sendMessage(ctx.botToken, chatId, "你已完成问卷，感谢参与。");
+    try {
+      await sendCompletionPoster(ctx, chatId, surveyId);
+    } catch (error) {
+      console.warn("Completion poster generation failed", error);
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id, "已提交");
+    return;
+  }
+
+  if (data.startsWith("q:pause:")) {
+    const surveyId = Number(data.slice("q:pause:".length));
+    const response = await ctx.db
+      .prepare("SELECT id, survey_id FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
+      .bind(dbUserId)
+      .first<{ id: number; survey_id: number }>();
+    if (!response || response.survey_id !== surveyId) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "当前没有可暂存的问卷");
+      return;
+    }
+    await completeSession(ctx.session, userId, surveyId);
+    await sendMessage(ctx.botToken, chatId, "💾 已暂存。下次发送 /start 后点“继续填写”，即可从当前题目继续。", {
+      inline_keyboard: [[{ text: "返回首页", callback_data: "home:surveys" }]],
+    });
+    await answerCallbackQuery(ctx.botToken, callback.id, "已暂存");
     return;
   }
 
@@ -2636,8 +3911,10 @@ export async function handleTelegramCallback(
   }
 
   if (data.startsWith("qedit:list:")) {
-    const surveyId = Number(data.slice("qedit:list:".length));
-    await showQuestionList(ctx, chatId, userId, surveyId);
+    const [surveyIdRaw, offsetRaw] = data.slice("qedit:list:".length).split(":");
+    const surveyId = Number(surveyIdRaw);
+    const offset = Number(offsetRaw ?? 0);
+    await showQuestionList(ctx, chatId, userId, surveyId, offset);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
@@ -2645,6 +3922,67 @@ export async function handleTelegramCallback(
   if (data.startsWith("qedit:view:")) {
     const questionId = Number(data.slice("qedit:view:".length));
     await showQuestionEditor(ctx, chatId, userId, questionId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:add:")) {
+    const surveyId = Number(data.slice("qedit:add:".length));
+    if (!dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "用户信息不存在");
+      return;
+    }
+    try {
+      await assertCanEditSurveyQuestions(ctx, dbUser, surveyId);
+      const builderState = await getBuilderState(ctx.builder, userId);
+      if (builderState?.activeDraft && builderState.step !== "idle") {
+        throw new Error("你有未完成的创建草稿，请先完成或取消后再新增题目");
+      }
+      await initBuilder(ctx.builder, userId);
+      await startAppendQuestions(ctx.builder, userId, surveyId);
+      await sendMessage(ctx.botToken, chatId, "请选择要新增题目的类型：", {
+        inline_keyboard: [
+          [
+            { text: "单选", callback_data: "builder:type:single" },
+            { text: "多选", callback_data: "builder:type:multiple" },
+          ],
+          [
+            { text: "单行文本", callback_data: "builder:type:text" },
+            { text: "多行文本", callback_data: "builder:type:long_text" },
+          ],
+          [
+            { text: "数字", callback_data: "builder:type:number" },
+            { text: "评分", callback_data: "builder:type:rating" },
+          ],
+          [
+            { text: "矩阵题", callback_data: "builder:type:matrix" },
+            { text: "是 / 否", callback_data: "builder:type:yes_no" },
+          ],
+          [
+            { text: "日期", callback_data: "builder:type:date" },
+            { text: "时间", callback_data: "builder:type:time" },
+          ],
+          [
+            { text: "上传图片", callback_data: "builder:type:image" },
+            { text: "上传视频", callback_data: "builder:type:video" },
+          ],
+          [
+            { text: "上传音频", callback_data: "builder:type:audio" },
+            { text: "上传文件", callback_data: "builder:type:file" },
+          ],
+          [
+            { text: "取消", callback_data: "builder:cancel" },
+          ],
+        ],
+      });
+    } catch (error) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        callback.id,
+        error instanceof Error ? error.message : "无法新增题目",
+      );
+      return;
+    }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
@@ -3017,6 +4355,97 @@ export async function handleTelegramCallback(
       await showQuestionEditor(ctx, chatId, userId, questionId);
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:skip_menu:")) {
+    const questionId = Number(data.slice("qedit:skip_menu:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (!question || !dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "题目不存在");
+      return;
+    }
+    try {
+      await assertCanEditSurveyQuestions(ctx, dbUser, question.surveyId);
+      const [options, questions] = await Promise.all([
+        listOptionsForQuestions(ctx.db, [questionId]),
+        listQuestionsBySurvey(ctx.db, question.surveyId),
+      ]);
+      const targets = questions.filter((item) => item.order > question.order);
+      if (options.length === 0 || targets.length === 0) {
+        throw new Error("需要至少一个选项和一道后续题目才能设置跳题");
+      }
+      await sendMessage(ctx.botToken, chatId, `设置跳题：${question.title}\n\n先选择触发跳题的选项：`, {
+        inline_keyboard: options.map((option) => [{ text: option.label, callback_data: `qedit:skip_option:${questionId}:${option.id}` }]).concat([[{ text: "取消", callback_data: `qedit:view:${questionId}` }]]),
+      });
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法设置跳题");
+      return;
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:skip_option:")) {
+    const [, , , questionIdRaw, optionIdRaw] = data.split(":");
+    const questionId = Number(questionIdRaw);
+    const optionId = Number(optionIdRaw);
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (!question || !dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "题目不存在");
+      return;
+    }
+    try {
+      await assertCanEditSurveyQuestions(ctx, dbUser, question.surveyId);
+      const targets = (await listQuestionsBySurvey(ctx.db, question.surveyId)).filter((item) => item.order > question.order);
+      await sendMessage(ctx.botToken, chatId, "选择要跳转到的后续题目：", {
+        inline_keyboard: targets.map((target) => [{ text: `第 ${target.order + 1} 题 · ${compactSurveyTitle(target.title, 35)}`, callback_data: `qedit:skip_target:${questionId}:${optionId}:${target.id}` }]).concat([[{ text: "取消", callback_data: `qedit:view:${questionId}` }]]),
+      });
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法设置跳题");
+      return;
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:skip_target:")) {
+    const [, , , questionIdRaw, optionIdRaw, targetIdRaw] = data.split(":");
+    const questionId = Number(questionIdRaw);
+    const optionId = Number(optionIdRaw);
+    const targetId = Number(targetIdRaw);
+    const [question, option, target] = await Promise.all([
+      getQuestionEntityById(ctx.db, questionId), getQuestionOptionById(ctx.db, optionId), getQuestionEntityById(ctx.db, targetId),
+    ]);
+    if (!question || !option || !target || option.questionId !== question.id || target.surveyId !== question.surveyId || target.order <= question.order || !dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "跳题规则无效");
+      return;
+    }
+    try {
+      await assertCanEditSurveyQuestions(ctx, dbUser, question.surveyId);
+      await setQuestionSkipRule(ctx.db, questionId, { optionId, targetQuestionId: targetId });
+      await showQuestionEditor(ctx, chatId, userId, questionId);
+    } catch (error) {
+      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "保存跳题规则失败。");
+    }
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("qedit:skip_clear:")) {
+    const questionId = Number(data.slice("qedit:skip_clear:".length));
+    const question = await getQuestionEntityById(ctx.db, questionId);
+    if (!question || !dbUser) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "题目不存在");
+      return;
+    }
+    try {
+      await assertCanEditSurveyQuestions(ctx, dbUser, question.surveyId);
+      await setQuestionSkipRule(ctx.db, questionId, null);
+      await showQuestionEditor(ctx, chatId, userId, questionId);
+    } catch (error) {
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "清除跳题规则失败");
+    }
     return;
   }
 

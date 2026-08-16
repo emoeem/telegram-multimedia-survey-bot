@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   sendDocumentByFileId,
   sendPhoto,
+  getBotUsername,
   splitTelegramText,
+  syncDefaultBotCommands,
   uploadMediaForReuse,
 } from "../../../src/bot/telegram";
 
@@ -40,6 +42,37 @@ describe("telegram media requests", () => {
     expect(body.document).toBe("telegram-file-id");
     expect(body.caption).toBe("题目附件");
     expect(body.reply_markup).toBeTruthy();
+  });
+
+  it("replaces legacy command entries with the compact command menu", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{"ok":true}', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncDefaultBotCommands("token");
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/setMyCommands");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      commands: [
+        { command: "start", description: "打开主菜单" },
+        { command: "surveys", description: "浏览可填写问卷" },
+        { command: "create", description: "新建问卷" },
+        { command: "my_surveys", description: "管理我的问卷" },
+        { command: "passwords", description: "管理问卷访问密码" },
+        { command: "admin", description: "打开管理员中心" },
+      ],
+    });
+  });
+
+  it("reads the bot username for direct survey links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{"ok":true,"result":{"username":"survey_demo_bot"}}', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getBotUsername("token")).resolves.toBe("survey_demo_bot");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/getMe");
   });
 
   it("surfaces Telegram media API errors", async () => {

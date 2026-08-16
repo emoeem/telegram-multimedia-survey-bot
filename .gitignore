@@ -6,3 +6,7 @@ dist/
 .env
 *.log
 coverage/
+customer-deployments/
+.license-admin.env
+.pending-license.json
+.customer-secrets.tmp

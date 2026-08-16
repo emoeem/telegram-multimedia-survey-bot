@@ -1,6 +1,6 @@
 {
   "name": "telegram-multimedia-survey-bot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate:local": "wrangler d1 migrations apply DB --local",
-    "migrate:remote": "wrangler d1 migrations apply DB --remote"
+    "migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "license-admin:setup": "node scripts/setup-license-admin.mjs",
+    "license:issue": "node scripts/issue-license.mjs",
+    "customer:deploy": "node scripts/deploy-customer.mjs"
   },
   "devDependencies": {
     "@cloudflare/puppeteer": "^1.1.0",

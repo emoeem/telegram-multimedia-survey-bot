@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.venv/
+customer-deployments/
+.dev.vars
+.env
+*.log
+.pending-license.json
+.customer-secrets.tmp

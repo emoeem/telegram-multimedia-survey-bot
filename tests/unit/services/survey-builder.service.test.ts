@@ -55,7 +55,9 @@ function createBuilderState(
     surveyDescription: "描述",
     currentQuestionType: null,
     currentQuestionTitle: "",
+    currentQuestionRequired: true,
     currentOptions: [],
+    currentMatrixColumns: [],
     currentMediaAssetId: null,
     targetOptionId: null,
     targetQuestionId: null,
@@ -66,6 +68,7 @@ function createBuilderState(
       {
         type: "multiple",
         title: "请选择",
+        required: true,
         mediaAssetId: 501,
         options: [
           { label: "选项 A", mediaAssetId: 601 },

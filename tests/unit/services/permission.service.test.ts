@@ -5,6 +5,7 @@ const repositoryMocks = vi.hoisted(() => ({
   countCompletedResponsesBySurveyAndUser: vi.fn(),
   getActiveResponseBySurveyAndUser: vi.fn(),
   getResponseBySurveyAndHash: vi.fn(),
+  hasActiveCreatorTrial: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/survey.repository", () => ({
@@ -19,11 +20,16 @@ vi.mock("../../../src/db/repositories/response.repository", () => ({
   getResponseBySurveyAndHash: repositoryMocks.getResponseBySurveyAndHash,
 }));
 
+vi.mock("../../../src/db/repositories/creator-trial.repository", () => ({
+  hasActiveCreatorTrial: repositoryMocks.hasActiveCreatorTrial,
+}));
+
 import {
   canFillSurvey,
   canCreateSurvey,
   getEffectiveRole,
   isAdmin,
+  assertCanFillSurvey,
 } from "../../../src/services/permission.service";
 
 describe("permission service", () => {
@@ -31,6 +37,7 @@ describe("permission service", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    repositoryMocks.hasActiveCreatorTrial.mockResolvedValue(false);
   });
 
   it("detects admin users", () => {
@@ -76,9 +83,10 @@ describe("permission service", () => {
     ).toBe("participant");
   });
 
-  it("does not allow a normal participant to create surveys", () => {
-    expect(
+  it("does not allow a normal participant to create surveys", async () => {
+    await expect(
       canCreateSurvey(
+        {} as D1Database,
         {
           id: 30,
           telegramUserId: 4,
@@ -86,7 +94,7 @@ describe("permission service", () => {
         },
         adminIds,
       ),
-    ).toBe(false);
+    ).resolves.toBe(false);
   });
 
   it("enforces the completed response limit for repeatable surveys", async () => {
@@ -123,5 +131,24 @@ describe("permission service", () => {
         telegramUserId: 30,
       }),
     ).resolves.toBe(true);
+  });
+
+  it("explains that a completed response does not close the survey", async () => {
+    repositoryMocks.getSurveyById.mockResolvedValue({
+      status: "published",
+      allowMultipleResponses: false,
+      maxResponsesPerUser: 1,
+    });
+    repositoryMocks.getActiveResponseBySurveyAndUser.mockResolvedValue(null);
+    repositoryMocks.getResponseBySurveyAndHash.mockResolvedValue({
+      status: "completed",
+    });
+
+    await expect(
+      assertCanFillSurvey({} as D1Database, 10, {
+        id: 20,
+        telegramUserId: 30,
+      }),
+    ).rejects.toThrow("问卷仍在发布中，其他用户可以继续填写");
   });
 });

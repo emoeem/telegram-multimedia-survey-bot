@@ -4,6 +4,7 @@ import {
   buildSurveyFlow,
   getFirstQuestion,
   getNextQuestion,
+  getNextQuestionAfterOption,
   getPreviousQuestion,
   isLastQuestion,
 } from "../../../src/survey/engine";
@@ -92,5 +93,31 @@ describe("survey engine", () => {
 
   it("attaches options to the matching question", () => {
     expect(flow.questions[1]?.options).toHaveLength(1);
+  });
+
+  it("uses the matching rule when a question has multiple branch rules", () => {
+    const branched = buildSurveyFlow(
+      flow.questions.map((question) => question.id === 2
+        ? {
+            ...question,
+            conditionJson: JSON.stringify({
+              kind: "option_equals",
+              rules: [
+                { optionId: 20, targetQuestionId: 3 },
+                { optionId: 21, targetQuestionId: 4 },
+              ],
+            }),
+            skipToQuestionId: 3,
+          }
+        : question),
+      [
+        ...flow.questions[1]!.options,
+        { id: 21, questionId: 2, label: "B", value: "b", order: 1, isOther: false, createdAt: "", updatedAt: "" },
+      ],
+    );
+    branched.questions.push({ ...branched.questions[2]!, id: 4, title: "Q4", order: 3, options: [] });
+
+    expect(getNextQuestionAfterOption(branched, 2, 20)?.id).toBe(3);
+    expect(getNextQuestionAfterOption(branched, 2, 21)?.id).toBe(4);
   });
 });

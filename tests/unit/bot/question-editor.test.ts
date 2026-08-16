@@ -46,7 +46,7 @@ vi.mock("../../../src/bot/telegram", () => ({
   sendMessage: mocks.sendMessage,
 }));
 
-import { showQuestionEditor } from "../../../src/bot/question-editor";
+import { showQuestionEditor, showQuestionList } from "../../../src/bot/question-editor";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
@@ -69,6 +69,15 @@ function callbackData(): string[] {
   return replyMarkup.inline_keyboard
     .flat()
     .map((button) => button.callback_data);
+}
+
+function buttonTexts(): string[] {
+  const replyMarkup = mocks.sendLongMessage.mock.calls[0]?.[3] as {
+    inline_keyboard: Array<Array<{ text: string }>>;
+  };
+  return replyMarkup.inline_keyboard
+    .flat()
+    .map((button) => button.text);
 }
 
 describe("question editor", () => {
@@ -115,6 +124,8 @@ describe("question editor", () => {
     expect(callbacks).toContain("qedit:option_add:10");
     expect(callbacks).toContain("qedit:option_up:21");
     expect(callbacks).toContain("qedit:option_delete_ask:21");
+    expect(buttonTexts()).toContain("✏️ 修改选项 1");
+    expect(buttonTexts()).toContain("📎 选项 1 附件");
   });
 
   it("keeps rating options fixed", async () => {
@@ -153,6 +164,28 @@ describe("question editor", () => {
     expect(callbacks).toEqual([
       "owner:duplicate:5",
       "qedit:list:5",
+      "owner:survey:5",
     ]);
+  });
+
+  it("paginates a long question list", async () => {
+    mocks.getSurveyById.mockResolvedValue({ id: 5, title: "长问卷", status: "draft" });
+    mocks.listQuestionsBySurvey.mockResolvedValue(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: index + 1,
+        order: index,
+        title: `第 ${index + 1} 题`,
+      })),
+    );
+
+    await showQuestionList(createContext(), 2, 99, 5);
+
+    const markup = mocks.sendMessage.mock.calls[0]?.[3] as {
+      inline_keyboard: Array<Array<{ callback_data: string }>>;
+    };
+    const callbacks = markup.inline_keyboard.flat().map((button) => button.callback_data);
+    expect(callbacks).toContain("qedit:view:8");
+    expect(callbacks).not.toContain("qedit:view:9");
+    expect(callbacks).toContain("qedit:list:5:8");
   });
 });

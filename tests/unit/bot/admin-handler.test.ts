@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   getUserByTelegramId: vi.fn(),
   getSurveyById: vi.fn(),
   getSurveyStatistics: vi.fn(),
+  getSurveyPortfolioStatistics: vi.fn(),
+  listSurveyPerformance: vi.fn(),
   listAllSurveys: vi.fn(),
 }));
 
@@ -20,6 +22,8 @@ vi.mock("../../../src/db/repositories/survey.repository", () => ({
 
 vi.mock("../../../src/services/statistics.service", () => ({
   getSurveyStatistics: mocks.getSurveyStatistics,
+  getSurveyPortfolioStatistics: mocks.getSurveyPortfolioStatistics,
+  listSurveyPerformance: mocks.listSurveyPerformance,
 }));
 
 import {
@@ -36,7 +40,7 @@ describe("admin survey list", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows contiguous display positions without exposing database ids", async () => {
+  it("shows a compact management home instead of every survey action", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 1,
       telegramUserId: 99,
@@ -78,9 +82,11 @@ describe("admin survey list", () => {
       .flat()
       .map((button) => button.text);
 
-    expect(buttonTexts).toContain("1. 你好（已发布）");
-    expect(buttonTexts).toContain("2. 第二份（草稿）");
-    expect(buttonTexts.join(" ")).not.toContain("#16");
+    expect(buttonTexts).toContain("📋 全部问卷");
+    expect(buttonTexts).toContain("🔑 授权与部署");
+    expect(buttonTexts).toContain("👤 体验创作者");
+    expect(buttonTexts).not.toContain("发放 365 天");
+    expect(buttonTexts).not.toContain("1. 你好（已发布）");
   });
 
   it("gives administrators response browsing and export actions", async () => {
@@ -138,12 +144,80 @@ describe("admin survey list", () => {
     };
     const buttons = body.reply_markup.inline_keyboard.flat();
     expect(buttons).toContainEqual({
-      text: "查看答卷",
+      text: "完成名单与答卷",
       callback_data: "owner:responses:16:0",
     });
     expect(buttons).toContainEqual({
       text: "CSV",
       callback_data: "owner:export:csv:16",
+    });
+  });
+
+  it("keeps aggregate metrics while simplifying individual survey rows", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 1,
+      telegramUserId: 99,
+      systemRole: "admin",
+    });
+    mocks.getSurveyPortfolioStatistics.mockResolvedValue({
+      totalSurveys: 18,
+      publishedSurveys: 12,
+      totalStarted: 90,
+      totalCompleted: 45,
+    });
+    mocks.listSurveyPerformance.mockResolvedValue({
+      total: 18,
+      items: [{
+        id: 16,
+        title: "报名问卷",
+        status: "published",
+        ownerName: "管理员",
+        totalStarted: 20,
+        totalCompleted: 12,
+        inProgress: 8,
+        completionRate: 60,
+        lastCompletedAt: "2026-08-15T15:30:00.000Z",
+      }],
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const handled = await handleAdminCallback(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+      },
+      {
+        id: "callback",
+        from: { id: 99 },
+        message: { message_id: 1, chat: { id: 2 } },
+        data: "admin:overview",
+      },
+    );
+
+    expect(handled).toBe(true);
+    const request = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/sendMessage"),
+    );
+    const body = JSON.parse(String((request?.[1] as RequestInit).body)) as {
+      text: string;
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
+    };
+    expect(body.text).toContain("✅ 45 份已完成 / 90 次开始");
+    expect(body.text).not.toContain("✅ 12 完成");
+    expect(body.reply_markup.inline_keyboard.flat()).toContainEqual({
+      text: "🟢 报名问卷",
+      callback_data: "admin:survey:16",
+    });
+    expect(body.reply_markup.inline_keyboard.flat()).toContainEqual({
+      text: "🔎 搜索问卷",
+      callback_data: "admin:survey_search:1",
     });
   });
 });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
   activateLicense: vi.fn(),
+  createLicense: vi.fn(),
   deactivateLicense: vi.fn(),
   validateLicense: vi.fn(),
 }));
@@ -63,6 +64,63 @@ describe("license API", () => {
 
     expect(response?.status).toBe(200);
     expect(body).toEqual({ ok: true, deactivated: true });
+  });
+
+  it("creates a timed license with the admin token", async () => {
+    serviceMocks.createLicense.mockResolvedValue({
+      license: {
+        publicId: "LIC-260815-ABCDEFGH",
+        licenseType: "timed",
+        startsAt: "2026-08-15T00:00:00.000Z",
+        expiresAt: "2026-09-14T00:00:00.000Z",
+        updatesUntil: "2026-09-14T00:00:00.000Z",
+        maxActivations: 1,
+        customerName: "客户甲",
+      },
+      licenseKey: "TSB-AAAAA-BBBBB-CCCCC-DDDDD",
+    });
+
+    const request = post("/api/v1/licenses/create", {
+      customerName: "客户甲",
+      period: 30,
+      maxActivations: 1,
+    });
+    request.headers.set("Authorization", "Bearer vendor-admin-secret");
+    const response = await handleLicenseApiRequest(
+      request,
+      {} as D1Database,
+      "vendor-admin-secret",
+    );
+    const body = (await response?.json()) as {
+      ok: boolean;
+      licenseKey: string;
+    };
+
+    expect(response?.status).toBe(200);
+    expect(body.licenseKey).toBe("TSB-AAAAA-BBBBB-CCCCC-DDDDD");
+    expect(serviceMocks.createLicense).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        licenseType: "timed",
+        usageDays: 30,
+        maxActivations: 1,
+        customerName: "客户甲",
+      }),
+    );
+  });
+
+  it("rejects license creation without the admin token", async () => {
+    const response = await handleLicenseApiRequest(
+      post("/api/v1/licenses/create", {
+        customerName: "客户甲",
+        period: "forever",
+      }),
+      {} as D1Database,
+      "vendor-admin-secret",
+    );
+
+    expect(response?.status).toBe(401);
+    expect(serviceMocks.createLicense).not.toHaveBeenCalled();
   });
 
   it("does not expose internal database errors", async () => {

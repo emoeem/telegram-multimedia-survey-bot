@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  decryptSurveyAccessCode,
+  encryptSurveyAccessCode,
   hashSurveyAccessCode,
   isWebhookSecretValid,
   verifySurveyAccessCode,
@@ -31,5 +33,13 @@ describe("isWebhookSecretValid", () => {
   it("accepts legacy plaintext survey access codes", async () => {
     await expect(verifySurveyAccessCode("legacy-pass", "legacy-pass")).resolves.toBe(true);
     await expect(verifySurveyAccessCode("legacy-pass", "wrong-pass")).resolves.toBe(false);
+  });
+
+  it("encrypts a viewable copy of a survey access code", async () => {
+    const encrypted = await encryptSurveyAccessCode("survey-pass", "bot-token");
+
+    expect(encrypted).toMatch(/^v1:/);
+    await expect(decryptSurveyAccessCode(encrypted, "bot-token")).resolves.toBe("survey-pass");
+    await expect(decryptSurveyAccessCode(encrypted, "other-token")).resolves.toBeNull();
   });
 });

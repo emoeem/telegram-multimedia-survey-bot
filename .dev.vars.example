@@ -8,3 +8,6 @@ LICENSE_SERVER_URL = "https://your-license-server.workers.dev"
 LICENSE_KEY = "replace-with-customer-license-key"
 INSTALLATION_ID = "replace-with-a-stable-random-installation-id"
 LICENSE_GRACE_SECONDS = "86400"
+
+# 只用于厂商授权中心的自动发证管理接口，客户部署不要配置。
+LICENSE_ADMIN_TOKEN = "replace-with-a-long-vendor-only-secret"

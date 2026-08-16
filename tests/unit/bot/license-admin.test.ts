@@ -39,10 +39,11 @@ import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 
-function context(): BotContext {
+function context(cache?: KVNamespace): BotContext {
   return {
     botToken: "token",
     db: {} as D1Database,
+    ...(cache ? { cache } : {}),
     session: {} as SurveySessionNamespace,
     builder: {} as SurveyBuilderNamespace,
     adminIds: [99],
@@ -207,6 +208,60 @@ describe("license admin commands", () => {
       LICENSE.publicId,
       "revoked",
       1,
+    );
+  });
+
+  it("starts a click-based license issue flow from the admin workspace", async () => {
+    const cache = {
+      get: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as KVNamespace;
+
+    const handled = await handleAdminCallback(context(cache), {
+      id: "callback-issue",
+      from: { id: 99 },
+      message: { message_id: 1, chat: { id: 2 } },
+      data: "license:create:timed:365",
+    });
+
+    expect(handled).toBe(true);
+    expect(cache.put).toHaveBeenCalledWith(
+      "license-issue:99",
+      JSON.stringify({ licenseType: "timed", days: 365 }),
+      { expirationTtl: 15 * 60 },
+    );
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).toContain(
+      "请直接发送客户名称",
+    );
+  });
+
+  it("issues the license after the administrator sends the customer name", async () => {
+    const cache = {
+      get: vi.fn().mockResolvedValue(JSON.stringify({
+        licenseType: "timed",
+        days: 365,
+      })),
+      put: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as KVNamespace;
+    mocks.createLicense.mockResolvedValue({
+      license: LICENSE,
+      licenseKey: "TSB-AAAAA-BBBBB-CCCCC-DDDDD",
+    });
+
+    const handled = await handleAdminMessage(context(cache), {
+      message_id: 1,
+      chat: { id: 2 },
+      from: { id: 99 },
+      text: "新客户",
+    });
+
+    expect(handled).toBe(true);
+    expect(cache.delete).toHaveBeenCalledWith("license-issue:99");
+    expect(mocks.createLicense).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ customerName: "新客户", usageDays: 365 }),
     );
   });
 });
