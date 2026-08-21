@@ -35,10 +35,11 @@ export async function handleTelegramUpdate(
     try {
       await handleTelegramMessage(ctx, update.message);
     } catch (error) {
+      console.error("Telegram message handler failed", error);
       await sendMessage(
         ctx.botToken,
         update.message.chat.id,
-        `⚠️ 处理失败：${error instanceof Error ? error.message : "未知错误"}`,
+        "⚠️ 处理失败，请稍后重试。",
       );
     }
     return;
@@ -67,10 +68,11 @@ export async function handleTelegramUpdate(
       }
       await handleTelegramCallback(ctx, update.callback_query);
     } catch (error) {
+      console.error("Telegram callback handler failed", error);
       await answerCallbackQuery(
         ctx.botToken,
         update.callback_query.id,
-        error instanceof Error ? error.message : "处理失败",
+        "处理失败，请稍后重试",
       );
     }
   }

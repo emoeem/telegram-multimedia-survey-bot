@@ -155,7 +155,7 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    if (event.cron === "* * * * *") {
+    if (event.cron === "*/10 * * * *") {
       try {
         const summary = await recoverStaleIdentityCardJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
         if (summary.requeued || summary.failed) console.warn("Recovered stale identity card jobs", summary);
