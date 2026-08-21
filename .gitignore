@@ -6,6 +6,8 @@ dist/
 .env
 *.log
 coverage/
+__pycache__/
+*.py[cod]
 customer-deployments/
 .license-admin.env
 .pending-license.json
