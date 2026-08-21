@@ -230,7 +230,10 @@ export function buildCsv(rows: ResponseRow[]): string {
   }
 
   const csvCell = (value: unknown): string => {
-    const text = value === null || value === undefined ? "" : String(value);
+    const rawText = value === null || value === undefined ? "" : String(value);
+    const text = /^[\t\r\n ]*[=+\-@]/.test(rawText)
+      ? `'${rawText}`
+      : rawText;
     return `"${text.replaceAll('"', '""')}"`;
   };
   const headers = Object.keys(rows[0] ?? {});

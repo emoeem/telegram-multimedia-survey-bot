@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   sendDocumentByFileId,
   sendPhoto,
+  sendPhotoAlbum,
   getBotUsername,
   splitTelegramText,
   syncDefaultBotCommands,
@@ -88,6 +89,22 @@ describe("telegram media requests", () => {
     await expect(
       sendPhoto("token", 42, "bad-file-id"),
     ).rejects.toThrow("Telegram sendPhoto failed: 400");
+  });
+
+  it("uploads two to ten report pages as a Telegram media group", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true,"result":[]}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await sendPhotoAlbum("token", 42, [
+      { bytes: new Uint8Array([1]), caption: "报告 1/2" },
+      { bytes: new Uint8Array([2]) },
+    ]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMediaGroup");
+    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(JSON.parse(String(body.get("media")))).toEqual([
+      { type: "photo", media: "attach://report_page_0", caption: "报告 1/2" },
+      { type: "photo", media: "attach://report_page_1" },
+    ]);
   });
 
   it("splits long previews below the Telegram message limit", () => {

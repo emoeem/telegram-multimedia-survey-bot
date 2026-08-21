@@ -63,7 +63,7 @@ function createContext(): BotContext {
 }
 
 function callbackData(): string[] {
-  const replyMarkup = mocks.sendLongMessage.mock.calls[0]?.[3] as {
+  const replyMarkup = mocks.sendMessage.mock.calls[0]?.[3] as {
     inline_keyboard: Array<Array<{ callback_data: string }>>;
   };
   return replyMarkup.inline_keyboard
@@ -72,7 +72,7 @@ function callbackData(): string[] {
 }
 
 function buttonTexts(): string[] {
-  const replyMarkup = mocks.sendLongMessage.mock.calls[0]?.[3] as {
+  const replyMarkup = mocks.sendMessage.mock.calls[0]?.[3] as {
     inline_keyboard: Array<Array<{ text: string }>>;
   };
   return replyMarkup.inline_keyboard

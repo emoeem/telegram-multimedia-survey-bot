@@ -45,6 +45,7 @@ type SessionAction =
     };
 
 const STATE_KEY = "survey-session";
+const COMPLETED_SESSION_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export class SurveySessionDO extends DurableObject {
   private async getState(): Promise<SurveySessionState | null> {
@@ -76,6 +77,7 @@ export class SurveySessionDO extends DurableObject {
     const state = await this.getState();
 
     if (action.action === "init") {
+      await this.ctx.storage.deleteAlarm();
       const nextState =
         state?.status === "active"
           ? {
@@ -173,9 +175,16 @@ export class SurveySessionDO extends DurableObject {
         lastActivityAt: new Date().toISOString(),
       };
       await this.putState(nextState);
+      await this.ctx.storage.setAlarm(
+        Date.now() + COMPLETED_SESSION_RETENTION_MS,
+      );
       return Response.json(nextState);
     }
 
     return Response.json({ error: "unknown_action" }, { status: 400 });
+  }
+
+  async alarm(): Promise<void> {
+    await this.ctx.storage.deleteAll();
   }
 }

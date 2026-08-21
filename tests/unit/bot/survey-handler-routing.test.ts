@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getUserByTelegramId: vi.fn(),
   getActiveResponseByUser: vi.fn(),
+  getResponseById: vi.fn(),
+  getSurveyResultVisualSettings: vi.fn(),
+  requestConfiguredResultVisual: vi.fn(),
   getBuilderState: vi.fn(),
   handleBuilderMessage: vi.fn(),
   listMySurveys: vi.fn(),
@@ -21,6 +24,16 @@ vi.mock("../../../src/db/repositories/response.repository", async (importOrigina
     typeof import("../../../src/db/repositories/response.repository")
   >()),
   getActiveResponseByUser: mocks.getActiveResponseByUser,
+  getResponseById: mocks.getResponseById,
+}));
+
+vi.mock("../../../src/db/repositories/survey-result-visual-settings.repository", () => ({
+  getSurveyResultVisualSettings: mocks.getSurveyResultVisualSettings,
+}));
+
+vi.mock("../../../src/services/result-visual.service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../src/services/result-visual.service")>()),
+  requestConfiguredResultVisual: mocks.requestConfiguredResultVisual,
 }));
 
 vi.mock("../../../src/services/survey-builder.service", async (importOriginal) => ({
@@ -46,7 +59,10 @@ vi.mock("../../../src/db/repositories/creator-trial.repository", () => ({
   hasActiveCreatorTrial: mocks.hasActiveCreatorTrial,
 }));
 
-import { handleTelegramMessage } from "../../../src/bot/survey-handler";
+import {
+  handleTelegramCallback,
+  handleTelegramMessage,
+} from "../../../src/bot/survey-handler";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
@@ -167,6 +183,63 @@ describe("survey message routing", () => {
     });
   });
 
+  it("queues a participant-owned result card and edits the existing completion UI", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      systemRole: "participant",
+    });
+    mocks.getResponseById.mockResolvedValue({
+      id: 31,
+      surveyId: 40,
+      userId: 7,
+      status: "completed",
+    });
+    mocks.getSurveyResultVisualSettings.mockResolvedValue({
+      surveyId: 40,
+      enabled: true,
+      autoGenerate: false,
+      templateId: 5,
+      updatedAt: "now",
+    });
+    mocks.requestConfiguredResultVisual.mockResolvedValue({
+      status: "queued",
+      job: { id: 9 },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramCallback(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+      },
+      {
+        id: "callback",
+        from: { id: 88 },
+        message: { message_id: 500, chat: { id: 3 } },
+        data: "rv:generate:31",
+      },
+    );
+
+    expect(mocks.requestConfiguredResultVisual).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ responseId: 31, chatId: 3, requestedBy: 7 }),
+    );
+    const editCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
+    expect(editCall).toBeDefined();
+    expect(JSON.parse(String((editCall?.[1] as RequestInit).body))).toMatchObject({
+      chat_id: 3,
+      message_id: 500,
+      text: "🎨 正在生成你的结果卡。生成完成后会直接发送 PNG 图片。",
+    });
+  });
+
   it("rejects JSON import before an ordinary participant enters the builder", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,
@@ -235,5 +308,48 @@ describe("survey message routing", () => {
     expect(body.text).not.toContain("/create");
     expect(body.text).not.toContain("/import");
     expect(body.text).toContain("@meiebhiebot");
+  });
+
+  it("edits the current public survey list message when changing pages", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      systemRole: "participant",
+    });
+    const statement = {
+      bind: vi.fn(() => statement),
+      first: vi.fn(async () => ({ count: 9 })),
+      all: vi.fn(async () => ({
+        results: [{ id: 9, title: "第九份问卷", description: null, access_code: null, completed_count: 0 }],
+      })),
+    };
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramCallback(
+      {
+        botToken: "token",
+        db: { prepare: vi.fn(() => statement) } as unknown as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+      },
+      {
+        id: "callback-1",
+        from: { id: 88 },
+        data: "public:list:1:latest",
+        message: { message_id: 100, chat: { id: 3 } },
+      },
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/editMessageText");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      chat_id: 3,
+      message_id: 100,
+    });
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/answerCallbackQuery");
   });
 });

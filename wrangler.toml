@@ -4,6 +4,12 @@ compatibility_date = "2026-08-14"
 workers_dev = true
 preview_urls = true
 
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = false
+
+
 [vars]
 ENVIRONMENT = "production"
 APP_VERSION = "0.3.0"
@@ -27,14 +33,15 @@ queue = "telegram-survey-export"
 
 [[queues.consumers]]
 queue = "telegram-survey-export"
-max_batch_size = 5
+max_batch_size = 1
 max_batch_timeout = 5
+max_concurrency = 3
 
 [browser]
 binding = "BROWSER"
 
 [triggers]
-crons = ["15 1 * * *"]
+crons = ["* * * * *", "15 1 * * *"]
 
 [[durable_objects.bindings]]
 name = "SESSION"
@@ -44,6 +51,14 @@ class_name = "SurveySessionDO"
 name = "BUILDER"
 class_name = "SurveyBuilderDO"
 
+[[durable_objects.bindings]]
+name = "UI"
+class_name = "UiSessionDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UiSessionDO"]

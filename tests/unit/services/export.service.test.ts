@@ -24,6 +24,21 @@ describe("export service", () => {
     expect(csv).toContain('"Alice"');
   });
 
+  it("neutralizes spreadsheet formulas in CSV cells", () => {
+    const csv = buildCsv([
+      {
+        response_id: 1,
+        status: "completed",
+        started_at: "",
+        completed_at: null,
+        "=危险标题": "\t=HYPERLINK(\"https://example.com\")",
+      },
+    ]);
+
+    expect(csv).toContain('"\'=危险标题"');
+    expect(csv).toContain('"\'\t=HYPERLINK(\"\"https://example.com\"\")"');
+  });
+
   it("builds a zip export", () => {
     const csv = "id,name\n1,Alice";
     const zip = buildExportZip(csv, [

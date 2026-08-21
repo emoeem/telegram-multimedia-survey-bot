@@ -101,6 +101,27 @@ export async function getSurveyById(
   return row ? mapSurvey(row) : null;
 }
 
+export async function updateSurveyResponsePolicy(
+  db: D1Database,
+  surveyId: number,
+  allowMultipleResponses: boolean,
+  maxResponsesPerUser = 0,
+): Promise<Survey | null> {
+  const timestamp = nowIso();
+  await db.prepare(
+    `UPDATE surveys
+     SET allow_multiple_responses = ?, max_responses_per_user = ?,
+         version = version + 1, updated_at = ?
+     WHERE id = ?`,
+  ).bind(
+    allowMultipleResponses ? 1 : 0,
+    allowMultipleResponses ? Math.max(0, Math.floor(maxResponsesPerUser)) : 1,
+    timestamp,
+    surveyId,
+  ).run();
+  return getSurveyById(db, surveyId);
+}
+
 export async function listSurveysByOwner(
   db: D1Database,
   ownerId: number,

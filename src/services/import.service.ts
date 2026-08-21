@@ -631,11 +631,12 @@ export async function saveImportedSurvey(
       db
         .prepare(
           `INSERT INTO media_assets (
-            media_type, telegram_file_id, telegram_file_unique_id,
+            asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
             mime_type, file_name, file_size, width, height, duration,
             r2_key, created_at, updated_at
           )
           SELECT
+            'survey',
             json_extract(item.value, '$.mediaType'),
             json_extract(item.value, '$.telegramFileId'),
             json_extract(item.value, '$.telegramFileUniqueId'),

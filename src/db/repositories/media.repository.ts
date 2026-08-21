@@ -1,9 +1,10 @@
-import type { MediaAsset, MediaType } from "../schema";
+import type { MediaAsset, MediaAssetScope, MediaType } from "../schema";
 
 const OPTION_ID_BATCH_SIZE = 90;
 
 interface MediaAssetRow {
   id: number;
+  asset_scope?: string;
   media_type: string;
   telegram_file_id: string | null;
   telegram_file_unique_id: string | null;
@@ -21,6 +22,7 @@ interface MediaAssetRow {
 function mapMediaAsset(row: MediaAssetRow): MediaAsset {
   return {
     id: row.id,
+    scope: (row.asset_scope ?? "legacy") as MediaAssetScope,
     mediaType: row.media_type as MediaType,
     telegramFileId: row.telegram_file_id,
     telegramFileUniqueId: row.telegram_file_unique_id,
@@ -39,6 +41,7 @@ function mapMediaAsset(row: MediaAssetRow): MediaAsset {
 export async function createMediaAsset(
   db: D1Database,
   input: {
+    scope?: MediaAssetScope;
     mediaType: MediaType;
     telegramFileId?: string | null;
     telegramFileUniqueId?: string | null;
@@ -55,12 +58,13 @@ export async function createMediaAsset(
   const result = await db
     .prepare(
       `INSERT INTO media_assets (
-        media_type, telegram_file_id, telegram_file_unique_id,
+        asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
         mime_type, file_name, file_size, width, height, duration,
         r2_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
+      input.scope ?? "survey",
       input.mediaType,
       input.telegramFileId ?? null,
       input.telegramFileUniqueId ?? null,

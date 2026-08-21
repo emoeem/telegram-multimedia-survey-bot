@@ -1,5 +1,6 @@
 import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
+import { UiSessionDO } from "./durable-objects/ui-session";
 import { handleTelegramUpdate } from "./bot/router";
 import { syncDefaultBotCommands } from "./bot/telegram";
 import type { BotContext } from "./bot/types";
@@ -9,6 +10,10 @@ import { handleLicenseApiRequest } from "./http/license-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { handleExportQueue } from "./services/export-worker.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
+import { runDatabaseMaintenance } from "./services/database-maintenance.service";
+import { recoverStaleIdentityCardJobs } from "./services/identity-card-job-recovery.service";
+import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
+export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 
 export interface Env {
@@ -16,6 +21,7 @@ export interface Env {
   CACHE: KVNamespace;
   EXPORT_QUEUE: Queue;
   SESSION: DurableObjectNamespace<SurveySessionDO>;
+  UI: DurableObjectNamespace<UiSessionDO>;
   BUILDER: DurableObjectNamespace<SurveyBuilderDO>;
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
@@ -31,7 +37,7 @@ export interface Env {
   BROWSER: BrowserWorker;
 }
 
-export { SurveySessionDO, SurveyBuilderDO };
+export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
 
 const commandMenuCacheKey = "telegram-command-menu:v2";
 
@@ -148,7 +154,28 @@ export default {
     await handleExportQueue(batch, env);
   },
 
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    if (event.cron === "* * * * *") {
+      try {
+        const summary = await recoverStaleIdentityCardJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+        if (summary.requeued || summary.failed) console.warn("Recovered stale identity card jobs", summary);
+      } catch (error) {
+        console.error("Identity card job recovery failed", error);
+      }
+      try {
+        const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+        if (summary.requeued || summary.failed) console.warn("Recovered stale result visual jobs", summary);
+      } catch (error) {
+        console.error("Result visual job recovery failed", error);
+      }
+      return;
+    }
+    try {
+      const summary = await runDatabaseMaintenance(env.DB);
+      console.info("Database maintenance complete", summary);
+    } catch (error) {
+      console.error("Database maintenance failed", error);
+    }
     if (!env.LICENSE_ADMIN_TOKEN) return;
     const adminIds = env.ADMIN_IDS.split(",").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0);
     await sendCreatorTrialExpiryReminders(env.DB, env.CACHE, env.BOT_TOKEN, adminIds);

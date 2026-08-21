@@ -2,15 +2,30 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getUserByTelegramId: vi.fn(),
+  getUserById: vi.fn(),
+  listBotUsers: vi.fn(),
+  setUserBan: vi.fn(),
+  cancelActiveResponsesForUser: vi.fn(),
   getSurveyById: vi.fn(),
   getSurveyStatistics: vi.fn(),
   getSurveyPortfolioStatistics: vi.fn(),
   listSurveyPerformance: vi.fn(),
+  handleImageGeneratorAdminMessage: vi.fn(),
+  handleImageGeneratorCallback: vi.fn(),
+  handleResultVisualAdminMessage: vi.fn(),
+  handleResultVisualAdminCallback: vi.fn(),
   listAllSurveys: vi.fn(),
+  getIdentityCardAccessSetting: vi.fn(),
+  setIdentityCardAccessCode: vi.fn(),
+  clearIdentityCardAccessCode: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", () => ({
   getUserByTelegramId: mocks.getUserByTelegramId,
+  getUserById: mocks.getUserById,
+  listBotUsers: mocks.listBotUsers,
+  setUserBan: mocks.setUserBan,
+  cancelActiveResponsesForUser: mocks.cancelActiveResponsesForUser,
 }));
 
 vi.mock("../../../src/db/repositories/survey.repository", () => ({
@@ -24,6 +39,22 @@ vi.mock("../../../src/services/statistics.service", () => ({
   getSurveyStatistics: mocks.getSurveyStatistics,
   getSurveyPortfolioStatistics: mocks.getSurveyPortfolioStatistics,
   listSurveyPerformance: mocks.listSurveyPerformance,
+}));
+
+vi.mock("../../../src/bot/image-generator-handler", () => ({
+  handleImageGeneratorAdminMessage: mocks.handleImageGeneratorAdminMessage,
+  handleImageGeneratorCallback: mocks.handleImageGeneratorCallback,
+}));
+
+vi.mock("../../../src/bot/result-visual-admin-handler", () => ({
+  handleResultVisualAdminMessage: mocks.handleResultVisualAdminMessage,
+  handleResultVisualAdminCallback: mocks.handleResultVisualAdminCallback,
+}));
+
+vi.mock("../../../src/db/repositories/feature-access.repository", () => ({
+  getIdentityCardAccessSetting: mocks.getIdentityCardAccessSetting,
+  setIdentityCardAccessCode: mocks.setIdentityCardAccessCode,
+  clearIdentityCardAccessCode: mocks.clearIdentityCardAccessCode,
 }));
 
 import {
@@ -83,10 +114,91 @@ describe("admin survey list", () => {
       .map((button) => button.text);
 
     expect(buttonTexts).toContain("📋 全部问卷");
+    expect(buttonTexts).toContain("🎨 视觉模板");
+    expect(buttonTexts).toContain("👥 Bot 用户");
     expect(buttonTexts).toContain("🔑 授权与部署");
     expect(buttonTexts).toContain("👤 体验创作者");
+    expect(buttonTexts).toContain("🔐 图片生成密码");
     expect(buttonTexts).not.toContain("发放 365 天");
     expect(buttonTexts).not.toContain("1. 你好（已发布）");
+  });
+
+  it("lets an administrator configure the password that unlocks image generation", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
+    mocks.getIdentityCardAccessSetting.mockResolvedValue(null);
+    const cache = { get: vi.fn(), put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx: BotContext = { botToken: "token", db: {} as D1Database, cache, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue };
+
+    await handleAdminCallback(ctx, {
+      id: "set", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:identity_password_set",
+    });
+    expect(cache.put).toHaveBeenCalledWith("admin-identity-card-password:99", "1", { expirationTtl: 15 * 60 });
+
+    (cache.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce("1");
+    await handleAdminMessage(ctx, {
+      message_id: 2, chat: { id: 2 }, from: { id: 99 }, text: "safe-password",
+    });
+    expect(mocks.setIdentityCardAccessCode).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^sha256:/));
+  });
+
+  it("lists only users who started the bot with compact paginated details", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
+    mocks.listBotUsers.mockResolvedValue({
+      total: 1,
+      users: [{ telegramUserId: 123, firstName: "Alice", lastName: null, username: "alice", systemRole: "participant", botStartedAt: "2026-08-19T10:00:00.000Z", updatedAt: "2026-08-19T10:01:00.000Z" }],
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(handleAdminCallback({ botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue }, {
+      id: "callback", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:users:0",
+    })).resolves.toBe(true);
+    const editCall = fetchMock.mock.calls.find(([url]) => String(url).includes("editMessageText"));
+    const body = JSON.parse(String((editCall?.[1] as RequestInit).body)) as { text: string };
+    expect(body.text).toContain("已启动机器人：1 人");
+    expect(body.text).toContain("ID：123 · @alice");
+  });
+
+  it("allows banning a non-admin user and cancels active responses", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
+    mocks.getUserById.mockResolvedValue({ id: 7, telegramUserId: 123, firstName: "Alice", username: "alice", systemRole: "participant", bannedAt: null, botStartedAt: "2026-08-19T10:00:00.000Z", updatedAt: "2026-08-19T10:01:00.000Z" });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const handled = await handleAdminCallback({ botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue }, {
+      id: "callback", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:user_ban:7",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.setUserBan).toHaveBeenCalledWith(expect.anything(), 7, { banned: true, bannedBy: 1, reason: "管理员操作" });
+    expect(mocks.cancelActiveResponsesForUser).toHaveBeenCalledWith(expect.anything(), 7);
+  });
+
+  it("routes an admin background photo to the visual template editor before survey input", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 1,
+      telegramUserId: 99,
+      systemRole: "admin",
+    });
+    mocks.handleResultVisualAdminMessage.mockResolvedValue(true);
+    const ctx: BotContext = {
+      botToken: "token",
+      db: {} as D1Database,
+      cache: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace,
+      session: {} as SurveySessionNamespace,
+      builder: {} as SurveyBuilderNamespace,
+      adminIds: [99],
+      exportQueue: {} as Queue,
+    };
+
+    await expect(handleAdminMessage(ctx, {
+      message_id: 2,
+      chat: { id: 3 },
+      from: { id: 99 },
+      photo: [{ file_id: "background-file", file_unique_id: "background-unique", width: 1080, height: 1920 }],
+    })).resolves.toBe(true);
+
+    expect(mocks.handleImageGeneratorAdminMessage).toHaveBeenCalledOnce();
+    expect(mocks.handleResultVisualAdminMessage).toHaveBeenCalledOnce();
   });
 
   it("gives administrators response browsing and export actions", async () => {
@@ -132,11 +244,11 @@ describe("admin survey list", () => {
     );
 
     expect(handled).toBe(true);
-    const sendMessageCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/sendMessage"),
+    const editMessageCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("/editMessageText"),
     );
     const body = JSON.parse(
-      String((sendMessageCall?.[1] as RequestInit | undefined)?.body),
+      String((editMessageCall?.[1] as RequestInit | undefined)?.body),
     ) as {
       reply_markup: {
         inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
@@ -150,6 +262,10 @@ describe("admin survey list", () => {
     expect(buttons).toContainEqual({
       text: "CSV",
       callback_data: "owner:export:csv:16",
+    });
+    expect(buttons).toContainEqual({
+      text: "🎨 结果卡",
+      callback_data: "visual:settings:16",
     });
   });
 
@@ -203,7 +319,7 @@ describe("admin survey list", () => {
 
     expect(handled).toBe(true);
     const request = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/sendMessage"),
+      String(url).includes("/editMessageText"),
     );
     const body = JSON.parse(String((request?.[1] as RequestInit).body)) as {
       text: string;
@@ -215,9 +331,49 @@ describe("admin survey list", () => {
       text: "🟢 报名问卷",
       callback_data: "admin:survey:16",
     });
+    expect(body).toMatchObject({ chat_id: 2, message_id: 1 });
     expect(body.reply_markup.inline_keyboard.flat()).toContainEqual({
       text: "🔎 搜索问卷",
       callback_data: "admin:survey_search:1",
     });
+  });
+
+  it("edits the same message for admin directory pagination", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
+    mocks.listSurveyPerformance.mockResolvedValue({
+      total: 17,
+      items: [{ id: 16, title: "第十七份", status: "published", ownerName: "管理员" }],
+    });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleAdminCallback(
+      { botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue },
+      { id: "callback", from: { id: 99 }, message: { message_id: 500, chat: { id: 2 } }, data: "admin:survey_list:1:0" },
+    );
+
+    const edit = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
+    expect(edit).toBeDefined();
+    expect(JSON.parse(String(edit?.[1]?.body))).toMatchObject({ chat_id: 2, message_id: 500 });
+  });
+
+  it("uses the same message for delete confirmation", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
+    mocks.getSurveyById.mockResolvedValue({ id: 16, title: "待删除", status: "draft" });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleAdminCallback(
+      { botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue },
+      { id: "callback", from: { id: 99 }, message: { message_id: 500, chat: { id: 2 } }, data: "admin:delete_ask:16" },
+    );
+
+    const edit = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
+    expect(edit).toBeDefined();
+    expect(JSON.parse(String(edit?.[1]?.body))).toMatchObject({ chat_id: 2, message_id: 500 });
   });
 });

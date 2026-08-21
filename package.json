@@ -23,6 +23,7 @@
     "wrangler": "^4.20.0"
   },
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "fflate": "^0.8.3",
     "xlsx": "^0.18.5"
   }

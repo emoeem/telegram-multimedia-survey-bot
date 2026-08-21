@@ -66,6 +66,7 @@ import {
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import type { SurveyBuilderState } from "../durable-objects/survey-builder";
 import { showQuestionEditor } from "./question-editor";
+import { renderUiScreen } from "./ui";
 
 interface ImportReviewState {
   rawJson: string;
@@ -74,6 +75,14 @@ interface ImportReviewState {
 
 function importReviewKey(userId: number): string {
   return `import-review:${userId}`;
+}
+
+export async function clearBuilderInteractionState(ctx: BotContext, userId: number): Promise<void> {
+  await Promise.all([
+    ctx.cache?.delete(importReviewKey(userId)),
+    // The Durable Object is the authoritative builder wizard state.
+    resetBuilder(ctx.builder, userId).catch(() => undefined),
+  ]);
 }
 
 async function showImportReview(
@@ -267,12 +276,12 @@ function optionEntryKeyboard(): InlineKeyboardMarkup {
 function messageHasMedia(message: TelegramMessage): boolean {
   return Boolean(
     message.photo ||
-      message.video ||
-      message.audio ||
-      message.voice ||
-      message.animation ||
-      message.sticker ||
-      message.document,
+    message.video ||
+    message.audio ||
+    message.voice ||
+    message.animation ||
+    message.sticker ||
+    message.document,
   );
 }
 
@@ -283,12 +292,12 @@ function hasDraftContent(state: SurveyBuilderState | null): boolean {
 
   return Boolean(
     state.activeDraft ||
-      state.draftSurveyId ||
-      state.surveyTitle ||
-      state.surveyDescription ||
-      state.questions.length > 0 ||
-      state.currentQuestionType ||
-      state.currentQuestionTitle,
+    state.draftSurveyId ||
+    state.surveyTitle ||
+    state.surveyDescription ||
+    state.questions.length > 0 ||
+    state.currentQuestionType ||
+    state.currentQuestionTitle,
   );
 }
 
@@ -344,68 +353,57 @@ async function showBuilderStep(
   chatId: number,
   state: SurveyBuilderState,
 ): Promise<void> {
+  const render = (text: string, replyMarkup?: InlineKeyboardMarkup) =>
+    renderUiScreen(ctx, chatId, state.userId, {
+      screen: "builder",
+      text,
+      ...(replyMarkup ? { replyMarkup } : {}),
+      state: { step: state.step, questionCount: state.questions.length },
+    });
   if (state.step === "survey_title") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       "问卷设置 1/2 · 问卷标题\n\n请输入问卷标题：",
       builderNavKeyboard(false),
     );
   } else if (state.step === "survey_description") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       "问卷设置 2/2 · 问卷说明\n\n可输入问卷描述，也可以直接跳过：",
       descriptionKeyboard(),
     );
   } else if (state.step === "question_type") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 1/4 选择题型\n\n已完成 ${state.questions.length} 题，请选择下一道题的题型：`,
       buildQuestionTypeKeyboard(Boolean(state.appendSurveyId)),
     );
   } else if (state.step === "question_title") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 2/4 设置题干\n\n请输入题目内容。也可以直接发送带说明文字的媒体，说明文字将作为题目：`,
       builderNavKeyboard(true),
     );
   } else if (state.step === "question_required") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 3/4 是否必答？\n\n选择“可跳过”后，填写者可不回答这道题。`,
       questionRequiredKeyboard(),
     );
   } else if (state.step === "question_media") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 4/4 题目附件（可选）\n\n${state.currentMediaAssetId ? "已附加媒体；可继续，或发送新的媒体替换它。" : "可发送一张图片、视频、音频或文件作为题目附件；不需要附件就点击继续。"}`,
       questionMediaKeyboard(),
     );
   } else if (state.step === "question_options") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 4/4 填写选项\n\n输入选项，每行一个；也可发送带说明文字的媒体，说明文字会作为该选项。至少需要两个选项。`,
       optionEntryKeyboard(),
     );
   } else if (state.step === "matrix_columns") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       `第 ${state.questions.length + 1} 题 · 4/4 设置矩阵列\n\n请输入可选列，每行一个，例如：满意\n一般\n不满意。至少两个列。`,
       optionEntryKeyboard(),
     );
   } else if (state.step === "import") {
-    await sendMessage(ctx.botToken, chatId, "请发送 survey.json 文件。");
+    await render("请发送 survey.json 文件。");
   } else {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
+    await render(
       "当前创建步骤已结束。发送 /continue 继续草稿，或 /create 新建问卷。",
     );
   }
@@ -423,14 +421,14 @@ async function completeQuestionSetup(
     state.currentQuestionType === "matrix"
   ) {
     await startQuestionOptions(ctx.builder, userId);
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      state.currentQuestionType === "matrix"
-        ? "请输入矩阵的行，每行一个，例如：服务态度、响应速度、解决效果。"
-        : "请输入选项，每行一个；也可发送带说明文字的图片、音频、视频或文件，直接创建带媒体的选项。",
-      optionEntryKeyboard(),
-    );
+    await renderUiScreen(ctx, chatId, userId, {
+      screen: "builder",
+      text:
+        state.currentQuestionType === "matrix"
+          ? "请输入矩阵的行，每行一个，例如：服务态度、响应速度、解决效果。"
+          : "请输入选项，每行一个；也可发送带说明文字的图片、音频、视频或文件，直接创建带媒体的选项。",
+      replyMarkup: optionEntryKeyboard(),
+    });
     return;
   }
 
@@ -444,12 +442,11 @@ async function completeQuestionSetup(
   }
 
   const nextState = await finishOptions(ctx.builder, userId);
-  await sendMessage(
-    ctx.botToken,
-    chatId,
-    `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
-    buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
-  );
+  await renderUiScreen(ctx, chatId, userId, {
+    screen: "builder",
+    text: `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
+    replyMarkup: buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
+  });
 }
 
 async function saveCurrentDraft(
@@ -504,22 +501,20 @@ export async function startBuilder(
 ): Promise<void> {
   const state = await initBuilder(ctx.builder, userId);
   if (hasDraftContent(state) && state.step !== "idle") {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "你已有未完成的问卷草稿。请选择继续或放弃后再新建：",
-      cancelDraftKeyboard(),
-    );
+    await renderUiScreen(ctx, chatId, userId, {
+      screen: "builder_draft_conflict",
+      text: "你已有未完成的问卷草稿。请选择继续或放弃后再新建：",
+      replyMarkup: cancelDraftKeyboard(),
+    });
     return;
   }
 
   await startBuilderDraft(ctx.builder, userId);
-  await sendMessage(
-    ctx.botToken,
-    chatId,
-    "问卷设置 1/2 · 问卷标题\n\n请输入问卷标题：",
-    builderNavKeyboard(false),
-  );
+  await renderUiScreen(ctx, chatId, userId, {
+    screen: "builder",
+    text: "问卷设置 1/2 · 问卷标题\n\n请输入问卷标题：",
+    replyMarkup: builderNavKeyboard(false),
+  });
 }
 
 export async function handleBuilderMessage(
@@ -562,11 +557,11 @@ export async function handleBuilderMessage(
       const user = await getUserByTelegramId(ctx.db, userId);
       state = user
         ? await restoreLatestBuilderDraft(
-            ctx.db,
-            ctx.builder,
-            userId,
-            user.id,
-          )
+          ctx.db,
+          ctx.builder,
+          userId,
+          user.id,
+        )
         : null;
     }
 
@@ -799,9 +794,9 @@ export async function handleBuilderMessage(
                 : {}),
               ...(media.telegramFileUniqueId
                 ? {
-                    telegramFileUniqueId:
-                      media.telegramFileUniqueId,
-                  }
+                  telegramFileUniqueId:
+                    media.telegramFileUniqueId,
+                }
                 : {}),
               ...(media.mimeType ? { mimeType: media.mimeType } : {}),
               ...(media.fileName ? { fileName: media.fileName } : {}),
@@ -861,10 +856,10 @@ export async function handleBuilderMessage(
           `内部编号：${surveyId}`,
           ...(imported.importWarnings?.length
             ? [
-                "",
-                `自动修复：${imported.importWarnings.length} 项`,
-                ...imported.importWarnings,
-              ]
+              "",
+              `自动修复：${imported.importWarnings.length} 项`,
+              ...imported.importWarnings,
+            ]
             : []),
           "",
           "发送 /my_surveys 查看并发布。",
@@ -1486,12 +1481,12 @@ export async function handleBuilderCallback(
       if (nextState.step === "matrix_columns") {
         await showBuilderStep(ctx, chatId, nextState);
       } else {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
-        buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
-      );
+        await sendMessage(
+          ctx.botToken,
+          chatId,
+          `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
+          buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
+        );
       }
       await answerCallbackQuery(ctx.botToken, callback.id);
     } catch (error) {

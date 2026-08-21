@@ -4,7 +4,7 @@ import {
   listAllSurveys,
   updateSurveyStatus,
 } from "../db/repositories/survey.repository";
-import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
+import { cancelActiveResponsesForUser, getUserById, getUserByTelegramId, listBotUsers, setUserBan, upsertUser } from "../db/repositories/user.repository";
 import {
   grantCreatorTrial,
   listActiveCreatorTrials,
@@ -39,6 +39,19 @@ import type {
   SoftwareLicenseType,
 } from "../db/schema";
 import { sendLongMessage } from "./telegram";
+import { renderUiScreen } from "./ui";
+import { renderScreen } from "./ui-message-controller";
+import {
+  handleResultVisualAdminCallback,
+  handleResultVisualAdminMessage,
+} from "./result-visual-admin-handler";
+import { handleImageGeneratorAdminMessage, handleImageGeneratorCallback } from "./image-generator-handler";
+import {
+  clearIdentityCardAccessCode,
+  getIdentityCardAccessSetting,
+  setIdentityCardAccessCode,
+} from "../db/repositories/feature-access.repository";
+import { hashSurveyAccessCode } from "../core/security";
 
 const surveyStatusLabels = {
   draft: "草稿",
@@ -80,6 +93,22 @@ function adminSurveySearchInputKey(userId: number): string {
   return `admin-survey-search-input:${userId}`;
 }
 
+function adminUserSearchKey(userId: number): string { return `admin-user-search:${userId}`; }
+function adminUserSearchInputKey(userId: number): string { return `admin-user-search-input:${userId}`; }
+function identityCardPasswordInputKey(userId: number): string { return `admin-identity-card-password:${userId}`; }
+
+export async function clearAdminInteractionState(ctx: BotContext, userId: number): Promise<void> {
+  await Promise.all([
+    ctx.cache?.delete(adminSurveySearchInputKey(userId)),
+    ctx.cache?.delete(adminSurveySearchKey(userId)),
+    ctx.cache?.delete(adminUserSearchKey(userId)),
+    ctx.cache?.delete(adminUserSearchInputKey(userId)),
+    ctx.cache?.delete(licenseIssueStateKey(userId)),
+    ctx.cache?.delete(creatorTrialIssueStateKey(userId)),
+    ctx.cache?.delete(identityCardPasswordInputKey(userId)),
+  ]);
+}
+
 async function getCreatorTrialIssueState(
   ctx: BotContext,
   userId: number,
@@ -118,15 +147,17 @@ async function getLicenseIssueState(
   }
 }
 
-async function showAdminHome(ctx: BotContext, chatId: number): Promise<void> {
+async function showAdminHome(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  messageId?: number,
+): Promise<void> {
   const licenseAdminEnabled = ctx.licenseAdminEnabled !== false;
-  await sendMessage(
-    ctx.botToken,
-    chatId,
-    licenseAdminEnabled
+  const text = licenseAdminEnabled
       ? "管理员中心\n\n在这里管理问卷、查看答卷、导出数据、软件授权和体验创作者。"
-      : "管理员中心\n\n在这里管理问卷、查看答卷和导出数据。",
-    {
+      : "管理员中心\n\n在这里管理问卷、查看答卷和导出数据。";
+  const replyMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [
         [
           { text: "📋 全部问卷", callback_data: "admin:surveys" },
@@ -134,6 +165,12 @@ async function showAdminHome(ctx: BotContext, chatId: number): Promise<void> {
         [
           { text: "📊 问卷统计总览", callback_data: "admin:overview" },
         ],
+        [{ text: "👥 Bot 用户", callback_data: "admin:users:0" }],
+        [
+          { text: "🎨 视觉模板", callback_data: "visual:list" },
+        ],
+        [{ text: "📊 报告生成器", callback_data: "generator:list" }],
+        [{ text: "🔐 图片生成密码", callback_data: "admin:identity_password" }],
         ...(licenseAdminEnabled
           ? [
               [{ text: "🔑 授权与部署", callback_data: "admin:licenses" }],
@@ -141,8 +178,111 @@ async function showAdminHome(ctx: BotContext, chatId: number): Promise<void> {
             ]
           : []),
       ],
-    },
-  );
+  };
+  if (messageId !== undefined) {
+    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_HOME", text, replyMarkup });
+    return;
+  }
+  await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+}
+
+async function showIdentityCardPasswordSettings(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  messageId?: number,
+): Promise<void> {
+  const setting = await getIdentityCardAccessSetting(ctx.db);
+  const text = setting
+    ? `🔐 图片生成密码\n\n状态：已开启\n普通用户首次制作身份卡时必须输入密码；改密会让旧授权自动失效。\n最后更新：${formatDate(setting.updatedAt)}`
+    : "🔐 图片生成密码\n\n状态：未设置（普通用户无法使用身份卡图片生成功能）。\n管理员可直接测试制作，设置密码后才会开放给普通用户。";
+  const replyMarkup: InlineKeyboardMarkup = {
+    inline_keyboard: [
+      [{ text: setting ? "✏️ 更换密码" : "➕ 设置密码", callback_data: "admin:identity_password_set" }],
+      ...(setting ? [[{ text: "⛔ 停用普通用户使用", callback_data: "admin:identity_password_clear" }]] : []),
+      [{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }],
+    ],
+  };
+  if (messageId !== undefined) {
+    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_IDENTITY_PASSWORD", text, replyMarkup });
+  } else {
+    await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+  }
+}
+
+function userDisplayName(user: Awaited<ReturnType<typeof listBotUsers>>["users"][number]): string {
+  return [user.firstName, user.lastName].filter((value): value is string => Boolean(value?.trim())).join(" ")
+    || user.username
+    || "未命名用户";
+}
+
+function shortDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 16).replace("T", " ") : value;
+}
+
+async function showBotUserDirectory(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  page = 0,
+  search = "",
+  messageId?: number,
+): Promise<void> {
+  const pageSize = 8;
+  const initial = await listBotUsers(ctx.db, pageSize, Math.max(0, page) * pageSize, search);
+  const lastPage = Math.max(0, Math.ceil(initial.total / pageSize) - 1);
+  const safePage = Math.min(Math.max(0, page), lastPage);
+  const result = safePage === page ? initial : await listBotUsers(ctx.db, pageSize, safePage * pageSize, search);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
+  for (const member of result.users) {
+    rows.push([{ text: `👤 ${userDisplayName(member)} · ${member.telegramUserId}`, callback_data: `admin:user:${member.id}` }]);
+  }
+  if (safePage > 0 || safePage < lastPage) {
+    const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];
+    if (safePage > 0) navigation.push({ text: "⬅️ 上一页", callback_data: `admin:users:${safePage - 1}` });
+    if (safePage < lastPage) navigation.push({ text: "下一页 ➡️", callback_data: `admin:users:${safePage + 1}` });
+    rows.push(navigation);
+  }
+  rows.push([{ text: "🔎 搜索用户", callback_data: "admin:users_search" }]);
+  if (search) rows.push([{ text: "✖️ 清除搜索", callback_data: "admin:users_search_clear" }]);
+  rows.push([{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }]);
+  const lines = [
+    "👥 Bot 用户",
+    "",
+    `已启动机器人：${result.total} 人 · 第 ${safePage + 1}/${lastPage + 1} 页${search ? ` · 搜索：${search}` : ""}`,
+    "显示已记录的 Bot 用户；历史用户按首次记录时间初始化，新用户在发送 /start 后记录。",
+    "",
+    ...(result.users.length > 0
+      ? result.users.flatMap((member, index) => [
+          `${safePage * pageSize + index + 1}. ${userDisplayName(member)}${member.systemRole === "admin" ? " · 管理员" : ""}${member.bannedAt ? " · ⛔ 已封禁" : ""}`,
+          `   ID：${member.telegramUserId}${member.username ? ` · @${member.username}` : ""}`,
+          `   启动：${shortDate(member.botStartedAt)} · 最近：${shortDate(member.updatedAt)}`,
+        ])
+      : ["尚无用户发送过 /start。"]),
+  ];
+  const text = lines.join("\n");
+  const replyMarkup = { inline_keyboard: rows };
+  if (messageId !== undefined) {
+    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_BOT_USERS", text, replyMarkup });
+  } else {
+    await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+  }
+}
+
+async function showBotUserDetails(ctx: BotContext, chatId: number, userId: number, internalUserId: number, messageId?: number): Promise<void> {
+  const member = await getUserById(ctx.db, internalUserId);
+  if (!member) { await sendMessage(ctx.botToken, chatId, "用户不存在或已删除。", { inline_keyboard: [[{ text: "返回用户目录", callback_data: "admin:users:0" }]] }); return; }
+  const name = userDisplayName(member);
+  const text = ["👤 Bot 用户详情", `姓名：${name}`, `Telegram ID：${member.telegramUserId}`, `用户名：${member.username ? `@${member.username}` : "未设置"}`, `启动：${shortDate(member.botStartedAt)}`, `最近活动：${shortDate(member.updatedAt)}`, `状态：${member.bannedAt ? `⛔ 已封禁（${member.banReason ?? "无原因"}）` : "✅ 可使用"}`].join("\n");
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = member.bannedAt
+    ? [[{ text: "✅ 解除封禁", callback_data: `admin:user_unban:${member.id}` }]]
+    : [[{ text: "⛔ 封禁用户", callback_data: `admin:user_ban:${member.id}` }]];
+  rows.push([{ text: "⬅️ 返回用户目录", callback_data: "admin:users:0" }]);
+  const replyMarkup = { inline_keyboard: rows };
+  if (messageId !== undefined) await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_BOT_USER_DETAIL", text, replyMarkup });
+  else await sendMessage(ctx.botToken, chatId, text, replyMarkup);
 }
 
 async function showLicenseMenu(ctx: BotContext, chatId: number): Promise<void> {
@@ -449,6 +589,7 @@ async function showAdminSurveyDirectory(
   userId: number,
   page = 0,
   overview = false,
+  messageId?: number,
 ): Promise<void> {
   const pageSize = 8;
   const search = await getAdminSurveySearch(ctx, userId);
@@ -538,9 +679,62 @@ async function showAdminSurveyDirectory(
     rows.push([{ text: "✖️ 清除搜索", callback_data: `admin:survey_search_clear:${overview ? 1 : 0}` }]);
   }
   rows.push([{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }]);
-  await sendLongMessage(ctx.botToken, chatId, lines.join("\n"), {
-    inline_keyboard: rows,
-  });
+  const text = lines.join("\n");
+  const replyMarkup = { inline_keyboard: rows };
+  if (messageId !== undefined && text.length <= 4096) {
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: overview ? "ADMIN_OVERVIEW" : "ADMIN_SURVEY_LIST",
+      text,
+      replyMarkup,
+    });
+    return;
+  }
+  await sendLongMessage(ctx.botToken, chatId, text, replyMarkup);
+}
+
+async function showAdminSurveyDetail(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  surveyId: number,
+  messageId?: number,
+): Promise<boolean> {
+  const survey = await getSurveyById(ctx.db, surveyId);
+  if (!survey) return false;
+  const stats = await getSurveyStatistics(ctx.db, surveyId);
+  const surveys = await listAllSurveys(ctx.db);
+  const surveyIndex = surveys.findIndex((item) => item.id === survey.id);
+  const listPosition = surveyIndex >= 0 ? `当前序号：${surveyIndex + 1}\n` : "";
+  const text = `📋 ${survey.title}\n${listPosition}内部编号：${survey.id}\n状态：${surveyStatusLabels[survey.status]}\n开始：${stats.totalStarted}\n完成：${stats.totalCompleted}\n完成率：${stats.completionRate.toFixed(1)}%`;
+  const replyMarkup: InlineKeyboardMarkup = {
+    inline_keyboard: [
+      [
+        { text: "详细统计", callback_data: `owner:survey:${survey.id}` },
+        { text: "完成名单与答卷", callback_data: `owner:responses:${survey.id}:0` },
+      ],
+      [
+        { text: "CSV", callback_data: `owner:export:csv:${survey.id}` },
+        { text: "Excel", callback_data: `owner:export:xlsx:${survey.id}` },
+        { text: "ZIP", callback_data: `owner:export:zip:${survey.id}` },
+      ],
+      [
+        { text: "关闭", callback_data: `admin:close:${survey.id}` },
+        { text: "删除", callback_data: `admin:delete_ask:${survey.id}` },
+      ],
+      [{ text: "🎨 结果卡", callback_data: `visual:settings:${survey.id}` }],
+      [{ text: "⬅️ 返回全部问卷", callback_data: "admin:surveys" }],
+    ],
+  };
+  if (messageId !== undefined) {
+    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_SURVEY_DETAIL", text, replyMarkup });
+  } else {
+    await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+  }
+  return true;
 }
 
 async function handleLicenseAdminCommand(
@@ -820,7 +1014,56 @@ export async function handleAdminMessage(
   const text = message.text?.trim();
   const userId = message.from?.id;
 
+  if (userId && ctx.cache) {
+    const user = await getUserByTelegramId(ctx.db, userId);
+    if (user && isAdmin(user.telegramUserId, ctx.adminIds)) {
+      if (await handleImageGeneratorAdminMessage(ctx, message, user.id)) {
+        return true;
+      }
+      if (await handleResultVisualAdminMessage(ctx, message, user.id)) {
+        return true;
+      }
+    }
+  }
+
   if (text && userId && ctx.cache) {
+    const identityPasswordMode = await ctx.cache.get(identityCardPasswordInputKey(userId));
+    if (identityPasswordMode === "1") {
+      const user = await getUserByTelegramId(ctx.db, userId);
+      if (!user || !isAdmin(user.telegramUserId, ctx.adminIds)) return false;
+      if (text === "/cancel") {
+        await ctx.cache.delete(identityCardPasswordInputKey(userId));
+        await showIdentityCardPasswordSettings(ctx, message.chat.id, userId);
+        return true;
+      }
+      if (!text.startsWith("/")) {
+        if (text.length < 4 || text.length > 64) {
+          await sendMessage(ctx.botToken, message.chat.id, "密码长度需要为 4 到 64 个字符；发送 /cancel 取消。");
+          return true;
+        }
+        await setIdentityCardAccessCode(ctx.db, await hashSurveyAccessCode(text));
+        await ctx.cache.delete(identityCardPasswordInputKey(userId));
+        await sendMessage(ctx.botToken, message.chat.id, "✅ 图片生成功能密码已保存。普通用户现在需要先输入该密码才能制作身份卡。");
+        await showIdentityCardPasswordSettings(ctx, message.chat.id, userId);
+        return true;
+      }
+    }
+    const userSearchMode = await ctx.cache.get(adminUserSearchInputKey(userId));
+    if (userSearchMode === "1") {
+      const user = await getUserByTelegramId(ctx.db, userId);
+      if (!user || !isAdmin(user.telegramUserId, ctx.adminIds)) return false;
+      if (text === "/cancel") {
+        await ctx.cache.delete(adminUserSearchInputKey(userId));
+        await showBotUserDirectory(ctx, message.chat.id, userId, 0, await ctx.cache.get(adminUserSearchKey(userId)) ?? "");
+        return true;
+      }
+      if (!text.startsWith("/")) {
+        await ctx.cache.put(adminUserSearchKey(userId), text.slice(0, 80), { expirationTtl: 24 * 60 * 60 });
+        await ctx.cache.delete(adminUserSearchInputKey(userId));
+        await showBotUserDirectory(ctx, message.chat.id, userId, 0, text.slice(0, 80));
+        return true;
+      }
+    }
     const searchMode = await ctx.cache.get(adminSurveySearchInputKey(userId));
     if (searchMode === "overview" || searchMode === "manage") {
       const user = await getUserByTelegramId(ctx.db, userId);
@@ -948,7 +1191,7 @@ export async function handleAdminMessage(
   }
 
   if (text === "/admin") {
-    await showAdminHome(ctx, message.chat.id);
+    await showAdminHome(ctx, message.chat.id, userId);
     return true;
   }
 
@@ -968,7 +1211,13 @@ export async function handleAdminCallback(
     return false;
   }
 
-  if (!data.startsWith("admin:") && !data.startsWith("license:") && !data.startsWith("trial:")) {
+  if (
+    !data.startsWith("admin:") &&
+    !data.startsWith("license:") &&
+    !data.startsWith("trial:") &&
+    !data.startsWith("visual:") &&
+    !data.startsWith("generator:")
+  ) {
     return false;
   }
 
@@ -978,26 +1227,103 @@ export async function handleAdminCallback(
     return true;
   }
 
+  if (await handleResultVisualAdminCallback(ctx, callback, user.id)) {
+    return true;
+  }
+  if (await handleImageGeneratorCallback(ctx, callback, user.id, true)) {
+    return true;
+  }
+
   if (ctx.licenseAdminEnabled === false && (data.startsWith("license:") || data.startsWith("trial:"))) {
     await answerCallbackQuery(ctx.botToken, callback.id, "此部署不是授权中心");
     return true;
   }
 
   if (data === "admin:home") {
-    await showAdminHome(ctx, chatId);
+    await showAdminHome(ctx, chatId, userId, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
 
+  if (data === "admin:identity_password") {
+    await showIdentityCardPasswordSettings(ctx, chatId, userId, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data === "admin:identity_password_set") {
+    if (!ctx.cache) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用密码设置");
+      return true;
+    }
+    await ctx.cache.put(identityCardPasswordInputKey(userId), "1", { expirationTtl: 15 * 60 });
+    await sendMessage(ctx.botToken, chatId, "请输入图片生成功能的新密码（4-64 个字符）；发送 /cancel 取消。\n\n密码只保存校验摘要，无法被机器人读取或显示。");
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data === "admin:identity_password_clear") {
+    await clearIdentityCardAccessCode(ctx.db);
+    await showIdentityCardPasswordSettings(ctx, chatId, userId, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id, "已停用普通用户图片生成");
+    return true;
+  }
+
   if (data === "admin:surveys") {
-    await showAdminSurveyDirectory(ctx, chatId, userId);
+    await showAdminSurveyDirectory(ctx, chatId, userId, 0, false, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
 
   if (data === "admin:overview") {
-    await showAdminSurveyDirectory(ctx, chatId, userId, 0, true);
+    await showAdminSurveyDirectory(ctx, chatId, userId, 0, true, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:users:")) {
+    const page = Number(data.slice("admin:users:".length));
+    if (!Number.isInteger(page) || page < 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "页码无效");
+      return true;
+    }
+    await showBotUserDirectory(ctx, chatId, userId, page, await ctx.cache?.get(adminUserSearchKey(userId)) ?? "", callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data === "admin:users_search") {
+    await ctx.cache?.put(adminUserSearchInputKey(userId), "1", { expirationTtl: 10 * 60 });
+    await sendMessage(ctx.botToken, chatId, "发送姓名、用户名或 Telegram ID 搜索用户；发送 /cancel 取消。", { inline_keyboard: [[{ text: "取消", callback_data: "admin:users:0" }]] });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data === "admin:users_search_clear") {
+    await ctx.cache?.delete(adminUserSearchKey(userId));
+    await showBotUserDirectory(ctx, chatId, userId, 0, "", callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:user:") && !data.startsWith("admin:user_ban:") && !data.startsWith("admin:user_unban:")) {
+    const internalUserId = Number(data.slice("admin:user:".length));
+    if (!Number.isSafeInteger(internalUserId) || internalUserId <= 0) { await answerCallbackQuery(ctx.botToken, callback.id, "用户编号无效"); return true; }
+    await showBotUserDetails(ctx, chatId, userId, internalUserId, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:user_ban:") || data.startsWith("admin:user_unban:")) {
+    const banned = data.startsWith("admin:user_ban:");
+    const internalUserId = Number(data.slice(banned ? "admin:user_ban:".length : "admin:user_unban:".length));
+    const member = await getUserById(ctx.db, internalUserId);
+    if (!member) { await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在"); return true; }
+    if (member.systemRole === "admin" || isAdmin(member.telegramUserId, ctx.adminIds)) { await answerCallbackQuery(ctx.botToken, callback.id, "不能封禁系统管理员"); return true; }
+    await setUserBan(ctx.db, internalUserId, { banned, bannedBy: user.id, reason: banned ? "管理员操作" : null });
+    if (banned) await cancelActiveResponsesForUser(ctx.db, internalUserId);
+    await showBotUserDetails(ctx, chatId, userId, internalUserId, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id, banned ? "用户已封禁" : "用户已解除封禁");
     return true;
   }
 
@@ -1008,7 +1334,7 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "页码无效");
       return true;
     }
-    await showAdminSurveyDirectory(ctx, chatId, userId, page, overviewRaw === "1");
+    await showAdminSurveyDirectory(ctx, chatId, userId, page, overviewRaw === "1", callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1016,7 +1342,7 @@ export async function handleAdminCallback(
   if (data.startsWith("admin:survey_search_clear:")) {
     const overview = data.endsWith(":1");
     await ctx.cache?.delete(adminSurveySearchKey(userId));
-    await showAdminSurveyDirectory(ctx, chatId, userId, 0, overview);
+    await showAdminSurveyDirectory(ctx, chatId, userId, 0, overview, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1219,65 +1545,17 @@ export async function handleAdminCallback(
 
   if (data.startsWith("admin:survey:")) {
     const surveyId = Number(data.slice("admin:survey:".length));
-    const survey = await getSurveyById(ctx.db, surveyId);
-    if (!survey) {
+    const displayed = await showAdminSurveyDetail(
+      ctx,
+      chatId,
+      userId,
+      surveyId,
+      callback.message?.message_id,
+    );
+    if (!displayed) {
       await answerCallbackQuery(ctx.botToken, callback.id, "问卷不存在");
       return true;
     }
-    const stats = await getSurveyStatistics(ctx.db, surveyId);
-    const surveys = await listAllSurveys(ctx.db);
-    const surveyIndex = surveys.findIndex((item) => item.id === survey.id);
-    const listPosition =
-      surveyIndex >= 0 ? `当前序号：${surveyIndex + 1}\n` : "";
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `📋 ${survey.title}\n${listPosition}内部编号：${survey.id}\n状态：${surveyStatusLabels[survey.status]}\n开始：${stats.totalStarted}\n完成：${stats.totalCompleted}\n完成率：${stats.completionRate.toFixed(1)}%`,
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "详细统计",
-              callback_data: `owner:survey:${survey.id}`,
-            },
-            {
-              text: "完成名单与答卷",
-              callback_data: `owner:responses:${survey.id}:0`,
-            },
-          ],
-          [
-            {
-              text: "CSV",
-              callback_data: `owner:export:csv:${survey.id}`,
-            },
-            {
-              text: "Excel",
-              callback_data: `owner:export:xlsx:${survey.id}`,
-            },
-            {
-              text: "ZIP",
-              callback_data: `owner:export:zip:${survey.id}`,
-            },
-          ],
-          [
-            {
-              text: "关闭",
-              callback_data: `admin:close:${survey.id}`,
-            },
-            {
-              text: "删除",
-              callback_data: `admin:delete_ask:${survey.id}`,
-            },
-          ],
-          [
-            {
-              text: "⬅️ 返回全部问卷",
-              callback_data: "admin:surveys",
-            },
-          ],
-        ],
-      },
-    );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1291,7 +1569,7 @@ export async function handleAdminCallback(
       return true;
     }
     await updateSurveyStatus(ctx.db, surveyId, "closed");
-    await sendMessage(ctx.botToken, chatId, `问卷“${survey.title}”已关闭。`);
+    await showAdminSurveyDetail(ctx, chatId, userId, surveyId, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1304,11 +1582,8 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "问卷不存在");
       return true;
     }
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `确认永久删除问卷“${survey.title}”？问卷、题目和所有答卷都会被删除。`,
-      {
+    const text = `确认永久删除问卷“${survey.title}”？问卷、题目和所有答卷都会被删除。`;
+    const replyMarkup: InlineKeyboardMarkup = {
         inline_keyboard: [
           [
             {
@@ -1321,8 +1596,12 @@ export async function handleAdminCallback(
             },
           ],
         ],
-      },
-    );
+    };
+    if (callback.message?.message_id !== undefined) {
+      await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId: callback.message.message_id, screen: "ADMIN_DELETE_CONFIRM", text, replyMarkup });
+    } else {
+      await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+    }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1336,7 +1615,7 @@ export async function handleAdminCallback(
       return true;
     }
     await deleteSurvey(ctx.db, surveyId);
-    await sendMessage(ctx.botToken, chatId, `问卷“${survey.title}”已删除。`);
+    await showAdminSurveyDirectory(ctx, chatId, userId, 0, false, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }

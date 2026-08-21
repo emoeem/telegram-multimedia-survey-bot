@@ -8,6 +8,10 @@ export interface User {
   lastName: string | null;
   languageCode: string | null;
   systemRole: UserSystemRole;
+  botStartedAt: string | null;
+  bannedAt: string | null;
+  bannedBy: number | null;
+  banReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,8 +128,13 @@ export type MediaType =
   | "sticker"
   | "document";
 
+/** Ownership boundary for media. A media type alone must never decide whether
+ * an image can be used by the template editor. */
+export type MediaAssetScope = "survey" | "response" | "template" | "generated_result" | "template_preview" | "identity_card" | "legacy";
+
 export interface MediaAsset {
   id: number;
+  scope: MediaAssetScope;
   mediaType: MediaType;
   telegramFileId: string | null;
   telegramFileUniqueId: string | null;
@@ -138,6 +147,121 @@ export interface MediaAsset {
   r2Key: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ResultFieldType =
+  | "text"
+  | "long_text"
+  | "number"
+  | "integer"
+  | "decimal"
+  | "percentage"
+  | "score"
+  | "rating"
+  | "boolean"
+  | "enum"
+  | "tags"
+  | "image"
+  | "color"
+  | "date"
+  | "datetime"
+  | "url"
+  | "list"
+  | "object";
+
+export interface ResultField {
+  id: string;
+  type: ResultFieldType;
+  value: unknown;
+  label?: string;
+  max?: number;
+}
+
+export interface ResultStat {
+  id: string;
+  label: string;
+  value: number;
+  max: number;
+}
+
+export interface ResultProfile {
+  id: number;
+  surveyId: number;
+  responseId: number;
+  resultType: string;
+  schemaVersion: number;
+  title: string | null;
+  subtitle: string | null;
+  fieldsJson: string;
+  statsJson: string;
+  tagsJson: string;
+  imagesJson: string;
+  metadataJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SurveyResultRuleSet {
+  id: number;
+  surveyId: number;
+  schemaVersion: number;
+  rulesJson: string;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type VisualTemplateStatus = "draft" | "published" | "archived";
+
+export interface VisualTemplate {
+  id: number;
+  ownerId: number | null;
+  surveyId: number | null;
+  name: string;
+  description: string | null;
+  type: string;
+  status: VisualTemplateStatus;
+  currentVersion: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VisualTemplateVersion {
+  id: number;
+  templateId: number;
+  version: number;
+  templateSchemaVersion: number;
+  definitionJson: string;
+  variablesJson: string;
+  createdBy: number | null;
+  createdAt: string;
+}
+
+export interface SurveyResultVisualSettings {
+  surveyId: number;
+  enabled: boolean;
+  autoGenerate: boolean;
+  templateId: number | null;
+  updatedAt: string;
+}
+
+export type RenderJobStatus = "queued" | "processing" | "completed" | "failed";
+
+export interface RenderJob {
+  id: number;
+  resultProfileId: number;
+  templateId: number;
+  templateVersion: number;
+  chatId: number | null;
+  requestedBy: number | null;
+  status: RenderJobStatus;
+  attempts: number;
+  forceRegenerate: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 export type SoftwareLicenseType = "timed" | "perpetual";

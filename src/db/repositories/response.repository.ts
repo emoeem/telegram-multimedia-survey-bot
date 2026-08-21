@@ -217,6 +217,17 @@ export async function getAnswer(
   return row ? mapAnswer(row) : null;
 }
 
+export async function listAnswersByResponseId(
+  db: D1Database,
+  responseId: number,
+): Promise<Answer[]> {
+  const result = await db
+    .prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC")
+    .bind(responseId)
+    .all<AnswerRow>();
+  return (result.results ?? []).map(mapAnswer);
+}
+
 export async function updateResponseCurrentQuestion(
   db: D1Database,
   id: number,

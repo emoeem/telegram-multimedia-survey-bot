@@ -17,6 +17,7 @@ import {
   type InlineKeyboardMarkup,
 } from "./telegram";
 import type { BotContext } from "./types";
+import { renderUiScreen } from "./ui";
 
 const EDITABLE_OPTION_STRUCTURE_TYPES = new Set([
   "single",
@@ -143,12 +144,12 @@ export async function showQuestionList(
       : "点击题目可编辑内容、选项和附件。",
   ].filter(Boolean).join("\n");
 
-  await sendMessage(
-    ctx.botToken,
-    chatId,
+  await renderUiScreen(ctx, chatId, userId, {
+    screen: "question_list",
     text,
-    { inline_keyboard: rows },
-  );
+    replyMarkup: { inline_keyboard: rows },
+    state: { surveyId, offset: safeOffset },
+  });
 }
 
 export async function showQuestionEditor(
@@ -354,10 +355,10 @@ export async function showQuestionEditor(
     },
   ]);
 
-  await sendLongMessage(
-    ctx.botToken,
-    chatId,
+  await renderUiScreen(ctx, chatId, userId, {
+    screen: "question_editor",
     text,
-    { inline_keyboard: rows },
-  );
+    replyMarkup: { inline_keyboard: rows },
+    state: { surveyId: question.surveyId, questionId },
+  });
 }

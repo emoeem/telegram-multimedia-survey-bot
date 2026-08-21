@@ -19,13 +19,75 @@ const defaultBotCommands = [
   { command: "admin", description: "打开管理员中心" },
 ];
 
+interface TelegramErrorBody {
+  ok?: boolean;
+  description?: string;
+  parameters?: { retry_after?: number };
+}
+
+async function readTelegramErrorBody(
+  response: Response,
+): Promise<TelegramErrorBody> {
+  try {
+    return (await response.json()) as TelegramErrorBody;
+  } catch {
+    return {};
+  }
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+const rateLimitMaxRetries = 2;
+const rateLimitMaxWaitMs = 10_000;
+const telegramMediaRequestTimeoutMs = 20_000;
+
+/*
+ * The numbered-choice renderer can send a burst of messages and trip the
+ * per-chat flood limit, so hot-path JSON calls honor 429 retry_after.
+ */
+async function postTelegramJson(
+  botToken: string,
+  method: string,
+  payload: Record<string, unknown>,
+): Promise<Response> {
+  const url = `https://api.telegram.org/bot${botToken}/${method}`;
+  const request = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+  let response = await fetch(url, request);
+
+  for (
+    let attempt = 0;
+    attempt < rateLimitMaxRetries && response.status === 429;
+    attempt += 1
+  ) {
+    const errorBody = await readTelegramErrorBody(response);
+    const retryAfter = errorBody.parameters?.retry_after;
+    if (typeof retryAfter !== "number") break;
+    await sleep(Math.min(Math.max(retryAfter, 1) * 1000, rateLimitMaxWaitMs));
+    response = await fetch(url, request);
+  }
+
+  return response;
+}
+
 async function assertTelegramResponse(
   response: Response,
   method: string,
 ): Promise<Response> {
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Telegram ${method} failed: ${response.status} ${body}`);
+    const body = await readTelegramErrorBody(response);
+    const description =
+      typeof body.description === "string" && body.description
+        ? ` ${body.description}`
+        : "";
+    throw new Error(
+      `Telegram ${method} failed: ${response.status}${description}`,
+    );
   }
 
   return response;
@@ -37,16 +99,10 @@ export async function sendMessage(
   text: string,
   replyMarkup?: InlineKeyboardMarkup,
 ): Promise<Response> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: replyMarkup,
-    }),
+  const response = await postTelegramJson(botToken, "sendMessage", {
+    chat_id: chatId,
+    text,
+    reply_markup: replyMarkup,
   });
 
   return assertTelegramResponse(response, "sendMessage");
@@ -131,19 +187,62 @@ export async function editMessageReplyMarkup(
   messageId: number,
   replyMarkup: InlineKeyboardMarkup,
 ): Promise<Response> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/editMessageReplyMarkup`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: replyMarkup,
-    }),
+  const response = await postTelegramJson(botToken, "editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup,
   });
 
-  return assertTelegramResponse(response, "editMessageReplyMarkup");
+  if (!response.ok) {
+    const body = await readTelegramErrorBody(response);
+    const description =
+      typeof body.description === "string" ? body.description : "";
+    // Double-tapping a toggle can resubmit an identical keyboard; that is a
+    // successful no-op, not a failure.
+    if (
+      response.status === 400 &&
+      description.includes("message is not modified")
+    ) {
+      return response;
+    }
+    throw new Error(
+      `Telegram editMessageReplyMarkup failed: ${response.status}${description ? ` ${description}` : ""}`,
+    );
+  }
+
+  return response;
+}
+
+export async function editMessageText(
+  botToken: string,
+  chatId: number,
+  messageId: number,
+  text: string,
+  replyMarkup?: InlineKeyboardMarkup,
+): Promise<Response> {
+  const response = await postTelegramJson(botToken, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: replyMarkup,
+  });
+
+  if (!response.ok) {
+    const body = await readTelegramErrorBody(response);
+    const description =
+      typeof body.description === "string" ? body.description : "";
+    if (
+      response.status === 400 &&
+      description.includes("message is not modified")
+    ) {
+      return response;
+    }
+    throw new Error(
+      `Telegram editMessageText failed: ${response.status}${description ? ` ${description}` : ""}`,
+    );
+  }
+
+  return response;
 }
 
 export async function sendDocument(
@@ -193,9 +292,11 @@ export async function sendDocumentByFileId(
 async function getTelegramFilePath(
   botToken: string,
   fileId: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const infoResponse = await fetch(
     `https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`,
+    signal ? { signal } : undefined,
   );
 
   if (!infoResponse.ok) {
@@ -223,21 +324,33 @@ export async function downloadTelegramFile(
   contentType: string;
   filePath: string;
 }> {
-  const filePath = await getTelegramFilePath(botToken, fileId);
-  const fileResponse = await fetch(
-    `https://api.telegram.org/file/bot${botToken}/${filePath}`,
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), telegramMediaRequestTimeoutMs);
+  try {
+    const filePath = await getTelegramFilePath(botToken, fileId, controller.signal);
+    const fileResponse = await fetch(
+      `https://api.telegram.org/file/bot${botToken}/${filePath}`,
+      { signal: controller.signal },
+    );
 
-  if (!fileResponse.ok) {
-    throw new Error(`Telegram file download failed: ${fileResponse.status}`);
+    if (!fileResponse.ok) {
+      throw new Error(`Telegram file download failed: ${fileResponse.status}`);
+    }
+
+    return {
+      data: new Uint8Array(await fileResponse.arrayBuffer()),
+      contentType:
+        fileResponse.headers.get("Content-Type") ?? "application/octet-stream",
+      filePath,
+    };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("Telegram 文件下载超时，请稍后重试");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return {
-    data: new Uint8Array(await fileResponse.arrayBuffer()),
-    contentType:
-      fileResponse.headers.get("Content-Type") ?? "application/octet-stream",
-    filePath,
-  };
 }
 
 export async function getTelegramFileText(
@@ -455,22 +568,59 @@ export async function sendPhoto(
   caption?: string,
   replyMarkup?: InlineKeyboardMarkup,
 ): Promise<Response> {
-  const response = typeof photo === "string"
-    ? await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, photo, caption, reply_markup: replyMarkup }),
-    })
-    : await (() => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), telegramMediaRequestTimeoutMs);
+  try {
+    const response = typeof photo === "string"
+      ? await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, photo, caption, reply_markup: replyMarkup }),
+        signal: controller.signal,
+      })
+      : await (() => {
       const form = new FormData();
       form.append("chat_id", String(chatId));
       form.append("photo", new Blob([photo as BlobPart], { type: "image/png" }), "completion-poster.png");
       if (caption) form.append("caption", caption);
       if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
-      return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, { method: "POST", body: form });
+        return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, { method: "POST", body: form, signal: controller.signal });
     })();
 
-  return assertTelegramResponse(response, "sendPhoto");
+    return await assertTelegramResponse(response, "sendPhoto");
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("Telegram 图片发送超时，请稍后重试");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function sendPhotoAlbum(
+  botToken: string,
+  chatId: number,
+  photos: Array<{ bytes: Uint8Array; caption?: string }>,
+): Promise<Response> {
+  if (photos.length < 2 || photos.length > 10) throw new Error("Telegram 相册必须包含 2–10 张图片");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), telegramMediaRequestTimeoutMs);
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    const media = photos.map((photo, index) => {
+      const name = `report_page_${index}`;
+      form.append(name, new Blob([photo.bytes as BlobPart], { type: "image/png" }), `report-${index + 1}.png`);
+      return { type: "photo", media: `attach://${name}`, ...(photo.caption ? { caption: photo.caption } : {}) };
+    });
+    form.append("media", JSON.stringify(media));
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMediaGroup`, { method: "POST", body: form, signal: controller.signal });
+    return await assertTelegramResponse(response, "sendMediaGroup");
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Telegram 相册发送超时，请稍后重试");
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 
 export async function sendVideo(
@@ -581,15 +731,9 @@ export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,
 ): Promise<Response> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      callback_query_id: callbackQueryId,
-      text,
-    }),
+  const response = await postTelegramJson(botToken, "answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text,
   });
 
   return assertTelegramResponse(response, "answerCallbackQuery");

@@ -1,4 +1,4 @@
-import type { MediaType } from "../db/schema";
+import type { MediaAssetScope, MediaType } from "../db/schema";
 import { createMediaAsset } from "../db/repositories/media.repository";
 import type { BotContext, TelegramMediaFile, TelegramMessage } from "../bot/types";
 
@@ -41,6 +41,7 @@ function pickMedia(message: TelegramMessage): {
 export async function registerMediaAsset(
   ctx: BotContext,
   message: TelegramMessage,
+  options: { scope?: MediaAssetScope } = {},
 ): Promise<number | null> {
   const picked = pickMedia(message);
   if (!picked) {
@@ -48,6 +49,7 @@ export async function registerMediaAsset(
   }
 
   const asset = await createMediaAsset(ctx.db, {
+    scope: options.scope ?? "survey",
     mediaType: picked.type,
     telegramFileId: picked.file.file_id,
     telegramFileUniqueId: picked.file.file_unique_id,
