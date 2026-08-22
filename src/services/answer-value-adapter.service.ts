@@ -29,7 +29,22 @@ export function normalizeAnswer(
   questionType: QuestionType | "custom" = "custom",
 ): NormalizedAnswerValue {
   const json = parsedJson(answer);
-  const value: ResultJsonValue = answer.textValue ?? answer.numberValue ?? answer.booleanValue ??
-    answer.ratingValue ?? answer.dateValue ?? answer.timeValue ?? json ?? null;
+  // NULL boolean_value is mapped to false by the row mapper, so a nullish
+  // chain would short-circuit on false and hide json/text answers. Compare
+  // against null explicitly; only true/false that were actually stored win.
+  const value: ResultJsonValue =
+    answer.textValue !== null
+      ? answer.textValue
+      : answer.numberValue !== null
+        ? answer.numberValue
+        : answer.booleanValue !== null
+          ? answer.booleanValue
+          : answer.ratingValue !== null
+            ? answer.ratingValue
+            : answer.dateValue !== null
+              ? answer.dateValue
+              : answer.timeValue !== null
+                ? answer.timeValue
+                : json ?? null;
   return { questionId: answer.questionId, type: questionType, value, media: mediaFrom(value) };
 }

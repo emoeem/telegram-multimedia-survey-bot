@@ -5,5 +5,14 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   base: "/",
   plugins: [react(), tailwindcss()],
-  build: { outDir: "dist", emptyOutDir: true },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: import.meta.dirname + "/index.html",
+        survey: import.meta.dirname + "/survey.html",
+      },
+    },
+  },
 });

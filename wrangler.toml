@@ -1,6 +1,6 @@
 name = "telegram-multimedia-survey-bot"
 main = "src/index.ts"
-assets = { directory = "admin/dist", binding = "ASSETS", not_found_handling = "single-page-application" }
+assets = { directory = "admin/dist", binding = "ASSETS", not_found_handling = "single-page-application", html_handling = "none" }
 compatibility_date = "2026-08-14"
 workers_dev = true
 preview_urls = true
@@ -16,12 +16,18 @@ ENVIRONMENT = "production"
 APP_VERSION = "0.3.0"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"
+REPORT_CHANNEL_ID = "-1004489719605"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "telegram-survey-db"
 database_id = "159e8169-a233-4bd7-b3e9-723586f850c2"
 migrations_dir = "db/migrations"
+
+[[kv_namespaces]]
+binding = "MEDIA_KV"
+id = "1761c29892764597992c189096bc62c2"
+preview_id = "1761c29892764597992c189096bc62c2"
 
 [[kv_namespaces]]
 binding = "CACHE"

@@ -14,9 +14,7 @@ export interface InlineKeyboardMarkup {
 const defaultBotCommands = [
   { command: "start", description: "打开主菜单" },
   { command: "surveys", description: "浏览可填写问卷" },
-  { command: "create", description: "新建问卷" },
   { command: "my_surveys", description: "管理我的问卷" },
-  { command: "passwords", description: "管理问卷访问密码" },
   { command: "admin", description: "打开管理员中心" },
 ];
 
@@ -132,6 +130,100 @@ export async function getBotUsername(botToken: string): Promise<string> {
     throw new Error("Telegram Bot 未设置用户名，无法生成分享链接");
   }
   return username.trim();
+}
+
+export async function getBotId(botToken: string): Promise<number> {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+  const body = (await response.json()) as {
+    ok?: boolean;
+    result?: { id?: number };
+  };
+  if (!response.ok || !body.ok || typeof body.result?.id !== "number") {
+    throw new Error(`Telegram getMe failed: ${response.status}`);
+  }
+  return body.result.id;
+}
+
+export async function getWebhookInfo(
+  botToken: string,
+): Promise<{ url?: string; allowed_updates?: string[] }> {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
+  const body = (await response.json()) as {
+    ok?: boolean;
+    result?: { url?: string; allowed_updates?: string[] };
+  };
+  if (!response.ok || !body.ok || !body.result) {
+    throw new Error(`Telegram getWebhookInfo failed: ${response.status}`);
+  }
+  return {
+    ...(body.result.url ? { url: body.result.url } : {}),
+    ...(body.result.allowed_updates
+      ? { allowed_updates: body.result.allowed_updates }
+      : {}),
+  };
+}
+
+export async function setWebhook(
+  botToken: string,
+  url: string,
+  secretToken: string,
+  allowedUpdates: string[] = ["message", "callback_query", "channel_post"],
+): Promise<void> {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url,
+      secret_token: secretToken,
+      allowed_updates: allowedUpdates,
+      drop_pending_updates: false,
+    }),
+  });
+  const body = (await response.json()) as { ok?: boolean };
+  if (!response.ok || !body.ok) {
+    throw new Error(`Telegram setWebhook failed: ${response.status}`);
+  }
+}
+
+export async function getChat(
+  botToken: string,
+  chatIdOrUsername: string,
+): Promise<{ id: number; type?: string; title?: string; username?: string }> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/getChat?chat_id=${encodeURIComponent(chatIdOrUsername)}`,
+  );
+  const body = (await response.json()) as {
+    ok?: boolean;
+    result?: { id?: number; type?: string; title?: string; username?: string };
+  };
+  const result = body.result;
+  if (!response.ok || !body.ok || !result || typeof result.id !== "number") {
+    throw new Error(`Telegram getChat failed: ${response.status}`);
+  }
+  return {
+    id: result.id,
+    ...(result.type ? { type: result.type } : {}),
+    ...(result.title ? { title: result.title } : {}),
+    ...(result.username ? { username: result.username } : {}),
+  };
+}
+
+export async function getChatMember(
+  botToken: string,
+  chatId: number,
+  userId: number,
+): Promise<{ status?: string }> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/getChatMember?chat_id=${encodeURIComponent(String(chatId))}&user_id=${userId}`,
+  );
+  const body = (await response.json()) as {
+    ok?: boolean;
+    result?: { status?: string };
+  };
+  if (!response.ok || !body.ok || !body.result) {
+    throw new Error(`Telegram getChatMember failed: ${response.status}`);
+  }
+  return body.result.status ? { status: body.result.status } : {};
 }
 
 export function splitTelegramText(
@@ -252,6 +344,7 @@ export async function sendDocument(
   fileName: string,
   content: Uint8Array | string,
   contentType = "application/octet-stream",
+  caption?: string,
 ): Promise<Response> {
   const formData = new FormData();
   formData.append("chat_id", String(chatId));
@@ -260,6 +353,7 @@ export async function sendDocument(
     new Blob([content as BlobPart], { type: contentType }),
     fileName,
   );
+  if (caption) formData.append("caption", caption);
 
   const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
     method: "POST",

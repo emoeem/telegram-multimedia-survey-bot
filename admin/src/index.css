@@ -65,3 +65,39 @@
   outline: 2px solid #93c5fd;
   outline-offset: -1px;
 }
+
+.drag-handle {
+  display: inline-flex;
+  min-height: 32px;
+  min-width: 32px;
+  touch-action: none;
+  cursor: grab;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.drag-handle:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.drag-handle:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}

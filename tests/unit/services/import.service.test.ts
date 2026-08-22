@@ -20,6 +20,7 @@ interface StatementMock {
   sql: string;
   bindings: unknown[];
   bind: ReturnType<typeof vi.fn>;
+  run: ReturnType<typeof vi.fn>;
 }
 
 function createD1Mock(batchError?: Error): {
@@ -36,6 +37,7 @@ function createD1Mock(batchError?: Error): {
         statement.bindings = bindings;
         return statement;
       }),
+      run: vi.fn(async () => ({ success: true, meta: { last_row_id: 300 } })),
     };
     statements.push(statement);
     return statement;
@@ -315,5 +317,85 @@ describe("import service", () => {
     ).rejects.toThrow("D1 batch failed");
 
     expect(surveyRepositoryMocks.deleteSurvey).toHaveBeenCalledWith(db, 41);
+  });
+
+  it("persists URL media and page structure without a resolver", async () => {
+    const { db, statements, batch } = createD1Mock();
+    const surveyId = await saveImportedSurvey(db, 7, {
+      title: "带分页问卷",
+      pages: [
+        { id: "cover-page", title: "第一页", description: "开始" },
+        { id: "main-page", title: "主体" },
+      ],
+      questions: [
+        {
+          type: "single",
+          title: "请选择",
+          pageId: "cover-page",
+          options: [
+            { label: "A", value: "A", media: [] },
+            {
+              label: "B",
+              value: "B",
+              media: [
+                {
+                  id: "b-media",
+                  type: "photo",
+                  source: "url",
+                  url: "https://example.com/b.png",
+                  mimeType: "image/png",
+                },
+              ],
+            },
+          ],
+          media: [
+            {
+              id: "q-media",
+              type: "photo",
+              source: "url",
+              url: "https://example.com/q.png",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(surveyId).toBe(41);
+
+    const pageInsert = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO survey_pages"),
+    );
+    expect(pageInsert).toBeDefined();
+    expect(pageInsert?.bindings.slice(1, 4)).toEqual([
+      "第一页",
+      "开始",
+      0,
+    ]);
+
+    const questionInsert = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO survey_questions"),
+    );
+    expect(questionInsert?.sql).toContain("page_id");
+
+    const mediaInsert = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO media_assets"),
+    );
+    expect(mediaInsert?.sql).toContain("url");
+    const mediaBindings = JSON.parse(String(mediaInsert?.bindings[2])) as Array<Record<string, unknown>>;
+    expect(mediaBindings).toHaveLength(2);
+    expect(mediaBindings.map((row) => row.url)).toEqual([
+      "https://example.com/q.png",
+      "https://example.com/b.png",
+    ]);
+
+    const questionMediaInsert = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO question_media"),
+    );
+    expect(questionMediaInsert?.sql).toContain("mediaKey");
+    expect(JSON.parse(String(questionMediaInsert?.bindings[1]))).toEqual([
+      { questionOrder: 0, mediaKey: "https://example.com/q.png", sortOrder: 0 },
+    ]);
+
+    expect(batch).toHaveBeenCalledOnce();
   });
 });

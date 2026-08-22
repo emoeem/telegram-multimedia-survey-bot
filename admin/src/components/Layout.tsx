@@ -7,14 +7,13 @@ import { TestBanner } from "./TestBanner";
 const NAV_ITEMS = [
   { to: "/", icon: "📊", label: "总览" },
   { to: "/surveys", icon: "📝", label: "问卷" },
+  { to: "/users", icon: "👥", label: "用户" },
+  { to: "/reports", icon: "📦", label: "报告" },
+  { to: "/settings", icon: "⚙️", label: "设置" },
 ];
 
 const COMING_SOON_ITEMS = [
-  { icon: "📥", label: "答卷" },
-  { icon: "📈", label: "统计" },
   { icon: "🎨", label: "结果模板" },
-  { icon: "👥", label: "用户" },
-  { icon: "⚙️", label: "设置" },
 ];
 
 export function Layout() {
@@ -45,14 +44,23 @@ export function Layout() {
 
   const title = useMemo(() => {
     const path = location.pathname;
+    if (/^\/surveys\/\d+\/responses\/\d+$/.test(path)) return "答卷详情";
+    if (/^\/surveys\/\d+\/responses$/.test(path)) return "答卷";
+    if (/^\/surveys\/\d+\/analytics$/.test(path)) return "统计";
     if (/^\/surveys\/\d+\/editor$/.test(path)) return "问卷编辑器";
     if (/^\/surveys\/\d+/.test(path)) return "问卷详情";
     if (path.startsWith("/surveys")) return "问卷";
+    if (path.startsWith("/users")) return "用户目录";
+    if (path.startsWith("/reports")) return "报告归档";
+    if (path.startsWith("/settings")) return "系统设置";
     return "总览";
   }, [location.pathname]);
 
   const showTestBanner = environment === "development" && !telegramInitData;
   const isSurveysActive = location.pathname.startsWith("/surveys");
+  const isUsersActive = location.pathname.startsWith("/users");
+  const isReportsActive = location.pathname.startsWith("/reports");
+  const isSettingsActive = location.pathname.startsWith("/settings");
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -70,7 +78,15 @@ export function Layout() {
           <nav className="flex flex-col">
             {NAV_ITEMS.map((item) => {
               const active =
-                item.to === "/" ? location.pathname === "/" : isSurveysActive;
+                item.to === "/"
+                  ? location.pathname === "/"
+                  : item.to === "/users"
+                    ? isUsersActive
+                    : item.to === "/reports"
+                      ? isReportsActive
+                      : item.to === "/settings"
+                        ? isSettingsActive
+                        : isSurveysActive;
               return (
                 <Link
                   key={item.to}

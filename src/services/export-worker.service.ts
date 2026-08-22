@@ -27,6 +27,14 @@ import {
   type IdentityCardWorkerEnvironment,
 } from "./identity-card-worker.service";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
+import {
+  isReportDeliveryMessage,
+  type ReportDeliveryMessage,
+} from "./report-delivery.service";
+import {
+  processReportDeliveryMessage,
+  type ReportDeliveryWorkerEnvironment,
+} from "./report-delivery-worker.service";
 
 export interface ExportWorkerEnvironment {
   DB: D1Database;
@@ -38,6 +46,8 @@ export interface ExportWorkerEnvironment {
   BUILDER?: DurableObjectNamespace<any>;
   EXPORT_QUEUE?: Queue;
   BROWSER?: BrowserWorker;
+  MEDIA_KV?: KVNamespace;
+  REPORT_CHANNEL_ID?: string;
 }
 
 interface ResponseReportJobMessage {
@@ -146,10 +156,23 @@ async function processExportMessage(
 
 export async function handleExportQueue(
   batch: MessageBatch<unknown>,
-  env: ExportWorkerEnvironment & ResultVisualWorkerEnvironment & IdentityCardWorkerEnvironment,
+  env: ExportWorkerEnvironment & ResultVisualWorkerEnvironment & IdentityCardWorkerEnvironment & ReportDeliveryWorkerEnvironment,
 ): Promise<void> {
   for (const message of batch.messages) {
-    if (isResponseReportJobMessage(message.body)) {
+    if (isReportDeliveryMessage(message.body)) {
+      try {
+        await processReportDeliveryMessage(env, message.body);
+        message.ack();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Report delivery failed";
+        console.error("Report delivery queue job failed", {
+          deliveryId: (message.body as ReportDeliveryMessage).deliveryId,
+          attempts: message.attempts,
+          error: errorMessage,
+        });
+        message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
+      }
+    } else if (isResponseReportJobMessage(message.body)) {
       try {
         await processResponseReportMessage(env, message.body);
         message.ack();

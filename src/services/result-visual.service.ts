@@ -8,11 +8,12 @@ import {
 } from "../db/repositories/result-profile.repository";
 import { getSurveyResultVisualSettings } from "../db/repositories/survey-result-visual-settings.repository";
 import { getVisualTemplateById, getVisualTemplateVersion, listVisualTemplates } from "../db/repositories/visual-template.repository";
-import type { ResultFieldType, ResultProfile } from "../db/schema";
+import type { QuestionType, ResultFieldType, ResultProfile, SurveyQuestion } from "../db/schema";
 import { calculateResultProfile, parseResultRuleSet, serializeResultProfile } from "./result-engine.service";
 import { enqueueResultVisualJob, type ResultVisualEnqueueResult } from "./result-visual-queue.service";
 import { normalizeAnswer } from "./answer-value-adapter.service";
 import type { ResultProfileSnapshot } from "../result/schema";
+import { getResponseSurveySnapshot } from "./survey-version.service";
 
 export interface PreparedResultProfile {
   profile: ResultProfile;
@@ -39,7 +40,7 @@ function displayAnswer(value: unknown): string {
 
 function fallbackResultProfile(
   surveyTitle: string,
-  questions: Awaited<ReturnType<typeof listQuestionsBySurvey>>,
+  questions: Array<Pick<Awaited<ReturnType<typeof listQuestionsBySurvey>>[number], "id" | "type" | "title">>,
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>,
 ): ResultProfileSnapshot {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer]));
@@ -103,8 +104,29 @@ export async function prepareResultProfileForResponse(
   if (response.status !== "completed") throw new Error("ResultProfile requires a completed response");
   const ruleSetRecord = await getSurveyResultRuleSet(db, response.surveyId);
   const answers = await listAnswersByResponseId(db, response.id);
-  const surveyTitle = (await getSurveyById(db, response.surveyId))?.title ?? "问卷结果";
-  const questions = await listQuestionsBySurvey(db, response.surveyId);
+  let surveyTitle = (await getSurveyById(db, response.surveyId))?.title ?? "问卷结果";
+  let questions: Array<Pick<SurveyQuestion, "id" | "type" | "title">> =
+    await listQuestionsBySurvey(db, response.surveyId);
+  const versionSnapshot = await getResponseSurveySnapshot(db, response.id);
+  if (versionSnapshot && versionSnapshot.questionOrderIds.length > 0) {
+    const snapshotQuestions = versionSnapshot.questionOrderIds
+      .map((questionId, index) => {
+        const schemaQuestion = versionSnapshot.schema.survey.questions[index];
+        if (!schemaQuestion) return null;
+        return {
+          id: questionId,
+          type: schemaQuestion.type as QuestionType,
+          title: schemaQuestion.title,
+        };
+      })
+      .filter((question): question is { id: number; type: QuestionType; title: string } =>
+        question !== null,
+      );
+    if (snapshotQuestions.length > 0) {
+      questions = snapshotQuestions;
+      surveyTitle = versionSnapshot.schema.survey.title ?? surveyTitle;
+    }
+  }
   const fallback = fallbackResultProfile(surveyTitle, questions, answers);
   const snapshot = ruleSetRecord
     ? (() => {

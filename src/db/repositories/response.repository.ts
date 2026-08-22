@@ -55,7 +55,9 @@ function mapAnswer(row: AnswerRow): Answer {
     questionId: row.question_id,
     textValue: row.text_value,
     numberValue: row.number_value,
-    booleanValue: toBoolean(row.boolean_value),
+    // Preserve NULL so normalizeAnswer can distinguish "not stored" from an
+    // explicit false; otherwise false would shadow json/text answer values.
+    booleanValue: row.boolean_value === null ? null : toBoolean(row.boolean_value),
     ratingValue: row.rating_value,
     dateValue: row.date_value,
     timeValue: row.time_value,
@@ -80,7 +82,10 @@ export async function createResponse(
       `INSERT INTO survey_responses (
         survey_id, user_id, participant_hash, status,
         started_at, current_question_id, version, created_at, updated_at
-      ) VALUES (?, ?, ?, 'in_progress', ?, ?, 1, ?, ?)`,
+      ) VALUES (
+        ?, ?, ?, 'in_progress', ?, ?,
+        (SELECT version FROM surveys WHERE id = ?), ?, ?
+      )`,
     )
     .bind(
       input.surveyId,
@@ -88,6 +93,7 @@ export async function createResponse(
       input.participantHash,
       timestamp,
       input.currentQuestionId ?? null,
+      input.surveyId,
       timestamp,
       timestamp,
     )
@@ -266,6 +272,52 @@ export async function cancelResponse(
     )
     .bind(nowIso(), id)
     .run();
+}
+
+export async function archiveResponse(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE survey_responses SET status = 'archived', updated_at = ? WHERE id = ?",
+    )
+    .bind(nowIso(), id)
+    .run();
+}
+
+/**
+ * Deletes a response and its answers. Completed responses are permanent and
+ * cannot be deleted; only abandoned/in-progress/cancelled rows may be removed.
+ */
+export async function deleteResponse(
+  db: D1Database,
+  id: number,
+): Promise<void> {
+  const row = await db
+    .prepare("SELECT status FROM survey_responses WHERE id = ? LIMIT 1")
+    .bind(id)
+    .first<{ status: string }>();
+  if (!row) return;
+  if (row.status === "completed") {
+    throw new Error("已完成的答卷属于永久数据，禁止删除；请归档");
+  }
+  await db.batch([
+    db
+      .prepare(
+        `DELETE FROM answer_media
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        `DELETE FROM answer_options
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db.prepare("DELETE FROM answers WHERE response_id = ?").bind(id),
+    db.prepare("DELETE FROM survey_responses WHERE id = ?").bind(id),
+  ]);
 }
 
 export async function restartResponse(

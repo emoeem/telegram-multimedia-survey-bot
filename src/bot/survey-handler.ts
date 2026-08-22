@@ -54,6 +54,7 @@ import {
   assertSurveyQuestionsEditable,
   duplicateSurvey,
   listMySurveys as listOwnedSurveys,
+  publishSurvey,
 } from "../services/survey.service";
 import {
   getNumericStatistics,
@@ -85,7 +86,12 @@ import {
   toggleSessionOption,
 } from "../services/session.service";
 import { getFirstQuestion, getNextQuestion, getNextQuestionAfterOption, getPreviousQuestion, getQuestionById, type SurveyQuestionView } from "../survey/engine";
-import { answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup, getBotUsername, sendAnimation, sendAudio, sendDocument, sendDocumentByFileId, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
+import {
+  getMatrixColumns as matrixColumns,
+  getQuestionInstruction as formatQuestionInstruction,
+  isSingleChoiceQuestion as usesSingleChoiceKeyboard,
+} from "../survey/question-presentation";
+import { answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup, getBotUsername, getChat, sendAnimation, sendAudio, sendDocument, sendDocumentByFileId, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
 import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
@@ -109,6 +115,15 @@ import {
   decryptSurveyAccessCode,
   verifySurveyAccessCode,
 } from "../core/security";
+import {
+  REPORT_CHANNEL_CACHE_KEY,
+  reportChannelPendingKey,
+} from "../services/report-delivery.service";
+import { createReportAccessToken } from "../services/report-access-token.service";
+import {
+  botCanManageChannel,
+  REPORT_CHANNEL_DETECT_REQUEST_KEY,
+} from "./channel-detection";
 import type { Answer, MediaAsset, Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
 import {
@@ -149,6 +164,11 @@ async function getSurveyShareUrl(
     });
   }
   return `https://t.me/${username}?start=survey_${surveyId}`;
+}
+
+async function webReportUrl(ctx: BotContext, responseId: number): Promise<string> {
+  const token = await createReportAccessToken(ctx.webhookSecret ?? ctx.botToken, responseId);
+  return `${ctx.origin}/report/${responseId}?t=${token}`;
 }
 
 function bytesToDataUrl(bytes: Uint8Array, contentType: string): string {
@@ -204,19 +224,22 @@ function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
   hasPausedSurvey = false,
+  origin?: string,
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
-    [{ text: "浏览问卷", callback_data: "home:surveys" }],
+    origin
+      ? [{ text: "🌐 浏览问卷（网页）", url: `${origin}/s` }]
+      : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
   if (hasPausedSurvey) {
     rows.push([{ text: "▶️ 继续填写", callback_data: "home:resume_survey" }]);
   }
   if (creator) {
-    rows.push([
-      { text: "创建与导入", callback_data: "home:create_menu" },
-      { text: "我的问卷", callback_data: "home:my_surveys" },
-    ]);
+    if (origin) {
+      rows.push([{ text: "🌐 网页管理后台", web_app: { url: `${origin}/admin` } }]);
+    }
+    rows.push([{ text: "我的问卷", callback_data: "home:my_surveys" }]);
   }
   if (administrator) {
     rows.push([{ text: "管理员中心", callback_data: "admin:home" }]);
@@ -242,7 +265,7 @@ async function showHomeMenu(
     userId,
     screen: "home",
     text,
-    replyMarkup: buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), Boolean(pausedResponse)),
+    replyMarkup: buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), Boolean(pausedResponse), ctx.origin),
     ...(messageId === undefined ? {} : { messageId }),
   });
 }
@@ -351,25 +374,6 @@ export function buildSingleChoiceKeyboard(
   ]);
 
   return { inline_keyboard: rows };
-}
-
-function usesSingleChoiceKeyboard(question: SurveyQuestionView): boolean {
-  return (
-    question.type === "single" ||
-    question.type === "yes_no" ||
-    question.type === "rating"
-  );
-}
-
-function matrixColumns(question: SurveyQuestionView): string[] {
-  try {
-    const parsed = question.settingsJson ? JSON.parse(question.settingsJson) as { columns?: unknown } : null;
-    return Array.isArray(parsed?.columns)
-      ? parsed.columns.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 export function buildMatrixKeyboard(
@@ -515,33 +519,6 @@ function formatQuestionIntro(
     parts.push(question.description);
   }
   return parts.join("\n\n");
-}
-
-function formatQuestionInstruction(question: SurveyQuestionView): string {
-  if (usesSingleChoiceKeyboard(question)) {
-    if (question.type === "rating") {
-      return "请选择一个分数";
-    }
-    return "请选择一个选项";
-  }
-  if (question.type === "multiple") {
-    return "可选择多个选项，完成后点击“完成选择”";
-  }
-  if (question.type === "matrix") {
-    return "请为每一行选择一个选项，完成后点击“完成矩阵”";
-  }
-  if (
-    question.type === "image" ||
-    question.type === "video" ||
-    question.type === "audio" ||
-    question.type === "file"
-  ) {
-    return "请直接发送对应的媒体文件";
-  }
-  if (question.type === "number") return "请输入一个数字";
-  if (question.type === "date") return "请输入日期，格式：YYYY-MM-DD";
-  if (question.type === "time") return "请输入时间，格式：HH:MM";
-  return "请直接发送你的回答";
 }
 
 export function formatQuestionText(
@@ -1458,6 +1435,7 @@ const responseStatusLabels = {
   completed: "已完成",
   abandoned: "已中止",
   cancelled: "已取消",
+  archived: "已归档",
 } as const;
 
 const chinaDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -2156,89 +2134,29 @@ export async function showSurveyStats(
     return;
   }
 
-  const stats = await getSurveyStatistics(ctx.db, surveyId);
   const survey = await getSurveyById(ctx.db, surveyId);
-  const optionStats = await getOptionStatistics(ctx.db, surveyId);
-  const numericStats = await getNumericStatistics(ctx.db, surveyId);
-  const responses = await listResponses(ctx.db, surveyId, 10);
-  const lastCompleted = await ctx.db.prepare(
-    "SELECT completed_at FROM survey_responses WHERE survey_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1",
-  ).bind(surveyId).first<{ completed_at: string | null }>();
-
-  const lines = [
-    `📊 ${survey?.title ?? "问卷"}统计`,
-    `内部编号：${surveyId}`,
-    `开始：${stats.totalStarted}`,
-    `完成：${stats.totalCompleted}`,
-    `完成率：${stats.completionRate.toFixed(1)}%`,
-    `最近答卷：${lastCompleted?.completed_at ? formatChinaDateTime(lastCompleted.completed_at) : "暂无"}`,
-  ];
-
-  if (optionStats.length > 0) {
-    lines.push("", "选项统计：");
-    const grouped = new Map<number, typeof optionStats>();
-    for (const stat of optionStats) {
-      const list = grouped.get(stat.questionId) ?? [];
-      list.push(stat);
-      grouped.set(stat.questionId, list);
-    }
-
-    for (const list of grouped.values()) {
-      const first = list[0];
-      if (!first) continue;
-      lines.push(`${first.questionTitle}`);
-      for (const stat of list) {
-        lines.push(`${stat.optionLabel}: ${stat.count} (${stat.percentage.toFixed(1)}%)`);
-      }
-    }
-  }
-
-  if (numericStats.length > 0) {
-    lines.push("", "评分/数字统计：");
-    for (const stat of numericStats) {
-      lines.push(
-        `${stat.questionTitle}: avg=${stat.average ?? "-"} min=${stat.min ?? "-"} max=${stat.max ?? "-"}`,
-      );
-    }
-  }
-
-  if (responses.length > 0) {
-    lines.push("", "最近回答：");
-    for (const response of responses) {
-      lines.push(`#${response.id} ${response.status} ${response.startedAt}`);
-    }
-  }
-
-  const text = lines.join("\n");
-  if (text.length > 4096) {
-    await sendLongMessage(ctx.botToken, chatId, text, {
-      inline_keyboard: [
-        [
-          {
-            text: "📝 内容与发布",
-            callback_data: `owner:content:${surveyId}`,
-          },
-          {
-            text: "📁 答卷与报告",
-            callback_data: `owner:reports:${surveyId}`,
-          },
-          {
-            text: `🔐 访问设置${survey?.accessCode ? " · 已保护" : ""}`,
-            callback_data: `owner:access_view:${surveyId}`,
-          },
-        ],
-        [{ text: "⬅️ 返回我的问卷", callback_data: "home:my_surveys" }],
-      ],
-    });
+  if (!survey) {
+    await sendMessage(ctx.botToken, chatId, "问卷不存在。");
     return;
   }
+  const statusLabel = survey.status === "draft"
+    ? "草稿"
+    : survey.status === "published"
+      ? "已发布"
+      : survey.status === "closed"
+        ? "已关闭"
+        : "已归档";
+  const text = `📋 ${survey.title}\n内部编号：${surveyId}\n状态：${statusLabel}\n\n完整编辑、统计和访问设置请进入网页后台。`;
+  const statusAction = survey.status === "published"
+    ? { text: "⏹ 关闭问卷", callback_data: `owner:close:${surveyId}` }
+    : { text: survey.status === "draft" ? "🚀 发布确认" : "🚀 重新发布", callback_data: `owner:publish_ask:${surveyId}` };
   const replyMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [
-        [
-          { text: "📝 内容与发布", callback_data: `owner:content:${surveyId}` },
-          { text: "📁 答卷与报告", callback_data: `owner:reports:${surveyId}` },
-          { text: `🔐 访问设置${survey?.accessCode ? " · 已保护" : ""}`, callback_data: `owner:access_view:${surveyId}` },
-        ],
+        ...(ctx.origin
+          ? [[{ text: "🌐 打开网页编辑器", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+          : []),
+        [statusAction],
+        [{ text: "📦 导出数据", callback_data: `owner:reports:${surveyId}` }],
         [{ text: "⬅️ 返回我的问卷", callback_data: "home:my_surveys" }],
       ],
   };
@@ -2311,15 +2229,21 @@ async function showSurveyShareLink(
     throw new Error("请先发布问卷，发布后才能生成分享链接");
   }
   const url = await getSurveyShareUrl(ctx, surveyId);
+  const webUrl = ctx.origin ? `${ctx.origin}/s/${surveyId}` : null;
   await renderUiScreen(ctx, chatId, userId, { screen: "survey_share", text: [
       `🔗 ${survey.title}`,
       "",
-      "把下面链接发给对方。对方点击后会自动打开机器人并直接进入这份问卷。",
+      "把链接发给对方即可填写问卷。",
+      "Telegram 链接会在机器人对话内填写；网页链接可在浏览器中填写（支持手机/桌面）。",
       survey.accessCode ? "该问卷已设置访问密码，接收者进入后仍需输入密码。" : "",
       "",
       url,
+      ...(webUrl ? ["", "网页版：", webUrl] : []),
     ].filter(Boolean).join("\n"), replyMarkup: {
-      inline_keyboard: [[{ text: "打开问卷", url }]],
+      inline_keyboard: [
+        [{ text: "Telegram 打开", url }],
+        ...(webUrl ? [[{ text: "🌐 网页版打开", url: webUrl }]] : []),
+      ],
     }, state: { surveyId } });
 }
 
@@ -2334,15 +2258,9 @@ async function showSurveyReportsMenu(
   await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
   const survey = await getSurveyById(ctx.db, surveyId);
   if (!survey) throw new Error("问卷不存在");
-  const poster = await getCompletionPosterSetting(ctx.db, surveyId);
 
-  await renderUiScreen(ctx, chatId, userId, { screen: "survey_reports", text: `📁 答卷与报告\n\n选择“${survey.title}”的查看、报告或导出方式。`, replyMarkup: {
+  await renderUiScreen(ctx, chatId, userId, { screen: "survey_exports", text: `📦 导出数据\n\n选择“${survey.title}”的导出格式。文件生成后会自动发送。`, replyMarkup: {
       inline_keyboard: [
-        [{ text: "查看答卷", callback_data: `owner:responses:${surveyId}:0` }],
-        [
-          { text: "统计 PDF", callback_data: `owner:export_summary_pdf:${surveyId}` },
-          { text: `完成海报 · ${poster.enabled ? "已开启" : "未开启"}`, callback_data: `owner:poster_menu:${surveyId}` },
-        ],
         [
           { text: "CSV", callback_data: `owner:export:csv:${surveyId}` },
           { text: "Excel", callback_data: `owner:export:xlsx:${surveyId}` },
@@ -2429,8 +2347,19 @@ async function showPublishCheck(
     issues.length > 0 ? `发现问题：\n${issues.map((issue) => `- ${issue}`).join("\n")}` : "检查通过，可以发布。",
   ].join("\n"), replyMarkup: {
     inline_keyboard: issues.length > 0
-      ? [[{ text: "编辑题目", callback_data: `owner:questions:${surveyId}` }], [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }]]
-      : [[{ text: "确认发布", callback_data: `owner:publish_confirm:${surveyId}` }], [{ text: "编辑题目", callback_data: `owner:questions:${surveyId}` }]],
+      ? [
+          ...(ctx.origin
+            ? [[{ text: "🌐 前往网页编辑器修正", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+            : []),
+          [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }],
+        ]
+      : [
+          [{ text: "确认发布", callback_data: `owner:publish_confirm:${surveyId}` }],
+          ...(ctx.origin
+            ? [[{ text: "🌐 打开网页编辑器", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+            : []),
+          [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }],
+        ],
   }, state: { surveyId } });
 }
 
@@ -2647,7 +2576,7 @@ export async function handleTelegramMessage(
       text: creator
         ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-      replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), Boolean(pausedResponse)),
+      replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), Boolean(pausedResponse), ctx.origin),
     });
     return;
   }
@@ -2675,9 +2604,155 @@ export async function handleTelegramMessage(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
         Boolean(dbUserId && await getActiveResponseByUser(ctx.db, dbUserId)),
+        ctx.origin,
       ),
     });
     return;
+  }
+
+  if (/^\/set_report_channel(?:@[A-Za-z0-9_]{3,64})?$/.test(text ?? "")) {
+    if (!ctx.cache) {
+      await sendMessage(ctx.botToken, message.chat.id, "当前部署未启用 KV，无法保存频道设置。");
+      return;
+    }
+    const forwarded = message.forward_from_chat;
+    if (forwarded && forwarded.type === "channel") {
+      if (!(await botCanManageChannel(ctx.botToken, forwarded.id))) {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          "该频道不可用：请确认「问卷机器人」已被添加为该频道管理员。",
+        );
+        return;
+      }
+      await ctx.cache.put(REPORT_CHANNEL_CACHE_KEY, String(forwarded.id));
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        `✅ 报告归档频道已设置：${forwarded.title ?? String(forwarded.id)}\n频道 ID：${forwarded.id}`,
+      );
+      return;
+    }
+    await ctx.cache.put(reportChannelPendingKey(userId), "1", {
+      expirationTtl: 10 * 60,
+    });
+    await sendMessage(
+      ctx.botToken,
+      message.chat.id,
+      "请把频道里的任意一条消息转发给我，或发送频道 @username。\n（邀请链接 t.me/+... 无法解析；设置 10 分钟内有效）",
+    );
+    return;
+  }
+
+  if (/^\/detect_channel(?:@[A-Za-z0-9_]{3,64})?$/.test(text ?? "")) {
+    if (!ctx.cache) {
+      await sendMessage(ctx.botToken, message.chat.id, "当前部署未启用 KV，无法保存频道设置。");
+      return;
+    }
+    await ctx.cache.put(REPORT_CHANNEL_DETECT_REQUEST_KEY, String(userId), {
+      expirationTtl: 10 * 60,
+    });
+    await sendMessage(
+      ctx.botToken,
+      message.chat.id,
+      "请在目标频道里发送任意一条消息（例如 TEST）。\nBot 检测到后会自动把该频道设置为报告归档频道，并在这里通知你。\n（10 分钟内有效）",
+    );
+    return;
+  }
+
+  if (
+    ctx.cache &&
+    message.forward_from_chat?.type === "channel"
+  ) {
+    const configured = await ctx.cache.get(REPORT_CHANNEL_CACHE_KEY);
+    if (!configured) {
+      const forwarded = message.forward_from_chat;
+      if (!(await botCanManageChannel(ctx.botToken, forwarded.id))) {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          "该频道不可用：请确认「问卷机器人」已被添加为该频道管理员。",
+        );
+        return;
+      }
+      await ctx.cache.put(REPORT_CHANNEL_CACHE_KEY, String(forwarded.id));
+      await ctx.cache.delete(reportChannelPendingKey(userId));
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        `✅ 已自动识别报告归档频道：${forwarded.title ?? String(forwarded.id)}\n频道 ID：${forwarded.id}\n如需更换请发送 /set_report_channel。`,
+      );
+      return;
+    }
+  }
+
+  if (ctx.cache) {
+    const configured = await ctx.cache.get(REPORT_CHANNEL_CACHE_KEY);
+    const candidate = text?.trim() ?? "";
+    if (!configured && /^https?:\/\/t\.me\/(\+|\/c\/)/.test(candidate)) {
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "这是邀请链接，Bot 无法直接解析。\n请打开频道，随便发一条消息，然后用 Telegram 的「转发」按钮把它转发给我（转发后消息会带“转发自频道”标记）。\n也可以先发 /set_report_channel 再操作。",
+      );
+      return;
+    }
+  }
+
+  if (ctx.cache) {
+    const pendingChannel = await ctx.cache.get(reportChannelPendingKey(userId));
+    if (pendingChannel === "1") {
+      const forwarded = message.forward_from_chat;
+      if (forwarded && forwarded.type === "channel") {
+        if (!(await botCanManageChannel(ctx.botToken, forwarded.id))) {
+          await sendMessage(
+            ctx.botToken,
+            message.chat.id,
+            "该频道不可用：请确认「问卷机器人」已被添加为该频道管理员。",
+          );
+          return;
+        }
+        await ctx.cache.put(REPORT_CHANNEL_CACHE_KEY, String(forwarded.id));
+        await ctx.cache.delete(reportChannelPendingKey(userId));
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          `✅ 报告归档频道已设置：${forwarded.title ?? String(forwarded.id)}\n频道 ID：${forwarded.id}`,
+        );
+        return;
+      }
+      const candidate = text?.trim();
+      if (candidate && /^@[A-Za-z0-9_]{3,}$/.test(candidate)) {
+        try {
+          const chat = await getChat(ctx.botToken, candidate);
+          if (chat.type === "channel" && (await botCanManageChannel(ctx.botToken, chat.id))) {
+            await ctx.cache.put(REPORT_CHANNEL_CACHE_KEY, String(chat.id));
+            await ctx.cache.delete(reportChannelPendingKey(userId));
+            await sendMessage(
+              ctx.botToken,
+              message.chat.id,
+              `✅ 报告归档频道已设置：${chat.title ?? candidate}\n频道 ID：${chat.id}`,
+            );
+            return;
+          }
+          await sendMessage(ctx.botToken, message.chat.id, `${candidate} 不是频道，请重试。`);
+          return;
+        } catch {
+          await sendMessage(
+            ctx.botToken,
+            message.chat.id,
+            `无法解析 ${candidate}，请确认 Bot 已添加为频道管理员。`,
+          );
+          return;
+        }
+      }
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "请把频道里的任意一条消息转发给我，或发送频道 @username（邀请链接 t.me/+... 无法解析）。",
+      );
+      return;
+    }
   }
 
   if (text && ctx.cache) {
@@ -2691,6 +2766,8 @@ export async function handleTelegramMessage(
           replyMarkup: buildHomeKeyboard(
             Boolean(dbUser && await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)),
             Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
+            false,
+            ctx.origin,
           ),
         });
         return;
@@ -2719,12 +2796,13 @@ export async function handleTelegramMessage(
       screen: "home",
       text:
       creator
-        ? "快捷入口在下方。\n\n继续草稿发送 /continue；导入 JSON 发送 /import。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
+        ? "快捷入口在下方。问卷创建和完整管理请进入网页后台。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
       replyMarkup: buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
         Boolean(dbUserId && await getActiveResponseByUser(ctx.db, dbUserId)),
+        ctx.origin,
       ),
     });
     return;
@@ -4117,8 +4195,7 @@ export async function handleTelegramCallback(
     }
     try {
       await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-      await assertSurveyCanPublish(ctx.db, surveyId);
-      await updateSurveyStatus(ctx.db, surveyId, "published");
+      await publishSurvey(ctx.db, surveyId, user.id);
       await showSurveyStats(ctx, chatId, userId, surveyId);
     } catch (error) {
       await sendMessage(
@@ -4569,11 +4646,20 @@ export async function handleTelegramCallback(
       await sendMessage(ctx.botToken, chatId, "✅ 问卷已完成！\n\n你的回答已经保存。是否生成专属结果报告？", {
         inline_keyboard: [
           [{ text: "🎨 选择报告模板", callback_data: `rv:templates:${response.id}` }],
+          ...(ctx.origin
+            ? [[{ text: "🌐 查看网页版报告", url: await webReportUrl(ctx, response.id) }]]
+            : []),
           [{ text: "暂不生成", callback_data: `rv:skip:${response.id}` }],
         ],
       });
     } else {
-      await sendMessage(ctx.botToken, chatId, "你已完成问卷，感谢参与。");
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        ctx.origin
+          ? `✅ 问卷已完成，感谢参与！\n\n🌐 网页版报告：${await webReportUrl(ctx, response.id)}`
+          : "你已完成问卷，感谢参与。",
+      );
     }
     try {
       await sendCompletionPoster(ctx, chatId, surveyId);

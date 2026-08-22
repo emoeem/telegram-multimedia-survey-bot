@@ -132,7 +132,10 @@ export function buildReportViewModel(profile: ResultProfileSnapshot, images: Rec
   const quotes = longTexts.slice(5, 11).map((item) => ({ ...item, text: limitText(item.text, 1800) }));
   const metadataGallery = Array.isArray(metadata.gallery) ? metadata.gallery : [];
   const gallery: ReportGalleryItem[] = Object.entries(images)
-    .filter(([key, value]) => !key.startsWith("template.background") && value.startsWith("data:image/"))
+    .filter(([key, value]) =>
+      !key.startsWith("template.background") &&
+      (value.startsWith("data:image/") || value.startsWith("/api/")),
+    )
     .slice(0, 60)
     .map(([, url], index) => {
       const source = metadataGallery[index];
@@ -144,7 +147,7 @@ export function buildReportViewModel(profile: ResultProfileSnapshot, images: Rec
       };
     });
   const avatar = ["result.images.avatar", "result.images.portrait", "result.images.profilePhoto", "result.images.front_image"]
-    .map((key) => images[key]).find((value) => value?.startsWith("data:image/")) ?? gallery[0]?.url;
+    .map((key) => images[key]).find((value) => value?.startsWith("data:image/") || value?.startsWith("/api/")) ?? gallery[0]?.url;
   const requestedLayout = asReportLayout(metadata.layout ?? metadata.reportLayout);
   const requestedTheme = typeof metadata.theme === "string" && metadata.theme in reportThemes ? metadata.theme as ReportTheme : undefined;
   return {
@@ -287,7 +290,11 @@ export function buildHtmlReportPages(
   return { view, content, layout, theme, pages };
 }
 
-async function optimizeImagesInBrowser(page: Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>, images: Record<string, string>, policy: ReportSizePolicy): Promise<Record<string, string>> {
+export async function optimizeReportImagesInPage(
+  page: Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>,
+  images: Record<string, string>,
+  policy: Pick<ReportSizePolicy, "maxImageDimension">,
+): Promise<Record<string, string>> {
   if (!Object.keys(images).length) return images;
   try {
     const payload = JSON.stringify({ images, galleryMax: policy.maxImageDimension.gallery, heroMax: policy.maxImageDimension.hero }).replaceAll("<", "\\u003c");
@@ -311,7 +318,7 @@ export async function renderHtmlReportArtifact(
   const failures: ReportArtifact["failures"] = [];
   try {
     const optimizerPage = await browser.newPage();
-    const optimizedImages = await optimizeImagesInBrowser(optimizerPage, images, policy);
+    const optimizedImages = await optimizeReportImagesInPage(optimizerPage, images, policy);
     const report = buildHtmlReportPages(profile, templateName, optimizedImages, options, policy);
     const pages: ReportArtifact["pages"] = [];
     for (const planned of report.pages) {

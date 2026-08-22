@@ -4,6 +4,7 @@ import type {
   SurveyQuestion,
   UnifiedSurveyImport,
 } from "../schema";
+import { surveyOptionId, surveyQuestionId } from "../id-mapping";
 import type {
   ImportedMedia,
   ImportedSurvey,
@@ -47,15 +48,17 @@ function normalizeQuestion(
 ): SurveyQuestion {
   const options: SurveyOption[] = (question.options ?? []).map(
     (option, optionIndex) => ({
-      id: `q${index + 1}_o${optionIndex + 1}`,
+      id: surveyOptionId(index, optionIndex),
       label: option.label,
       value: option.value,
       order: optionIndex + 1,
-      ...(option.media[0]
+      ...(option.media.length > 0
         ? {
-            media: normalizeMedia(
-              option.media[0],
-              `q${index + 1}_o${optionIndex + 1}_media`,
+            media: option.media.map((media, mediaIndex) =>
+              normalizeMedia(
+                media,
+                `q${index + 1}_o${optionIndex + 1}_media${mediaIndex + 1}`,
+              ),
             ),
           }
         : {}),
@@ -63,7 +66,7 @@ function normalizeQuestion(
   );
 
   return {
-    id: `q${index + 1}`,
+    id: surveyQuestionId(index),
     type: question.type,
     title: question.title,
     ...(question.description ? { description: question.description } : {}),

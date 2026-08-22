@@ -1,6 +1,6 @@
 name = "telegram-multimedia-survey-bot-staging"
 main = "src/index.ts"
-assets = { directory = "admin/dist", binding = "ASSETS", not_found_handling = "single-page-application" }
+assets = { directory = "admin/dist", binding = "ASSETS", not_found_handling = "single-page-application", html_handling = "none" }
 compatibility_date = "2026-08-14"
 workers_dev = true
 preview_urls = true
@@ -15,12 +15,18 @@ ENVIRONMENT = "development"
 APP_VERSION = "0.3.0-staging"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"
+REPORT_CHANNEL_ID = ""
 
 [[d1_databases]]
 binding = "DB"
 database_name = "telegram-survey-staging-db"
 database_id = "9a8fc70e-5e5d-4c11-b275-d8c552d551c5"
 migrations_dir = "db/migrations"
+
+[[kv_namespaces]]
+binding = "MEDIA_KV"
+id = "49f04a9f635d44f4b179b1883be4b59e"
+preview_id = "49f04a9f635d44f4b179b1883be4b59e"
 
 [[kv_namespaces]]
 binding = "CACHE"

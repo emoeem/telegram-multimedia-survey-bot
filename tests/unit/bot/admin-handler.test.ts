@@ -94,6 +94,7 @@ describe("admin survey list", () => {
       builder: {} as SurveyBuilderNamespace,
       adminIds: [99],
       exportQueue: {} as Queue,
+      origin: "https://example.com",
     };
 
     await handleAdminMessage(ctx, {
@@ -113,14 +114,19 @@ describe("admin survey list", () => {
       .flat()
       .map((button) => button.text);
 
-    expect(buttonTexts).toContain("📋 全部问卷");
-    expect(buttonTexts).toContain("🎨 视觉模板");
-    expect(buttonTexts).toContain("👥 Bot 用户");
-    expect(buttonTexts).toContain("🔑 授权与部署");
-    expect(buttonTexts).toContain("👤 体验创作者");
-    expect(buttonTexts).toContain("🔐 图片生成密码");
-    expect(buttonTexts).not.toContain("发放 365 天");
+    expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作"]);
+    expect(buttonTexts).not.toContain("🎨 视觉模板");
+    expect(buttonTexts).not.toContain("👥 Bot 用户");
+    expect(buttonTexts).not.toContain("🔑 授权与部署");
+    expect(buttonTexts).not.toContain("👤 体验创作者");
+    expect(buttonTexts).not.toContain("🔐 图片生成密码");
     expect(buttonTexts).not.toContain("1. 你好（已发布）");
+
+    const buttons = body.reply_markup.inline_keyboard.flat() as Array<{
+      text: string;
+      web_app?: { url: string };
+    }>;
+    expect(buttons[0]?.web_app?.url).toBe("https://example.com/admin");
   });
 
   it("lets an administrator configure the password that unlocks image generation", async () => {
@@ -201,7 +207,7 @@ describe("admin survey list", () => {
     expect(mocks.handleResultVisualAdminMessage).toHaveBeenCalledOnce();
   });
 
-  it("gives administrators response browsing and export actions", async () => {
+  it("limits administrator survey details to web, status, and export shortcuts", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 1,
       telegramUserId: 99,
@@ -234,6 +240,7 @@ describe("admin survey list", () => {
         builder: {} as SurveyBuilderNamespace,
         adminIds: [99],
         exportQueue: {} as Queue,
+        origin: "https://example.com",
       },
       {
         id: "callback",
@@ -251,22 +258,24 @@ describe("admin survey list", () => {
       String((editMessageCall?.[1] as RequestInit | undefined)?.body),
     ) as {
       reply_markup: {
-        inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+        inline_keyboard: Array<Array<{ text: string; callback_data?: string; web_app?: { url: string } }>>;
       };
     };
     const buttons = body.reply_markup.inline_keyboard.flat();
     expect(buttons).toContainEqual({
-      text: "完成名单与答卷",
-      callback_data: "owner:responses:16:0",
+      text: "🌐 在网页后台打开",
+      web_app: { url: "https://example.com/admin/surveys/16" },
     });
     expect(buttons).toContainEqual({
-      text: "CSV",
-      callback_data: "owner:export:csv:16",
+      text: "⏹ 关闭问卷",
+      callback_data: "admin:close:16",
     });
     expect(buttons).toContainEqual({
-      text: "🎨 结果卡",
-      callback_data: "visual:settings:16",
+      text: "📦 导出数据",
+      callback_data: "owner:reports:16",
     });
+    expect(buttons.map((button) => button.text)).not.toContain("完成名单与答卷");
+    expect(buttons.map((button) => button.text)).not.toContain("🎨 结果卡");
   });
 
   it("keeps aggregate metrics while simplifying individual survey rows", async () => {

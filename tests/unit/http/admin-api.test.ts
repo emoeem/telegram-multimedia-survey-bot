@@ -3,9 +3,20 @@ import { createHmac } from 'node:crypto';
 
 const repositoryMocks = vi.hoisted(() => ({
   getUserByTelegramId: vi.fn(),
+  getUserById: vi.fn(),
+  listUserDirectory: vi.fn(),
+  listUserResponses: vi.fn(),
+  listUserTags: vi.fn(),
+  addUserTag: vi.fn(),
+  removeUserTag: vi.fn(),
+}));
+
+const telegramMocks = vi.hoisted(() => ({
+  downloadTelegramFile: vi.fn(),
 }));
 
 vi.mock('../../../src/db/repositories/user.repository', () => repositoryMocks);
+vi.mock('../../../src/bot/telegram', () => telegramMocks);
 
 import { handleAdminApi, verifyTelegramWebAppUser } from '../../../src/http/admin-api';
 import type { Env } from '../../../src/index';
@@ -48,6 +59,7 @@ function makeDb() {
   const firstRules: Array<[string, () => unknown]> = [];
   const allRules: Array<[string, () => unknown[]]> = [];
   let defaultFirst: unknown = null;
+  let configuredBatchResults: Array<{ results: unknown[] }> | null = null;
   let nextRowId = 101;
   const makeStatement = (sql: string) => {
     const statement = {
@@ -69,7 +81,7 @@ function makeDb() {
       sqlLog.push(sql);
       return makeStatement(sql);
     }),
-    batch: vi.fn(async (batch: unknown[]) => batch.map(() => ({ results: [] }))),
+    batch: vi.fn(async (batch: unknown[]) => configuredBatchResults ?? batch.map(() => ({ results: [] }))),
   };
   return {
     db: db as unknown as D1Database,
@@ -82,6 +94,9 @@ function makeDb() {
     },
     allOn: (pattern: string, rows: unknown[]) => {
       allRules.push([pattern, () => rows]);
+    },
+    setBatchResults: (results: unknown[][]) => {
+      configuredBatchResults = results.map((rows) => ({ results: rows }));
     },
   };
 }
@@ -302,6 +317,146 @@ describe('handleAdminApi authentication and permissions', () => {
     const response = await handleAdminApi(apiRequest('/api/admin/surveys/404/editor', { userId: '111' }), makeEnv(db));
     expect(response.status).toBe(404);
   });
+
+  it('returns a paginated response list and hides identities for anonymous surveys', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7, anonymous: 1 }));
+    harness.setBatchResults([
+      [{ id: 31, status: 'completed', startedAt: 'T1', completedAt: 'T2', updatedAt: 'T2', telegramUserId: 999, username: 'hidden', firstName: 'Hidden', lastName: null }],
+      [{ count: 1 }],
+    ]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses?status=completed&page=1', { userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      survey: { id: 5, anonymous: true },
+      total: 1,
+      items: [{ id: 31, statusLabel: '已完成', respondent: null }],
+    });
+  });
+
+  it('rejects invalid response status filters', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 1 }));
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses?status=deleted', { userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'validation_failed' });
+  });
+
+  it('proxies only response-scoped media attached to the requested response', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    telegramMocks.downloadTelegramFile.mockResolvedValue({
+      data: new Uint8Array([1, 2, 3]),
+      contentType: 'image/jpeg',
+      filePath: 'photos/answer.jpg',
+    });
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7 }));
+    harness.firstOn('FROM media_assets m', {
+      telegramFileId: 'telegram-file',
+      mimeType: 'image/jpeg',
+      fileName: 'answer.jpg',
+      fileSize: 3,
+    });
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/31/media/51', { userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('image/jpeg');
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(telegramMocks.downloadTelegramFile).toHaveBeenCalledWith(BOT_TOKEN, 'telegram-file');
+    expect(harness.sqlLog.some((sql) => sql.includes("m.asset_scope='response'") && sql.includes('r.id=?'))).toBe(true);
+  });
+
+  it('does not download media outside the scoped response relation', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7 }));
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/31/media/999', { userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(404);
+    expect(telegramMocks.downloadTelegramFile).not.toHaveBeenCalled();
+  });
+
+  it('returns an answer detail with option labels and response-scoped media', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7 }));
+    harness.firstOn('FROM survey_responses r', {
+      id: 31,
+      survey_id: 5,
+      user_id: 7,
+      status: 'completed',
+      started_at: 'T1',
+      completed_at: 'T2',
+      submitted_at: 'T2',
+      updated_at: 'T2',
+      telegram_user_id: 222,
+      username: 'owner',
+      first_name: '问卷',
+      last_name: '用户',
+    });
+    harness.allOn('FROM survey_questions WHERE survey_id', [questionRow()]);
+    harness.allOn('FROM question_options', [{
+      id: 21,
+      question_id: 11,
+      label: '选项 A',
+      value: 'A',
+      order: 0,
+      is_other: 0,
+      created_at: 'T1',
+      updated_at: 'T1',
+    }]);
+    harness.setBatchResults([
+      [{ id: 41, response_id: 31, question_id: 11, text_value: null, number_value: null, boolean_value: null, rating_value: null, date_value: null, time_value: null, json_value: '[21]' }],
+      [{ answerId: 41, optionId: 21, label: '选项 A' }],
+      [{ answerId: 41, mediaAssetId: 51, mediaType: 'photo', fileName: 'answer.jpg', mimeType: 'image/jpeg' }],
+    ]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/31', { userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      response: { id: 31, respondent: { telegramUserId: 222 } },
+      answers: [{ questionId: 11, value: '选项 A', media: [{ mediaAssetId: 51 }] }],
+    });
+    expect(harness.sqlLog.some((sql) => sql.includes("m.asset_scope='response'"))).toBe(true);
+  });
+
+  it('returns survey analytics to an owner and blocks another owner', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const allowed = makeDb();
+    allowed.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7 }));
+    const ok = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/analytics', { userId: '222' }),
+      makeEnv(allowed.db),
+    );
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({
+      survey: { id: 5 },
+      overview: { totalStarted: 0, totalCompleted: 0, completionRate: 0 },
+    });
+
+    const blocked = makeDb();
+    blocked.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 99 }));
+    const forbidden = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/analytics', { userId: '222' }),
+      makeEnv(blocked.db),
+    );
+    expect(forbidden.status).toBe(403);
+  });
 });
 
 describe('handleAdminApi write endpoints', () => {
@@ -418,6 +573,74 @@ describe('handleAdminApi write endpoints', () => {
     expect(await conflict.json()).toMatchObject({ code: 'stale_write', currentUpdatedAt: 'T2' });
   });
 
+  it('checks baseUpdatedAt on DELETE requests', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const stale = writableDraftDb({ survey: { updated_at: 'T2' } });
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/questions/11', {
+        method: 'DELETE',
+        userId: '111',
+        body: { baseUpdatedAt: 'T1' },
+      }),
+      makeEnv(stale.db),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'stale_write', currentUpdatedAt: 'T2' });
+    expect(stale.sqlLog.some((sql) => sql.includes('DELETE FROM survey_questions'))).toBe(false);
+  });
+
+  it('rejects publishing an incomplete draft with a question-specific message', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.allOn('FROM survey_questions WHERE survey_id', [questionRow({ id: 11, order: 0 })]);
+    harness.allOn('WHERE question_id IN', [{ id: 21, question_id: 11 }]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/publish', {
+        method: 'POST',
+        userId: '111',
+        body: { baseUpdatedAt: '2026-08-22 00:00:00' },
+      }),
+      makeEnv(harness.db),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'publish_validation' });
+  });
+
+  it('publishes a valid draft after domain validation', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.allOn('FROM survey_questions WHERE survey_id', [questionRow({ type: 'text' })]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/publish', {
+        method: 'POST',
+        userId: '111',
+        body: { baseUpdatedAt: '2026-08-22 00:00:00' },
+      }),
+      makeEnv(harness.db),
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('UPDATE surveys SET') && sql.includes('status = ?'))).toBe(true);
+  });
+
+  it('duplicates a locked survey as a new draft', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb({ survey: { status: 'published', published_at: '2026-08-22 00:00:00' } });
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/duplicate', {
+        method: 'POST',
+        userId: '111',
+        body: { baseUpdatedAt: '2026-08-22 00:00:00' },
+      }),
+      makeEnv(harness.db),
+    );
+
+    expect(response.status).toBe(201);
+    expect(harness.sqlLog.some((sql) => sql.includes('INSERT INTO surveys'))).toBe(true);
+  });
+
   it('locks writes on published surveys and on surveys with responses', async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const published = writableDraftDb({ survey: { status: 'published' } });
@@ -476,7 +699,7 @@ describe('handleAdminApi write endpoints', () => {
     expect(harness.sqlLog.filter((sql) => sql.includes('INSERT INTO question_options')).length).toBe(2);
   });
 
-  it('updates question fields in place and rejects type changes', async () => {
+  it('updates question fields in place and allows type changes', async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const harness = writableDraftDb();
     harness.firstOn('FROM survey_questions WHERE id', questionRow());
@@ -492,18 +715,18 @@ describe('handleAdminApi write endpoints', () => {
     expect(harness.sqlLog.some((sql) => sql.includes('UPDATE survey_questions SET title = ?'))).toBe(true);
     expect(harness.sqlLog.some((sql) => sql.includes('UPDATE survey_questions SET validation_json = ?'))).toBe(true);
 
-    const rejected = writableDraftDb();
-    rejected.firstOn('FROM survey_questions WHERE id', questionRow());
+    const changed = writableDraftDb();
+    changed.firstOn('FROM survey_questions WHERE id', questionRow());
     const response = await handleAdminApi(
       apiRequest('/api/admin/surveys/5/questions/11', {
         method: 'PATCH',
         userId: '111',
         body: { type: 'text' },
       }),
-      makeEnv(rejected.db),
+      makeEnv(changed.db),
     );
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: 'validation_failed' });
+    expect(response.status).toBe(200);
+    expect(changed.sqlLog.some((sql) => sql.includes('UPDATE survey_questions SET type = ?'))).toBe(true);
   });
 
   it('appends options through the question patch endpoint', async () => {
@@ -566,6 +789,453 @@ describe('handleAdminApi write endpoints', () => {
         method: 'POST',
         userId: '111',
         body: { questionIds: [11] },
+      }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('creates, reorders and deletes survey pages', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const create = writableDraftDb();
+    const created = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/pages', {
+        method: 'POST',
+        userId: '111',
+        body: { title: '第一页', description: '开始' },
+      }),
+      makeEnv(create.db),
+    );
+    expect(created.status).toBe(201);
+    expect(create.sqlLog.some((sql) => sql.includes('INSERT INTO survey_pages'))).toBe(true);
+
+    const reorder = writableDraftDb();
+    reorder.allOn('FROM survey_pages', [
+      { id: 1, survey_id: 5, title: 'a', description: null, order: 0, created_at: '', updated_at: '' },
+    ]);
+    const reordered = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/pages/reorder', {
+        method: 'POST',
+        userId: '111',
+        body: { pageIds: [1] },
+      }),
+      makeEnv(reorder.db),
+    );
+    expect(reordered.status).toBe(200);
+
+    const remove = writableDraftDb();
+    remove.firstOn('FROM survey_pages WHERE id', {
+      id: 1,
+      survey_id: 5,
+      title: 'a',
+      description: null,
+      order: 0,
+      created_at: '',
+      updated_at: '',
+    });
+    const deleted = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/pages/1', { method: 'DELETE', userId: '111' }),
+      makeEnv(remove.db),
+    );
+    expect(deleted.status).toBe(200);
+    expect(remove.sqlLog.some((sql) => sql.includes('DELETE FROM survey_pages'))).toBe(true);
+  });
+
+  it('persists skip-rule conditions on a question patch', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.firstOn('FROM survey_questions WHERE id', questionRow());
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/questions/11', {
+        method: 'PATCH',
+        userId: '111',
+        body: {
+          condition: { kind: 'option_equals', rules: [{ optionId: 101, targetQuestionId: 20 }] },
+        },
+      }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('condition_json = ?'))).toBe(true);
+  });
+
+  it('lists users for admins only with tags and response counts', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const forbidden = await handleAdminApi(
+      apiRequest('/api/admin/users', { userId: '222' }),
+      makeEnv(makeDb().db),
+    );
+    expect(forbidden.status).toBe(403);
+
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    repositoryMocks.listUserDirectory.mockResolvedValue({
+      items: [{
+        id: 1,
+        telegramUserId: 8699777292,
+        username: 'alice',
+        firstName: null,
+        lastName: null,
+        systemRole: 'participant',
+        bannedAt: null,
+        createdAt: '',
+        updatedAt: '',
+        completedResponses: 3,
+        tags: ['vip'],
+      }],
+      total: 1,
+    });
+    const ok = await handleAdminApi(
+      apiRequest('/api/admin/users', { userId: '111' }),
+      makeEnv(makeDb().db),
+    );
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { items: Array<{ telegramUserId: number; tags: string[]; completedResponses: number }> };
+    expect(body.items[0]?.telegramUserId).toBe(8699777292);
+    expect(body.items[0]?.tags).toEqual(['vip']);
+    expect(body.items[0]?.completedResponses).toBe(3);
+  });
+
+  it('adds and removes user tags for admins', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    repositoryMocks.getUserById.mockResolvedValue({
+      id: 5,
+      telegramUserId: 8699777292,
+      username: 'alice',
+      firstName: null,
+      lastName: null,
+      languageCode: null,
+      systemRole: 'participant',
+      botStartedAt: null,
+      bannedAt: null,
+      bannedBy: null,
+      banReason: null,
+      createdAt: '',
+      updatedAt: '',
+    });
+    const harness = writableDraftDb();
+    const added = await handleAdminApi(
+      apiRequest('/api/admin/users/5/tags', { method: 'POST', userId: '111', body: { tag: 'vip' } }),
+      makeEnv(harness.db),
+    );
+    expect(added.status).toBe(200);
+    expect(repositoryMocks.addUserTag).toHaveBeenCalledWith(
+      harness.db,
+      { userId: 5, tag: 'vip', createdBy: ADMIN.id },
+    );
+
+    const removed = await handleAdminApi(
+      apiRequest('/api/admin/users/5/tags/vip', { method: 'DELETE', userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(removed.status).toBe(200);
+    expect(repositoryMocks.removeUserTag).toHaveBeenCalledWith(harness.db, 5, 'vip');
+  });
+
+  it('dashboard includes report delivery and audit summaries', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.setBatchResults([
+      [{ users: 3, surveys: 10, publishedSurveys: 4, responses: 20, todayResponses: 2 }],
+      [{ id: 1, title: 'A', status: 'published', updatedAt: '' }],
+      [{ id: 9, surveyId: 1, status: 'completed', updatedAt: '', title: 'A' }],
+      [
+        { status: 'pending', count: 1 },
+        { status: 'delivered', count: 5 },
+        { status: 'failed', count: 1 },
+      ],
+      [{ id: 1, action: 'survey.publish', entityType: 'survey', entityId: '1', createdAt: '' }],
+    ]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/dashboard', { userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.reportDeliveries).toEqual({ pending: 1, delivering: 0, delivered: 5, failed: 1 });
+    expect(body.todayResponses).toBe(2);
+    expect(body.recentActions).toHaveLength(1);
+  });
+
+  it('closes and archives surveys with audit entries', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ status: 'published' }));
+    const closed = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/close', { method: 'POST', userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(closed.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('UPDATE surveys SET'))).toBe(true);
+    expect(harness.sqlLog.some((sql) => sql.includes('INSERT INTO audit_logs'))).toBe(true);
+
+    const archive = writableDraftDb();
+    archive.firstOn('FROM surveys WHERE id', surveyRow({ status: 'published' }));
+    const archived = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/archive', { method: 'POST', userId: '111' }),
+      makeEnv(archive.db),
+    );
+    expect(archived.status).toBe(200);
+  });
+
+  it('blocks survey deletion when responses exist', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb({ responses: 1 });
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ status: 'archived' }));
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5', { method: 'DELETE', userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()) as { code: string }).toMatchObject({ code: 'delete_blocked' });
+  });
+
+  it('deletes surveys without responses', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ status: 'archived' }));
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5', { method: 'DELETE', userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('DELETE FROM surveys'))).toBe(true);
+  });
+
+  it('lists survey versions and restores one as a new draft', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const list = writableDraftDb();
+    const listed = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/versions', { userId: '111' }),
+      makeEnv(list.db),
+    );
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({ versions: [] });
+
+    const restore = writableDraftDb();
+    restore.firstOn('FROM survey_versions', {
+      snapshot_json: JSON.stringify({
+        schema: {
+          schema_version: 1,
+          survey: {
+            title: '历史版本问卷',
+            questions: [
+              { id: 'q1', type: 'text', title: '旧题', required: true, order: 1, options: [], media: [] },
+            ],
+            settings: { anonymous: false, allow_multiple: false, max_responses: 1 },
+          },
+        },
+        questionOrderIds: [10],
+      }),
+    });
+    const restored = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/versions/2/restore', {
+        method: 'POST',
+        userId: '111',
+        body: {},
+      }),
+      makeEnv(restore.db),
+    );
+    expect(restored.status).toBe(201);
+    const body = (await restored.json()) as { id: number };
+    expect(body.id).toBeGreaterThan(0);
+    expect(restore.sqlLog.some((sql) => sql.includes('INSERT INTO audit_logs'))).toBe(true);
+  });
+
+  it('lists report deliveries for admins', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.setBatchResults([[], [{ count: 0 }]]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/report-deliveries', { userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ items: [], total: 0 });
+  });
+
+  it('retries a failed report delivery and audits it', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.firstOn('FROM report_deliveries', {
+      id: 3,
+      response_id: 9,
+      report_version: 1,
+      delivery_id: 'response_9_v1',
+      telegram_chat_id: null,
+      pdf_message_id: null,
+      image_message_ids_json: null,
+      status: 'failed',
+      attempts: 1,
+      last_error: 'boom',
+      next_retry_at: null,
+      delivered_at: null,
+      created_at: '',
+      updated_at: '',
+    });
+    harness.firstOn('FROM survey_responses WHERE id', {
+      id: 9,
+      survey_id: 5,
+      user_id: 1,
+      participant_hash: 'h',
+      status: 'completed',
+      started_at: '',
+      completed_at: '',
+      submitted_at: '',
+      current_question_id: null,
+      version: 1,
+      created_at: '',
+      updated_at: '',
+    });
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ id: 5 }));
+    const send = vi.fn(async () => {});
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/report-deliveries/3/retry', {
+        method: 'POST',
+        userId: '111',
+        body: {},
+      }),
+      makeEnv(harness.db, { EXPORT_QUEUE: { send } as unknown as Queue }),
+    );
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledWith({ kind: 'report_delivery', deliveryId: 'response_9_v1' });
+    expect(harness.sqlLog.some((sql) => sql.includes('INSERT INTO audit_logs'))).toBe(true);
+  });
+
+  it('validates report template binding on survey patch', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const ok = writableDraftDb();
+    const accepted = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5', {
+        method: 'PATCH',
+        userId: '111',
+        body: { reportTemplateId: 'magazine-dark' },
+      }),
+      makeEnv(ok.db),
+    );
+    expect(accepted.status).toBe(200);
+    expect(ok.sqlLog.some((sql) => sql.includes('report_template_id = ?'))).toBe(true);
+
+    const bad = writableDraftDb();
+    const rejected = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5', {
+        method: 'PATCH',
+        userId: '111',
+        body: { reportTemplateId: 'does-not-exist' },
+      }),
+      makeEnv(bad.db),
+    );
+    expect(rejected.status).toBe(400);
+  });
+
+  it('duplicates questions and options', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const questionHarness = writableDraftDb();
+    questionHarness.firstOn('FROM survey_questions WHERE id', questionRow());
+    const duplicated = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/questions/11/duplicate', {
+        method: 'POST',
+        userId: '111',
+        body: {},
+      }),
+      makeEnv(questionHarness.db),
+    );
+    expect(duplicated.status).toBe(201);
+    expect(questionHarness.sqlLog.some((sql) => sql.includes('INSERT INTO survey_questions'))).toBe(true);
+
+    const optionHarness = writableDraftDb();
+    optionHarness.firstOn('FROM survey_questions WHERE id', questionRow());
+    optionHarness.firstOn('FROM question_options WHERE id', {
+      id: 101,
+      question_id: 11,
+      label: 'A',
+      value: 'A',
+      order: 0,
+      is_other: 0,
+      created_at: '',
+      updated_at: '',
+    });
+    const optionDuplicate = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/options/101/duplicate', {
+        method: 'POST',
+        userId: '111',
+        body: {},
+      }),
+      makeEnv(optionHarness.db),
+    );
+    expect(optionDuplicate.status).toBe(201);
+    expect(optionHarness.sqlLog.some((sql) => sql.includes('INSERT INTO option_media'))).toBe(true);
+  });
+
+  it('archives, deletes and links report for responses', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const responseRow = {
+      id: 9,
+      survey_id: 5,
+      user_id: 1,
+      participant_hash: 'h',
+      status: 'completed',
+      started_at: '',
+      completed_at: '',
+      submitted_at: '',
+      current_question_id: null,
+      version: 1,
+      created_at: '',
+      updated_at: '',
+    };
+
+    const archive = writableDraftDb();
+    archive.firstOn('FROM survey_responses WHERE id', responseRow);
+    const archived = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/9/archive', { method: 'POST', userId: '111', body: {} }),
+      makeEnv(archive.db),
+    );
+    expect(archived.status).toBe(200);
+    expect(archive.sqlLog.some((sql) => sql.includes("status = 'archived'"))).toBe(true);
+
+    const link = writableDraftDb();
+    link.firstOn('FROM survey_responses WHERE id', responseRow);
+    const linked = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/9/report-link', { method: 'POST', userId: '111', body: {} }),
+      makeEnv(link.db, { WEBHOOK_SECRET: 'secret' }),
+    );
+    expect(linked.status).toBe(200);
+    const body = (await linked.json()) as { reportUrl?: string };
+    expect(body.reportUrl).toMatch(/^\/report\/9\?t=/);
+
+    const blocked = writableDraftDb();
+    blocked.firstOn('FROM survey_responses WHERE id', responseRow);
+    blocked.firstOn('FROM survey_responses', responseRow);
+    const deleted = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/9/delete', { method: 'POST', userId: '111', body: {} }),
+      makeEnv(blocked.db),
+    );
+    expect(deleted.status).toBe(400);
+    expect((await deleted.json()) as { code: string }).toMatchObject({ code: 'delete_blocked' });
+  });
+
+  it('filters responses by date range', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses?from=2026-08-01&to=2026-08-31', { userId: '111' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('date(r.started_at) >= ?') && sql.includes('date(r.started_at) <= ?'))).toBe(true);
+  });
+
+  it('rejects reorder payloads with duplicate question ids', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.allOn('FROM survey_questions WHERE survey_id', [
+      questionRow({ id: 11 }),
+      questionRow({ id: 12, order: 1 }),
+    ]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/questions/reorder', {
+        method: 'POST',
+        userId: '111',
+        body: { questionIds: [11, 11] },
       }),
       makeEnv(harness.db),
     );

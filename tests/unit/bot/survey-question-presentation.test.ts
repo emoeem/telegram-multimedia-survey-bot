@@ -21,6 +21,7 @@ function questionWithOptions(labels: string[]): SurveyQuestionView {
     description: null,
     required: true,
     order: 1,
+    pageId: null,
     validationJson: null,
     settingsJson: null,
     parentQuestionId: null,

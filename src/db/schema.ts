@@ -16,6 +16,14 @@ export interface User {
   updatedAt: string;
 }
 
+export interface UserTag {
+  id: number;
+  userId: number;
+  tag: string;
+  createdBy: number | null;
+  createdAt: string;
+}
+
 export type SurveyStatus = "draft" | "published" | "closed" | "archived";
 
 export interface Survey {
@@ -36,6 +44,7 @@ export interface Survey {
   archivedAt: string | null;
   accessCode: string | null;
   accessCodeEncrypted: string | null;
+  reportTemplateId: string | null;
 }
 
 export type QuestionType =
@@ -62,11 +71,50 @@ export interface SurveyQuestion {
   description: string | null;
   required: boolean;
   order: number;
+  pageId: number | null;
   validationJson: string | null;
   settingsJson: string | null;
   parentQuestionId: number | null;
   conditionJson: string | null;
   skipToQuestionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SurveyPage {
+  id: number;
+  surveyId: number;
+  title: string | null;
+  description: string | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SurveyVersion {
+  id: number;
+  surveyId: number;
+  version: number;
+  snapshotJson: string;
+  createdBy: number | null;
+  createdAt: string;
+}
+
+export type ReportDeliveryStatus = "pending" | "delivering" | "delivered" | "failed";
+
+export interface ReportDelivery {
+  id: number;
+  responseId: number;
+  reportVersion: number;
+  deliveryId: string;
+  telegramChatId: number | null;
+  pdfMessageId: number | null;
+  imageMessageIdsJson: string | null;
+  status: ReportDeliveryStatus;
+  attempts: number;
+  lastError: string | null;
+  nextRetryAt: string | null;
+  deliveredAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,7 +134,8 @@ export type SurveyResponseStatus =
   | "in_progress"
   | "completed"
   | "abandoned"
-  | "cancelled";
+  | "cancelled"
+  | "archived";
 
 export interface SurveyResponse {
   id: number;
@@ -128,6 +177,10 @@ export type MediaType =
   | "sticker"
   | "document";
 
+/** Explicit storage provider for a media asset. Legacy rows are 'telegram';
+ * temporary response uploads are 'temporary' with an expiry. */
+export type MediaStorageKind = "temporary" | "telegram" | "r2" | "url";
+
 /** Ownership boundary for media. A media type alone must never decide whether
  * an image can be used by the template editor. */
 export type MediaAssetScope = "survey" | "response" | "template" | "generated_result" | "template_preview" | "identity_card" | "legacy";
@@ -138,6 +191,10 @@ export interface MediaAsset {
   mediaType: MediaType;
   telegramFileId: string | null;
   telegramFileUniqueId: string | null;
+  url: string | null;
+  storageKind: MediaStorageKind;
+  storageKey: string | null;
+  expiresAt: string | null;
   mimeType: string | null;
   fileName: string | null;
   fileSize: number | null;

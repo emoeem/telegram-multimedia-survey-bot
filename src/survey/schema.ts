@@ -49,7 +49,7 @@ export interface SurveyOption {
   label: string;
   value: string;
   order: number;
-  media?: SurveyMedia;
+  media?: SurveyMedia[];
 }
 
 export interface SurveyValidation {

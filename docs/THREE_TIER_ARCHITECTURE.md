@@ -1,6 +1,6 @@
 # 三端架构方案：Telegram / Web Admin / Telegraph
 
-> 2026-08-22。定位：**架构提案，等待确认**；本文档不改生产代码。
+> 2026-08-22。定位：**目标架构与实施路线，关键产品决策已确认**。
 > 目标架构（用户定义）：
 > **Telegram = 用户端 + 快捷管理；Web Admin = 完整后台；Telegraph = 对外问卷目录。**
 > 与既有文档的关系：本文档是 `docs/WEB_ADMIN_MIGRATION_PLAN.md`（阶段路线）+ `docs/WEB_ADMIN_EDITOR_RESEARCH.md`（Phase 2.0 编辑器方案）的**上层架构整合**，不推翻已批的 Phase 2 计划。
@@ -125,10 +125,10 @@ telegraph-sync service（新增）
 
 | 阶段 | 内容 | 对应痛点 |
 | -- | -- | -- |
-| **Phase 2.1-2.6（已批，按 WEB_ADMIN_EDITOR_* 执行）** | 编辑器工具链（改用 reactjs-template + @telegram-apps/sdk 脚手架）→ 题目编辑 → 排序 → 保存/并发 → 预览 → 发布 | 9 |
-| **Phase 2.7（新增）** | Bot 管理菜单瘦身：`/admin` 首屏 = Web 入口大按钮 + 快捷项（发布确认/关闭/导出）；删除 bot 内多步管理向导入口（代码保留回调兼容，入口隐藏） | 1/2/3/11 |
-| **Phase 3a** | Web：答卷浏览/统计/媒体库（scope 分区）/导入导出 UI/用户管理 | 1/7/9/11 |
-| **Phase 3b** | Bot 治理：flow registry + 状态命名空间/TTL + /start /cancel 语义 + renderUiScreen 全覆盖 + 模板变量类型化（选择器） | 4/5/6/8 |
+| **Phase 2.1-2.6（已完成）** | 编辑器工具链（改用 reactjs-template + @telegram-apps/sdk 脚手架）→ 题目编辑 → 排序 → 保存/并发 → 预览 → 发布 | 9 |
+| **Phase 2.7（已完成）** | Bot 管理菜单瘦身：`/admin` 首屏 = Web 入口大按钮 + 快捷项（发布确认/关闭/导出）；删除 bot 内多步管理向导入口（代码保留回调兼容，入口隐藏） | 1/2/3/11 |
+| **Phase 3a（进行中）** | Web：答卷浏览/统计（第一批已完成，见 `WEB_ADMIN_PHASE_3.md`）/媒体库（scope 分区）/导入导出 UI/用户管理 | 1/7/9/11 |
+| **Phase 3b** | 模板变量类型化（结果报告 + 身份卡 + 视觉模板）；Bot 治理按 `BOT_GOVERNANCE_PROPOSAL.md` 单独审批后实施 | 4/5/6/8 |
 | **Phase 4** | Telegraph 管线（§5）+ Web 端目录管理/开关 | 10 |
 | 验收 | 每阶段 staging 全量验证（沿用 Phase 1 手册），生产晋级需评审 | — |
 
@@ -140,5 +140,5 @@ telegraph-sync service（新增）
 2. Telegraph 目录结构：**目录页 + 单问卷落地页**。
 3. Telegraph 账号：以 bot 名义建独立 Telegraph 账号，token 入 Worker secrets。
 4. 模板类型化：**全范围**（结果报告 + 身份卡 + 视觉模板，同一注册表机制）。
-5. `@telegram-apps/sdk`：引入前做依赖审计（版本 + license 记录入库）。
-6. bot 治理（flow registry / start-cancel 语义 / renderUiScreen 全覆盖）：**单独出改造提案**后再动，不与 Phase 2 混批。
+5. `@telegram-apps/sdk`：保留版本、许可和运行时兼容性审计；许可信息用于风险判断，但不作为脱离实用性、安全性和维护性的唯一阻塞条件。
+6. bot 治理（flow registry / start-cancel 语义 / renderUiScreen 全覆盖）：已形成独立的 `BOT_GOVERNANCE_PROPOSAL.md`，再次批准后再实施，不与 Phase 2 混批。

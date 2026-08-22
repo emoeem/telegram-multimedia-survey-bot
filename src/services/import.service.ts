@@ -5,6 +5,7 @@ import {
 } from "../db/repositories/survey.repository";
 import { legacyToUnified } from "../survey/converters/legacy-to-unified";
 import { validateUnifiedSurvey } from "../survey/validator";
+import { surveyPageId } from "../survey/id-mapping";
 
 export interface ImportedMedia {
   id?: string;
@@ -34,14 +35,22 @@ export interface ImportedQuestion {
   title: string;
   description?: string;
   required?: boolean | null;
+  pageId?: string;
   options?: ImportedOption[];
   media?: ImportedMedia[];
   settings?: Record<string, unknown>;
 }
 
+export interface ImportedPage {
+  id?: string;
+  title?: string;
+  description?: string;
+}
+
 export interface ImportedSurvey {
   title: string;
   description?: string;
+  pages?: ImportedPage[];
   questions: ImportedQuestion[];
   importWarnings?: string[];
   settings?: {
@@ -212,8 +221,34 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
     if (raw["settings"] && typeof raw["settings"] === "object" && !Array.isArray(raw["settings"])) {
       importedQuestion.settings = raw["settings"] as Record<string, unknown>;
     }
+    const pageId = nonEmptyString(raw["page_id"], raw["pageId"]);
+    if (pageId) {
+      importedQuestion.pageId = pageId;
+    }
     return importedQuestion;
   });
+}
+
+function normalizePages(value: unknown): ImportedPage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const pages: ImportedPage[] = [];
+  for (const page of value) {
+    if (!page || typeof page !== "object") continue;
+    const raw = page as Record<string, unknown>;
+    const title = nonEmptyString(raw["title"]);
+    const description = nonEmptyString(raw["description"]);
+    if (!title && !description) continue;
+    const id = nonEmptyString(raw["id"]);
+    pages.push({
+      ...(id ? { id } : {}),
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+    });
+  }
+  return pages;
 }
 
 function isOtherOnlyOption(option: ImportedOption): boolean {
@@ -335,12 +370,14 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
         allow_multiple?: boolean;
         max_responses?: number;
       };
+      pages?: unknown;
       questions?: unknown[];
     };
 
     data = {
       title: unifiedSurvey.title ?? "",
       ...(unifiedSurvey.description ? { description: unifiedSurvey.description } : {}),
+      pages: normalizePages(unifiedSurvey.pages),
       settings: {
         anonymous: unifiedSurvey.settings?.anonymous ?? false,
         allowMultipleResponses:
@@ -428,8 +465,10 @@ async function resolveImportedMedia(
       return cache.get(key) ?? null;
     }
     if (!resolver) {
-      cache.set(key, null);
-      return null;
+      // Without a resolver (e.g. the web admin import path), keep URL and R2
+      // media as-is so they can be persisted into media_assets.
+      cache.set(key, media);
+      return media;
     }
     const resolved = await resolver(media);
     cache.set(key, resolved);
@@ -486,12 +525,47 @@ export async function saveImportedSurvey(
   });
 
   const timestamp = new Date().toISOString();
+
+  // Pages are inserted first so question rows can reference page ids inside
+  // the single JSON1 batch below.
+  const pageIdsBySource = new Map<string, number>();
+  const pageRows = resolvedSurvey.pages ?? [];
+  for (let index = 0; index < pageRows.length; index += 1) {
+    const page = pageRows[index];
+    if (!page) continue;
+    const sourceId = page.id ?? surveyPageId(index);
+    const result = await db
+      .prepare(
+        `INSERT INTO survey_pages (
+          survey_id, title, description, "order", created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        created.id,
+        page.title ?? null,
+        page.description ?? null,
+        index,
+        timestamp,
+        timestamp,
+      )
+      .run();
+    const pageId = result.meta?.last_row_id;
+    if (typeof pageId !== "number") {
+      throw new Error("Failed to create survey page");
+    }
+    pageIdsBySource.set(sourceId, pageId);
+  }
+
   const questionRows = resolvedSurvey.questions.map((question, order) => ({
     type: question.type,
     title: question.title,
     description: question.description ?? null,
     required: question.required === false ? 0 : 1,
     order,
+    pageId:
+      question.pageId !== undefined
+        ? (pageIdsBySource.get(question.pageId) ?? null)
+        : null,
     settingsJson: question.settings ? JSON.stringify(question.settings) : null,
   }));
   const optionRows = resolvedSurvey.questions.flatMap((question, questionOrder) =>
@@ -507,8 +581,11 @@ export async function saveImportedSurvey(
     string,
     {
       mediaType: MediaType;
-      telegramFileId: string;
+      storageKind: string;
+      telegramFileId: string | null;
       telegramFileUniqueId: string | null;
+      url: string | null;
+      r2Key: string | null;
       mimeType: string | null;
       fileName: string | null;
       fileSize: number | null;
@@ -519,25 +596,39 @@ export async function saveImportedSurvey(
   >();
   const questionMediaRows: Array<{
     questionOrder: number;
-    telegramFileId: string;
+    mediaKey: string;
     sortOrder: number;
   }> = [];
   const optionMediaRows: Array<{
     questionOrder: number;
     optionOrder: number;
-    telegramFileId: string;
+    mediaKey: string;
     sortOrder: number;
   }> = [];
 
   const registerMedia = (media: ImportedMedia): string | null => {
-    if (!media.telegramFileId) {
+    const mediaKey =
+      media.telegramFileId ??
+      media.url ??
+      media.storageKey ??
+      null;
+    if (!mediaKey) {
       return null;
     }
-    if (!mediaRows.has(media.telegramFileId)) {
-      mediaRows.set(media.telegramFileId, {
+    if (!mediaRows.has(mediaKey)) {
+      mediaRows.set(mediaKey, {
         mediaType: media.type,
-        telegramFileId: media.telegramFileId,
+        storageKind: media.telegramFileId
+          ? "telegram"
+          : media.storageKey
+            ? "r2"
+            : media.url
+              ? "url"
+              : "telegram",
+        telegramFileId: media.telegramFileId ?? null,
         telegramFileUniqueId: media.telegramFileUniqueId ?? null,
+        url: media.url ?? null,
+        r2Key: media.storageKey ?? null,
         mimeType: media.mimeType ?? null,
         fileName: media.fileName ?? null,
         fileSize: media.size ?? null,
@@ -546,28 +637,28 @@ export async function saveImportedSurvey(
         duration: media.duration ?? null,
       });
     }
-    return media.telegramFileId;
+    return mediaKey;
   };
 
   resolvedSurvey.questions.forEach((question, questionOrder) => {
     (question.media ?? []).forEach((media, sortOrder) => {
-      const telegramFileId = registerMedia(media);
-      if (telegramFileId) {
+      const mediaKey = registerMedia(media);
+      if (mediaKey) {
         questionMediaRows.push({
           questionOrder,
-          telegramFileId,
+          mediaKey,
           sortOrder,
         });
       }
     });
     (question.options ?? []).forEach((option, optionOrder) => {
       option.media.forEach((media, sortOrder) => {
-        const telegramFileId = registerMedia(media);
-        if (telegramFileId) {
+        const mediaKey = registerMedia(media);
+        if (mediaKey) {
           optionMediaRows.push({
             questionOrder,
             optionOrder,
-            telegramFileId,
+            mediaKey,
             sortOrder,
           });
         }
@@ -580,7 +671,7 @@ export async function saveImportedSurvey(
       .prepare(
         `INSERT INTO survey_questions (
           survey_id, type, title, description, required,
-          "order", settings_json, created_at, updated_at
+          "order", page_id, settings_json, created_at, updated_at
         )
         SELECT
           ?,
@@ -589,6 +680,7 @@ export async function saveImportedSurvey(
           json_extract(item.value, '$.description'),
           CAST(json_extract(item.value, '$.required') AS INTEGER),
           CAST(json_extract(item.value, '$.order') AS INTEGER),
+          CAST(json_extract(item.value, '$.pageId') AS INTEGER),
           json_extract(item.value, '$.settingsJson'),
           ?,
           ?
@@ -632,21 +724,23 @@ export async function saveImportedSurvey(
         .prepare(
           `INSERT INTO media_assets (
             asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
-            mime_type, file_name, file_size, width, height, duration,
-            r2_key, created_at, updated_at
+            url, storage_kind, mime_type, file_name, file_size, width, height,
+            duration, r2_key, created_at, updated_at
           )
           SELECT
             'survey',
             json_extract(item.value, '$.mediaType'),
             json_extract(item.value, '$.telegramFileId'),
             json_extract(item.value, '$.telegramFileUniqueId'),
+            json_extract(item.value, '$.url'),
+            json_extract(item.value, '$.storageKind'),
             json_extract(item.value, '$.mimeType'),
             json_extract(item.value, '$.fileName'),
             json_extract(item.value, '$.fileSize'),
             json_extract(item.value, '$.width'),
             json_extract(item.value, '$.height'),
             json_extract(item.value, '$.duration'),
-            NULL,
+            json_extract(item.value, '$.r2Key'),
             ?,
             ?
           FROM json_each(?) AS item`,
@@ -677,9 +771,16 @@ export async function saveImportedSurvey(
            AND question."order" =
              CAST(json_extract(item.value, '$.questionOrder') AS INTEGER)
           JOIN media_assets AS media
-            ON media.telegram_file_id =
-              json_extract(item.value, '$.telegramFileId')
-           AND media.created_at = ?`,
+            ON media.created_at = ?
+           AND (
+             (media.telegram_file_id IS NOT NULL
+              AND media.telegram_file_id =
+                json_extract(item.value, '$.mediaKey'))
+             OR (media.url IS NOT NULL
+                 AND media.url = json_extract(item.value, '$.mediaKey'))
+             OR (media.r2_key IS NOT NULL
+                 AND media.r2_key = json_extract(item.value, '$.mediaKey'))
+           )`,
         )
         .bind(
           timestamp,
@@ -712,9 +813,16 @@ export async function saveImportedSurvey(
            AND option."order" =
              CAST(json_extract(item.value, '$.optionOrder') AS INTEGER)
           JOIN media_assets AS media
-            ON media.telegram_file_id =
-              json_extract(item.value, '$.telegramFileId')
-           AND media.created_at = ?`,
+            ON media.created_at = ?
+           AND (
+             (media.telegram_file_id IS NOT NULL
+              AND media.telegram_file_id =
+                json_extract(item.value, '$.mediaKey'))
+             OR (media.url IS NOT NULL
+                 AND media.url = json_extract(item.value, '$.mediaKey'))
+             OR (media.r2_key IS NOT NULL
+                 AND media.r2_key = json_extract(item.value, '$.mediaKey'))
+           )`,
         )
         .bind(
           timestamp,

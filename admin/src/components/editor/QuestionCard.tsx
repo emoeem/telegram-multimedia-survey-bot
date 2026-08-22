@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -30,12 +30,17 @@ interface QuestionCardProps {
   question: EditableQuestion;
   index: number;
   editable: boolean;
+  dragHandle?: ReactNode;
   onFieldCommit: (questionId: number, patch: Record<string, unknown>, label: string) => void;
   onLocalChange: (questionId: number, patch: Partial<EditableQuestion>) => void;
   onOptionRename: (questionId: number, optionId: number, label: string) => void;
   onAddOption: (questionId: number, label: string) => void;
   onDeleteOption: (questionId: number, optionId: number) => void;
   onDelete: (questionId: number) => void;
+  onDuplicateQuestion: (questionId: number) => void;
+  onDuplicateOption: (questionId: number, optionId: number) => void;
+  allQuestions: EditableQuestion[];
+  pages?: Array<{ id: number; title: string | null; order: number }>;
 }
 
 function NumberField({
@@ -73,12 +78,17 @@ export function QuestionCard({
   question,
   index,
   editable,
+  dragHandle,
   onFieldCommit,
   onLocalChange,
   onOptionRename,
   onAddOption,
   onDeleteOption,
   onDelete,
+  onDuplicateQuestion,
+  onDuplicateOption,
+  allQuestions,
+  pages,
 }: QuestionCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newOptionLabel, setNewOptionLabel] = useState("");
@@ -98,11 +108,28 @@ export function QuestionCard({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
+        {dragHandle}
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
           第 {index + 1} 题
         </span>
         <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-          {QUESTION_TYPE_LABELS[question.type] ?? question.type}
+          {editableNow ? (
+            <select
+              className="bg-transparent font-semibold text-blue-700"
+              value={question.type}
+              onChange={(event) => {
+                const next = event.target.value;
+                onLocalChange(question.id, { type: next });
+                onFieldCommit(question.id, { type: next }, "题型修改");
+              }}
+            >
+              {editableTypeList().map(({ type, label }) => (
+                <option key={type} value={type}>{label}</option>
+              ))}
+            </select>
+          ) : (
+            QUESTION_TYPE_LABELS[question.type] ?? question.type
+          )}
         </span>
         {question.id < 0 ? (
           <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">未保存</span>
@@ -112,7 +139,15 @@ export function QuestionCard({
             📎 媒体 ×{question.media.length}
           </span>
         ) : null}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="btn btn-sm"
+            disabled={!editable}
+            onClick={() => onDuplicateQuestion(question.id)}
+            title="复制这道题"
+          >
+            📋 复制
+          </button>
           {confirmDelete ? (
             <span className="flex items-center gap-2 text-xs">
               <span className="text-red-600">确认删除？</span>
@@ -183,6 +218,68 @@ export function QuestionCard({
           />
           <span className="text-gray-700">{question.required ? "必答" : "选答"}</span>
         </label>
+
+        {pages?.length ? (
+          <label className="grid gap-1 text-sm">
+            <span className="text-gray-500">所属分页</span>
+            <select
+              className="input"
+              value={question.pageId ?? ""}
+              disabled={!editableNow}
+              onChange={(event) => {
+                const next = event.target.value === "" ? null : Number(event.target.value);
+                onLocalChange(question.id, { pageId: next });
+                onFieldCommit(question.id, { pageId: next }, "分页设置");
+              }}
+            >
+              <option value="">不分页</option>
+              {pages.map((page) => (
+                <option key={page.id} value={page.id}>{page.title || `第 ${page.order + 1} 页`}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {(CHOICE_TYPES.has(question.type) || question.type === "matrix") && editableNow ? (
+          <div className="grid gap-1.5 text-sm">
+            <span className="text-gray-500">跳题规则（可选）</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="input flex-1"
+                value=""
+                onChange={(event) => {
+                  const optionId = Number(event.target.value);
+                  if (!optionId) return;
+                  const target = Number(window.prompt("输入目标题目编号（每张卡片标题旁的「第 N 题」即是编号）") ?? "");
+                  if (!allQuestions.some((item) => item.id === target)) {
+                    window.alert("目标题目编号无效");
+                    return;
+                  }
+                  const condition = { kind: "option_equals", rules: [{ optionId, targetQuestionId: target }] };
+                  onLocalChange(question.id, { condition });
+                  onFieldCommit(question.id, { condition }, "跳题规则");
+                }}
+              >
+                <option value="">+ 选选项添加跳题…</option>
+                {question.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+              {question.condition ? (
+                <button
+                  className="btn btn-sm text-red-600"
+                  onClick={() => {
+                    onLocalChange(question.id, { condition: null });
+                    onFieldCommit(question.id, { condition: null }, "清除跳题");
+                  }}
+                >
+                  清除跳题
+                </button>
+              ) : null}
+            </div>
+            <p className="text-xs text-gray-400">
+              已设置：{JSON.stringify((question.condition as { rules?: unknown } | null)?.rules ?? null)}
+            </p>
+          </div>
+        ) : null}
 
         {CHOICE_TYPES.has(question.type) || question.type === "matrix" ? (
           <div className="grid gap-1.5">

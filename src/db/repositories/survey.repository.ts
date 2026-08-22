@@ -19,6 +19,7 @@ interface SurveyRow {
   archived_at: string | null;
   access_code: string | null;
   access_code_encrypted: string | null;
+  report_template_id: string | null;
 }
 
 function mapSurvey(row: SurveyRow): Survey {
@@ -40,6 +41,7 @@ function mapSurvey(row: SurveyRow): Survey {
     archivedAt: row.archived_at,
     accessCode: row.access_code,
     accessCodeEncrypted: row.access_code_encrypted,
+    reportTemplateId: row.report_template_id,
   };
 }
 
@@ -196,6 +198,16 @@ export async function deleteSurvey(
   db: D1Database,
   id: number,
 ): Promise<void> {
+  // Historical responses must never be destroyed by a survey deletion. The
+  // only internal caller is import rollback, which runs before any response
+  // exists; public flows should archive instead.
+  const responseCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?")
+    .bind(id)
+    .first<{ count: number }>();
+  if (Number(responseCount?.count ?? 0) > 0) {
+    throw new Error("该问卷已有答卷，禁止删除");
+  }
   await db.prepare("DELETE FROM surveys WHERE id = ?").bind(id).run();
 }
 

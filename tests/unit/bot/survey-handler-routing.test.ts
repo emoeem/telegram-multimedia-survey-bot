@@ -351,6 +351,47 @@ describe("survey message routing", () => {
     expect(body.text).toContain("@meiebhiebot");
   });
 
+  it("keeps creator shortcuts focused on my surveys and the web admin", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 99,
+      systemRole: "admin",
+    });
+    mocks.getActiveResponseByUser.mockResolvedValue(null);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+        origin: "https://example.com",
+      },
+      {
+        message_id: 5,
+        chat: { id: 6 },
+        from: { id: 99 },
+        text: "/help",
+      },
+    );
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as {
+      text: string;
+      reply_markup: { inline_keyboard: Array<Array<{ text: string }>> };
+    };
+    const buttonTexts = body.reply_markup.inline_keyboard.flat().map((button) => button.text);
+    expect(body.text).toContain("网页后台");
+    expect(buttonTexts).toContain("🌐 网页管理后台");
+    expect(buttonTexts).toContain("我的问卷");
+    expect(buttonTexts).toContain("管理员中心");
+    expect(buttonTexts).not.toContain("创建与导入");
+  });
+
   it("edits the current public survey list message when changing pages", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,

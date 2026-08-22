@@ -72,8 +72,12 @@ npx wrangler queues create telegram-survey-export
 5. 部署后设置 Webhook：
 
 ```text
-https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://<worker>.workers.dev/telegram/webhook&secret_token=<WEBHOOK_SECRET>
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://<worker>.workers.dev/telegram/webhook","secret_token":"<WEBHOOK_SECRET>","allowed_updates":["message","callback_query","channel_post"]}'
 ```
+
+`allowed_updates` 必须包含 `channel_post`，报告归档频道的自动识别依赖它。
 
 真实的 `BOT_TOKEN`、`WEBHOOK_SECRET`、`ADMIN_IDS` 和授权密钥应通过 Cloudflare Secret 或本地未跟踪的 `.dev.vars` 配置，不能写进源码、README、Issue 或 Pull Request。
 

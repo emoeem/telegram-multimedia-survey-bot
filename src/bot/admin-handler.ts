@@ -153,33 +153,13 @@ async function showAdminHome(
   userId: number,
   messageId?: number,
 ): Promise<void> {
-  const licenseAdminEnabled = ctx.licenseAdminEnabled !== false;
-  const text = licenseAdminEnabled
-      ? "管理员中心\n\n在这里管理问卷、查看答卷、导出数据、软件授权和体验创作者。"
-      : "管理员中心\n\n在这里管理问卷、查看答卷和导出数据。";
+  const text = "管理员中心\n\n完整管理请进入网页后台；Bot 仅保留问卷发布、关闭和导出等快捷操作。";
   const replyMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [
-        [
-          { text: "📋 全部问卷", callback_data: "admin:surveys" },
-        ],
-        [
-          { text: "📊 问卷统计总览", callback_data: "admin:overview" },
-        ],
-        [{ text: "👥 Bot 用户", callback_data: "admin:users:0" }],
-        [
-          { text: "🎨 视觉模板", callback_data: "visual:list" },
-        ],
-        [{ text: "📊 报告生成器", callback_data: "generator:list" }],
-        [{ text: "🔐 图片生成密码", callback_data: "admin:identity_password" }],
-        ...(licenseAdminEnabled
-          ? [
-              [{ text: "🔑 授权与部署", callback_data: "admin:licenses" }],
-              [{ text: "👤 体验创作者", callback_data: "admin:trials" }],
-            ]
-          : []),
         ...(ctx.origin
           ? [[{ text: "🌐 网页管理后台", web_app: { url: `${ctx.origin}/admin` } }]]
           : []),
+        [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
       ],
   };
   if (messageId !== undefined) {
@@ -708,27 +688,20 @@ async function showAdminSurveyDetail(
 ): Promise<boolean> {
   const survey = await getSurveyById(ctx.db, surveyId);
   if (!survey) return false;
-  const stats = await getSurveyStatistics(ctx.db, surveyId);
   const surveys = await listAllSurveys(ctx.db);
   const surveyIndex = surveys.findIndex((item) => item.id === survey.id);
   const listPosition = surveyIndex >= 0 ? `当前序号：${surveyIndex + 1}\n` : "";
-  const text = `📋 ${survey.title}\n${listPosition}内部编号：${survey.id}\n状态：${surveyStatusLabels[survey.status]}\n开始：${stats.totalStarted}\n完成：${stats.totalCompleted}\n完成率：${stats.completionRate.toFixed(1)}%`;
+  const text = `📋 ${survey.title}\n${listPosition}内部编号：${survey.id}\n状态：${surveyStatusLabels[survey.status]}\n\n完整编辑、统计和权限管理请进入网页后台。`;
+  const statusAction = survey.status === "published"
+    ? { text: "⏹ 关闭问卷", callback_data: `admin:close:${survey.id}` }
+    : { text: survey.status === "draft" ? "🚀 发布确认" : "🚀 重新发布", callback_data: `owner:publish_ask:${survey.id}` };
   const replyMarkup: InlineKeyboardMarkup = {
     inline_keyboard: [
-      [
-        { text: "详细统计", callback_data: `owner:survey:${survey.id}` },
-        { text: "完成名单与答卷", callback_data: `owner:responses:${survey.id}:0` },
-      ],
-      [
-        { text: "CSV", callback_data: `owner:export:csv:${survey.id}` },
-        { text: "Excel", callback_data: `owner:export:xlsx:${survey.id}` },
-        { text: "ZIP", callback_data: `owner:export:zip:${survey.id}` },
-      ],
-      [
-        { text: "关闭", callback_data: `admin:close:${survey.id}` },
-        { text: "删除", callback_data: `admin:delete_ask:${survey.id}` },
-      ],
-      [{ text: "🎨 结果卡", callback_data: `visual:settings:${survey.id}` }],
+      ...(ctx.origin
+        ? [[{ text: "🌐 在网页后台打开", web_app: { url: `${ctx.origin}/admin/surveys/${survey.id}` } }]]
+        : []),
+      [statusAction],
+      [{ text: "📦 导出数据", callback_data: `owner:reports:${survey.id}` }],
       [{ text: "⬅️ 返回全部问卷", callback_data: "admin:surveys" }],
     ],
   };

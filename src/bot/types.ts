@@ -13,6 +13,7 @@ export interface TelegramUser {
 export interface TelegramChat {
   id: number;
   type?: string;
+  title?: string;
 }
 
 export interface TelegramMediaFile {
@@ -30,6 +31,12 @@ export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
+  forward_from_chat?: {
+    id: number;
+    type?: string;
+    username?: string;
+    title?: string;
+  };
   text?: string;
   caption?: string;
   photo?: TelegramMediaFile[];
@@ -52,6 +59,7 @@ export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
+  channel_post?: TelegramMessage;
 }
 
 export interface BotContext {
@@ -67,4 +75,5 @@ export interface BotContext {
   licenseServerUrl?: string;
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;
+  webhookSecret?: string;
 }

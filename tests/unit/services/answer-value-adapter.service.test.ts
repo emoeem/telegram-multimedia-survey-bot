@@ -14,4 +14,11 @@ describe("AnswerValueAdapter", () => {
       type: "image", value: { mediaAssetId: 42 }, media: [{ mediaAssetId: 42 }],
     });
   });
+
+  it("does not let an unset booleanValue shadow json or text answers", () => {
+    expect(normalizeAnswer(answer({ booleanValue: null, jsonValue: "[7]" }), "single").value).toEqual([7]);
+    expect(normalizeAnswer(answer({ booleanValue: null, jsonValue: '{"mediaAssetId":9}' }), "image").media).toEqual([{ mediaAssetId: 9 }]);
+    expect(normalizeAnswer(answer({ booleanValue: null, textValue: "回答" }), "text").value).toBe("回答");
+    expect(normalizeAnswer(answer({ booleanValue: true }), "yes_no").value).toBe(true);
+  });
 });

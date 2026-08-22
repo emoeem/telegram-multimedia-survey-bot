@@ -5,6 +5,7 @@ import { getUpdateKind } from "./update-parser";
 import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
 import type { TelegramUser } from "./types";
 import { setUiMessage } from "../services/ui-session.service";
+import { maybeDetectReportChannel } from "./channel-detection";
 
 async function ensureUser(ctx: BotContext, telegramUser: TelegramUser): Promise<void> {
   await upsertUser(ctx.db, {
@@ -22,6 +23,15 @@ export async function handleTelegramUpdate(
   ctx: BotContext,
 ): Promise<void> {
   const kind = getUpdateKind(update);
+
+  if (kind === "channel_post" && update.channel_post) {
+    try {
+      await maybeDetectReportChannel(ctx, update.channel_post);
+    } catch (error) {
+      console.error("Channel post handling failed", error);
+    }
+    return;
+  }
 
   if (kind === "message" && update.message) {
     if (update.message.from) {

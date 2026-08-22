@@ -1,4 +1,4 @@
-import type { MediaAsset, MediaAssetScope, MediaType } from "../schema";
+import type { MediaAsset, MediaAssetScope, MediaStorageKind, MediaType } from "../schema";
 
 const OPTION_ID_BATCH_SIZE = 90;
 
@@ -8,6 +8,10 @@ interface MediaAssetRow {
   media_type: string;
   telegram_file_id: string | null;
   telegram_file_unique_id: string | null;
+  url: string | null;
+  storage_kind: string;
+  storage_key: string | null;
+  expires_at: string | null;
   mime_type: string | null;
   file_name: string | null;
   file_size: number | null;
@@ -26,6 +30,10 @@ function mapMediaAsset(row: MediaAssetRow): MediaAsset {
     mediaType: row.media_type as MediaType,
     telegramFileId: row.telegram_file_id,
     telegramFileUniqueId: row.telegram_file_unique_id,
+    url: row.url,
+    storageKind: (row.storage_kind ?? "telegram") as MediaStorageKind,
+    storageKey: row.storage_key,
+    expiresAt: row.expires_at,
     mimeType: row.mime_type,
     fileName: row.file_name,
     fileSize: row.file_size,
@@ -45,6 +53,10 @@ export async function createMediaAsset(
     mediaType: MediaType;
     telegramFileId?: string | null;
     telegramFileUniqueId?: string | null;
+    url?: string | null;
+    storageKind?: MediaStorageKind;
+    storageKey?: string | null;
+    expiresAt?: string | null;
     mimeType?: string | null;
     fileName?: string | null;
     fileSize?: number | null;
@@ -59,15 +71,20 @@ export async function createMediaAsset(
     .prepare(
       `INSERT INTO media_assets (
         asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
+        url, storage_kind, storage_key, expires_at,
         mime_type, file_name, file_size, width, height, duration,
         r2_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.scope ?? "survey",
       input.mediaType,
       input.telegramFileId ?? null,
       input.telegramFileUniqueId ?? null,
+      input.url ?? null,
+      input.storageKind ?? "telegram",
+      input.storageKey ?? null,
+      input.expiresAt ?? null,
       input.mimeType ?? null,
       input.fileName ?? null,
       input.fileSize ?? null,
@@ -238,6 +255,69 @@ export async function getOptionMediaByOptionId(
     mediaAssetId: row.media_asset_id,
     sortOrder: row.sort_order,
   }));
+}
+
+export interface TemporaryMediaRow {
+  id: number;
+  storageKey: string | null;
+  expiresAt: string | null;
+}
+
+/** Temporary (KV-backed) media linked to a response, newest first. */
+export async function listTemporaryMediaByResponse(
+  db: D1Database,
+  responseId: number,
+): Promise<TemporaryMediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE r.id = ? AND m.storage_kind = 'temporary'
+       ORDER BY m.id DESC`,
+    )
+    .bind(responseId)
+    .all<TemporaryMediaRow>();
+  return result.results ?? [];
+}
+
+export async function sumTemporaryMediaBytesForResponse(
+  db: D1Database,
+  responseId: number,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(m.file_size), 0) AS total
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE r.id = ? AND m.storage_kind = 'temporary'
+         AND m.storage_key IS NOT NULL`,
+    )
+    .bind(responseId)
+    .first<{ total: number | null }>();
+  return Number(row?.total ?? 0);
+}
+
+/** Marks an asset as expired and detaches its blob reference. Callers delete
+ * the underlying object first; the row (and answer linkage) is preserved so
+ * structured answers stay traceable after the image is gone. */
+export async function expireMediaAsset(
+  db: D1Database,
+  id: number,
+  expiredAt = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_assets
+       SET storage_key = NULL, expires_at = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(expiredAt, new Date().toISOString(), id)
+    .run();
 }
 
 export async function listOptionMediaByOptionIds(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiSend, type ApiError, type EditorData, type EditorQuestion, type WriteResult } from "../api";
+import { ApiError, apiSend, type EditorData, type EditorQuestion, type WriteResult } from "../api";
+import { reorderByQuestionIds } from "./questionOrder";
 
 // Phase 2.2 editing model: every mutation appends an operation to a queue with
 // a temporary negative id; 保存 flushes the queue sequentially against the
@@ -20,6 +21,7 @@ export interface EditableQuestion {
   description: string | null;
   required: boolean;
   order: number;
+  pageId: number | null;
   columns: string[];
   validation: Record<string, number | boolean> | null;
   condition: Record<string, unknown> | null;
@@ -55,6 +57,7 @@ export function useSurveyEditor(data: EditorData) {
       description: question.description,
       required: question.required,
       order: question.order,
+      pageId: question.pageId ?? null,
       columns: Array.isArray(question.settings?.columns)
         ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
         : [],
@@ -76,6 +79,7 @@ export function useSurveyEditor(data: EditorData) {
   const [saveError, setSaveError] = useState<{ message: string; stale: boolean } | null>(null);
   const opKeyRef = useRef(1);
   const tempIdRef = useRef(-1);
+  const allowUnloadRef = useRef(false);
   const surveyId = data.survey.id;
 
   const dirty = ops.length > 0;
@@ -87,7 +91,9 @@ export function useSurveyEditor(data: EditorData) {
   useEffect(() => {
     if (!dirty) return undefined;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowUnloadRef.current) return;
       event.preventDefault();
+      event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
@@ -159,6 +165,7 @@ export function useSurveyEditor(data: EditorData) {
           description: null,
           required: true,
           order: current.length,
+          pageId: null,
           columns: draft.columns ?? [],
           validation: null,
           condition: null,
@@ -192,11 +199,19 @@ export function useSurveyEditor(data: EditorData) {
 
   const deleteQuestion = useCallback(
     (questionId: number) => {
-      setQuestions((current) => current.filter((q) => q.id !== questionId));
+      setQuestions((current) =>
+        current.filter((q) => q.id !== questionId).map((question, order) => ({ ...question, order })),
+      );
       if (questionId < 0) {
         // 本地未保存的题目：同时丢弃其创建操作与后续操作
         setOps((current) =>
-          current.filter((op) => op.tempId !== questionId && !op.path.includes(`questions/${questionId}`)),
+          current
+            .filter((op) => op.tempId !== questionId && !op.path.includes(`questions/${questionId}`))
+            .map((op) =>
+              op.path === `/api/admin/surveys/${surveyId}/questions/reorder` && Array.isArray(op.body?.questionIds)
+                ? { ...op, body: { ...op.body, questionIds: op.body.questionIds.filter((id) => id !== questionId) } }
+                : op,
+            ),
         );
         return;
       }
@@ -274,12 +289,47 @@ export function useSurveyEditor(data: EditorData) {
     [pushOp, surveyId],
   );
 
+  const reorderQuestions = useCallback(
+    (questionIds: number[]): boolean => {
+      const currentIds = questions.map((question) => question.id);
+      const reordered = reorderByQuestionIds(questions, questionIds);
+      if (!reordered) return false;
+      if (questionIds.every((id, index) => id === currentIds[index])) return true;
+
+      setQuestions(reordered);
+      setOps((current) => [
+        ...current.filter((op) => op.path !== `/api/admin/surveys/${surveyId}/questions/reorder`),
+        {
+          key: opKeyRef.current++,
+          method: "POST",
+          path: `/api/admin/surveys/${surveyId}/questions/reorder`,
+          body: { questionIds },
+          tempId: null,
+          label: "题目排序",
+        },
+      ]);
+      setSaveError(null);
+      return true;
+    },
+    [questions, surveyId],
+  );
+
   // ---- 保存 ----
   const resolveRef = useCallback((value: string | number, idMap: Map<number, number>): string => {
     const numeric = typeof value === "number" ? value : Number(value);
     if (Number.isInteger(numeric) && idMap.has(numeric)) return String(idMap.get(numeric));
     return String(value);
   }, []);
+
+  const resolveOpReferences = useCallback((op: PendingOp, idMap: Map<number, number>): PendingOp => {
+    const path = op.path.replace(/questions\/(-?\d+)/g, (match, id) => `questions/${resolveRef(id, idMap)}`)
+      .replace(/options\/(-?\d+)/g, (match, id) => `options/${resolveRef(id, idMap)}`);
+    const body = op.body ? { ...op.body } : undefined;
+    if (body && Array.isArray(body.questionIds)) {
+      body.questionIds = body.questionIds.map((id) => Number(resolveRef(id as number, idMap)));
+    }
+    return { ...op, path, body };
+  }, [resolveRef]);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (saving) return false;
@@ -289,22 +339,26 @@ export function useSurveyEditor(data: EditorData) {
     let remaining = [...ops];
     let failed: ApiError | null = null;
     while (remaining.length) {
-      const op = remaining[0]!;
-      const path = op.path.replace(/questions\/(-?\d+)/g, (match, id) => `questions/${resolveRef(id, idMap)}`)
-        .replace(/options\/(-?\d+)/g, (match, id) => `options/${resolveRef(id, idMap)}`);
+      const op = resolveOpReferences(remaining[0]!, idMap);
       try {
-        const result = await apiSend<WriteResult>(op.method, path, op.body
-          ? { ...op.body, baseUpdatedAt: baseUpdatedAtRef.current }
-          : undefined);
+        const result = await apiSend<WriteResult>(op.method, op.path, {
+          ...(op.body ?? {}),
+          baseUpdatedAt: baseUpdatedAtRef.current,
+        });
         if (op.tempId !== null && typeof result.id === "number") idMap.set(op.tempId, result.id);
         if (typeof result.updatedAt === "string") {
           baseUpdatedAtRef.current = result.updatedAt;
           setBaseUpdatedAt(result.updatedAt);
         }
-        remaining = remaining.slice(1);
-        setOps([...remaining]);
+        remaining = remaining.slice(1).map((pendingOp) => resolveOpReferences(pendingOp, idMap));
+        setOps((current) =>
+          current
+            .filter((pendingOp) => pendingOp.key !== op.key)
+            .map((pendingOp) => resolveOpReferences(pendingOp, idMap)),
+        );
       } catch (error) {
-        failed = error as ApiError;
+        const apiError = error as ApiError;
+        failed = new ApiError(apiError.status, `${op.label}：${apiError.message}`, apiError.data);
         break;
       }
     }
@@ -333,9 +387,10 @@ export function useSurveyEditor(data: EditorData) {
       return false;
     }
     return true;
-  }, [ops, resolveRef, saving]);
+  }, [ops, resolveOpReferences, saving]);
 
   const discardAndReload = useCallback(() => {
+    allowUnloadRef.current = true;
     setOps([]);
     setSaveError(null);
     window.location.reload();
@@ -347,6 +402,7 @@ export function useSurveyEditor(data: EditorData) {
     () => ({
       surveyMeta,
       updateSurveyMeta,
+      baseUpdatedAt,
       questions,
       patchQuestionLocal,
       queueQuestionPatch,
@@ -355,13 +411,14 @@ export function useSurveyEditor(data: EditorData) {
       addOption,
       deleteOption,
       renameOption,
+      reorderQuestions,
       save,
       saveState,
       saveError,
       discardAndReload,
       dirty,
     }),
-    [surveyMeta, updateSurveyMeta, questions, patchQuestionLocal, queueQuestionPatch, addQuestion,
-      deleteQuestion, addOption, deleteOption, renameOption, save, saveState, saveError, discardAndReload, dirty],
+    [surveyMeta, updateSurveyMeta, baseUpdatedAt, questions, patchQuestionLocal, queueQuestionPatch, addQuestion,
+      deleteQuestion, addOption, deleteOption, renameOption, reorderQuestions, save, saveState, saveError, discardAndReload, dirty],
   );
 }

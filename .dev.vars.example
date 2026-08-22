@@ -11,3 +11,7 @@ LICENSE_GRACE_SECONDS = "86400"
 
 # 只用于厂商授权中心的自动发证管理接口，客户部署不要配置。
 LICENSE_ADMIN_TOKEN = "replace-with-a-long-vendor-only-secret"
+
+# 报告归档私人频道（Phase 5 使用）：把 Bot 添加为频道管理员后填入频道 ID
+# （形如 -1001234567890）。
+REPORT_CHANNEL_ID = ""

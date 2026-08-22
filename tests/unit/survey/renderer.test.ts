@@ -63,11 +63,13 @@ describe("survey renderer", () => {
           label: "A",
           value: "a",
           order: 1,
-          media: {
-            id: "m1",
-            type: "photo",
-            source: "telegram",
-          },
+          media: [
+            {
+              id: "m1",
+              type: "photo",
+              source: "telegram",
+            },
+          ],
         },
       ],
     });

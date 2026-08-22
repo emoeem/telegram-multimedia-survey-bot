@@ -627,6 +627,7 @@ async function setWebhook(botToken, webhookUrl, webhookSecret, dryRun) {
         url: webhookUrl,
         secret_token: webhookSecret,
         drop_pending_updates: false,
+        allowed_updates: ["message", "callback_query", "channel_post"],
       }),
     },
   );

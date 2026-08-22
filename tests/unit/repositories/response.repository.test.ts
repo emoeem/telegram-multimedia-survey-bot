@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createResponse,
   upsertDateAnswer,
   upsertNumberAnswer,
   upsertOptionAnswer,
@@ -46,6 +47,46 @@ function createD1Mock(answerId = 91): {
 }
 
 describe("response repository", () => {
+  it("records the survey version on a new response", async () => {
+    const statement = {
+      bind: vi.fn(() => statement),
+      run: vi.fn(async () => ({ success: true, meta: { last_row_id: 55 } })),
+      first: vi.fn(async () => ({
+        id: 55,
+        survey_id: 3,
+        user_id: 9,
+        participant_hash: "hash",
+        status: "in_progress",
+        started_at: "2026-08-22T00:00:00.000Z",
+        current_question_id: null,
+        version: 2,
+        completed_at: null,
+        submitted_at: null,
+        created_at: "2026-08-22T00:00:00.000Z",
+        updated_at: "2026-08-22T00:00:00.000Z",
+      })),
+    };
+    const db = { prepare: vi.fn(() => statement) } as unknown as D1Database;
+
+    const response = await createResponse(db, {
+      surveyId: 3,
+      userId: 9,
+      participantHash: "hash",
+    });
+
+    expect(statement.bind).toHaveBeenCalledWith(
+      3,
+      9,
+      "hash",
+      expect.any(String),
+      null,
+      3,
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(response.version).toBe(2);
+  });
+
   it("replaces option relations and writes normalized answer_options rows", async () => {
     const { db, statements, batch } = createD1Mock();
 

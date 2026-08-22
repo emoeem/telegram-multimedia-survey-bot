@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getChat,
   sendDocumentByFileId,
   sendPhoto,
   sendPhotoAlbum,
@@ -14,6 +15,26 @@ describe("telegram media requests", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("resolves a channel from an @username via getChat", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          result: { id: -1001234567890, type: "channel", title: "报告归档" },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const chat = await getChat("token", "@report_archive");
+
+    expect(chat.id).toBe(-1001234567890);
+    expect(chat.type).toBe("channel");
+    const request = fetchMock.mock.calls[0];
+    expect(String(request?.[0])).toContain("/getChat?chat_id=%40report_archive");
   });
 
   it("sends an existing Telegram document by file ID", async () => {
@@ -58,9 +79,7 @@ describe("telegram media requests", () => {
       commands: [
         { command: "start", description: "打开主菜单" },
         { command: "surveys", description: "浏览可填写问卷" },
-        { command: "create", description: "新建问卷" },
         { command: "my_surveys", description: "管理我的问卷" },
-        { command: "passwords", description: "管理问卷访问密码" },
         { command: "admin", description: "打开管理员中心" },
       ],
     });

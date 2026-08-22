@@ -1,6 +1,6 @@
 import type { TelegramUpdate } from "./types";
 
-export type TelegramUpdateKind = "message" | "callback_query" | "unknown";
+export type TelegramUpdateKind = "message" | "callback_query" | "channel_post" | "unknown";
 
 export function getUpdateKind(update: TelegramUpdate): TelegramUpdateKind {
   if (update.message) {
@@ -9,6 +9,10 @@ export function getUpdateKind(update: TelegramUpdate): TelegramUpdateKind {
 
   if (update.callback_query) {
     return "callback_query";
+  }
+
+  if (update.channel_post) {
+    return "channel_post";
   }
 
   return "unknown";
