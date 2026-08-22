@@ -63,6 +63,7 @@ export interface BotContext {
   builder: SurveyBuilderNamespace;
   adminIds: number[];
   exportQueue: Queue;
+  origin?: string;
   licenseServerUrl?: string;
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;

@@ -1,6 +1,6 @@
 node_modules/
 .venv/
-dist/
+/dist/
 .wrangler/
 .dev.vars
 .env

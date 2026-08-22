@@ -177,6 +177,9 @@ async function showAdminHome(
               [{ text: "👤 体验创作者", callback_data: "admin:trials" }],
             ]
           : []),
+        ...(ctx.origin
+          ? [[{ text: "🌐 网页管理后台", web_app: { url: `${ctx.origin}/admin` } }]]
+          : []),
       ],
   };
   if (messageId !== undefined) {

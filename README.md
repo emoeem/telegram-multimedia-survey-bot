@@ -1,6 +1,10 @@
 # Telegram Multimedia Survey Bot
 
-基于 GitHub + Cloudflare Workers 的 Telegram 多媒体问卷平台。
+一个运行在 Cloudflare Workers 上的 Telegram 多媒体问卷平台。用户可以直接在 Telegram 中创建、发布和填写问卷，并异步生成统计报表与导出文件；项目不需要常驻 VPS、Docker 进程或自建 PostgreSQL 服务器。
+
+本项目适合需要低运维成本、支持图片/视频/音频题目，并希望通过 Telegram 完成问卷收集的个人、团队和小型组织。欢迎通过 Fork + Pull Request 参与开发。
+
+> 当前项目仍在持续迭代中。生产部署前请先在测试环境验证数据库迁移、Webhook 和导出任务。不要把任何真实 token、密码、客户数据或 Cloudflare Secret 提交到 Git。
 
 不需要 VPS、个人服务器、Docker 常驻进程或 PostgreSQL 自建服务器。
 
@@ -11,7 +15,7 @@ Telegram -> Cloudflare Worker -> Survey Engine
                               -> D1 / Durable Objects / Queues
 ```
 
-## 功能
+## 当前功能
 
 - 一个 Bot 支持多个问卷
 - Telegram 内创建问卷
@@ -23,6 +27,16 @@ Telegram -> Cloudflare Worker -> Survey Engine
 - 结果查看、统计
 - CSV / XLSX / ZIP 导出
 - 限时/永久商业授权、设备激活限制和独立升级权益
+
+### 贡献者可以从哪里开始
+
+- `src/`：Worker、Telegram Bot、问卷引擎、数据库仓储和后台任务
+- `db/migrations/`：Cloudflare D1 数据库迁移
+- `tests/unit/`：单元测试
+- `scripts/`：PDF 导入、授权管理和部署辅助脚本
+- `docs/`：Windows 部署和交付说明
+
+提交代码前请运行 `npm run typecheck`、`npm run lint` 和 `npm test`。请通过 Pull Request 合并到 `main`，不要直接推送主分支。
 
 ## 技术栈
 
@@ -36,12 +50,7 @@ Telegram -> Cloudflare Worker -> Survey Engine
 
 ## Cloudflare 准备
 
-1. 创建 Worker。
-2. 创建 D1 数据库。
-3. 创建 KV Namespace。
-4. 创建 Queue。
-5. 创建 Durable Object。
-6. 将真实 ID 填入 `wrangler.toml`。
+部署需要一个 Cloudflare 账号，并启用 Workers、D1、KV、Queues、Durable Objects 和 Browser Rendering。先创建资源，再把资源 ID 填入 `wrangler.toml`；仓库中的账号/资源 ID 只能作为示例，部署自己的实例时应替换为自己的值。
 
 常用命令：
 
@@ -51,6 +60,8 @@ npx wrangler d1 create telegram-survey-db
 npx wrangler kv namespace create CACHE
 npx wrangler queues create telegram-survey-export
 ```
+
+首次部署还需要在 `wrangler.toml` 中确认 Worker 名称、D1 `database_id`、KV `id`，以及 Queue 名称。Durable Objects 的 class 配置已经写在文件中，迁移标签不要随意删除或重用。
 
 ## Telegram 准备
 
@@ -63,6 +74,8 @@ npx wrangler queues create telegram-survey-export
 ```text
 https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://<worker>.workers.dev/telegram/webhook&secret_token=<WEBHOOK_SECRET>
 ```
+
+真实的 `BOT_TOKEN`、`WEBHOOK_SECRET`、`ADMIN_IDS` 和授权密钥应通过 Cloudflare Secret 或本地未跟踪的 `.dev.vars` 配置，不能写进源码、README、Issue 或 Pull Request。
 
 ## 本地开发
 
@@ -103,6 +116,8 @@ npx wrangler d1 migrations apply DB --remote
 npx wrangler deploy
 ```
 
+部署完成后，可访问 `https://<worker>.workers.dev/health` 检查 Worker 是否正常，再设置 Telegram Webhook。若使用自定义域名，请把 Webhook URL 换成自定义域名地址。
+
 GitHub Actions：
 
 - 非 main 分支：typecheck + test
@@ -114,6 +129,8 @@ GitHub Actions：
 CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 ```
+
+GitHub Actions 只应使用仓库 Secrets 注入凭据；不要把 token 放在 workflow 文件或命令行参数中。公开仓库建议启用 Dependabot、Secret scanning 和主分支保护。
 
 ## 常用 Telegram 命令
 

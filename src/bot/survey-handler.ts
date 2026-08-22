@@ -2621,7 +2621,7 @@ export async function handleTelegramMessage(
     const payload = startMatch[1];
     const surveyId = Number(payload?.match(/^survey_(\d+)$/)?.[1]);
     if (dbUser) await markBotStarted(ctx.db, userId);
-    await Promise.all([
+    const resetResults = await Promise.allSettled([
       ctx.cache?.delete(publicSurveySearchInputKey(userId)),
       ctx.cache?.delete(publicSurveySearchKey(userId)),
       clearImageGeneratorInteractionState(ctx, userId),
@@ -2631,6 +2631,11 @@ export async function handleTelegramMessage(
       clearIdentityCardInteractionState(ctx, userId),
       ctx.ui ? clearUiSession(ctx.ui, userId, message.chat.id).catch(() => undefined) : Promise.resolve(undefined),
     ]);
+    for (const result of resetResults) {
+      if (result.status === "rejected") {
+        console.warn("Start command interaction cleanup failed; continuing", result.reason);
+      }
+    }
     if (Number.isSafeInteger(surveyId) && surveyId > 0) {
       await startSurvey(ctx, message.chat.id, userId, surveyId);
       return;

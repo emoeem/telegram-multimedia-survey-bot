@@ -1,4 +1,4 @@
-name = "telegram-multimedia-survey-bot"
+name = "telegram-multimedia-survey-bot-staging"
 main = "src/index.ts"
 assets = { directory = "admin/dist", binding = "ASSETS", not_found_handling = "single-page-application" }
 compatibility_date = "2026-08-14"
@@ -10,39 +10,34 @@ type = "Data"
 globs = ["**/*.ttf"]
 fallthrough = false
 
-
 [vars]
-ENVIRONMENT = "production"
-APP_VERSION = "0.3.0"
+ENVIRONMENT = "development"
+APP_VERSION = "0.3.0-staging"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "telegram-survey-db"
-database_id = "159e8169-a233-4bd7-b3e9-723586f850c2"
+database_name = "telegram-survey-staging-db"
+database_id = "9a8fc70e-5e5d-4c11-b275-d8c552d551c5"
 migrations_dir = "db/migrations"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "0e659a11ec914cfa9d4922e45ab40ec4"
-preview_id = "0e659a11ec914cfa9d4922e45ab40ec4"
+id = "8d51dfe059de4ca8acf49ab029206cea"
 
 [[queues.producers]]
 binding = "EXPORT_QUEUE"
-queue = "telegram-survey-export"
+queue = "telegram-survey-staging-export"
 
 [[queues.consumers]]
-queue = "telegram-survey-export"
+queue = "telegram-survey-staging-export"
 max_batch_size = 1
 max_batch_timeout = 5
 max_concurrency = 3
 
 [browser]
 binding = "BROWSER"
-
-[triggers]
-crons = ["*/10 * * * *", "15 1 * * *"]
 
 [[durable_objects.bindings]]
 name = "SESSION"

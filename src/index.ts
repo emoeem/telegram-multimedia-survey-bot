@@ -7,6 +7,7 @@ import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { handleLicenseApiRequest } from "./http/license-api";
+import { handleAdminApi } from "./http/admin-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { handleExportQueue } from "./services/export-worker.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
@@ -35,6 +36,7 @@ export interface Env {
   INSTALLATION_ID?: string;
   LICENSE_GRACE_SECONDS?: string;
   BROWSER: BrowserWorker;
+  ASSETS: Fetcher;
 }
 
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
@@ -63,6 +65,12 @@ export default {
         licenseEnforcement: env.LICENSE_ENFORCEMENT ?? "disabled",
       });
     }
+
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+      return env.ASSETS.fetch(request);
+    }
+
+    if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env);
 
     const licenseApiResponse = await handleLicenseApiRequest(
       request,
@@ -135,6 +143,7 @@ export default {
             .map((value) => Number(value.trim()))
             .filter((value) => Number.isInteger(value) && value > 0),
           exportQueue: env.EXPORT_QUEUE,
+          origin: url.origin,
           licenseServerUrl: url.origin,
           licenseAdminEnabled: Boolean(env.LICENSE_ADMIN_TOKEN),
           browser: env.BROWSER,
@@ -182,3 +191,4 @@ export default {
   },
 
 };
+

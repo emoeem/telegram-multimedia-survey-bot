@@ -117,6 +117,47 @@ describe("survey message routing", () => {
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it("still opens the home screen when stale interaction cleanup fails", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      systemRole: "participant",
+    });
+    mocks.getActiveResponseByUser.mockResolvedValue({
+      id: 30,
+      surveyId: 40,
+      currentQuestionId: null,
+      status: "in_progress",
+    });
+    const cache = {
+      delete: vi.fn().mockRejectedValue(new Error("stale state cleanup failed")),
+    } as unknown as KVNamespace;
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: { prepare: vi.fn(() => ({ bind: vi.fn(() => ({ run: vi.fn() })) })) } as unknown as D1Database,
+        cache,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+      },
+      {
+        message_id: 2,
+        chat: { id: 3 },
+        from: { id: 88 },
+        text: "/start",
+      },
+    );
+
+    const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"));
+    expect(sendCall).toBeDefined();
+    expect(JSON.parse(String((sendCall?.[1] as RequestInit).body)).text).toContain("欢迎使用问卷机器人");
+  });
+
   it("shows a password management menu without requiring an internal id", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,
