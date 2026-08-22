@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build:admin": "npm --prefix admin run build",
+    "deploy": "npm run build:admin && wrangler deploy",
+    "deploy:staging": "npm run build:admin && wrangler deploy -c wrangler.staging.toml",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",

@@ -1,17 +1,22 @@
-import { useState } from "react";
-
-export const navigation = [
-  "dashboard",
-  "surveys",
-  "responses",
-  "analytics",
-  "templates",
-  "users",
-  "settings",
-] as const;
-export type AdminSection = (typeof navigation)[number];
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { Layout } from "./components/Layout";
+import { DashboardPage } from "./routes/DashboardPage";
+import { SurveysPage } from "./routes/SurveysPage";
+import { SurveyDetailPage } from "./routes/SurveyDetailPage";
+import { EditorPage } from "./routes/EditorPage";
 
 export function App() {
-  const [section, setSection] = useState<AdminSection>("dashboard");
-  return <>{navigation.map((item) => <button key={item} onClick={() => setSection(item)}>{item}</button>)}<main>{section}</main></>;
+  return (
+    <BrowserRouter basename="/admin">
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="surveys" element={<SurveysPage />} />
+          <Route path="surveys/:id" element={<SurveyDetailPage />} />
+          <Route path="surveys/:id/editor" element={<EditorPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
 }

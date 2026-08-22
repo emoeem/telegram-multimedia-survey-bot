@@ -1,77 +1,63 @@
-import type { Survey } from "../db/schema";
-import { createSurvey, getSurveyById, listSurveysByOwner } from "../db/repositories/survey.repository";
+import type { Survey } from '../db/schema';
+import { MATRIX_COLUMN_MIN, isMatrixQuestionType, minOptionCount, parseMatrixColumns } from '../survey/question-rules';
+import { createSurvey, getSurveyById, listSurveysByOwner } from '../db/repositories/survey.repository';
 import {
   createQuestion,
   createQuestionOption,
   listOptionsForQuestions,
   listQuestionsBySurvey,
-} from "../db/repositories/question.repository";
+} from '../db/repositories/question.repository';
 
-export async function getPublishedSurveys(
-  db: D1Database,
-): Promise<Survey[]> {
-  const result = await db
-    .prepare(
-      "SELECT * FROM surveys WHERE status = 'published' ORDER BY id DESC",
-    )
-    .all();
+export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
+  const result = await db.prepare("SELECT * FROM surveys WHERE status = 'published' ORDER BY id DESC").all();
 
   return (result.results ?? []).map((row) => {
     const surveyRow = row as Record<string, unknown>;
     return {
-      id: Number(surveyRow["id"]),
-      ownerId: Number(surveyRow["owner_id"]),
-      title: String(surveyRow["title"]),
-      description: surveyRow["description"] === null ? null : String(surveyRow["description"]),
-      coverMediaId: surveyRow["cover_media_id"] === null ? null : Number(surveyRow["cover_media_id"]),
-      status: String(surveyRow["status"]) as Survey["status"],
-      anonymous: Number(surveyRow["anonymous"]) === 1,
-      allowMultipleResponses: Number(surveyRow["allow_multiple_responses"]) === 1,
-      maxResponsesPerUser: Number(surveyRow["max_responses_per_user"]),
-      version: Number(surveyRow["version"]),
-      createdAt: String(surveyRow["created_at"]),
-      updatedAt: String(surveyRow["updated_at"]),
-      publishedAt: surveyRow["published_at"] === null ? null : String(surveyRow["published_at"]),
-      closedAt: surveyRow["closed_at"] === null ? null : String(surveyRow["closed_at"]),
-      archivedAt: surveyRow["archived_at"] === null ? null : String(surveyRow["archived_at"]),
-      accessCode: surveyRow["access_code"] === null ? null : String(surveyRow["access_code"]),
+      id: Number(surveyRow['id']),
+      ownerId: Number(surveyRow['owner_id']),
+      title: String(surveyRow['title']),
+      description: surveyRow['description'] === null ? null : String(surveyRow['description']),
+      coverMediaId: surveyRow['cover_media_id'] === null ? null : Number(surveyRow['cover_media_id']),
+      status: String(surveyRow['status']) as Survey['status'],
+      anonymous: Number(surveyRow['anonymous']) === 1,
+      allowMultipleResponses: Number(surveyRow['allow_multiple_responses']) === 1,
+      maxResponsesPerUser: Number(surveyRow['max_responses_per_user']),
+      version: Number(surveyRow['version']),
+      createdAt: String(surveyRow['created_at']),
+      updatedAt: String(surveyRow['updated_at']),
+      publishedAt: surveyRow['published_at'] === null ? null : String(surveyRow['published_at']),
+      closedAt: surveyRow['closed_at'] === null ? null : String(surveyRow['closed_at']),
+      archivedAt: surveyRow['archived_at'] === null ? null : String(surveyRow['archived_at']),
+      accessCode: surveyRow['access_code'] === null ? null : String(surveyRow['access_code']),
       accessCodeEncrypted:
-        surveyRow["access_code_encrypted"] === null || surveyRow["access_code_encrypted"] === undefined
+        surveyRow['access_code_encrypted'] === null || surveyRow['access_code_encrypted'] === undefined
           ? null
-          : String(surveyRow["access_code_encrypted"]),
+          : String(surveyRow['access_code_encrypted']),
     };
   });
 }
 
-export async function getSurveyDetail(
-  db: D1Database,
-  surveyId: number,
-): Promise<Survey | null> {
+export async function getSurveyDetail(db: D1Database, surveyId: number): Promise<Survey | null> {
   return getSurveyById(db, surveyId);
 }
 
-export async function listMySurveys(
-  db: D1Database,
-  ownerId: number,
-): Promise<Survey[]> {
+export async function listMySurveys(db: D1Database, ownerId: number): Promise<Survey[]> {
   return listSurveysByOwner(db, ownerId);
 }
 
-export async function assertSurveyCanPublish(
-  db: D1Database,
-  surveyId: number,
-): Promise<void> {
+export async function assertSurveyCanPublish(db: D1Database, surveyId: number): Promise<void> {
   const survey = await getSurveyById(db, surveyId);
   if (!survey) {
-    throw new Error("问卷不存在");
+    throw new Error('问卷不存在');
   }
   if (!survey.title.trim()) {
-    throw new Error("问卷标题不能为空");
+    throw new Error('问卷标题不能为空');
   }
 
   const questions = await listQuestionsBySurvey(db, surveyId);
   if (questions.length === 0) {
-    throw new Error("问卷至少需要一道题");
+    throw new Error('问卷至少需要一道题');
   }
 
   const options = await listOptionsForQuestions(
@@ -82,53 +68,46 @@ export async function assertSurveyCanPublish(
     if (!question.title.trim()) {
       throw new Error(`第 ${question.order + 1} 题的标题不能为空`);
     }
-    if (
-      question.type === "single" ||
-      question.type === "multiple" ||
-      question.type === "yes_no" ||
-      question.type === "rating"
-    ) {
-      const optionCount = options.filter(
-        (option) => option.questionId === question.id,
-      ).length;
-      if (optionCount < 2) {
-        throw new Error(`第 ${question.order + 1} 题至少需要两个选项`);
+    const minOptions = minOptionCount(question.type);
+    if (minOptions !== null) {
+      const optionCount = options.filter((option) => option.questionId === question.id).length;
+      if (optionCount < minOptions) {
+        throw new Error(
+          isMatrixQuestionType(question.type)
+            ? `第 ${question.order + 1} 题至少需要 ${minOptions} 个行选项`
+            : `第 ${question.order + 1} 题至少需要两个选项`,
+        );
+      }
+    }
+    if (isMatrixQuestionType(question.type)) {
+      const columns = parseMatrixColumns(question.settingsJson);
+      if (columns.length < MATRIX_COLUMN_MIN) {
+        throw new Error(`第 ${question.order + 1} 题的矩阵列至少需要 ${MATRIX_COLUMN_MIN} 个`);
       }
     }
   }
 }
 
-export async function assertSurveyQuestionsEditable(
-  db: D1Database,
-  surveyId: number,
-): Promise<void> {
+export async function assertSurveyQuestionsEditable(db: D1Database, surveyId: number): Promise<void> {
   const survey = await getSurveyById(db, surveyId);
   if (!survey) {
-    throw new Error("问卷不存在");
+    throw new Error('问卷不存在');
   }
 
   const responseCount = await db
-    .prepare(
-      "SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?",
-    )
+    .prepare('SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?')
     .bind(surveyId)
     .first<{ count: number }>();
 
   if ((responseCount?.count ?? 0) > 0) {
-    throw new Error(
-      "该问卷已有答卷，题目和附件已锁定。请复制问卷后再修改。",
-    );
+    throw new Error('该问卷已有答卷，题目和附件已锁定。请复制问卷后再修改。');
   }
 }
 
-export async function duplicateSurvey(
-  db: D1Database,
-  surveyId: number,
-  ownerId: number,
-): Promise<Survey> {
+export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId: number): Promise<Survey> {
   const original = await getSurveyById(db, surveyId);
   if (!original) {
-    throw new Error("Survey not found");
+    throw new Error('Survey not found');
   }
 
   const duplicate = await createSurvey(db, {

@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --breakpoint-lg: 1000px;
+  --color-page: #f4f6fa;
+  --color-ink: #172033;
+  --color-sidebar: #111827;
+  --color-sidebar-hover: #263449;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #eceff3 25%, #f6f8fb 50%, #eceff3 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s infinite;
+}
+
+.btn {
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.input {
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: white;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  background: #f8fafc;
+  color: #374151;
+}
+
+.input:focus {
+  outline: 2px solid #93c5fd;
+  outline-offset: -1px;
+}

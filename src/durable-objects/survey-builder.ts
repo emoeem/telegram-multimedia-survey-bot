@@ -1,6 +1,7 @@
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject } from 'cloudflare:workers';
 
-import type { QuestionType } from "../db/schema";
+import type { QuestionType } from '../db/schema';
+import { CHOICE_OPTION_MIN, MATRIX_COLUMN_MIN, MATRIX_ROW_MIN } from '../survey/question-rules';
 
 export interface DraftOption {
   label: string;
@@ -15,27 +16,31 @@ export interface DraftQuestion {
   options: DraftOption[];
   matrixColumns?: string[];
   mediaAssetId: number | null;
+  /** Skip rules survive a wizard round-trip: restore reads them from D1 and
+   * save writes them back, instead of silently dropping them on re-insert. */
+  conditionJson?: string | null;
+  skipToQuestionId?: number | null;
 }
 
 export type SurveyBuilderStep =
-  | "idle"
-  | "survey_title"
-  | "survey_description"
-  | "question_type"
-  | "question_title"
-  | "question_required"
-  | "question_media"
-  | "question_media_existing"
-  | "question_options"
-  | "matrix_columns"
-  | "import"
-  | "add_question_option"
-  | "option_media"
-  | "edit_option_label"
-  | "edit_question_title"
-  | "survey_access_code"
-  | "set_survey_access_code"
-  | "ready";
+  | 'idle'
+  | 'survey_title'
+  | 'survey_description'
+  | 'question_type'
+  | 'question_title'
+  | 'question_required'
+  | 'question_media'
+  | 'question_media_existing'
+  | 'question_options'
+  | 'matrix_columns'
+  | 'import'
+  | 'add_question_option'
+  | 'option_media'
+  | 'edit_option_label'
+  | 'edit_question_title'
+  | 'survey_access_code'
+  | 'set_survey_access_code'
+  | 'ready';
 
 export interface SurveyBuilderState {
   userId: number;
@@ -60,45 +65,45 @@ export interface SurveyBuilderState {
 }
 
 type BuilderAction =
-  | { action: "init"; userId: number }
-  | { action: "get" }
-  | { action: "start" }
-  | { action: "start_append_questions"; surveyId: number }
+  | { action: 'init'; userId: number }
+  | { action: 'get' }
+  | { action: 'start' }
+  | { action: 'start_append_questions'; surveyId: number }
   | {
-      action: "restore";
+      action: 'restore';
       surveyId: number;
       surveyTitle: string;
       surveyDescription: string;
       questions: DraftQuestion[];
     }
-  | { action: "set_draft_survey_id"; surveyId: number }
-  | { action: "set_survey_title"; value: string }
-  | { action: "set_survey_description"; value: string }
-  | { action: "set_question_type"; value: QuestionType }
-  | { action: "set_question_title"; value: string }
-  | { action: "set_question_required"; value: boolean }
-  | { action: "add_option"; value: string; mediaAssetId?: number | null }
-  | { action: "add_matrix_column"; value: string }
-  | { action: "start_question_options" }
-  | { action: "start_import" }
-  | { action: "start_add_question_option"; questionId: number }
-  | { action: "start_option_media"; optionId: number }
-  | { action: "start_question_media"; questionId: number }
-  | { action: "start_edit_option_label"; optionId: number }
-  | { action: "start_edit_question_title"; questionId: number }
-  | { action: "start_survey_access_code"; surveyId: number }
-  | { action: "start_set_survey_access_code"; surveyId: number }
-  | { action: "resume_auxiliary" }
-  | { action: "back" }
-  | { action: "set_question_media"; mediaAssetId: number }
-  | { action: "finish_options" }
-  | { action: "finish_questions" }
-  | { action: "reset" };
+  | { action: 'set_draft_survey_id'; surveyId: number }
+  | { action: 'set_survey_title'; value: string }
+  | { action: 'set_survey_description'; value: string }
+  | { action: 'set_question_type'; value: QuestionType }
+  | { action: 'set_question_title'; value: string }
+  | { action: 'set_question_required'; value: boolean }
+  | { action: 'add_option'; value: string; mediaAssetId?: number | null }
+  | { action: 'add_matrix_column'; value: string }
+  | { action: 'start_question_options' }
+  | { action: 'start_import' }
+  | { action: 'start_add_question_option'; questionId: number }
+  | { action: 'start_option_media'; optionId: number }
+  | { action: 'start_question_media'; questionId: number }
+  | { action: 'start_edit_option_label'; optionId: number }
+  | { action: 'start_edit_question_title'; questionId: number }
+  | { action: 'start_survey_access_code'; surveyId: number }
+  | { action: 'start_set_survey_access_code'; surveyId: number }
+  | { action: 'resume_auxiliary' }
+  | { action: 'back' }
+  | { action: 'set_question_media'; mediaAssetId: number }
+  | { action: 'finish_options' }
+  | { action: 'finish_questions' }
+  | { action: 'reset' };
 
-const STATE_KEY = "survey-builder";
+const STATE_KEY = 'survey-builder';
 
 function normalizeOption(option: DraftOption | string): DraftOption {
-  if (typeof option === "string") {
+  if (typeof option === 'string') {
     return { label: option, mediaAssetId: null };
   }
 
@@ -121,12 +126,12 @@ export class SurveyBuilderDO extends DurableObject {
   private createInitialState(userId: number): SurveyBuilderState {
     return {
       userId,
-      step: "idle",
+      step: 'idle',
       activeDraft: false,
-      surveyTitle: "",
-      surveyDescription: "",
+      surveyTitle: '',
+      surveyDescription: '',
       currentQuestionType: null,
-      currentQuestionTitle: "",
+      currentQuestionTitle: '',
       currentQuestionRequired: true,
       currentOptions: [],
       currentMatrixColumns: [],
@@ -145,7 +150,7 @@ export class SurveyBuilderDO extends DurableObject {
   private createDraftState(userId: number): SurveyBuilderState {
     return {
       ...this.createInitialState(userId),
-      step: "survey_title",
+      step: 'survey_title',
       activeDraft: true,
     };
   }
@@ -154,26 +159,23 @@ export class SurveyBuilderDO extends DurableObject {
     const initial = this.createInitialState(state.userId);
     const hasLegacyDraftContent = Boolean(
       state.surveyTitle ||
-        state.surveyDescription ||
-        state.questions?.length ||
-        state.currentQuestionType ||
-        state.currentQuestionTitle,
+      state.surveyDescription ||
+      state.questions?.length ||
+      state.currentQuestionType ||
+      state.currentQuestionTitle,
     );
-    const activeDraft =
-      typeof state.activeDraft === "boolean"
-        ? state.activeDraft
-        : hasLegacyDraftContent;
+    const activeDraft = typeof state.activeDraft === 'boolean' ? state.activeDraft : hasLegacyDraftContent;
     const normalizedStep =
       !activeDraft &&
-      state.step !== "import" &&
-      state.step !== "add_question_option" &&
-      state.step !== "option_media" &&
-      state.step !== "question_media_existing" &&
-      state.step !== "edit_option_label" &&
-      state.step !== "edit_question_title" &&
-      state.step !== "survey_access_code" &&
-      state.step !== "set_survey_access_code"
-        ? "idle"
+      state.step !== 'import' &&
+      state.step !== 'add_question_option' &&
+      state.step !== 'option_media' &&
+      state.step !== 'question_media_existing' &&
+      state.step !== 'edit_option_label' &&
+      state.step !== 'edit_question_title' &&
+      state.step !== 'survey_access_code' &&
+      state.step !== 'set_survey_access_code'
+        ? 'idle'
         : state.step;
 
     return {
@@ -188,16 +190,15 @@ export class SurveyBuilderDO extends DurableObject {
         required: question.required ?? true,
         matrixColumns: question.matrixColumns ?? [],
         mediaAssetId: question.mediaAssetId ?? null,
+        conditionJson: question.conditionJson ?? null,
+        skipToQuestionId: question.skipToQuestionId ?? null,
       })),
       draftSurveyId: state.draftSurveyId ?? null,
       suspendedStep: state.suspendedStep ?? null,
     };
   }
 
-  private startAuxiliary(
-    state: SurveyBuilderState,
-    step: SurveyBuilderStep,
-  ): SurveyBuilderState {
+  private startAuxiliary(state: SurveyBuilderState, step: SurveyBuilderStep): SurveyBuilderState {
     const alreadyAuxiliary = state.suspendedStep !== null;
     return {
       ...state,
@@ -209,21 +210,20 @@ export class SurveyBuilderDO extends DurableObject {
 
   private appendCurrentQuestion(state: SurveyBuilderState): SurveyBuilderState {
     if (!state.currentQuestionType || !state.currentQuestionTitle) {
-      throw new Error("question_incomplete");
+      throw new Error('question_incomplete');
     }
 
     if (
-      (state.currentQuestionType === "single" ||
-        state.currentQuestionType === "multiple") &&
-      state.currentOptions.length < 2
+      (state.currentQuestionType === 'single' || state.currentQuestionType === 'multiple') &&
+      state.currentOptions.length < CHOICE_OPTION_MIN
     ) {
-      throw new Error("choice_options_incomplete");
+      throw new Error('choice_options_incomplete');
     }
     if (
-      state.currentQuestionType === "matrix" &&
-      (state.currentOptions.length < 1 || (state.currentMatrixColumns?.length ?? 0) < 2)
+      state.currentQuestionType === 'matrix' &&
+      (state.currentOptions.length < MATRIX_ROW_MIN || (state.currentMatrixColumns?.length ?? 0) < MATRIX_COLUMN_MIN)
     ) {
-      throw new Error("matrix_incomplete");
+      throw new Error('matrix_incomplete');
     }
 
     return {
@@ -240,12 +240,12 @@ export class SurveyBuilderDO extends DurableObject {
         },
       ],
       currentQuestionType: null,
-      currentQuestionTitle: "",
+      currentQuestionTitle: '',
       currentQuestionRequired: true,
       currentOptions: [],
       currentMatrixColumns: [],
       currentMediaAssetId: null,
-      step: "question_type",
+      step: 'question_type',
       updatedAt: new Date().toISOString(),
     };
   }
@@ -254,39 +254,36 @@ export class SurveyBuilderDO extends DurableObject {
     const action = (await request.json()) as BuilderAction;
     let state = await this.getState();
 
-    if (action.action === "init") {
-      const nextState =
-        state?.userId === action.userId
-          ? state
-          : this.createInitialState(action.userId);
+    if (action.action === 'init') {
+      const nextState = state?.userId === action.userId ? state : this.createInitialState(action.userId);
       await this.putState(nextState);
       return Response.json(nextState);
     }
 
-    if (action.action === "get") {
-      return Response.json(state ?? { error: "builder_not_found" }, {
+    if (action.action === 'get') {
+      return Response.json(state ?? { error: 'builder_not_found' }, {
         status: state ? 200 : 404,
       });
     }
 
     if (!state) {
-      return Response.json({ error: "builder_not_found" }, { status: 404 });
+      return Response.json({ error: 'builder_not_found' }, { status: 404 });
     }
 
-    if (action.action === "start") {
+    if (action.action === 'start') {
       state = this.createDraftState(state.userId);
-    } else if (action.action === "start_append_questions") {
+    } else if (action.action === 'start_append_questions') {
       state = {
         ...this.createInitialState(state.userId),
         activeDraft: true,
-        step: "question_type",
+        step: 'question_type',
         appendSurveyId: action.surveyId,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "restore") {
+    } else if (action.action === 'restore') {
       state = {
         ...this.createDraftState(state.userId),
-        step: "question_type",
+        step: 'question_type',
         surveyTitle: action.surveyTitle,
         surveyDescription: action.surveyDescription,
         draftSurveyId: action.surveyId,
@@ -297,127 +294,127 @@ export class SurveyBuilderDO extends DurableObject {
         })),
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_draft_survey_id") {
+    } else if (action.action === 'set_draft_survey_id') {
       state = {
         ...state,
         draftSurveyId: action.surveyId,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "start_import") {
+    } else if (action.action === 'start_import') {
       state = {
         ...this.createInitialState(state.userId),
-        step: "import",
+        step: 'import',
       };
-    } else if (action.action === "start_add_question_option") {
+    } else if (action.action === 'start_add_question_option') {
       state = {
-        ...this.startAuxiliary(state, "add_question_option"),
+        ...this.startAuxiliary(state, 'add_question_option'),
         targetQuestionId: action.questionId,
       };
-    } else if (action.action === "start_option_media") {
+    } else if (action.action === 'start_option_media') {
       state = {
-        ...this.startAuxiliary(state, "option_media"),
+        ...this.startAuxiliary(state, 'option_media'),
         targetOptionId: action.optionId,
       };
-    } else if (action.action === "start_question_media") {
+    } else if (action.action === 'start_question_media') {
       state = {
-        ...this.startAuxiliary(state, "question_media_existing"),
+        ...this.startAuxiliary(state, 'question_media_existing'),
         targetQuestionId: action.questionId,
       };
-    } else if (action.action === "start_edit_option_label") {
+    } else if (action.action === 'start_edit_option_label') {
       state = {
-        ...this.startAuxiliary(state, "edit_option_label"),
+        ...this.startAuxiliary(state, 'edit_option_label'),
         targetOptionId: action.optionId,
       };
-    } else if (action.action === "start_edit_question_title") {
+    } else if (action.action === 'start_edit_question_title') {
       state = {
-        ...this.startAuxiliary(state, "edit_question_title"),
+        ...this.startAuxiliary(state, 'edit_question_title'),
         targetQuestionId: action.questionId,
       };
-    } else if (action.action === "start_survey_access_code") {
+    } else if (action.action === 'start_survey_access_code') {
       state = {
-        ...this.startAuxiliary(state, "survey_access_code"),
+        ...this.startAuxiliary(state, 'survey_access_code'),
         targetSurveyId: action.surveyId,
       };
-    } else if (action.action === "start_set_survey_access_code") {
+    } else if (action.action === 'start_set_survey_access_code') {
       state = {
-        ...this.startAuxiliary(state, "set_survey_access_code"),
+        ...this.startAuxiliary(state, 'set_survey_access_code'),
         targetSurveyId: action.surveyId,
       };
-    } else if (action.action === "resume_auxiliary") {
+    } else if (action.action === 'resume_auxiliary') {
       state = {
         ...state,
-        step: state.suspendedStep ?? "idle",
+        step: state.suspendedStep ?? 'idle',
         targetOptionId: null,
         targetQuestionId: null,
         targetSurveyId: null,
         suspendedStep: null,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "back") {
+    } else if (action.action === 'back') {
       const previousStep =
-        state.step === "survey_description"
-          ? "survey_title"
-          : state.step === "question_type"
-            ? "survey_description"
-          : state.step === "question_title"
-              ? "question_type"
-              : state.step === "question_required"
-                ? "question_title"
-              : state.step === "question_media"
-                ? "question_required"
-                : state.step === "question_options"
-                  ? "question_media"
-                  : state.step;
+        state.step === 'survey_description'
+          ? 'survey_title'
+          : state.step === 'question_type'
+            ? 'survey_description'
+            : state.step === 'question_title'
+              ? 'question_type'
+              : state.step === 'question_required'
+                ? 'question_title'
+                : state.step === 'question_media'
+                  ? 'question_required'
+                  : state.step === 'question_options'
+                    ? 'question_media'
+                    : state.step;
 
       state = {
         ...state,
         step: previousStep,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_survey_title") {
+    } else if (action.action === 'set_survey_title') {
       state = {
         ...state,
         surveyTitle: action.value,
-        step: "survey_description",
+        step: 'survey_description',
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_survey_description") {
+    } else if (action.action === 'set_survey_description') {
       state = {
         ...state,
         surveyDescription: action.value,
-        step: "question_type",
+        step: 'question_type',
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_question_type") {
+    } else if (action.action === 'set_question_type') {
       state = {
         ...state,
         currentQuestionType: action.value,
-        currentQuestionTitle: "",
+        currentQuestionTitle: '',
         currentQuestionRequired: true,
-        step: "question_title",
+        step: 'question_title',
         currentOptions: [],
         currentMatrixColumns: [],
         currentMediaAssetId: null,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_question_title") {
+    } else if (action.action === 'set_question_title') {
       state = {
         ...state,
         currentQuestionTitle: action.value,
-        step: "question_required",
+        step: 'question_required',
         currentOptions: [],
         currentMatrixColumns: [],
         currentMediaAssetId: null,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_question_required") {
+    } else if (action.action === 'set_question_required') {
       state = {
         ...state,
         currentQuestionRequired: action.value,
-        step: "question_media",
+        step: 'question_media',
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "add_option") {
+    } else if (action.action === 'add_option') {
       state = {
         ...state,
         currentOptions: [
@@ -429,50 +426,50 @@ export class SurveyBuilderDO extends DurableObject {
         ],
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "add_matrix_column") {
+    } else if (action.action === 'add_matrix_column') {
       state = {
         ...state,
         currentMatrixColumns: [...(state.currentMatrixColumns ?? []), action.value],
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "start_question_options") {
+    } else if (action.action === 'start_question_options') {
       state = {
         ...state,
-        step: "question_options",
+        step: 'question_options',
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "set_question_media") {
+    } else if (action.action === 'set_question_media') {
       state = {
         ...state,
         currentMediaAssetId: action.mediaAssetId,
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "finish_options") {
-      if (state.currentQuestionType === "matrix" && state.step === "question_options") {
+    } else if (action.action === 'finish_options') {
+      if (state.currentQuestionType === 'matrix' && state.step === 'question_options') {
         if (state.currentOptions.length < 1) {
-          return Response.json({ error: "matrix_rows_incomplete" }, { status: 400 });
+          return Response.json({ error: 'matrix_rows_incomplete' }, { status: 400 });
         }
-        state = { ...state, step: "matrix_columns", updatedAt: new Date().toISOString() };
+        state = { ...state, step: 'matrix_columns', updatedAt: new Date().toISOString() };
       } else {
-      try {
-        state = this.appendCurrentQuestion(state);
-      } catch (error) {
-        return Response.json(
-          {
-            error: error instanceof Error ? error.message : "question_incomplete",
-          },
-          { status: 400 },
-        );
+        try {
+          state = this.appendCurrentQuestion(state);
+        } catch (error) {
+          return Response.json(
+            {
+              error: error instanceof Error ? error.message : 'question_incomplete',
+            },
+            { status: 400 },
+          );
+        }
       }
-      }
-    } else if (action.action === "finish_questions") {
+    } else if (action.action === 'finish_questions') {
       if (state.currentQuestionType || state.currentQuestionTitle) {
         try {
           state = this.appendCurrentQuestion(state);
         } catch (error) {
           return Response.json(
             {
-              error: error instanceof Error ? error.message : "question_incomplete",
+              error: error instanceof Error ? error.message : 'question_incomplete',
             },
             { status: 400 },
           );
@@ -480,10 +477,10 @@ export class SurveyBuilderDO extends DurableObject {
       }
       state = {
         ...state,
-        step: "ready",
+        step: 'ready',
         updatedAt: new Date().toISOString(),
       };
-    } else if (action.action === "reset") {
+    } else if (action.action === 'reset') {
       state = this.createInitialState(state.userId);
     }
 
