@@ -33,6 +33,36 @@ export interface SurveyPageDto {
   order: number;
 }
 
+export interface SurveyThemeDto {
+  background?: {
+    color?: string;
+    image?: string;
+    position?: string;
+    size?: string;
+  };
+  overlay?: {
+    color?: string;
+    opacity?: number;
+    blur?: number;
+  };
+  primaryColor?: string;
+  secondaryColor?: string;
+  card?: {
+    background?: string;
+    border?: string;
+    radius?: number;
+    glass?: boolean;
+  };
+  text?: {
+    heading?: string;
+    body?: string;
+    muted?: string;
+  };
+  button?: {
+    radius?: number;
+  };
+}
+
 export interface SurveyDto {
   id: number;
   title: string;
@@ -41,6 +71,7 @@ export interface SurveyDto {
   anonymous: boolean;
   allowMultiple: boolean;
   maxResponses: number;
+  theme: SurveyThemeDto | null;
   pages: SurveyPageDto[];
   questions: SurveyQuestionDto[];
 }

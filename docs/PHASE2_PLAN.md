@@ -118,6 +118,20 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 
 **题目统一组件**：「第 X / 总题数」+ 进度条 + 已完成百分比；有分页时显示「第 X / Y 页」。
 
+**已完成（2026-08-23 第一块）**：
+
+- **SurveyTheme 渲染系统**：`src/survey/theme.ts` 定义并安全规范化主题令牌（background 色/图/位置/尺寸、overlay 色/透明度/模糊、primary/secondary 色、card 背景/边框/圆角/玻璃、text 三色、button 圆角）；`surveys.settings_json` 经 `/api/survey/:id` 返回；SurveyApp 映射为 CSS 变量渲染（背景图+遮罩、头部/进度条/选项/按钮/文字全主题化）
+- 头部新增「第 X / N 题 · 完成%」+ 分页时「第 X / Y 页」
+- 长题干/说明折叠（line-clamp-3 + 展开全文）
+- 修复旧隐患：`.btn` 未分层背景覆盖主题/工具类导致主按钮白底白字（新增 `.btn-primary`，SettingsPage/问卷页主按钮全部换用）
+
+**尚未完成（下一块）**：
+
+- Option Media 卡片化（图片选项的标签叠图布局）
+- 键盘弹出不遮挡输入框（Telegram WebView 键盘适配）
+- 主题预设库（Minimal/Dark/Magazine/Mature）与后台主题选择界面
+- Playwright Visual QA（Phase 7）
+
 ## 6. 问卷 Theme System
 
 问卷视觉主题与报告模板**彻底分离**：

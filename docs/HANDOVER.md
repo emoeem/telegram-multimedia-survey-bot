@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 3 第一块：SurveyTheme 渲染 + 移动端增强（2026-08-23）**：主题令牌规范化/下发/渲染（背景图+遮罩+主色+卡片+文字+按钮）、题号进度加完成百分比与分页指示、长文本折叠；修复 `.btn` 白底白字旧隐患。详见 `docs/PHASE2_PLAN.md` §5/§6
 - [x] **Phase 2 完成（2026-08-23）**：Web JSON 导入页 + 高保真预览（题型/媒体/低置信度）、分页保真、置信度透传、Media Resolver（data URL → MEDIA_KV）、导入错误逐字段定位、导入时绑定报告模板/主题（迁移 0031 `surveys.settings_json`）。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 2 第三块：导入错误逐字段定位（2026-08-23）**：`ImportValidationError` + 结构化 issues（题号/标题/字段/路径），导入页逐条展示；Bot 导入路径兼容。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 2 第二块：Media Resolver（2026-08-23）**：PDF 内嵌 data URL 媒体导入时解码存入 MEDIA_KV（D1 只存引用）、导入上限提至 40MB、媒体代理支持 data URL 直出；实测堕落游戏.pdf 58 个媒体无损入库。详见 `docs/PHASE2_PLAN.md` §3/§4

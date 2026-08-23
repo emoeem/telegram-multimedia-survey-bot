@@ -98,7 +98,7 @@ export function SettingsPage() {
       </div>
 
       <div className="mt-6 flex items-center gap-3">
-        <button className="btn bg-indigo-600 text-white" disabled={saving} onClick={() => void save()}>
+        <button className="btn btn-primary" disabled={saving} onClick={() => void save()}>
           {saving ? "保存中…" : "保存设置"}
         </button>
         {saved ? <span className="text-sm text-green-600">已保存</span> : null}

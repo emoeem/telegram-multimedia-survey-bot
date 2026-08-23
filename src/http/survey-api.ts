@@ -39,6 +39,7 @@ import { KVMediaStore } from "../services/media/temporary-media-store";
 import { enqueueReportDelivery } from "../services/report-delivery.service";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { createReportAccessToken } from "../services/report-access-token.service";
+import { normalizeSurveyTheme } from "../survey/theme";
 
 const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -314,6 +315,7 @@ export async function handleSurveyApiRequest(
       anonymous: survey.anonymous,
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
+      theme: normalizeSurveyTheme(parseSettings(survey.settingsJson)),
       pages: (pages.results ?? []).map((page) => ({
         id: page.id,
         title: page.title,

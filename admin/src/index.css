@@ -8,6 +8,18 @@
   --color-sidebar-hover: #263449;
 }
 
+:root {
+  --survey-primary: #4f46e5;
+  --survey-secondary: #64748b;
+  --survey-card-bg: #ffffff;
+  --survey-card-border: #e5e7eb;
+  --survey-radius: 12px;
+  --survey-heading: #111827;
+  --survey-body: #374151;
+  --survey-muted: #6b7280;
+  --survey-header-bg: rgba(255, 255, 255, 0.9);
+}
+
 @keyframes skeleton-shimmer {
   0% {
     background-position: 200% 0;
@@ -27,19 +39,38 @@
 .btn {
   cursor: pointer;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: white;
   padding: 10px 16px;
   font-size: 14px;
 }
 
-.btn:hover:not(:disabled) {
+/* Zero-specificity defaults so Tailwind background/border utilities (theme
+ * tokens, indigo accents, etc.) can override them on the same element. */
+:where(.btn) {
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+:where(.btn):hover:not(:disabled) {
   background: #f8fafc;
 }
 
 .btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* Primary action button. Unlayered so it wins over layered Tailwind
+ * utilities (which would otherwise lose to the unlayered .btn defaults). */
+.btn-primary {
+  background-color: var(--survey-primary);
+  border-color: var(--survey-primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--survey-primary);
+  color: #ffffff;
+  opacity: 0.92;
 }
 
 .btn-sm {
