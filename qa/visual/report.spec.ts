@@ -12,6 +12,7 @@ const TEMPLATES = [
 
 const VIEWPORTS = [
   { width: 390, height: 844 },
+  { width: 768, height: 1024 },
   { width: 1440, height: 900 },
 ];
 
@@ -40,4 +41,34 @@ for (const template of TEMPLATES) {
       );
     });
   }
+}
+
+// PDF layout is independent from the responsive web layout: print media is
+// forced to a single A4 column even though the viewport width would otherwise
+// trigger the desktop grid.
+for (const template of TEMPLATES) {
+  test(`report ${template.id} print (A4)`, async ({ page }) => {
+    await page.setViewportSize({ width: 794, height: 1123 });
+    await page.emulateMedia({ media: "print" });
+
+    const problems: string[] = [];
+    page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
+    page.on("console", (message) => {
+      if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
+    });
+
+    await page.goto(`/fixtures/report/${template.id}.html`);
+    await expect(page.locator("h1").first()).toBeVisible();
+
+    const wrapDisplay = await page.evaluate(() => {
+      const wrap = document.querySelector(".wrap");
+      return wrap ? getComputedStyle(wrap).display : null;
+    });
+    expect(wrapDisplay).toBe("block");
+    expect(problems).toEqual([]);
+
+    await expect(page).toHaveScreenshot(
+      `report-${template.id}-print-A4.png`,
+    );
+  });
 }
