@@ -182,16 +182,16 @@ describe("report delivery worker", () => {
     expect(mocks.sendDocument).toHaveBeenCalledWith(
       "token",
       -100123,
-      "report-42.pdf",
+      "report-42.zip",
       expect.any(Uint8Array),
-      "application/pdf",
+      "application/zip",
       expect.stringContaining("#答卷42"),
     );
-    expect(mocks.sendPhoto).toHaveBeenCalledOnce();
+    expect(mocks.sendPhoto).not.toHaveBeenCalled();
     expect(mocks.completeReportDelivery).toHaveBeenCalledWith(
       env.DB,
       1,
-      { telegramChatId: -100123, pdfMessageId: 55, imageMessageIds: [56] },
+      { telegramChatId: -100123, pdfMessageId: 55, imageMessageIds: [] },
     );
     expect(mocks.deleteTemporaryMediaForResponse).toHaveBeenCalled();
     expect(mocks.renderReportPdf).toHaveBeenCalledWith(

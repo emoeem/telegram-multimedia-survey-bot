@@ -152,7 +152,7 @@ export function ResponseDetailPage() {
             disabled={busy}
             onClick={() => void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/resend`)}
           >
-            📤 重新发送 Telegram
+            📦 导出到私人频道（PDF+图片打包）
           </button>
         ) : null}
         {data.response.status !== "archived" ? (

@@ -23,6 +23,7 @@ import { KVMediaStore } from "./media/temporary-media-store";
 import { resolveReportTemplate } from "./report/template-resolver";
 import { getSystemSettingValue } from "./system-settings.service";
 import { sendDocument, sendMessage, sendPhoto } from "../bot/telegram";
+import { zipSync } from "fflate";
 
 export interface ReportDeliveryWorkerEnvironment {
   DB: D1Database;
@@ -148,6 +149,20 @@ async function deliverReportToChannel(
   if (survey?.title) pdfMeta.surveyTitle = survey.title;
   const pdf = await renderReportPdf(env.BROWSER, snapshot, images, pdfMeta, {}, template);
 
+  // Package the PDF together with the participant's uploaded images into a
+  // single zip so the archive channel receives everything in one file.
+  const mediaFiles = Object.values(images)
+    .filter((url) => url.startsWith("data:image/"))
+    .map((url) => ({ bytes: dataUrlToBytes(url), extension: dataUrlExtension(url) }));
+  const zip =
+    mediaFiles.length > 0
+      ? buildReportZip(responseId, pdf.bytes, mediaFiles)
+      : null;
+  const sendZip = zip !== null && zip.byteLength <= 45 * 1024 * 1024;
+  const archiveName = sendZip ? `report-${responseId}.zip` : `report-${responseId}.pdf`;
+  const archiveBytes = sendZip ? (zip as Uint8Array) : pdf.bytes;
+  const archiveType = sendZip ? "application/zip" : "application/pdf";
+
   const caption = [
     "📋 新答卷",
     "",
@@ -156,7 +171,9 @@ async function deliverReportToChannel(
     `用户：${respondent}`,
     `完成时间：${completedAt}`,
     "",
-    `📄 报告：report-${responseId}.pdf`,
+    sendZip
+      ? `📦 报告+用户图片：report-${responseId}.zip`
+      : `📄 报告：report-${responseId}.pdf`,
   ].join("\n");
   const tags = [`#答卷${responseId}`, `#问卷${response.surveyId}`];
   tags.push(respondentInfo ? `#用户${respondentInfo.telegramUserId}` : "#匿名答卷");
@@ -165,38 +182,39 @@ async function deliverReportToChannel(
   const pdfResponse = await sendDocument(
     env.BOT_TOKEN,
     chatId,
-    `report-${responseId}.pdf`,
-    pdf.bytes,
-    "application/pdf",
+    archiveName,
+    archiveBytes,
+    archiveType,
     captionWithTags,
   );
   const pdfMessageId = await messageIdFromResponse(pdfResponse);
 
   const imageMessageIds: number[] = [];
-  const gallery = Object.values(images)
-    .filter((url) => url.startsWith("data:image/"))
-    .slice(0, 6);
-  for (let index = 0; index < gallery.length; index += 1) {
-    const url = gallery[index];
-    if (!url) continue;
-    const bytes = dataUrlToBytes(url);
-    try {
-      const photoResponse = await sendPhoto(
-        env.BOT_TOKEN,
-        chatId,
-        bytes,
-        `用户附件 ${index + 1}/${gallery.length}`,
-      );
-      imageMessageIds.push(await messageIdFromResponse(photoResponse));
-    } catch {
-      const documentResponse = await sendDocument(
-        env.BOT_TOKEN,
-        chatId,
-        `attachment-${index + 1}.img`,
-        bytes,
-        "image/jpeg",
-      );
-      imageMessageIds.push(await messageIdFromResponse(documentResponse));
+  // Fallback when the zip would be too large: send the PDF plus up to 6 user
+  // images as separate Telegram messages.
+  if (!sendZip) {
+    const gallery = mediaFiles.slice(0, 6);
+    for (let index = 0; index < gallery.length; index += 1) {
+      const bytes = gallery[index]?.bytes;
+      if (!bytes) continue;
+      try {
+        const photoResponse = await sendPhoto(
+          env.BOT_TOKEN,
+          chatId,
+          bytes,
+          `用户附件 ${index + 1}/${gallery.length}`,
+        );
+        imageMessageIds.push(await messageIdFromResponse(photoResponse));
+      } catch {
+        const documentResponse = await sendDocument(
+          env.BOT_TOKEN,
+          chatId,
+          `attachment-${index + 1}.img`,
+          bytes,
+          "image/jpeg",
+        );
+        imageMessageIds.push(await messageIdFromResponse(documentResponse));
+      }
     }
   }
 
@@ -212,6 +230,26 @@ function dataUrlToBytes(url: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function dataUrlExtension(url: string): string {
+  const match = /^data:image\/([a-zA-Z0-9.+-]+);/.exec(url);
+  const type = match?.[1]?.toLowerCase() ?? "img";
+  return type === "jpeg" ? "jpg" : type;
+}
+
+function buildReportZip(
+  responseId: number,
+  pdfBytes: Uint8Array,
+  media: Array<{ bytes: Uint8Array; extension: string }>,
+): Uint8Array {
+  const files: Record<string, Uint8Array> = {
+    [`report-${responseId}.pdf`]: pdfBytes,
+  };
+  media.forEach((item, index) => {
+    files[`media/附件-${index + 1}.${item.extension}`] = item.bytes;
+  });
+  return zipSync(files);
 }
 
 function formatChinaDateTime(value: string | null): string {

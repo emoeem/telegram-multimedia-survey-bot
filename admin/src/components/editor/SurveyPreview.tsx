@@ -13,6 +13,8 @@ interface SurveyPreviewProps {
   questions: EditorPreviewQuestion[];
   dirty: boolean;
   onClose: () => void;
+  /** Renders as a static embedded pane instead of a modal overlay. */
+  inline?: boolean;
 }
 
 function PreviewChoice({ label, multiple, mediaCount }: { label: string; multiple: boolean; mediaCount: number }) {
@@ -99,10 +101,18 @@ function PreviewAnswer({ question }: { question: EditorPreviewQuestion }) {
   return <input className="input w-full" disabled placeholder="在 Telegram 中输入回答" />;
 }
 
-export function SurveyPreview({ title, description, questions, dirty, onClose }: SurveyPreviewProps) {
+export function SurveyPreview({
+  title,
+  description,
+  questions,
+  dirty,
+  onClose,
+  inline = false,
+}: SurveyPreviewProps) {
   const titleId = useId();
 
   useEffect(() => {
+    if (inline) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (event: KeyboardEvent) => {
@@ -113,11 +123,15 @@ export function SurveyPreview({ title, description, questions, dirty, onClose }:
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [onClose]);
+  }, [inline, onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 sm:items-center sm:p-6"
+      className={
+        inline
+          ? "h-full overflow-hidden rounded-xl border border-gray-200 bg-page"
+          : "fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 sm:items-center sm:p-6"
+      }
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -126,7 +140,11 @@ export function SurveyPreview({ title, description, questions, dirty, onClose }:
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[100dvh] w-full max-w-3xl flex-col bg-page shadow-xl sm:max-h-[90dvh] sm:rounded-xl"
+        className={
+          inline
+            ? "flex h-full flex-col"
+            : "flex max-h-[100dvh] w-full max-w-3xl flex-col bg-page shadow-xl sm:max-h-[90dvh] sm:rounded-xl"
+        }
       >
         <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white p-4 sm:rounded-t-xl">
           <div>

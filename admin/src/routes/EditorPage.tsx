@@ -72,6 +72,15 @@ function EditableEditor({ data }: { data: EditorData }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setIsDesktop(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
   const { survey } = data;
   const editingDisabled = editor.saveState === "saving" || Boolean(editor.saveError?.stale);
   const previewQuestions = useMemo(
@@ -223,7 +232,9 @@ function EditableEditor({ data }: { data: EditorData }) {
         </div>
       ) : null}
 
-      <section className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mt-4 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+      <div className="min-w-0 space-y-4">
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <h3 className="mb-3 font-semibold">问卷设置</h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
@@ -295,7 +306,7 @@ function EditableEditor({ data }: { data: EditorData }) {
         </div>
       </section>
 
-      <section className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         {data.pages.length ? (
           <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -373,7 +384,25 @@ function EditableEditor({ data }: { data: EditorData }) {
           <EmptyPanel text="这份问卷还没有题目，点击「添加题目」开始" />
         )}
       </section>
-      {previewOpen ? (
+      </div>
+      <div className="hidden lg:sticky lg:top-4 lg:block">
+        {previewOpen ? (
+          <SurveyPreview
+            title={editor.surveyMeta.title}
+            description={editor.surveyMeta.description}
+            questions={previewQuestions}
+            dirty={editor.dirty}
+            onClose={() => setPreviewOpen(false)}
+            inline
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm text-gray-400">
+            点击右上角「👁 预览」查看实时效果
+          </div>
+        )}
+      </div>
+      </div>
+      {previewOpen && !isDesktop ? (
         <SurveyPreview
           title={editor.surveyMeta.title}
           description={editor.surveyMeta.description}
