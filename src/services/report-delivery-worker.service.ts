@@ -20,7 +20,7 @@ import {
 } from "./report-delivery.service";
 import { deleteTemporaryMediaForResponse } from "./media/temporary-media.service";
 import { KVMediaStore } from "./media/temporary-media-store";
-import { REPORT_TEMPLATES } from "./report/template";
+import { resolveReportTemplate } from "./report/template-resolver";
 import { getSystemSettingValue } from "./system-settings.service";
 import { sendDocument, sendMessage, sendPhoto } from "../bot/telegram";
 
@@ -125,9 +125,7 @@ async function deliverReportToChannel(
     throw new Error("答卷不存在或尚未完成");
   }
   const survey = await getSurveyById(env.DB, response.surveyId);
-  const template = survey?.reportTemplateId
-    ? REPORT_TEMPLATES[survey.reportTemplateId]
-    : undefined;
+  const template = await resolveReportTemplate(env.DB, survey?.reportTemplateId);
   const prepared = await prepareResultProfileForResponse(env.DB, responseId);
   if (!prepared) {
     throw new Error("无法生成答卷结果");

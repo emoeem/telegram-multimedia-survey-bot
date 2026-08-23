@@ -168,6 +168,7 @@ export interface ReportTemplateOption {
   name: string;
   theme: string;
   renderers: string[];
+  isCustom?: boolean;
 }
 
 export interface DashboardData {

@@ -11,6 +11,7 @@ import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { UsersPage } from "./routes/UsersPage";
 import { VersionsPage } from "./routes/VersionsPage";
 import { ReportsPage } from "./routes/ReportsPage";
+import { TemplatesPage } from "./routes/TemplatesPage";
 import { SettingsPage } from "./routes/SettingsPage";
 
 const router = createBrowserRouter(
@@ -28,6 +29,7 @@ const router = createBrowserRouter(
         { path: "surveys/:id/analytics", element: <AnalyticsPage /> },
         { path: "surveys/:id/versions", element: <VersionsPage /> },
         { path: "reports", element: <ReportsPage /> },
+        { path: "templates", element: <TemplatesPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "users", element: <UsersPage /> },
         { path: "*", element: <Navigate to="/" replace /> },

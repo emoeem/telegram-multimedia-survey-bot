@@ -10,11 +10,8 @@ const NAV_ITEMS = [
   { to: "/imports", icon: "📥", label: "导入" },
   { to: "/users", icon: "👥", label: "用户" },
   { to: "/reports", icon: "📦", label: "报告" },
+  { to: "/templates", icon: "🎨", label: "模板" },
   { to: "/settings", icon: "⚙️", label: "设置" },
-];
-
-const COMING_SOON_ITEMS = [
-  { icon: "🎨", label: "结果模板" },
 ];
 
 export function Layout() {
@@ -54,6 +51,7 @@ export function Layout() {
     if (path.startsWith("/imports")) return "导入问卷";
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
+    if (path.startsWith("/templates")) return "报告模板";
     if (path.startsWith("/settings")) return "系统设置";
     return "总览";
   }, [location.pathname]);
@@ -63,6 +61,7 @@ export function Layout() {
   const isImportsActive = location.pathname.startsWith("/imports");
   const isUsersActive = location.pathname.startsWith("/users");
   const isReportsActive = location.pathname.startsWith("/reports");
+  const isTemplatesActive = location.pathname.startsWith("/templates");
   const isSettingsActive = location.pathname.startsWith("/settings");
 
   return (
@@ -87,10 +86,12 @@ export function Layout() {
                     ? isUsersActive
                     : item.to === "/reports"
                   ? isReportsActive
-                      : item.to === "/settings"
-                        ? isSettingsActive
-                        : item.to === "/imports"
-                          ? isImportsActive
+                    : item.to === "/settings"
+                      ? isSettingsActive
+                      : item.to === "/imports"
+                        ? isImportsActive
+                        : item.to === "/templates"
+                          ? isTemplatesActive
                           : isSurveysActive;
               return (
                 <Link
@@ -105,16 +106,6 @@ export function Layout() {
                 </Link>
               );
             })}
-            {COMING_SOON_ITEMS.map((item) => (
-              <button
-                key={item.label}
-                disabled
-                className="mt-1 flex cursor-default items-center gap-2.5 rounded-lg px-3 py-3 text-sm opacity-40 sm:justify-center lg:justify-start"
-              >
-                <span className="shrink-0">{item.icon}</span>
-                <span className="sm:hidden lg:inline">{item.label}</span>
-              </button>
-            ))}
           </nav>
         </aside>
         {drawer ? (

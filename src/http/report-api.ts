@@ -6,6 +6,7 @@ import { deserializeResultProfile } from "../services/result-engine.service";
 import { buildReportViewModel } from "../services/html-report-renderer.service";
 import { buildResponsiveReportHtml, type ResponsiveReportMeta } from "../services/report/web";
 import { REPORT_TEMPLATES } from "../services/report/template";
+import { resolveReportTemplate } from "../services/report/template-resolver";
 import { verifyReportAccessToken } from "../services/report-access-token.service";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { loadSystemSettings } from "../services/system-settings.service";
@@ -93,7 +94,7 @@ async function serveReportPage(
     survey?.reportTemplateId ??
     defaultTemplate ??
     "";
-  const template = REPORT_TEMPLATES[templateId] ?? undefined;
+  const template = await resolveReportTemplate(env.DB, templateId);
   const meta: ResponsiveReportMeta = {
     reportId: `#${responseId}`,
   };

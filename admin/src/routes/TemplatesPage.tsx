@@ -1,0 +1,412 @@
+import { useEffect, useState } from "react";
+import { api, apiSend, type ReportTemplateOption } from "../api";
+import { SkeletonPanel } from "../components/ui";
+
+interface SectionDraft {
+  kind: string;
+  presentation?: string;
+}
+
+interface TemplateDraft {
+  id: string;
+  name: string;
+  theme: string;
+  sections: SectionDraft[];
+  css: string;
+  renderers: string[];
+}
+
+const SECTION_OPTIONS: Array<{ kind: string; label: string }> = [
+  { kind: "cover", label: "封面（大图）" },
+  { kind: "hero", label: "档案头（头像+标题）" },
+  { kind: "summary", label: "总结" },
+  { kind: "scores", label: "得分（条形）" },
+  { kind: "radar", label: "雷达画像" },
+  { kind: "insights", label: "分析解读" },
+  { kind: "quotes", label: "摘录引文" },
+  { kind: "answers", label: "回答明细" },
+  { kind: "gallery", label: "影集" },
+  { kind: "divider", label: "分隔线" },
+  { kind: "verdict", label: "结论" },
+];
+
+const PRESENTATIONS = ["cards", "list", "grid", "featured", "full"];
+
+const THEME_OPTIONS: Array<{ id: string; name: string }> = [
+  { id: "daisy-light", name: "明亮（DaisyUI）" },
+  { id: "daisy-dark", name: "暗色（DaisyUI）" },
+  { id: "daisy-night", name: "深蓝夜（DaisyUI）" },
+  { id: "daisy-luxury", name: "黑金奢华（DaisyUI）" },
+  { id: "daisy-retro", name: "复古纸张（DaisyUI）" },
+  { id: "daisy-cupcake", name: "粉彩（DaisyUI）" },
+  { id: "daisy-synthwave", name: "霓虹（DaisyUI）" },
+  { id: "daisy-black", name: "纯黑（DaisyUI）" },
+  ...([
+    "catppuccin-latte",
+    "catppuccin-frappe",
+    "catppuccin-macchiato",
+    "catppuccin-mocha",
+    "tokyo-night",
+    "dracula",
+    "one-dark",
+    "nord",
+    "night-owl",
+    "horizon",
+    "cobalt2",
+    "palenight",
+    "solarized-dark",
+    "gruvbox-dark",
+    "monokai",
+  ] as const).map((id) => ({ id, name: id })),
+];
+
+const KIND_LABELS: Record<string, string> = Object.fromEntries(
+  SECTION_OPTIONS.map((item) => [item.kind, item.label]),
+);
+
+function emptyDraft(): TemplateDraft {
+  return {
+    id: "",
+    name: "",
+    theme: "daisy-light",
+    sections: [
+      { kind: "hero" },
+      { kind: "summary" },
+      { kind: "scores", presentation: "grid" },
+      { kind: "answers" },
+      { kind: "verdict" },
+    ],
+    css: "",
+    renderers: ["web", "pdf"],
+  };
+}
+
+export function TemplatesPage() {
+  const [templates, setTemplates] = useState<ReportTemplateOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<TemplateDraft | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewWidth, setPreviewWidth] = useState(390);
+  const [busy, setBusy] = useState(false);
+
+  const reload = async () => {
+    try {
+      setTemplates((await api<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates")).templates);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "加载失败");
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  const openTemplate = async (id: string, copy: boolean) => {
+    setError(null);
+    setPreviewHtml(null);
+    try {
+      const data = await api<{ template: TemplateDraft & { isCustom?: boolean } }>(
+        `/api/admin/report-templates/${encodeURIComponent(id)}`,
+      );
+      setDraft({
+        ...data.template,
+        id: copy ? `${id}-copy` : data.template.id,
+        css: data.template.css ?? "",
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "加载模板失败");
+    }
+  };
+
+  const refreshPreview = async () => {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiSend<{ html: string }>(
+        "POST",
+        "/api/admin/report-templates/preview",
+        draft as unknown as Record<string, unknown>,
+      );
+      setPreviewHtml(result.html);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "预览失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    if (!draft.id.trim() || !draft.name.trim()) {
+      setError("模板 id 与名称必填");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await apiSend("POST", "/api/admin/report-templates", draft as unknown as Record<string, unknown>);
+      setDraft(null);
+      setPreviewHtml(null);
+      await reload();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeTemplate = async (id: string) => {
+    if (!window.confirm(`确定删除自定义模板「${id}」？`)) return;
+    try {
+      await apiSend("DELETE", `/api/admin/report-templates/${encodeURIComponent(id)}`);
+      await reload();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "删除失败");
+    }
+  };
+
+  if (error && !draft) {
+    return (
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <p className="text-sm text-red-600">{error}</p>
+        <button className="btn mt-3" onClick={() => { setError(null); void reload(); }}>
+          重试
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">报告模板库</h2>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setError(null);
+              setPreviewHtml(null);
+              setDraft(emptyDraft());
+            }}
+          >
+            ＋ 新建模板
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-gray-500">系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。</p>
+        {templates ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.map((template) => (
+              <div key={template.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="truncate">{template.name}</strong>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                    {template.isCustom ? "自定义" : "系统"}
+                  </span>
+                </div>
+                <div className="mt-1 font-mono text-xs text-gray-400">{template.id}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button className="btn btn-sm" onClick={() => void openTemplate(template.id, Boolean(template.isCustom) ? false : true)}>
+                    {template.isCustom ? "编辑" : "复制编辑"}
+                  </button>
+                  {template.isCustom ? (
+                    <button className="btn btn-sm text-red-600" onClick={() => void removeTemplate(template.id)}>
+                      删除
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <SkeletonPanel lines={4} />
+        )}
+      </section>
+
+      {draft ? (
+        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">{draft.id ? `编辑模板：${draft.id}` : "新建模板"}</h3>
+            <div className="flex gap-2">
+              <button className="btn" onClick={() => { setDraft(null); setPreviewHtml(null); setError(null); }}>
+                返回列表
+              </button>
+              <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
+                {busy ? "保存中…" : "保存模板"}
+              </button>
+            </div>
+          </div>
+          {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-gray-600">模板 id（小写字母/数字/连字符）</label>
+                <input
+                  className="input mt-1 w-full font-mono"
+                  value={draft.id}
+                  disabled={Boolean(draft.id && draft.id.endsWith("-copy") === false)}
+                  onChange={(event) => setDraft({ ...draft, id: event.target.value.trim() })}
+                  placeholder="my-template"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">模板名称</label>
+                <input
+                  className="input mt-1 w-full"
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  placeholder="我的报告模板"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">主题</label>
+                <select
+                  className="input mt-1 w-full"
+                  value={draft.theme}
+                  onChange={(event) => setDraft({ ...draft, theme: event.target.value })}
+                >
+                  {THEME_OPTIONS.map((theme) => (
+                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">内容块（自上而下渲染）</label>
+                <div className="mt-1 space-y-2">
+                  {draft.sections.map((section, index) => (
+                    <div key={index} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                      <select
+                        className="input flex-1"
+                        value={section.kind}
+                        onChange={(event) => {
+                          const sections = [...draft.sections];
+                          sections[index] = { kind: event.target.value, presentation: section.presentation };
+                          setDraft({ ...draft, sections });
+                        }}
+                      >
+                        {SECTION_OPTIONS.map((option) => (
+                          <option key={option.kind} value={option.kind}>{option.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="input w-28"
+                        value={section.presentation ?? ""}
+                        onChange={(event) => {
+                          const sections = [...draft.sections];
+                          sections[index] = {
+                            kind: section.kind,
+                            presentation: event.target.value || undefined,
+                          };
+                          setDraft({ ...draft, sections });
+                        }}
+                      >
+                        <option value="">默认</option>
+                        {PRESENTATIONS.map((presentation) => (
+                          <option key={presentation} value={presentation}>{presentation}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={index === 0}
+                        onClick={() => {
+                          const sections = [...draft.sections];
+                          const current = sections[index];
+                          const target = sections[index - 1];
+                          if (current && target) {
+                            sections[index - 1] = current;
+                            sections[index] = target;
+                          }
+                          setDraft({ ...draft, sections });
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={index === draft.sections.length - 1}
+                        onClick={() => {
+                          const sections = [...draft.sections];
+                          const current = sections[index];
+                          const target = sections[index + 1];
+                          if (current && target) {
+                            sections[index + 1] = current;
+                            sections[index] = target;
+                          }
+                          setDraft({ ...draft, sections });
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm text-red-600"
+                        onClick={() => setDraft({ ...draft, sections: draft.sections.filter((_, itemIndex) => itemIndex !== index) })}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="btn btn-sm mt-2"
+                  onClick={() => setDraft({ ...draft, sections: [...draft.sections, { kind: "answers" }] })}
+                >
+                  ＋ 添加块
+                </button>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">自定义 CSS（可选，追加到模板样式）</label>
+                <textarea
+                  className="input mt-1 min-h-24 w-full font-mono text-xs"
+                  value={draft.css}
+                  onChange={(event) => setDraft({ ...draft, css: event.target.value })}
+                  placeholder=".report-section { ... }"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-gray-600">实时预览</span>
+                <div className="flex gap-2">
+                  <button
+                    className={`btn btn-sm ${previewWidth === 390 ? "btn-primary" : ""}`}
+                    onClick={() => setPreviewWidth(390)}
+                  >
+                    手机
+                  </button>
+                  <button
+                    className={`btn btn-sm ${previewWidth === 1100 ? "btn-primary" : ""}`}
+                    onClick={() => setPreviewWidth(1100)}
+                  >
+                    桌面
+                  </button>
+                  <button className="btn btn-sm" disabled={busy} onClick={() => void refreshPreview()}>
+                    {busy ? "渲染中…" : "刷新预览"}
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex justify-center overflow-x-auto rounded-xl border border-gray-200 bg-slate-100 p-3">
+                {previewHtml ? (
+                  <iframe
+                    title="报告模板预览"
+                    className="h-[70vh] rounded-lg border border-gray-300 bg-white transition-all"
+                    style={{ width: previewWidth, maxWidth: "100%" }}
+                    srcDoc={previewHtml}
+                  />
+                ) : (
+                  <div className="py-16 text-center text-sm text-gray-400">
+                    点击「刷新预览」渲染当前模板
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}

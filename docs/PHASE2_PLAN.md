@@ -222,6 +222,16 @@ Dashboard
 
 模板编辑器：左侧 Components（Hero/Gallery/Metrics/Score/Table/Text/Quote/Image），右侧实时 Preview，Mobile/Desktop 切换，编辑 Blocks/主题/字体/背景/颜色后保存。
 
+**已完成（2026-08-23）**：
+
+- 自定义模板存储：迁移 0032 `report_templates`（id/name/spec_json），系统模板仍代码注册
+- 模板解析服务：`resolveReportTemplate`（系统优先 → 自定义 DB → 加载时重新校验），Web 报告 / PDF 归档 / 后台下载全部走该解析
+- 管理 API：模板列表（系统+自定义）、详情、创建/更新（校验 + 系统 id 保护 + slug 规则）、删除、**实时预览**（共享预览视图模型渲染 HTML）
+- 后台 `/admin/templates` 编辑器：模板库卡片（系统只读/自定义可删）、新建/复制系统模板、块列表（添加/删除/上下移动/呈现方式）、主题选择（23 套）、自定义 CSS、手机/桌面预览 iframe
+- 问卷详情「报告模板」下拉自动包含自定义模板
+
+**尚未完成**：拖拽排序（当前为上下移动）、字体/背景/颜色的独立视觉编辑（当前用主题选择 + CSS 文本）
+
 ## 10. Phase 7 — Playwright Visual QA
 
 用已装的 Playwright + Chromium 自动跑：

@@ -41,6 +41,24 @@ describe("report template system", () => {
     expect(validateReportTemplateSpec({ id: "x", name: "x", theme: "dracula", sections: [{ kind: "sparkles" }] }).error).toBeDefined();
   });
 
+  it("accepts DaisyUI report themes and the divider block", () => {
+    const ok = validateReportTemplateSpec({
+      id: "custom",
+      name: "自定义",
+      theme: "daisy-luxury",
+      sections: [{ kind: "hero" }, { kind: "divider" }, { kind: "answers" }],
+      renderers: ["web", "pdf"],
+    });
+    expect(ok.error).toBeUndefined();
+    expect(ok.template?.sections.map((section) => section.kind)).toEqual([
+      "hero",
+      "divider",
+      "answers",
+    ]);
+    const html = buildResponsiveReportHtml(view, {}, ok.template!);
+    expect(html).toContain("report-divider");
+  });
+
   it("renders exactly the sections a template declares, in order", () => {
     const html = buildResponsiveReportHtml(view, {}, {
       ...DEFAULT_REPORT_TEMPLATE,

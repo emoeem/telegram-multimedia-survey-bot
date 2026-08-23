@@ -57,6 +57,12 @@ import {
 } from '../db/repositories/page.repository';
 import { hasActiveCreatorTrial } from '../db/repositories/creator-trial.repository';
 import {
+  deleteCustomReportTemplate,
+  getCustomReportTemplate,
+  listCustomReportTemplates,
+  upsertCustomReportTemplate,
+} from '../db/repositories/report-template.repository';
+import {
   MATRIX_COLUMN_MIN,
   SURVEY_QUESTION_TYPES,
   isMatrixQuestionType,
@@ -92,7 +98,10 @@ import { prepareResultProfileForResponse } from '../services/result-visual.servi
 import { deserializeResultProfile } from '../services/result-engine.service';
 import { renderReportPdf } from '../services/report/pdf';
 import { resolveReportProfileImages } from '../services/report/report-images.service';
-import { REPORT_TEMPLATES } from '../services/report/template';
+import { REPORT_TEMPLATES, validateReportTemplateSpec } from '../services/report/template';
+import { resolveReportTemplate } from '../services/report/template-resolver';
+import { reportPreviewViewModel } from '../services/report/preview-view-model';
+import { buildResponsiveReportHtml } from '../services/report/web';
 import { createReportAccessToken } from '../services/report-access-token.service';
 import {
   loadSystemSettings,
@@ -656,14 +665,36 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
 
   if (url.pathname === '/api/admin/report-templates') {
     if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看报告模板');
+    const custom = await listCustomReportTemplates(env.DB);
     return json({
-      templates: Object.values(REPORT_TEMPLATES).map((template) => ({
-        id: template.id,
-        name: template.name,
-        theme: template.theme,
-        renderers: template.renderers,
-      })),
+      templates: [
+        ...Object.values(REPORT_TEMPLATES).map((template) => ({
+          id: template.id,
+          name: template.name,
+          theme: template.theme,
+          renderers: template.renderers,
+          isCustom: false,
+        })),
+        ...custom.map(({ id, name, spec }) => ({
+          id,
+          name,
+          theme: spec.theme,
+          renderers: spec.renderers,
+          isCustom: true,
+        })),
+      ],
     });
+  }
+
+  const templateDetailMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
+  if (templateDetailMatch) {
+    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看报告模板');
+    const id = decodeURIComponent(templateDetailMatch[1] ?? "");
+    const system = REPORT_TEMPLATES[id];
+    const custom = system ? null : await getCustomReportTemplate(env.DB, id);
+    const spec = system ?? custom?.spec;
+    if (!spec) return fail(404, 'not_found', '模板不存在');
+    return json({ template: { ...spec, isCustom: !system } });
   }
 
   if (url.pathname === '/api/admin/settings') {
@@ -1293,6 +1324,68 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ ok: true, updated: Object.keys(updates) });
   }
 
+  // POST /api/admin/report-templates — 创建/更新自定义报告模板
+  if (request.method === 'POST' && url.pathname === '/api/admin/report-templates') {
+    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理报告模板');
+    const { template, error } = validateReportTemplateSpec(body);
+    if (error || !template) {
+      return fail(400, 'validation_failed', error ?? '模板无效');
+    }
+    if (REPORT_TEMPLATES[template.id]) {
+      return fail(400, 'validation_failed', '不能覆盖系统模板');
+    }
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(template.id)) {
+      return fail(400, 'validation_failed', '模板 id 只能包含小写字母、数字与连字符');
+    }
+    await upsertCustomReportTemplate(env.DB, {
+      id: template.id,
+      name: template.name,
+      spec: template,
+      createdBy: user.id,
+    });
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: 'template.save',
+      entityType: 'report_template',
+      entityId: template.id,
+      after: { name: template.name },
+    });
+    return json({ ok: true, id: template.id });
+  }
+
+  // POST /api/admin/report-templates/preview — 实时渲染模板预览
+  if (request.method === 'POST' && url.pathname === '/api/admin/report-templates/preview') {
+    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可预览报告模板');
+    const { template, error } = validateReportTemplateSpec(body);
+    if (error || !template) {
+      return fail(400, 'validation_failed', error ?? '模板无效');
+    }
+    const html = buildResponsiveReportHtml(
+      reportPreviewViewModel,
+      { surveyTitle: '模板预览', completedAt: '2026-08-23 14:00', reportId: '#preview' },
+      template,
+    );
+    return json({ html });
+  }
+
+  const deleteTemplateMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
+  if (request.method === 'DELETE' && deleteTemplateMatch) {
+    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理报告模板');
+    const id = decodeURIComponent(deleteTemplateMatch[1] ?? "");
+    if (REPORT_TEMPLATES[id]) {
+      return fail(400, 'validation_failed', '不能删除系统模板');
+    }
+    const removed = await deleteCustomReportTemplate(env.DB, id);
+    if (!removed) return fail(404, 'not_found', '模板不存在');
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: 'template.delete',
+      entityType: 'report_template',
+      entityId: id,
+    });
+    return json({ ok: true });
+  }
+
   const userTagRoute = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/tags(?:\/([^/]+))?$/);
   if (userTagRoute) {
     if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理用户标签');
@@ -1579,9 +1672,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         return fail(400, 'not_completed', '答卷尚未完成，无法生成 PDF');
       }
       const surveyRow = manageable.survey;
-      const template = surveyRow.reportTemplateId
-        ? REPORT_TEMPLATES[surveyRow.reportTemplateId]
-        : undefined;
+      const template = await resolveReportTemplate(db, surveyRow.reportTemplateId);
       const prepared = await prepareResultProfileForResponse(db, responseId);
       if (!prepared) {
         return fail(404, 'report_unavailable', '报告不存在或尚未生成');
@@ -1708,7 +1799,10 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         binds.push(null);
       } else if (typeof body.reportTemplateId === 'string') {
         const trimmed = body.reportTemplateId.trim();
-        if (!REPORT_TEMPLATES[trimmed]) {
+        const known =
+          REPORT_TEMPLATES[trimmed] ||
+          (await getCustomReportTemplate(db, trimmed)) !== null;
+        if (!known) {
           return fail(400, 'validation_failed', '报告模板无效');
         }
         updates.push('report_template_id = ?');

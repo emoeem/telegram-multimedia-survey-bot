@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 6：Template Editor（2026-08-23）**：迁移 0032 自定义模板表 + 解析服务全链路接入（Web/PDF/下载）+ `/admin/templates` 编辑器（块编排/主题/实时预览/手机桌面切换）+ 问卷绑定自定义模板。详见 `docs/PHASE2_PLAN.md` §9
 - [x] **Phase 5：Responsive Report（2026-08-23）**：桌面 12 栏分栏网格、平板双列、PDF 打印强制单栏独立布局；报告视觉回归 21 用例 + 打印 7 用例（总计 47）。详见 `docs/PHASE2_PLAN.md` §8
 - [x] **Phase 4 第一块：Report Engine 2.0（2026-08-23）**：报告主题复用 DaisyUI 8 套、新增环形分/清单/档案头/分隔线块、模板库扩至 7 套（数据分析/身份档案/杂志/极简/影集等）、报告视觉回归 14 用例。详见 `docs/PHASE2_PLAN.md` §7/§8
 - [x] **Phase 3 完成（2026-08-23）**：SurveyTheme 渲染 + DaisyUI 预设库/后台选择 + 题号进度/分页指示/长文本折叠 + Option 卡片化 + 键盘适配；视觉回归 19 用例覆盖。详见 `docs/PHASE2_PLAN.md` §5/§6
