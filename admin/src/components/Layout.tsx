@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [drawer, setDrawer] = useState(false);
   const [environment, setEnvironment] = useState<string | null>(null);
 
@@ -68,6 +69,13 @@ export function Layout() {
   const isTemplatesActive = location.pathname.startsWith("/templates");
   const isAuditActive = location.pathname.startsWith("/audit");
   const isSettingsActive = location.pathname.startsWith("/settings");
+  const goBack = () => {
+    // Browser back first (supports the mobile edge-swipe gesture and desktop
+    // back button); falls back to the dashboard when there is no history
+    // (e.g. a deep link opened in the default browser).
+    if (window.history.length > 1) window.history.back();
+    else navigate("/");
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -130,6 +138,14 @@ export function Layout() {
         ) : null}
         <main className="mx-auto w-full min-w-0 max-w-[1320px] flex-1 p-4 sm:p-8">
           <header className="mb-7 flex items-center gap-3">
+            <button
+              aria-label="返回上一页"
+              title="返回上一页"
+              onClick={goBack}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-xl shadow-sm"
+            >
+              ←
+            </button>
             <button
               aria-label="打开菜单"
               className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-xl sm:hidden"

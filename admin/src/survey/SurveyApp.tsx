@@ -54,6 +54,17 @@ function closeSurveyPage(): void {
   window.location.href = "/s";
 }
 
+function backSurveyPage(): void {
+  // Browser back first (supports the mobile edge-swipe gesture and desktop
+  // back button); falls back to the survey list when there is no history
+  // (e.g. a deep link opened in the default browser).
+  if (window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = "/s";
+}
+
 const SURVEY_THEME_PRESETS = [
   { id: "light", name: "明亮" },
   { id: "dark", name: "暗色" },
@@ -1105,6 +1116,15 @@ export function SurveyApp() {
           <div className="mx-auto max-w-xl px-5 py-3">
             <div className="flex items-center justify-between gap-2 text-xs text-[var(--survey-muted)]">
               <span className="min-w-0 truncate font-medium text-[var(--survey-heading)]">{survey.title}</span>
+              <button
+                type="button"
+                aria-label="返回上一页"
+                title="返回上一页"
+                onClick={backSurveyPage}
+                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs text-[var(--survey-muted)]"
+              >
+                ← 返回
+              </button>
               <button
                 type="button"
                 aria-label="选择主题"
