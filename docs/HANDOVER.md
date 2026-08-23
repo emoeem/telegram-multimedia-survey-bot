@@ -64,7 +64,7 @@
 - Vars：`REPORT_CHANNEL_ID=-1004489719605`
 - Webhook：生产 URL + allowed_updates=[message, callback_query, channel_post]
 - 已应用迁移：0000–0030
-- 最近部署版本：`7a041cbc`（2026-08-23，对应 git 见下节提交；注：形如 `xxxxxxxx` 的 8 位短串是 wrangler 部署 ID 前缀，不是 git commit）
+- 最近部署版本：`7a041cbc`（2026-08-23，对应 git `9417dd5`；注：形如 `xxxxxxxx` 的 8 位短串是 wrangler 部署 ID 前缀，不是 git commit）
 
 ### Staging（备用）
 - 账号：`3353745917@gmail.com`（Account ID `fb8f4c599afffea6f419532f2d95ab54`）
