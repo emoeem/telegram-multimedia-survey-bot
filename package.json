@@ -30,6 +30,7 @@
     "eslint": "^10.8.1",
     "prettier": "^3.9.6",
     "typescript": "^5.8.3",
+    "vite-node": "3.2.4",
     "vitest": "^3.2.4",
     "wrangler": "^4.20.0"
   },
