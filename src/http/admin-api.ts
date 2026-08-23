@@ -77,6 +77,9 @@ import {
 } from '../services/survey-version.service';
 import { enqueueReportDelivery } from '../services/report-delivery.service';
 import { prepareResultProfileForResponse } from '../services/result-visual.service';
+import { deserializeResultProfile } from '../services/result-engine.service';
+import { renderReportPdf } from '../services/report/pdf';
+import { resolveReportProfileImages } from '../services/report/report-images.service';
 import { REPORT_TEMPLATES } from '../services/report/template';
 import { createReportAccessToken } from '../services/report-access-token.service';
 import {
@@ -400,6 +403,27 @@ function formatAdminAnswer(
   return '';
 }
 
+/**
+ * Extracts the raw stored columns of an answer row so admins can inspect the
+ * exact persisted value instead of only the formatted display string.
+ */
+function rawStoredAnswer(answer: Record<string, unknown>): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  for (const key of [
+    'text_value',
+    'number_value',
+    'boolean_value',
+    'rating_value',
+    'date_value',
+    'time_value',
+    'json_value',
+  ] as const) {
+    const value = answer[key];
+    if (value !== null && value !== undefined) raw[key] = value;
+  }
+  return raw;
+}
+
 async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
 
@@ -692,7 +716,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
     const response = await env.DB.prepare(
-      `SELECT r.id,r.survey_id,r.user_id,r.status,r.started_at,r.completed_at,r.submitted_at,r.updated_at,
+      `SELECT r.id,r.survey_id,r.user_id,r.status,r.version,r.started_at,r.completed_at,r.submitted_at,r.updated_at,
               u.telegram_user_id,u.username,u.first_name,u.last_name
        FROM survey_responses r
        LEFT JOIN users u ON u.id=r.user_id
@@ -747,6 +771,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         id: Number(response.id),
         status: String(response.status),
         statusLabel: responseStatusLabel(String(response.status)),
+        version: Number(response.version ?? 0),
         startedAt: String(response.started_at),
         completedAt: response.completed_at === null ? null : String(response.completed_at),
         submittedAt: response.submitted_at === null ? null : String(response.submitted_at),
@@ -772,6 +797,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
           value: answer
             ? formatAdminAnswer(answer, question, selectedByAnswer.get(answerId!) ?? [], optionLabels)
             : '',
+          raw: answer ? rawStoredAnswer(answer) : null,
           media: answerId === null ? [] : mediaByAnswer.get(answerId) ?? [],
         };
       }),
@@ -1353,7 +1379,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ ok: true });
   }
 
-  const responseActionMatch = rest.match(/^\/responses\/(\d+)\/(archive|delete|report-link)$/);
+  const responseActionMatch = rest.match(/^\/responses\/(\d+)\/(archive|delete|report-link|resend|pdf)$/);
   if (request.method === 'POST' && responseActionMatch) {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
@@ -1386,6 +1412,57 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       } catch (error) {
         return fail(400, 'delete_blocked', error instanceof Error ? error.message : '删除失败');
       }
+    }
+    if (action === 'resend') {
+      if (response.status !== 'completed') {
+        return fail(400, 'not_completed', '答卷尚未完成，无法发送报告');
+      }
+      await enqueueReportDelivery(db, env.EXPORT_QUEUE, { responseId, force: true });
+      await writeAudit(db, {
+        actorUserId: user.id,
+        action: 'report.resend',
+        entityType: 'response',
+        entityId: String(responseId),
+        after: { surveyId },
+      });
+      return json({ ok: true });
+    }
+    if (action === 'pdf') {
+      if (response.status !== 'completed') {
+        return fail(400, 'not_completed', '答卷尚未完成，无法生成 PDF');
+      }
+      const surveyRow = manageable.survey;
+      const template = surveyRow.reportTemplateId
+        ? REPORT_TEMPLATES[surveyRow.reportTemplateId]
+        : undefined;
+      const prepared = await prepareResultProfileForResponse(db, responseId);
+      if (!prepared) {
+        return fail(404, 'report_unavailable', '报告不存在或尚未生成');
+      }
+      const snapshot = deserializeResultProfile(prepared.profile);
+      const images = await resolveReportProfileImages(env, snapshot);
+      const pdf = await renderReportPdf(
+        env.BROWSER,
+        snapshot,
+        images,
+        { reportId: `#${responseId}`, surveyTitle: surveyRow.title },
+        {},
+        template,
+      );
+      await writeAudit(db, {
+        actorUserId: user.id,
+        action: 'report.download',
+        entityType: 'response',
+        entityId: String(responseId),
+        after: { surveyId },
+      });
+      return new Response(pdf.bytes, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="report-${responseId}.pdf"`,
+          'Cache-Control': 'no-store',
+        },
+      });
     }
     const token = await createReportAccessToken(env.WEBHOOK_SECRET, responseId);
     return json({ reportUrl: `/report/${responseId}?t=${token}` });

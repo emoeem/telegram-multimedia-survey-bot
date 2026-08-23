@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { apiSend } from "../api";
+import { apiBlob, apiSend } from "../api";
 import { useApi } from "../hooks";
 import type { ResponseDetailData } from "../api";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -21,6 +21,7 @@ export function ResponseDetailPage() {
   );
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rawOpen, setRawOpen] = useState<number | null>(null);
 
   const runAction = async (path: string, confirmText?: string) => {
     if (!id || !responseId) return;
@@ -41,6 +42,25 @@ export function ResponseDetailPage() {
     }
   };
 
+  const downloadPdf = async () => {
+    if (!id || !responseId) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const blob = await apiBlob(`/api/admin/surveys/${id}/responses/${responseId}/pdf`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `report-${responseId}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "PDF 下载失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={8} />;
 
@@ -54,10 +74,16 @@ export function ResponseDetailPage() {
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">{data.response.statusLabel}</span>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div><span className="text-gray-500">开始：</span>{formatDateTime(data.response.startedAt)}</div>
           <div><span className="text-gray-500">完成：</span>{data.response.completedAt ? formatDateTime(data.response.completedAt) : "—"}</div>
           <div><span className="text-gray-500">更新：</span>{formatDateTime(data.response.updatedAt)}</div>
+          <div>
+            <span className="text-gray-500">问卷版本：</span>
+            <Link className="text-indigo-600 hover:underline" to="../../versions">
+              v{data.response.version}
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -76,6 +102,20 @@ export function ResponseDetailPage() {
             onClick={() => void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/report`)}
           >
             🔄 重新生成报告
+          </button>
+        ) : null}
+        {data.response.status === "completed" ? (
+          <button className="btn" disabled={busy} onClick={() => void downloadPdf()}>
+            📄 下载 PDF
+          </button>
+        ) : null}
+        {data.response.status === "completed" ? (
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/resend`)}
+          >
+            📤 重新发送 Telegram
           </button>
         ) : null}
         {data.response.status !== "archived" ? (
@@ -112,6 +152,19 @@ export function ResponseDetailPage() {
             <div className={`mt-3 whitespace-pre-wrap text-sm ${answer.answered ? "text-gray-800" : "text-gray-400"}`}>
               {answer.answered ? answer.value || "已作答" : "未作答"}
             </div>
+            {answer.raw && answer.answered ? (
+              <button
+                className="mt-2 text-xs text-indigo-600 hover:underline"
+                onClick={() => setRawOpen(rawOpen === answer.questionId ? null : answer.questionId)}
+              >
+                {rawOpen === answer.questionId ? "收起原始数据" : "查看原始数据"}
+              </button>
+            ) : null}
+            {rawOpen === answer.questionId && answer.raw ? (
+              <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                {JSON.stringify(answer.raw, null, 2)}
+              </pre>
+            ) : null}
             {answer.media.length ? (
               <div className="mt-3 grid gap-3">
                 {answer.media.map((media) => (

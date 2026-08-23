@@ -171,6 +171,7 @@ export interface ResponseListItem {
   id: number;
   status: ResponseStatus;
   statusLabel: string;
+  version: number;
   startedAt: string;
   completedAt: string | null;
   updatedAt: string;
@@ -193,6 +194,7 @@ export interface ResponseAnswerView {
   order: number;
   answered: boolean;
   value: string;
+  raw: Record<string, unknown> | null;
   media: Array<{
     answerId: number;
     mediaAssetId: number;

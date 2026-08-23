@@ -8,6 +8,9 @@
 
 **Web-first 问卷平台 + Telegram 作为入口/通知/归档渠道**：
 
+> **正式方向（2026-08-23 确认）**：Telegram 不再负责问卷 UI，也不限制问卷、
+> 编辑器、报告展示能力。完整第二阶段计划见 `docs/PHASE2_PLAN.md`。
+
 - 普通用户：Web 问卷列表（`/s`）→ Web Survey（`/s/:id`）→ 提交 → Web Report（`/report/:id`，手机浏览器阅读）
 - 后台：Admin Web（`/admin`，Telegram WebApp）是核心控制台
 - 归档：答卷完成后异步生成 PDF → 发送到管理员私人 Telegram 频道（带 hashtag）
@@ -86,9 +89,11 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 1 答卷查看核心（第一块，2026-08-23）**：答卷详情补问卷版本号 + 版本页链接、每题原始数据查看、PDF 下载（同步 Browser 渲染）、重新发送 Telegram（force 重入队）；详见 `docs/PHASE2_PLAN.md`
+- [ ] **按 `docs/PHASE2_PLAN.md` 继续第二阶段**：Phase 2 JSON 高保真导入 → Phase 3 Web Survey UI 2.0 → Phase 4 Report Engine 2.0 → Phase 5 Responsive Report → Phase 6 Template Editor → Phase 7 Playwright Visual QA
 - [x] **WebView 黑屏根因修复并上线（2026-08-23）**：`run_worker_first=true` + 显式静态兜底 + 入口 HTML `Cache-Control: no-store` + 非阻塞 telegram.org bridge + data-URI favicon；生产 Version `7a041cbc`，Chromium 实测 `/s`、`/s/18`、`/admin`、`/admin/surveys` 全部 200 且控制台无 404/加载失败。**人工验证时先发 `/start` 拿新按钮**（旧消息里的旧按钮可能仍带旧行为）
 - [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
-- [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
+- [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归；配合 Telegram 职责收缩（见 `docs/PHASE2_PLAN.md` §0）
   - [x] 答题渲染（内联答题/消息路由/q:* 回调/renderer 模块）已删并部署（`0e577f7b`）
   - [x] 问卷入口改为 Telegram WebView（`web_app` 按钮打开 `/s` 与 `/s/:id`，`54005b63`）
   - [ ] Builder / owner:* 管理流程（待 Bot 回归确认后继续）
