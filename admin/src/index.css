@@ -16,6 +16,16 @@
   --color-sidebar-hover: #263449;
 }
 
+/* Deterministic cross-platform font stack: both local dev machines and the
+ * GitHub Actions runner resolve CJK text to the same Noto Sans CJK SC family,
+ * so visual snapshots don't drift between environments. */
+html,
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
 :root {
   --survey-primary: #4f46e5;
   --survey-secondary: #64748b;
