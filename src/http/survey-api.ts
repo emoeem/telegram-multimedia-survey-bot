@@ -353,6 +353,16 @@ export async function handleSurveyApiRequest(
       if (!valid) return fail(403, "invalid_access_code", "访问密码错误");
     }
 
+    // Admins can re-fill a published survey any number of times to inspect
+    // the current effect; each submission creates a fresh response.
+    const isAdminParticipant =
+      participant.kind === "telegram" &&
+      participant.telegramUserId !== null &&
+      env.ADMIN_IDS.split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value))
+        .includes(participant.telegramUserId);
+
     const active = participant.kind === "telegram"
       ? await getActiveResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId!)
       : await getActiveResponse(env.DB, surveyId, participant.participantHash);
@@ -367,10 +377,14 @@ export async function handleSurveyApiRequest(
 
     if (!survey.allowMultipleResponses) {
       const existing = await getResponseBySurveyAndHash(env.DB, surveyId, participant.participantHash);
-      if (existing?.status === "completed") {
+      if (existing?.status === "completed" && !isAdminParticipant) {
         return fail(409, "already_completed", "你已经完成过该问卷，不能重复提交");
       }
-    } else if (participant.kind === "telegram" && participant.dbUserId !== null) {
+    } else if (
+      participant.kind === "telegram" &&
+      participant.dbUserId !== null &&
+      !isAdminParticipant
+    ) {
       const completedCount = await countCompletedResponsesBySurveyAndUser(
         env.DB,
         surveyId,

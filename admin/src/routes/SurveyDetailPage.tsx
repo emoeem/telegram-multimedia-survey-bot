@@ -255,7 +255,7 @@ export function SurveyDetailPage() {
           <div className="text-xs text-gray-400">自定义令牌（可选，覆盖预设）</div>
           <textarea
             className="input mt-1 w-full min-h-24 font-mono text-xs"
-            placeholder='{"background":{"color":"#1a1025"},"primaryColor":"#e54d9b"}'
+            placeholder='{"background":{"color":"#1a1025"},"audio":{"url":"https://…/bgm.mp3"},"primaryColor":"#e54d9b"}'
             value={customJson}
             onChange={(event) => setCustomJson(event.target.value)}
           />

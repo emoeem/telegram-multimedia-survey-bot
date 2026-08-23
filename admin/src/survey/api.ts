@@ -46,6 +46,7 @@ export interface SurveyThemeDto {
     opacity?: number;
     blur?: number;
   };
+  audio?: { url?: string };
   primaryColor?: string;
   secondaryColor?: string;
   card?: {

@@ -26,6 +26,8 @@ export interface SurveyTheme {
     /** px blur, 0..40 */
     blur?: number;
   };
+  /** Optional background music (data:audio / https / site-relative URL). */
+  audio?: { url?: string };
   primaryColor?: string;
   secondaryColor?: string;
   card?: {
@@ -107,6 +109,16 @@ function safeImage(value: unknown): string | undefined {
     : undefined;
 }
 
+function safeAudioUrl(value: unknown): string | undefined {
+  const url = safeString(value, 4000);
+  if (!url) return undefined;
+  return url.startsWith("data:audio/") ||
+    url.startsWith("https://") ||
+    url.startsWith("/")
+    ? url
+    : undefined;
+}
+
 function safePercent(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return Math.min(1, Math.max(0, value));
@@ -152,6 +164,11 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     if (opacity !== undefined) overlay.opacity = opacity;
     if (blur !== undefined) overlay.blur = blur;
     if (Object.keys(overlay).length) theme.overlay = overlay;
+  }
+
+  if (isRecord(value.audio)) {
+    const url = safeAudioUrl(value.audio.url);
+    if (url) theme.audio = { url };
   }
 
   const primaryColor = safeColor(value.primaryColor);

@@ -280,3 +280,12 @@ JSON → JSON Import → Web Editor → Draft → Preview → Publish
 - 媒体是 Question / Option / Answer 三层的资源，不做全局 if 分支
 - Telegram 永远只是外围基础设施
 - **优先使用现成库（2026-08-23 产品决策）**：新增能力先找成熟库（如主题用 DaisyUI），不手搓通用轮子；已有依赖（Tailwind/React/dnd-kit/Telegram SDK/Puppeteer/resvg/xlsx/Playwright）优先复用
+
+## 14. 体验优化记录（2026-08-23）
+
+- **管理员重填**：管理员（ADMIN_IDS）可对已发布问卷重复开始填写，每次提交生成新答卷，便于查看效果
+- **发布态可编辑元数据**：问卷标题/描述/匿名策略/次数上限/报告模板/主题在已发布状态下可直接修改（题目结构仍锁定）
+- **答卷模板预览**：答卷详情页可选任意报告模板并打开对应 Web 报告（`/report/:id?t=…&template=…`）
+- **PDF 下载修复**：端点仅接受 POST，前端已改用 POST 拉取 blob
+- **BGM**：主题支持 `audio.url`（data:audio/https/站内），问卷页右下角浮动播放/暂停按钮，循环播放
+- **浏览器登录**：Telegram `/admin_login` 生成 5 分钟一次性登录链接 → 浏览器打开即设置 7 天 HMAC 会话 cookie（`admin_session`）；`/admin/login` 页可手动粘贴链接；非 Telegram 环境后台顶部显示登录横幅

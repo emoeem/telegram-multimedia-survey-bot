@@ -102,6 +102,13 @@ import { REPORT_TEMPLATES, validateReportTemplateSpec } from '../services/report
 import { resolveReportTemplate } from '../services/report/template-resolver';
 import { reportPreviewViewModel } from '../services/report/preview-view-model';
 import { buildResponsiveReportHtml } from '../services/report/web';
+import {
+  ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_TTL_SECONDS,
+  createAdminSessionValue,
+  verifyAdminSessionValue,
+  verifyBrowserLoginToken,
+} from '../services/admin-session.service';
 import { createReportAccessToken } from '../services/report-access-token.service';
 import {
   loadSystemSettings,
@@ -411,10 +418,48 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
   const requestId = crypto.randomUUID();
   const fail = (status: number, code: string, message: string) =>
     Response.json({ code, message, requestId }, { status });
+
+  // Browser login: a short-lived link minted by the Telegram bot exchanges
+  // for a signed 7-day session cookie, then redirects into the admin app.
+  if (request.method === 'GET' && url.pathname === '/api/admin/auth/browser') {
+    const token = url.searchParams.get('t') ?? '';
+    const userId = await verifyBrowserLoginToken(env.WEBHOOK_SECRET, token);
+    if (!userId) {
+      return fail(401, 'invalid_login', '登录链接无效或已过期，请在 Telegram 重新发送 /admin_login');
+    }
+    const target = await getUserById(env.DB, userId);
+    if (!target) return fail(401, 'invalid_login', '用户不存在');
+    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, userId);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: '/admin',
+        'Set-Cookie': `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
   const telegramId =
     (await verifyTelegramWebAppUser(request, env.BOT_TOKEN)) ||
     (env.ENVIRONMENT === 'development' ? Number(request.headers.get('x-telegram-user-id')) : NaN);
-  const user = Number.isInteger(telegramId) ? await getUserByTelegramId(env.DB, telegramId) : null;
+  const sessionUserId = await (async () => {
+    if (Number.isInteger(telegramId)) return null;
+    const cookieHeader = request.headers.get('cookie') ?? '';
+    const match = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
+    if (!match) return null;
+    const value = match.slice(ADMIN_SESSION_COOKIE.length + 1);
+    return verifyAdminSessionValue(env.WEBHOOK_SECRET, value);
+  })();
+  const user =
+    Number.isInteger(telegramId)
+      ? await getUserByTelegramId(env.DB, telegramId)
+      : sessionUserId
+        ? await getUserById(env.DB, sessionUserId)
+        : null;
   if (!user) return fail(401, 'unauthorized', '请通过 Telegram 登录管理后台。');
   const adminIds = env.ADMIN_IDS.split(',').map(Number).filter(Number.isFinite);
   const isAdmin = user.systemRole === 'admin' || adminIds.includes(user.telegramUserId);
@@ -1731,8 +1776,13 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     );
   }
 
-  const writable = await loadWritableSurvey(env, ctx, surveyId, body);
-  if (writable instanceof Response) return writable;
+  // Metadata patches (title/description/policy/report template/theme) stay
+  // editable on published surveys; structural question edits keep the lock.
+  const isMetadataPatch = request.method === 'PATCH' && rest === '';
+  if (!isMetadataPatch) {
+    const writable = await loadWritableSurvey(env, ctx, surveyId, body);
+    if (writable instanceof Response) return writable;
+  }
 
   if (request.method === 'POST' && rest === '/publish') {
     try {
@@ -1757,6 +1807,8 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
   // PATCH /api/admin/surveys/:id — 问卷基本信息
   if (request.method === 'PATCH' && rest === '') {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
     const updates: string[] = [];
     const binds: unknown[] = [];
     if (body.title !== undefined) {
@@ -1841,7 +1893,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     updates.push('updated_at = ?');
     binds.push(timestamp, surveyId);
     await db
-      .prepare(`UPDATE surveys SET ${updates.join(', ')} WHERE id = ? AND status = 'draft'`)
+      .prepare(`UPDATE surveys SET ${updates.join(', ')} WHERE id = ?`)
       .bind(...binds)
       .run();
     return json({ updatedAt: timestamp });

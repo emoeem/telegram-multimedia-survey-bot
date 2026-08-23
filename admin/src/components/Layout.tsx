@@ -52,11 +52,13 @@ export function Layout() {
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
+    if (path.startsWith("/login")) return "浏览器登录";
     if (path.startsWith("/settings")) return "系统设置";
     return "总览";
   }, [location.pathname]);
 
   const showTestBanner = environment === "development" && !getTelegramInitData();
+  const browserMode = !getTelegramInitData() && !location.pathname.startsWith("/login");
   const isSurveysActive = location.pathname.startsWith("/surveys");
   const isImportsActive = location.pathname.startsWith("/imports");
   const isUsersActive = location.pathname.startsWith("/users");
@@ -67,6 +69,12 @@ export function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <TestBanner visible={showTestBanner} />
+      {browserMode ? (
+        <div className="flex flex-wrap items-center justify-center gap-2 bg-indigo-50 px-4 py-2 text-center text-xs text-indigo-700">
+          <span>浏览器访问模式：在 Telegram 发送 /admin_login 获取电脑登录链接</span>
+          <Link to="/login" className="font-semibold underline">去登录</Link>
+        </div>
+      ) : null}
       <div className="flex flex-1">
         <aside
           className={`fixed inset-y-0 left-0 z-30 flex w-60 -translate-x-full flex-col bg-[#111827] px-4 py-6 text-gray-300 transition-transform duration-200 sm:static sm:translate-x-0 sm:px-2 lg:w-60 lg:px-4 ${

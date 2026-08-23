@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **体验修复批（2026-08-23）**：管理员可重复填写已发布问卷（每次新答卷）；已发布问卷可直接改主题/报告模板等元数据（去掉 draft-only 锁）；答卷详情支持任选模板预览 Web 报告；修复 PDF 下载 404（前端误用 GET）；新增 BGM（主题 `audio` 字段 + 问卷页浮动播放器）；浏览器登录（Telegram `/admin_login` 发一次性链接 → HMAC 会话 cookie 7 天 + `/admin/login` 页 + 浏览器模式横幅）。详见 `docs/PHASE2_PLAN.md` §14
 - [x] **Phase 6：Template Editor（2026-08-23）**：迁移 0032 自定义模板表 + 解析服务全链路接入（Web/PDF/下载）+ `/admin/templates` 编辑器（块编排/主题/实时预览/手机桌面切换）+ 问卷绑定自定义模板。详见 `docs/PHASE2_PLAN.md` §9
 - [x] **Phase 5：Responsive Report（2026-08-23）**：桌面 12 栏分栏网格、平板双列、PDF 打印强制单栏独立布局；报告视觉回归 21 用例 + 打印 7 用例（总计 47）。详见 `docs/PHASE2_PLAN.md` §8
 - [x] **Phase 4 第一块：Report Engine 2.0（2026-08-23）**：报告主题复用 DaisyUI 8 套、新增环形分/清单/档案头/分隔线块、模板库扩至 7 套（数据分析/身份档案/杂志/极简/影集等）、报告视觉回归 14 用例。详见 `docs/PHASE2_PLAN.md` §7/§8

@@ -46,6 +46,16 @@ export async function apiBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function apiPostBlob(path: string): Promise<Blob> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) await throwApiError(response);
+  return response.blob();
+}
+
 export async function apiSend<T>(
   method: "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
@@ -154,6 +164,7 @@ export interface SurveyDetailData {
     preset?: string;
     background?: { color?: string; image?: string; position?: string; size?: string };
     overlay?: { color?: string; opacity?: number; blur?: number };
+    audio?: { url?: string };
     primaryColor?: string;
     secondaryColor?: string;
     card?: { background?: string; border?: string; radius?: number; glass?: boolean };

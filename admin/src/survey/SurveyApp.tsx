@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent } from "react";
 import {
   type AnswerValue,
@@ -305,6 +305,60 @@ function ExpandableText({ text, className }: { text: string; className?: string 
         </button>
       ) : null}
     </div>
+  );
+}
+
+function BgmPlayer({ url }: { url: string }) {
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    const audio = new Audio();
+    audio.loop = true;
+    audioRef.current = audio;
+    fetch(url, { headers: identityHeaders() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("load failed");
+        const blob = await response.blob();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        audio.src = createdUrl;
+        setReady(true);
+      })
+      .catch(() => setReady(false));
+    return () => {
+      cancelled = true;
+      audio.pause();
+      audio.src = "";
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [url]);
+
+  const toggle = () => {
+    const audio = audioRef.current;
+    if (!audio || !ready) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      setPlaying(true);
+      void audio.play().catch(() => setPlaying(false));
+    }
+  };
+
+  if (!ready) return null;
+  return (
+    <button
+      type="button"
+      aria-label={playing ? "暂停背景音乐" : "播放背景音乐"}
+      onClick={toggle}
+      className="fixed bottom-20 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow"
+    >
+      {playing ? "🔊" : "🔇"}
+    </button>
   );
 }
 
@@ -1018,6 +1072,7 @@ export function SurveyApp() {
             </button>
           </div>
         </nav>
+        {theme?.audio?.url ? <BgmPlayer url={theme.audio.url} /> : null}
       </div>
     </div>
   );

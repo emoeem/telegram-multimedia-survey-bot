@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { apiBlob, apiSend } from "../api";
+import { apiPostBlob, apiSend, type ReportTemplateOption } from "../api";
 import { useApi } from "../hooks";
 import type { ResponseDetailData } from "../api";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -22,6 +22,8 @@ export function ResponseDetailPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [rawOpen, setRawOpen] = useState<number | null>(null);
+  const [previewTemplateId, setPreviewTemplateId] = useState("");
+  const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
 
   const runAction = async (path: string, confirmText?: string) => {
     if (!id || !responseId) return;
@@ -47,7 +49,7 @@ export function ResponseDetailPage() {
     setBusy(true);
     setActionError(null);
     try {
-      const blob = await apiBlob(`/api/admin/surveys/${id}/responses/${responseId}/pdf`);
+      const blob = await apiPostBlob(`/api/admin/surveys/${id}/responses/${responseId}/pdf`);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -56,6 +58,28 @@ export function ResponseDetailPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "PDF 下载失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const previewWithTemplate = async () => {
+    if (!id || !responseId) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await apiSend<{ reportUrl: string }>(
+        "POST",
+        `/api/admin/surveys/${id}/responses/${responseId}/report-link`,
+        {},
+      );
+      const separator = result.reportUrl.includes("?") ? "&" : "?";
+      const url = previewTemplateId
+        ? `${result.reportUrl}${separator}template=${encodeURIComponent(previewTemplateId)}`
+        : result.reportUrl;
+      window.open(url, "_blank");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "预览失败");
     } finally {
       setBusy(false);
     }
@@ -94,6 +118,19 @@ export function ResponseDetailPage() {
           onClick={() => void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/report-link`)}
         >
           🌐 打开 Web 报告
+        </button>
+        <select
+          className="input sm:w-44"
+          value={previewTemplateId}
+          onChange={(event) => setPreviewTemplateId(event.target.value)}
+        >
+          <option value="">报告模板：默认</option>
+          {templates.data?.templates.map((template) => (
+            <option key={template.id} value={template.id}>{template.name}</option>
+          ))}
+        </select>
+        <button className="btn" disabled={busy} onClick={() => void previewWithTemplate()}>
+          🎨 用所选模板预览
         </button>
         {data.response.status === "completed" ? (
           <button

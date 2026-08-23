@@ -55,6 +55,10 @@ import { renderSurveySummaryReport } from "../services/survey-report.service";
 import { exportUnifiedSurveyJson } from "../services/survey-json.service";
 import { getSurveyFlow } from "../services/question.service";
 import { completeSession } from "../services/session.service";
+import {
+  ADMIN_LOGIN_TTL_SECONDS,
+  createBrowserLoginToken,
+} from "../services/admin-session.service";
 import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
 import type { SurveyQuestionView } from "../survey/engine";
 import { answerCallbackQuery, downloadTelegramFile, getBotUsername, getChat, sendDocument, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, type InlineKeyboardMarkup } from "./telegram";
@@ -1632,6 +1636,27 @@ export async function handleTelegramMessage(
         : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
       replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin),
     });
+    return;
+  }
+
+  const adminLoginMatch = text?.match(/^\/admin_login(?:@[A-Za-z0-9_]{3,64})?$/);
+  if (adminLoginMatch) {
+    if (!isAdmin(userId, ctx.adminIds)) {
+      await sendMessage(ctx.botToken, message.chat.id, "仅管理员可使用该命令。");
+      return;
+    }
+    if (!ctx.origin || !ctx.webhookSecret) {
+      await sendMessage(ctx.botToken, message.chat.id, "无法获取站点地址，请稍后重试。");
+      return;
+    }
+    const token = await createBrowserLoginToken(ctx.webhookSecret, userId);
+    await sendMessage(
+      ctx.botToken,
+      message.chat.id,
+      `🔐 电脑浏览器登录链接（${Math.round(ADMIN_LOGIN_TTL_SECONDS / 60)} 分钟内有效）：\n` +
+        `${ctx.origin}/api/admin/auth/browser?t=${token}\n\n` +
+        `在电脑默认浏览器打开即可进入管理后台，会话有效期 7 天。`,
+    );
     return;
   }
 

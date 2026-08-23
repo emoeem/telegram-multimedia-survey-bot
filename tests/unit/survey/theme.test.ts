@@ -78,4 +78,20 @@ describe("normalizeSurveyTheme", () => {
     ).toEqual({ preset: "dark", primaryColor: "#ff0000" });
     expect(normalizeSurveyTheme({ preset: "unknown-theme" })).toBeNull();
   });
+
+  it("accepts safe background music URLs only", () => {
+    expect(
+      normalizeSurveyTheme({
+        audio: { url: "https://cdn.example.com/bgm.mp3" },
+      }),
+    ).toEqual({ audio: { url: "https://cdn.example.com/bgm.mp3" } });
+    expect(
+      normalizeSurveyTheme({
+        audio: { url: "data:audio/mpeg;base64,YWFh" },
+      }),
+    ).toEqual({ audio: { url: "data:audio/mpeg;base64,YWFh" } });
+    expect(
+      normalizeSurveyTheme({ audio: { url: "javascript:alert(1)" } }),
+    ).toBeNull();
+  });
 });
