@@ -122,8 +122,11 @@ export default {
       });
     }
 
+    // Admin SPA entry. html_handling="none" means /admin has no directory
+    // index, so serve the built index.html explicitly (client-side routing
+    // handles every /admin/* view).
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      return serveHtmlAsset(env, request, "/admin");
+      return serveHtmlAsset(env, request, "/index.html");
     }
 
     if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env);
@@ -231,7 +234,11 @@ export default {
       }
     }
 
-    return new Response("Not Found", { status: 404 });
+    // Serve any remaining static asset (JS/CSS/images and direct .html files).
+    // With run_worker_first=true every request reaches the Worker first, so
+    // asset serving is explicit here; not_found_handling="none" keeps unknown
+    // paths as a plain 404 instead of falling back to the admin index.html.
+    return env.ASSETS.fetch(request);
   },
 
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {

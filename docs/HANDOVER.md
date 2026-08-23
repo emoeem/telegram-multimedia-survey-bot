@@ -64,7 +64,7 @@
 - Vars：`REPORT_CHANNEL_ID=-1004489719605`
 - Webhook：生产 URL + allowed_updates=[message, callback_query, channel_post]
 - 已应用迁移：0000–0030
-- 最近部署版本：`6e187b61`（2026-08-23，对应 git `c0cb43f`；注：`7c49ca05` 是 wrangler 部署 ID 前缀，不是 git commit）
+- 最近部署版本：`7a041cbc`（2026-08-23，对应 git 见下节提交；注：形如 `xxxxxxxx` 的 8 位短串是 wrangler 部署 ID 前缀，不是 git commit）
 
 ### Staging（备用）
 - 账号：`3353745917@gmail.com`（Account ID `fb8f4c599afffea6f419532f2d95ab54`）
@@ -75,8 +75,8 @@
 
 1. **R2 未启用** → 临时媒体走 KV；问卷静态媒体仍是 Telegram file_id（Web 编辑器暂不能上传静态媒体，只能 Bot/导入）
 2. **无规则集的 fallback 报告**：~~单选显示原始选项 ID（如"10"而非"蓝色"）~~ 已修复——`result-visual.service.ts` 的 fallback 展示会把单选/多选选项 ID 映射为标签（未知 ID 回退原始值）；标签来自当前 `question_options`，历史答卷按 DB 选项 ID 尽力映射（快照中选项为位置 ID，无可靠对应关系）。配置 ResultRule 后按规则显示文案
-3. **Bot 旧答题 UI 未删除**：删除前必须 Web 流程在真实环境验证稳定（P10）
-4. **`html_handling="none"` 已配置**：不要改回默认，否则 `/s/:id` 会被 ASSETS 重定向到 `/survey` 丢失路径
+3. **Bot 旧答题 UI 第一块已下线**：内联答题/消息路由/q:* 回调/继续填写入口/`renderer.ts` 已删；Builder、QuestionEditor、owner:* 管理流程仍在代码中（P10 后续块，等 Web 流程人工确认后继续删）
+4. **`assets` 配置三件套（2026-08-23）**：`run_worker_first=true` + `html_handling="none"` + `not_found_handling="none"`。Worker 先于静态资产执行，`/s`、`/admin`、`/api/*` 由 Worker 显式路由，JS/CSS 由 ASSETS 兜底，未知路径返回真 404。**不要把 `not_found_handling` 改回 `single-page-application`**：那会让带 `Sec-Fetch-Dest: document` 的真实浏览器导航请求被 SPA fallback 拦截并直接返回 admin index.html（Worker 不执行），导致 `/s`、`/s/:id` 黑屏——这是此前 curl 正常但浏览器黑屏的根因。`/admin` 入口在 Worker 里显式取 `/index.html`（`html_handling="none"` 下无目录索引）；`/s` 显式取 `/survey.html`，勿改回默认否则路径被重定向丢失
 5. **前端页面不再阻塞加载 telegram.org 脚本（2026-08-23）**：survey/admin 均改为挂载前带超时动态加载（`waitForTelegramWebApp`）+ initData 惰性读取；`/s`、`/admin` 的 HTML 响应 `Cache-Control: no-store`，防止 WebView 缓存旧页面。普通浏览器（含国内）不再黑屏；Telegram WebView 内由客户端本地提供该脚本，鉴权不受影响
 6. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
 6. `.dev.vars` 的 BOT_TOKEN 是占位符，别当真；真实 token 只在 Cloudflare Secrets
@@ -86,6 +86,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **WebView 黑屏根因修复并上线（2026-08-23）**：`run_worker_first=true` + 显式静态兜底 + 入口 HTML `Cache-Control: no-store` + 非阻塞 telegram.org bridge + data-URI favicon；生产 Version `7a041cbc`，Chromium 实测 `/s`、`/s/18`、`/admin`、`/admin/surveys` 全部 200 且控制台无 404/加载失败。**人工验证时先发 `/start` 拿新按钮**（旧消息里的旧按钮可能仍带旧行为）
 - [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
 - [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
   - [x] 答题渲染（内联答题/消息路由/q:* 回调/renderer 模块）已删并部署（`0e577f7b`）
