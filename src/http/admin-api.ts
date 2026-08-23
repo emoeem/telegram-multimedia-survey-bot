@@ -1616,6 +1616,46 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   const surveyId = Number(surveyMatch[1]);
   const rest = surveyMatch[2] ?? '';
 
+  // POST /api/admin/surveys/:id/responses/batch-export — 批量把已完成答卷的
+  // 报告（PDF+图片打包）入队发送到私人频道
+  if (request.method === 'POST' && rest === '/responses/batch-export') {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
+    const responseIds = Array.isArray(body.responseIds)
+      ? body.responseIds
+          .filter((value): value is number => Number.isInteger(value))
+          .map(Number)
+          .slice(0, 100)
+      : [];
+    if (!responseIds.length) return fail(400, 'validation_failed', '请选择要导出的答卷');
+    const rows = await env.DB.prepare(
+      `SELECT id, status FROM survey_responses
+       WHERE survey_id = ? AND id IN (${responseIds.map(() => '?').join(',')})`,
+    )
+      .bind(surveyId, ...responseIds)
+      .all<{ id: number; status: string }>();
+    const completed = (rows.results ?? []).filter((row) => row.status === 'completed');
+    if (!completed.length) {
+      return fail(400, 'validation_failed', '没有可导出的已完成答卷');
+    }
+    let queued = 0;
+    for (const row of completed) {
+      await enqueueReportDelivery(db, env.EXPORT_QUEUE, {
+        responseId: row.id,
+        force: true,
+      });
+      queued += 1;
+    }
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: 'response.batch_export',
+      entityType: 'survey',
+      entityId: String(surveyId),
+      after: { count: queued },
+    });
+    return json({ ok: true, queued });
+  }
+
   if (request.method === 'POST' && rest === '/duplicate') {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;

@@ -519,6 +519,41 @@ describe('handleAdminApi write endpoints', () => {
     expect(response.status).toBe(201);
   });
 
+  it('batch-exports completed responses to the archive queue', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = writableDraftDb();
+    harness.allOn('FROM survey_responses', [
+      { id: 9, status: 'completed' },
+      { id: 10, status: 'in_progress' },
+    ]);
+    harness.firstOn('FROM report_deliveries', {
+      id: 1,
+      responseId: 9,
+      reportVersion: 1,
+      deliveryId: 'response_9_v1',
+      status: 'pending',
+      attempts: 0,
+      lastError: null,
+      nextRetryAt: null,
+      deliveredAt: null,
+      createdAt: '2026-08-23T00:00:00.000Z',
+      updatedAt: '2026-08-23T00:00:00.000Z',
+    });
+    const send = vi.fn(async () => {});
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses/batch-export', {
+        method: 'POST',
+        userId: '111',
+        body: { responseIds: [9, 10] },
+      }),
+      makeEnv(harness.db, { EXPORT_QUEUE: { send } as unknown as Queue }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { queued?: number };
+    expect(body.queued).toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invalid create payloads', async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const cases: Array<{ body: unknown; fragment: string }> = [
