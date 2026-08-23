@@ -19,6 +19,10 @@ vi.mock('../../../src/db/repositories/user.repository', () => repositoryMocks);
 vi.mock('../../../src/bot/telegram', () => telegramMocks);
 
 import { handleAdminApi, verifyTelegramWebAppUser } from '../../../src/http/admin-api';
+import {
+  createBrowserLoginToken,
+  verifyAdminSessionValue,
+} from '../../../src/services/admin-session.service';
 import type { Env } from '../../../src/index';
 
 const BOT_TOKEN = 'test-bot-token';
@@ -191,6 +195,35 @@ describe('verifyTelegramWebAppUser', () => {
 describe('handleAdminApi authentication and permissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('mints a session for the user found by telegram id on browser login', async () => {
+    // The login token carries the Telegram user id, while sessions are keyed
+    // by the internal database id — the two must not be conflated.
+    repositoryMocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 42, systemRole: 'admin' });
+    const token = await createBrowserLoginToken('test-secret', 42);
+    const { db } = makeDb();
+    const response = await handleAdminApi(
+      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
+      makeEnv(db, { WEBHOOK_SECRET: 'test-secret' }),
+    );
+    expect(response.status).toBe(302);
+    expect(repositoryMocks.getUserByTelegramId).toHaveBeenCalledWith(db, 42);
+    const setCookie = response.headers.get('set-cookie') ?? '';
+    const session = setCookie.match(/admin_session=([^;]+)/)?.[1] ?? '';
+    expect(await verifyAdminSessionValue('test-secret', session)).toBe(7);
+  });
+
+  it('rejects a browser login for a telegram id without a user row', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(null);
+    const token = await createBrowserLoginToken('test-secret', 999);
+    const { db } = makeDb();
+    const response = await handleAdminApi(
+      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
+      makeEnv(db, { WEBHOOK_SECRET: 'test-secret' }),
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: 'invalid_login', message: '用户不存在' });
   });
 
   it('rejects requests without any identity with 401', async () => {

@@ -429,9 +429,9 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
     if (!userId) {
       return fail(401, 'invalid_login', '登录链接无效或已过期，请在 Telegram 重新发送 /admin_login');
     }
-    const target = await getUserById(env.DB, userId);
+    const target = await getUserByTelegramId(env.DB, userId);
     if (!target) return fail(401, 'invalid_login', '用户不存在');
-    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, userId);
+    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id);
     return new Response(null, {
       status: 302,
       headers: {
