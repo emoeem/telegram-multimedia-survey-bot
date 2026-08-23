@@ -113,6 +113,14 @@ export interface ImportQuestionWarning {
   warnings: string[];
 }
 
+export interface ImportIssue {
+  path: string;
+  message: string;
+  questionNumber?: number;
+  questionTitle?: string;
+  field?: string;
+}
+
 export interface ImportSummary {
   title: string;
   description: string | null;

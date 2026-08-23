@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { apiSend, type ImportSummary } from "../api";
+import { ApiError, apiSend, type ImportIssue, type ImportSummary } from "../api";
 
 const TYPE_LABELS: Record<string, string> = {
   single: "单选",
@@ -30,18 +30,23 @@ export function ImportPage() {
   const [validating, setValidating] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<ImportIssue[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
   const validate = async () => {
     if (validating || !content.trim()) return;
     setValidating(true);
     setError(null);
+    setIssues([]);
     setSummary(null);
     try {
       const result = await apiSend<ImportSummary>("POST", "/api/admin/imports/validate", { content });
       setSummary(result);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "校验失败");
+      if (requestError instanceof ApiError && Array.isArray(requestError.data?.issues)) {
+        setIssues(requestError.data.issues as ImportIssue[]);
+      }
     } finally {
       setValidating(false);
     }
@@ -51,6 +56,7 @@ export function ImportPage() {
     if (creating || !summary) return;
     setCreating(true);
     setError(null);
+    setIssues([]);
     try {
       const result = await apiSend<{ id: number }>("POST", "/api/admin/imports", { content });
       navigate(`/surveys/${result.id}/editor`);
@@ -67,6 +73,7 @@ export function ImportPage() {
       return;
     }
     setError(null);
+    setIssues([]);
     try {
       setContent(await file.text());
       setSummary(null);
@@ -88,6 +95,7 @@ export function ImportPage() {
           value={content}
           onChange={(event) => {
             setContent(event.target.value);
+            setIssues([]);
             setSummary(null);
           }}
         />
@@ -107,6 +115,27 @@ export function ImportPage() {
           </button>
         </div>
         {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-red-600">{error}</div> : null}
+        {issues.length ? (
+          <div className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+            <div className="font-medium">导入校验失败（{issues.length} 处）</div>
+            <ul className="mt-1 max-h-72 list-inside list-disc space-y-1 overflow-auto">
+              {issues.map((issue, index) => (
+                <li key={index}>
+                  {issue.questionNumber ? (
+                    <>
+                      第 {issue.questionNumber} 题
+                      {issue.questionTitle ? `「${issue.questionTitle}」` : ""}
+                      {issue.field && issue.field !== "question" ? ` · ${issue.field}` : ""}
+                      ：
+                    </>
+                  ) : null}
+                  {issue.message}
+                  <span className="ml-1 font-mono text-xs text-rose-500">{issue.path}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       {summary ? (

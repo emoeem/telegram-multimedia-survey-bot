@@ -70,6 +70,53 @@ export type ImportedMediaResolver = (
   media: ImportedMedia,
 ) => Promise<ImportedMedia | null>;
 
+export interface ImportIssue {
+  path: string;
+  message: string;
+  /** 1-based question number derived from the validation path. */
+  questionNumber?: number;
+  questionTitle?: string;
+  /** Field within the question (e.g. type, options, media) when applicable. */
+  field?: string;
+}
+
+/**
+ * Structured import validation failure. The message stays human-readable for
+ * legacy callers while issues carry per-field detail for the admin preview.
+ */
+export class ImportValidationError extends Error {
+  readonly issues: ImportIssue[];
+
+  constructor(issues: ImportIssue[]) {
+    super(issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n"));
+    this.name = "ImportValidationError";
+    this.issues = issues;
+  }
+}
+
+function enrichImportIssues(
+  issues: Array<{ path: string; message: string }>,
+  questions: ImportedQuestion[],
+): ImportIssue[] {
+  return issues.map((issue) => {
+    const match = /questions\[(\d+)\]/.exec(issue.path);
+    if (!match) return { ...issue };
+    const index = Number(match[1]);
+    const question = questions[index];
+    if (!question) return { ...issue };
+    const marker = `questions[${index}]`;
+    const field =
+      issue.path.slice(issue.path.indexOf(marker) + marker.length).replace(/^\./, "") ||
+      "question";
+    return {
+      ...issue,
+      questionNumber: index + 1,
+      questionTitle: question.title,
+      field,
+    };
+  });
+}
+
 /**
  * Decodes a `data:` URL into bytes and mime type. Returns null for anything
  * that is not a valid data URL so callers can fall back gracefully.
@@ -479,11 +526,7 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
   const unified = legacyToUnified(data);
   const issues = validateUnifiedSurvey(unified);
   if (issues.length > 0) {
-    throw new Error(
-      issues
-        .map((issue) => `${issue.path}: ${issue.message}`)
-        .join("\n"),
-    );
+    throw new ImportValidationError(enrichImportIssues(issues, data.questions));
   }
 
   return data;

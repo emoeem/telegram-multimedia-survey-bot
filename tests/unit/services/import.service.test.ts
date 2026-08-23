@@ -12,6 +12,7 @@ vi.mock("../../../src/db/repositories/survey.repository", () => ({
 
 import {
   decodeDataUrl,
+  ImportValidationError,
   parseImportedSurvey,
   saveImportedSurvey,
   type ImportedSurvey,
@@ -274,6 +275,33 @@ describe("import service", () => {
       mimeType: "text/plain",
     });
     expect(decodeDataUrl("not-a-data-url")).toBeNull();
+  });
+
+  it("throws structured issues with question context on invalid imports", () => {
+    let caught: ImportValidationError | null = null;
+    try {
+      parseImportedSurvey(
+        JSON.stringify({
+          title: "坏问卷",
+          questions: [
+            {
+              id: "q1",
+              type: "text",
+              title: "",
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      caught = error as ImportValidationError;
+    }
+
+    expect(caught).toBeInstanceOf(ImportValidationError);
+    expect(caught?.issues.length).toBeGreaterThan(0);
+    expect(caught?.issues[0]).toMatchObject({
+      questionNumber: 1,
+      field: "title",
+    });
   });
 
   it("stores resolver-produced KV media with storage_key instead of url/r2", async () => {

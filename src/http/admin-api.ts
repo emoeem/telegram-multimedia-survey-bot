@@ -67,6 +67,7 @@ import { buildCsv, getExportRows, serializeExport } from '../services/export.ser
 import { exportUnifiedSurveyJson } from '../services/survey-json.service';
 import {
   decodeDataUrl,
+  ImportValidationError,
   parseImportedSurvey,
   saveImportedSurvey,
   type ImportedMedia,
@@ -1297,6 +1298,18 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     try {
       imported = parseImportedSurvey(body.content);
     } catch (error) {
+      if (error instanceof ImportValidationError) {
+        return Response.json(
+          {
+            ok: false,
+            code: 'invalid_import',
+            message: error.message,
+            issues: error.issues,
+            requestId: ctx.requestId,
+          },
+          { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
       return fail(400, 'invalid_import', error instanceof Error ? error.message : 'JSON 导入内容无效');
     }
     const summary = buildImportSummary(imported);
