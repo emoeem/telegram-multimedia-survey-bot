@@ -135,13 +135,13 @@ function buildHomeKeyboard(
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
-      ? [{ text: "浏览问卷", web_app: { url: `${origin}/s?v=3` } }]
+      ? [{ text: "浏览问卷", url: `${origin}/s?v=3` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
   if (creator) {
     if (origin) {
-      rows.push([{ text: "🌐 网页管理后台", web_app: { url: `${origin}/admin` } }]);
+      rows.push([{ text: "🌐 网页管理后台", url: `${origin}/admin` }]);
     }
     rows.push([{ text: "我的问卷", callback_data: "home:my_surveys" }]);
   }
@@ -1194,8 +1194,8 @@ export async function showSurveyStats(
     : { text: survey.status === "draft" ? "🚀 发布确认" : "🚀 重新发布", callback_data: `owner:publish_ask:${surveyId}` };
   const replyMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [
-        ...(ctx.origin
-          ? [[{ text: "🌐 打开网页编辑器", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+          ...(ctx.origin
+          ? [[{ text: "🌐 打开网页编辑器", url: `${ctx.origin}/admin/surveys/${surveyId}/editor` }]]
           : []),
         [statusAction],
         [{ text: "📦 导出数据", callback_data: `owner:reports:${surveyId}` }],
@@ -1391,14 +1391,14 @@ async function showPublishCheck(
     inline_keyboard: issues.length > 0
       ? [
           ...(ctx.origin
-            ? [[{ text: "🌐 前往网页编辑器修正", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+            ? [[{ text: "🌐 前往网页编辑器修正", url: `${ctx.origin}/admin/surveys/${surveyId}/editor` }]]
             : []),
           [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }],
         ]
       : [
           [{ text: "确认发布", callback_data: `owner:publish_confirm:${surveyId}` }],
           ...(ctx.origin
-            ? [[{ text: "🌐 打开网页编辑器", web_app: { url: `${ctx.origin}/admin/surveys/${surveyId}/editor` } }]]
+            ? [[{ text: "🌐 打开网页编辑器", url: `${ctx.origin}/admin/surveys/${surveyId}/editor` }]]
             : []),
           [{ text: "返回问卷", callback_data: `owner:survey:${surveyId}` }],
         ],
@@ -1470,7 +1470,7 @@ async function listSurveys(
     {
       text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
       ...(ctx.origin
-        ? { web_app: { url: `${ctx.origin}/s/${survey.id}?v=3` } }
+        ? { url: `${ctx.origin}/s/${survey.id}?v=3` }
         : { callback_data: "home:menu" }),
     },
   ]);
@@ -1616,7 +1616,7 @@ export async function handleTelegramMessage(
           message.chat.id,
           `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}?v=3`,
           {
-            inline_keyboard: [[{ text: "填写问卷", web_app: { url: `${ctx.origin}/s/${surveyId}?v=3` } }]],
+            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}?v=3` }]],
           },
         );
       } else {

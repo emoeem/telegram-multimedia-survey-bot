@@ -157,7 +157,7 @@ async function showAdminHome(
   const replyMarkup: InlineKeyboardMarkup = {
       inline_keyboard: [
         ...(ctx.origin
-          ? [[{ text: "🌐 网页管理后台", web_app: { url: `${ctx.origin}/admin` } }]]
+          ? [[{ text: "🌐 网页管理后台", url: `${ctx.origin}/admin` }]]
           : []),
         [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
       ],
@@ -698,7 +698,7 @@ async function showAdminSurveyDetail(
   const replyMarkup: InlineKeyboardMarkup = {
     inline_keyboard: [
       ...(ctx.origin
-        ? [[{ text: "🌐 在网页后台打开", web_app: { url: `${ctx.origin}/admin/surveys/${survey.id}` } }]]
+        ? [[{ text: "🌐 在网页后台打开", url: `${ctx.origin}/admin/surveys/${survey.id}` }]]
         : []),
       [statusAction],
       [{ text: "📦 导出数据", callback_data: `owner:reports:${survey.id}` }],

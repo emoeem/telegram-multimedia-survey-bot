@@ -124,9 +124,9 @@ describe("admin survey list", () => {
 
     const buttons = body.reply_markup.inline_keyboard.flat() as Array<{
       text: string;
-      web_app?: { url: string };
+      url?: string;
     }>;
-    expect(buttons[0]?.web_app?.url).toBe("https://example.com/admin");
+    expect(buttons[0]?.url).toBe("https://example.com/admin");
   });
 
   it("lets an administrator configure the password that unlocks image generation", async () => {
@@ -258,13 +258,13 @@ describe("admin survey list", () => {
       String((editMessageCall?.[1] as RequestInit | undefined)?.body),
     ) as {
       reply_markup: {
-        inline_keyboard: Array<Array<{ text: string; callback_data?: string; web_app?: { url: string } }>>;
+        inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>>;
       };
     };
     const buttons = body.reply_markup.inline_keyboard.flat();
     expect(buttons).toContainEqual({
       text: "🌐 在网页后台打开",
-      web_app: { url: "https://example.com/admin/surveys/16" },
+      url: "https://example.com/admin/surveys/16",
     });
     expect(buttons).toContainEqual({
       text: "⏹ 关闭问卷",

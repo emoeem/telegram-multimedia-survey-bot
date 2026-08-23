@@ -39,6 +39,21 @@ function surveyIdFromPath(): number {
   return match ? Number(match[1]) : NaN;
 }
 
+function closeSurveyPage(): void {
+  // Inside the Telegram WebView we close the mini app directly; in a normal
+  // browser we close the tab and fall back to the survey home page.
+  if (window.Telegram?.WebApp?.close) {
+    window.Telegram.WebApp.close();
+    return;
+  }
+  window.close();
+  if (window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  window.location.href = "/s";
+}
+
 const SURVEY_THEME_PRESETS = [
   { id: "light", name: "明亮" },
   { id: "dark", name: "暗色" },
@@ -781,7 +796,16 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-5">
+    <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-5">
+      <button
+        type="button"
+        aria-label="退出问卷"
+        title="退出问卷"
+        onClick={closeSurveyPage}
+        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm"
+      >
+        ✕
+      </button>
       <h1 className="text-2xl font-bold text-gray-900">🔐 需要访问密码</h1>
       <p className="mt-2 text-sm text-gray-500">请输入此问卷的访问密码后继续填写。</p>
       <input
@@ -1032,14 +1056,7 @@ export function SurveyApp() {
         <div className="grid h-16 w-16 place-items-center rounded-full bg-green-100 text-3xl">✅</div>
         <h1 className="mt-4 text-2xl font-bold text-gray-900">提交成功</h1>
         <p className="mt-2 text-sm text-gray-500">感谢你的参与！</p>
-        <button
-          type="button"
-          className="btn mt-6"
-          onClick={() => {
-            if (window.Telegram?.WebApp?.close) window.Telegram.WebApp.close();
-            else window.location.href = "/";
-          }}
-        >
+        <button type="button" className="btn mt-6" onClick={closeSurveyPage}>
           关闭
         </button>
       </div>
@@ -1095,6 +1112,15 @@ export function SurveyApp() {
                 onClick={() => setThemePickerOpen(true)}
               >
                 🎨
+              </button>
+              <button
+                type="button"
+                aria-label="退出问卷"
+                title="退出问卷"
+                onClick={closeSurveyPage}
+                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs text-[var(--survey-muted)]"
+              >
+                ✕ 退出
               </button>
               <span className="shrink-0">
                 第 {index + 1} / {total} 题 · {percent}%
