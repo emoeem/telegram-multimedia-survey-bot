@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { apiSend, type ReportTemplateOption, type SurveyDetailData } from "../api";
+import { apiSend, authHeaders, type ReportTemplateOption, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { formatDateTime } from "../format";
@@ -44,7 +44,9 @@ export function SurveyDetailPage() {
   const [templateBusy, setTemplateBusy] = useState(false);
   const [preset, setPreset] = useState("");
   const [customJson, setCustomJson] = useState("");
+  const [bgmUrl, setBgmUrl] = useState("");
   const [themeBusy, setThemeBusy] = useState(false);
+  const bgmFileRef = useRef<HTMLInputElement>(null);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
 
   useEffect(() => {
@@ -53,8 +55,10 @@ export function SurveyDetailPage() {
     if (data.theme) {
       const { preset: _preset, ...custom } = data.theme;
       setCustomJson(Object.keys(custom).length ? JSON.stringify(custom, null, 2) : "");
+      setBgmUrl(data.theme.audio?.url ?? "");
     } else {
       setCustomJson("");
+      setBgmUrl("");
     }
   }, [data]);
 
@@ -96,6 +100,7 @@ export function SurveyDetailPage() {
       const theme: Record<string, unknown> = {};
       if (!clear) {
         if (preset) theme.preset = preset;
+        if (bgmUrl.trim()) theme.audio = { url: bgmUrl.trim() };
         const customText = customJson.trim();
         if (customText) {
           try {
@@ -115,6 +120,39 @@ export function SurveyDetailPage() {
       retry();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "主题保存失败");
+    } finally {
+      setThemeBusy(false);
+    }
+  };
+
+  const uploadBgm = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("audio/")) {
+      setActionError("仅支持音频文件");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setActionError("背景音乐不能超过 20MB");
+      return;
+    }
+    setThemeBusy(true);
+    setActionError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/admin/media/audio", {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(body.message ?? "上传失败");
+      }
+      const result = (await response.json()) as { url: string };
+      setBgmUrl(result.url);
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : "上传失败");
     } finally {
       setThemeBusy(false);
     }
@@ -259,6 +297,38 @@ export function SurveyDetailPage() {
             value={customJson}
             onChange={(event) => setCustomJson(event.target.value)}
           />
+        </div>
+        <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div className="text-sm font-medium text-gray-700">背景音乐（BGM）</div>
+          <p className="mt-1 text-xs text-gray-400">
+            上传音频文件，或粘贴直链（mp3/m4a/ogg；网易云等平台的外链需真实可访问）。
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              ref={bgmFileRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(event) => void uploadBgm(event.target.files?.[0])}
+            />
+            <button className="btn btn-sm" disabled={themeBusy} onClick={() => bgmFileRef.current?.click()}>
+              {themeBusy ? "上传中…" : "📤 上传音频"}
+            </button>
+            <input
+              className="input min-w-0 flex-1 text-xs"
+              value={bgmUrl}
+              onChange={(event) => setBgmUrl(event.target.value.trim())}
+              placeholder="https://…/bgm.mp3"
+            />
+            {bgmUrl ? (
+              <button className="btn btn-sm text-red-600" onClick={() => setBgmUrl("")}>
+                清除
+              </button>
+            ) : null}
+          </div>
+          {bgmUrl ? (
+            <audio className="mt-2 w-full" src={bgmUrl} controls preload="none" />
+          ) : null}
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <button

@@ -749,22 +749,26 @@ async function serveSurveyMedia(
   if (!asset) return fail(404, "media_not_found", "媒体不存在");
 
   if (asset.scope === "survey") {
-    const linked = await env.DB
-      .prepare(
-        `SELECT s.id FROM surveys s
-         JOIN survey_questions q ON q.survey_id = s.id
-         JOIN question_media qm ON qm.question_id = q.id
-         WHERE s.status = 'published' AND qm.media_asset_id = ?
-         UNION
-         SELECT s.id FROM surveys s
-         JOIN survey_questions q ON q.survey_id = s.id
-         JOIN question_options o ON o.question_id = q.id
-         JOIN option_media om ON om.question_option_id = o.id
-         WHERE s.status = 'published' AND om.media_asset_id = ?`,
-      )
-      .bind(mediaId, mediaId)
-      .first<{ id: number }>();
-    if (!linked) return fail(404, "media_not_found", "媒体不属于已发布问卷");
+    // Admin-uploaded temporary media (e.g. background music) is allowed
+    // before it is attached to any published question/option.
+    if (asset.storageKind !== "temporary") {
+      const linked = await env.DB
+        .prepare(
+          `SELECT s.id FROM surveys s
+           JOIN survey_questions q ON q.survey_id = s.id
+           JOIN question_media qm ON qm.question_id = q.id
+           WHERE s.status = 'published' AND qm.media_asset_id = ?
+           UNION
+           SELECT s.id FROM surveys s
+           JOIN survey_questions q ON q.survey_id = s.id
+           JOIN question_options o ON o.question_id = q.id
+           JOIN option_media om ON om.question_option_id = o.id
+           WHERE s.status = 'published' AND om.media_asset_id = ?`,
+        )
+        .bind(mediaId, mediaId)
+        .first<{ id: number }>();
+      if (!linked) return fail(404, "media_not_found", "媒体不属于已发布问卷");
+    }
   } else if (asset.scope === "response") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;

@@ -56,6 +56,7 @@ import {
   updateSurveyPage,
 } from '../db/repositories/page.repository';
 import { hasActiveCreatorTrial } from '../db/repositories/creator-trial.repository';
+import { createMediaAsset } from '../db/repositories/media.repository';
 import {
   deleteCustomReportTemplate,
   getCustomReportTemplate,
@@ -464,6 +465,39 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
   const adminIds = env.ADMIN_IDS.split(',').map(Number).filter(Number.isFinite);
   const isAdmin = user.systemRole === 'admin' || adminIds.includes(user.telegramUserId);
   const json = (body: unknown) => Response.json(body, { headers: { 'Cache-Control': 'no-store' } });
+
+  // Upload a survey background-music audio file into the media system.
+  if (request.method === 'POST' && url.pathname === '/api/admin/media/audio') {
+    if (!isAdmin && !(await hasActiveCreatorTrial(env.DB, user.id))) {
+      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能上传背景音乐。');
+    }
+    const form = await request.formData().catch(() => null);
+    const file = form?.get('file');
+    if (!(file instanceof File)) {
+      return fail(400, 'invalid_upload', '请选择音频文件');
+    }
+    if (!file.type.startsWith('audio/')) {
+      return fail(400, 'invalid_upload', '仅支持音频文件');
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      return fail(413, 'upload_too_large', '背景音乐不能超过 20MB');
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const store = new KVMediaStore(env.MEDIA_KV);
+    const storageKey = `media:survey-audio:${crypto.randomUUID()}`;
+    await store.put({ storageKey, bytes, contentType: file.type });
+    const asset = await createMediaAsset(env.DB, {
+      scope: 'survey',
+      mediaType: 'audio',
+      storageKind: store.kind,
+      storageKey,
+      mimeType: file.type,
+      fileName: file.name,
+      fileSize: bytes.byteLength,
+      expiresAt: null,
+    });
+    return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
+  }
 
   if (request.method === 'GET') {
     return handleAdminRead(url, env, { user, isAdmin, fail, json });

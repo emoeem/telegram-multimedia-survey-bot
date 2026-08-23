@@ -39,6 +39,42 @@ function surveyIdFromPath(): number {
   return match ? Number(match[1]) : NaN;
 }
 
+const SURVEY_THEME_PRESETS = [
+  { id: "light", name: "明亮" },
+  { id: "dark", name: "暗色" },
+  { id: "night", name: "深蓝夜" },
+  { id: "luxury", name: "黑金奢华" },
+  { id: "retro", name: "复古纸张" },
+  { id: "cupcake", name: "粉彩" },
+  { id: "synthwave", name: "霓虹" },
+  { id: "black", name: "纯黑" },
+];
+
+function PresetSwatch({ presetId }: { presetId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [colors, setColors] = useState<{ base: string; primary: string } | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const style = getComputedStyle(ref.current);
+    setColors({
+      base: style.getPropertyValue("--color-base-100").trim() || "#ffffff",
+      primary: style.getPropertyValue("--color-primary").trim() || "#4f46e5",
+    });
+  }, [presetId]);
+
+  return (
+    <div
+      ref={ref}
+      data-theme={presetId}
+      className="h-8 w-full overflow-hidden rounded-lg border border-black/10"
+      style={colors ? { backgroundColor: colors.base } : undefined}
+    >
+      {colors ? <span className="block h-full w-1/3" style={{ backgroundColor: colors.primary }} /> : null}
+    </div>
+  );
+}
+
 function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
   if (!theme) return {};
   const vars: Record<string, string> = {};
@@ -753,6 +789,8 @@ export function SurveyApp() {
   const [busy, setBusy] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [viewportShrunk, setViewportShrunk] = useState(false);
+  const [userThemePreset, setUserThemePreset] = useState<string | null>(null);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -792,6 +830,29 @@ export function SurveyApp() {
   }, []);
 
   const navHidden = inputFocused || viewportShrunk;
+
+  useEffect(() => {
+    if (!Number.isFinite(surveyId)) return;
+    try {
+      const stored = localStorage.getItem(`surveyTheme:${surveyId}`);
+      setUserThemePreset(
+        stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null,
+      );
+    } catch {
+      // storage unavailable — keep default
+    }
+  }, [surveyId]);
+
+  const selectTheme = useCallback((id: string | null) => {
+    setUserThemePreset(id);
+    setThemePickerOpen(false);
+    try {
+      if (id) localStorage.setItem(`surveyTheme:${surveyId}`, id);
+      else localStorage.removeItem(`surveyTheme:${surveyId}`);
+    } catch {
+      // storage unavailable — session-only choice still applies
+    }
+  }, [surveyId]);
 
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
@@ -974,7 +1035,11 @@ export function SurveyApp() {
   const total = survey.questions.length;
   const percent = Math.round(((index + 1) / total) * 100);
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
-  const theme = survey.theme;
+  // The participant can override the survey's default theme for this session;
+  // the choice is remembered per survey in localStorage.
+  const theme: SurveyThemeDto | null = userThemePreset
+    ? { preset: userThemePreset }
+    : survey.theme;
   const vars = themeCssVars(theme);
   const backgroundStyle = themeBackgroundStyle(theme);
   const overlay = theme?.overlay;
@@ -1001,6 +1066,14 @@ export function SurveyApp() {
           <div className="mx-auto max-w-xl px-5 py-3">
             <div className="flex items-center justify-between gap-2 text-xs text-[var(--survey-muted)]">
               <span className="min-w-0 truncate font-medium text-[var(--survey-heading)]">{survey.title}</span>
+              <button
+                type="button"
+                aria-label="选择主题"
+                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs"
+                onClick={() => setThemePickerOpen(true)}
+              >
+                🎨
+              </button>
               <span className="shrink-0">
                 第 {index + 1} / {total} 题 · {percent}%
               </span>
@@ -1073,6 +1146,58 @@ export function SurveyApp() {
           </div>
         </nav>
         {theme?.audio?.url ? <BgmPlayer url={theme.audio.url} /> : null}
+        {themePickerOpen ? (
+          <div className="fixed inset-0 z-30">
+            <button
+              aria-label="关闭主题选择"
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setThemePickerOpen(false)}
+            />
+            <div
+              className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-[var(--survey-heading)]">选择主题</span>
+                <button
+                  type="button"
+                  className="text-xs text-[var(--survey-muted)]"
+                  onClick={() => setThemePickerOpen(false)}
+                >
+                  关闭
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  className={`rounded-lg border p-1.5 text-left ${
+                    userThemePreset === null
+                      ? "border-[var(--survey-primary)]"
+                      : "border-[var(--survey-card-border)]"
+                  }`}
+                  onClick={() => selectTheme(null)}
+                >
+                  <div className="h-8 w-full rounded-lg bg-gray-200" />
+                  <span className="mt-1 block text-[11px] text-[var(--survey-muted)]">默认</span>
+                </button>
+                {SURVEY_THEME_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`rounded-lg border p-1.5 text-left ${
+                      userThemePreset === preset.id
+                        ? "border-[var(--survey-primary)]"
+                        : "border-[var(--survey-card-border)]"
+                    }`}
+                    onClick={() => selectTheme(preset.id)}
+                  >
+                    <PresetSwatch presetId={preset.id} />
+                    <span className="mt-1 block text-[11px] text-[var(--survey-body)]">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

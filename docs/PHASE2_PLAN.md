@@ -288,4 +288,6 @@ JSON → JSON Import → Web Editor → Draft → Preview → Publish
 - **答卷模板预览**：答卷详情页可选任意报告模板并打开对应 Web 报告（`/report/:id?t=…&template=…`）
 - **PDF 下载修复**：端点仅接受 POST，前端已改用 POST 拉取 blob
 - **BGM**：主题支持 `audio.url`（data:audio/https/站内），问卷页右下角浮动播放/暂停按钮，循环播放
+- **BGM 图形化配置（2026-08-23 增补）**：问卷详情「主题」区块内置 BGM 配置——上传音频文件（≤20MB，`POST /api/admin/media/audio` 存入媒体系统）或粘贴直链，带播放预览与清除；不再需要手写 JSON。网易云等平台外链受其自身限制，需真实可访问的直链
+- **填写端用户自选主题（2026-08-23 增补）**：填写页头部 🎨 按钮弹出主题选择器（默认 + DaisyUI 8 套预设，实时色板预览）；选择会覆盖问卷默认主题并按问卷记忆在 localStorage；问卷作者设置的主题只是默认值
 - **浏览器登录**：Telegram `/admin_login` 生成 5 分钟一次性登录链接 → 浏览器打开即设置 7 天 HMAC 会话 cookie（`admin_session`）；`/admin/login` 页可手动粘贴链接；非 Telegram 环境后台顶部显示登录横幅

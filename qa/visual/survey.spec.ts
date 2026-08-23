@@ -343,3 +343,17 @@ test("hides the bottom nav while an input is focused", async ({ page }) => {
   await page.locator("main h1").click();
   await expect(page.locator("nav")).not.toHaveClass(/translate-y-full/);
 });
+
+test("lets the participant switch the survey theme", async ({ page }) => {
+  const fixture = FIXTURES.find((item) => item.id === 105);
+  if (!fixture) throw new Error("fixture 105 missing");
+  await page.setViewportSize(VIEWPORTS[0]);
+  await installRoutes(page, fixture);
+
+  await page.goto(`/s/${fixture.id}`);
+  await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", "night");
+
+  await page.getByRole("button", { name: "选择主题" }).click();
+  await page.getByRole("button", { name: /黑金奢华/ }).click();
+  await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", "luxury");
+});
