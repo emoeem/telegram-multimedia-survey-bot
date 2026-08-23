@@ -1,4 +1,4 @@
-import { telegramInitData } from "./telegram";
+import { getTelegramInitData } from "./telegram";
 
 export class ApiError extends Error {
   status: number;
@@ -12,6 +12,7 @@ export class ApiError extends Error {
 }
 
 export function authHeaders(): Record<string, string> {
+  const telegramInitData = getTelegramInitData();
   return {
     // initData contains non-ASCII characters (e.g. Chinese first names) which
     // are not valid in header values, so it must be percent-encoded.

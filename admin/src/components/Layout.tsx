@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { fetchEnvironment } from "../api";
-import { telegramInitData } from "../telegram";
+import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
 
 const NAV_ITEMS = [
@@ -56,7 +56,7 @@ export function Layout() {
     return "总览";
   }, [location.pathname]);
 
-  const showTestBanner = environment === "development" && !telegramInitData;
+  const showTestBanner = environment === "development" && !getTelegramInitData();
   const isSurveysActive = location.pathname.startsWith("/surveys");
   const isUsersActive = location.pathname.startsWith("/users");
   const isReportsActive = location.pathname.startsWith("/reports");

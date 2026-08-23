@@ -1,4 +1,4 @@
-import { telegramInitData } from "../telegram";
+import { getTelegramInitData } from "../telegram";
 
 export interface SurveyMediaDto {
   url: string;
@@ -78,6 +78,7 @@ export function getParticipantKey(): string {
 }
 
 export function identityHeaders(): Record<string, string> {
+  const telegramInitData = getTelegramInitData();
   if (telegramInitData) {
     return { "x-telegram-init-data": encodeURIComponent(telegramInitData) };
   }
