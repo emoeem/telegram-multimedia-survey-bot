@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 4 第一块：Report Engine 2.0（2026-08-23）**：报告主题复用 DaisyUI 8 套、新增环形分/清单/档案头/分隔线块、模板库扩至 7 套（数据分析/身份档案/杂志/极简/影集等）、报告视觉回归 14 用例。详见 `docs/PHASE2_PLAN.md` §7/§8
 - [x] **Phase 3 完成（2026-08-23）**：SurveyTheme 渲染 + DaisyUI 预设库/后台选择 + 题号进度/分页指示/长文本折叠 + Option 卡片化 + 键盘适配；视觉回归 19 用例覆盖。详见 `docs/PHASE2_PLAN.md` §5/§6
 - [x] **Phase 3 第三块：Option Media 卡片化（2026-08-23）**：带媒体选项整题切换 2 列卡片（4:3 封面 object-cover + 选中徽标 + 底部指示器），无媒体选项纯标签卡片；视觉基线已随布局更新。详见 `docs/PHASE2_PLAN.md` §5
 - [x] **Phase 7 第一块：Playwright 视觉回归（2026-08-23）**：`qa/visual/survey.spec.ts` 18 用例（6 fixture × 3 视口），离线自包含，硬断言溢出/报错/主题 + 截图基线对比；`npm run test:visual` / `test:visual:update`。详见 `docs/PHASE2_PLAN.md` §10

@@ -171,6 +171,15 @@ Hero / ProfileCard / MetricGrid / ScoreBar / ScoreRing / Radar / Gallery / Image
 
 模板 = blocks 组合：`[Hero, ProfileCard, Gallery, MetricGrid, Checklist, ScoreGrid, Footer]`。
 
+**已完成（2026-08-23 第一块）**：
+
+- 报告主题复用 DaisyUI 主题库：8 套（light/dark/night/luxury/retro/cupcake/synthwave/black）映射到报告令牌，与问卷主题同一视觉语言
+- 新增块变体：ScoreRing 环形分（`scores` + `grid` 呈现）、Checklist 清单（`answers` + `list`）、ProfileCard 档案头（`hero` + `featured`）、Divider 分隔线（新 kind）
+- 模板库 2 → 7 套：经典（数据分析）、杂志暗色、**数据分析**（浅色数据看板）、**身份档案**（黑金档案袋）、**杂志**（复古纸张）、**极简**、**影集**（深色大图叙事）
+- 报告视觉回归：静态 fixture × 7 模板 × 2 视口 = 14 用例（`qa/visual/report.spec.ts`，生成器 `scripts/generate-report-fixtures.ts`）
+
+**尚未完成**：Template Editor（Phase 6）、Responsive 桌面分栏布局与 PDF 独立布局（Phase 5）、块级拖拽组合
+
 **Hero Media 组件**：Hero / Gallery / Polaroid / Film / Full Bleed / Card / Magazine / Collage，而非一律 `<img>`。
 
 ## 8. Phase 5 — Responsive Report + Template Library

@@ -1,4 +1,11 @@
-export type ReportTheme = "catppuccin-latte" | "catppuccin-frappe" | "catppuccin-macchiato" | "catppuccin-mocha" | "tokyo-night" | "dracula" | "one-dark" | "nord" | "night-owl" | "horizon" | "cobalt2" | "palenight" | "solarized-dark" | "gruvbox-dark" | "monokai";
+export type ReportTheme =
+  | "catppuccin-latte" | "catppuccin-frappe" | "catppuccin-macchiato" | "catppuccin-mocha"
+  | "tokyo-night" | "dracula" | "one-dark" | "nord" | "night-owl" | "horizon"
+  | "cobalt2" | "palenight" | "solarized-dark" | "gruvbox-dark" | "monokai"
+  | "daisy-light" | "daisy-dark" | "daisy-night" | "daisy-luxury" | "daisy-retro"
+  | "daisy-cupcake" | "daisy-synthwave" | "daisy-black";
+
+import daisyThemes from "daisyui/theme/object";
 
 export interface ReportThemeColors {
   bg: string; bgSecondary: string; surface: string; elevated: string; overlay: string;
@@ -9,6 +16,64 @@ export interface ReportThemeColors {
 export interface ReportThemeDefinition { id: ReportTheme; colors: ReportThemeColors; chart: string[]; effects: { shadow: string; featuredShadow: string; gradient: string; }; }
 
 const make = (id: ReportTheme, colors: ReportThemeColors, chart: string[]): ReportThemeDefinition => ({ id, colors, chart, effects: { shadow: "0 12px 35px #0003", featuredShadow: "0 22px 60px #0004", gradient: "linear-gradient(135deg, var(--report-surface), var(--report-accent)18)" } });
+
+/**
+ * Report themes sourced from the DaisyUI theme library (the same presets the
+ * Web Survey uses) so the whole product shares one visual language.
+ */
+const DAISY_THEME_IDS = [
+  "light",
+  "dark",
+  "night",
+  "luxury",
+  "retro",
+  "cupcake",
+  "synthwave",
+  "black",
+] as const;
+
+function makeDaisyTheme(id: (typeof DAISY_THEME_IDS)[number]): ReportThemeDefinition {
+  const vars = daisyThemes[id] as unknown as Record<string, string> | undefined;
+  const value = (key: string, fallback: string): string => vars?.[key] ?? fallback;
+  const bg = value("--color-base-100", "#ffffff");
+  const surface = value("--color-base-200", "#f4f4f5");
+  const elevated = value("--color-base-300", "#e4e4e7");
+  const text = value("--color-base-content", "#111827");
+  const primary = value("--color-primary", "#4f46e5");
+  const accent = value("--color-secondary", "#0ea5e9");
+  const info = value("--color-info", "#3b82f6");
+  const success = value("--color-success", "#22c55e");
+  const warning = value("--color-warning", "#f59e0b");
+  const danger = value("--color-error", "#ef4444");
+  const dim = (base: string, percent: number) =>
+    `color-mix(in oklab, ${base} ${percent}%, transparent)`;
+  return {
+    id: `daisy-${id}`,
+    colors: {
+      bg,
+      bgSecondary: surface,
+      surface,
+      elevated,
+      overlay: elevated,
+      text,
+      secondary: dim(text, 78),
+      muted: dim(text, 62),
+      border: elevated,
+      primary,
+      accent,
+      success,
+      warning,
+      danger,
+      info,
+    },
+    chart: [primary, accent, info, success, warning, danger],
+    effects: {
+      shadow: "0 12px 35px #0003",
+      featuredShadow: "0 22px 60px #0004",
+      gradient: `linear-gradient(135deg, ${surface}, ${accent}18)`,
+    },
+  };
+}
 
 export const reportThemes: Record<ReportTheme, ReportThemeDefinition> = {
   "catppuccin-latte": make("catppuccin-latte", { bg: "#eff1f5", bgSecondary: "#e6e9ef", surface: "#dce0e8", elevated: "#ccd0da", overlay: "#9ca0b0", text: "#4c4f69", secondary: "#5c5f77", muted: "#7c7f93", border: "#bcc0cc", primary: "#8839ef", accent: "#1e66f5", success: "#40a02b", warning: "#df8e1d", danger: "#d20f39", info: "#04a5e5" }, ["#8839ef", "#1e66f5", "#04a5e5", "#179299", "#40a02b", "#df8e1d"]),
@@ -26,6 +91,14 @@ export const reportThemes: Record<ReportTheme, ReportThemeDefinition> = {
   "gruvbox-dark": make("gruvbox-dark", { bg: "#282828", bgSecondary: "#1d2021", surface: "#3c3836", elevated: "#504945", overlay: "#665c54", text: "#ebdbb2", secondary: "#d5c4a1", muted: "#a89984", border: "#665c54", primary: "#d3869b", accent: "#83a598", success: "#b8bb26", warning: "#fabd2f", danger: "#fb4934", info: "#83a598" }, ["#d3869b", "#83a598", "#8ec07c", "#b8bb26", "#fabd2f", "#fb4934"]),
   "solarized-dark": make("solarized-dark", { bg: "#002b36", bgSecondary: "#00212b", surface: "#073642", elevated: "#586e75", overlay: "#657b83", text: "#fdf6e3", secondary: "#eee8d5", muted: "#93a1a1", border: "#586e75", primary: "#6c71c4", accent: "#268bd2", success: "#859900", warning: "#b58900", danger: "#dc322f", info: "#2aa198" }, ["#6c71c4", "#268bd2", "#2aa198", "#859900", "#b58900", "#dc322f"]),
   monokai: make("monokai", { bg: "#272822", bgSecondary: "#1e1f1c", surface: "#34352f", elevated: "#49483e", overlay: "#75715e", text: "#f8f8f2", secondary: "#d6d6cf", muted: "#a59f85", border: "#49483e", primary: "#ae81ff", accent: "#66d9ef", success: "#a6e22e", warning: "#e6db74", danger: "#f92672", info: "#66d9ef" }, ["#ae81ff", "#66d9ef", "#a6e22e", "#e6db74", "#fd971f", "#f92672"]),
+  "daisy-light": makeDaisyTheme("light"),
+  "daisy-dark": makeDaisyTheme("dark"),
+  "daisy-night": makeDaisyTheme("night"),
+  "daisy-luxury": makeDaisyTheme("luxury"),
+  "daisy-retro": makeDaisyTheme("retro"),
+  "daisy-cupcake": makeDaisyTheme("cupcake"),
+  "daisy-synthwave": makeDaisyTheme("synthwave"),
+  "daisy-black": makeDaisyTheme("black"),
 };
 
 export function themeCss(theme: ReportThemeDefinition): string {

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>堕落游戏 · 身份报告</title>
+  <style>
+    :root{--bg:#f1f5f9;--surface:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--accent:#6366f1;--accent-soft:#eef2ff}
+    @media (prefers-color-scheme: dark){:root{--bg:#0b1220;--surface:#131c2e;--text:#e2e8f0;--muted:#94a3b8;--border:#243349;--accent:#818cf8;--accent-soft:#1e2740}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}header.hero{padding:32px 0 20px;display:grid;gap:14px}.hero-title{margin:0;font-size:26px;line-height:1.3}.hero-sub{margin:0;color:var(--muted);white-space:pre-wrap}.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:6px}.tags span{padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:12px}.anchor-nav{display:flex;gap:12px;font-size:13px}.anchor-nav a{color:var(--accent);text-decoration:none}.report-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:16px}.report-section h2{margin:0 0 12px;font-size:16px}.report-cover{min-height:44vh;border-radius:14px;margin-top:16px;padding:34px 24px;background-color:var(--surface-elevated);background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{margin:0;font-size:30px;line-height:1.25}.report-cover .cover-sub{margin:8px 0 0;color:var(--muted)}.score-grid{display:grid;gap:10px}.score-card{border:1px solid var(--border);border-radius:10px;padding:12px}.score-head{display:flex;justify-content:space-between;align-items:baseline}.score-head strong{font-size:20px;color:var(--accent)}.score-head small{color:var(--muted);font-size:12px}.score-card p{margin:6px 0 0;color:var(--muted);font-size:13px}.bar{height:7px;margin-top:8px;border-radius:99px;background:var(--border);overflow:hidden}.bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),#22d3ee)}.score-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;justify-items:center}.ring-card{display:grid;justify-items:center;gap:6px;text-align:center}.ring{width:116px;height:116px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--pct)*1%),var(--border) 0)}.ring-inner{width:88px;height:88px;border-radius:50%;background:var(--bg);display:grid;place-items:center}.ring-inner strong{font-size:22px;color:var(--accent)}.ring-inner small{color:var(--muted);font-size:11px;font-weight:400}.ring-label{font-size:13px;color:var(--muted)}.ring-card p{margin:0;color:var(--muted);font-size:12px}.checklist{list-style:none;margin:0;padding:0}.checklist li{display:grid;grid-template-columns:minmax(110px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:baseline}.checklist li:first-child{border-top:0}.checklist strong{color:var(--muted);font-size:13px;font-weight:500}.checklist span{white-space:pre-wrap;overflow-wrap:anywhere}.profile-hero{grid-template-columns:auto 1fr;align-items:center;gap:18px}.profile-hero .avatar{width:84px;height:84px}.profile-meta{min-width:0}.report-divider{border:0;border-top:1px dashed var(--border);margin:26px 0}.radar{width:100%;max-width:320px;margin:0 auto;display:block;color:var(--muted)}.insight{border-top:1px solid var(--border);padding:12px 0}.insight:first-of-type{border-top:0;padding-top:0}.insight h3{margin:0 0 6px;font-size:15px}.insight p{margin:8px 0 0;white-space:pre-wrap}blockquote{margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0}blockquote p{margin:0;white-space:pre-wrap}blockquote footer{margin-top:6px;color:var(--muted);font-size:12px}.answer-list{margin:0}.answer-item{display:grid;grid-template-columns:minmax(100px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border)}.answer-item:first-child{border-top:0}dt{color:var(--muted);font-size:13px}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}figure{margin:0}figure img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:var(--border)}figure.missing::after{content:"图片已归档";display:block;padding:26px 0;text-align:center;color:var(--muted);font-size:12px;background:var(--accent-soft);border-radius:10px}figure.missing img{display:none}figcaption{margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.summary p{margin:0;white-space:pre-wrap}footer.meta{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}@media print{:root{--bg:#fff;--surface:#fff;--border:#d6dbe3;--accent-soft:#f1f3f9}body{background:#fff}.wrap{max-width:none;padding:0}.anchor-nav{display:none}.report-section{break-inside:avoid;margin-top:14px}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:22px}}
+  </style>
+  <style>:root{--report-bg:oklch(14.076% 0.004 285.822);--report-bg-secondary:oklch(20.219% 0.004 308.229);--report-surface:oklch(20.219% 0.004 308.229);--report-surface-elevated:oklch(23.219% 0.004 308.229);--report-overlay:oklch(23.219% 0.004 308.229);--report-text:oklch(75.687% 0.123 76.89);--report-text-secondary:color-mix(in oklab, oklch(75.687% 0.123 76.89) 78%, transparent);--report-text-muted:color-mix(in oklab, oklch(75.687% 0.123 76.89) 62%, transparent);--report-border:oklch(23.219% 0.004 308.229);--report-primary:oklch(100% 0 0);--report-secondary:color-mix(in oklab, oklch(75.687% 0.123 76.89) 78%, transparent);--report-accent:oklch(27.581% 0.064 261.069);--report-accent-secondary:oklch(100% 0 0);--report-success:oklch(78.119% 0.192 132.154);--report-warning:oklch(86.127% 0.136 102.891);--report-danger:oklch(71.753% 0.176 22.568);--report-info:oklch(79.061% 0.121 237.133);--report-shadow:0 12px 35px #0003;--report-featured-shadow:0 22px 60px #0004;--report-gradient:linear-gradient(135deg, oklch(20.219% 0.004 308.229), oklch(27.581% 0.064 261.069)18);--chart-1:oklch(100% 0 0);--chart-2:oklch(27.581% 0.064 261.069);--chart-3:oklch(79.061% 0.121 237.133);--chart-4:oklch(78.119% 0.192 132.154);--chart-5:oklch(86.127% 0.136 102.891);--chart-6:oklch(71.753% 0.176 22.568);}:root{--bg:var(--report-bg);--bg-secondary:var(--report-bg-secondary);--surface:var(--report-surface);--surface-elevated:var(--report-surface-elevated);--text:var(--report-text);--muted:var(--report-text-muted);--border:var(--report-border);--accent:var(--report-accent);--accent-soft:var(--report-surface-elevated)}.report-cover{border:1px solid var(--report-border);border-radius:var(--radius);min-height:42vh;padding:36px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:32px;letter-spacing:.06em}.report-cover .cover-sub{color:var(--report-text-muted)}.report-section{border-left:4px solid var(--report-accent)}.checklist strong::before{content:"◆ ";color:var(--report-accent)}.ring-card .ring{border:2px solid var(--report-border)}</style>
+</head>
+<body>
+  <main class="wrap">
+    
+    
+    <section class="report-cover" style="background-image:linear-gradient(180deg,#0000 0%,#000a 100%),url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%232a0a1f%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%230d0716%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22800%22%20height%3D%22600%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E')">
+    <h1>堕落游戏 · 身份报告</h1>
+    <p class="cover-sub">参与者 #188 · 完成于 2026-08-23 14:00</p>
+    <div class="tags"><span>堕落</span><span>游戏</span><span>深度</span></div>
+  </section><header class="hero profile-hero">
+      <img class="avatar" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%22160%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22a%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23e54d9b%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%2280%22%20r%3D%2278%22%20fill%3D%22url(%23a)%22%2F%3E%3Ctext%20x%3D%2280%22%20y%3D%2296%22%20font-size%3D%2246%22%20text-anchor%3D%22middle%22%20fill%3D%22%23fff%22%20font-family%3D%22sans-serif%22%3E%E5%A0%95%3C%2Ftext%3E%3C%2Fsvg%3E" alt="" loading="lazy" onerror="this.remove()" />
+      <div class="profile-meta">
+        <h1 class="hero-title">堕落游戏 · 身份报告</h1>
+        <p class="hero-sub">参与者 #188 · 完成于 2026-08-23 14:00</p>
+        <div class="tags"><span>身份档案</span><span>深度问卷</span><span>2026</span></div>
+      </div>
+    </header><section class="report-section section-scores"><h2>得分概览</h2><div class="score-rings">
+      
+        <article class="ring-card">
+          <div class="ring" style="--pct:86">
+            <span class="ring-inner"><strong>86<small>/ 100</small></strong></span>
+          </div>
+          <span class="ring-label">服从度</span>
+          <p></p>
+        </article>
+        <article class="ring-card">
+          <div class="ring" style="--pct:74">
+            <span class="ring-inner"><strong>74<small>/ 100</small></strong></span>
+          </div>
+          <span class="ring-label">欲望指数</span>
+          <p></p>
+        </article>
+        <article class="ring-card">
+          <div class="ring" style="--pct:38">
+            <span class="ring-inner"><strong>38<small>/ 100</small></strong></span>
+          </div>
+          <span class="ring-label">反抗倾向</span>
+          <p></p>
+        </article>
+        <article class="ring-card">
+          <div class="ring" style="--pct:61">
+            <span class="ring-inner"><strong>61<small>/ 100</small></strong></span>
+          </div>
+          <span class="ring-label">信任值</span>
+          <p></p>
+        </article>
+    </div></section><section class="report-section section-answers"><h2>回答明细</h2><ul class="checklist">
+      
+        <li><strong>姓名/代号</strong><span>暮色蔷薇</span></li>
+        <li><strong>年龄区间</strong><span>25-30</span></li>
+        <li><strong>角色定位</strong><span>被驯化的母狗</span></li>
+        <li><strong>开局偏好</strong><span>温柔引导型</span></li>
+        <li><strong>服从程度</strong><span>高（主动配合）</span></li>
+        <li><strong>幻想场景</strong><span>封闭房间、项圈、锁链、仪式感</span></li>
+        <li><strong>自我评价</strong><span>“表面端庄，内心渴望被支配”</span></li>
+        <li><strong>备注</strong><span>该参与者明确表示愿意接收后续深度问卷。</span></li>
+    </ul></section><section class="report-section section-verdict"><h2>结论</h2><section class="report-section verdict"><h2>结论</h2><p>综合来看，参与者对「支配-服从」关系持有较高的接受度，偏好渐进式情节与明确的仪式感，适合作为深层次角色扮演问卷的核心画像。</p></section></section>
+    <footer class="meta">堕落游戏 · 2026-08-23 14:00 · 报告 #188</footer>
+  </main>
+</body>
+</html>

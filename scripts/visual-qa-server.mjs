@@ -10,6 +10,7 @@ import { extname, normalize, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../admin/dist", import.meta.url));
+const fixturesRoot = fileURLToPath(new URL("../qa/fixtures", import.meta.url));
 const port = Number(process.env.PORT ?? 4173);
 
 const MIME = {
@@ -27,13 +28,16 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", "http://localhost");
     const pathname = decodeURIComponent(url.pathname);
+    const base = pathname.startsWith("/fixtures/") ? fixturesRoot : root;
     const relative = pathname.startsWith("/s/")
       ? "/survey.html"
       : pathname === "/"
         ? "/index.html"
-        : pathname;
-    const safe = normalize(join(root, relative));
-    if (!safe.startsWith(root + sep)) {
+        : pathname.startsWith("/fixtures/")
+          ? pathname.slice("/fixtures".length)
+          : pathname;
+    const safe = normalize(join(base, relative));
+    if (!safe.startsWith(base + sep)) {
       res.writeHead(403);
       res.end("forbidden");
       return;

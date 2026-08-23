@@ -18,4 +18,12 @@ export const reportThemeIds: readonly ReportTheme[] = [
   "solarized-dark",
   "gruvbox-dark",
   "monokai",
+  "daisy-light",
+  "daisy-dark",
+  "daisy-night",
+  "daisy-luxury",
+  "daisy-retro",
+  "daisy-cupcake",
+  "daisy-synthwave",
+  "daisy-black",
 ];

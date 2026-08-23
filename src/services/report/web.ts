@@ -39,13 +39,23 @@ function sectionTitle(kind: ReportSectionKind, section: ReportTemplateSection): 
   return labels[kind] ?? "";
 }
 
-function renderHero(view: ReportViewModel): string {
+function renderHero(view: ReportViewModel, section: ReportTemplateSection): string {
   const avatar = view.hero.avatar
     ? `<img class="avatar" src="${escapeHtml(view.hero.avatar)}" alt="" loading="lazy" onerror="this.remove()" />`
     : "";
   const tags = view.hero.tags.length
     ? `<div class="tags">${view.hero.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>`
     : "";
+  if (section.presentation === "featured") {
+    return `<header class="hero profile-hero">
+      ${avatar}
+      <div class="profile-meta">
+        <h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
+        ${view.hero.subtitle ? `<p class="hero-sub">${escapeHtml(view.hero.subtitle)}</p>` : ""}
+        ${tags}
+      </div>
+    </header>`;
+  }
   return `<header class="hero">
     ${avatar}
     <h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
@@ -73,8 +83,20 @@ function renderSummary(view: ReportViewModel): string {
   return `<section class="report-section summary"><h2>总结</h2><p>${escapeHtml(view.summary)}</p></section>`;
 }
 
-function renderScores(view: ReportViewModel): string {
+function renderScores(view: ReportViewModel, section: ReportTemplateSection): string {
   if (!view.scores.length) return "";
+  if (section.presentation === "grid") {
+    return `<div class="score-rings">
+      ${view.scores.map((score) => `
+        <article class="ring-card">
+          <div class="ring" style="--pct:${Math.max(0, Math.min(100, score.percentage))}">
+            <span class="ring-inner"><strong>${score.value}<small>/ ${score.max}</small></strong></span>
+          </div>
+          <span class="ring-label">${escapeHtml(score.label)}</span>
+          <p>${escapeHtml(text(score.description))}</p>
+        </article>`).join("")}
+    </div>`;
+  }
   return `<section class="report-section"><h2>得分概览</h2>
     <div class="score-grid">
       ${view.scores.map((score) => `
@@ -107,8 +129,14 @@ function renderInsights(view: ReportViewModel): string {
   return `<section class="report-section"><h2>分析解读</h2>${items}${quotes}</section>`;
 }
 
-function renderAnswers(view: ReportViewModel): string {
+function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): string {
   if (!view.profile.length) return "";
+  if (section.presentation === "list") {
+    return `<ul class="checklist">
+      ${view.profile.map((item) => `
+        <li><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></li>`).join("")}
+    </ul>`;
+  }
   return `<section class="report-section"><h2>回答明细</h2>
     <dl class="answer-list">
       ${view.profile.map((item) => `
@@ -144,14 +172,15 @@ export function renderReportSection(
 ): string {
   switch (kind) {
     case "cover": return renderCover(view);
-    case "hero": return renderHero(view);
+    case "hero": return renderHero(view, section);
     case "summary": return wrapSection("summary", sectionTitle("summary", section), renderSummary(view));
-    case "scores": return wrapSection("scores", sectionTitle("scores", section), renderScores(view));
+    case "scores": return wrapSection("scores", sectionTitle("scores", section), renderScores(view, section));
     case "radar": return wrapSection("radar", sectionTitle("radar", section), renderRadar(view));
     case "insights": return wrapSection("insights", sectionTitle("insights", section), renderInsights(view));
     case "quotes": return wrapSection("quotes", sectionTitle("quotes", section), renderInsights(view));
-    case "answers": return wrapSection("answers", sectionTitle("answers", section), renderAnswers(view));
+    case "answers": return wrapSection("answers", sectionTitle("answers", section), renderAnswers(view, section));
     case "gallery": return wrapSection("gallery", sectionTitle("gallery", section), renderGallery(view));
+    case "divider": return `<hr class="report-divider" />`;
     case "verdict": return wrapSection("verdict", sectionTitle("verdict", section), renderVerdict(view));
   }
 }
@@ -168,7 +197,7 @@ export interface ResponsiveReportMeta {
 }
 
 function baseCss(): string {
-  return `*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}header.hero{padding:32px 0 20px;display:grid;gap:14px}.hero-title{margin:0;font-size:26px;line-height:1.3}.hero-sub{margin:0;color:var(--muted);white-space:pre-wrap}.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:6px}.tags span{padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:12px}.anchor-nav{display:flex;gap:12px;font-size:13px}.anchor-nav a{color:var(--accent);text-decoration:none}.report-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:16px}.report-section h2{margin:0 0 12px;font-size:16px}.report-cover{min-height:44vh;border-radius:14px;margin-top:16px;padding:34px 24px;background-color:var(--surface-elevated);background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{margin:0;font-size:30px;line-height:1.25}.report-cover .cover-sub{margin:8px 0 0;color:var(--muted)}.score-grid{display:grid;gap:10px}.score-card{border:1px solid var(--border);border-radius:10px;padding:12px}.score-head{display:flex;justify-content:space-between;align-items:baseline}.score-head strong{font-size:20px;color:var(--accent)}.score-head small{color:var(--muted);font-size:12px}.score-card p{margin:6px 0 0;color:var(--muted);font-size:13px}.bar{height:7px;margin-top:8px;border-radius:99px;background:var(--border);overflow:hidden}.bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),#22d3ee)}.radar{width:100%;max-width:320px;margin:0 auto;display:block;color:var(--muted)}.insight{border-top:1px solid var(--border);padding:12px 0}.insight:first-of-type{border-top:0;padding-top:0}.insight h3{margin:0 0 6px;font-size:15px}.insight p{margin:8px 0 0;white-space:pre-wrap}blockquote{margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0}blockquote p{margin:0;white-space:pre-wrap}blockquote footer{margin-top:6px;color:var(--muted);font-size:12px}.answer-list{margin:0}.answer-item{display:grid;grid-template-columns:minmax(100px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border)}.answer-item:first-child{border-top:0}dt{color:var(--muted);font-size:13px}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}figure{margin:0}figure img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:var(--border)}figure.missing::after{content:"图片已归档";display:block;padding:26px 0;text-align:center;color:var(--muted);font-size:12px;background:var(--accent-soft);border-radius:10px}figure.missing img{display:none}figcaption{margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.summary p{margin:0;white-space:pre-wrap}footer.meta{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}@media print{:root{--bg:#fff;--surface:#fff;--border:#d6dbe3;--accent-soft:#f1f3f9}body{background:#fff}.wrap{max-width:none;padding:0}.anchor-nav{display:none}.report-section{break-inside:avoid;margin-top:14px}.score-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:22px}}`;
+  return `*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}header.hero{padding:32px 0 20px;display:grid;gap:14px}.hero-title{margin:0;font-size:26px;line-height:1.3}.hero-sub{margin:0;color:var(--muted);white-space:pre-wrap}.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:6px}.tags span{padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:12px}.anchor-nav{display:flex;gap:12px;font-size:13px}.anchor-nav a{color:var(--accent);text-decoration:none}.report-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:16px}.report-section h2{margin:0 0 12px;font-size:16px}.report-cover{min-height:44vh;border-radius:14px;margin-top:16px;padding:34px 24px;background-color:var(--surface-elevated);background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{margin:0;font-size:30px;line-height:1.25}.report-cover .cover-sub{margin:8px 0 0;color:var(--muted)}.score-grid{display:grid;gap:10px}.score-card{border:1px solid var(--border);border-radius:10px;padding:12px}.score-head{display:flex;justify-content:space-between;align-items:baseline}.score-head strong{font-size:20px;color:var(--accent)}.score-head small{color:var(--muted);font-size:12px}.score-card p{margin:6px 0 0;color:var(--muted);font-size:13px}.bar{height:7px;margin-top:8px;border-radius:99px;background:var(--border);overflow:hidden}.bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),#22d3ee)}.score-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;justify-items:center}.ring-card{display:grid;justify-items:center;gap:6px;text-align:center}.ring{width:116px;height:116px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--pct)*1%),var(--border) 0)}.ring-inner{width:88px;height:88px;border-radius:50%;background:var(--bg);display:grid;place-items:center}.ring-inner strong{font-size:22px;color:var(--accent)}.ring-inner small{color:var(--muted);font-size:11px;font-weight:400}.ring-label{font-size:13px;color:var(--muted)}.ring-card p{margin:0;color:var(--muted);font-size:12px}.checklist{list-style:none;margin:0;padding:0}.checklist li{display:grid;grid-template-columns:minmax(110px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:baseline}.checklist li:first-child{border-top:0}.checklist strong{color:var(--muted);font-size:13px;font-weight:500}.checklist span{white-space:pre-wrap;overflow-wrap:anywhere}.profile-hero{grid-template-columns:auto 1fr;align-items:center;gap:18px}.profile-hero .avatar{width:84px;height:84px}.profile-meta{min-width:0}.report-divider{border:0;border-top:1px dashed var(--border);margin:26px 0}.radar{width:100%;max-width:320px;margin:0 auto;display:block;color:var(--muted)}.insight{border-top:1px solid var(--border);padding:12px 0}.insight:first-of-type{border-top:0;padding-top:0}.insight h3{margin:0 0 6px;font-size:15px}.insight p{margin:8px 0 0;white-space:pre-wrap}blockquote{margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0}blockquote p{margin:0;white-space:pre-wrap}blockquote footer{margin-top:6px;color:var(--muted);font-size:12px}.answer-list{margin:0}.answer-item{display:grid;grid-template-columns:minmax(100px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border)}.answer-item:first-child{border-top:0}dt{color:var(--muted);font-size:13px}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}figure{margin:0}figure img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:var(--border)}figure.missing::after{content:"图片已归档";display:block;padding:26px 0;text-align:center;color:var(--muted);font-size:12px;background:var(--accent-soft);border-radius:10px}figure.missing img{display:none}figcaption{margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.summary p{margin:0;white-space:pre-wrap}footer.meta{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}@media print{:root{--bg:#fff;--surface:#fff;--border:#d6dbe3;--accent-soft:#f1f3f9}body{background:#fff}.wrap{max-width:none;padding:0}.anchor-nav{display:none}.report-section{break-inside:avoid;margin-top:14px}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:22px}}`;
 }
 
 function themeAliasCss(): string {
@@ -210,7 +239,7 @@ export function buildResponsiveReportHtml(
 </head>
 <body>
   <main class="wrap">
-    ${hasHeroOrCover ? "" : renderHero(view)}
+    ${hasHeroOrCover ? "" : renderHero(view, { kind: "hero" })}
     ${nav}
     ${sections}
     ${footer}

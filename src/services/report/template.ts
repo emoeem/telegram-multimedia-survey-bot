@@ -20,6 +20,7 @@ export type ReportSectionKind =
   | "quotes"
   | "answers"
   | "gallery"
+  | "divider"
   | "verdict";
 
 export type ReportSectionPresentation =
@@ -128,6 +129,7 @@ const sectionKinds = new Set<ReportSectionKind>([
   "quotes",
   "answers",
   "gallery",
+  "divider",
   "verdict",
 ]);
 
@@ -180,7 +182,95 @@ export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
   css: `.report-cover{min-height:52vh;border-radius:var(--radius);padding:38px 24px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:34px;line-height:1.25;text-shadow:0 2px 18px #0009}.report-cover .cover-sub{margin-top:8px;color:var(--muted)}`,
 };
 
+/** 数据分析型：浅色数据看板，量化指标优先。 */
+export const DATA_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "data",
+  name: "数据分析",
+  version: 1,
+  theme: "daisy-light",
+  sections: [
+    { kind: "hero" },
+    { kind: "summary", presentation: "featured" },
+    { kind: "scores", presentation: "grid" },
+    { kind: "radar" },
+    { kind: "insights" },
+    { kind: "answers", presentation: "list" },
+    { kind: "gallery" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.report-section.summary{background:linear-gradient(135deg,var(--report-accent),var(--report-primary));color:#fff}.report-section.summary h2{color:rgba(255,255,255,.85)}.report-section.summary p{font-size:17px;line-height:1.7}`,
+};
+
+/** 身份档案型：黑金档案袋风格，适合人物/身份类问卷。 */
+export const IDENTITY_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "identity",
+  name: "身份档案",
+  version: 1,
+  theme: "daisy-luxury",
+  sections: [
+    { kind: "cover", presentation: "full" },
+    { kind: "hero", presentation: "featured" },
+    { kind: "scores", presentation: "grid" },
+    { kind: "answers", presentation: "list" },
+    { kind: "verdict" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.report-cover{border:1px solid var(--report-border);border-radius:var(--radius);min-height:42vh;padding:36px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:32px;letter-spacing:.06em}.report-cover .cover-sub{color:var(--report-text-muted)}.report-section{border-left:4px solid var(--report-accent)}.checklist strong::before{content:"◆ ";color:var(--report-accent)}.ring-card .ring{border:2px solid var(--report-border)}`,
+};
+
+/** 杂志亮色：复古纸张编辑风。 */
+export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "magazine",
+  name: "杂志",
+  version: 1,
+  theme: "daisy-retro",
+  sections: [
+    { kind: "cover", presentation: "full" },
+    { kind: "quotes" },
+    { kind: "gallery", presentation: "grid" },
+    { kind: "answers" },
+    { kind: "verdict" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.report-cover{min-height:46vh;padding:38px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--report-border)}.report-cover h1{font-size:36px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em}.report-cover .cover-sub{margin-top:8px;color:var(--report-text-muted)}blockquote{border-left:4px double var(--report-accent);font-style:italic}`,
+};
+
+/** 极简报告：白底黑字，只有内容。 */
+export const MINIMAL_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "minimal",
+  name: "极简",
+  version: 1,
+  theme: "daisy-light",
+  sections: [
+    { kind: "hero" },
+    { kind: "summary" },
+    { kind: "answers" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.wrap{max-width:620px}.report-section{background:transparent;border:0;border-bottom:1px solid var(--report-border);border-radius:0;padding:18px 2px;margin-top:8px}.report-section h2{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--report-text-muted)}.hero-title{font-size:30px}`,
+};
+
+/** 影集型：深色沉浸式大图叙事。 */
+export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "gallery",
+  name: "影集",
+  version: 1,
+  theme: "daisy-black",
+  sections: [
+    { kind: "cover", presentation: "full" },
+    { kind: "gallery", presentation: "featured" },
+    { kind: "verdict" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.report-cover{min-height:62vh;padding:40px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:38px;letter-spacing:.08em}.report-section{background:rgba(255,255,255,.04);border:1px solid var(--report-border);backdrop-filter:blur(8px)}.gallery{grid-template-columns:1fr}figure img{aspect-ratio:16/10}`,
+};
+
 export const REPORT_TEMPLATES: Record<string, ReportTemplateSpec> = {
   [DEFAULT_REPORT_TEMPLATE.id]: DEFAULT_REPORT_TEMPLATE,
   [MAGAZINE_DARK_TEMPLATE.id]: MAGAZINE_DARK_TEMPLATE,
+  [DATA_REPORT_TEMPLATE.id]: DATA_REPORT_TEMPLATE,
+  [IDENTITY_REPORT_TEMPLATE.id]: IDENTITY_REPORT_TEMPLATE,
+  [MAGAZINE_REPORT_TEMPLATE.id]: MAGAZINE_REPORT_TEMPLATE,
+  [MINIMAL_REPORT_TEMPLATE.id]: MINIMAL_REPORT_TEMPLATE,
+  [GALLERY_REPORT_TEMPLATE.id]: GALLERY_REPORT_TEMPLATE,
 };

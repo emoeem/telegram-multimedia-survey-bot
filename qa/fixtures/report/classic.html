@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>堕落游戏 · 身份报告</title>
+  <style>
+    :root{--bg:#f1f5f9;--surface:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--accent:#6366f1;--accent-soft:#eef2ff}
+    @media (prefers-color-scheme: dark){:root{--bg:#0b1220;--surface:#131c2e;--text:#e2e8f0;--muted:#94a3b8;--border:#243349;--accent:#818cf8;--accent-soft:#1e2740}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}header.hero{padding:32px 0 20px;display:grid;gap:14px}.hero-title{margin:0;font-size:26px;line-height:1.3}.hero-sub{margin:0;color:var(--muted);white-space:pre-wrap}.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:6px}.tags span{padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:12px}.anchor-nav{display:flex;gap:12px;font-size:13px}.anchor-nav a{color:var(--accent);text-decoration:none}.report-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:16px}.report-section h2{margin:0 0 12px;font-size:16px}.report-cover{min-height:44vh;border-radius:14px;margin-top:16px;padding:34px 24px;background-color:var(--surface-elevated);background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{margin:0;font-size:30px;line-height:1.25}.report-cover .cover-sub{margin:8px 0 0;color:var(--muted)}.score-grid{display:grid;gap:10px}.score-card{border:1px solid var(--border);border-radius:10px;padding:12px}.score-head{display:flex;justify-content:space-between;align-items:baseline}.score-head strong{font-size:20px;color:var(--accent)}.score-head small{color:var(--muted);font-size:12px}.score-card p{margin:6px 0 0;color:var(--muted);font-size:13px}.bar{height:7px;margin-top:8px;border-radius:99px;background:var(--border);overflow:hidden}.bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),#22d3ee)}.score-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;justify-items:center}.ring-card{display:grid;justify-items:center;gap:6px;text-align:center}.ring{width:116px;height:116px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) calc(var(--pct)*1%),var(--border) 0)}.ring-inner{width:88px;height:88px;border-radius:50%;background:var(--bg);display:grid;place-items:center}.ring-inner strong{font-size:22px;color:var(--accent)}.ring-inner small{color:var(--muted);font-size:11px;font-weight:400}.ring-label{font-size:13px;color:var(--muted)}.ring-card p{margin:0;color:var(--muted);font-size:12px}.checklist{list-style:none;margin:0;padding:0}.checklist li{display:grid;grid-template-columns:minmax(110px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:baseline}.checklist li:first-child{border-top:0}.checklist strong{color:var(--muted);font-size:13px;font-weight:500}.checklist span{white-space:pre-wrap;overflow-wrap:anywhere}.profile-hero{grid-template-columns:auto 1fr;align-items:center;gap:18px}.profile-hero .avatar{width:84px;height:84px}.profile-meta{min-width:0}.report-divider{border:0;border-top:1px dashed var(--border);margin:26px 0}.radar{width:100%;max-width:320px;margin:0 auto;display:block;color:var(--muted)}.insight{border-top:1px solid var(--border);padding:12px 0}.insight:first-of-type{border-top:0;padding-top:0}.insight h3{margin:0 0 6px;font-size:15px}.insight p{margin:8px 0 0;white-space:pre-wrap}blockquote{margin:12px 0 0;padding:12px 14px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0}blockquote p{margin:0;white-space:pre-wrap}blockquote footer{margin-top:6px;color:var(--muted);font-size:12px}.answer-list{margin:0}.answer-item{display:grid;grid-template-columns:minmax(100px,34%) 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--border)}.answer-item:first-child{border-top:0}dt{color:var(--muted);font-size:13px}dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}figure{margin:0}figure img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:var(--border)}figure.missing::after{content:"图片已归档";display:block;padding:26px 0;text-align:center;color:var(--muted);font-size:12px;background:var(--accent-soft);border-radius:10px}figure.missing img{display:none}figcaption{margin-top:4px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.summary p{margin:0;white-space:pre-wrap}footer.meta{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}@media print{:root{--bg:#fff;--surface:#fff;--border:#d6dbe3;--accent-soft:#f1f3f9}body{background:#fff}.wrap{max-width:none;padding:0}.anchor-nav{display:none}.report-section{break-inside:avoid;margin-top:14px}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:22px}}
+  </style>
+  <style>:root{--report-bg:#eff1f5;--report-bg-secondary:#e6e9ef;--report-surface:#dce0e8;--report-surface-elevated:#ccd0da;--report-overlay:#9ca0b0;--report-text:#4c4f69;--report-text-secondary:#5c5f77;--report-text-muted:#7c7f93;--report-border:#bcc0cc;--report-primary:#8839ef;--report-secondary:#5c5f77;--report-accent:#1e66f5;--report-accent-secondary:#8839ef;--report-success:#40a02b;--report-warning:#df8e1d;--report-danger:#d20f39;--report-info:#04a5e5;--report-shadow:0 12px 35px #0003;--report-featured-shadow:0 22px 60px #0004;--report-gradient:linear-gradient(135deg, var(--report-surface), var(--report-accent)18);--chart-1:#8839ef;--chart-2:#1e66f5;--chart-3:#04a5e5;--chart-4:#179299;--chart-5:#40a02b;--chart-6:#df8e1d;}:root{--bg:var(--report-bg);--bg-secondary:var(--report-bg-secondary);--surface:var(--report-surface);--surface-elevated:var(--report-surface-elevated);--text:var(--report-text);--muted:var(--report-text-muted);--border:var(--report-border);--accent:var(--report-accent);--accent-soft:var(--report-surface-elevated)}</style>
+</head>
+<body>
+  <main class="wrap">
+    
+    
+    <header class="hero">
+    <img class="avatar" src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22160%22%20height%3D%22160%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22a%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23e54d9b%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%2280%22%20r%3D%2278%22%20fill%3D%22url(%23a)%22%2F%3E%3Ctext%20x%3D%2280%22%20y%3D%2296%22%20font-size%3D%2246%22%20text-anchor%3D%22middle%22%20fill%3D%22%23fff%22%20font-family%3D%22sans-serif%22%3E%E5%A0%95%3C%2Ftext%3E%3C%2Fsvg%3E" alt="" loading="lazy" onerror="this.remove()" />
+    <h1 class="hero-title">堕落游戏 · 身份报告</h1>
+    <p class="hero-sub">参与者 #188 · 完成于 2026-08-23 14:00</p>
+    <div class="tags"><span>身份档案</span><span>深度问卷</span><span>2026</span></div>
+  </header><section class="report-section section-summary"><h2>总结</h2><section class="report-section summary"><h2>总结</h2><p>综合来看，参与者对「支配-服从」关系持有较高的接受度，偏好渐进式情节与明确的仪式感，适合作为深层次角色扮演问卷的核心画像。</p></section></section><section class="report-section section-scores"><h2>得分概览</h2><section class="report-section"><h2>得分概览</h2>
+    <div class="score-grid">
+      
+        <article class="score-card">
+          <div class="score-head"><span>服从度</span><strong>86<small>/ 100</small></strong></div>
+          <div class="bar"><span style="width:86%"></span></div>
+          <p></p>
+        </article>
+        <article class="score-card">
+          <div class="score-head"><span>欲望指数</span><strong>74<small>/ 100</small></strong></div>
+          <div class="bar"><span style="width:74%"></span></div>
+          <p></p>
+        </article>
+        <article class="score-card">
+          <div class="score-head"><span>反抗倾向</span><strong>38<small>/ 100</small></strong></div>
+          <div class="bar"><span style="width:38%"></span></div>
+          <p></p>
+        </article>
+        <article class="score-card">
+          <div class="score-head"><span>信任值</span><strong>61<small>/ 100</small></strong></div>
+          <div class="bar"><span style="width:61%"></span></div>
+          <p></p>
+        </article>
+    </div>
+  </section></section><section class="report-section section-radar"><h2>维度画像</h2><section class="report-section"><h2>维度画像</h2>
+    <svg class="radar" viewBox="0 0 300 300" role="img" aria-label="评分雷达图"><polygon points="150,114.36 183.89565424075926,138.98663432047687 170.94866639170374,178.83336567952313 129.05133360829626,178.83336567952313 116.10434575924072,138.98663432047687" fill="none" stroke="var(--accent)" opacity=".25"/><polygon points="150,78.72 217.79130848151854,127.97326864095375 191.89733278340748,207.66673135904625 108.10266721659252,207.66673135904625 82.20869151848144,127.97326864095376" fill="none" stroke="var(--accent)" opacity=".25"/><polygon points="150,42 252.7141037598766,116.62616460750567 213.4808072475871,237.37383539249433 86.51919275241292,237.37383539249433 47.28589624012341,116.6261646075057" fill="none" stroke="var(--accent)" opacity=".25"/><polygon points="150,57.120000000000005 226.00843678230865,125.3033618095542 174.12270675408308,183.20205744914784 111.27670757897188,203.29803958942153 68.85585802969749,123.63467003992949" fill="var(--accent)" opacity=".35" stroke="var(--accent)" stroke-width="3"/><line x1="150" y1="150" x2="150" y2="42" stroke="var(--accent)" opacity=".3"/><text x="150" y="42" fill="currentColor" font-size="11" text-anchor="middle">服从</text><line x1="150" y1="150" x2="252.7141037598766" y2="116.62616460750567" stroke="var(--accent)" opacity=".3"/><text x="252.7141037598766" y="116.62616460750567" fill="currentColor" font-size="11" text-anchor="middle">欲望</text><line x1="150" y1="150" x2="213.4808072475871" y2="237.37383539249433" stroke="var(--accent)" opacity=".3"/><text x="213.4808072475871" y="237.37383539249433" fill="currentColor" font-size="11" text-anchor="middle">反叛</text><line x1="150" y1="150" x2="86.51919275241292" y2="237.37383539249433" stroke="var(--accent)" opacity=".3"/><text x="86.51919275241292" y="237.37383539249433" fill="currentColor" font-size="11" text-anchor="middle">信任</text><line x1="150" y1="150" x2="47.28589624012341" y2="116.6261646075057" stroke="var(--accent)" opacity=".3"/><text x="47.28589624012341" y="116.6261646075057" fill="currentColor" font-size="11" text-anchor="middle">幻想</text></svg>
+  </section></section><section class="report-section section-insights"><h2>分析解读</h2><section class="report-section"><h2>分析解读</h2>
+    <article class="insight">
+      <h3>开局反应</h3>
+      <div class="tags"><span>服从度 86%</span></div>
+      <p>面对突如其来的束缚，参与者表现出较高的服从倾向，但同时也保留了试探性反抗的空间。</p>
+    </article>
+    <article class="insight">
+      <h3>欲望表达</h3>
+      
+      <p>在身份转换类题目中，参与者更倾向于选择循序渐进的情节推进，而非直接进入极端场景。</p>
+    </article>
+    <blockquote><p>“比起命令，更让人兴奋的是被慢慢驯化的过程。”</p><footer>参与者自述</footer></blockquote></section></section><section class="report-section section-quotes"><h2>摘录</h2><section class="report-section"><h2>分析解读</h2>
+    <article class="insight">
+      <h3>开局反应</h3>
+      <div class="tags"><span>服从度 86%</span></div>
+      <p>面对突如其来的束缚，参与者表现出较高的服从倾向，但同时也保留了试探性反抗的空间。</p>
+    </article>
+    <article class="insight">
+      <h3>欲望表达</h3>
+      
+      <p>在身份转换类题目中，参与者更倾向于选择循序渐进的情节推进，而非直接进入极端场景。</p>
+    </article>
+    <blockquote><p>“比起命令，更让人兴奋的是被慢慢驯化的过程。”</p><footer>参与者自述</footer></blockquote></section></section><section class="report-section section-gallery"><h2>图片</h2><section class="report-section"><h2>图片</h2>
+    <div class="gallery">
+      
+        <figure>
+          <img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%237c3aed%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23e54d9b%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22800%22%20height%3D%22600%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E" alt="第一幕 · 初见" loading="lazy" onerror="this.closest('figure')?.classList.add('missing')" />
+          <figcaption>第一幕 · 初见</figcaption>
+        </figure>
+        <figure>
+          <img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230ea5e9%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22800%22%20height%3D%22600%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E" alt="第二幕 · 驯化" loading="lazy" onerror="this.closest('figure')?.classList.add('missing')" />
+          <figcaption>第二幕 · 驯化</figcaption>
+        </figure>
+        <figure>
+          <img src="data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22800%22%20height%3D%22600%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23f59e0b%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23ef4444%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22800%22%20height%3D%22600%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E" alt="第三幕 · 沉沦" loading="lazy" onerror="this.closest('figure')?.classList.add('missing')" />
+          <figcaption>第三幕 · 沉沦</figcaption>
+        </figure>
+    </div>
+  </section></section><section class="report-section section-answers"><h2>回答明细</h2><section class="report-section"><h2>回答明细</h2>
+    <dl class="answer-list">
+      
+        <div class="answer-item"><dt>姓名/代号</dt><dd>暮色蔷薇</dd></div>
+        <div class="answer-item"><dt>年龄区间</dt><dd>25-30</dd></div>
+        <div class="answer-item"><dt>角色定位</dt><dd>被驯化的母狗</dd></div>
+        <div class="answer-item"><dt>开局偏好</dt><dd>温柔引导型</dd></div>
+        <div class="answer-item"><dt>服从程度</dt><dd>高（主动配合）</dd></div>
+        <div class="answer-item"><dt>幻想场景</dt><dd>封闭房间、项圈、锁链、仪式感</dd></div>
+        <div class="answer-item"><dt>自我评价</dt><dd>“表面端庄，内心渴望被支配”</dd></div>
+        <div class="answer-item"><dt>备注</dt><dd>该参与者明确表示愿意接收后续深度问卷。</dd></div>
+    </dl>
+  </section></section>
+    <footer class="meta">堕落游戏 · 2026-08-23 14:00 · 报告 #188</footer>
+  </main>
+</body>
+</html>
