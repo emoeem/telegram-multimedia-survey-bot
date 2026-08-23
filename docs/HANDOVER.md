@@ -64,7 +64,7 @@
 - Vars：`REPORT_CHANNEL_ID=-1004489719605`
 - Webhook：生产 URL + allowed_updates=[message, callback_query, channel_post]
 - 已应用迁移：0000–0030
-- 最近部署版本：`7c49ca05`（2026-08-23）
+- 最近部署版本：`6e187b61`（2026-08-23，对应 git `c0cb43f`；注：`7c49ca05` 是 wrangler 部署 ID 前缀，不是 git commit）
 
 ### Staging（备用）
 - 账号：`3353745917@gmail.com`（Account ID `fb8f4c599afffea6f419532f2d95ab54`）
@@ -85,7 +85,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
-- [ ] **生产冒烟验证**：填一份真实答卷 → 检查频道收到 PDF+附件+hashtag、临时媒体被删、Admin 报告页状态
+- [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
 - [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
 - [ ] Admin「结果模板」页（visual templates 目前只在 Bot 管理）
 - [x] 单选 fallback 显示选项标签（`result-visual.service.ts` + 单测覆盖）
