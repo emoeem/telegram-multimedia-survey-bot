@@ -37,7 +37,10 @@ export async function buildMediaResponse(
           `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`,
         );
       }
-      return new Response(decoded.bytes, { headers });
+      return new Response(decoded.bytes.buffer.slice(
+        decoded.bytes.byteOffset,
+        decoded.bytes.byteOffset + decoded.bytes.byteLength,
+      ) as ArrayBuffer, { headers });
     }
     return Response.redirect(asset.url, 302);
   }

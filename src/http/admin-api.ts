@@ -1603,7 +1603,10 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         entityId: String(responseId),
         after: { surveyId },
       });
-      return new Response(pdf.bytes, {
+      return new Response(pdf.bytes.buffer.slice(
+        pdf.bytes.byteOffset,
+        pdf.bytes.byteOffset + pdf.bytes.byteLength,
+      ) as ArrayBuffer, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="report-${responseId}.pdf"`,

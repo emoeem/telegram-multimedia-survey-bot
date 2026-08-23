@@ -211,8 +211,11 @@ function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | unde
   return null;
 }
 
-function MediaBlock({ urls, type }: { urls: Array<{ url: string }>; type: string }) {
+function MediaBlock({ urls, type, cover }: { urls: Array<{ url: string }>; type: string; cover?: boolean }) {
   if (urls.length === 0) return null;
+  if (cover) {
+    return <AuthenticatedMedia key={urls[0]?.url ?? 0} url={urls[0]!.url} kind="image" cover />;
+  }
   return (
     <div className="mt-3 grid gap-2">
       {urls.map((media, index) => {
@@ -228,7 +231,15 @@ function MediaBlock({ urls, type }: { urls: Array<{ url: string }>; type: string
   );
 }
 
-function AuthenticatedMedia({ url, kind }: { url: string; kind: "image" | "video" | "audio" }) {
+function AuthenticatedMedia({
+  url,
+  kind,
+  cover,
+}: {
+  url: string;
+  kind: "image" | "video" | "audio";
+  cover?: boolean;
+}) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -256,7 +267,11 @@ function AuthenticatedMedia({ url, kind }: { url: string; kind: "image" | "video
     return <div className="rounded-lg bg-gray-100 p-4 text-center text-xs text-gray-400">媒体加载失败</div>;
   }
   if (!objectUrl) {
-    return <div className="h-24 animate-pulse rounded-lg bg-gray-100" />;
+    return (
+      <div
+        className={`animate-pulse bg-gray-100 ${cover ? "absolute inset-0" : "h-24 rounded-lg"}`}
+      />
+    );
   }
   if (kind === "video") {
     return <video className="w-full rounded-lg bg-black" src={objectUrl} controls />;
@@ -264,7 +279,14 @@ function AuthenticatedMedia({ url, kind }: { url: string; kind: "image" | "video
   if (kind === "audio") {
     return <audio className="w-full" src={objectUrl} controls />;
   }
-  return <img className="w-full rounded-lg" src={objectUrl} alt="" loading="lazy" />;
+  return (
+    <img
+      className={cover ? "absolute inset-0 h-full w-full object-cover" : "w-full rounded-lg"}
+      src={objectUrl}
+      alt=""
+      loading="lazy"
+    />
+  );
 }
 
 function ExpandableText({ text, className }: { text: string; className?: string }) {
@@ -293,10 +315,86 @@ interface QuestionAnswerProps {
   disabled: boolean;
 }
 
+function OptionCard({
+  option,
+  selected,
+  multiple,
+  disabled,
+  onSelect,
+}: {
+  option: { id: number; label: string; media: Array<{ url: string }> };
+  selected: boolean;
+  multiple: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onSelect}
+      className={`group relative flex flex-col overflow-hidden rounded-[var(--survey-radius)] border text-left transition ${
+        selected
+          ? "border-[var(--survey-primary)] ring-2 ring-[var(--survey-primary)]"
+          : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+      }`}
+    >
+      {option.media.length ? (
+        <div className="relative aspect-[4/3] w-full overflow-hidden">
+          <MediaBlock urls={option.media} type="image" cover />
+          {selected ? (
+            <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--survey-primary)] text-sm font-bold text-white shadow">
+              ✓
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2 p-2.5">
+        <span
+          className={`grid h-4.5 w-4.5 shrink-0 place-items-center border ${
+            multiple ? "rounded" : "rounded-full"
+          } ${
+            selected
+              ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]"
+              : "border-gray-300 bg-white"
+          }`}
+        >
+          {selected ? (
+            multiple ? (
+              <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6.5 4.5 9 10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+            )
+          ) : null}
+        </span>
+        <span className="min-w-0 text-sm font-medium text-[var(--survey-body)]">{option.label}</span>
+      </div>
+    </button>
+  );
+}
+
 function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerProps) {
   const [uploading, setUploading] = useState(false);
 
   if (question.type === "single" || question.type === "yes_no" || question.type === "rating") {
+    if (question.options.some((option) => option.media.length > 0)) {
+      return (
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          {question.options.map((option) => (
+            <OptionCard
+              key={option.id}
+              option={option}
+              selected={value === option.id}
+              multiple={false}
+              disabled={disabled}
+              onSelect={() => onChange(option.id)}
+            />
+          ))}
+        </div>
+      );
+    }
     return (
       <div className="mt-4 grid gap-2">
         {question.options.map((option) => {
@@ -333,6 +431,29 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
 
   if (question.type === "multiple") {
     const selected = Array.isArray(value) ? value : [];
+    if (question.options.some((option) => option.media.length > 0)) {
+      return (
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          {question.options.map((option) => {
+            const checked = selected.includes(option.id);
+            return (
+              <OptionCard
+                key={option.id}
+                option={option}
+                selected={checked}
+                multiple
+                disabled={disabled}
+                onSelect={() =>
+                  onChange(
+                    checked ? selected.filter((id) => id !== option.id) : [...selected, option.id],
+                  )
+                }
+              />
+            );
+          })}
+        </div>
+      );
+    }
     return (
       <div className="mt-4 grid gap-2">
         {question.options.map((option) => {
