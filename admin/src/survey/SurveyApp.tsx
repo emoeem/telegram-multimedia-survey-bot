@@ -122,10 +122,12 @@ function themeBackgroundStyle(theme: SurveyThemeDto | null): CSSProperties {
 function SurveyListPage() {
   const [surveys, setSurveys] = useState<SurveyListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    fetchSurveyList()
+    fetchSurveyList(debouncedQuery)
       .then((data) => {
         if (!cancelled) setSurveys(data.surveys);
       })
@@ -135,7 +137,12 @@ function SurveyListPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   if (error) {
     return <div className="mx-auto max-w-xl px-5 py-16 text-center text-red-600">{error}</div>;
@@ -151,6 +158,13 @@ function SurveyListPage() {
     <div className="min-h-dvh bg-page pb-10">
       <header className="border-b border-gray-200 bg-white/90 px-5 py-4">
         <h1 className="text-xl font-bold text-gray-900">可填写问卷</h1>
+        <input
+          type="search"
+          className="input mt-3 w-full"
+          placeholder="搜索问卷…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
       </header>
       <main className="mx-auto w-full max-w-xl px-5 pt-5">
         <div className="grid gap-3">
@@ -160,6 +174,14 @@ function SurveyListPage() {
               href={`/s/${survey.id}`}
               className="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-indigo-300"
             >
+              {survey.coverUrl ? (
+                <img
+                  src={survey.coverUrl}
+                  alt=""
+                  className="mb-3 aspect-[16/7] w-full rounded-lg object-cover"
+                  loading="lazy"
+                />
+              ) : null}
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-base font-semibold text-gray-900">{survey.title}</h2>
                 {survey.accessCodeRequired ? (

@@ -17,8 +17,11 @@ export function temporaryMediaKey(responseId: number): string {
   return `media:temp:${responseId}:${crypto.randomUUID()}`;
 }
 
-export function temporaryMediaExpiry(now = new Date()): string {
-  return new Date(now.getTime() + TEMP_MEDIA_TTL_SECONDS * 1000).toISOString();
+export function temporaryMediaExpiry(
+  now = new Date(),
+  ttlSeconds = TEMP_MEDIA_TTL_SECONDS,
+): string {
+  return new Date(now.getTime() + ttlSeconds * 1000).toISOString();
 }
 
 /**
@@ -33,6 +36,7 @@ export async function storeTemporaryMedia(
     bytes: Uint8Array;
     mimeType: string;
     fileName: string | null;
+    ttlSeconds?: number;
   },
 ): Promise<MediaAsset> {
   const storageKey = temporaryMediaKey(input.responseId);
@@ -50,7 +54,7 @@ export async function storeTemporaryMedia(
     fileSize: input.bytes.byteLength,
     storageKind: store.kind,
     storageKey,
-    expiresAt: temporaryMediaExpiry(now),
+    expiresAt: temporaryMediaExpiry(now, input.ttlSeconds),
   });
 }
 

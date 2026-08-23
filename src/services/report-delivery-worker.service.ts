@@ -21,7 +21,7 @@ import {
 import { deleteTemporaryMediaForResponse } from "./media/temporary-media.service";
 import { KVMediaStore } from "./media/temporary-media-store";
 import { resolveReportTemplate } from "./report/template-resolver";
-import { getSystemSettingValue } from "./system-settings.service";
+import { getSystemSettingValue, loadSystemSettings } from "./system-settings.service";
 import { sendDocument, sendMessage, sendPhoto } from "../bot/telegram";
 import { zipSync } from "fflate";
 
@@ -52,6 +52,7 @@ function messageIdFromResponse(response: Response): Promise<number> {
 function isRetryableDeliveryError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   if (/REPORT_CHANNEL_ID|BROWSER|未配置|not configured/.test(message)) return false;
+  if (/超过大小限制|too large/.test(message)) return false;
   return true;
 }
 
@@ -148,6 +149,11 @@ async function deliverReportToChannel(
   } = { completedAt, reportId: `#${responseId}` };
   if (survey?.title) pdfMeta.surveyTitle = survey.title;
   const pdf = await renderReportPdf(env.BROWSER, snapshot, images, pdfMeta, {}, template);
+  const settings = await loadSystemSettings(env.DB);
+  const pdfMaxBytes = settings.pdfMaxMb * 1024 * 1024;
+  if (pdf.byteSize > pdfMaxBytes) {
+    throw new Error(`PDF 超过大小限制（${settings.pdfMaxMb}MB，实际 ${(pdf.byteSize / 1024 / 1024).toFixed(1)}MB）`);
+  }
 
   // Package the PDF together with the participant's uploaded images into a
   // single zip so the archive channel receives everything in one file.

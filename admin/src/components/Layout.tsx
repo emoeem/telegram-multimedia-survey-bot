@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/users", icon: "👥", label: "用户" },
   { to: "/reports", icon: "📦", label: "报告" },
   { to: "/templates", icon: "🎨", label: "模板" },
+  { to: "/audit", icon: "🕵️", label: "审计" },
   { to: "/settings", icon: "⚙️", label: "设置" },
 ];
 
@@ -52,6 +53,7 @@ export function Layout() {
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
+    if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/login")) return "浏览器登录";
     if (path.startsWith("/settings")) return "系统设置";
     return "总览";
@@ -64,6 +66,7 @@ export function Layout() {
   const isUsersActive = location.pathname.startsWith("/users");
   const isReportsActive = location.pathname.startsWith("/reports");
   const isTemplatesActive = location.pathname.startsWith("/templates");
+  const isAuditActive = location.pathname.startsWith("/audit");
   const isSettingsActive = location.pathname.startsWith("/settings");
 
   return (
@@ -100,7 +103,9 @@ export function Layout() {
                         ? isImportsActive
                         : item.to === "/templates"
                           ? isTemplatesActive
-                          : isSurveysActive;
+                          : item.to === "/audit"
+                            ? isAuditActive
+                            : isSurveysActive;
               return (
                 <Link
                   key={item.to}

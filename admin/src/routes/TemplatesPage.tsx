@@ -1,4 +1,22 @@
 import { useEffect, useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { api, apiSend, type ReportTemplateOption } from "../api";
 import { SkeletonPanel } from "../components/ui";
 
@@ -81,6 +99,74 @@ function emptyDraft(): TemplateDraft {
   };
 }
 
+const FONT_OPTIONS = [
+  { id: "default", label: "系统默认", css: 'var(--font-sans)' },
+  { id: "serif", label: "衬线（杂志感）", css: 'Georgia, "Noto Serif CJK SC", serif' },
+  { id: "mono", label: "等宽（数据感）", css: 'ui-monospace, "SF Mono", Menlo, monospace' },
+];
+
+function visualCss(visual: { font: string; primary: string; accent: string }): string {
+  const font = FONT_OPTIONS.find((item) => item.id === visual.font)?.css ?? FONT_OPTIONS[0]!.css;
+  return `:root{--font-display:${font};--font-heading:${font};--report-primary:${visual.primary};--report-accent:${visual.accent}}`;
+}
+
+function SortableSectionRow({
+  section,
+  index,
+  onUpdate,
+  onRemove,
+}: {
+  section: SectionDraft;
+  index: number;
+  onUpdate: (index: number, section: SectionDraft) => void;
+  onRemove: (index: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `section-${index}`,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 ${isDragging ? "opacity-50" : ""}`}
+    >
+      <button
+        type="button"
+        className="cursor-grab touch-none px-1 text-gray-400"
+        aria-label="拖动排序"
+        {...attributes}
+        {...listeners}
+      >
+        ⋮⋮
+      </button>
+      <select
+        className="input flex-1"
+        value={section.kind}
+        onChange={(event) => onUpdate(index, { kind: event.target.value, presentation: section.presentation })}
+      >
+        {SECTION_OPTIONS.map((option) => (
+          <option key={option.kind} value={option.kind}>{option.label}</option>
+        ))}
+      </select>
+      <select
+        className="input w-28"
+        value={section.presentation ?? ""}
+        onChange={(event) =>
+          onUpdate(index, { kind: section.kind, presentation: event.target.value || undefined })
+        }
+      >
+        <option value="">默认</option>
+        {PRESENTATIONS.map((presentation) => (
+          <option key={presentation} value={presentation}>{presentation}</option>
+        ))}
+      </select>
+      <button type="button" className="btn btn-sm text-red-600" onClick={() => onRemove(index)}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<ReportTemplateOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +174,14 @@ export function TemplatesPage() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewWidth, setPreviewWidth] = useState(390);
   const [busy, setBusy] = useState(false);
+  const [visual, setVisual] = useState({ font: "default", primary: "#4f46e5", accent: "#0ea5e9" });
+  const [cssExtra, setCssExtra] = useState("");
+  const sensors = useSensors(
+    useSensor(MouseSensor),
+    useSensor(TouchSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const combinedCss = [visualCss(visual), cssExtra].filter(Boolean).join("\n");
 
   const reload = async () => {
     try {
@@ -113,6 +207,7 @@ export function TemplatesPage() {
         id: copy ? `${id}-copy` : data.template.id,
         css: data.template.css ?? "",
       });
+      setCssExtra(data.template.css ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "加载模板失败");
     }
@@ -126,7 +221,7 @@ export function TemplatesPage() {
       const result = await apiSend<{ html: string }>(
         "POST",
         "/api/admin/report-templates/preview",
-        draft as unknown as Record<string, unknown>,
+        { ...draft, css: combinedCss } as unknown as Record<string, unknown>,
       );
       setPreviewHtml(result.html);
     } catch (requestError) {
@@ -145,7 +240,11 @@ export function TemplatesPage() {
     setBusy(true);
     setError(null);
     try {
-      await apiSend("POST", "/api/admin/report-templates", draft as unknown as Record<string, unknown>);
+      await apiSend(
+        "POST",
+        "/api/admin/report-templates",
+        { ...draft, css: combinedCss } as unknown as Record<string, unknown>,
+      );
       setDraft(null);
       setPreviewHtml(null);
       await reload();
@@ -164,6 +263,29 @@ export function TemplatesPage() {
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "删除失败");
     }
+  };
+
+  const updateSection = (index: number, next: SectionDraft) => {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      sections: draft.sections.map((section, itemIndex) => (itemIndex === index ? next : section)),
+    });
+  };
+
+  const removeSection = (index: number) => {
+    if (!draft) return;
+    setDraft({ ...draft, sections: draft.sections.filter((_, itemIndex) => itemIndex !== index) });
+  };
+
+  const onSectionsDragEnd = (event: DragEndEvent) => {
+    if (!draft) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = draft.sections.findIndex((_, index) => active.id === `section-${index}`);
+    const to = draft.sections.findIndex((_, index) => over.id === `section-${index}`);
+    if (from < 0 || to < 0) return;
+    setDraft({ ...draft, sections: arrayMove(draft.sections, from, to) });
   };
 
   if (error && !draft) {
@@ -273,83 +395,24 @@ export function TemplatesPage() {
               </div>
               <div>
                 <label className="text-sm text-gray-600">内容块（自上而下渲染）</label>
-                <div className="mt-1 space-y-2">
-                  {draft.sections.map((section, index) => (
-                    <div key={index} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
-                      <select
-                        className="input flex-1"
-                        value={section.kind}
-                        onChange={(event) => {
-                          const sections = [...draft.sections];
-                          sections[index] = { kind: event.target.value, presentation: section.presentation };
-                          setDraft({ ...draft, sections });
-                        }}
-                      >
-                        {SECTION_OPTIONS.map((option) => (
-                          <option key={option.kind} value={option.kind}>{option.label}</option>
-                        ))}
-                      </select>
-                      <select
-                        className="input w-28"
-                        value={section.presentation ?? ""}
-                        onChange={(event) => {
-                          const sections = [...draft.sections];
-                          sections[index] = {
-                            kind: section.kind,
-                            presentation: event.target.value || undefined,
-                          };
-                          setDraft({ ...draft, sections });
-                        }}
-                      >
-                        <option value="">默认</option>
-                        {PRESENTATIONS.map((presentation) => (
-                          <option key={presentation} value={presentation}>{presentation}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={index === 0}
-                        onClick={() => {
-                          const sections = [...draft.sections];
-                          const current = sections[index];
-                          const target = sections[index - 1];
-                          if (current && target) {
-                            sections[index - 1] = current;
-                            sections[index] = target;
-                          }
-                          setDraft({ ...draft, sections });
-                        }}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={index === draft.sections.length - 1}
-                        onClick={() => {
-                          const sections = [...draft.sections];
-                          const current = sections[index];
-                          const target = sections[index + 1];
-                          if (current && target) {
-                            sections[index + 1] = current;
-                            sections[index] = target;
-                          }
-                          setDraft({ ...draft, sections });
-                        }}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm text-red-600"
-                        onClick={() => setDraft({ ...draft, sections: draft.sections.filter((_, itemIndex) => itemIndex !== index) })}
-                      >
-                        ✕
-                      </button>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSectionsDragEnd}>
+                  <SortableContext
+                    items={draft.sections.map((_, index) => `section-${index}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="mt-1 space-y-2">
+                      {draft.sections.map((section, index) => (
+                        <SortableSectionRow
+                          key={`section-${index}`}
+                          section={section}
+                          index={index}
+                          onUpdate={updateSection}
+                          onRemove={removeSection}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
                 <button
                   className="btn btn-sm mt-2"
                   onClick={() => setDraft({ ...draft, sections: [...draft.sections, { kind: "answers" }] })}
@@ -358,11 +421,46 @@ export function TemplatesPage() {
                 </button>
               </div>
               <div>
-                <label className="text-sm text-gray-600">自定义 CSS（可选，追加到模板样式）</label>
+                <label className="text-sm text-gray-600">字体与配色（可视化）</label>
+                <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="text-xs text-gray-500">
+                    字体
+                    <select
+                      className="input mt-1 w-full"
+                      value={visual.font}
+                      onChange={(event) => setVisual({ ...visual, font: event.target.value })}
+                    >
+                      {FONT_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs text-gray-500">
+                    主色
+                    <input
+                      type="color"
+                      className="input mt-1 h-9 w-full p-1"
+                      value={visual.primary}
+                      onChange={(event) => setVisual({ ...visual, primary: event.target.value })}
+                    />
+                  </label>
+                  <label className="text-xs text-gray-500">
+                    强调色
+                    <input
+                      type="color"
+                      className="input mt-1 h-9 w-full p-1"
+                      value={visual.accent}
+                      onChange={(event) => setVisual({ ...visual, accent: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">额外 CSS（可选，追加到模板样式）</label>
                 <textarea
                   className="input mt-1 min-h-24 w-full font-mono text-xs"
-                  value={draft.css}
-                  onChange={(event) => setDraft({ ...draft, css: event.target.value })}
+                  value={cssExtra}
+                  onChange={(event) => setCssExtra(event.target.value)}
                   placeholder=".report-section { ... }"
                 />
               </div>

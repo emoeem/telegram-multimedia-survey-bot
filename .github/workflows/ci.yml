@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install root deps
+        run: pnpm install --frozen-lockfile
+      - name: Install admin deps
+        working-directory: admin
+        run: npm ci
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Lint
+        run: pnpm run lint
+      - name: Admin build
+        working-directory: admin
+        run: npm run build
+      - name: PDF parser regression
+        run: python3 -m venv /tmp/pdf-venv && /tmp/pdf-venv/bin/pip install -q pymupdf && /tmp/pdf-venv/bin/python scripts/test_forms_pdf_to_survey.py
+
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install root deps
+        run: pnpm install --frozen-lockfile
+      - name: Install admin deps
+        working-directory: admin
+        run: npm ci
+      - name: Install Chromium + CJK fonts
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Visual regression
+        run: pnpm run test:visual

@@ -3,6 +3,7 @@ import {
   getUserByTelegramId,
 } from '../db/repositories/user.repository';
 import { createAuditLog } from '../db/repositories/audit.repository';
+import { listAuditLogs } from '../db/repositories/audit.repository';
 import {
   addUserTag,
   listUserDirectory,
@@ -763,6 +764,21 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         })),
       ],
     });
+  }
+
+  if (url.pathname === '/api/admin/audit-logs') {
+    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看审计日志');
+    const page = positiveInteger(url.searchParams.get('page'), 1);
+    const pageSize = Math.min(100, positiveInteger(url.searchParams.get('pageSize'), 50));
+    const action = url.searchParams.get('action') ?? '';
+    const entityType = url.searchParams.get('entityType') ?? '';
+    const { items, total } = await listAuditLogs(env.DB, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      ...(action ? { action } : {}),
+      ...(entityType ? { entityType } : {}),
+    });
+    return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
   }
 
   const templateDetailMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
@@ -1654,6 +1670,36 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       after: { count: queued },
     });
     return json({ ok: true, queued });
+  }
+
+  // POST /api/admin/surveys/:id/responses/export-status — 批量导出的实时进度
+  if (request.method === 'POST' && rest === '/responses/export-status') {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
+    const ids = Array.isArray(body.ids)
+      ? body.ids
+          .filter((value): value is number => Number.isInteger(value))
+          .map(Number)
+          .slice(0, 100)
+      : [];
+    if (!ids.length) return fail(400, 'validation_failed', '缺少 ids');
+    const rows = await env.DB.prepare(
+      `SELECT rd.status, COUNT(*) count FROM report_deliveries rd
+       WHERE rd.response_id IN (${ids.map(() => '?').join(',')})
+       GROUP BY rd.status`,
+    )
+      .bind(...ids)
+      .all<{ status: string; count: number }>();
+    const counts: Record<string, number> = {};
+    for (const row of rows.results ?? []) {
+      counts[row.status] = Number(row.count);
+    }
+    const accounted = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    return json({
+      counts,
+      total: ids.length,
+      pending: Math.max(0, ids.length - accounted),
+    });
   }
 
   if (request.method === 'POST' && rest === '/duplicate') {

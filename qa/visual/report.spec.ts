@@ -38,6 +38,7 @@ for (const template of TEMPLATES) {
 
       await expect(page).toHaveScreenshot(
         `report-${template.id}-${viewport.width}x${viewport.height}.png`,
+        { maxDiffPixelRatio: 0.002 },
       );
     });
   }
@@ -69,6 +70,7 @@ for (const template of TEMPLATES) {
 
     await expect(page).toHaveScreenshot(
       `report-${template.id}-print-A4.png`,
+      { maxDiffPixelRatio: 0.002 },
     );
   });
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiSend, type EditorData, type EditorQuestion, type WriteResult } from "../api";
 import { reorderByQuestionIds } from "./questionOrder";
+import { buildOpsFromDiff, cloneSnapshot, type EditorSnapshot } from "./diffOps";
 
 // Phase 2.2 editing model: every mutation appends an operation to a queue with
 // a temporary negative id; 保存 flushes the queue sequentially against the
@@ -29,7 +30,7 @@ export interface EditableQuestion {
   options: EditableOption[];
 }
 
-interface PendingOp {
+export interface PendingOp {
   key: number;
   method: "POST" | "PATCH" | "DELETE";
   path: string;
@@ -39,9 +40,18 @@ interface PendingOp {
   label: string;
 }
 
+export interface SurveyMetaState {
+  title: string;
+  description: string;
+  anonymous: boolean;
+  allowMultipleResponses: boolean;
+  maxResponsesPerUser: number;
+}
+
 export type SaveState = "saved" | "dirty" | "saving" | "error";
 
 export function useSurveyEditor(data: EditorData) {
+  const surveyId = data.survey.id;
   const [surveyMeta, setSurveyMeta] = useState(() => ({
     title: data.survey.title,
     description: data.survey.description ?? "",
@@ -79,9 +89,98 @@ export function useSurveyEditor(data: EditorData) {
   const [saveError, setSaveError] = useState<{ message: string; stale: boolean } | null>(null);
   const opKeyRef = useRef(1);
   const tempIdRef = useRef(-1);
-  const allowUnloadRef = useRef(false);
-  const surveyId = data.survey.id;
+  const baselineRef = useRef<EditorSnapshot | null>(null);
+  if (baselineRef.current === null) {
+    baselineRef.current = {
+      surveyMeta: {
+        title: data.survey.title,
+        description: data.survey.description ?? "",
+        anonymous: data.survey.anonymous,
+        allowMultipleResponses: data.survey.allowMultipleResponses,
+        maxResponsesPerUser: data.survey.maxResponsesPerUser,
+      },
+      questions: data.questions.map((question) => ({
+        id: question.id,
+        type: question.type,
+        title: question.title,
+        description: question.description,
+        required: question.required,
+        order: question.order,
+        pageId: question.pageId ?? null,
+        columns: Array.isArray(question.settings?.columns)
+          ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
+          : [],
+        validation: (question.validation as Record<string, number | boolean> | null) ?? null,
+        condition: question.condition,
+        media: question.media,
+        options: question.options.map((option) => ({
+          id: option.id,
+          label: option.label,
+          order: option.order,
+          media: option.media,
+        })),
+      })),
+    };
+  }
+  const pastRef = useRef<EditorSnapshot[]>([]);
+  const futureRef = useRef<EditorSnapshot[]>([]);
+  const stateRef = useRef<EditorSnapshot>(baselineRef.current as EditorSnapshot);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
+  useEffect(() => {
+    stateRef.current = { surveyMeta, questions };
+  }, [surveyMeta, questions]);
+
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndo(pastRef.current.length > 0);
+    setCanRedo(futureRef.current.length > 0);
+  }, []);
+
+  const recordHistory = useCallback(() => {
+    const snapshot = cloneSnapshot(stateRef.current);
+    const last = pastRef.current[pastRef.current.length - 1];
+    if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return;
+    pastRef.current.push(snapshot);
+    if (pastRef.current.length > 100) pastRef.current.shift();
+    futureRef.current = [];
+    syncHistoryFlags();
+  }, [syncHistoryFlags]);
+
+  const undo = useCallback(() => {
+    const previous = pastRef.current.pop();
+    const baseline = baselineRef.current;
+    if (!previous || !baseline) return;
+    futureRef.current.push(cloneSnapshot(stateRef.current));
+    setQuestions(previous.questions as EditableQuestion[]);
+    setSurveyMeta(previous.surveyMeta);
+    setOps(
+      buildOpsFromDiff(baseline, previous, surveyId, {
+        key: () => opKeyRef.current++,
+        temp: () => tempIdRef.current--,
+      }),
+    );
+    setSaveError(null);
+    syncHistoryFlags();
+  }, [surveyId, syncHistoryFlags]);
+
+  const redo = useCallback(() => {
+    const next = futureRef.current.pop();
+    const baseline = baselineRef.current;
+    if (!next || !baseline) return;
+    pastRef.current.push(cloneSnapshot(stateRef.current));
+    setQuestions(next.questions as EditableQuestion[]);
+    setSurveyMeta(next.surveyMeta);
+    setOps(
+      buildOpsFromDiff(baseline, next, surveyId, {
+        key: () => opKeyRef.current++,
+        temp: () => tempIdRef.current--,
+      }),
+    );
+    setSaveError(null);
+    syncHistoryFlags();
+  }, [surveyId, syncHistoryFlags]);
+  const allowUnloadRef = useRef(false);
   const dirty = ops.length > 0;
 
   useEffect(() => {
@@ -101,16 +200,18 @@ export function useSurveyEditor(data: EditorData) {
 
   const pushOp = useCallback(
     (op: Omit<PendingOp, "key">) => {
+      recordHistory();
       const key = opKeyRef.current++;
       setOps((current) => [...current, { ...op, key }]);
       setSaveError(null);
     },
-    [],
+    [recordHistory],
   );
 
   // ---- survey meta（合并为单个 PATCH） ----
   const updateSurveyMeta = useCallback(
     (patch: Partial<typeof surveyMeta>) => {
+      recordHistory();
       setSurveyMeta((current) => ({ ...current, ...patch }));
       setOps((current) => {
         const existingIndex = current.findIndex((op) => op.method === "PATCH" && op.path === `/api/admin/surveys/${surveyId}`);
@@ -132,7 +233,7 @@ export function useSurveyEditor(data: EditorData) {
       });
       setSaveError(null);
     },
-    [surveyId],
+    [recordHistory, surveyId],
   );
 
   // ---- question helpers ----
@@ -296,6 +397,7 @@ export function useSurveyEditor(data: EditorData) {
       if (!reordered) return false;
       if (questionIds.every((id, index) => id === currentIds[index])) return true;
 
+      recordHistory();
       setQuestions(reordered);
       setOps((current) => [
         ...current.filter((op) => op.path !== `/api/admin/surveys/${surveyId}/questions/reorder`),
@@ -311,7 +413,7 @@ export function useSurveyEditor(data: EditorData) {
       setSaveError(null);
       return true;
     },
-    [questions, surveyId],
+    [questions, recordHistory, surveyId],
   );
 
   // ---- 保存 ----
@@ -386,8 +488,14 @@ export function useSurveyEditor(data: EditorData) {
       });
       return false;
     }
+    // A successful save makes the current state the new baseline; history
+    // snapshots may still carry temporary ids, so reset them.
+    baselineRef.current = cloneSnapshot(stateRef.current);
+    pastRef.current = [];
+    futureRef.current = [];
+    syncHistoryFlags();
     return true;
-  }, [ops, resolveOpReferences, saving]);
+  }, [ops, resolveOpReferences, saving, syncHistoryFlags]);
 
   const discardAndReload = useCallback(() => {
     allowUnloadRef.current = true;
@@ -417,6 +525,10 @@ export function useSurveyEditor(data: EditorData) {
       saveError,
       discardAndReload,
       dirty,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
     }),
     [surveyMeta, updateSurveyMeta, baseUpdatedAt, questions, patchQuestionLocal, queueQuestionPatch, addQuestion,
       deleteQuestion, addOption, deleteOption, renameOption, reorderQuestions, save, saveState, saveError, discardAndReload, dirty],

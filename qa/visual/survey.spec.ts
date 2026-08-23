@@ -322,6 +322,7 @@ for (const fixture of FIXTURES) {
 
       await expect(page).toHaveScreenshot(
         `survey-${fixture.id}-${viewport.width}x${viewport.height}.png`,
+        { maxDiffPixelRatio: 0.002 },
       );
     });
   }

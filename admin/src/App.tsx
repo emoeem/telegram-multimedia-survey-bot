@@ -13,6 +13,7 @@ import { VersionsPage } from "./routes/VersionsPage";
 import { ReportsPage } from "./routes/ReportsPage";
 import { TemplatesPage } from "./routes/TemplatesPage";
 import { LoginPage } from "./routes/LoginPage";
+import { AuditPage } from "./routes/AuditPage";
 import { SettingsPage } from "./routes/SettingsPage";
 
 const router = createBrowserRouter(
@@ -31,6 +32,7 @@ const router = createBrowserRouter(
         { path: "surveys/:id/versions", element: <VersionsPage /> },
         { path: "reports", element: <ReportsPage /> },
         { path: "templates", element: <TemplatesPage /> },
+        { path: "audit", element: <AuditPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "login", element: <LoginPage /> },
         { path: "users", element: <UsersPage /> },

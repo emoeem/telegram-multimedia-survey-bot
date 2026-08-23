@@ -1,0 +1,10 @@
+{
+  "name": "问卷管理后台",
+  "short_name": "问卷平台",
+  "description": "Web-first 问卷平台：创建、填写、报告",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6fa",
+  "theme_color": "#f4f6fa",
+  "lang": "zh-CN"
+}

@@ -30,8 +30,6 @@ import { getMatrixColumns } from "../survey/question-presentation";
 import { getFirstQuestion, getNextQuestionAfterOption } from "../survey/engine";
 import {
   countTemporaryMediaBytesForResponse,
-  MAX_RESPONSE_MEDIA_BYTES,
-  MAX_TEMP_IMAGE_BYTES,
   storeTemporaryMedia,
   TEMP_IMAGE_MIME_TYPES,
 } from "../services/media/temporary-media.service";
@@ -40,6 +38,7 @@ import { enqueueReportDelivery } from "../services/report-delivery.service";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { createReportAccessToken } from "../services/report-access-token.service";
 import { normalizeSurveyTheme } from "../survey/theme";
+import { loadSystemSettings } from "../services/system-settings.service";
 
 const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -200,16 +199,26 @@ export async function handleSurveyApiRequest(
   url: URL,
 ): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/surveys") {
+    const q = (url.searchParams.get("q") ?? "").trim();
+    const conditions = ["s.status = 'published'"];
+    const binds: string[] = [];
+    if (q) {
+      conditions.push("(lower(s.title) LIKE ? OR lower(COALESCE(s.description,'')) LIKE ?)");
+      binds.push(`%${q.toLowerCase()}%`, `%${q.toLowerCase()}%`);
+    }
     const rows = await env.DB
       .prepare(
         `SELECT s.id, s.title, s.description, s.access_code accessCode,
-                s.published_at publishedAt,
+                s.published_at publishedAt, s.settings_json settingsJson,
+                m.url coverUrl,
                 (SELECT COUNT(*) FROM survey_questions q
                  WHERE q.survey_id = s.id) questionCount
          FROM surveys s
-         WHERE s.status = 'published'
+         LEFT JOIN media_assets m ON m.id = s.cover_media_id
+         WHERE ${conditions.join(" AND ")}
          ORDER BY s.published_at DESC, s.id DESC`,
       )
+      .bind(...binds)
       .all<{
         id: number;
         title: string;
@@ -217,6 +226,8 @@ export async function handleSurveyApiRequest(
         accessCode: string | null;
         publishedAt: string | null;
         questionCount: number;
+        settingsJson: string | null;
+        coverUrl: string | null;
       }>();
     return json({
       surveys: (rows.results ?? []).map((row) => ({
@@ -226,6 +237,8 @@ export async function handleSurveyApiRequest(
         accessCodeRequired: Boolean(row.accessCode),
         publishedAt: row.publishedAt,
         questionCount: Number(row.questionCount ?? 0),
+        ...(row.coverUrl ? { coverUrl: row.coverUrl } : {}),
+        theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
       })),
     });
   }
@@ -827,12 +840,15 @@ export async function handleSurveyMediaUpload(
   if (!TEMP_IMAGE_MIME_TYPES.has(mimeType)) {
     return fail(400, "invalid_image_type", "仅支持 JPEG / PNG / WebP 图片");
   }
-  if (file.size > MAX_TEMP_IMAGE_BYTES) {
-    return fail(413, "upload_too_large", "单张图片不能超过 10MB");
+  const settings = await loadSystemSettings(env.DB);
+  const maxUploadBytes = settings.maxUploadMb * 1024 * 1024;
+  if (file.size > maxUploadBytes) {
+    return fail(413, "upload_too_large", `单张图片不能超过 ${settings.maxUploadMb}MB`);
   }
   const currentBytes = await countTemporaryMediaBytesForResponse(env.DB, response.id);
-  if (currentBytes + file.size > MAX_RESPONSE_MEDIA_BYTES) {
-    return fail(413, "response_media_limit", "单份答卷图片总量不能超过 50MB");
+  const maxResponseBytes = settings.maxResponseMediaMb * 1024 * 1024;
+  if (currentBytes + file.size > maxResponseBytes) {
+    return fail(413, "response_media_limit", `单份答卷图片总量不能超过 ${settings.maxResponseMediaMb}MB`);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   const asset = await storeTemporaryMedia(env.DB, temporaryStore(env), {
@@ -840,6 +856,7 @@ export async function handleSurveyMediaUpload(
     bytes,
     mimeType,
     fileName: file.name || null,
+    ttlSeconds: settings.mediaTtlSeconds,
   });
   return json({ ok: true, mediaAssetId: asset.id, url: mediaPublicUrl(asset.id) }, 201);
 }

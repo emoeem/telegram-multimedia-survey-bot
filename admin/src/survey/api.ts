@@ -85,6 +85,8 @@ export interface SurveyListItem {
   accessCodeRequired: boolean;
   publishedAt: string | null;
   questionCount: number;
+  coverUrl?: string;
+  theme: SurveyThemeDto | null;
 }
 
 export type AnswerValue =
@@ -153,8 +155,10 @@ export function fetchSurvey(surveyId: number): Promise<SurveyDto> {
   return request<SurveyDto>(`/api/survey/${surveyId}`);
 }
 
-export function fetchSurveyList(): Promise<{ surveys: SurveyListItem[] }> {
-  return request<{ surveys: SurveyListItem[] }>("/api/surveys");
+export function fetchSurveyList(q = ""): Promise<{ surveys: SurveyListItem[] }> {
+  return request<{ surveys: SurveyListItem[] }>(
+    `/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+  );
 }
 
 export async function verifyAccessCode(surveyId: number, code: string): Promise<void> {

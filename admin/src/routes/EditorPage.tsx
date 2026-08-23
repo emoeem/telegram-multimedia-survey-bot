@@ -82,6 +82,33 @@ function EditableEditor({ data }: { data: EditorData }) {
     return () => query.removeEventListener("change", onChange);
   }, []);
   const { survey } = data;
+
+  useEffect(() => {
+    // Autosave: flush pending edits after 2s of inactivity (unless saving or
+    // an error needs attention).
+    if (!editor.dirty || editor.saveState === "saving" || editor.saveState === "error") return;
+    const timer = window.setTimeout(() => {
+      void editor.save();
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [editor]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) editor.redo();
+        else editor.undo();
+      } else if (key === "y") {
+        event.preventDefault();
+        editor.redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editor]);
   const editingDisabled = editor.saveState === "saving" || Boolean(editor.saveError?.stale);
   const previewQuestions = useMemo(
     () => buildEditorPreviewFlow(survey.id, editor.questions),
@@ -206,6 +233,22 @@ function EditableEditor({ data }: { data: EditorData }) {
             onClick={() => editor.save()}
           >
             💾 保存
+          </button>
+          <button
+            className="btn"
+            disabled={!editor.canUndo}
+            title="撤销（Ctrl+Z）"
+            onClick={() => editor.undo()}
+          >
+            ↩️ 撤销
+          </button>
+          <button
+            className="btn"
+            disabled={!editor.canRedo}
+            title="重做（Ctrl+Shift+Z / Ctrl+Y）"
+            onClick={() => editor.redo()}
+          >
+            ↪️ 重做
           </button>
           <button className="btn" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
             👁 预览

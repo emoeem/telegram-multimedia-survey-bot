@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useApi } from "../hooks";
 import {
@@ -38,7 +38,16 @@ export function ResponsesPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ total: number; done: number; failed: number } | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
+
+  useEffect(
+    () => () => {
+      if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+    },
+    [],
+  );
 
   const query = new URLSearchParams({
     page: String(page),
@@ -152,10 +161,43 @@ export function ResponsesPage() {
       );
       setMessage(`已把 ${result.queued} 份答卷的报告加入导出队列，将按顺序发送到私人频道`);
       setSelected(new Set());
+      setExportProgress({ total: result.queued, done: 0, failed: 0 });
+      pollExportStatus([...selected]);
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "批量导出失败");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const pollExportStatus = async (ids: number[], attempt = 0) => {
+    if (!id) return;
+    if (attempt >= 40) {
+      setExportProgress(null);
+      setMessage("导出进度查询超时，请到「报告归档」页查看最终状态");
+      return;
+    }
+    try {
+      const result = await apiSend<{ counts: Record<string, number>; total: number }>(
+        "POST",
+        `/api/admin/surveys/${id}/responses/export-status`,
+        { ids },
+      );
+      const failed = result.counts.failed ?? 0;
+      const done = (result.counts.delivered ?? 0) + failed;
+      setExportProgress({ total: result.total, done, failed });
+      if (done >= result.total) {
+        setExportProgress(null);
+        setMessage(
+          failed > 0
+            ? `批量导出完成：成功 ${result.total - failed} 份，失败 ${failed} 份（见报告归档）`
+            : `批量导出完成：${result.total} 份报告已全部发送到私人频道`,
+        );
+        return;
+      }
+      pollTimerRef.current = window.setTimeout(() => void pollExportStatus(ids, attempt + 1), 3000);
+    } catch {
+      pollTimerRef.current = window.setTimeout(() => void pollExportStatus(ids, attempt + 1), 3000);
     }
   };
 
@@ -210,6 +252,12 @@ export function ResponsesPage() {
         </div>
 
         {message ? <div className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">{message}</div> : null}
+        {exportProgress ? (
+          <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+            导出中：{exportProgress.done}/{exportProgress.total} 份已发送
+            {exportProgress.failed > 0 ? `（失败 ${exportProgress.failed}）` : ""}
+          </div>
+        ) : null}
         {actionError ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{actionError}</div> : null}
 
         {data.items.length ? (
