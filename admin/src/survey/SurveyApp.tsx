@@ -120,15 +120,20 @@ function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
     // Map the DaisyUI theme library tokens onto the survey surface.
     vars["--survey-primary"] = "var(--color-primary)";
     vars["--survey-secondary"] = "var(--color-secondary)";
+    vars["--survey-bg"] = "var(--color-base-100)";
     vars["--survey-card-bg"] = "var(--color-base-100)";
     vars["--survey-card-border"] = "var(--color-base-200)";
     vars["--survey-heading"] = "var(--color-base-content)";
     vars["--survey-body"] = "var(--color-base-content)";
     vars["--survey-muted"] = "color-mix(in oklab, var(--color-base-content) 65%, transparent)";
+    vars["--survey-primary-soft"] = "color-mix(in srgb, var(--color-primary) 10%, var(--color-base-100))";
     vars["--survey-radius"] = "var(--radius-box)";
     vars["--survey-button-radius"] = "var(--radius-field)";
   }
-  if (theme.primaryColor) vars["--survey-primary"] = theme.primaryColor;
+  if (theme.primaryColor) {
+    vars["--survey-primary"] = theme.primaryColor;
+    vars["--survey-primary-soft"] = `color-mix(in srgb, ${theme.primaryColor} 10%, var(--survey-card-bg, #ffffff))`;
+  }
   if (theme.secondaryColor) vars["--survey-secondary"] = theme.secondaryColor;
   if (theme.card?.background) vars["--survey-card-bg"] = theme.card.background;
   if (theme.card?.border) vars["--survey-card-border"] = theme.card.border;
@@ -193,24 +198,25 @@ function SurveyListPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-page pb-10">
-      <header className="border-b border-gray-200 bg-white/90 px-5 py-4 backdrop-blur">
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
+    <div className="survey-glow min-h-dvh pb-10">
+      <header className="border-b border-gray-200 bg-white/80 px-5 pb-4 pt-7 backdrop-blur-md">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
+        <p className="mt-1 text-sm text-gray-500">选择一份问卷，开始你的回答</p>
         <input
           type="search"
-          className="input mt-3 w-full"
+          className="input mt-4 w-full"
           placeholder="搜索问卷…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
       </header>
       <main className="mx-auto w-full max-w-xl px-5 pt-5">
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {surveys.map((survey) => (
             <a
               key={survey.id}
               href={`/s/${survey.id}`}
-              className="card block transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
+              className="survey-card block p-4 transition hover:-translate-y-0.5 hover:shadow-lg"
             >
               {survey.coverUrl ? (
                 <img
@@ -221,7 +227,7 @@ function SurveyListPage() {
                 />
               ) : null}
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-base font-semibold text-gray-900">{survey.title}</h2>
+                <h2 className="text-[17px] font-semibold leading-snug text-gray-900">{survey.title}</h2>
                 {survey.accessCodeRequired ? (
                   <span className="badge badge-amber shrink-0">
                     <Lock className="h-3 w-3" />需密码
@@ -232,8 +238,8 @@ function SurveyListPage() {
                 <p className="mt-1 line-clamp-2 text-sm text-gray-500">{survey.description}</p>
               ) : null}
               <div className="mt-3 flex items-center justify-between">
-                <span className="text-xs text-gray-400">{survey.questionCount} 道题</span>
-                <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm">
+                <span className="chip text-xs">{survey.questionCount} 道题</span>
+                <span className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-indigo-500/25">
                   开始填写
                   <ArrowRight className="h-4 w-4" />
                 </span>
@@ -456,7 +462,7 @@ function BgmPlayer({ url }: { url: string }) {
       type="button"
       aria-label={playing ? "暂停背景音乐" : "播放背景音乐"}
       onClick={toggle}
-      className="fixed bottom-20 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
+      className="fixed bottom-28 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
     >
       {playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
     </button>
@@ -490,7 +496,7 @@ function OptionCard({
       onClick={onSelect}
       className={`group relative flex flex-col overflow-hidden rounded-[var(--survey-radius)] border text-left transition ${
         selected
-          ? "border-[var(--survey-primary)] ring-2 ring-[var(--survey-primary)]"
+          ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] ring-2 ring-[var(--survey-primary)]"
           : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
       }`}
     >
@@ -560,9 +566,9 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               type="button"
               disabled={disabled}
               onClick={() => onChange(option.id)}
-              className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-left text-[15px] transition ${
+              className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[15px] transition active:scale-[0.99] ${
                 selected
-                  ? "border-[var(--survey-primary)] [background-color:color-mix(in_srgb,var(--survey-primary)_10%,white)] text-[var(--survey-primary)]"
+                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)] shadow-sm"
                   : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
               }`}
             >
@@ -577,6 +583,9 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 <span className="block">{option.label}</span>
                 <MediaBlock urls={option.media} type="image" />
               </span>
+              {selected ? (
+                <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} />
+              ) : null}
             </button>
           );
         })}
@@ -621,9 +630,9 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               onClick={() =>
                 onChange(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])
               }
-              className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-left text-[15px] transition ${
+              className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[15px] transition active:scale-[0.99] ${
                 checked
-                  ? "border-[var(--survey-primary)] [background-color:color-mix(in_srgb,var(--survey-primary)_10%,white)] text-[var(--survey-primary)]"
+                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)] shadow-sm"
                   : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
               }`}
             >
@@ -642,6 +651,9 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 <span className="block">{option.label}</span>
                 <MediaBlock urls={option.media} type="image" />
               </span>
+              {checked ? (
+                <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} />
+              ) : null}
             </button>
           );
         })}
@@ -774,9 +786,12 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
             </button>
           </div>
         ) : (
-          <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-8 text-sm text-gray-500">
-            <Paperclip className="h-6 w-6" />
-            <span className="mt-2">{uploading ? "上传中…" : "点击上传文件"}</span>
+          <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-10 text-sm text-[var(--survey-muted)] transition hover:border-[var(--survey-primary)]">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+              <Paperclip className="h-5 w-5" />
+            </span>
+            <span className="mt-3 font-medium">{uploading ? "上传中…" : "点击上传文件"}</span>
+            <span className="mt-1 text-xs opacity-70">支持图片 / 视频 / 音频 / 文件</span>
             <input
               type="file"
               className="hidden"
@@ -830,31 +845,40 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
         aria-label="退出问卷"
         title="退出问卷"
         onClick={closeSurveyPage}
-        className="btn btn-icon absolute right-4 top-4 rounded-full"
+        className="survey-icon-btn absolute right-5 top-5"
       >
         <X className="h-5 w-5" />
       </button>
-      <div className="mb-4 flex items-center gap-3">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
-          <Lock className="h-6 w-6" />
+      <div className="survey-card p-6 text-center">
+        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
+          <Lock className="h-7 w-7" />
         </span>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">需要访问密码</h1>
+        <h1 className="mt-4 text-xl font-bold tracking-tight text-gray-900">需要访问密码</h1>
+        <p className="mt-1.5 text-sm text-gray-500">请输入此问卷的访问密码后继续填写。</p>
+        <input
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void submit();
+          }}
+          placeholder="访问密码"
+          className="input mt-5 w-full text-center"
+          autoFocus
+        />
+        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+          className="btn btn-primary mt-4 w-full disabled:opacity-50"
+        >
+          {busy ? "验证中…" : (
+            <>
+              继续<ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </button>
       </div>
-      <p className="mt-2 text-sm text-gray-500">请输入此问卷的访问密码后继续填写。</p>
-      <input
-        value={code}
-        onChange={(event) => setCode(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") void submit();
-        }}
-        placeholder="访问密码"
-        className="input mt-4 w-full"
-        autoFocus
-      />
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
-      <button type="button" disabled={busy} onClick={() => void submit()} className="btn btn-primary mt-4 w-full disabled:opacity-50">
-        {busy ? "验证中…" : "继续"}
-      </button>
     </div>
   );
 }
@@ -1085,14 +1109,14 @@ export function SurveyApp() {
   }
   if (screen.kind === "done") {
     return (
-      <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center">
-        <div className="grid h-16 w-16 place-items-center rounded-full bg-green-100 text-green-600">
-          <CheckCircle2 className="h-8 w-8" />
+      <div className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center">
+        <div className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-xl shadow-emerald-500/30">
+          <CheckCircle2 className="h-10 w-10" strokeWidth={2.2} />
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight text-gray-900">提交成功</h1>
-        <p className="mt-2 text-sm text-gray-500">感谢你的参与！</p>
-        <button type="button" className="btn mt-6" onClick={closeSurveyPage}>
-          关闭
+        <h1 className="mt-5 text-2xl font-bold tracking-tight text-gray-900">提交成功</h1>
+        <p className="mt-2 text-sm text-gray-500">感谢你的参与，你的回答已记录。</p>
+        <button type="button" className="btn btn-primary mt-7 px-8" onClick={closeSurveyPage}>
+          <Check className="h-4 w-4" />完成
         </button>
       </div>
     );
@@ -1120,7 +1144,7 @@ export function SurveyApp() {
 
   return (
     <div
-      className={`min-h-dvh ${navHidden ? "pb-10" : "pb-32"} ${theme ? "" : "bg-page"}`}
+      className={`survey-glow min-h-dvh ${navHidden ? "pb-10" : "pb-32"}`}
       data-theme={theme?.preset}
       style={{ ...vars, ...backgroundStyle }}
     >
@@ -1136,105 +1160,140 @@ export function SurveyApp() {
         />
       ) : null}
       <div className="relative z-10">
-        <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur">
-          <div className="mx-auto max-w-xl px-5 py-3">
-            <div className="flex items-center justify-between gap-2 text-xs text-[var(--survey-muted)]">
-              <span className="min-w-0 truncate font-medium text-[var(--survey-heading)]">{survey.title}</span>
-              <button
-                type="button"
-                aria-label="返回上一页"
-                title="返回上一页"
-                onClick={backSurveyPage}
-                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-1 text-xs text-[var(--survey-muted)]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />返回
-              </button>
-              <button
-                type="button"
-                aria-label="选择主题"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-xs"
-                onClick={() => setThemePickerOpen(true)}
-              >
-                <Palette className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="退出问卷"
-                title="退出问卷"
-                onClick={closeSurveyPage}
-                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-1 text-xs text-[var(--survey-muted)]"
-              >
-                <X className="h-3.5 w-3.5" />退出
-              </button>
-              <span className="shrink-0">
-                第 {index + 1} / {total} 题 · {percent}%
-              </span>
-            </div>
-            {pageIndex >= 0 ? (
-              <div className="mt-1 text-[11px] text-[var(--survey-muted)]">
-                第 {pageIndex + 1} / {survey.pages.length} 页
+        <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
+          <div className="mx-auto max-w-xl px-5 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-semibold text-[var(--survey-heading)]">{survey.title}</p>
+                {pageIndex >= 0 ? (
+                  <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
+                    第 {pageIndex + 1} / {survey.pages.length} 页
+                  </p>
+                ) : null}
               </div>
-            ) : null}
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200/70">
-              <div
-                className="h-full rounded-full bg-[var(--survey-primary)] transition-all"
-                style={{ width: `${percent}%` }}
-              />
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="返回上一页"
+                  title="返回上一页"
+                  onClick={backSurveyPage}
+                  className="survey-icon-btn"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="选择主题"
+                  title="选择主题"
+                  className="survey-icon-btn"
+                  onClick={() => setThemePickerOpen(true)}
+                >
+                  <Palette className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="退出问卷"
+                  title="退出问卷"
+                  onClick={closeSurveyPage}
+                  className="survey-icon-btn"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pb-3 pt-2.5">
+              <div className="survey-progress-track flex-1">
+                <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
+              </div>
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--survey-muted)]">
+                {index + 1}/{total} · {percent}%
+              </span>
             </div>
           </div>
         </header>
 
         <main
-          className="mx-auto w-full max-w-xl px-5 pt-6"
+          className="mx-auto w-full max-w-xl px-5 pb-2 pt-5"
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
-          {currentPage?.title ? (
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--survey-primary)]">
-              {currentPage.title}
-            </p>
-          ) : null}
-          <h1 className="mt-2 text-xl font-bold leading-snug text-[var(--survey-heading)]">{question.title}</h1>
-          {question.required ? (
-            <span className="mt-2 inline-block rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">必答</span>
-          ) : null}
-          {question.description ? (
-            <ExpandableText className="mt-2 whitespace-pre-wrap text-sm text-[var(--survey-muted)]" text={question.description} />
-          ) : null}
-          <MediaBlock urls={question.media} type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"} />
-          <QuestionAnswer question={question} value={value} onChange={(next) => updateAnswer(question.id, next)} disabled={busy} />
-          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+          <div className="survey-card p-5">
+            {currentPage?.title ? (
+              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
+                {currentPage.title}
+              </p>
+            ) : null}
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
+                {question.title}
+              </h1>
+              {question.required ? (
+                <span className="badge badge-red mt-1 shrink-0">必答</span>
+              ) : null}
+            </div>
+            {question.description ? (
+              <ExpandableText
+                className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--survey-muted)]"
+                text={question.description}
+              />
+            ) : null}
+            <MediaBlock
+              urls={question.media}
+              type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"}
+            />
+            <div className="mt-5">
+              <QuestionAnswer
+                question={question}
+                value={value}
+                onChange={(next) => updateAnswer(question.id, next)}
+                disabled={busy}
+              />
+            </div>
+            {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+          </div>
         </main>
 
         <nav
-          className={`fixed inset-x-0 bottom-0 z-10 border-t border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur transition-transform duration-200 ${
+          className={`fixed inset-x-0 bottom-0 z-10 transition-transform duration-200 ${
             navHidden ? "translate-y-full" : ""
           }`}
         >
-          <div className="mx-auto flex max-w-xl gap-3 px-5 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
-            {index > 0 ? (
+          <div className="mx-auto max-w-xl px-4 pt-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
+            <div className="flex items-center gap-2 rounded-[20px] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]/90 p-2 shadow-[0_-6px_34px_-14px_rgba(15,23,42,.28)] backdrop-blur">
+              {index > 0 ? (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  disabled={busy}
+                  className="btn shrink-0 text-[var(--survey-body)]"
+                  style={{
+                    backgroundColor: "var(--survey-card-bg)",
+                    borderColor: "var(--survey-card-border)",
+                  }}
+                >
+                  <ArrowLeft className="h-4 w-4" />上一题
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={goBack}
+                onClick={() => void (isLast ? submit() : goNext())}
                 disabled={busy}
-                className="btn flex-1 text-[var(--survey-body)]"
-                style={{
-                  backgroundColor: "var(--survey-card-bg)",
-                  borderColor: "var(--survey-card-border)",
-                }}
+                className="btn btn-primary flex-1 font-semibold disabled:opacity-50"
+                style={{ borderRadius: "var(--survey-button-radius, 12px)" }}
               >
-                上一题
+                {busy ? (
+                  "保存中…"
+                ) : isLast ? (
+                  <>
+                    <Check className="h-4 w-4" />提交问卷
+                  </>
+                ) : (
+                  <>
+                    下一题<ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void (isLast ? submit() : goNext())}
-              disabled={busy}
-              className="btn btn-primary flex-1 font-medium disabled:opacity-50"
-              style={{ borderRadius: "var(--survey-button-radius, 8px)" }}
-            >
-              {busy ? "保存中…" : isLast ? "提交问卷" : "下一题"}
-            </button>
+            </div>
           </div>
         </nav>
         {theme?.audio?.url ? <BgmPlayer url={theme.audio.url} /> : null}
@@ -1246,19 +1305,20 @@ export function SurveyApp() {
               onClick={() => setThemePickerOpen(false)}
             />
             <div
-              className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]"
+              className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] shadow-[0_-12px_40px_-16px_rgba(15,23,42,.3)]"
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-[var(--survey-heading)]">选择主题</span>
+                <span className="text-[15px] font-semibold text-[var(--survey-heading)]">选择主题</span>
                 <button
                   type="button"
-                  className="text-xs text-[var(--survey-muted)]"
+                  className="survey-icon-btn h-8 w-8"
+                  aria-label="关闭"
                   onClick={() => setThemePickerOpen(false)}
                 >
-                  关闭
+                  <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="mt-3 grid grid-cols-4 gap-2">
+              <div className="mt-4 grid grid-cols-4 gap-2.5">
                 <button
                   type="button"
                   className={`rounded-lg border p-1.5 text-left ${
