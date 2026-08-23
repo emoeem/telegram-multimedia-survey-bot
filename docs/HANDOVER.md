@@ -77,7 +77,8 @@
 2. **无规则集的 fallback 报告**：~~单选显示原始选项 ID（如"10"而非"蓝色"）~~ 已修复——`result-visual.service.ts` 的 fallback 展示会把单选/多选选项 ID 映射为标签（未知 ID 回退原始值）；标签来自当前 `question_options`，历史答卷按 DB 选项 ID 尽力映射（快照中选项为位置 ID，无可靠对应关系）。配置 ResultRule 后按规则显示文案
 3. **Bot 旧答题 UI 未删除**：删除前必须 Web 流程在真实环境验证稳定（P10）
 4. **`html_handling="none"` 已配置**：不要改回默认，否则 `/s/:id` 会被 ASSETS 重定向到 `/survey` 丢失路径
-5. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
+5. **前端页面不再阻塞加载 telegram.org 脚本（2026-08-23）**：survey 页直接移除；admin 页改为挂载前带超时动态加载（`waitForTelegramWebApp`）+ initData 惰性读取。普通浏览器（含国内）不再黑屏；Telegram WebView 内由客户端本地提供该脚本，鉴权不受影响
+6. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
 6. `.dev.vars` 的 BOT_TOKEN 是占位符，别当真；真实 token 只在 Cloudflare Secrets
 7. **Bot token 曾在对话中暴露过**，建议在 BotFather 轮换一次并更新 Secrets
 8. 本机 `~/.config/.wrangler` 的 OAuth 会随 `wrangler login` 切换账号，注意当前指向哪个账号
