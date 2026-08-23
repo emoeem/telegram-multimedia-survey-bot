@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, FocusEvent } from "react";
 import {
   type AnswerValue,
   fetchAnswers,
@@ -697,6 +697,47 @@ export function SurveyApp() {
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [viewportShrunk, setViewportShrunk] = useState(false);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const sync = () => {
+      // When the on-screen keyboard opens, the visual viewport shrinks well
+      // below the layout viewport height.
+      setViewportShrunk(window.innerHeight - viewport.height > 80);
+    };
+    viewport.addEventListener("resize", sync);
+    viewport.addEventListener("scroll", sync);
+    return () => {
+      viewport.removeEventListener("resize", sync);
+      viewport.removeEventListener("scroll", sync);
+    };
+  }, []);
+
+  const isEditableTarget = (target: EventTarget | null): boolean =>
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
+
+  const handleInputFocus = useCallback((event: FocusEvent) => {
+    if (!isEditableTarget(event.target)) return;
+    setInputFocused(true);
+    window.setTimeout(() => {
+      (event.target as HTMLElement).scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+    }, 250);
+  }, []);
+
+  const handleInputBlur = useCallback((event: FocusEvent) => {
+    if (!isEditableTarget(event.target)) return;
+    setInputFocused(false);
+  }, []);
+
+  const navHidden = inputFocused || viewportShrunk;
 
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
@@ -886,7 +927,7 @@ export function SurveyApp() {
 
   return (
     <div
-      className={`min-h-dvh pb-32 ${theme ? "" : "bg-page"}`}
+      className={`min-h-dvh ${navHidden ? "pb-10" : "pb-32"} ${theme ? "" : "bg-page"}`}
       data-theme={theme?.preset}
       style={{ ...vars, ...backgroundStyle }}
     >
@@ -924,7 +965,11 @@ export function SurveyApp() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-xl px-5 pt-6">
+        <main
+          className="mx-auto w-full max-w-xl px-5 pt-6"
+          onFocusCapture={handleInputFocus}
+          onBlurCapture={handleInputBlur}
+        >
           {currentPage?.title ? (
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--survey-primary)]">
               {currentPage.title}
@@ -942,7 +987,11 @@ export function SurveyApp() {
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur">
+        <nav
+          className={`fixed inset-x-0 bottom-0 z-10 border-t border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur transition-transform duration-200 ${
+            navHidden ? "translate-y-full" : ""
+          }`}
+        >
           <div className="mx-auto flex max-w-xl gap-3 px-5 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             {index > 0 ? (
               <button

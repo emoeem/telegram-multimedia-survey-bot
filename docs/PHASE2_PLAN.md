@@ -128,9 +128,11 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 **尚未完成（下一块）**：
 
 - ~~Option Media 卡片化~~（已完成 2026-08-23）：选项含媒体时整题切换为 2 列卡片网格——媒体 4:3 封面（object-cover）、选中态主色描边 + 右上角 ✓ 徽标、底部单选/复选指示 + 标签；无媒体选项降级为纯标签卡片，长标签不撑破卡片
-- 键盘弹出不遮挡输入框（Telegram WebView 键盘适配）
+- ~~键盘弹出不遮挡输入框~~（已完成 2026-08-23）：输入聚焦时底部导航滑出视口（translate-y-full）并把输入框滚动到视口中央；`visualViewport` 收缩监听兜底（键盘占高同样隐藏导航）；QA 新增行为测试覆盖聚焦/失焦
 - ~~主题预设库与后台主题选择界面~~（已完成，见 §6：DaisyUI 8 套预设 + 详情页选择器 + 自定义 JSON 叠加）
 - ~~Playwright Visual QA~~（已完成，见 §10：问卷侧 18 用例；报告侧待 Phase 4/5 定型后补）
+
+**Phase 3 至此完成**（2026-08-23）。
 
 ## 6. 问卷 Theme System
 

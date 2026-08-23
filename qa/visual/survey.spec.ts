@@ -326,3 +326,20 @@ for (const fixture of FIXTURES) {
     });
   }
 }
+
+test("hides the bottom nav while an input is focused", async ({ page }) => {
+  const fixture = FIXTURES.find((item) => item.id === 101);
+  if (!fixture) throw new Error("fixture 101 missing");
+  await page.setViewportSize(VIEWPORTS[0]);
+  await installRoutes(page, fixture);
+
+  await page.goto(`/s/${fixture.id}`);
+  const input = page.locator("main input").first();
+  await expect(input).toBeVisible();
+
+  await input.click();
+  await expect(page.locator("nav")).toHaveClass(/translate-y-full/);
+
+  await page.locator("main h1").click();
+  await expect(page.locator("nav")).not.toHaveClass(/translate-y-full/);
+});
