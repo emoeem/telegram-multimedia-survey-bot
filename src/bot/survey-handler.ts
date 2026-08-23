@@ -1,21 +1,7 @@
 import {
   cancelResponse,
-  completeResponse,
-  createResponse,
-  deleteAnswer,
-  getActiveResponseBySurveyAndUser,
   getActiveResponseByUser,
   getResponseById,
-  getResponseBySurveyAndHash,
-  restartResponse,
-  updateResponseCurrentQuestion,
-  upsertDateAnswer,
-  upsertMediaAnswer,
-  upsertNumberAnswer,
-  upsertOptionAnswer,
-  upsertJsonAnswer,
-  upsertTextAnswer,
-  upsertTimeAnswer,
 } from "../db/repositories/response.repository";
 import {
   getSurveyById,
@@ -25,7 +11,6 @@ import {
   updateSurveyStatus,
 } from "../db/repositories/survey.repository";
 import {
-  createAnswerMedia,
   deleteOptionMedia,
   deleteQuestionMedia,
   getAnswerMediaByAnswerId,
@@ -46,11 +31,9 @@ import {
   updateQuestionRequired,
   setQuestionSkipRule,
 } from "../db/repositories/question.repository";
-import { registerMediaAsset } from "../services/media.service";
 import { getUserByTelegramId, markBotStarted } from "../db/repositories/user.repository";
-import { assertCanFillSurvey, assertCanManageSurvey, canCreateSurvey, isAdmin } from "../services/permission.service";
+import { assertCanManageSurvey, canCreateSurvey, isAdmin } from "../services/permission.service";
 import {
-  assertSurveyCanPublish,
   assertSurveyQuestionsEditable,
   duplicateSurvey,
   listMySurveys as listOwnedSurveys,
@@ -59,7 +42,6 @@ import {
 import {
   getNumericStatistics,
   getOptionStatistics,
-  getResponseCount,
   getSurveyStatistics,
 } from "../services/statistics.service";
 import { getResponseDetail, listResponses } from "../services/result.service";
@@ -71,27 +53,11 @@ import {
 } from "../services/response-report.service";
 import { renderSurveySummaryReport } from "../services/survey-report.service";
 import { exportUnifiedSurveyJson } from "../services/survey-json.service";
-import { getSurveyDetail } from "../services/survey.service";
 import { getSurveyFlow } from "../services/question.service";
-import {
-  clearSessionOptions,
-  completeSession,
-  getSession,
-  getSessionSelectedOptions,
-  getSessionMatrixSelections,
-  initSession,
-  setSessionCurrentQuestion,
-  setSessionMatrixSelection,
-  clearSessionMatrixSelections,
-  toggleSessionOption,
-} from "../services/session.service";
-import { getFirstQuestion, getNextQuestion, getNextQuestionAfterOption, getPreviousQuestion, getQuestionById, type SurveyQuestionView } from "../survey/engine";
-import {
-  getMatrixColumns as matrixColumns,
-  getQuestionInstruction as formatQuestionInstruction,
-  isSingleChoiceQuestion as usesSingleChoiceKeyboard,
-} from "../survey/question-presentation";
-import { answerCallbackQuery, downloadTelegramFile, editMessageReplyMarkup, getBotUsername, getChat, sendAnimation, sendAudio, sendDocument, sendDocumentByFileId, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, sendSticker, sendVideo, sendVoice, type InlineKeyboardMarkup } from "./telegram";
+import { completeSession } from "../services/session.service";
+import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
+import type { SurveyQuestionView } from "../survey/engine";
+import { answerCallbackQuery, downloadTelegramFile, getBotUsername, getChat, sendDocument, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, type InlineKeyboardMarkup } from "./telegram";
 import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
@@ -99,7 +65,6 @@ import { clearBuilderInteractionState, handleBuilderCallback, handleBuilderMessa
 import {
   getBuilderState,
   initBuilder,
-  resumeBuilderAfterAuxiliary,
   startAddQuestionOption,
   startAppendQuestions,
   startEditOptionLabel,
@@ -107,24 +72,18 @@ import {
   startOptionMedia,
   startQuestionMedia,
   startSetSurveyAccessCode,
-  startSurveyAccessCode,
-  resetBuilder,
 } from "../services/survey-builder.service";
 import { clearAdminInteractionState, handleAdminCallback, handleAdminMessage } from "./admin-handler";
-import {
-  decryptSurveyAccessCode,
-  verifySurveyAccessCode,
-} from "../core/security";
+import { decryptSurveyAccessCode } from "../core/security";
 import {
   REPORT_CHANNEL_CACHE_KEY,
   reportChannelPendingKey,
 } from "../services/report-delivery.service";
-import { createReportAccessToken } from "../services/report-access-token.service";
 import {
   botCanManageChannel,
   REPORT_CHANNEL_DETECT_REQUEST_KEY,
 } from "./channel-detection";
-import type { Answer, MediaAsset, Survey } from "../db/schema";
+import type { MediaAsset, Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
 import {
   getCompletionPosterSetting,
@@ -139,7 +98,6 @@ import { clearUiSession } from "../services/ui-session.service";
 import { clearIdentityCardInteractionState, handleIdentityCardCallback, handleIdentityCardMessage } from "./identity-card-handler";
 import { listVisualTemplates } from "../db/repositories/visual-template.repository";
 
-const compactChoiceLabelLength = 18;
 const botUsernameCacheKey = "telegram-bot-username";
 const publicSurveySearchKeyPrefix = "public-survey-search:";
 const publicSurveySearchInputKeyPrefix = "public-survey-search-input:";
@@ -166,64 +124,9 @@ async function getSurveyShareUrl(
   return `https://t.me/${username}?start=survey_${surveyId}`;
 }
 
-async function webReportUrl(ctx: BotContext, responseId: number): Promise<string> {
-  const token = await createReportAccessToken(ctx.webhookSecret ?? ctx.botToken, responseId);
-  return `${ctx.origin}/report/${responseId}?t=${token}`;
-}
-
-function bytesToDataUrl(bytes: Uint8Array, contentType: string): string {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
-  return `data:${contentType};base64,${btoa(binary)}`;
-}
-
-async function sendCompletionPoster(
-  ctx: BotContext,
-  chatId: number,
-  surveyId: number,
-): Promise<void> {
-  if (!ctx.browser) return;
-  const setting = await getCompletionPosterSetting(ctx.db, surveyId);
-  if (!setting.enabled) return;
-  const survey = await getSurveyById(ctx.db, surveyId);
-  if (!survey) return;
-  let imageDataUrl: string | undefined;
-  try {
-    let mediaId = survey.coverMediaId;
-    if (!mediaId) {
-      const flow = await getSurveyFlow(ctx.db, surveyId);
-      for (const question of flow.questions) {
-        const media = await getQuestionMediaByQuestionId(ctx.db, question.id);
-        if (media[0]) {
-          mediaId = media[0].mediaAssetId;
-          break;
-        }
-      }
-    }
-    const asset = mediaId ? await getMediaAssetById(ctx.db, mediaId) : null;
-    if (asset?.mediaType === "photo" && asset.telegramFileId && (asset.fileSize ?? 0) <= 4 * 1024 * 1024) {
-      const image = await downloadTelegramFile(ctx.botToken, asset.telegramFileId);
-      imageDataUrl = bytesToDataUrl(image.data, image.contentType);
-    }
-  } catch (error) {
-    console.warn("Completion poster cover image unavailable", error);
-  }
-  const posterData = {
-    surveyTitle: survey.title,
-    completedAt: new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
-    style: setting.style,
-    ...(imageDataUrl ? { imageDataUrl } : {}),
-  };
-  const png = await renderCompletionPoster(ctx.browser, posterData);
-  await sendPhoto(ctx.botToken, chatId, png, "你的完成海报");
-}
-
 function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
-  hasPausedSurvey = false,
   origin?: string,
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
@@ -232,9 +135,6 @@ function buildHomeKeyboard(
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
-  if (hasPausedSurvey) {
-    rows.push([{ text: "▶️ 继续填写", callback_data: "home:resume_survey" }]);
-  }
   if (creator) {
     if (origin) {
       rows.push([{ text: "🌐 网页管理后台", web_app: { url: `${origin}/admin` } }]);
@@ -255,7 +155,6 @@ async function showHomeMenu(
   messageId?: number,
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
-  const pausedResponse = await getActiveResponseByUser(ctx.db, dbUser.id);
   const text = creator
     ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
     : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。";
@@ -265,7 +164,7 @@ async function showHomeMenu(
     userId,
     screen: "home",
     text,
-    replyMarkup: buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), Boolean(pausedResponse), ctx.origin),
+    replyMarkup: buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), ctx.origin),
     ...(messageId === undefined ? {} : { messageId }),
   });
 }
@@ -309,570 +208,6 @@ async function showImportOrCopyMenu(
   }});
 }
 
-export function usesNumberedChoiceList(
-  question: Pick<SurveyQuestionView, "options">,
-): boolean {
-  return question.options.some(
-    (option) =>
-      option.label.includes("\n") ||
-      Array.from(option.label.trim()).length > compactChoiceLabelLength,
-  );
-}
-
-function choiceButtonLabel(
-  question: Pick<SurveyQuestionView, "options">,
-  optionIndex: number,
-): string {
-  const option = question.options[optionIndex];
-  if (!option) return `选择 ${optionIndex + 1}`;
-  return usesNumberedChoiceList(question)
-    ? `选择 ${optionIndex + 1}`
-    : option.label;
-}
-
-export function buildSingleChoiceKeyboard(
-  question: SurveyQuestionView,
-  currentIndex: number,
-): InlineKeyboardMarkup {
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
-  if (currentIndex > 0) {
-    rows.push([
-      {
-        text: "⬅️ 上一题",
-        callback_data: `q:prev:${question.id}`,
-      },
-    ]);
-  }
-
-  rows.push(
-    ...question.options.map((option, optionIndex) => [
-      {
-        text: choiceButtonLabel(question, optionIndex),
-        callback_data: `q:single:${question.id}:${option.id}`,
-      },
-    ]),
-  );
-
-  if (!question.required) {
-    rows.push([
-      {
-        text: "跳过此题",
-        callback_data: `q:skip:${question.id}`,
-      },
-    ]);
-  }
-
-  rows.push([
-    {
-      text: "💾 暂存",
-      callback_data: `q:pause:${question.surveyId}`,
-    },
-    {
-      text: "退出并放弃",
-      callback_data: `q:exit:${question.surveyId}`,
-    },
-  ]);
-
-  return { inline_keyboard: rows };
-}
-
-export function buildMatrixKeyboard(
-  question: SurveyQuestionView,
-  selections: Record<string, number>,
-  currentIndex: number,
-): InlineKeyboardMarkup {
-  const columns = matrixColumns(question);
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
-  if (currentIndex > 0) rows.push([{ text: "⬅️ 上一题", callback_data: `q:prev:${question.id}` }]);
-
-  const completedRows = question.options.filter((row) => selections[String(row.id)] !== undefined).length;
-  rows.push([{ text: `已完成 ${completedRows}/${question.options.length} 行 · 点选一行填写`, callback_data: "q:matrix:label" }]);
-  for (const [rowIndex, row] of question.options.entries()) {
-    const selectedColumn = selections[String(row.id)];
-    const selectedLabel = selectedColumn === undefined ? "未选择" : columns[selectedColumn] ?? "未选择";
-    rows.push([{
-      text: `${selectedColumn === undefined ? "⬜" : "✅"} ${rowIndex + 1}. ${row.label} · ${selectedLabel}`,
-      callback_data: `q:matrix:row:${question.id}:${row.id}`,
-    }]);
-  }
-  if (!question.required) rows.push([{ text: "跳过此题", callback_data: `q:skip:${question.id}` }]);
-  rows.push([{ text: "完成矩阵", callback_data: `q:matrix:confirm:${question.id}` }]);
-  rows.push([
-    { text: "💾 暂存", callback_data: `q:pause:${question.surveyId}` },
-    { text: "退出并放弃", callback_data: `q:exit:${question.surveyId}` },
-  ]);
-  return { inline_keyboard: rows };
-}
-
-export function buildMatrixColumnKeyboard(
-  question: SurveyQuestionView,
-  rowId: number,
-  currentIndex: number,
-  selectedColumnIndex: number | undefined,
-): InlineKeyboardMarkup {
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
-  if (currentIndex > 0) rows.push([{ text: "⬅️ 上一题", callback_data: `q:prev:${question.id}` }]);
-  rows.push(...matrixColumns(question).map((column, columnIndex) => [{
-    text: `${selectedColumnIndex === columnIndex ? "✅" : "⬜"} ${column}`,
-    callback_data: `q:matrix:select:${question.id}:${rowId}:${columnIndex}`,
-  }]));
-  rows.push([{ text: "⬅️ 返回行列表", callback_data: `q:matrix:back:${question.id}` }]);
-  return { inline_keyboard: rows };
-}
-
-export function buildMultipleChoiceKeyboard(
-  question: SurveyQuestionView,
-  selectedOptionIds: number[],
-  currentIndex: number,
-): InlineKeyboardMarkup {
-  const selected = new Set(selectedOptionIds);
-  const optionRows = question.options.map((option, optionIndex) => [
-    {
-      text: `${selected.has(option.id) ? "✅" : "⬜"} ${choiceButtonLabel(question, optionIndex)}`,
-      callback_data: `q:multi:toggle:${question.id}:${option.id}`,
-    },
-  ]);
-
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
-  if (currentIndex > 0) {
-    rows.push([
-      {
-        text: "⬅️ 上一题",
-        callback_data: `q:prev:${question.id}`,
-      },
-    ]);
-  }
-  rows.push(...optionRows);
-  if (!question.required) {
-    rows.push([
-      {
-        text: "跳过此题",
-        callback_data: `q:skip:${question.id}`,
-      },
-    ]);
-  }
-  rows.push([
-    {
-      text: "完成选择",
-      callback_data: `q:multi:confirm:${question.id}`,
-    },
-  ]);
-  rows.push([
-    {
-      text: "💾 暂存",
-      callback_data: `q:pause:${question.surveyId}`,
-    },
-    {
-      text: "退出并放弃",
-      callback_data: `q:exit:${question.surveyId}`,
-    },
-  ]);
-
-  return { inline_keyboard: rows };
-}
-
-function buildNavigationKeyboard(
-  question: SurveyQuestionView,
-  currentIndex: number,
-): InlineKeyboardMarkup {
-  const rows = [];
-
-  if (currentIndex > 0) {
-    rows.push([
-      {
-        text: "⬅️ 上一题",
-        callback_data: `q:prev:${question.id}`,
-      },
-    ]);
-  }
-
-  if (!question.required) {
-    rows.push([
-      {
-        text: "跳过此题",
-        callback_data: `q:skip:${question.id}`,
-      },
-    ]);
-  }
-
-  rows.push([
-    {
-      text: "💾 暂存",
-      callback_data: `q:pause:${question.surveyId}`,
-    },
-    {
-      text: "退出并放弃",
-      callback_data: `q:exit:${question.surveyId}`,
-    },
-  ]);
-
-  return { inline_keyboard: rows };
-}
-
-function formatQuestionIntro(
-  question: SurveyQuestionView,
-  index: number,
-  total: number,
-): string {
-  const parts = [`第 ${index + 1} / ${total} 题`, question.title];
-  if (question.description) {
-    parts.push(question.description);
-  }
-  return parts.join("\n\n");
-}
-
-export function formatQuestionText(
-  question: SurveyQuestionView,
-  index: number,
-  total: number,
-): string {
-  return [
-    formatQuestionIntro(question, index, total),
-    formatQuestionInstruction(question),
-  ].join("\n\n");
-}
-
-export function formatChoiceOptionText(
-  optionNumber: number,
-  label: string,
-): string {
-  return `【选项 ${optionNumber}】\n\n${label.trim()}`;
-}
-
-async function sendStoredMedia(
-  ctx: BotContext,
-  chatId: number,
-  asset: MediaAsset,
-  caption?: string,
-  replyMarkup?: InlineKeyboardMarkup,
-): Promise<void> {
-  if (!asset.telegramFileId) {
-    return;
-  }
-
-  if (asset.mediaType === "photo") {
-    await sendPhoto(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  } else if (asset.mediaType === "video") {
-    await sendVideo(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  } else if (asset.mediaType === "audio") {
-    await sendAudio(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  } else if (asset.mediaType === "voice") {
-    await sendVoice(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  } else if (asset.mediaType === "animation" || asset.mediaType === "gif") {
-    await sendAnimation(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  } else if (asset.mediaType === "sticker") {
-    await sendSticker(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      replyMarkup,
-    );
-  } else {
-    await sendDocumentByFileId(
-      ctx.botToken,
-      chatId,
-      asset.telegramFileId,
-      caption,
-      replyMarkup,
-    );
-  }
-}
-
-interface QuestionMediaGroups {
-  question: MediaAsset[];
-  options: Map<number, MediaAsset[]>;
-}
-
-async function getQuestionMediaGroups(
-  ctx: BotContext,
-  question: SurveyQuestionView,
-): Promise<QuestionMediaGroups> {
-  const groups: QuestionMediaGroups = {
-    question: [],
-    options: new Map(),
-  };
-  const questionMedia = await getQuestionMediaByQuestionId(ctx.db, question.id);
-  for (const relation of questionMedia) {
-    const asset = await getMediaAssetById(ctx.db, relation.mediaAssetId);
-    if (asset?.telegramFileId) {
-      groups.question.push(asset);
-    }
-  }
-
-  for (const option of question.options) {
-    if (!option) continue;
-    const optionMedia = await getOptionMediaByOptionId(ctx.db, option.id);
-    const assets: MediaAsset[] = [];
-    for (const relation of optionMedia) {
-      const asset = await getMediaAssetById(ctx.db, relation.mediaAssetId);
-      if (asset?.telegramFileId) {
-        assets.push(asset);
-      }
-    }
-    if (assets.length > 0) groups.options.set(option.id, assets);
-  }
-
-  return groups;
-}
-
-async function sendTextWithMedia(
-  ctx: BotContext,
-  chatId: number,
-  text: string,
-  assets: MediaAsset[],
-): Promise<void> {
-  if (assets.length === 0) {
-    await sendLongMessage(ctx.botToken, chatId, text);
-    return;
-  }
-
-  let textSent = false;
-  for (let index = 0; index < assets.length; index += 1) {
-    const asset = assets[index];
-    if (!asset) continue;
-    let caption: string | undefined;
-    if (!textSent && asset.mediaType !== "sticker" && text.length <= 1024) {
-      caption = text;
-      textSent = true;
-    }
-    if (!textSent) {
-      await sendLongMessage(ctx.botToken, chatId, text);
-      textSent = true;
-    }
-    if (!caption && index > 0 && asset.mediaType !== "sticker") {
-      caption = `附件 ${index + 1}`;
-    }
-    await sendStoredMedia(ctx, chatId, asset, caption);
-  }
-}
-
-async function renderNumberedChoiceQuestion(
-  ctx: BotContext,
-  chatId: number,
-  question: SurveyQuestionView,
-  questionIndex: number,
-  total: number,
-  media: QuestionMediaGroups,
-  replyMarkup: InlineKeyboardMarkup,
-  userId: number,
-): Promise<void> {
-  const hasMedia = media.question.length > 0 || [...media.options.values()].some((items) => items.length > 0);
-  if (!hasMedia) {
-    const optionText = question.options.map((option, index) => {
-      const label = option.label.replaceAll(/\s+/g, " ").trim();
-      const compact = label.length > 260 ? `${label.slice(0, 257)}…` : label;
-      return `【${index + 1}】 ${compact}`;
-    }).join("\n\n");
-    const combined = `${formatQuestionIntro(question, questionIndex, total)}\n\n${optionText}\n\n${formatQuestionInstruction(question)}`;
-    await renderUiScreen(ctx, chatId, userId, {
-      screen: "participant_question",
-      text: combined.length > 3900 ? `${combined.slice(0, 3897)}…` : combined,
-      replyMarkup,
-      state: { surveyId: question.surveyId, questionId: question.id },
-    });
-    return;
-  }
-  await sendTextWithMedia(
-    ctx,
-    chatId,
-    formatQuestionIntro(question, questionIndex, total),
-    media.question,
-  );
-
-  for (let optionIndex = 0; optionIndex < question.options.length; optionIndex += 1) {
-    const option = question.options[optionIndex];
-    if (!option) continue;
-    await sendTextWithMedia(
-      ctx,
-      chatId,
-      formatChoiceOptionText(optionIndex + 1, option.label),
-      media.options.get(option.id) ?? [],
-    );
-  }
-
-  await renderUiScreen(ctx, chatId, userId, {
-    screen: "participant_question",
-    text: formatQuestionInstruction(question),
-    replyMarkup,
-    state: { surveyId: question.surveyId, questionId: question.id },
-  });
-}
-
-async function renderQuestion(
-  ctx: BotContext,
-  chatId: number,
-  _responseId: number,
-  question: SurveyQuestionView,
-  flowQuestions: SurveyQuestionView[],
-  userId: number,
-  surveyId: number,
-): Promise<void> {
-  const index = flowQuestions.findIndex((item) => item.id === question.id);
-  const total = flowQuestions.length;
-
-  let replyMarkup: InlineKeyboardMarkup;
-
-  if (usesSingleChoiceKeyboard(question)) {
-    replyMarkup = buildSingleChoiceKeyboard(question, index);
-  } else if (question.type === "multiple") {
-    const selected = await getSessionSelectedOptions(ctx.session, userId, surveyId);
-    replyMarkup = buildMultipleChoiceKeyboard(question, selected, index);
-  } else if (question.type === "matrix") {
-    const selected = await getSessionMatrixSelections(ctx.session, userId, surveyId);
-    replyMarkup = buildMatrixKeyboard(question, selected, index);
-  } else {
-    replyMarkup = buildNavigationKeyboard(question, index);
-  }
-
-  const mediaGroups = await getQuestionMediaGroups(ctx, question);
-  if (
-    (usesSingleChoiceKeyboard(question) || question.type === "multiple") &&
-    usesNumberedChoiceList(question)
-  ) {
-    await renderNumberedChoiceQuestion(
-      ctx,
-      chatId,
-      question,
-      index,
-      total,
-      mediaGroups,
-      replyMarkup,
-      userId,
-    );
-    return;
-  }
-
-  const prompt = formatQuestionText(question, index, total);
-  const mediaItems: Array<{
-    asset: MediaAsset;
-    label: string | null;
-  }> = [
-    ...mediaGroups.question.map((asset) => ({ asset, label: null })),
-  ];
-  for (let optionIndex = 0; optionIndex < question.options.length; optionIndex += 1) {
-    const option = question.options[optionIndex];
-    if (!option) continue;
-    for (const asset of mediaGroups.options.get(option.id) ?? []) {
-      mediaItems.push({
-        asset,
-        label: `选项 ${optionIndex + 1}：${option.label}`,
-      });
-    }
-  }
-  if (mediaItems.length === 0) {
-    await renderUiScreen(ctx, chatId, userId, {
-      screen: "participant_question",
-      text: prompt,
-      replyMarkup,
-      state: { surveyId, questionId: question.id },
-    });
-    return;
-  }
-
-  let promptSent = false;
-  for (let mediaIndex = 0; mediaIndex < mediaItems.length; mediaIndex += 1) {
-    const item = mediaItems[mediaIndex];
-    if (!item) continue;
-    const isLast = mediaIndex === mediaItems.length - 1;
-    let caption = item.label ?? undefined;
-
-    if (!promptSent && item.asset.mediaType !== "sticker") {
-      const combined = item.label ? `${prompt}\n\n${item.label}` : prompt;
-      if (combined.length <= 1024) {
-        caption = combined;
-        promptSent = true;
-      }
-    }
-
-    if (!promptSent && (item.asset.mediaType === "sticker" || mediaIndex === 0)) {
-      await sendLongMessage(ctx.botToken, chatId, prompt);
-      promptSent = true;
-    }
-
-    if (caption && caption.length > 1024) {
-      await sendLongMessage(ctx.botToken, chatId, caption);
-      caption = undefined;
-    }
-
-    await sendStoredMedia(
-      ctx,
-      chatId,
-      item.asset,
-      caption,
-      isLast ? replyMarkup : undefined,
-    );
-  }
-}
-
-/*
- * Choice questions are answered through callbacks. Other questions advance as
- * soon as the participant sends a valid text or media answer.
- */
-function isDirectAnswerQuestion(question: SurveyQuestionView): boolean {
-  return !usesSingleChoiceKeyboard(question) && question.type !== "multiple" && question.type !== "matrix";
-}
-
-/*
- * Kept as a separate predicate so routing and rendering use the same behavior.
- */
-function acceptsMediaAnswer(question: SurveyQuestionView): boolean {
-  return (
-    question.type === "image" ||
-    question.type === "video" ||
-    question.type === "audio" ||
-    question.type === "file"
-  );
-}
-
-function messageMatchesMediaQuestion(
-  question: SurveyQuestionView,
-  message: TelegramMessage,
-): boolean {
-  if (question.type === "image") {
-    return Boolean(message.photo);
-  }
-  if (question.type === "video") {
-    return Boolean(message.video || message.animation);
-  }
-  if (question.type === "audio") {
-    return Boolean(message.audio || message.voice);
-  }
-  if (question.type === "file") {
-    return Boolean(message.document);
-  }
-  return false;
-}
-
 function builderOwnsNextMessage(
   state: Awaited<ReturnType<typeof getBuilderState>>,
 ): boolean {
@@ -890,217 +225,6 @@ function builderOwnsNextMessage(
   );
 }
 
-function normalizeDateAnswer(value: string): string | null {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-  return value;
-}
-
-function normalizeTimeAnswer(value: string): string | null {
-  const match = value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-  return match ? value : null;
-}
-
-async function advanceQuestion(
-  ctx: BotContext,
-  chatId: number,
-  responseId: number,
-  currentQuestionId: number,
-  flowQuestions: SurveyQuestionView[],
-  userId: number,
-  surveyId: number,
-  selectedOptionId: number | null = null,
-): Promise<void> {
-  const next = getNextQuestionAfterOption(
-    { questions: flowQuestions },
-    currentQuestionId,
-    selectedOptionId,
-  );
-
-  if (!next) {
-    const answered = await ctx.db.prepare(
-      "SELECT COUNT(*) AS count FROM answers WHERE response_id = ?",
-    ).bind(responseId).first<{ count: number }>();
-    await renderUiScreen(ctx, chatId, userId, { screen: "participant_submit", text: `填写检查\n\n已保存 ${answered?.count ?? 0} 项回答。你可以返回上一题修改，确认后再提交。`, replyMarkup: {
-      inline_keyboard: [
-        [{ text: "返回上一题修改", callback_data: `q:prev:${currentQuestionId}` }],
-        [{ text: "确认提交问卷", callback_data: `q:submit:${surveyId}` }],
-        [{ text: "💾 暂存并稍后继续", callback_data: `q:pause:${surveyId}` }],
-        [{ text: "退出并放弃", callback_data: `q:exit:${surveyId}` }],
-      ],
-    }});
-    return;
-  }
-
-  await updateResponseCurrentQuestion(ctx.db, responseId, next.id);
-  await setSessionCurrentQuestion(ctx.session, userId, surveyId, next.id);
-  await renderQuestion(
-    ctx,
-    chatId,
-    responseId,
-    next,
-    flowQuestions,
-    userId,
-    surveyId,
-  );
-}
-
-type ActiveParticipantResponse = {
-  id: number;
-  survey_id: number;
-  current_question_id: number | null;
-};
-
-async function refreshStaleQuestionCallback(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  callbackId: string,
-  response: ActiveParticipantResponse | null,
-): Promise<void> {
-  if (!response?.current_question_id) {
-    await answerCallbackQuery(ctx.botToken, callbackId, "当前问卷已结束或不存在");
-    return;
-  }
-  const flow = await getSurveyFlow(ctx.db, response.survey_id);
-  const current = getQuestionById(flow, response.current_question_id);
-  if (!current) {
-    await answerCallbackQuery(ctx.botToken, callbackId, "当前题目不存在，请重新开始问卷");
-    return;
-  }
-  await setSessionCurrentQuestion(ctx.session, userId, response.survey_id, current.id);
-  await renderQuestion(ctx, chatId, response.id, current, flow.questions, userId, response.survey_id);
-  await answerCallbackQuery(ctx.botToken, callbackId, "题目已更新，已刷新当前题目");
-}
-
-function isAnswered(answer: Answer | undefined): boolean {
-  if (!answer) return false;
-  if (answer.jsonValue !== null) {
-    try {
-      const parsed = JSON.parse(answer.jsonValue) as unknown;
-      if (Array.isArray(parsed)) return parsed.length > 0;
-    } catch {
-      // Unparseable legacy values are treated as answered.
-    }
-    return true;
-  }
-  return (
-    answer.textValue !== null ||
-    answer.numberValue !== null ||
-    answer.booleanValue !== null ||
-    answer.dateValue !== null ||
-    answer.timeValue !== null
-  );
-}
-
-function selectedOptionIdForSkip(
-  question: SurveyQuestionView,
-  answer: Answer | undefined,
-): number | null {
-  if (
-    question.type !== "single" &&
-    question.type !== "yes_no" &&
-    question.type !== "rating"
-  ) {
-    return null;
-  }
-  if (!answer?.jsonValue) return null;
-  try {
-    const parsed = JSON.parse(answer.jsonValue) as unknown;
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const optionId = Number(parsed[0]);
-      return Number.isInteger(optionId) && optionId > 0 ? optionId : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-/*
- * Mirrors the answer-time walk (skip rules included) so only questions that
- * are actually on the participant's path get checked at submit time.
- */
-function findMissingRequiredQuestion(
-  flowQuestions: SurveyQuestionView[],
-  answersByQuestion: Map<number, Answer>,
-): SurveyQuestionView | null {
-  const visited = new Set<number>();
-  let current = getFirstQuestion({ questions: flowQuestions });
-  while (current && !visited.has(current.id)) {
-    visited.add(current.id);
-    const answer = answersByQuestion.get(current.id);
-    if (current.required && !isAnswered(answer)) {
-      return current;
-    }
-    current = getNextQuestionAfterOption(
-      { questions: flowQuestions },
-      current.id,
-      selectedOptionIdForSkip(current, answer),
-    );
-  }
-  return null;
-}
-
-async function getResponseForUser(
-  ctx: BotContext,
-  survey: Survey,
-  dbUserId: number,
-  firstQuestionId: number,
-) {
-  const active = await getActiveResponseBySurveyAndUser(
-    ctx.db,
-    survey.id,
-    dbUserId,
-  );
-  if (active) {
-    return active;
-  }
-
-  const participantHash = `user_${dbUserId}`;
-  if (survey.allowMultipleResponses) {
-    return createResponse(ctx.db, {
-      surveyId: survey.id,
-      userId: dbUserId,
-      participantHash: `${participantHash}_${crypto.randomUUID()}`,
-      currentQuestionId: firstQuestionId,
-    });
-  }
-
-  const existing = await getResponseBySurveyAndHash(
-    ctx.db,
-    survey.id,
-    participantHash,
-  );
-
-  if (existing?.status === "completed") {
-    throw new Error("你已经完成过该问卷，不能重复提交。");
-  }
-  if (existing) {
-    return restartResponse(ctx.db, existing.id, firstQuestionId);
-  }
-
-  return createResponse(ctx.db, {
-    surveyId: survey.id,
-    userId: dbUserId,
-    participantHash,
-    currentQuestionId: firstQuestionId,
-  });
-}
-
 async function assertCanEditSurveyQuestions(
   ctx: BotContext,
   user: Awaited<ReturnType<typeof getUserByTelegramId>>,
@@ -1111,92 +235,6 @@ async function assertCanEditSurveyQuestions(
   }
   await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
   await assertSurveyQuestionsEditable(ctx.db, surveyId);
-}
-
-async function startSurvey(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  skipAccessCheck = false,
-): Promise<void> {
-  const user = await getUserByTelegramId(ctx.db, userId);
-  if (!user) {
-    await sendMessage(ctx.botToken, chatId, "用户信息不存在，请重新 /start。");
-    return;
-  }
-
-  try {
-    await assertCanFillSurvey(ctx.db, surveyId, user);
-  } catch (error) {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      error instanceof Error ? error.message : "无权填写该问卷。",
-    );
-    return;
-  }
-
-  const survey = await getSurveyDetail(ctx.db, surveyId);
-  if (!survey || survey.status !== "published") {
-    await sendMessage(ctx.botToken, chatId, "问卷不存在或未发布。");
-    return;
-  }
-
-  if (
-    !skipAccessCheck &&
-    survey.accessCode &&
-    !(isAdmin(userId, ctx.adminIds) || survey.ownerId === user.id)
-  ) {
-    await initBuilder(ctx.builder, userId);
-    await startSurveyAccessCode(ctx.builder, userId, surveyId);
-    await sendMessage(ctx.botToken, chatId, "请输入问卷访问密码：");
-    return;
-  }
-
-  const flow = await getSurveyFlow(ctx.db, surveyId);
-  const firstQuestion = getFirstQuestion(flow);
-  if (!firstQuestion) {
-    await sendMessage(ctx.botToken, chatId, "该问卷还没有题目。");
-    return;
-  }
-
-  const activeResponse = await getActiveResponseByUser(ctx.db, user.id);
-  if (activeResponse && activeResponse.surveyId !== surveyId) {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "你还有另一份进行中的问卷，请先在原问卷中点击“退出问卷”。",
-    );
-    return;
-  }
-
-  const response = await getResponseForUser(
-    ctx,
-    survey,
-    user.id,
-    firstQuestion.id,
-  );
-  const sessionState = await initSession(ctx.session, {
-    userId,
-    surveyId,
-    responseId: response.id,
-    currentQuestionId: response.currentQuestionId ?? firstQuestion.id,
-  });
-  const currentQuestionId = sessionState.currentQuestionId ?? firstQuestion.id;
-  const question = getQuestionById(flow, currentQuestionId) ?? firstQuestion;
-
-  await updateResponseCurrentQuestion(ctx.db, response.id, question.id);
-  await setSessionCurrentQuestion(ctx.session, userId, surveyId, question.id);
-  await renderQuestion(
-    ctx,
-    chatId,
-    response.id,
-    question,
-    flow.questions,
-    userId,
-    surveyId,
-  );
 }
 
 async function listMySurveys(
@@ -2427,7 +1465,9 @@ async function listSurveys(
   const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map((survey) => [
     {
       text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
-      callback_data: `q:start:${survey.id}`,
+      ...(ctx.origin
+        ? { url: `${ctx.origin}/s/${survey.id}` }
+        : { callback_data: "home:menu" }),
     },
   ]);
   const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];
@@ -2566,17 +1606,31 @@ export async function handleTelegramMessage(
       }
     }
     if (Number.isSafeInteger(surveyId) && surveyId > 0) {
-      await startSurvey(ctx, message.chat.id, userId, surveyId);
+      if (ctx.origin) {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}`,
+          {
+            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}` }]],
+          },
+        );
+      } else {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          "请在下方选择“浏览问卷”开始填写。",
+        );
+      }
       return;
     }
     const creator = await canCreateFromCache();
-    const pausedResponse = dbUserId ? await getActiveResponseByUser(ctx.db, dbUserId) : null;
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
       text: creator
         ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-      replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), Boolean(pausedResponse), ctx.origin),
+      replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin),
     });
     return;
   }
@@ -2603,7 +1657,6 @@ export async function handleTelegramMessage(
       replyMarkup: buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
-        Boolean(dbUserId && await getActiveResponseByUser(ctx.db, dbUserId)),
         ctx.origin,
       ),
     });
@@ -2766,7 +1819,6 @@ export async function handleTelegramMessage(
           replyMarkup: buildHomeKeyboard(
             Boolean(dbUser && await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)),
             Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
-            false,
             ctx.origin,
           ),
         });
@@ -2801,7 +1853,6 @@ export async function handleTelegramMessage(
       replyMarkup: buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
-        Boolean(dbUserId && await getActiveResponseByUser(ctx.db, dbUserId)),
         ctx.origin,
       ),
     });
@@ -2948,9 +1999,6 @@ export async function handleTelegramMessage(
   }
 
   const builderState = await getBuilderState(ctx.builder, userId);
-  const activeResponse = dbUserId
-    ? await getActiveResponseByUser(ctx.db, dbUserId)
-    : null;
   const isBuilderCommand = Boolean(
     text === "/create" ||
       text === "/continue" ||
@@ -2965,21 +2013,8 @@ export async function handleTelegramMessage(
   );
 
   if (
-    activeResponse &&
-    (text === "/create" || text === "/continue" || text === "/import")
-  ) {
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      "你正在填写问卷，请先点击“退出问卷”，再创建、继续或导入问卷。",
-    );
-    return;
-  }
-
-  if (
     isBuilderCommand ||
     builderOwnsNextMessage(builderState) ||
-    builderState?.step === "survey_access_code" ||
     builderState?.step === "set_survey_access_code"
   ) {
     if (await handleBuilderMessage(ctx, message)) {
@@ -2987,217 +2022,14 @@ export async function handleTelegramMessage(
     }
   }
 
-  if (builderState?.step === "survey_access_code") {
-    const survey = builderState.targetSurveyId
-      ? await getSurveyById(ctx.db, builderState.targetSurveyId)
-      : null;
-    if (!survey?.accessCode) {
-      await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await sendMessage(ctx.botToken, message.chat.id, "问卷访问密码已失效，请重新点击问卷。");
-      return;
-    }
-
-    const submittedCode = text?.trim();
-    if (!submittedCode) {
-      await sendMessage(ctx.botToken, message.chat.id, "请输入问卷访问密码。");
-      return;
-    }
-
-    if (!(await verifySurveyAccessCode(survey.accessCode, submittedCode))) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "密码错误，请重试；发送 /cancel 可退出密码输入。",
-      );
-      return;
-    }
-
-    const surveyId = builderState.targetSurveyId;
-    if (!surveyId) {
-      await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await sendMessage(ctx.botToken, message.chat.id, "问卷信息不存在，请重新点击问卷。");
-      return;
-    }
-    await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-    await startSurvey(ctx, message.chat.id, userId, surveyId, true);
-    return;
-  }
-
-  const response = activeResponse;
-
-  if (!response) {
-    if (await handleBuilderMessage(ctx, message)) {
-      return;
-    }
-    await sendMessage(ctx.botToken, message.chat.id, "请使用 /surveys 选择一个问卷。");
-    return;
-  }
-
-  const flow = await getSurveyFlow(ctx.db, response.surveyId);
-  const fallbackQuestionId =
-    response.currentQuestionId ?? getFirstQuestion(flow)?.id ?? null;
-  if (!fallbackQuestionId) {
-    await sendMessage(ctx.botToken, message.chat.id, "当前问卷没有可用题目。");
-    return;
-  }
-
-  let currentQuestionId = fallbackQuestionId;
-  try {
-    const sessionState = await getSession(
-      ctx.session,
-      userId,
-      response.surveyId,
-    );
-    currentQuestionId = sessionState.currentQuestionId ?? fallbackQuestionId;
-  } catch {
-    const sessionState = await initSession(ctx.session, {
-      userId,
-      surveyId: response.surveyId,
-      responseId: response.id,
-      currentQuestionId: fallbackQuestionId,
-    });
-    currentQuestionId = sessionState.currentQuestionId ?? fallbackQuestionId;
-  }
-
-  const question = getQuestionById(flow, currentQuestionId);
-
-  if (!question) {
-    await sendMessage(ctx.botToken, message.chat.id, "当前题目不存在。");
-    return;
-  }
-
-  if (!isDirectAnswerQuestion(question)) {
-    await renderQuestion(
-      ctx,
-      message.chat.id,
-      response.id,
-      question,
-      flow.questions,
-      userId,
-      response.surveyId,
-    );
-    return;
-  }
-
-  if (acceptsMediaAnswer(question)) {
-    if (!messageMatchesMediaQuestion(question, message)) {
-      const expected =
-        question.type === "image"
-          ? "图片"
-          : question.type === "video"
-            ? "视频或动画"
-            : question.type === "audio"
-              ? "音频或语音"
-              : "文件";
-      await sendMessage(ctx.botToken, message.chat.id, `请发送${expected}。`);
-      return;
-    }
-    const mediaAssetId = await registerMediaAsset(ctx, message, { scope: "response" });
-    if (!mediaAssetId) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "请上传对应的媒体文件。",
-      );
-      return;
-    }
-
-    const answerId = await upsertMediaAnswer(ctx.db, {
-      responseId: response.id,
-      questionId: question.id,
-      mediaAssetId,
-    });
-    await createAnswerMedia(ctx.db, {
-      answerId,
-      mediaAssetId,
-    });
-    await advanceQuestion(
-      ctx,
-      message.chat.id,
-      response.id,
-      question.id,
-      flow.questions,
-      userId,
-      response.surveyId,
-    );
-    return;
-  }
-
-  if (text) {
-    if (text.startsWith("/")) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "填写问卷时无法执行命令。请直接发送本题答案，或使用下方按钮：",
-        {
-          inline_keyboard: [
-            [
-              { text: "💾 暂存", callback_data: `q:pause:${response.surveyId}` },
-              { text: "退出并放弃", callback_data: `q:exit:${response.surveyId}` },
-            ],
-          ],
-        },
-      );
-      return;
-    }
-    if (question.type === "number") {
-      const numberValue = Number(text);
-      if (!Number.isFinite(numberValue)) {
-        await sendMessage(ctx.botToken, message.chat.id, "请输入有效数字。");
-        return;
-      }
-      await upsertNumberAnswer(ctx.db, {
-        responseId: response.id,
-        questionId: question.id,
-        numberValue,
-      });
-    } else if (question.type === "date") {
-      const dateValue = normalizeDateAnswer(text);
-      if (!dateValue) {
-        await sendMessage(
-          ctx.botToken,
-          message.chat.id,
-          "日期格式不正确，请按 YYYY-MM-DD 输入，例如 2026-08-14。",
-        );
-        return;
-      }
-      await upsertDateAnswer(ctx.db, {
-        responseId: response.id,
-        questionId: question.id,
-        dateValue,
-      });
-    } else if (question.type === "time") {
-      const timeValue = normalizeTimeAnswer(text);
-      if (!timeValue) {
-        await sendMessage(
-          ctx.botToken,
-          message.chat.id,
-          "时间格式不正确，请按 HH:MM 输入，例如 21:30。",
-        );
-        return;
-      }
-      await upsertTimeAnswer(ctx.db, {
-        responseId: response.id,
-        questionId: question.id,
-        timeValue,
-      });
-    } else {
-      await upsertTextAnswer(ctx.db, {
-        responseId: response.id,
-        questionId: question.id,
-        textValue: text,
-      });
-    }
-    await advanceQuestion(
-      ctx,
-      message.chat.id,
-      response.id,
-      question.id,
-      flow.questions,
-      userId,
-      response.surveyId,
-    );
-  }
+  const creator = await canCreateFromCache();
+  await renderUiScreen(ctx, message.chat.id, userId, {
+    screen: "home",
+    text: creator
+      ? "请在下方选择入口；问卷填写请在网页完成。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
+      : "请在下方选择“浏览问卷”开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+    replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin),
+  });
 }
 
 export async function handleTelegramCallback(
@@ -3237,17 +2069,6 @@ export async function handleTelegramCallback(
   if (data === "home:surveys") {
     await listSurveys(ctx, chatId, userId);
     await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data === "home:resume_survey") {
-    const response = await getActiveResponseByUser(ctx.db, dbUserId);
-    if (!response) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "没有可继续的问卷");
-      return;
-    }
-    await startSurvey(ctx, chatId, userId, response.surveyId);
-    await answerCallbackQuery(ctx.botToken, callback.id, "继续填写");
     return;
   }
 
@@ -3688,7 +2509,6 @@ export async function handleTelegramCallback(
       const user = await getUserByTelegramId(ctx.db, userId);
       if (!user) throw new Error("用户信息不存在");
       await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-      const setting = await getCompletionPosterSetting(ctx.db, surveyId);
       await saveCompletionPosterSetting(ctx.db, { surveyId, enabled: true, style });
       await answerCallbackQuery(ctx.botToken, callback.id, "海报风格已保存并开启");
       await showCompletionPosterMenu(ctx, chatId, userId, surveyId);
@@ -4232,479 +3052,6 @@ export async function handleTelegramCallback(
 
   if (data === "/surveys" || data === "surveys:list") {
     await listSurveys(ctx, chatId, userId);
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:start:")) {
-    const surveyId = Number(data.slice("q:start:".length));
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    try {
-      await startSurvey(ctx, chatId, userId, surveyId);
-    } catch (error) {
-      console.error("startSurvey failed", error);
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `开始问卷失败：${error instanceof Error ? error.message : "未知错误"}`,
-      );
-    }
-    return;
-  }
-
-  if (data.startsWith("q:skip:")) {
-    const questionId = Number(data.slice("q:skip:".length));
-    const response = await ctx.db
-      .prepare(
-        "SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1",
-      )
-      .bind(dbUserId)
-      .first<{
-        id: number;
-        survey_id: number;
-        current_question_id: number | null;
-      }>();
-
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    if (!question || question.required) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "该题不能跳过");
-      return;
-    }
-
-    await deleteAnswer(ctx.db, response.id, questionId);
-    await clearSessionOptions(ctx.session, userId, response.survey_id);
-    await advanceQuestion(
-      ctx,
-      chatId,
-      response.id,
-      questionId,
-      flow.questions,
-      userId,
-      response.survey_id,
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:single:")) {
-    const [, , questionIdRaw, optionIdRaw] = data.split(":");
-    const questionId = Number(questionIdRaw);
-    const optionId = Number(optionIdRaw);
-    const response = await ctx.db
-      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number; current_question_id: number | null }>();
-
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    const selectedOption = question?.options.find(
-      (option) => option.id === optionId,
-    );
-    if (!question || !selectedOption) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "选项不存在");
-      return;
-    }
-
-    const ratingValue =
-      question.type === "rating"
-        ? Number(selectedOption.value || selectedOption.label)
-        : null;
-    await upsertOptionAnswer(ctx.db, {
-      responseId: response.id,
-      questionId,
-      selectedOptionIds: [optionId],
-      booleanValue:
-        question.type === "yes_no"
-          ? question.options[0]?.id === optionId
-          : null,
-      ratingValue:
-        ratingValue !== null && Number.isFinite(ratingValue)
-          ? ratingValue
-          : null,
-    });
-
-    await advanceQuestion(
-      ctx,
-      chatId,
-      response.id,
-      questionId,
-      flow.questions,
-      userId,
-      response.survey_id,
-      optionId,
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:multi:toggle:")) {
-    const [, , , questionIdRaw, optionIdRaw] = data.split(":");
-    const questionId = Number(questionIdRaw);
-    const optionId = Number(optionIdRaw);
-    const response = await ctx.db
-      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number; current_question_id: number | null }>();
-
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    if (
-      question?.type !== "multiple" ||
-      !question.options.some((option) => option.id === optionId)
-    ) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "选项不存在");
-      return;
-    }
-
-    const sessionState = await toggleSessionOption(
-      ctx.session,
-      userId,
-      response.survey_id,
-      optionId,
-    );
-    const selected = sessionState.selectedOptionIds;
-
-    const messageId = callback.message?.message_id;
-    if (messageId) {
-      await editMessageReplyMarkup(
-        ctx.botToken,
-        chatId,
-        messageId,
-        buildMultipleChoiceKeyboard(
-          question,
-          selected,
-          flow.questions.findIndex((item) => item.id === question.id),
-        ),
-      );
-    }
-
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:multi:confirm:")) {
-    const questionId = Number(data.slice("q:multi:confirm:".length));
-    const response = await ctx.db
-      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number; current_question_id: number | null }>();
-
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-
-    const selected = await getSessionSelectedOptions(
-      ctx.session,
-      userId,
-      response.survey_id,
-    );
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    if (!question || (selected.length === 0 && question.required)) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "请至少选择一个选项");
-      return;
-    }
-    if (selected.length === 0) {
-      await deleteAnswer(ctx.db, response.id, questionId);
-    } else {
-      await upsertOptionAnswer(ctx.db, {
-        responseId: response.id,
-        questionId,
-        selectedOptionIds: selected,
-      });
-    }
-    await clearSessionOptions(ctx.session, userId, response.survey_id);
-
-    await advanceQuestion(
-      ctx,
-      chatId,
-      response.id,
-      questionId,
-      flow.questions,
-      userId,
-      response.survey_id,
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data === "q:matrix:label") {
-    await answerCallbackQuery(ctx.botToken, callback.id, "请先选择要填写的行");
-    return;
-  }
-
-  if (data.startsWith("q:matrix:row:")) {
-    const [, , , questionIdRaw, rowIdRaw] = data.split(":");
-    const questionId = Number(questionIdRaw);
-    const rowId = Number(rowIdRaw);
-    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    const row = question?.options.find((item) => item.id === rowId);
-    if (!question || question.type !== "matrix" || !row || matrixColumns(question).length === 0) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵行无效");
-      return;
-    }
-    const selections = await getSessionMatrixSelections(ctx.session, userId, response.survey_id);
-    const index = flow.questions.findIndex((item) => item.id === question.id);
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `矩阵第 ${question.options.findIndex((item) => item.id === rowId) + 1} 行：${row.label}\n\n请选择一个选项：`,
-      buildMatrixColumnKeyboard(question, rowId, index, selections[String(rowId)]),
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:matrix:back:")) {
-    const questionId = Number(data.slice("q:matrix:back:".length));
-    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    if (!question || question.type !== "matrix") {
-      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵题不存在");
-      return;
-    }
-    await renderQuestion(ctx, chatId, response.id, question, flow.questions, userId, response.survey_id);
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:matrix:select:")) {
-    const [, , , questionIdRaw, rowIdRaw, columnIndexRaw] = data.split(":");
-    const questionId = Number(questionIdRaw);
-    const rowId = Number(rowIdRaw);
-    const columnIndex = Number(columnIndexRaw);
-    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    if (!question || question.type !== "matrix" || !question.options.some((row) => row.id === rowId) || columnIndex < 0 || columnIndex >= matrixColumns(question).length) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵选项无效");
-      return;
-    }
-    await setSessionMatrixSelection(ctx.session, userId, response.survey_id, rowId, columnIndex);
-    const selectedColumn = matrixColumns(question)[columnIndex] ?? "该选项";
-    await answerCallbackQuery(ctx.botToken, callback.id, `已选择：${selectedColumn}`);
-    await renderQuestion(ctx, chatId, response.id, question, flow.questions, userId, response.survey_id);
-    return;
-  }
-
-  if (data.startsWith("q:matrix:confirm:")) {
-    const questionId = Number(data.slice("q:matrix:confirm:".length));
-    const response = await ctx.db.prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1").bind(dbUserId).first<{ id: number; survey_id: number; current_question_id: number | null }>();
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const question = getQuestionById(flow, questionId);
-    const selections = await getSessionMatrixSelections(ctx.session, userId, response.survey_id);
-    if (!question || question.type !== "matrix") {
-      await answerCallbackQuery(ctx.botToken, callback.id, "矩阵题不存在");
-      return;
-    }
-    if (question.required && question.options.some((row) => selections[String(row.id)] === undefined)) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "请完成每一行的选择");
-      return;
-    }
-    if (Object.keys(selections).length === 0) await deleteAnswer(ctx.db, response.id, questionId);
-    else await upsertJsonAnswer(ctx.db, { responseId: response.id, questionId, jsonValue: JSON.stringify({ kind: "matrix", selections }) });
-    await clearSessionMatrixSelections(ctx.session, userId, response.survey_id);
-    await advanceQuestion(ctx, chatId, response.id, questionId, flow.questions, userId, response.survey_id);
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:prev:")) {
-    const questionId = Number(data.slice("q:prev:".length));
-    const response = await ctx.db
-      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number; current_question_id: number | null }>();
-
-    if (!response || response.current_question_id !== questionId) {
-      await refreshStaleQuestionCallback(ctx, chatId, userId, callback.id, response);
-      return;
-    }
-
-    const flow = await getSurveyFlow(ctx.db, response.survey_id);
-    const previous = getPreviousQuestion({ questions: flow.questions }, questionId);
-    if (previous) {
-      await updateResponseCurrentQuestion(ctx.db, response.id, previous.id);
-      await setSessionCurrentQuestion(
-        ctx.session,
-        userId,
-        response.survey_id,
-        previous.id,
-      );
-      await renderQuestion(
-        ctx,
-        chatId,
-        response.id,
-        previous,
-        flow.questions,
-        userId,
-        response.survey_id,
-      );
-    }
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return;
-  }
-
-  if (data.startsWith("q:submit:")) {
-    const surveyId = Number(data.slice("q:submit:".length));
-    const response = await ctx.db.prepare(
-      "SELECT id, survey_id FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1",
-    ).bind(dbUserId).first<{ id: number; survey_id: number }>();
-    if (!response || response.survey_id !== surveyId) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "当前没有可提交的问卷");
-      return;
-    }
-    const flow = await getSurveyFlow(ctx.db, surveyId);
-    const detail = await getResponseDetail(ctx.db, response.id);
-    const answersByQuestion = new Map(
-      (detail?.answers ?? []).map((answer) => [answer.questionId, answer]),
-    );
-    const missing = findMissingRequiredQuestion(
-      flow.questions,
-      answersByQuestion,
-    );
-    if (missing) {
-      const missingIndex = flow.questions.findIndex(
-        (item) => item.id === missing.id,
-      );
-      await answerCallbackQuery(
-        ctx.botToken,
-        callback.id,
-        `第 ${missingIndex + 1} 题为必答题，请先完成`,
-      );
-      await updateResponseCurrentQuestion(ctx.db, response.id, missing.id);
-      await setSessionCurrentQuestion(ctx.session, userId, surveyId, missing.id);
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `第 ${missingIndex + 1} 题“${missing.title}”是必答题，还没有作答。已为你定位到该题：`,
-      );
-      await renderQuestion(
-        ctx,
-        chatId,
-        response.id,
-        missing,
-        flow.questions,
-        userId,
-        surveyId,
-      );
-      return;
-    }
-    await completeResponse(ctx.db, response.id);
-    await completeSession(ctx.session, userId, surveyId);
-    if (dbUserId) {
-      try {
-        await ensureReportStyleTemplates(ctx, dbUserId);
-      } catch (error) {
-        // Completing a survey must never fail because a default template could
-        // not be provisioned; the report option will be unavailable until an
-        // administrator fixes template storage.
-        console.warn("Report style provisioning failed", error);
-      }
-    }
-    const hasPublishedReportTemplate = (await listVisualTemplates(ctx.db, 100)).some((template) =>
-      template.type === "report" && template.status === "published" && template.currentVersion &&
-      (template.surveyId === null || template.surveyId === surveyId),
-    );
-    if (hasPublishedReportTemplate) {
-      await sendMessage(ctx.botToken, chatId, "✅ 问卷已完成！\n\n你的回答已经保存。是否生成专属结果报告？", {
-        inline_keyboard: [
-          [{ text: "🎨 选择报告模板", callback_data: `rv:templates:${response.id}` }],
-          ...(ctx.origin
-            ? [[{ text: "🌐 查看网页版报告", url: await webReportUrl(ctx, response.id) }]]
-            : []),
-          [{ text: "暂不生成", callback_data: `rv:skip:${response.id}` }],
-        ],
-      });
-    } else {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        ctx.origin
-          ? `✅ 问卷已完成，感谢参与！\n\n🌐 网页版报告：${await webReportUrl(ctx, response.id)}`
-          : "你已完成问卷，感谢参与。",
-      );
-    }
-    try {
-      await sendCompletionPoster(ctx, chatId, surveyId);
-    } catch (error) {
-      console.warn("Completion poster generation failed", error);
-    }
-    await answerCallbackQuery(ctx.botToken, callback.id, "已提交");
-    return;
-  }
-
-  if (data.startsWith("q:pause:")) {
-    const surveyId = Number(data.slice("q:pause:".length));
-    const response = await ctx.db
-      .prepare("SELECT id, survey_id FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number }>();
-    if (!response || response.survey_id !== surveyId) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "当前没有可暂存的问卷");
-      return;
-    }
-    await completeSession(ctx.session, userId, surveyId);
-    await sendMessage(ctx.botToken, chatId, "💾 已暂存。下次发送 /start 后点“继续填写”，即可从当前题目继续。", {
-      inline_keyboard: [[{ text: "返回首页", callback_data: "home:surveys" }]],
-    });
-    await answerCallbackQuery(ctx.botToken, callback.id, "已暂存");
-    return;
-  }
-
-  if (data === "q:exit" || data.startsWith("q:exit:")) {
-    const surveyId = data.startsWith("q:exit:")
-      ? Number(data.slice("q:exit:".length))
-      : null;
-    const response = await ctx.db
-      .prepare("SELECT * FROM survey_responses WHERE user_id = ? AND status = 'in_progress' ORDER BY id DESC LIMIT 1")
-      .bind(dbUserId)
-      .first<{ id: number; survey_id: number }>();
-
-    if (response && (surveyId === null || response.survey_id === surveyId)) {
-      await cancelResponse(ctx.db, response.id);
-      await completeSession(ctx.session, userId, response.survey_id);
-      await sendMessage(ctx.botToken, chatId, "已退出当前问卷。");
-    } else if (response) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "该问卷按钮已失效");
-      return;
-    }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
