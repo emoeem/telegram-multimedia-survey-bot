@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 7 第一块：Playwright 视觉回归（2026-08-23）**：`qa/visual/survey.spec.ts` 18 用例（6 fixture × 3 视口），离线自包含，硬断言溢出/报错/主题 + 截图基线对比；`npm run test:visual` / `test:visual:update`。详见 `docs/PHASE2_PLAN.md` §10
 - [x] **Phase 3 第二块：主题预设库 + 后台选择界面（2026-08-23）**：预设直接复用 DaisyUI 主题库（8 套，纯 CSS 变量，无组件冲突）；问卷页 `data-theme` 激活；后台详情页预设选择器（实时色板）+ 自定义 JSON 叠加 + 清除。详见 `docs/PHASE2_PLAN.md` §6
 - [x] **Phase 3 第一块：SurveyTheme 渲染 + 移动端增强（2026-08-23）**：主题令牌规范化/下发/渲染（背景图+遮罩+主色+卡片+文字+按钮）、题号进度加完成百分比与分页指示、长文本折叠；修复 `.btn` 白底白字旧隐患。详见 `docs/PHASE2_PLAN.md` §5/§6
 - [x] **Phase 2 完成（2026-08-23）**：Web JSON 导入页 + 高保真预览（题型/媒体/低置信度）、分页保真、置信度透传、Media Resolver（data URL → MEDIA_KV）、导入错误逐字段定位、导入时绑定报告模板/主题（迁移 0031 `surveys.settings_json`）。详见 `docs/PHASE2_PLAN.md` §3
@@ -119,6 +120,7 @@
 
 ### 持续
 - [ ] 每次改动跑 `npm run typecheck && npm test && npm run lint && npm --prefix admin run build`
+- [ ] 前端 UI 改动后跑 `npm run test:visual`（视觉回归；`test:visual:update` 仅在有意变更时重生成基线）
 - [ ] PDF 转换器改动后跑 `.venv/bin/python scripts/test_forms_pdf_to_survey.py`
 - [ ] 迁移流程：备份 D1（`wrangler d1 export`）→ 应用 → staging 验证 → 生产
 - [x] 已应用迁移 0000–0031（0031 为 `surveys.settings_json`，2026-08-23）

@@ -7,6 +7,8 @@ admin/dist/
 .env
 *.log
 coverage/
+test-results/
+playwright-report/
 __pycache__/
 *.py[cod]
 customer-deployments/
