@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 2 完成（2026-08-23）**：Web JSON 导入页 + 高保真预览（题型/媒体/低置信度）、分页保真、置信度透传、Media Resolver（data URL → MEDIA_KV）、导入错误逐字段定位、导入时绑定报告模板/主题（迁移 0031 `surveys.settings_json`）。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 2 第三块：导入错误逐字段定位（2026-08-23）**：`ImportValidationError` + 结构化 issues（题号/标题/字段/路径），导入页逐条展示；Bot 导入路径兼容。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 2 第二块：Media Resolver（2026-08-23）**：PDF 内嵌 data URL 媒体导入时解码存入 MEDIA_KV（D1 只存引用）、导入上限提至 40MB、媒体代理支持 data URL 直出；实测堕落游戏.pdf 58 个媒体无损入库。详见 `docs/PHASE2_PLAN.md` §3/§4
 - [x] **Phase 2 第一块：Web JSON 导入 + 高保真预览（2026-08-23）**：`/admin/imports` 导入页（粘贴/上传 → 预览 → 创建草稿）、预览含题型分布/媒体/低置信度清单、分页保真、置信度透传；PDF 转换器（`scripts/forms_pdf_to_survey.py`）对非 Forms 版式自动关联 PDF 分页。详见 `docs/PHASE2_PLAN.md` §3
@@ -118,6 +119,7 @@
 - [ ] 每次改动跑 `npm run typecheck && npm test && npm run lint && npm --prefix admin run build`
 - [ ] PDF 转换器改动后跑 `.venv/bin/python scripts/test_forms_pdf_to_survey.py`
 - [ ] 迁移流程：备份 D1（`wrangler d1 export`）→ 应用 → staging 验证 → 生产
+- [x] 已应用迁移 0000–0031（0031 为 `surveys.settings_json`，2026-08-23）
 
 ## 6. 常用命令
 

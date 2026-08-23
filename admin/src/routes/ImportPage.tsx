@@ -1,6 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { ApiError, apiSend, type ImportIssue, type ImportSummary } from "../api";
+import {
+  ApiError,
+  api,
+  apiSend,
+  type ImportIssue,
+  type ImportSummary,
+  type ReportTemplateOption,
+} from "../api";
 
 const TYPE_LABELS: Record<string, string> = {
   single: "单选",
@@ -32,6 +39,14 @@ export function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<ImportIssue[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [templates, setTemplates] = useState<ReportTemplateOption[]>([]);
+  const [templateId, setTemplateId] = useState("");
+
+  useEffect(() => {
+    api<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates")
+      .then((data) => setTemplates(data.templates ?? []))
+      .catch(() => setTemplates([]));
+  }, []);
 
   const validate = async () => {
     if (validating || !content.trim()) return;
@@ -40,7 +55,10 @@ export function ImportPage() {
     setIssues([]);
     setSummary(null);
     try {
-      const result = await apiSend<ImportSummary>("POST", "/api/admin/imports/validate", { content });
+      const result = await apiSend<ImportSummary>("POST", "/api/admin/imports/validate", {
+        content,
+        ...(templateId ? { reportTemplateId: templateId } : {}),
+      });
       setSummary(result);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "校验失败");
@@ -58,7 +76,10 @@ export function ImportPage() {
     setError(null);
     setIssues([]);
     try {
-      const result = await apiSend<{ id: number }>("POST", "/api/admin/imports", { content });
+      const result = await apiSend<{ id: number }>("POST", "/api/admin/imports", {
+        content,
+        ...(templateId ? { reportTemplateId: templateId } : {}),
+      });
       navigate(`/surveys/${result.id}/editor`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "创建草稿失败");
@@ -113,6 +134,18 @@ export function ImportPage() {
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
             📂 选择 JSON 文件
           </button>
+          <select
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm sm:flex-none"
+            value={templateId}
+            onChange={(event) => setTemplateId(event.target.value)}
+          >
+            <option value="">报告模板：平台默认</option>
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
         </div>
         {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-red-600">{error}</div> : null}
         {issues.length ? (
@@ -143,7 +176,12 @@ export function ImportPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold">{summary.title || "未命名问卷"}</h3>
-              {summary.description ? <p className="mt-1 text-sm text-gray-500">{summary.description}</p> : null}
+          {summary.description ? <p className="mt-1 text-sm text-gray-500">{summary.description}</p> : null}
+          {summary.reportTemplateId ? (
+            <p className="mt-1 text-sm text-indigo-600">
+              报告模板：{summary.reportTemplateName ?? summary.reportTemplateId}
+            </p>
+          ) : null}
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
               <span className="rounded-full bg-indigo-50 px-3 py-1 font-medium text-indigo-700">{summary.questionCount} 题</span>

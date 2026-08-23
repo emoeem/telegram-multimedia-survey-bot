@@ -304,6 +304,52 @@ describe("import service", () => {
     });
   });
 
+  it("parses report template and theme from unified survey settings", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带模板的问卷",
+          settings: {
+            report_template_id: "magazine-dark",
+            theme: { background: "#111", primary_color: "#e11" },
+          },
+          questions: [{ type: "text", title: "问题" }],
+        },
+      }),
+    );
+
+    expect(parsed.settings?.reportTemplateId).toBe("magazine-dark");
+    expect(parsed.settings?.theme).toEqual({
+      background: "#111",
+      primary_color: "#e11",
+    });
+  });
+
+  it("binds report template and theme settings when creating the survey", async () => {
+    const { db } = createD1Mock();
+    const surveyId = await saveImportedSurvey(db, 7, {
+      title: "模板问卷",
+      settings: {
+        anonymous: false,
+        allowMultipleResponses: false,
+        maxResponsesPerUser: 1,
+        reportTemplateId: "magazine-dark",
+        theme: { background: "#111" },
+      },
+      questions: [{ type: "text", title: "问题" }],
+    });
+
+    expect(surveyId).toBe(41);
+    expect(surveyRepositoryMocks.createSurvey).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        reportTemplateId: "magazine-dark",
+        settingsJson: JSON.stringify({ theme: { background: "#111" } }),
+      }),
+    );
+  });
+
   it("stores resolver-produced KV media with storage_key instead of url/r2", async () => {
     const { db, statements } = createD1Mock();
     const resolver: ImportedMediaResolver = async (media) => {

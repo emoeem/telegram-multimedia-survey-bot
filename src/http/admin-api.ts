@@ -186,6 +186,10 @@ function buildImportSummary(imported: ImportedSurvey) {
     },
     warnings: imported.importWarnings ?? [],
     lowConfidence,
+    reportTemplateId: imported.settings?.reportTemplateId ?? null,
+    reportTemplateName: imported.settings?.reportTemplateId
+      ? (REPORT_TEMPLATES[imported.settings.reportTemplateId]?.name ?? null)
+      : null,
   };
 }
 
@@ -1311,6 +1315,26 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         );
       }
       return fail(400, 'invalid_import', error instanceof Error ? error.message : 'JSON 导入内容无效');
+    }
+    if (body.reportTemplateId !== undefined && body.reportTemplateId !== null) {
+      if (
+        typeof body.reportTemplateId !== 'string' ||
+        !REPORT_TEMPLATES[body.reportTemplateId.trim()]
+      ) {
+        return fail(400, 'validation_failed', '报告模板不存在');
+      }
+      imported.settings = {
+        anonymous: imported.settings?.anonymous ?? false,
+        allowMultipleResponses: imported.settings?.allowMultipleResponses ?? false,
+        maxResponsesPerUser: imported.settings?.maxResponsesPerUser ?? 1,
+        ...(imported.settings?.reportTemplateId
+          ? { reportTemplateId: imported.settings.reportTemplateId }
+          : {}),
+        ...(imported.settings?.theme !== undefined
+          ? { theme: imported.settings.theme }
+          : {}),
+        reportTemplateId: body.reportTemplateId.trim(),
+      };
     }
     const summary = buildImportSummary(imported);
     if (url.pathname.endsWith('/validate')) return json(summary);

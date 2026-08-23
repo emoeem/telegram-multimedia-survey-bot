@@ -20,6 +20,7 @@ interface SurveyRow {
   access_code: string | null;
   access_code_encrypted: string | null;
   report_template_id: string | null;
+  settings_json: string | null;
 }
 
 function mapSurvey(row: SurveyRow): Survey {
@@ -42,6 +43,7 @@ function mapSurvey(row: SurveyRow): Survey {
     accessCode: row.access_code,
     accessCodeEncrypted: row.access_code_encrypted,
     reportTemplateId: row.report_template_id,
+    settingsJson: row.settings_json,
   };
 }
 
@@ -54,6 +56,8 @@ export async function createSurvey(
     anonymous?: boolean;
     allowMultipleResponses?: boolean;
     maxResponsesPerUser?: number;
+    reportTemplateId?: string | null;
+    settingsJson?: string | null;
   },
 ): Promise<Survey> {
   const timestamp = nowIso();
@@ -62,8 +66,9 @@ export async function createSurvey(
       `INSERT INTO surveys (
         owner_id, title, description, anonymous,
         allow_multiple_responses, max_responses_per_user,
-        version, access_code, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        version, access_code, report_template_id, settings_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.ownerId,
@@ -73,6 +78,8 @@ export async function createSurvey(
       input.allowMultipleResponses ? 1 : 0,
       input.maxResponsesPerUser ?? 1,
       null,
+      input.reportTemplateId ?? null,
+      input.settingsJson ?? null,
       timestamp,
       timestamp,
     )

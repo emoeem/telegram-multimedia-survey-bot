@@ -45,6 +45,7 @@ export interface Survey {
   accessCode: string | null;
   accessCodeEncrypted: string | null;
   reportTemplateId: string | null;
+  settingsJson: string | null;
 }
 
 export type QuestionType =

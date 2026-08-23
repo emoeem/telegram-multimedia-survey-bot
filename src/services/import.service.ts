@@ -63,6 +63,9 @@ export interface ImportedSurvey {
     anonymous: boolean;
     allowMultipleResponses: boolean;
     maxResponsesPerUser: number;
+    reportTemplateId?: string;
+    /** Reserved for the Phase-3 SurveyTheme system; persisted to settings_json. */
+    theme?: unknown;
   };
 }
 
@@ -467,6 +470,8 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
         anonymous?: boolean;
         allow_multiple?: boolean;
         max_responses?: number;
+        report_template_id?: string;
+        theme?: unknown;
       };
       pages?: unknown;
       questions?: unknown[];
@@ -484,6 +489,12 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
           1,
           Math.floor(unifiedSurvey.settings?.max_responses ?? 1),
         ),
+        ...(typeof unifiedSurvey.settings?.report_template_id === "string"
+          ? { reportTemplateId: unifiedSurvey.settings.report_template_id }
+          : {}),
+        ...(unifiedSurvey.settings?.theme !== undefined
+          ? { theme: unifiedSurvey.settings.theme }
+          : {}),
       },
       questions: normalizeQuestions(unifiedSurvey.questions),
     };
@@ -495,6 +506,8 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
         anonymous?: boolean;
         allow_multiple?: boolean;
         max_responses?: number;
+        report_template_id?: string;
+        theme?: unknown;
       };
       questions?: unknown[];
     };
@@ -509,6 +522,12 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
           1,
           Math.floor(legacy.settings?.max_responses ?? 1),
         ),
+        ...(typeof legacy.settings?.report_template_id === "string"
+          ? { reportTemplateId: legacy.settings.report_template_id }
+          : {}),
+        ...(legacy.settings?.theme !== undefined
+          ? { theme: legacy.settings.theme }
+          : {}),
       },
       questions: normalizeQuestions(legacy.questions),
     };
@@ -616,6 +635,11 @@ export async function saveImportedSurvey(
     allowMultipleResponses:
       resolvedSurvey.settings?.allowMultipleResponses ?? false,
     maxResponsesPerUser: resolvedSurvey.settings?.maxResponsesPerUser ?? 1,
+    reportTemplateId: resolvedSurvey.settings?.reportTemplateId ?? null,
+    settingsJson:
+      resolvedSurvey.settings?.theme !== undefined
+        ? JSON.stringify({ theme: resolvedSurvey.settings.theme })
+        : null,
   });
 
   const timestamp = new Date().toISOString();

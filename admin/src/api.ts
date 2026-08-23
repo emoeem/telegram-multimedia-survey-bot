@@ -131,6 +131,8 @@ export interface ImportSummary {
   media: { question: number; option: number; total: number };
   warnings: string[];
   lowConfidence: ImportQuestionWarning[];
+  reportTemplateId: string | null;
+  reportTemplateName: string | null;
 }
 
 export interface SurveyDetailData {

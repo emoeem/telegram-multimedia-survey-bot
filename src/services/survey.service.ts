@@ -44,6 +44,10 @@ export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
         surveyRow['report_template_id'] === null || surveyRow['report_template_id'] === undefined
           ? null
           : String(surveyRow['report_template_id']),
+      settingsJson:
+        surveyRow['settings_json'] === null || surveyRow['settings_json'] === undefined
+          ? null
+          : String(surveyRow['settings_json']),
     };
   });
 }
