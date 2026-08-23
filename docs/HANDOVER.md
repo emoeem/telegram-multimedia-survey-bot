@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 2 第一块：Web JSON 导入 + 高保真预览（2026-08-23）**：`/admin/imports` 导入页（粘贴/上传 → 预览 → 创建草稿）、预览含题型分布/媒体/低置信度清单、分页保真、置信度透传；PDF 转换器（`scripts/forms_pdf_to_survey.py`）对非 Forms 版式自动关联 PDF 分页。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 1 答卷查看核心（第一块，2026-08-23）**：答卷详情补问卷版本号 + 版本页链接、每题原始数据查看、PDF 下载（同步 Browser 渲染）、重新发送 Telegram（force 重入队）；详见 `docs/PHASE2_PLAN.md`
 - [ ] **按 `docs/PHASE2_PLAN.md` 继续第二阶段**：Phase 2 JSON 高保真导入 → Phase 3 Web Survey UI 2.0 → Phase 4 Report Engine 2.0 → Phase 5 Responsive Report → Phase 6 Template Editor → Phase 7 Playwright Visual QA
 - [x] **WebView 黑屏根因修复并上线（2026-08-23）**：`run_worker_first=true` + 显式静态兜底 + 入口 HTML `Cache-Control: no-store` + 非阻塞 telegram.org bridge + data-URI favicon；生产 Version `7a041cbc`，Chromium 实测 `/s`、`/s/18`、`/admin`、`/admin/surveys` 全部 200 且控制台无 404/加载失败。**人工验证时先发 `/start` 拿新按钮**（旧消息里的旧按钮可能仍带旧行为）
@@ -113,6 +114,7 @@
 
 ### 持续
 - [ ] 每次改动跑 `npm run typecheck && npm test && npm run lint && npm --prefix admin run build`
+- [ ] PDF 转换器改动后跑 `.venv/bin/python scripts/test_forms_pdf_to_survey.py`
 - [ ] 迁移流程：备份 D1（`wrangler d1 export`）→ 应用 → staging 验证 → 生产
 
 ## 6. 常用命令

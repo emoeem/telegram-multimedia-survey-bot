@@ -7,6 +7,7 @@ import { TestBanner } from "./TestBanner";
 const NAV_ITEMS = [
   { to: "/", icon: "📊", label: "总览" },
   { to: "/surveys", icon: "📝", label: "问卷" },
+  { to: "/imports", icon: "📥", label: "导入" },
   { to: "/users", icon: "👥", label: "用户" },
   { to: "/reports", icon: "📦", label: "报告" },
   { to: "/settings", icon: "⚙️", label: "设置" },
@@ -50,6 +51,7 @@ export function Layout() {
     if (/^\/surveys\/\d+\/editor$/.test(path)) return "问卷编辑器";
     if (/^\/surveys\/\d+/.test(path)) return "问卷详情";
     if (path.startsWith("/surveys")) return "问卷";
+    if (path.startsWith("/imports")) return "导入问卷";
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/settings")) return "系统设置";
@@ -58,6 +60,7 @@ export function Layout() {
 
   const showTestBanner = environment === "development" && !getTelegramInitData();
   const isSurveysActive = location.pathname.startsWith("/surveys");
+  const isImportsActive = location.pathname.startsWith("/imports");
   const isUsersActive = location.pathname.startsWith("/users");
   const isReportsActive = location.pathname.startsWith("/reports");
   const isSettingsActive = location.pathname.startsWith("/settings");
@@ -83,10 +86,12 @@ export function Layout() {
                   : item.to === "/users"
                     ? isUsersActive
                     : item.to === "/reports"
-                      ? isReportsActive
+                  ? isReportsActive
                       : item.to === "/settings"
                         ? isSettingsActive
-                        : isSurveysActive;
+                        : item.to === "/imports"
+                          ? isImportsActive
+                          : isSurveysActive;
               return (
                 <Link
                   key={item.to}

@@ -6,6 +6,7 @@ import { SurveyDetailPage } from "./routes/SurveyDetailPage";
 import { EditorPage } from "./routes/EditorPage";
 import { ResponsesPage } from "./routes/ResponsesPage";
 import { ResponseDetailPage } from "./routes/ResponseDetailPage";
+import { ImportPage } from "./routes/ImportPage";
 import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { UsersPage } from "./routes/UsersPage";
 import { VersionsPage } from "./routes/VersionsPage";
@@ -19,6 +20,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <DashboardPage /> },
         { path: "surveys", element: <SurveysPage /> },
+        { path: "imports", element: <ImportPage /> },
         { path: "surveys/:id", element: <SurveyDetailPage /> },
         { path: "surveys/:id/editor", element: <EditorPage /> },
         { path: "surveys/:id/responses", element: <ResponsesPage /> },

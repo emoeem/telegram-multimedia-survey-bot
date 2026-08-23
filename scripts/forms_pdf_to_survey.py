@@ -2051,6 +2051,12 @@ def build_output(
                 key=lambda item: item["page_number"],
             )
         ]
+        # Keep pagination fidelity for non-Forms PDFs: link every question to
+        # the survey page that mirrors its source PDF page.
+        page_map = {
+            page["page_number"]: f"pdf_page_{page['page_number']}"
+            for page in document["pages"]
+        }
 
     survey_questions = build_survey_questions(questions, page_map)
     choice_repair_warnings = repair_import_choice_questions(

@@ -105,6 +105,26 @@ export interface SurveyListData {
   totalPages: number;
 }
 
+export interface ImportQuestionWarning {
+  order: number;
+  title: string;
+  type: string;
+  confidence: { type?: number; required?: number } | null;
+  warnings: string[];
+}
+
+export interface ImportSummary {
+  title: string;
+  description: string | null;
+  questionCount: number;
+  optionCount: number;
+  pageCount: number;
+  typeCounts: Record<string, number>;
+  media: { question: number; option: number; total: number };
+  warnings: string[];
+  lowConfidence: ImportQuestionWarning[];
+}
+
 export interface SurveyDetailData {
   id: number;
   title: string;

@@ -39,6 +39,10 @@ export interface ImportedQuestion {
   options?: ImportedOption[];
   media?: ImportedMedia[];
   settings?: Record<string, unknown>;
+  /** Parser-produced per-question warnings (e.g. layout/association issues). */
+  warnings?: string[];
+  /** Parser confidence for type/required detection; surfaced in import preview. */
+  confidence?: { type?: number; required?: number };
 }
 
 export interface ImportedPage {
@@ -214,6 +218,17 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
       options: normalizeOptions(raw["options"]),
       media: normalizeMediaList(raw["media"]),
     };
+    const warnings = raw["warnings"];
+    if (Array.isArray(warnings)) {
+      const strings = warnings.filter((item): item is string => typeof item === "string");
+      if (strings.length) importedQuestion.warnings = strings;
+    }
+    const confidence: { type?: number; required?: number } = {};
+    const typeConfidence = raw["type_confidence"];
+    const requiredConfidence = raw["required_confidence"];
+    if (typeof typeConfidence === "number") confidence.type = typeConfidence;
+    if (typeof requiredConfidence === "number") confidence.required = requiredConfidence;
+    if (Object.keys(confidence).length) importedQuestion.confidence = confidence;
     const description = nonEmptyString(raw["description"]);
     if (description) {
       importedQuestion.description = description;
@@ -240,8 +255,10 @@ function normalizePages(value: unknown): ImportedPage[] {
     const raw = page as Record<string, unknown>;
     const title = nonEmptyString(raw["title"]);
     const description = nonEmptyString(raw["description"]);
-    if (!title && !description) continue;
     const id = nonEmptyString(raw["id"]);
+    // Keep pages that only carry an id/order: PDF imports use these to
+    // preserve pagination even when the source has no page title.
+    if (!id && !title && !description) continue;
     pages.push({
       ...(id ? { id } : {}),
       ...(title ? { title } : {}),

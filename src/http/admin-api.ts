@@ -87,6 +87,7 @@ import {
   saveSystemSetting,
   SYSTEM_SETTING_KEYS,
 } from '../services/system-settings.service';
+import type { ImportedSurvey } from '../services/import.service';
 import {
   getNumericStatistics,
   getOptionStatistics,
@@ -97,6 +98,53 @@ import { downloadTelegramFile } from '../bot/telegram';
 // Telegram initData is signed when the Mini App session opens; treat anything
 // older than a day as stale.
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+function buildImportSummary(imported: ImportedSurvey) {
+  const typeCounts: Record<string, number> = {};
+  let optionCount = 0;
+  let questionMediaCount = 0;
+  let optionMediaCount = 0;
+  for (const question of imported.questions) {
+    typeCounts[question.type] = (typeCounts[question.type] ?? 0) + 1;
+    optionCount += question.options?.length ?? 0;
+    questionMediaCount += question.media?.length ?? 0;
+    optionMediaCount += (question.options ?? []).reduce(
+      (total, option) => total + option.media.length,
+      0,
+    );
+  }
+  const lowConfidence = imported.questions
+    .map((question, index) => ({
+      order: index + 1,
+      title: question.title,
+      type: question.type,
+      confidence: question.confidence ?? null,
+      warnings: question.warnings ?? [],
+    }))
+    .filter(
+      (question) =>
+        question.warnings.length > 0 ||
+        (question.confidence?.type ?? 1) < 0.7 ||
+        (question.confidence?.required ?? 1) < 0.7,
+    )
+    .slice(0, 50);
+
+  return {
+    title: imported.title,
+    description: imported.description ?? null,
+    questionCount: imported.questions.length,
+    optionCount,
+    pageCount: imported.pages?.length ?? 0,
+    typeCounts,
+    media: {
+      question: questionMediaCount,
+      option: optionMediaCount,
+      total: questionMediaCount + optionMediaCount,
+    },
+    warnings: imported.importWarnings ?? [],
+    lowConfidence,
+  };
+}
 
 type AdminUser = NonNullable<Awaited<ReturnType<typeof getUserByTelegramId>>>;
 
@@ -1209,19 +1257,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     } catch (error) {
       return fail(400, 'invalid_import', error instanceof Error ? error.message : 'JSON 导入内容无效');
     }
-    const summary = {
-      title: imported.title,
-      description: imported.description ?? null,
-      questionCount: imported.questions.length,
-      mediaCount: imported.questions.reduce(
-        (total, question) => total + (question.media?.length ?? 0) + (question.options ?? []).reduce(
-          (optionTotal, option) => optionTotal + option.media.length,
-          0,
-        ),
-        0,
-      ),
-      warnings: imported.importWarnings ?? [],
-    };
+    const summary = buildImportSummary(imported);
     if (url.pathname.endsWith('/validate')) return json(summary);
     try {
       const id = await saveImportedSurvey(db, user.id, imported);

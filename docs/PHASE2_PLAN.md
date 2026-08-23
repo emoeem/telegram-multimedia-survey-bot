@@ -83,6 +83,19 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 
 导入必须提供**导入预览**：解析后显示「✓ 18 问题 / ✓ 42 选项 / ✓ 7 图片 / ⚠ 2 个媒体 URL 无法访问」，再决定「查看预览 / 返回修改 / 创建草稿」。
 
+**已完成（2026-08-23）**：
+
+- Web Admin 新增「导入」页（`/admin/imports`）：粘贴或上传 JSON → 校验预览 → 创建草稿进编辑器
+- 高保真预览：标题/题目数/选项数/页数/媒体数、题型分布、问题媒体 vs 选项媒体、自动修复警告、低置信度题目清单（含题型/必答置信度与解析器警告）
+- 分页保真：`normalizePages` 保留仅有 id/order 的分页；PDF 转换器对非 Forms 版式把题目关联到源 PDF 页（100% 覆盖）
+- 置信度透传：`ImportedQuestion` 保留 `type_confidence` / `required_confidence` / `warnings`，供预览和后续编辑器提示使用
+
+**尚未完成**：
+
+- Media Resolver：PDF 抽取的图片/视频/音频目前以相对 URL 嵌入，单文件 JSON 上传无法携带；需支持 base64 内嵌、zip 上传或 URL 解析
+- 导入错误逐字段展示（Schema Validator 详细定位）
+- 导入后直接绑定报告模板 / 主题
+
 ## 4. Web Media System
 
 媒体抽象为 `MediaAsset`（storage / mime_type / file_size / width / height / duration / thumbnail / scope / owner / expires_at），支持 image / video / audio / gif / sticker / document，场景决定允许类型：
@@ -200,4 +213,3 @@ JSON → JSON Import → Web Editor → Draft → Preview → Publish
 - 所有渲染（Admin/报告/PDF/Telegram/导出）共享同一 ViewModel 层
 - 媒体是 Question / Option / Answer 三层的资源，不做全局 if 分支
 - Telegram 永远只是外围基础设施
-

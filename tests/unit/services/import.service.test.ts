@@ -191,6 +191,77 @@ describe("import service", () => {
     ]);
   });
 
+  it("keeps pages that only carry an id so PDF pagination survives", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "分页问卷",
+          pages: [
+            { id: "pdf_page_1", order: 1, pdf_pages: [1] },
+            { id: "pdf_page_2", order: 2, pdf_pages: [2] },
+          ],
+          questions: [
+            {
+              id: "q_1",
+              type: "text",
+              title: "第一题",
+              page_id: "pdf_page_1",
+            },
+            {
+              id: "q_2",
+              type: "text",
+              title: "第二题",
+              page_id: "pdf_page_2",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed.pages?.map((page) => page.id)).toEqual([
+      "pdf_page_1",
+      "pdf_page_2",
+    ]);
+    expect(parsed.questions.map((question) => question.pageId)).toEqual([
+      "pdf_page_1",
+      "pdf_page_2",
+    ]);
+  });
+
+  it("passes parser warnings and confidence through for the import preview", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "置信度问卷",
+          questions: [
+            {
+              id: "q_1",
+              type: "text",
+              title: "可疑题目",
+              type_confidence: 0.52,
+              required_confidence: 0.9,
+              warnings: ["选项疑似并入题干"],
+            },
+            {
+              id: "q_2",
+              type: "single",
+              title: "正常题目",
+              type_confidence: 0.98,
+              required_confidence: 0.95,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed.questions[0]?.confidence).toEqual({ type: 0.52, required: 0.9 });
+    expect(parsed.questions[0]?.warnings).toEqual(["选项疑似并入题干"]);
+    expect(parsed.questions[1]?.confidence).toEqual({ type: 0.98, required: 0.95 });
+    expect(parsed.questions[1]?.warnings).toBeUndefined();
+  });
+
   it("splits two short options that PDF extraction joined with a line break", () => {
     const parsed = parseImportedSurvey(
       JSON.stringify({
