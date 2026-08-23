@@ -131,7 +131,7 @@ function buildHomeKeyboard(
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
-      ? [{ text: "浏览问卷", web_app: { url: `${origin}/s` } }]
+      ? [{ text: "浏览问卷", web_app: { url: `${origin}/s?v=3` } }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
@@ -1267,7 +1267,7 @@ async function showSurveyShareLink(
     throw new Error("请先发布问卷，发布后才能生成分享链接");
   }
   const url = await getSurveyShareUrl(ctx, surveyId);
-  const webUrl = ctx.origin ? `${ctx.origin}/s/${surveyId}` : null;
+  const webUrl = ctx.origin ? `${ctx.origin}/s/${surveyId}?v=3` : null;
   await renderUiScreen(ctx, chatId, userId, { screen: "survey_share", text: [
       `🔗 ${survey.title}`,
       "",
@@ -1466,7 +1466,7 @@ async function listSurveys(
     {
       text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
       ...(ctx.origin
-        ? { web_app: { url: `${ctx.origin}/s/${survey.id}` } }
+        ? { web_app: { url: `${ctx.origin}/s/${survey.id}?v=3` } }
         : { callback_data: "home:menu" }),
     },
   ]);
@@ -1610,9 +1610,9 @@ export async function handleTelegramMessage(
         await sendMessage(
           ctx.botToken,
           message.chat.id,
-          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}`,
+          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}?v=3`,
           {
-            inline_keyboard: [[{ text: "填写问卷", web_app: { url: `${ctx.origin}/s/${surveyId}` } }]],
+            inline_keyboard: [[{ text: "填写问卷", web_app: { url: `${ctx.origin}/s/${surveyId}?v=3` } }]],
           },
         );
       } else {
