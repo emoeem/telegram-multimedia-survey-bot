@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useParams } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import { useApi } from "../hooks";
 import type { SurveyAnalyticsData } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -31,7 +32,7 @@ export function AnalyticsPage() {
 
   return (
     <div>
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <h2 className="text-lg font-semibold">{data.survey.title}</h2>
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {metrics.map(([label, value]) => (
@@ -43,7 +44,7 @@ export function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="mt-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="mt-5 card">
         <h2 className="text-lg font-semibold">选择题分布</h2>
         {optionGroups.length ? optionGroups.map((group) => (
           <div key={group[0]?.questionId} className="mt-5 border-t border-gray-100 pt-4 first:border-0 first:pt-0">
@@ -65,7 +66,7 @@ export function AnalyticsPage() {
         )) : <EmptyPanel text="暂无选择题统计" />}
       </section>
 
-      <section className="mt-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="mt-5 card">
         <h2 className="text-lg font-semibold">数字与评分统计</h2>
         {data.numericStats.length ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -85,7 +86,9 @@ export function AnalyticsPage() {
       </section>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <Link className="btn" to={`/surveys/${data.survey.id}`}>← 返回问卷</Link>
+        <Link className="btn" to={`/surveys/${data.survey.id}`}>
+          <ArrowLeft className="h-4 w-4" />返回问卷
+        </Link>
         <Link className="btn" to={`/surveys/${data.survey.id}/responses`}>查看答卷</Link>
       </div>
     </div>

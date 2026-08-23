@@ -1,8 +1,28 @@
 import { Link, useNavigate } from "react-router";
+import {
+  Activity,
+  Archive,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  FileText,
+  Loader,
+  Package,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { useApi } from "../hooks";
 import type { DashboardData } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { formatDateTime } from "../format";
+
+const METRICS: Array<{ key: keyof DashboardData; label: string; icon: typeof Users; tint: string }> = [
+  { key: "users", label: "用户数量", icon: Users, tint: "bg-indigo-50 text-indigo-600" },
+  { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-sky-50 text-sky-600" },
+  { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-emerald-50 text-emerald-600" },
+  { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-violet-50 text-violet-600" },
+  { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-amber-50 text-amber-600" },
+];
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -11,20 +31,18 @@ export function DashboardPage() {
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={6} />;
 
-  const metrics: [keyof DashboardData, string][] = [
-    ["users", "用户数量"],
-    ["surveys", "问卷数量"],
-    ["publishedSurveys", "已发布问卷"],
-    ["responses", "答卷数量"],
-    ["todayResponses", "今日答卷"],
-  ];
-
   const deliveries = data.reportDeliveries;
-  const deliveryItems: Array<[string, number]> = [
-    ["待处理", deliveries.pending],
-    ["生成中", deliveries.delivering],
-    ["已归档", deliveries.delivered],
-    ["失败", deliveries.failed],
+  const deliveryItems: Array<{
+    label: string;
+    value: number;
+    status: string;
+    icon: typeof Package;
+    tint: string;
+  }> = [
+    { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-slate-100 text-slate-500" },
+    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-blue-50 text-blue-600" },
+    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-green-50 text-green-600" },
+    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-red-50 text-red-600" },
   ];
 
   const actionLabels: Record<string, string> = {
@@ -40,72 +58,91 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-        {metrics.map(([key, label]) => (
-          <div key={key} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="text-sm text-gray-500">{label}</div>
-            <div className="mt-2 text-3xl font-bold">{Number(data[key] ?? 0)}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5">
+        {METRICS.map(({ key, label, icon: Icon, tint }) => (
+          <div key={key} className="stat">
+            <div className="stat-label">
+              <span className={`stat-icon ${tint}`}>
+                <Icon className="h-[18px] w-[18px]" />
+              </span>
+              {label}
+            </div>
+            <div className="stat-value">{Number(data[key] ?? 0)}</div>
           </div>
         ))}
       </div>
-      <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="mb-3 text-lg font-semibold">报告归档状态</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {deliveryItems.map(([label, value]) => (
+
+      <section className="card mt-6">
+        <div className="card-title">
+          <div>
+            <h2>报告归档状态</h2>
+            <p className="card-sub">Telegram 私人频道交付队列</p>
+          </div>
+          <Link className="btn btn-sm" to="/reports">
+            查看全部
+          </Link>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
             <Link
               key={label}
-              to={`/reports?status=${label === "已归档" ? "delivered" : label === "失败" ? "failed" : label === "生成中" ? "delivering" : "pending"}`}
-              className={`rounded-xl border p-4 ${
+              to={`/reports?status=${status}`}
+              className={`rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
                 label === "失败" && value > 0
-                  ? "border-red-200 bg-red-50"
-                  : "border-gray-200 bg-white"
+                  ? "border-red-200 bg-red-50/60"
+                  : "border-edge bg-white"
               }`}
             >
-              <div className="text-sm text-gray-500">{label}</div>
-              <div className={`mt-1.5 text-2xl font-bold ${label === "失败" && value > 0 ? "text-red-600" : ""}`}>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span className={`grid h-7 w-7 place-items-center rounded-lg ${tint}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                {label}
+              </div>
+              <div className={`mt-2 text-2xl font-bold ${label === "失败" && value > 0 ? "text-red-600" : ""}`}>
                 {value}
               </div>
             </Link>
           ))}
         </div>
       </section>
+
       {data.recentActions?.length ? (
-        <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="mb-3 text-lg font-semibold">最近操作</h2>
-          <ul className="divide-y divide-gray-100">
+        <section className="card mt-6">
+          <h2 className="text-base font-semibold">最近操作</h2>
+          <ul className="mt-3 divide-y divide-edge-soft">
             {data.recentActions.map((action) => (
               <li key={action.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <span>
                   {actionLabels[action.action] ?? action.action}
-                  <span className="text-gray-400"> · {action.entityType} #{action.entityId ?? "-"}</span>
+                  <span className="muted"> · {action.entityType} #{action.entityId ?? "-"}</span>
                 </span>
-                <span className="text-gray-400">{formatDateTime(action.createdAt)}</span>
+                <span className="muted">{formatDateTime(action.createdAt)}</span>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
-      <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="mb-3 text-lg font-semibold">最近问卷</h2>
+
+      <section className="card mt-6">
+        <h2 className="text-base font-semibold">最近问卷</h2>
         {data.recentSurveys?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="mt-3 overflow-x-auto">
+            <table className="tbl">
               <tbody>
                 {data.recentSurveys.map((item) => (
                   <tr
                     key={item.id}
-                    className="cursor-pointer border-b border-gray-100 hover:bg-slate-50"
+                    className="cursor-pointer"
                     onClick={() => navigate(`/surveys/${item.id}`)}
                   >
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                    <td>
                       <strong>{item.title || "未命名问卷"}</strong>
                     </td>
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                    <td>
                       <StatusBadge status={item.status} />
                     </td>
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
-                      {formatDateTime(item.updatedAt)}
-                    </td>
+                    <td className="muted">{formatDateTime(item.updatedAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -115,42 +152,28 @@ export function DashboardPage() {
           <EmptyPanel text="还没有问卷" />
         )}
       </section>
+
       {data.recentResponses?.length ? (
-        <section className="mt-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="mb-3 text-lg font-semibold">最近答卷</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <tbody>
-                {data.recentResponses.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
-                  >
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
-                      <Link
-                        to={`/surveys/${item.surveyId}/responses/${item.id}`}
-                        className="font-semibold text-inherit no-underline"
-                      >
-                        {item.title || `问卷 ${item.surveyId}`}
-                      </Link>
-                    </td>
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.status || "-"}</td>
-                    <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
-                      {formatDateTime(item.updatedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <section className="card mt-6">
+          <h2 className="text-base font-semibold">最近答卷</h2>
+          <ul className="mt-3 divide-y divide-edge-soft">
+            {data.recentResponses.map((item) => (
+              <li key={item.id}>
+                <Link
+                  to={`/surveys/${item.surveyId}/responses/${item.id}`}
+                  className="flex items-center justify-between gap-3 py-2.5 text-sm"
+                >
+                  <span>
+                    <span className="font-medium">{item.title || `问卷 ${item.surveyId}`}</span>
+                    <span className="muted"> · #{item.id}</span>
+                  </span>
+                  <span className="muted">{formatDateTime(item.updatedAt)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
-      <div className="mt-6 text-center">
-        <Link to="/surveys" className="btn inline-block">
-          查看全部问卷 →
-        </Link>
-      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Copy, Paperclip, Plus, Trash2, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -135,8 +136,8 @@ export function QuestionCard({
           <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">未保存</span>
         ) : null}
         {question.media.length ? (
-          <span className="rounded bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
-            📎 媒体 ×{question.media.length}
+          <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
+            <Paperclip className="h-3.5 w-3.5" />媒体 ×{question.media.length}
           </span>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
@@ -146,7 +147,7 @@ export function QuestionCard({
             onClick={() => onDuplicateQuestion(question.id)}
             title="复制这道题"
           >
-            📋 复制
+            <Copy className="h-3.5 w-3.5" />复制
           </button>
           {confirmDelete ? (
             <span className="flex items-center gap-2 text-xs">
@@ -165,7 +166,7 @@ export function QuestionCard({
               onClick={() => setConfirmDelete(true)}
               title={editable ? "删除这道题" : "仅草稿可删除"}
             >
-              🗑 删除
+              <Trash2 className="h-3.5 w-3.5" />删除
             </button>
           )}
         </div>
@@ -223,7 +224,7 @@ export function QuestionCard({
           <label className="grid gap-1 text-sm">
             <span className="text-gray-500">所属分页</span>
             <select
-              className="input"
+              className="select"
               value={question.pageId ?? ""}
               disabled={!editableNow}
               onChange={(event) => {
@@ -245,7 +246,7 @@ export function QuestionCard({
             <span className="text-gray-500">跳题规则（可选）</span>
             <div className="flex flex-wrap items-center gap-2">
               <select
-                className="input flex-1"
+                className="select flex-1"
                 value=""
                 onChange={(event) => {
                   const optionId = Number(event.target.value);
@@ -308,7 +309,7 @@ export function QuestionCard({
                   onClick={() => onDeleteOption(question.id, option.id)}
                   title="删除选项"
                 >
-                  ✕
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -335,7 +336,7 @@ export function QuestionCard({
                     setNewOptionLabel("");
                   }}
                 >
-                  ＋ 添加
+                  <Plus className="h-4 w-4" />添加
                 </button>
               </div>
             ) : null}
@@ -358,7 +359,7 @@ export function QuestionCard({
                       title="删除列"
                       onClick={() => commitColumns(question.columns.filter((_, i) => i !== columnIndex))}
                     >
-                      ✕
+                      <X className="h-3 w-3" />
                     </button>
                   ) : null}
                 </span>
@@ -386,7 +387,7 @@ export function QuestionCard({
                     setNewColumn("");
                   }}
                 >
-                  ＋ 加列
+                  <Plus className="h-4 w-4" />加列
                 </button>
               </div>
             ) : null}

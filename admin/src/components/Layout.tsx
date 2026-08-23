@@ -1,19 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
+import {
+  ArrowLeft,
+  ClipboardList,
+  FileUp,
+  LayoutDashboard,
+  ListChecks,
+  Menu,
+  Package,
+  Palette,
+  ScrollText,
+  Settings,
+  Users,
+} from "lucide-react";
 import { fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
 
 const NAV_ITEMS = [
-  { to: "/", icon: "📊", label: "总览" },
-  { to: "/surveys", icon: "📝", label: "问卷" },
-  { to: "/imports", icon: "📥", label: "导入" },
-  { to: "/users", icon: "👥", label: "用户" },
-  { to: "/reports", icon: "📦", label: "报告" },
-  { to: "/templates", icon: "🎨", label: "模板" },
-  { to: "/audit", icon: "🕵️", label: "审计" },
-  { to: "/settings", icon: "⚙️", label: "设置" },
+  { to: "/", icon: LayoutDashboard, label: "总览" },
+  { to: "/surveys", icon: ClipboardList, label: "问卷" },
+  { to: "/imports", icon: FileUp, label: "导入" },
+  { to: "/users", icon: Users, label: "用户" },
+  { to: "/reports", icon: Package, label: "报告" },
+  { to: "/templates", icon: Palette, label: "模板" },
+  { to: "/audit", icon: ScrollText, label: "审计" },
+  { to: "/settings", icon: Settings, label: "设置" },
 ];
+
+function BrandMark() {
+  return (
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-950/40">
+      <ListChecks className="h-5 w-5" />
+    </span>
+  );
+}
 
 export function Layout() {
   const location = useLocation();
@@ -70,33 +91,32 @@ export function Layout() {
   const isAuditActive = location.pathname.startsWith("/audit");
   const isSettingsActive = location.pathname.startsWith("/settings");
   const goBack = () => {
-    // Browser back first (supports the mobile edge-swipe gesture and desktop
-    // back button); falls back to the dashboard when there is no history
-    // (e.g. a deep link opened in the default browser).
     if (window.history.length > 1) window.history.back();
     else navigate("/");
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col bg-page">
       <TestBanner visible={showTestBanner} />
       {browserMode ? (
-        <div className="flex flex-wrap items-center justify-center gap-2 bg-indigo-50 px-4 py-2 text-center text-xs text-indigo-700">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-indigo-100 bg-indigo-50/80 px-4 py-2 text-center text-xs text-indigo-700">
           <span>浏览器访问模式：在 Telegram 发送 /admin_login 获取电脑登录链接</span>
-          <Link to="/login" className="font-semibold underline">去登录</Link>
+          <Link to="/login" className="link">去登录</Link>
         </div>
       ) : null}
       <div className="flex flex-1">
         <aside
-          className={`fixed inset-y-0 left-0 z-30 flex w-60 -translate-x-full flex-col bg-[#111827] px-4 py-6 text-gray-300 transition-transform duration-200 sm:static sm:translate-x-0 sm:px-2 lg:w-60 lg:px-4 ${
+          className={`fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-sidebar px-4 py-5 text-slate-300 transition-transform duration-200 sm:static sm:translate-x-0 sm:w-16 sm:px-2 lg:w-64 lg:px-4 ${
             drawer ? "translate-x-0" : ""
           }`}
         >
-          <div className="mb-8 whitespace-nowrap text-lg font-bold text-white sm:hidden lg:block">
-            问卷管理后台
+          <div className="mb-7 flex items-center gap-2.5 whitespace-nowrap px-1.5">
+            <BrandMark />
+            <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">
+              问卷管理后台
+            </span>
           </div>
-          <div className="mb-8 hidden text-center text-xl sm:block lg:hidden">📋</div>
-          <nav className="flex flex-col">
+          <nav className="flex flex-1 flex-col gap-0.5">
             {NAV_ITEMS.map((item) => {
               const active =
                 item.to === "/"
@@ -104,35 +124,44 @@ export function Layout() {
                   : item.to === "/users"
                     ? isUsersActive
                     : item.to === "/reports"
-                  ? isReportsActive
-                    : item.to === "/settings"
-                      ? isSettingsActive
-                      : item.to === "/imports"
-                        ? isImportsActive
-                        : item.to === "/templates"
-                          ? isTemplatesActive
-                          : item.to === "/audit"
-                            ? isAuditActive
-                            : isSurveysActive;
+                      ? isReportsActive
+                      : item.to === "/settings"
+                        ? isSettingsActive
+                        : item.to === "/imports"
+                          ? isImportsActive
+                          : item.to === "/templates"
+                            ? isTemplatesActive
+                            : item.to === "/audit"
+                              ? isAuditActive
+                              : isSurveysActive;
+              const Icon = item.icon;
               return (
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`mt-1 flex items-center gap-2.5 rounded-lg px-3 py-3 text-sm sm:justify-center lg:justify-start ${
-                    active ? "bg-[#263449] text-white" : "hover:bg-[#263449] hover:text-white"
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
+                    active
+                      ? "bg-indigo-500/15 text-white"
+                      : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
                   }`}
                 >
-                  <span className="shrink-0">{item.icon}</span>
+                  {active ? (
+                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-indigo-400" />
+                  ) : null}
+                  <Icon className="h-[18px] w-[18px] shrink-0" />
                   <span className="sm:hidden lg:inline">{item.label}</span>
                 </Link>
               );
             })}
           </nav>
+          <div className="mt-6 px-1.5 text-[11px] text-slate-500 sm:hidden lg:block">
+            {environment === "production" ? "生产环境" : environment ? "开发 / 预发布环境" : "…"}
+          </div>
         </aside>
         {drawer ? (
           <button
             aria-label="关闭菜单"
-            className="fixed inset-0 z-20 bg-slate-900/45 sm:hidden"
+            className="fixed inset-0 z-20 bg-slate-900/50 backdrop-blur-[2px] sm:hidden"
             onClick={() => setDrawer(false)}
           />
         ) : null}
@@ -142,18 +171,18 @@ export function Layout() {
               aria-label="返回上一页"
               title="返回上一页"
               onClick={goBack}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-xl shadow-sm"
+              className="btn btn-icon"
             >
-              ←
+              <ArrowLeft className="h-5 w-5" />
             </button>
             <button
               aria-label="打开菜单"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-xl sm:hidden"
+              className="btn btn-icon sm:hidden"
               onClick={() => setDrawer(!drawer)}
             >
-              ☰
+              <Menu className="h-5 w-5" />
             </button>
-            <h1 className="m-0 text-xl font-bold sm:text-[28px]">{title}</h1>
+            <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px]">{title}</h1>
           </header>
           <Outlet />
         </main>

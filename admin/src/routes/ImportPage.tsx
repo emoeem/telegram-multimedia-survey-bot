@@ -8,6 +8,7 @@ import {
   type ImportSummary,
   type ReportTemplateOption,
 } from "../api";
+import { AlertTriangle, FilePlus2, FileSearch, FolderOpen } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   single: "单选",
@@ -105,7 +106,7 @@ export function ImportPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <h2 className="text-lg font-semibold">导入问卷 JSON</h2>
         <p className="mt-1 text-sm text-gray-500">
           支持 PDF 转换器（scripts/forms_pdf_to_survey.py）输出的 survey.json，或任意符合统一结构的 JSON。
@@ -122,7 +123,7 @@ export function ImportPage() {
         />
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button className="btn" disabled={validating || !content.trim()} onClick={() => void validate()}>
-            {validating ? "校验中…" : "🔍 校验并预览"}
+            {validating ? "校验中…" : <><FileSearch className="h-4 w-4" />校验并预览</>}
           </button>
           <input
             ref={fileInputRef}
@@ -132,7 +133,7 @@ export function ImportPage() {
             onChange={(event) => void pickFile(event.target.files?.[0])}
           />
           <button className="btn" onClick={() => fileInputRef.current?.click()}>
-            📂 选择 JSON 文件
+            <FolderOpen className="h-4 w-4" />选择 JSON 文件
           </button>
           <select
             className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm sm:flex-none"
@@ -172,7 +173,7 @@ export function ImportPage() {
       </section>
 
       {summary ? (
-        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="card">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold">{summary.title || "未命名问卷"}</h3>
@@ -212,7 +213,7 @@ export function ImportPage() {
 
           {summary.warnings.length ? (
             <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-              <div className="font-medium">⚠ 自动修复警告</div>
+              <div className="flex items-center gap-1.5 font-medium"><AlertTriangle className="h-4 w-4" />自动修复警告</div>
               <ul className="mt-1 list-inside list-disc space-y-0.5">
                 {summary.warnings.map((warning, index) => (
                   <li key={index}>{warning}</li>
@@ -223,7 +224,7 @@ export function ImportPage() {
 
           {summary.lowConfidence.length ? (
             <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
-              <div className="font-medium">⚠ 建议重点检查 {summary.lowConfidence.length}+ 道题（低置信度或警告）</div>
+              <div className="flex items-center gap-1.5 font-medium"><AlertTriangle className="h-4 w-4" />建议重点检查 {summary.lowConfidence.length}+ 道题（低置信度或警告）</div>
               <ul className="mt-1 max-h-56 list-inside list-disc space-y-1 overflow-auto">
                 {summary.lowConfidence.map((question) => (
                   <li key={question.order}>
@@ -246,7 +247,7 @@ export function ImportPage() {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <button className="btn" disabled={creating} onClick={() => void createDraft()}>
-              {creating ? "创建中…" : "📝 创建草稿并进入编辑器"}
+              {creating ? "创建中…" : <><FilePlus2 className="h-4 w-4" />创建草稿并进入编辑器</>}
             </button>
             <button className="btn" disabled={creating} onClick={() => setSummary(null)}>
               返回修改

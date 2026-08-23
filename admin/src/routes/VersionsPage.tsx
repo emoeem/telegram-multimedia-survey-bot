@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import { api, apiSend, type SurveyVersionDiffData, type SurveyVersionListData } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -54,10 +55,12 @@ export function VersionsPage() {
   };
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="card">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">版本历史</h2>
-        <Link className="btn btn-sm" to={`/surveys/${id}`}>← 返回问卷</Link>
+        <Link className="btn btn-sm" to={`/surveys/${id}`}>
+          <ArrowLeft className="h-4 w-4" />返回问卷
+        </Link>
       </div>
       <p className="mt-1 text-sm text-gray-500">
         每次发布都会生成一个版本快照；历史答卷始终关联提交时的版本。
@@ -65,24 +68,24 @@ export function VersionsPage() {
 
       {versions.length ? (
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="tbl">
             <thead>
               <tr>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">版本</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">标题</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">题目数</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">创建时间</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">操作</th>
+                <th className="text-sm text-gray-500">版本</th>
+                <th className="text-sm text-gray-500">标题</th>
+                <th className="text-sm text-gray-500">题目数</th>
+                <th className="text-sm text-gray-500">创建时间</th>
+                <th className="text-sm text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody>
               {versions.map((version) => (
                 <tr key={version.version} className="hover:bg-slate-50">
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm font-semibold">v{version.version}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{version.title || "未命名问卷"}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{version.questionCount}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{formatDateTime(version.createdAt)}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm font-semibold">v{version.version}</td>
+                  <td className="text-sm">{version.title || "未命名问卷"}</td>
+                  <td className="text-sm">{version.questionCount}</td>
+                  <td className="text-sm">{formatDateTime(version.createdAt)}</td>
+                  <td className="text-sm">
                     <button className="btn btn-sm" disabled={busy} onClick={() => void restore(version.version)}>
                       恢复为新草稿
                     </button>
@@ -101,14 +104,14 @@ export function VersionsPage() {
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm text-gray-600">
             从
-            <select className="input mt-1 block" value={fromVersion} onChange={(event) => setFromVersion(event.target.value === "" ? "" : Number(event.target.value))}>
+            <select className="select mt-1 block" value={fromVersion} onChange={(event) => setFromVersion(event.target.value === "" ? "" : Number(event.target.value))}>
               <option value="">选择版本</option>
               {versions.map((version) => <option key={version.version} value={version.version}>v{version.version}</option>)}
             </select>
           </label>
           <label className="text-sm text-gray-600">
             到
-            <select className="input mt-1 block" value={toVersion} onChange={(event) => setToVersion(event.target.value === "" ? "" : Number(event.target.value))}>
+            <select className="select mt-1 block" value={toVersion} onChange={(event) => setToVersion(event.target.value === "" ? "" : Number(event.target.value))}>
               <option value="">选择版本</option>
               {versions.map((version) => <option key={version.version} value={version.version}>v{version.version}</option>)}
             </select>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus, X } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -140,7 +141,7 @@ function SortableSectionRow({
         ⋮⋮
       </button>
       <select
-        className="input flex-1"
+        className="select flex-1"
         value={section.kind}
         onChange={(event) => onUpdate(index, { kind: event.target.value, presentation: section.presentation })}
       >
@@ -149,7 +150,7 @@ function SortableSectionRow({
         ))}
       </select>
       <select
-        className="input w-28"
+        className="select w-28"
         value={section.presentation ?? ""}
         onChange={(event) =>
           onUpdate(index, { kind: section.kind, presentation: event.target.value || undefined })
@@ -161,7 +162,7 @@ function SortableSectionRow({
         ))}
       </select>
       <button type="button" className="btn btn-sm text-red-600" onClick={() => onRemove(index)}>
-        ✕
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
@@ -290,7 +291,7 @@ export function TemplatesPage() {
 
   if (error && !draft) {
     return (
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <p className="text-sm text-red-600">{error}</p>
         <button className="btn mt-3" onClick={() => { setError(null); void reload(); }}>
           重试
@@ -301,7 +302,7 @@ export function TemplatesPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">报告模板库</h2>
           <button
@@ -312,7 +313,7 @@ export function TemplatesPage() {
               setDraft(emptyDraft());
             }}
           >
-            ＋ 新建模板
+            <Plus className="h-4 w-4" />新建模板
           </button>
         </div>
         <p className="mt-1 text-sm text-gray-500">系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。</p>
@@ -346,7 +347,7 @@ export function TemplatesPage() {
       </section>
 
       {draft ? (
-        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-semibold">{draft.id ? `编辑模板：${draft.id}` : "新建模板"}</h3>
             <div className="flex gap-2">
@@ -384,7 +385,7 @@ export function TemplatesPage() {
               <div>
                 <label className="text-sm text-gray-600">主题</label>
                 <select
-                  className="input mt-1 w-full"
+                  className="select mt-1 w-full"
                   value={draft.theme}
                   onChange={(event) => setDraft({ ...draft, theme: event.target.value })}
                 >
@@ -417,7 +418,7 @@ export function TemplatesPage() {
                   className="btn btn-sm mt-2"
                   onClick={() => setDraft({ ...draft, sections: [...draft.sections, { kind: "answers" }] })}
                 >
-                  ＋ 添加块
+                  <Plus className="h-4 w-4" />添加块
                 </button>
               </div>
               <div>
@@ -426,7 +427,7 @@ export function TemplatesPage() {
                   <label className="text-xs text-gray-500">
                     字体
                     <select
-                      className="input mt-1 w-full"
+                      className="select mt-1 w-full"
                       value={visual.font}
                       onChange={(event) => setVisual({ ...visual, font: event.target.value })}
                     >

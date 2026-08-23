@@ -45,14 +45,14 @@ export function ReportsPage() {
   if (!data) return <SkeletonPanel lines={7} />;
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="card">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">报告归档</h2>
           <p className="mt-1 text-sm text-gray-500">共 {data.total} 个归档任务 · Telegram 私人频道交付状态</p>
         </div>
         <select
-          className="input"
+          className="select"
           value={status}
           onChange={(event) => {
             setStatus(event.target.value as typeof status);
@@ -65,27 +65,27 @@ export function ReportsPage() {
 
       {data.items.length ? (
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="tbl">
             <thead>
               <tr>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">问卷</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">答卷</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">状态</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">尝试</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">错误 / 完成时间</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">操作</th>
+                <th className="text-sm text-gray-500">问卷</th>
+                <th className="text-sm text-gray-500">答卷</th>
+                <th className="text-sm text-gray-500">状态</th>
+                <th className="text-sm text-gray-500">尝试</th>
+                <th className="text-sm text-gray-500">错误 / 完成时间</th>
+                <th className="text-sm text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     <Link className="text-blue-700" to={`/surveys/${item.surveyId}`}>{item.surveyTitle || `问卷 ${item.surveyId}`}</Link>
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     <Link className="text-blue-700" to={`/surveys/${item.surveyId}/responses/${item.responseId}`}>#{item.responseId}</Link>
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${
                       item.status === "delivered"
                         ? "bg-green-50 text-green-700"
@@ -96,13 +96,13 @@ export function ReportsPage() {
                       {STATUS_LABEL[item.status] ?? item.status}
                     </span>
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.attempts}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">{item.attempts}</td>
+                  <td className="text-sm">
                     {item.status === "failed"
                       ? <span className="text-red-600" title={item.lastError ?? ""}>{item.lastError?.slice(0, 80) ?? "未知错误"}</span>
                       : item.deliveredAt ? formatDateTime(item.deliveredAt) : "—"}
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     {item.status === "failed" || item.status === "pending" ? (
                       <button className="btn btn-sm" disabled={busyId === item.id} onClick={() => void retryDelivery(item.id)}>
                         {busyId === item.id ? "重试中…" : "重试"}

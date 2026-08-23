@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Lock,
+  Palette,
+  Paperclip,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
+import {
   type AnswerValue,
   fetchAnswers,
   fetchSurvey,
@@ -182,8 +194,8 @@ function SurveyListPage() {
 
   return (
     <div className="min-h-dvh bg-page pb-10">
-      <header className="border-b border-gray-200 bg-white/90 px-5 py-4">
-        <h1 className="text-xl font-bold text-gray-900">可填写问卷</h1>
+      <header className="border-b border-gray-200 bg-white/90 px-5 py-4 backdrop-blur">
+        <h1 className="text-xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
         <input
           type="search"
           className="input mt-3 w-full"
@@ -198,20 +210,22 @@ function SurveyListPage() {
             <a
               key={survey.id}
               href={`/s/${survey.id}`}
-              className="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-indigo-300"
+              className="card block transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
             >
               {survey.coverUrl ? (
                 <img
                   src={survey.coverUrl}
                   alt=""
-                  className="mb-3 aspect-[16/7] w-full rounded-lg object-cover"
+                  className="mb-3 aspect-[16/7] w-full rounded-xl object-cover"
                   loading="lazy"
                 />
               ) : null}
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-base font-semibold text-gray-900">{survey.title}</h2>
                 {survey.accessCodeRequired ? (
-                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">🔐 需密码</span>
+                  <span className="badge badge-amber shrink-0">
+                    <Lock className="h-3 w-3" />需密码
+                  </span>
                 ) : null}
               </div>
               {survey.description ? (
@@ -219,7 +233,10 @@ function SurveyListPage() {
               ) : null}
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-xs text-gray-400">{survey.questionCount} 道题</span>
-                <span className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white">开始填写</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm">
+                  开始填写
+                  <ArrowRight className="h-4 w-4" />
+                </span>
               </div>
             </a>
           ))}
@@ -439,9 +456,9 @@ function BgmPlayer({ url }: { url: string }) {
       type="button"
       aria-label={playing ? "暂停背景音乐" : "播放背景音乐"}
       onClick={toggle}
-      className="fixed bottom-20 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow"
+      className="fixed bottom-20 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
     >
-      {playing ? "🔊" : "🔇"}
+      {playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
     </button>
   );
 }
@@ -481,8 +498,8 @@ function OptionCard({
         <div className="relative aspect-[4/3] w-full overflow-hidden">
           <MediaBlock urls={option.media} type="image" cover />
           {selected ? (
-            <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--survey-primary)] text-sm font-bold text-white shadow">
-              ✓
+            <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--survey-primary)] text-white shadow">
+              <Check className="h-4 w-4" strokeWidth={3} />
             </span>
           ) : null}
         </div>
@@ -758,7 +775,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
           </div>
         ) : (
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white px-4 py-8 text-sm text-gray-500">
-            <span className="text-2xl">📎</span>
+            <Paperclip className="h-6 w-6" />
             <span className="mt-2">{uploading ? "上传中…" : "点击上传文件"}</span>
             <input
               type="file"
@@ -813,11 +830,16 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
         aria-label="退出问卷"
         title="退出问卷"
         onClick={closeSurveyPage}
-        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm"
+        className="btn btn-icon absolute right-4 top-4 rounded-full"
       >
-        ✕
+        <X className="h-5 w-5" />
       </button>
-      <h1 className="text-2xl font-bold text-gray-900">🔐 需要访问密码</h1>
+      <div className="mb-4 flex items-center gap-3">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+          <Lock className="h-6 w-6" />
+        </span>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">需要访问密码</h1>
+      </div>
       <p className="mt-2 text-sm text-gray-500">请输入此问卷的访问密码后继续填写。</p>
       <input
         value={code}
@@ -1064,8 +1086,10 @@ export function SurveyApp() {
   if (screen.kind === "done") {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center">
-        <div className="grid h-16 w-16 place-items-center rounded-full bg-green-100 text-3xl">✅</div>
-        <h1 className="mt-4 text-2xl font-bold text-gray-900">提交成功</h1>
+        <div className="grid h-16 w-16 place-items-center rounded-full bg-green-100 text-green-600">
+          <CheckCircle2 className="h-8 w-8" />
+        </div>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-gray-900">提交成功</h1>
         <p className="mt-2 text-sm text-gray-500">感谢你的参与！</p>
         <button type="button" className="btn mt-6" onClick={closeSurveyPage}>
           关闭
@@ -1121,26 +1145,26 @@ export function SurveyApp() {
                 aria-label="返回上一页"
                 title="返回上一页"
                 onClick={backSurveyPage}
-                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs text-[var(--survey-muted)]"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-1 text-xs text-[var(--survey-muted)]"
               >
-                ← 返回
+                <ArrowLeft className="h-3.5 w-3.5" />返回
               </button>
               <button
                 type="button"
                 aria-label="选择主题"
-                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-xs"
                 onClick={() => setThemePickerOpen(true)}
               >
-                🎨
+                <Palette className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 aria-label="退出问卷"
                 title="退出问卷"
                 onClick={closeSurveyPage}
-                className="shrink-0 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-0.5 text-xs text-[var(--survey-muted)]"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-2 py-1 text-xs text-[var(--survey-muted)]"
               >
-                ✕ 退出
+                <X className="h-3.5 w-3.5" />退出
               </button>
               <span className="shrink-0">
                 第 {index + 1} / {total} 题 · {percent}%

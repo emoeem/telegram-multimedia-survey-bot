@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import {
+  ArrowLeft,
+  Eye,
+  FilePlus2,
+  Plus,
+  Redo2,
+  Rocket,
+  Save,
+  Undo2,
+  X,
+} from "lucide-react";
 import { useApi } from "../hooks";
 import { ApiError, apiSend, type EditorData, type PublishResult, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
@@ -211,10 +222,10 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 card">
         <div className="flex min-w-0 items-center gap-3">
-          <button className="btn" title="返回详情（有未保存修改时会确认）" onClick={backWithGuard}>
-            ←
+          <button className="btn btn-icon" title="返回详情（有未保存修改时会确认）" onClick={backWithGuard}>
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -232,7 +243,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             disabled={editingDisabled || !editor.dirty}
             onClick={() => editor.save()}
           >
-            💾 保存
+            <Save className="h-4 w-4" />保存
           </button>
           <button
             className="btn"
@@ -240,7 +251,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             title="撤销（Ctrl+Z）"
             onClick={() => editor.undo()}
           >
-            ↩️ 撤销
+            <Undo2 className="h-4 w-4" />撤销
           </button>
           <button
             className="btn"
@@ -248,10 +259,10 @@ function EditableEditor({ data }: { data: EditorData }) {
             title="重做（Ctrl+Shift+Z / Ctrl+Y）"
             onClick={() => editor.redo()}
           >
-            ↪️ 重做
+            <Redo2 className="h-4 w-4" />重做
           </button>
           <button className="btn" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
-            👁 预览
+            <Eye className="h-4 w-4" />预览
           </button>
           <button
             className="btn"
@@ -259,7 +270,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
             onClick={publish}
           >
-            {publishing ? "发布中…" : "🚀 发布"}
+            {publishing ? "发布中…" : <><Rocket className="h-4 w-4" />发布</>}
           </button>
         </div>
       </div>
@@ -277,7 +288,7 @@ function EditableEditor({ data }: { data: EditorData }) {
 
       <div className="mt-4 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
       <div className="min-w-0 space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <h3 className="mb-3 font-semibold">问卷设置</h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
@@ -349,20 +360,22 @@ function EditableEditor({ data }: { data: EditorData }) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         {data.pages.length ? (
           <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-gray-700">分页</h4>
               <button className="btn btn-sm" disabled={editingDisabled} onClick={() => void addPage()}>
-                ＋ 新分页
+                <Plus className="h-4 w-4" />新分页
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {data.pages.map((page) => (
                 <span key={page.id} className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm">
                   {page.title || `第 ${page.order + 1} 页`}
-                  <button className="text-red-500" disabled={editingDisabled} onClick={() => void deletePage(page.id)}>✕</button>
+                  <button className="text-red-500" disabled={editingDisabled} onClick={() => void deletePage(page.id)}>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </span>
               ))}
             </div>
@@ -371,7 +384,7 @@ function EditableEditor({ data }: { data: EditorData }) {
           <div className="mb-4 flex items-center justify-between rounded-lg border border-dashed border-gray-200 p-3">
             <span className="text-sm text-gray-400">还没有分页（可在题目卡片中把题目归入分页）</span>
             <button className="btn btn-sm" disabled={editingDisabled} onClick={() => void addPage()}>
-              ＋ 新建分页
+              <Plus className="h-4 w-4" />新建分页
             </button>
           </div>
         )}
@@ -383,7 +396,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             ) : null}
           </div>
           <button className="btn" disabled={editingDisabled} onClick={() => setPickerOpen((open) => !open)}>
-            ＋ 添加题目
+            <FilePlus2 className="h-4 w-4" />添加题目
           </button>
         </div>
 
@@ -440,7 +453,7 @@ function EditableEditor({ data }: { data: EditorData }) {
           />
         ) : (
           <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm text-gray-400">
-            点击右上角「👁 预览」查看实时效果
+          点击右上角「预览」查看实时效果
           </div>
         )}
       </div>
@@ -492,10 +505,10 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
   };
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 card">
         <div className="flex min-w-0 items-center gap-3">
-          <Link to={`/surveys/${survey.id}`} className="btn" title="返回详情">
-            ←
+          <Link to={`/surveys/${survey.id}`} className="btn btn-icon" title="返回详情">
+            <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -507,7 +520,7 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
             </div>
           </div>
           <button className="btn" onClick={() => setPreviewOpen(true)}>
-            👁 预览
+            <Eye className="h-4 w-4" />预览
           </button>
           <button className="btn" disabled={duplicating} onClick={duplicateAsDraft}>
             {duplicating ? "复制中…" : "复制为新草稿"}
@@ -525,7 +538,7 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
         </div>
       ) : null}
 
-      <section className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="mt-4 card">
         <h3 className="mb-3 font-semibold">题目列表（只读）</h3>
         {questions.length ? (
           <div className="grid gap-3">

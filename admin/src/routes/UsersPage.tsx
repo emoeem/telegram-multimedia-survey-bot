@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { X } from "lucide-react";
 import { api, apiSend, userChatLink, type UserDetailData, type UserDirectoryData } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -64,7 +65,7 @@ export function UsersPage() {
   if (!data) return <SkeletonPanel lines={7} />;
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="card">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">用户目录</h2>
@@ -94,20 +95,20 @@ export function UsersPage() {
 
       {data.items.length ? (
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full border-collapse">
+          <table className="tbl">
             <thead>
               <tr>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">用户</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">Telegram ID</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">完成答卷</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">标签</th>
-                <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">操作</th>
+                <th className="text-sm text-gray-500">用户</th>
+                <th className="text-sm text-gray-500">Telegram ID</th>
+                <th className="text-sm text-gray-500">完成答卷</th>
+                <th className="text-sm text-gray-500">标签</th>
+                <th className="text-sm text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     <button className="text-left font-semibold text-blue-700" onClick={() => void openDetail(item.id)}>
                       {displayName(item)}
                     </button>
@@ -115,9 +116,9 @@ export function UsersPage() {
                       <span className="ml-1 text-gray-500">@{item.username}</span>
                     ) : null}
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.telegramUserId}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.completedResponses}</td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">{item.telegramUserId}</td>
+                  <td className="text-sm">{item.completedResponses}</td>
+                  <td className="text-sm">
                     <div className="flex max-w-56 flex-wrap gap-1">
                       {item.tags.map((value) => (
                         <button
@@ -131,7 +132,7 @@ export function UsersPage() {
                       ))}
                     </div>
                   </td>
-                  <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                  <td className="text-sm">
                     <div className="flex gap-2">
                       <a className="btn btn-sm" href={userChatLink(item.telegramUserId)}>私聊</a>
                       {item.username ? (
@@ -166,10 +167,10 @@ export function UsersPage() {
                   {detail.tags.map((value) => (
                     <button
                       key={value}
-                      className="rounded-full bg-white px-2 py-0.5 text-xs text-indigo-700 hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex items-center gap-0.5 rounded-full bg-white px-2 py-0.5 text-xs text-indigo-700 hover:bg-red-50 hover:text-red-600"
                       onClick={() => void removeTag(selected, value)}
                     >
-                      #{value} ✕
+                      #{value} <X className="h-3 w-3" />
                     </button>
                   ))}
                   <input

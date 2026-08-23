@@ -62,7 +62,7 @@ export function SettingsPage() {
   );
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="card">
       <h2 className="text-lg font-semibold">系统设置</h2>
       <p className="mt-1 text-sm text-gray-500">敏感凭据（Bot Token 等）不在此展示，请通过 Cloudflare Secrets 管理。</p>
 
@@ -81,7 +81,7 @@ export function SettingsPage() {
         <label className="grid gap-1 text-sm">
           <span className="text-gray-500">默认报告模板</span>
           <select
-            className="input"
+            className="select"
             value={settings.defaultReportTemplate}
             onChange={(event) => update({ defaultReportTemplate: event.target.value })}
           >

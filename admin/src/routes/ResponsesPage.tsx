@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import {
+  ArrowLeft,
+  FileText,
+  Package,
+  Share2,
+  X,
+} from "lucide-react";
 import { useApi } from "../hooks";
 import {
   apiSend,
@@ -208,7 +215,7 @@ export function ResponsesPage() {
 
   return (
     <div className="gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)] lg:items-start">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">{data.survey.title}</h2>
@@ -237,7 +244,7 @@ export function ResponsesPage() {
               }}
             />
             <select
-              className="input"
+              className="select"
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value as "" | ResponseStatus);
@@ -262,10 +269,10 @@ export function ResponsesPage() {
 
         {data.items.length ? (
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="tbl">
               <thead>
                 <tr>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">
+                  <th className="text-sm text-gray-500">
                     {completedItems.length ? (
                       <input
                         type="checkbox"
@@ -275,11 +282,11 @@ export function ResponsesPage() {
                       />
                     ) : null}
                   </th>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">编号</th>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">填写者</th>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">状态</th>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">完成时间</th>
-                  <th className="border-b border-gray-100 px-2 py-3 text-left text-sm text-gray-500">操作</th>
+                  <th className="text-sm text-gray-500">编号</th>
+                  <th className="text-sm text-gray-500">填写者</th>
+                  <th className="text-sm text-gray-500">状态</th>
+                  <th className="text-sm text-gray-500">完成时间</th>
+                  <th className="text-sm text-gray-500">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,7 +294,7 @@ export function ResponsesPage() {
                   const completed = item.status === "completed";
                   return (
                     <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="border-b border-gray-100 px-2 py-3.5">
+                      <td className="">
                         {completed ? (
                           <input
                             type="checkbox"
@@ -297,13 +304,13 @@ export function ResponsesPage() {
                           />
                         ) : null}
                       </td>
-                      <td className="border-b border-gray-100 px-2 py-3.5 text-sm">
+                      <td className="text-sm">
                         <Link className="font-semibold text-blue-700" to={`/surveys/${data.survey.id}/responses/${item.id}`}>#{item.id}</Link>
                       </td>
-                      <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{respondentName(item, data.survey.anonymous)}</td>
-                      <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.statusLabel}</td>
-                      <td className="border-b border-gray-100 px-2 py-3.5 text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
-                      <td className="border-b border-gray-100 px-2 py-3.5">
+                      <td className="text-sm">{respondentName(item, data.survey.anonymous)}</td>
+                      <td className="text-sm">{item.statusLabel}</td>
+                      <td className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
+                      <td className="">
                         <div className="flex flex-wrap gap-2">
                           {completed ? (
                             <>
@@ -312,17 +319,17 @@ export function ResponsesPage() {
                                 disabled={busy}
                                 onClick={() => void openReport(item.id)}
                               >
-                                📄 报告
+                                <FileText className="h-4 w-4" />报告
                               </button>
                               <button
                                 className="btn btn-sm lg:hidden"
                                 disabled={busy}
                                 onClick={() => void openReportMobile(item.id)}
                               >
-                                📄 报告
+                                <FileText className="h-4 w-4" />报告
                               </button>
                               <button className="btn btn-sm" onClick={() => void copyShare(item.id)}>
-                                🔗 分享
+                                <Share2 className="h-4 w-4" />分享
                               </button>
                             </>
                           ) : null}
@@ -343,13 +350,15 @@ export function ResponsesPage() {
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Link className="btn" to={`/surveys/${data.survey.id}`}>← 返回问卷</Link>
+            <Link className="btn" to={`/surveys/${data.survey.id}`}>
+              <ArrowLeft className="h-4 w-4" />返回问卷
+            </Link>
             <button
               className="btn btn-primary"
               disabled={busy || selected.size === 0}
               onClick={() => void batchExport()}
             >
-              {busy ? "处理中…" : `📦 导出到私人频道（${selected.size}）`}
+              {busy ? "处理中…" : <><Package className="h-4 w-4" />导出到私人频道（{selected.size}）</>}
             </button>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -361,12 +370,12 @@ export function ResponsesPage() {
       </section>
 
       {previewUrl ? (
-        <section className="hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-4 lg:block">
+        <section className="hidden card lg:sticky lg:top-4 lg:block">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">报告预览 #{previewResponseId}</h3>
             <div className="flex items-center gap-2">
               <select
-                className="input w-40 text-xs"
+                className="select w-40 text-xs"
                 value={templateId}
                 onChange={(event) => setTemplateId(event.target.value)}
               >
@@ -382,7 +391,7 @@ export function ResponsesPage() {
                   setPreviewResponseId(null);
                 }}
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>

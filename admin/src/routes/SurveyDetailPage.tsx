@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import {
+  Archive,
+  ArrowLeft,
+  BarChart3,
+  FilePenLine,
+  History,
+  Inbox,
+  Rocket,
+  Square,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { apiSend, authHeaders, type ReportTemplateOption, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
@@ -174,7 +186,7 @@ export function SurveyDetailPage() {
   ];
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+    <section className="card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{data.title || "未命名问卷"}</h2>
         <StatusBadge status={data.status} />
@@ -192,44 +204,44 @@ export function SurveyDetailPage() {
       </div>
       <div className="mt-6 flex flex-wrap gap-3">
         <Link to="/surveys" className="btn">
-          ← 返回问卷
+          <ArrowLeft className="h-4 w-4" />返回问卷
         </Link>
         <Link to={`/surveys/${data.id}/editor`} className="btn">
-          ✏️ 打开编辑器
+          <FilePenLine className="h-4 w-4" />打开编辑器
         </Link>
         <Link to={`/surveys/${data.id}/responses`} className="btn">
-          📥 查看答卷
+          <Inbox className="h-4 w-4" />查看答卷
         </Link>
         <Link to={`/surveys/${data.id}/analytics`} className="btn">
-          📈 查看统计
+          <BarChart3 className="h-4 w-4" />查看统计
         </Link>
         <Link to={`/surveys/${data.id}/versions`} className="btn">
-          🕘 版本历史
+          <History className="h-4 w-4" />版本历史
         </Link>
       </div>
       <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
         {data.status === "published" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("close", "确定关闭该问卷？填写中的答卷会被中止。")}>
-            ⏹ 关闭
+            <Square className="h-4 w-4" />关闭
           </button>
         ) : null}
         {data.status === "closed" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("reopen", "确定重新发布该问卷？")}>
-            🚀 重新发布
+            <Rocket className="h-4 w-4" />重新发布
           </button>
         ) : null}
         {data.status !== "archived" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("archive", "确定归档该问卷？")}>
-            🗄 归档
+            <Archive className="h-4 w-4" />归档
           </button>
         ) : null}
         <button
-          className="btn text-red-600"
+          className="btn btn-danger"
           disabled={busy || data.responseCount > 0}
           title={data.responseCount > 0 ? "已有答卷的问卷不能删除，请先归档" : undefined}
           onClick={() => void runAction("delete", "确定永久删除该问卷？此操作不可恢复。")}
         >
-          🗑 删除
+          <Trash2 className="h-4 w-4" />删除
         </button>
       </div>
       {data.responseCount > 0 ? (
@@ -239,7 +251,7 @@ export function SurveyDetailPage() {
         <span className="text-sm text-gray-600">报告模板</span>
         {templates.data ? (
           <select
-            className="input"
+            className="select"
             disabled={templateBusy}
             value={data.report_template_id ?? ""}
             onChange={(event) => void setReportTemplate(event.target.value)}
@@ -312,7 +324,7 @@ export function SurveyDetailPage() {
               onChange={(event) => void uploadBgm(event.target.files?.[0])}
             />
             <button className="btn btn-sm" disabled={themeBusy} onClick={() => bgmFileRef.current?.click()}>
-              {themeBusy ? "上传中…" : "📤 上传音频"}
+              {themeBusy ? "上传中…" : <><Upload className="h-4 w-4" />上传音频</>}
             </button>
             <input
               className="input min-w-0 flex-1 text-xs"

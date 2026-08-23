@@ -1,19 +1,20 @@
 import type { ReactNode } from "react";
+import { AlertTriangle, Inbox, RotateCw } from "lucide-react";
 import { ApiError } from "../api";
 import { STATUS_LABELS } from "../format";
 import type { SurveyStatus } from "../api";
 
 const BADGE_CLASSES: Record<SurveyStatus, string> = {
-  draft: "bg-gray-200 text-gray-700",
-  published: "bg-green-100 text-green-800",
-  closed: "bg-orange-100 text-orange-800",
-  archived: "bg-red-100 text-red-800",
+  draft: "badge-gray badge-dot",
+  published: "badge-green badge-dot",
+  closed: "badge-amber badge-dot",
+  archived: "badge-red badge-dot",
 };
 
 export function StatusBadge({ status }: { status: SurveyStatus }) {
   const known = status in STATUS_LABELS;
   return (
-    <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs ${known ? BADGE_CLASSES[status] : "bg-gray-200 text-gray-700"}`}>
+    <span className={`badge ${known ? BADGE_CLASSES[status] : "badge-gray"}`}>
       {known ? STATUS_LABELS[status] : (status || "-")}
     </span>
   );
@@ -22,7 +23,7 @@ export function StatusBadge({ status }: { status: SurveyStatus }) {
 export function SkeletonPanel({ lines = 4 }: { lines?: number }) {
   const widths = ["w-2/5", "w-11/12", "w-3/4", "w-5/6"];
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <section className="card">
       <div className="skeleton mb-4 h-5 w-2/5" />
       {Array.from({ length: lines }, (_, index) => (
         <div key={index} className={`skeleton my-3 h-3.5 ${widths[index % widths.length]}`} />
@@ -47,11 +48,17 @@ export function ErrorPanel({ error, onRetry }: { error: ApiError; onRetry: () =>
         ? error.message
         : "";
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      {hint ? <p className="mt-1 text-sm text-gray-500">{hint}</p> : null}
-      <div className="mt-4">
+    <section className="card">
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <span className="empty-icon">
+          <AlertTriangle className="h-6 w-6" />
+        </span>
+        <div>
+          <h2 className="text-base font-semibold">{title}</h2>
+          {hint ? <p className="mt-1 text-sm text-gray-500">{hint}</p> : null}
+        </div>
         <button className="btn" onClick={onRetry}>
+          <RotateCw className="h-4 w-4" />
           重试
         </button>
       </div>
@@ -63,21 +70,21 @@ export function EmptyPanel({
   text,
   actionLabel,
   onAction,
+  icon,
 }: {
   text: string;
   actionLabel?: string;
   onAction?: () => void;
+  icon?: ReactNode;
 }) {
   return (
-    <div className="py-12 text-center text-gray-500">
-      <div className="mb-2 text-3xl">📝</div>
+    <div className="empty">
+      <span className="empty-icon">{icon ?? <Inbox className="h-6 w-6" />}</span>
       <div>{text}</div>
       {actionLabel && onAction ? (
-        <div className="mt-4">
-          <button className="btn" onClick={onAction}>
-            {actionLabel}
-          </button>
-        </div>
+        <button className="btn mt-1" onClick={onAction}>
+          {actionLabel}
+        </button>
       ) : null}
     </div>
   );
@@ -86,8 +93,8 @@ export function EmptyPanel({
 export function PageHeader({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
   return (
     <header className="mb-7 flex items-center justify-between gap-3">
-      <h1 className="text-xl font-bold sm:text-[28px]">{title}</h1>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      <h1 className="text-xl font-bold tracking-tight sm:text-[26px]">{title}</h1>
+      {actions ? <div className="toolbar">{actions}</div> : null}
     </header>
   );
 }

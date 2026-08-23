@@ -1,4 +1,5 @@
 import { useEffect, useId } from 'react';
+import { Check, ChevronRight, Paperclip, X } from 'lucide-react';
 import { QUESTION_TYPE_LABELS } from '../../format';
 import type { EditorPreviewQuestion } from '../../editor/previewModel';
 import {
@@ -24,7 +25,7 @@ function PreviewChoice({ label, multiple, mediaCount }: { label: string; multipl
         {multiple ? '☐' : '○'}
       </span>
       <span className="min-w-0 flex-1">{label}</span>
-      {mediaCount ? <span className="text-xs text-purple-600">📎 ×{mediaCount}</span> : null}
+      {mediaCount ? <span className="inline-flex items-center gap-1 text-xs text-purple-600"><Paperclip className="h-3 w-3" />×{mediaCount}</span> : null}
     </div>
   );
 }
@@ -156,7 +157,7 @@ export function SurveyPreview({
             </p>
           </div>
           <button type="button" className="btn btn-sm" onClick={onClose} autoFocus>
-            ✕ 关闭
+            <X className="h-4 w-4" />关闭
           </button>
         </header>
 
@@ -195,9 +196,9 @@ export function SurveyPreview({
                     <p className="my-3 text-sm text-gray-500">{getQuestionInstruction(question)}</p>
                     <PreviewAnswer question={question} />
                     <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3">
-                      {index > 0 ? <span className="btn btn-sm flex-1 text-center">⬅️ 上一题</span> : null}
+                      {index > 0 ? <span className="btn btn-sm flex-1 text-center"><ChevronRight className="h-4 w-4 rotate-180" />上一题</span> : null}
                       <span className="btn btn-sm flex-1 text-center">
-                        {index === questions.length - 1 ? '✅ 提交' : '下一题 ➡️'}
+                        {index === questions.length - 1 ? <><Check className="h-4 w-4" />提交</> : <>下一题<ChevronRight className="h-4 w-4" /></>}
                       </span>
                     </div>
                   </article>
