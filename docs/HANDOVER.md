@@ -50,7 +50,7 @@
 
 ### Telegram Bot（保留职责）
 - /start 入口、Web 问卷列表入口、完成通知（含网页版报告链接）、身份绑定、报告重发、频道识别、大文件人工渠道（后续）
-- **旧 Bot 答题 UI 仍在代码中**（survey-handler 5235 行），入口未删（P10 待做）
+- **旧 Bot 答题 UI 已下线（P10 第一块完成，2026-08-23）**：survey-handler 删除了内联答题渲染/消息答题路由/q:* 回调/继续填写入口及 `src/survey/renderer.ts`；问卷列表行改为 Web 链接（`/s/:id`），`/start survey_<id>` 深链打开 Web 问卷。**仍在代码中**：Builder（builder-handler 49KB）、QuestionEditor、导入 UI、owner:* 管理流程（P10 后续块，待 Bot 回归确认后继续）
 
 ## 3. 环境与部署现状
 
@@ -87,6 +87,10 @@
 ### 近期（建议优先级）
 - [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
 - [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
+  - [x] 答题渲染（内联答题/消息路由/q:* 回调/renderer 模块）已删并部署（`0e577f7b`）
+  - [ ] Builder / owner:* 管理流程（待 Bot 回归确认后继续）
+  - [ ] QuestionEditor（question-editor.ts）
+  - [ ] 导入 UI 入口（home:import_json / home:copy_list）
 - [ ] Admin「结果模板」页（visual templates 目前只在 Bot 管理）
 - [x] 单选 fallback 显示选项标签（`result-visual.service.ts` + 单测覆盖）
 
