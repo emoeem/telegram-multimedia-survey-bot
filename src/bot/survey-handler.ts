@@ -131,7 +131,7 @@ function buildHomeKeyboard(
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
-      ? [{ text: "浏览问卷", url: `${origin}/s` }]
+      ? [{ text: "浏览问卷", web_app: { url: `${origin}/s` } }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
@@ -1272,7 +1272,7 @@ async function showSurveyShareLink(
       `🔗 ${survey.title}`,
       "",
       "把链接发给对方即可填写问卷。",
-      "Telegram 链接会在机器人对话内填写；网页链接可在浏览器中填写（支持手机/桌面）。",
+      "Telegram 链接会在机器人对话内打开网页填写；网页链接可在浏览器中填写（支持手机/桌面）。",
       survey.accessCode ? "该问卷已设置访问密码，接收者进入后仍需输入密码。" : "",
       "",
       url,
@@ -1466,7 +1466,7 @@ async function listSurveys(
     {
       text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
       ...(ctx.origin
-        ? { url: `${ctx.origin}/s/${survey.id}` }
+        ? { web_app: { url: `${ctx.origin}/s/${survey.id}` } }
         : { callback_data: "home:menu" }),
     },
   ]);
@@ -1612,7 +1612,7 @@ export async function handleTelegramMessage(
           message.chat.id,
           `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}`,
           {
-            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}` }]],
+            inline_keyboard: [[{ text: "填写问卷", web_app: { url: `${ctx.origin}/s/${surveyId}` } }]],
           },
         );
       } else {

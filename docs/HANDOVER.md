@@ -77,7 +77,7 @@
 2. **无规则集的 fallback 报告**：~~单选显示原始选项 ID（如"10"而非"蓝色"）~~ 已修复——`result-visual.service.ts` 的 fallback 展示会把单选/多选选项 ID 映射为标签（未知 ID 回退原始值）；标签来自当前 `question_options`，历史答卷按 DB 选项 ID 尽力映射（快照中选项为位置 ID，无可靠对应关系）。配置 ResultRule 后按规则显示文案
 3. **Bot 旧答题 UI 未删除**：删除前必须 Web 流程在真实环境验证稳定（P10）
 4. **`html_handling="none"` 已配置**：不要改回默认，否则 `/s/:id` 会被 ASSETS 重定向到 `/survey` 丢失路径
-5. **前端页面不再阻塞加载 telegram.org 脚本（2026-08-23）**：survey 页直接移除；admin 页改为挂载前带超时动态加载（`waitForTelegramWebApp`）+ initData 惰性读取。普通浏览器（含国内）不再黑屏；Telegram WebView 内由客户端本地提供该脚本，鉴权不受影响
+5. **前端页面不再阻塞加载 telegram.org 脚本（2026-08-23）**：survey/admin 均改为挂载前带超时动态加载（`waitForTelegramWebApp`）+ initData 惰性读取；`/s`、`/admin` 的 HTML 响应 `Cache-Control: no-store`，防止 WebView 缓存旧页面。普通浏览器（含国内）不再黑屏；Telegram WebView 内由客户端本地提供该脚本，鉴权不受影响
 6. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
 6. `.dev.vars` 的 BOT_TOKEN 是占位符，别当真；真实 token 只在 Cloudflare Secrets
 7. **Bot token 曾在对话中暴露过**，建议在 BotFather 轮换一次并更新 Secrets
@@ -89,6 +89,7 @@
 - [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
 - [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
   - [x] 答题渲染（内联答题/消息路由/q:* 回调/renderer 模块）已删并部署（`0e577f7b`）
+  - [x] 问卷入口改为 Telegram WebView（`web_app` 按钮打开 `/s` 与 `/s/:id`，`54005b63`）
   - [ ] Builder / owner:* 管理流程（待 Bot 回归确认后继续）
   - [ ] QuestionEditor（question-editor.ts）
   - [ ] 导入 UI 入口（home:import_json / home:copy_list）

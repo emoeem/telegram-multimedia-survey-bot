@@ -23,6 +23,30 @@ import { retryPendingReportDeliveries } from "./services/report-delivery.service
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 
+/**
+ * Serves an SPA HTML entry without allowing the client or any intermediate
+ * cache to keep a stale copy: stale bundles have historically left Telegram
+ * WebViews stuck on a blank page after a redeploy.
+ */
+async function serveHtmlAsset(
+  env: Env,
+  request: Request,
+  assetPath: string,
+): Promise<Response> {
+  const assetUrl = new URL(assetPath, request.url);
+  const response = await env.ASSETS.fetch(new Request(assetUrl, request));
+  if (!response.headers.get("content-type")?.includes("text/html")) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export interface Env {
   DB: D1Database;
   CACHE: KVNamespace;
@@ -99,7 +123,7 @@ export default {
     }
 
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      return env.ASSETS.fetch(request);
+      return serveHtmlAsset(env, request, "/admin");
     }
 
     if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env);
@@ -107,8 +131,7 @@ export default {
     // Web survey entry: /s/:id renders the public survey page; the page
     // itself talks to /api/survey/* for the definition and answers.
     if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
-      const surveyPageUrl = new URL("/survey.html", request.url);
-      return env.ASSETS.fetch(new Request(surveyPageUrl, request));
+      return serveHtmlAsset(env, request, "/survey.html");
     }
 
     if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
