@@ -39,7 +39,6 @@
     "daisyui": "^5.7.20",
     "echarts": "^6.1.0",
     "fflate": "^0.8.3",
-    "playwright": "^1.62.1",
-    "xlsx": "^0.18.5"
+    "playwright": "^1.62.1"
   }
 }

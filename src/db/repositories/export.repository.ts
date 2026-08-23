@@ -8,7 +8,7 @@ export interface ExportJob {
   id: number;
   surveyId: number;
   requestedBy: number | null;
-  format: "csv" | "xlsx" | "zip";
+  format: "csv" | "zip";
   status: ExportJobStatus;
   r2Key: string | null;
   errorMessage: string | null;

@@ -1305,7 +1305,6 @@ async function showSurveyReportsMenu(
       inline_keyboard: [
         [
           { text: "CSV", callback_data: `owner:export:csv:${surveyId}` },
-          { text: "Excel", callback_data: `owner:export:xlsx:${surveyId}` },
           { text: "ZIP", callback_data: `owner:export:zip:${surveyId}` },
           { text: "JSON", callback_data: `owner:export_json:${surveyId}` },
         ],
@@ -1941,12 +1940,12 @@ export async function handleTelegramMessage(
     if (
       !Number.isInteger(surveyId) ||
       surveyId <= 0 ||
-      !["csv", "xlsx", "zip"].includes(exportFormat)
+      !["csv", "zip"].includes(exportFormat)
     ) {
       await sendMessage(
         ctx.botToken,
         message.chat.id,
-        "用法：/export <内部编号> [csv|xlsx|zip]",
+        "用法：/export <内部编号> [csv|zip]",
       );
       return;
     }
@@ -2842,7 +2841,6 @@ export async function handleTelegramCallback(
     const surveyId = Number(surveyIdRaw);
     if (
       formatRaw !== "csv" &&
-      formatRaw !== "xlsx" &&
       formatRaw !== "zip"
     ) {
       await answerCallbackQuery(ctx.botToken, callback.id, "导出格式无效");

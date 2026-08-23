@@ -93,7 +93,7 @@ function isExportJobMessage(value: unknown): value is SurveyExportJobMessage {
     Number(message.surveyId) > 0 &&
     Number.isInteger(message.chatId) &&
     typeof message.format === "string" &&
-    ["csv", "xlsx", "zip"].includes(message.format)
+    ["csv", "zip"].includes(message.format)
   );
 }
 
@@ -101,12 +101,6 @@ function exportFileMetadata(
   surveyId: number,
   format: SurveyExportJobMessage["format"],
 ): { fileName: string; contentType: string } {
-  if (format === "xlsx") {
-    return {
-      fileName: `survey-${surveyId}.xlsx`,
-      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    };
-  }
   if (format === "zip") {
     return { fileName: `survey-${surveyId}.zip`, contentType: "application/zip" };
   }

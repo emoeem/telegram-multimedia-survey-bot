@@ -881,7 +881,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
     const format = url.searchParams.get('format') ?? 'csv';
-    if (!['csv', 'xlsx', 'zip', 'json'].includes(format)) {
+    if (!['csv', 'zip', 'json'].includes(format)) {
       return fail(400, 'validation_failed', '导出格式无效');
     }
     const fileName = `survey-${surveyId}.${format}`;
@@ -899,12 +899,10 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     }
     const { rows } = await getExportRows(env.DB, surveyId);
     const csv = buildCsv(rows);
-    const content = serializeExport(format as 'csv' | 'xlsx' | 'zip', csv, rows);
-    const contentType = format === 'xlsx'
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : format === 'zip'
-        ? 'application/zip'
-        : 'text/csv; charset=utf-8';
+    const content = serializeExport(format as 'csv' | 'zip', csv, rows);
+    const contentType = format === 'zip'
+      ? 'application/zip'
+      : 'text/csv; charset=utf-8';
     const body = typeof content === 'string'
       ? new TextEncoder().encode(`\uFEFF${content}`).buffer
       : new Uint8Array(content).buffer;

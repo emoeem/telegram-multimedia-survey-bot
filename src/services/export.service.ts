@@ -1,5 +1,4 @@
 import { strToU8, zipSync } from "fflate";
-import * as XLSX from "xlsx";
 
 import type { QuestionType } from "../db/schema";
 
@@ -249,13 +248,6 @@ export function buildCsv(rows: ResponseRow[]): string {
   return lines.join("\n");
 }
 
-export function buildXlsx(rows: ResponseRow[]): Uint8Array {
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Responses");
-  return XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as Uint8Array;
-}
-
 export function buildExportZip(
   csv: string,
   rows: ResponseRow[],
@@ -283,7 +275,7 @@ export function buildExportZip(
   return zipSync(zipEntries);
 }
 
-export type ExportFormat = "csv" | "xlsx" | "zip";
+export type ExportFormat = "csv" | "zip";
 
 export function serializeExport(
   format: ExportFormat,
@@ -293,10 +285,6 @@ export function serializeExport(
 ): Uint8Array | string {
   if (format === "csv") {
     return csv;
-  }
-
-  if (format === "xlsx") {
-    return buildXlsx(rows);
   }
 
   return buildExportZip(csv, rows, mediaFiles);

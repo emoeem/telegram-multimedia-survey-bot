@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCsv,
   buildExportZip,
-  buildXlsx,
   getExportRows,
   type ResponseRow,
 } from "../../../src/services/export.service";
@@ -51,20 +50,6 @@ describe("export service", () => {
     ]);
 
     expect(zip.length).toBeGreaterThan(0);
-  });
-
-  it("builds an xlsx export", () => {
-    const rows: ResponseRow[] = [
-      {
-        response_id: 1,
-        status: "completed",
-        started_at: "2026-08-14T00:00:00.000Z",
-        completed_at: null,
-      },
-    ];
-
-    const xlsx = buildXlsx(rows);
-    expect(xlsx.byteLength).toBeGreaterThan(0);
   });
 
   it("maps historical option ids to labels and preserves duplicate question titles", async () => {

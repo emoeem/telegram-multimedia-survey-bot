@@ -1,7 +1,7 @@
 import { createExportJob } from "../db/repositories/export.repository";
 import type { BotContext } from "../bot/types";
 
-export type SurveyExportFormat = "csv" | "xlsx" | "zip";
+export type SurveyExportFormat = "csv" | "zip";
 
 export interface SurveyExportJobMessage {
   jobId: number;
