@@ -1,5 +1,7 @@
 import type { ReportViewModel } from "./model";
+import { buildResponsiveCompositionReport } from "../html-report-renderer.service";
 import { renderRadarSvg } from "./blocks/radar";
+import type { ChartColors } from "./charts";
 import { reportThemes, themeCss } from "./themes";
 import {
   DEFAULT_REPORT_TEMPLATE,
@@ -109,10 +111,10 @@ function renderScores(view: ReportViewModel, section: ReportTemplateSection): st
   </section>`;
 }
 
-function renderRadar(view: ReportViewModel): string {
+function renderRadar(view: ReportViewModel, colors: ChartColors): string {
   if (view.charts.radar.length < 3) return "";
   return `<section class="report-section"><h2>维度画像</h2>
-    ${renderRadarSvg(view.charts.radar, "var(--accent)", escapeHtml)}
+    ${renderRadarSvg(view.charts.radar, colors)}
   </section>`;
 }
 
@@ -169,13 +171,14 @@ export function renderReportSection(
   kind: ReportSectionKind,
   view: ReportViewModel,
   section: ReportTemplateSection,
+  colors: ChartColors,
 ): string {
   switch (kind) {
     case "cover": return renderCover(view);
     case "hero": return renderHero(view, section);
     case "summary": return wrapSection("summary", sectionTitle("summary", section), renderSummary(view));
     case "scores": return wrapSection("scores", sectionTitle("scores", section), renderScores(view, section));
-    case "radar": return wrapSection("radar", sectionTitle("radar", section), renderRadar(view));
+    case "radar": return wrapSection("radar", sectionTitle("radar", section), renderRadar(view, colors));
     case "insights": return wrapSection("insights", sectionTitle("insights", section), renderInsights(view));
     case "quotes": return wrapSection("quotes", sectionTitle("quotes", section), renderInsights(view));
     case "answers": return wrapSection("answers", sectionTitle("answers", section), renderAnswers(view, section));
@@ -262,6 +265,7 @@ figure.missing img{display:none}
 figcaption{margin-top:6px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .summary p{margin:0;white-space:pre-wrap;font-size:15px;line-height:1.75}
 footer.meta{margin-top:36px;padding-top:20px;border-top:1px dashed var(--border);color:var(--muted);font-size:12px;text-align:center;letter-spacing:.03em}
+@media (max-width:639px){.answer-item,.checklist li{grid-template-columns:1fr;gap:3px;padding:11px 0}.answer-item dt,.checklist strong{margin-bottom:3px}.profile-hero{grid-template-columns:1fr;justify-items:start;gap:10px}.profile-hero .avatar{width:76px;height:76px}.hero-title{font-size:28px}.report-cover{min-height:38vh;padding:32px 22px}}
 @media (min-width:640px){.gallery{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.score-grid{grid-template-columns:repeat(2,1fr)}.score-rings{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 28px 64px}}
 @media (min-width:960px){.wrap{display:grid;grid-template-columns:repeat(12,1fr);gap:20px;max-width:1120px;padding:0 32px 64px}header.hero,.report-cover,.section-gallery,.report-divider{grid-column:1/-1}.report-section{margin-top:0}.section-summary{grid-column:span 5}.section-scores{grid-column:span 7}.section-radar{grid-column:span 6}.section-insights{grid-column:span 6}.section-quotes{grid-column:span 6}.section-answers{grid-column:span 6}.section-verdict{grid-column:span 12}.gallery{grid-template-columns:repeat(3,1fr)}.profile-hero .avatar{width:108px;height:108px}.hero-title{font-size:40px}header.hero{padding:52px 0 30px}.report-cover{min-height:50vh}}
 @media print{:root{--bg:#fff;--surface:#fff;--border:#dde3ea;--accent-soft:#f1f4f9}body{background:#fff}.wrap{display:block;max-width:none;padding:0}.anchor-nav{display:none}.report-cover,header.hero,.report-section,.report-divider{grid-column:auto}.report-section{break-inside:avoid;margin-top:14px;box-shadow:none}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:24px}.report-cover{min-height:28vh;page-break-inside:avoid}}`;
@@ -278,6 +282,15 @@ export function buildResponsiveReportHtml(
 ): string {
   const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
   const theme = reportThemes[template.theme] ?? reportThemes["tokyo-night"];
+  if (template.layout) {
+    return buildResponsiveCompositionReport(view, meta, template);
+  }
+  const colors: ChartColors = {
+    accent: theme.colors.accent,
+    text: theme.colors.text,
+    muted: theme.colors.muted,
+    border: theme.colors.border,
+  };
   const hasHeroOrCover = template.sections.some(
     (section) => section.kind === "hero" || section.kind === "cover",
   );
@@ -285,7 +298,7 @@ export function buildResponsiveReportHtml(
     ? `<nav class="anchor-nav"><a href="#answers">回答明细</a><a href="#gallery">图片</a></nav>`
     : "";
   const sections = template.sections
-    .map((section) => renderReportSection(section.kind, view, section))
+    .map((section) => renderReportSection(section.kind, view, section, colors))
     .filter(Boolean)
     .join("");
   const footer = `<footer class="meta">${meta.surveyTitle ? `${escapeHtml(meta.surveyTitle)} · ` : ""}${escapeHtml(text(meta.completedAt))}${meta.reportId ? ` · 报告 ${escapeHtml(meta.reportId)}` : ""}</footer>`;

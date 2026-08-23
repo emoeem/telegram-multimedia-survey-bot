@@ -61,7 +61,11 @@ describe("report template system", () => {
 
   it("renders exactly the sections a template declares, in order", () => {
     const html = buildResponsiveReportHtml(view, {}, {
-      ...DEFAULT_REPORT_TEMPLATE,
+      id: "classic",
+      name: "经典报告",
+      version: 1,
+      theme: "catppuccin-latte",
+      renderers: ["web", "pdf"] as const,
       sections: [
         { kind: "summary", title: "我的总结" },
         { kind: "answers" },
@@ -85,8 +89,17 @@ describe("report template system", () => {
 
   it("renders a magazine cover section from the built-in template", () => {
     const html = buildResponsiveReportHtml(view, {}, MAGAZINE_DARK_TEMPLATE);
-    expect(html).toContain("report-cover");
+    expect(html).toContain('data-report-layout="magazine"');
     expect(html).toContain("结果报告");
     expect(html).toContain("--report-bg:#282a36");
+  });
+
+  it("uses the composition engine when a template declares a layout", () => {
+    const html = buildResponsiveReportHtml(view, {}, {
+      ...DEFAULT_REPORT_TEMPLATE,
+      layout: "bento",
+    });
+    expect(html).toContain('data-report-layout="bento"');
+    expect(html).toContain("bento-overview");
   });
 });

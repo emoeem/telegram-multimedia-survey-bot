@@ -1,5 +1,6 @@
 import type { ReportTheme } from "./themes";
 import { reportThemeIds } from "./theme-ids";
+import type { ReportLayout } from "./layouts";
 
 /**
  * Report Template System.
@@ -44,6 +45,8 @@ export interface ReportTemplateSpec {
   name: string;
   version: number;
   theme: ReportTheme;
+  /** Real layout engine hint; when set, the composition renderer is used. */
+  layout?: ReportLayout;
   /** Ordered sections rendered top to bottom. */
   sections: ReportTemplateSection[];
   renderers: ReportRendererId[];
@@ -112,6 +115,9 @@ export function validateReportTemplateSpec(
           ? raw.version
           : REPORT_TEMPLATE_SCHEMA_VERSION,
       theme: raw.theme as ReportTheme,
+      ...(typeof raw.layout === "string" && reportLayoutIds.has(raw.layout as ReportLayout)
+        ? { layout: raw.layout as ReportLayout }
+        : {}),
       sections,
       renderers: renderers.length > 0 ? renderers : ["web", "pdf"],
       ...(typeof raw.css === "string" && raw.css.trim() ? { css: raw.css } : {}),
@@ -141,6 +147,15 @@ const sectionPresentations = new Set<ReportSectionPresentation>([
   "full",
 ]);
 
+const reportLayoutIds = new Set<ReportLayout>([
+  "editorial",
+  "bento",
+  "magazine",
+  "data",
+  "gallery",
+  "profile",
+]);
+
 /**
  * Built-in templates. The classic template reproduces the default mobile
  * report; the magazine-dark template demonstrates section reordering plus a
@@ -151,6 +166,7 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "经典报告",
   version: 1,
   theme: "catppuccin-latte",
+  layout: "editorial",
   sections: [
     { kind: "hero" },
     { kind: "summary" },
@@ -169,6 +185,7 @@ export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
   name: "杂志暗色",
   version: 1,
   theme: "dracula",
+  layout: "magazine",
   sections: [
     { kind: "cover", presentation: "full" },
     { kind: "summary", presentation: "featured" },
@@ -188,6 +205,7 @@ export const DATA_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "数据分析",
   version: 1,
   theme: "daisy-light",
+  layout: "data",
   sections: [
     { kind: "hero" },
     { kind: "summary", presentation: "featured" },
@@ -198,7 +216,7 @@ export const DATA_REPORT_TEMPLATE: ReportTemplateSpec = {
     { kind: "gallery" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-section.summary{background:linear-gradient(135deg,var(--report-accent),var(--report-primary));color:#fff}.report-section.summary h2{color:rgba(255,255,255,.85)}.report-section.summary p{font-size:17px;line-height:1.7}`,
+  css: `.report-section.summary{background:linear-gradient(135deg,var(--report-accent),var(--report-primary));color:#fff}.report-section.summary h2{color:rgba(255,255,255,.85)}.report-section.summary p{font-size:17px;line-height:1.7}.score-card{border-left:3px solid var(--report-accent);background:linear-gradient(180deg,#fff,var(--report-accent)06)}.score-card .bar span{background:linear-gradient(90deg,var(--report-accent),var(--report-primary))}`,
 };
 
 /** 身份档案型：黑金档案袋风格，适合人物/身份类问卷。 */
@@ -207,6 +225,7 @@ export const IDENTITY_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "身份档案",
   version: 1,
   theme: "daisy-luxury",
+  layout: "profile",
   sections: [
     { kind: "cover", presentation: "full" },
     { kind: "hero", presentation: "featured" },
@@ -215,7 +234,7 @@ export const IDENTITY_REPORT_TEMPLATE: ReportTemplateSpec = {
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{border:1px solid var(--report-border);border-radius:var(--radius);min-height:42vh;padding:36px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:32px;letter-spacing:.06em}.report-cover .cover-sub{color:var(--report-text-muted)}.report-section{border-left:4px solid var(--report-accent)}.checklist strong::before{content:"◆ ";color:var(--report-accent)}.ring-card .ring{border:2px solid var(--report-border)}`,
+  css: `.report-cover{border:1px solid var(--report-border);border-radius:var(--radius);min-height:42vh;padding:36px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:32px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.08em;text-transform:uppercase}.report-cover .cover-sub{color:var(--report-text-muted)}.report-section{border-left:4px solid var(--report-accent)}.report-section h2::before{background:var(--report-accent)}.checklist strong::before{content:"◆ ";color:var(--report-accent)}.ring-card .ring{border:2px solid var(--report-border)}.score-head strong{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:24px}`,
 };
 
 /** 杂志亮色：复古纸张编辑风。 */
@@ -224,6 +243,7 @@ export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "杂志",
   version: 1,
   theme: "daisy-retro",
+  layout: "magazine",
   sections: [
     { kind: "cover", presentation: "full" },
     { kind: "quotes" },
@@ -232,7 +252,7 @@ export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{min-height:46vh;padding:38px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--report-border)}.report-cover h1{font-size:36px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em}.report-cover .cover-sub{margin-top:8px;color:var(--report-text-muted)}blockquote{border-left:4px double var(--report-accent);font-style:italic}`,
+  css: `.report-cover{min-height:46vh;padding:38px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--report-border)}.report-cover h1{font-size:38px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em}.report-cover .cover-sub{margin-top:8px;color:var(--report-text-muted)}.report-section{background:transparent;box-shadow:none;border:0;border-radius:0;border-top:3px double var(--report-text);padding:20px 2px}.report-section h2{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:20px;text-transform:uppercase;letter-spacing:.06em}.report-section h2::before{display:none}.hero-title{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:38px;text-transform:uppercase;letter-spacing:.03em}.avatar{border-radius:6px;border-color:var(--report-text)}blockquote{border-left:4px double var(--report-accent);font-style:italic}`,
 };
 
 /** 极简报告：白底黑字，只有内容。 */
@@ -256,13 +276,14 @@ export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "影集",
   version: 1,
   theme: "daisy-black",
+  layout: "gallery",
   sections: [
     { kind: "cover", presentation: "full" },
     { kind: "gallery", presentation: "featured" },
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{min-height:62vh;padding:40px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:38px;letter-spacing:.08em}.report-section{background:rgba(255,255,255,.04);border:1px solid var(--report-border);backdrop-filter:blur(8px)}.gallery{grid-template-columns:1fr}figure img{aspect-ratio:16/10}`,
+  css: `.report-cover{min-height:66vh;padding:40px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:38px;letter-spacing:.08em}.report-section{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.01));border:1px solid rgba(255,255,255,.14);box-shadow:none;border-radius:24px;backdrop-filter:blur(8px)}.report-section h2::before{background:#fff}.gallery{grid-template-columns:1fr}figure img{aspect-ratio:16/10;border-radius:20px}`,
 };
 
 export const REPORT_TEMPLATES: Record<string, ReportTemplateSpec> = {

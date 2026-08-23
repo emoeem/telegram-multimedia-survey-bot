@@ -30,6 +30,7 @@ interface TemplateDraft {
   id: string;
   name: string;
   theme: string;
+  layout?: string;
   sections: SectionDraft[];
   css: string;
   renderers: string[];
@@ -50,6 +51,16 @@ const SECTION_OPTIONS: Array<{ kind: string; label: string }> = [
 ];
 
 const PRESENTATIONS = ["cards", "list", "grid", "featured", "full"];
+
+const LAYOUT_OPTIONS: Array<{ id: string; name: string }> = [
+  { id: "", name: "不启用（经典分区渲染）" },
+  { id: "editorial", name: "编辑风 Editorial" },
+  { id: "bento", name: "网格卡片 Bento" },
+  { id: "magazine", name: "杂志 Magazine" },
+  { id: "data", name: "数据看板 Data" },
+  { id: "gallery", name: "影集 Gallery" },
+  { id: "profile", name: "档案 Profile" },
+];
 
 const THEME_OPTIONS: Array<{ id: string; name: string }> = [
   { id: "daisy-light", name: "明亮（DaisyUI）" },
@@ -88,6 +99,7 @@ function emptyDraft(): TemplateDraft {
     id: "",
     name: "",
     theme: "daisy-light",
+    layout: "",
     sections: [
       { kind: "hero" },
       { kind: "summary" },
@@ -320,11 +332,18 @@ export function TemplatesPage() {
         {templates ? (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
-              <div key={template.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div key={template.id} className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="truncate">{template.name}</strong>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
-                    {template.isCustom ? "自定义" : "系统"}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {template.layout ? (
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">
+                        {LAYOUT_OPTIONS.find((item) => item.id === template.layout)?.name ?? template.layout}
+                      </span>
+                    ) : null}
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                      {template.isCustom ? "自定义" : "系统"}
+                    </span>
                   </span>
                 </div>
                 <div className="mt-1 font-mono text-xs text-gray-400">{template.id}</div>
@@ -393,6 +412,21 @@ export function TemplatesPage() {
                     <option key={theme.id} value={theme.id}>{theme.name}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">版式（启用后使用真版式引擎渲染）</label>
+                <select
+                  className="select mt-1 w-full"
+                  value={draft.layout ?? ""}
+                  onChange={(event) => setDraft({ ...draft, layout: event.target.value || undefined })}
+                >
+                  {LAYOUT_OPTIONS.map((layout) => (
+                    <option key={layout.id} value={layout.id}>{layout.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-400">
+                  版式引擎提供编辑风 / 网格 / 杂志 / 数据 / 影集 / 档案六种真正的布局差异；不启用时使用经典分区渲染。
+                </p>
               </div>
               <div>
                 <label className="text-sm text-gray-600">内容块（自上而下渲染）</label>

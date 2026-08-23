@@ -1,4 +1,5 @@
 import type { ReportScore } from "../model";
+import { renderBarChartSvg, type ChartColors } from "../charts";
 
 export interface DataBlockContext { accent: string; escape(value: string): string; }
 
@@ -12,6 +13,12 @@ export function renderMetricGridBlock(scores: ReportScore[], context: DataBlockC
 
 export function renderProgressBars(scores: ReportScore[], context: DataBlockContext): string {
   return scores.map((score) => `<div class="bar-row"><span>${context.escape(score.label)}</span><div class="bar-track"><i style="width:${score.percentage}%"></i></div><b>${context.escape(String(score.value))}</b></div>`).join("");
+}
+
+/** ECharts SSR horizontal bar chart for the bento "CORE DIMENSIONS" tile. */
+export function renderBarsChart(scores: ReportScore[], colors: ChartColors): string {
+  const svg = renderBarChartSvg(scores, colors);
+  return svg ? `<div class="bars-chart">${svg}</div>` : "";
 }
 
 export function renderPrimaryScoreBlock(score: ReportScore | undefined, context: DataBlockContext): string {

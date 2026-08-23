@@ -178,6 +178,7 @@ export interface ReportTemplateOption {
   id: string;
   name: string;
   theme: string;
+  layout?: string | null;
   renderers: string[];
   isCustom?: boolean;
 }

@@ -11,9 +11,12 @@ const TEMPLATES = [
 ];
 
 const VIEWPORTS = [
+  { width: 375, height: 812 },
   { width: 390, height: 844 },
+  { width: 430, height: 932 },
   { width: 768, height: 1024 },
-  { width: 1440, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1920, height: 1080 },
 ];
 
 for (const template of TEMPLATES) {
@@ -62,10 +65,17 @@ for (const template of TEMPLATES) {
     await expect(page.locator("h1").first()).toBeVisible();
 
     const wrapDisplay = await page.evaluate(() => {
-      const wrap = document.querySelector(".wrap");
-      return wrap ? getComputedStyle(wrap).display : null;
+      const el = document.querySelector(".wrap") ?? document.querySelector(".page");
+      return el ? getComputedStyle(el).display : null;
     });
-    expect(wrapDisplay).toBe("block");
+    expect(["block", "flex"]).toContain(wrapDisplay);
+    const regionColumns = await page.evaluate(() => {
+      const region = document.querySelector(".composition-region");
+      return region ? getComputedStyle(region).gridTemplateColumns : null;
+    });
+    if (regionColumns !== null) {
+      expect(regionColumns).not.toContain(" ");
+    }
     expect(problems).toEqual([]);
 
     await expect(page).toHaveScreenshot(

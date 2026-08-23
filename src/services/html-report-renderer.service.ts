@@ -13,10 +13,11 @@ import { DEFAULT_REPORT_SIZE_POLICY, type ReportSizePolicy } from "./report/size
 import { renderGalleryBlock } from "./report/blocks/gallery";
 import { renderFinalVerdictBlock } from "./report/blocks/summary";
 import { renderEditorialAnalysisBlock, renderFeaturedInsightBlock, renderHeroBlock, renderQuoteBlock } from "./report/blocks/content";
-import { renderMetricGridBlock, renderPrimaryScoreBlock, renderProgressBars } from "./report/blocks/data";
+import { renderBarsChart, renderMetricGridBlock, renderPrimaryScoreBlock } from "./report/blocks/data";
 import { renderSelectedResponses } from "./report/blocks/answers";
 import { renderRadarSvg } from "./report/blocks/radar";
 import { renderMetadataBlock } from "./report/blocks/structural";
+import type { ReportTemplateSpec } from "./report/template";
 
 export type { ReportGalleryItem, ReportScore, ReportViewModel } from "./report/model";
 
@@ -176,7 +177,7 @@ function reportCss(): string {
   return `${reportFontCss}${reportTokenCss()}
 *{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--report-bg);color:var(--report-text);font-family:var(--font-body);font-variant-numeric:tabular-nums lining-nums}body{width:900px}.page{width:900px;padding:54px;display:flex;flex-direction:column}.composition-region{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--report-grid-gap);margin-top:var(--report-section-gap)}.composition-region:first-child{margin-top:0}.composition-block{grid-column:span 12;min-width:0}.chapter-heading{display:flex;align-items:baseline;justify-content:space-between;gap:24px;margin-bottom:40px}.chapter-heading span,.chapter-kicker,.eyebrow,.verdict-eyebrow,.response-index,.editorial-label{font-size:var(--type-label);letter-spacing:.14em;color:var(--report-accent);font-weight:700}.chapter-heading h2{font-size:var(--type-h2);margin:0}.tag{padding:8px 13px;border-radius:var(--report-radius-pill);background:var(--report-surface);border:1px solid var(--report-border);font-size:13px}.media-fallback{display:none;place-items:center;background:var(--report-surface);color:var(--report-text-muted)}
 .hero{min-height:440px;display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:36px 48px;padding:56px 0 64px;border-top:1px solid var(--report-border);border-bottom:1px solid var(--report-border);position:relative}.hero-copy{align-self:center}.hero h1{font-size:var(--type-display);line-height:1.08;letter-spacing:-.035em;margin:22px 0 18px;max-width:780px}.hero-thesis{font-size:26px;line-height:1.5;color:var(--report-text-muted);max-width:760px}.hero-tags{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}.hero-score{align-self:center;text-align:right;border-left:1px solid var(--report-border);padding-left:36px}.hero-score strong{display:block;font-size:92px;line-height:.9;color:var(--report-accent)}.hero-score span{display:block;font-size:16px;margin-top:16px}.hero-score small{display:block;font-size:10px;letter-spacing:.13em;color:var(--report-text-muted);margin-top:6px}.hero-avatar{position:absolute;right:0;bottom:24px;width:132px;height:132px;object-fit:cover;border-radius:50%;border:4px solid var(--report-bg);box-shadow:0 0 0 1px var(--report-border)}
-.bento-overview{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:minmax(150px,auto);gap:18px}.bento-tile{background:var(--report-surface);border:1px solid var(--report-border);border-radius:var(--report-radius-lg);padding:26px;break-inside:avoid}.bento-primary{grid-column:span 7;grid-row:span 2;padding:38px;display:flex;flex-direction:column;justify-content:flex-end}.bento-primary>span,.bento-radar>span,.bento-bars>span,.bento-tags>span{font-size:11px;letter-spacing:.13em;color:var(--report-accent)}.bento-primary strong{font-size:88px;line-height:1;margin-top:24px}.bento-primary h3{font-size:22px;margin:8px 0 24px}.bento-metrics{grid-column:span 5;display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.metric{background:var(--report-surface);border:1px solid var(--report-border);border-radius:var(--report-radius-md);padding:18px;break-inside:avoid}.metric-top{display:flex;justify-content:space-between;gap:8px}.metric-label{font-size:15px;color:var(--report-text-muted)}.metric strong{font-size:34px;display:block;margin-top:8px}.ring{display:none}.metric-level{font-size:11px;color:var(--report-accent);margin:10px 0}.meter,.bar-track{height:7px;border-radius:99px;background:var(--report-border);overflow:hidden}.meter i,.bar-track i{display:block;height:100%;background:var(--report-accent);border-radius:99px}.bento-radar{grid-column:span 5;min-height:360px}.radar{width:100%;height:310px;display:block;margin:12px auto 0}.bento-bars{grid-column:span 7}.bars{display:flex;flex-direction:column;gap:17px;margin-top:28px}.bar-row{display:grid;grid-template-columns:170px 1fr 50px;align-items:center;gap:14px;font-size:16px}.bar-row b{text-align:right}.bento-tags{grid-column:span 12;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:100px}
+.bento-overview{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:minmax(150px,auto);gap:18px}.bento-tile{background:var(--report-surface);border:1px solid var(--report-border);border-radius:var(--report-radius-lg);padding:26px;break-inside:avoid}.bento-primary{grid-column:span 7;grid-row:span 2;padding:38px;display:flex;flex-direction:column;justify-content:flex-end}.bento-primary>span,.bento-radar>span,.bento-bars>span,.bento-tags>span{font-size:11px;letter-spacing:.13em;color:var(--report-accent)}.bento-primary strong{font-size:88px;line-height:1;margin-top:24px}.bento-primary h3{font-size:22px;margin:8px 0 24px}.bento-metrics{grid-column:span 5;display:grid;grid-template-columns:repeat(2,1fr);gap:18px}.metric{background:var(--report-surface);border:1px solid var(--report-border);border-radius:var(--report-radius-md);padding:18px;break-inside:avoid}.metric-top{display:flex;justify-content:space-between;gap:8px}.metric-label{font-size:15px;color:var(--report-text-muted)}.metric strong{font-size:34px;display:block;margin-top:8px}.ring{display:none}.metric-level{font-size:11px;color:var(--report-accent);margin:10px 0}.meter,.bar-track{height:7px;border-radius:99px;background:var(--report-border);overflow:hidden}.meter i,.bar-track i{display:block;height:100%;background:var(--report-accent);border-radius:99px}.bento-radar{grid-column:span 5;min-height:360px}.radar{width:100%;height:310px;display:block;margin:12px auto 0}.bento-bars{grid-column:span 7}.bars{display:flex;flex-direction:column;gap:17px;margin-top:28px}.bar-row{display:grid;grid-template-columns:170px 1fr 50px;align-items:center;gap:14px;font-size:16px}.bar-row b{text-align:right}.bars-chart svg{width:100%;height:300px;display:block}.bento-tags{grid-column:span 12;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:100px}
 .featured-insight{max-width:1000px;margin:40px auto 10px;padding:80px 48px;text-align:center;border-top:1px solid var(--report-border);border-bottom:1px solid var(--report-border);break-inside:avoid}.featured-insight blockquote{font-size:44px;line-height:1.45;letter-spacing:-.02em;margin:26px 0}.featured-caption{color:var(--report-text-muted);font-size:14px}
 .editorial-chapter{padding:56px 0}.editorial-section{display:grid;grid-template-columns:100px minmax(0,1fr);gap:30px;padding:54px 0;border-top:1px solid var(--report-border);break-inside:auto}.editorial-index{font-size:42px;color:var(--report-accent);line-height:1}.editorial-copy{max-width:860px}.editorial-copy h3{font-size:30px;margin:10px 0 20px}.editorial-copy p{font-size:16px;line-height:1.8;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.editorial-section:not(.editorial-long):nth-of-type(3),.editorial-section:not(.editorial-long):nth-of-type(4){display:inline-grid;width:calc(50% - 12px);vertical-align:top;grid-template-columns:70px minmax(0,1fr);padding-right:24px}.editorial-contradiction,.editorial-final{width:100%!important;display:grid!important}.editorial-contradiction .editorial-copy{max-width:980px}.editorial-contradiction p{font-size:28px;line-height:1.6}.editorial-final .editorial-copy{margin-left:auto;max-width:760px}
 .quotes-composition,.responses-composition,.gallery-composition{padding:54px 0;border-top:1px solid var(--report-border)}.quote-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}.selected-quote{padding:32px 0;border-top:3px solid var(--report-accent);break-inside:avoid}.selected-quote:first-child:last-child{grid-column:1/-1;max-width:880px}.selected-quote blockquote{font-size:28px;line-height:1.65;margin:20px 0}.quote-question{font-size:13px;color:var(--report-text-muted)}.featured-question{padding:48px 0 56px;max-width:900px;border-bottom:1px solid var(--report-border);break-inside:auto}.featured-question .question{font-size:28px}.featured-question .answer{font-size:24px}.editorial-answer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px;margin-top:48px}.editorial-answer{padding-top:24px;border-top:1px solid var(--report-border);break-inside:auto}.question{font-size:17px;color:var(--report-text-muted);line-height:1.5;margin:12px 0 18px}.answer{font-size:17px;line-height:1.75;white-space:pre-wrap}.compact-answer-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:48px}.compact-answer{padding:20px;background:var(--report-surface);border:1px solid var(--report-border);border-radius:var(--report-radius-md);break-inside:avoid}.compact-answer .question{font-size:13px;margin-bottom:10px}.compact-answer .answer{font-size:15px;line-height:1.55}
@@ -185,18 +186,35 @@ function reportCss(): string {
 .report-layout-magazine .featured-insight{text-align:left;margin-left:0}.report-layout-magazine .gallery-feature-triple{grid-template-columns:1.8fr 1fr}.report-layout-data .composition-region-analysis .editorial-chapter{padding-top:20px}.report-layout-gallery .hero{min-height:360px}.report-layout-profile .hero{grid-template-columns:minmax(0,1fr) 220px}.density-airy .composition-region{margin-top:64px}.density-compact .composition-region{margin-top:32px}.report-page-shell,.report-page-shell body{width:900px;height:1200px;overflow:hidden}.report-page-shell .page{height:1200px;padding:48px 54px;overflow:hidden}.report-page-shell .composition-region{margin-top:24px}.report-page-shell .hero{min-height:360px;padding:40px 0;grid-template-columns:minmax(0,1fr) 170px;gap:28px}.report-page-shell .hero h1{font-size:50px}.report-page-shell .hero-thesis{font-size:21px}.report-page-shell .hero-score{padding-left:24px}.report-page-shell .hero-score strong{font-size:68px}.report-page-shell .bento-overview{grid-auto-rows:minmax(90px,auto);gap:14px}.report-page-shell .bento-primary{grid-column:span 12;padding:24px}.report-page-shell .bento-primary strong{font-size:64px;margin-top:12px}.report-page-shell .bento-metrics{grid-column:span 12;gap:12px}.report-page-shell .metric{padding:12px}.report-page-shell .metric strong{font-size:26px}.report-page-shell .bento-radar,.report-page-shell .bento-bars{grid-column:span 12}.report-page-shell .bento-radar{min-height:210px;padding:16px}.report-page-shell .radar{height:190px}.report-page-shell .bento-bars{padding:18px}.report-page-shell .bars{gap:10px;margin-top:14px}.report-page-shell .bento-tags{min-height:64px;padding:14px}.report-page-shell .featured-insight{padding:54px 24px;margin:0 auto}.report-page-shell .featured-insight blockquote{font-size:34px}.report-page-shell .editorial-chapter,.report-page-shell .quotes-composition,.report-page-shell .responses-composition,.report-page-shell .gallery-composition{padding:20px 0}.report-page-shell .chapter-heading{margin-bottom:22px}.report-page-shell .editorial-section{grid-template-columns:72px minmax(0,1fr);padding:24px 0}.report-page-shell .editorial-copy p{font-size:18px;line-height:1.7}.report-page-shell .quote-list,.report-page-shell .editorial-answer-grid{grid-template-columns:1fr}.report-page-shell .compact-answer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-page-shell .selected-quote{padding:18px 0}.report-page-shell .selected-quote blockquote{font-size:24px}.report-page-shell .question,.report-page-shell .answer{font-size:18px}.report-page-shell .gallery-grid{grid-template-columns:repeat(2,1fr)}.report-page-shell .gallery-item img{height:300px}.report-page-shell .gallery-single .gallery-item img{height:820px}.report-page-shell .gallery-duo .gallery-item img{height:720px}.report-page-shell .gallery-feature-triple .gallery-item:first-child img{height:760px}.report-page-shell .final-verdict{min-height:0;margin-top:0;padding:64px 0}.report-page-shell .final-verdict h2{font-size:52px;margin:22px 0 34px}.report-page-shell .verdict-main{grid-template-columns:180px minmax(0,1fr);gap:32px}.report-page-shell .verdict-pillars{margin-top:42px}.report-page-shell .closing-statement{margin-top:48px}.page-folio{position:absolute;right:54px;bottom:24px;font-size:10px;letter-spacing:.14em;color:var(--report-text-muted)}@media print{.editorial-section,.featured-question,.editorial-answer,.final-verdict{break-inside:auto}.bento-tile,.metric,.selected-quote,.compact-answer,.gallery-item{break-inside:avoid}}`;
 }
 
-function renderOverview(view: ReportViewModel): string {
+function themeChartColors(themeId: ReportTheme): { accent: string; text: string; muted: string; border: string } {
+  const theme = reportThemes[themeId];
+  return {
+    accent: theme.colors.accent,
+    text: theme.colors.text,
+    muted: theme.colors.muted,
+    border: theme.colors.border,
+  };
+}
+
+function renderOverview(
+  view: ReportViewModel,
+  colors: { accent: string; text: string; muted: string; border: string },
+): string {
   if (!view.scores.length && !view.tags.length) return "";
   const context = { accent: "var(--report-accent)", escape: escapeHtml };
   const primary = renderPrimaryScoreBlock(view.scores[0], context);
   const metrics = renderMetricGridBlock(view.scores.slice(1, 5), context);
-  const radar = renderRadarSvg(view.charts.radar, "var(--chart-1)", escapeHtml);
-  const bars = renderProgressBars(view.charts.bars.slice(0, 6), context);
+  const radar = renderRadarSvg(view.charts.radar, colors);
+  const bars = renderBarsChart(view.charts.bars.slice(0, 6), colors);
   const tags = view.tags.slice(0, 8).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
   return `<section class="bento-overview block block-overview">${primary}${metrics ? `<div class="bento-metrics">${metrics}</div>` : ""}${radar ? `<article class="bento-tile bento-radar"><span>PROFILE MAP</span>${radar}</article>` : ""}${bars ? `<article class="bento-tile bento-bars"><span>CORE DIMENSIONS</span><div class="bars">${bars}</div></article>` : ""}${tags ? `<article class="bento-tile bento-tags"><span>PROFILE SNAPSHOT</span>${tags}</article>` : ""}</section>`;
 }
 
-function renderComposition(view: ReportViewModel, layout: ReportLayout): { html: string; density: string } {
+function renderComposition(
+  view: ReportViewModel,
+  layout: ReportLayout,
+  colors: { accent: string; text: string; muted: string; border: string },
+): { html: string; density: string } {
   const content = prepareReportContent(view);
   const composition = composeReport(view, content, layout);
   const primaryScore = view.scores[0];
@@ -205,7 +223,7 @@ function renderComposition(view: ReportViewModel, layout: ReportLayout): { html:
     : view.hero.subtitle;
   const blocks: Record<string, string> = {
     hero: renderHeroBlock({ title: view.hero.title, thesis, tags: view.hero.tags, ...(view.hero.avatar ? { avatar: view.hero.avatar } : {}), ...(primaryScore ? { primaryScore } : {}) }, { escape: escapeHtml, limit: limitText }),
-    overview: renderOverview(view), featured: renderFeaturedInsightBlock(content.featuredInsight, { escape: escapeHtml, limit: limitText }),
+    overview: renderOverview(view, colors), featured: renderFeaturedInsightBlock(content.featuredInsight, { escape: escapeHtml, limit: limitText }),
     analysis: renderEditorialAnalysisBlock(content.analysis, { escape: escapeHtml, limit: limitText }), quotes: renderQuoteBlock(content.quotes, { escape: escapeHtml, limit: limitText }),
     responses: renderSelectedResponses(content, { escape: escapeHtml }), gallery: renderGalleryBlock(view.gallery, { heroUrl: view.hero.avatar, escape: escapeHtml }),
     verdict: renderFinalVerdictBlock(content.verdict, primaryScore, { escape: escapeHtml, limit: limitText }),
@@ -222,9 +240,62 @@ export function buildHtmlReport(profile: ResultProfileSnapshot, templateName: st
   const layout = options.layout ?? view.meta.layout ?? layoutHintFromTemplateName(templateName) ?? selectReportLayout(view, options);
   const themeId = options.theme ?? view.meta.theme ?? themeHintFromTemplateName(templateName);
   const theme = reportThemes[themeId];
-  const composition = renderComposition(view, layout);
+  const composition = renderComposition(view, layout, themeChartColors(themeId));
   const meta = [view.meta.surveyTitle, view.meta.submittedAt, view.meta.reportId].filter(Boolean).map((value) => escapeHtml(value!)).join(" · ");
   return `<!doctype html><html><head><meta charset="utf-8"><style>${themeCss(theme)}${reportCss()}</style></head><body><div class="report-layout-${layout} density-${composition.density}" data-report-layout="${layout}" data-report-theme="${theme.id}"><main class="page">${composition.html}${renderMetadataBlock([meta], { escape: escapeHtml }) || `<footer class="report-metadata">本报告由问卷回答自动整理生成</footer>`}</main></div></body></html>`;
+}
+
+/** Responsive stylesheet for the composition engine on the open Web (and A4 print). */
+function responsiveCompositionCss(): string {
+  const base = reportCss()
+    .replace("body{width:900px}", "")
+    .replace(
+      ".page{width:900px;padding:54px;display:flex;flex-direction:column}",
+      ".page{width:auto;max-width:1120px;margin:0 auto;padding:36px 24px 72px;display:flex;flex-direction:column}",
+    );
+  return `${base}
+@media (max-width:960px){.composition-region{grid-template-columns:1fr}.composition-block{grid-column:auto}.bento-overview{grid-template-columns:1fr}.bento-primary,.bento-metrics,.bento-radar,.bento-bars,.bento-tags{grid-column:auto;grid-row:auto}.hero{grid-template-columns:1fr;gap:24px;padding:40px 0 48px}.hero h1{font-size:42px}.hero-thesis{font-size:20px}.hero-score{text-align:left;border-left:0;border-top:1px solid var(--report-border);padding:22px 0 0;margin-top:6px}.hero-score strong{font-size:54px}.hero-avatar{position:static;width:108px;height:108px;margin-top:22px}.quote-list,.editorial-answer-grid{grid-template-columns:1fr}.compact-answer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gallery-grid{grid-template-columns:repeat(2,1fr)}.gallery-feature-triple{grid-template-columns:1fr}.gallery-feature-triple .gallery-item:first-child{grid-row:auto}.gallery-feature-triple .gallery-item:first-child img{height:340px}.gallery-item img{height:280px}.gallery-single .gallery-item img{height:420px}.gallery-duo .gallery-item img{height:300px}.editorial-section{grid-template-columns:56px minmax(0,1fr);gap:20px;padding:34px 0}.editorial-section:not(.editorial-long):nth-of-type(3),.editorial-section:not(.editorial-long):nth-of-type(4){display:grid;width:100%;grid-template-columns:56px minmax(0,1fr)}.editorial-copy h3{font-size:24px}.featured-insight{padding:54px 24px}.featured-insight blockquote{font-size:30px}.selected-quote{padding:24px 0}.selected-quote blockquote{font-size:22px}.featured-question{padding:32px 0 40px}.featured-question .question{font-size:22px}.featured-question .answer{font-size:19px}.chapter-heading{flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:28px}.chapter-heading h2{font-size:26px}.final-verdict{padding:64px 0}.final-verdict h2{font-size:40px}.verdict-main{grid-template-columns:1fr;gap:24px}.verdict-pillars{grid-template-columns:1fr;gap:22px;margin-top:44px}.closing-statement{margin-top:48px}.radar,.bars-chart svg{width:100%!important;height:280px}}
+@media (max-width:480px){.hero h1{font-size:32px}.hero-thesis{font-size:17px}.metric{padding:14px}.compact-answer-grid{grid-template-columns:1fr}.gallery-grid,.gallery-duo{grid-template-columns:1fr}.gallery-grid .gallery-item img{height:260px}.editorial-index{font-size:30px}.chapter-heading h2{font-size:22px}.page{padding:24px 16px 56px}}
+@media print{:root{--report-bg:#fff;--report-surface:#fff;--report-border:#dde3ea}body{background:#fff}.page{max-width:none;padding:0}.composition-region,.bento-overview{grid-template-columns:1fr}.bento-primary,.bento-metrics,.bento-radar,.bento-bars,.bento-tags,.featured-insight,.final-verdict{grid-column:auto;grid-row:auto}.hero,.bento-tile,.metric,.selected-quote,.compact-answer,.gallery-item,.editorial-section,.featured-question{break-inside:avoid}.hero{grid-template-columns:1fr}.hero h1{font-size:34px}.hero-score strong{font-size:44px}.gallery-grid{grid-template-columns:1fr}.compact-answer-grid{grid-template-columns:repeat(2,1fr)}}`;
+}
+
+/**
+ * Renders a template with a real layout through the composition engine for
+ * the open Web (responsive) and the A4 PDF archive. Used by
+ * buildResponsiveReportHtml when a template declares a layout.
+ */
+export function buildResponsiveCompositionReport(
+  view: ReportViewModel,
+  meta: { surveyTitle?: string; completedAt?: string; reportId?: string },
+  template: ReportTemplateSpec,
+): string {
+  const layout = template.layout ?? selectReportLayout(view, template.layout ? { layout: template.layout } : {});
+  const theme = reportThemes[template.theme];
+  const composition = renderComposition(view, layout, themeChartColors(template.theme));
+  const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
+  const metaLine = [meta.surveyTitle, meta.completedAt, meta.reportId].filter(Boolean).map((value) => escapeHtml(text(value))).join(" · ");
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root{--report-bg:#f4f6fa;--report-surface:#fff;--report-border:#e5e9f0}
+    @media (prefers-color-scheme: dark){:root{--report-bg:#0f172a;--report-surface:#131c2e;--report-border:#26334d}}
+    ${responsiveCompositionCss()}
+  </style>
+  <style>${themeCss(theme)}${template.css ?? ""}</style>
+</head>
+<body>
+  <div class="report-layout-${layout} density-${composition.density}" data-report-layout="${layout}" data-report-theme="${theme.id}">
+    <main class="page">
+      ${composition.html}
+      <footer class="report-metadata">${metaLine || "本报告由问卷回答自动整理生成"}</footer>
+    </main>
+  </div>
+</body>
+</html>`;
 }
 
 function partialResponses(content: PreparedReportContent, block: Extract<ReportPageBlock, { kind: "responses" }>): PreparedReportContent {
@@ -237,7 +308,12 @@ function partialResponses(content: PreparedReportContent, block: Extract<ReportP
   };
 }
 
-function renderPlannedBlock(block: ReportPageBlock, view: ReportViewModel, content: PreparedReportContent): string {
+function renderPlannedBlock(
+  block: ReportPageBlock,
+  view: ReportViewModel,
+  content: PreparedReportContent,
+  colors: { accent: string; text: string; muted: string; border: string },
+): string {
   const primaryScore = view.scores[0];
   const context = { escape: escapeHtml, limit: limitText };
   switch (block.kind) {
@@ -245,7 +321,7 @@ function renderPlannedBlock(block: ReportPageBlock, view: ReportViewModel, conte
       const thesis = /问卷完成|自动整理|根据本次问卷/.test(view.hero.subtitle) ? content.featuredInsight?.text ?? view.hero.title : view.hero.subtitle;
       return renderHeroBlock({ title: view.hero.title, thesis, tags: view.hero.tags, ...(view.hero.avatar ? { avatar: view.hero.avatar } : {}), ...(primaryScore ? { primaryScore } : {}) }, context);
     }
-    case "overview": return renderOverview(view);
+    case "overview": return renderOverview(view, colors);
     case "featured": return renderFeaturedInsightBlock(block.item, context);
     case "analysis": return renderEditorialAnalysisBlock(block.items, context);
     case "quotes": return renderQuoteBlock(block.items, context);
@@ -285,7 +361,7 @@ export function buildHtmlReportPages(
   const planned = planReportPages(view, content, policy);
   const pages = planned.map((page) => ({
     page,
-    html: htmlShell(page.blocks.map((block) => `<div class="composition-region composition-region-${block.kind}"><div class="composition-block" data-block="${block.kind}">${renderPlannedBlock(block, view, content)}</div></div>`).join(""), layout, theme, content.densityMode, page, planned.length),
+    html: htmlShell(page.blocks.map((block) => `<div class="composition-region composition-region-${block.kind}"><div class="composition-block" data-block="${block.kind}">${renderPlannedBlock(block, view, content, themeChartColors(theme))}</div></div>`).join(""), layout, theme, content.densityMode, page, planned.length),
   }));
   return { view, content, layout, theme, pages };
 }

@@ -35,7 +35,13 @@ export const reportPreviewViewModel: ReportViewModel = {
       { label: "信任", value: 61 },
       { label: "幻想", value: 79 },
     ],
-    bars: [],
+    bars: [
+      { key: "obedience", label: "服从度", value: 86, max: 100, percentage: 86, level: "高" },
+      { key: "desire", label: "欲望指数", value: 74, max: 100, percentage: 74, level: "较高" },
+      { key: "rebellion", label: "反抗倾向", value: 38, max: 100, percentage: 38, level: "低" },
+      { key: "trust", label: "信任值", value: 61, max: 100, percentage: 61, level: "中" },
+      { key: "imagination", label: "幻想指数", value: 79, max: 100, percentage: 79, level: "高" },
+    ],
   },
   tags: ["堕落", "游戏", "深度"],
   insights: [
