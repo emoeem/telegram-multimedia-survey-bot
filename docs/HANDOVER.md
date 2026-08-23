@@ -74,7 +74,7 @@
 ## 4. 已知限制与决策（接手前必读）
 
 1. **R2 未启用** → 临时媒体走 KV；问卷静态媒体仍是 Telegram file_id（Web 编辑器暂不能上传静态媒体，只能 Bot/导入）
-2. **无规则集的 fallback 报告**：单选显示原始选项 ID（如"10"而非"蓝色"）；配置 ResultRule 后正常显示文案。可后续加选项标签映射
+2. **无规则集的 fallback 报告**：~~单选显示原始选项 ID（如"10"而非"蓝色"）~~ 已修复——`result-visual.service.ts` 的 fallback 展示会把单选/多选选项 ID 映射为标签（未知 ID 回退原始值）；标签来自当前 `question_options`，历史答卷按 DB 选项 ID 尽力映射（快照中选项为位置 ID，无可靠对应关系）。配置 ResultRule 后按规则显示文案
 3. **Bot 旧答题 UI 未删除**：删除前必须 Web 流程在真实环境验证稳定（P10）
 4. **`html_handling="none"` 已配置**：不要改回默认，否则 `/s/:id` 会被 ASSETS 重定向到 `/survey` 丢失路径
 5. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
@@ -88,7 +88,7 @@
 - [ ] **生产冒烟验证**：填一份真实答卷 → 检查频道收到 PDF+附件+hashtag、临时媒体被删、Admin 报告页状态
 - [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归
 - [ ] Admin「结果模板」页（visual templates 目前只在 Bot 管理）
-- [ ] 单选 fallback 显示选项标签
+- [x] 单选 fallback 显示选项标签（`result-visual.service.ts` + 单测覆盖）
 
 ### 中期（C1–C5）
 - [ ] 编辑器自动保存 + 撤销/重做

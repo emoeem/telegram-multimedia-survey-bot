@@ -1,6 +1,6 @@
 import { getResponseById, listAnswersByResponseId } from "../db/repositories/response.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
-import { listQuestionsBySurvey } from "../db/repositories/question.repository";
+import { listOptionsForQuestions, listQuestionsBySurvey } from "../db/repositories/question.repository";
 import {
   getResultProfileByResponseId,
   getSurveyResultRuleSet,
@@ -31,9 +31,32 @@ function fallbackFieldType(type: string): ResultFieldType {
   return "text";
 }
 
-function displayAnswer(value: unknown): string {
+function displayAnswer(
+  value: unknown,
+  type: string,
+  optionLabelById: ReadonlyMap<number, string>,
+): string {
   if (value === null || value === undefined) return "未填写";
-  if (Array.isArray(value)) return value.map(displayAnswer).filter(Boolean).join("、");
+  if (Array.isArray(value)) {
+    const isChoice = type === "single" || type === "multiple";
+    return value
+      .map((entry) => {
+        if (isChoice) {
+          const id =
+            typeof entry === "number"
+              ? entry
+              : typeof entry === "string" && /^\d+$/.test(entry)
+                ? Number(entry)
+                : null;
+          if (id !== null && Number.isInteger(id)) {
+            return optionLabelById.get(id) ?? String(entry);
+          }
+        }
+        return displayAnswer(entry, type, optionLabelById);
+      })
+      .filter(Boolean)
+      .join("、");
+  }
   if (typeof value === "object") return "已上传";
   return String(value);
 }
@@ -42,6 +65,7 @@ function fallbackResultProfile(
   surveyTitle: string,
   questions: Array<Pick<Awaited<ReturnType<typeof listQuestionsBySurvey>>[number], "id" | "type" | "title">>,
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>,
+  optionLabelById: ReadonlyMap<number, string>,
 ): ResultProfileSnapshot {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer]));
   const fields: ResultProfileSnapshot["fields"] = {};
@@ -58,7 +82,10 @@ function fallbackResultProfile(
     const normalized = normalizeAnswer(answer, question.type);
     const fieldId = `question_${question.id}`;
     fields[fieldId] = { id: fieldId, type: fallbackFieldType(question.type), value: normalized.value };
-    profile.push({ label: question.title, value: displayAnswer(normalized.value) });
+    profile.push({
+      label: question.title,
+      value: displayAnswer(normalized.value, question.type, optionLabelById),
+    });
     if (Array.isArray(normalized.value)) {
       for (const item of normalized.value) if (typeof item === "string" && item.trim()) tags.add(item.trim());
     }
@@ -70,7 +97,10 @@ function fallbackResultProfile(
       images[`question_${question.id}`] = mediaValues[0]!;
       gallery.push(...mediaValues);
     }
-    if (typeof normalized.value === "string" && normalized.value.trim()) summary.push(`${question.title}：${normalized.value.trim()}`);
+    const displayValue = displayAnswer(normalized.value, question.type, optionLabelById);
+    if (displayValue && displayValue !== "未填写") {
+      summary.push(`${question.title}：${displayValue}`);
+    }
   }
 
   return {
@@ -127,7 +157,12 @@ export async function prepareResultProfileForResponse(
       surveyTitle = versionSnapshot.schema.survey.title ?? surveyTitle;
     }
   }
-  const fallback = fallbackResultProfile(surveyTitle, questions, answers);
+  const optionRows = await listOptionsForQuestions(
+    db,
+    questions.map((question) => question.id),
+  );
+  const optionLabelById = new Map(optionRows.map((option) => [option.id, option.label]));
+  const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionLabelById);
   const snapshot = ruleSetRecord
     ? (() => {
       const calculated = calculateResultProfile({ answers, ruleSet: parseResultRuleSet(ruleSetRecord.rulesJson) });
