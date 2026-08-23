@@ -228,7 +228,7 @@ function buildHomeKeyboard(
 ): InlineKeyboardMarkup {
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
-      ? [{ text: "🌐 浏览问卷（网页）", url: `${origin}/s` }]
+      ? [{ text: "浏览问卷", url: `${origin}/s` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
