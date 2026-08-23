@@ -2,6 +2,7 @@ import type { MediaAsset } from "../../db/schema";
 import { downloadTelegramFile } from "../../bot/telegram";
 import { readTemporaryMedia } from "./temporary-media.service";
 import { KVMediaStore } from "./temporary-media-store";
+import { decodeDataUrl } from "../import.service";
 
 export interface MediaServeEnv {
   BOT_TOKEN: string;
@@ -19,6 +20,25 @@ export async function buildMediaResponse(
   asset: MediaAsset,
 ): Promise<Response | null> {
   if (asset.url) {
+    if (asset.url.startsWith("data:")) {
+      const decoded = decodeDataUrl(asset.url);
+      if (!decoded) {
+        return new Response("媒体无效", {
+          status: 410,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      const headers = new Headers();
+      headers.set("Content-Type", decoded.mimeType);
+      headers.set("Cache-Control", "public, max-age=300");
+      if (asset.fileName) {
+        headers.set(
+          "Content-Disposition",
+          `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`,
+        );
+      }
+      return new Response(decoded.bytes, { headers });
+    }
     return Response.redirect(asset.url, 302);
   }
 

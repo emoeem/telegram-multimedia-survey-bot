@@ -11,9 +11,11 @@ vi.mock("../../../src/db/repositories/survey.repository", () => ({
 }));
 
 import {
+  decodeDataUrl,
   parseImportedSurvey,
   saveImportedSurvey,
   type ImportedSurvey,
+  type ImportedMediaResolver,
 } from "../../../src/services/import.service";
 
 interface StatementMock {
@@ -260,6 +262,79 @@ describe("import service", () => {
     expect(parsed.questions[0]?.warnings).toEqual(["选项疑似并入题干"]);
     expect(parsed.questions[1]?.confidence).toEqual({ type: 0.98, required: 0.95 });
     expect(parsed.questions[1]?.warnings).toBeUndefined();
+  });
+
+  it("decodes base64 and percent-encoded data URLs", () => {
+    expect(decodeDataUrl("data:image/png;base64,YQ==")).toEqual({
+      bytes: new Uint8Array([97]),
+      mimeType: "image/png",
+    });
+    expect(decodeDataUrl("data:text/plain,%E4%BD%A0%E5%A5%BD")).toEqual({
+      bytes: new TextEncoder().encode("你好"),
+      mimeType: "text/plain",
+    });
+    expect(decodeDataUrl("not-a-data-url")).toBeNull();
+  });
+
+  it("stores resolver-produced KV media with storage_key instead of url/r2", async () => {
+    const { db, statements } = createD1Mock();
+    const resolver: ImportedMediaResolver = async (media) => {
+      if (!media.url?.startsWith("data:")) return media;
+      return {
+        type: media.type,
+        source: "url",
+        storageKind: "temporary",
+        storageKey: "media:import:kv-1",
+        mimeType: media.mimeType ?? "image/png",
+        ...(media.fileName ? { fileName: media.fileName } : {}),
+        ...(media.width !== undefined ? { width: media.width } : {}),
+        ...(media.height !== undefined ? { height: media.height } : {}),
+        size: 3,
+      };
+    };
+
+    const surveyId = await saveImportedSurvey(
+      db,
+      7,
+      {
+        title: "KV 媒体问卷",
+        questions: [
+          {
+            type: "single",
+            title: "看图选择",
+            options: [
+              {
+                label: "A",
+                value: "A",
+                media: [
+                  {
+                    type: "photo",
+                    source: "url",
+                    url: "data:image/png;base64,YQ==",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      resolver,
+    );
+
+    expect(surveyId).toBe(41);
+    const mediaInsert = statements.find((statement) =>
+      statement.sql.includes("INSERT INTO media_assets"),
+    );
+    expect(mediaInsert?.sql).toContain("storage_key");
+    const rows = JSON.parse(String(mediaInsert?.bindings[2])) as Array<
+      Record<string, unknown>
+    >;
+    expect(rows[0]).toMatchObject({
+      storageKind: "temporary",
+      storageKey: "media:import:kv-1",
+      r2Key: null,
+      url: null,
+    });
   });
 
   it("splits two short options that PDF extraction joined with a line break", () => {

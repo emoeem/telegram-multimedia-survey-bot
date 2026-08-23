@@ -92,7 +92,7 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 
 **尚未完成**：
 
-- Media Resolver：PDF 抽取的图片/视频/音频目前以相对 URL 嵌入，单文件 JSON 上传无法携带；需支持 base64 内嵌、zip 上传或 URL 解析
+- ~~Media Resolver~~（已完成 2026-08-23）：PDF 转换器将本地媒体内嵌为 data URL（实测堕落游戏.pdf → 58 个媒体 / ~6.2MB）；Web 导入时解码并存入 MEDIA_KV（`storage_kind=temporary` + `expires_at` 为空，永不清理），D1 只存引用；导入上限 2MB → 40MB；data URL 直出兜底（媒体代理直接解码返回而非 302）
 - 导入错误逐字段展示（Schema Validator 详细定位）
 - 导入后直接绑定报告模板 / 主题
 

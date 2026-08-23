@@ -89,6 +89,7 @@
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+- [x] **Phase 2 第二块：Media Resolver（2026-08-23）**：PDF 内嵌 data URL 媒体导入时解码存入 MEDIA_KV（D1 只存引用）、导入上限提至 40MB、媒体代理支持 data URL 直出；实测堕落游戏.pdf 58 个媒体无损入库。详见 `docs/PHASE2_PLAN.md` §3/§4
 - [x] **Phase 2 第一块：Web JSON 导入 + 高保真预览（2026-08-23）**：`/admin/imports` 导入页（粘贴/上传 → 预览 → 创建草稿）、预览含题型分布/媒体/低置信度清单、分页保真、置信度透传；PDF 转换器（`scripts/forms_pdf_to_survey.py`）对非 Forms 版式自动关联 PDF 分页。详见 `docs/PHASE2_PLAN.md` §3
 - [x] **Phase 1 答卷查看核心（第一块，2026-08-23）**：答卷详情补问卷版本号 + 版本页链接、每题原始数据查看、PDF 下载（同步 Browser 渲染）、重新发送 Telegram（force 重入队）；详见 `docs/PHASE2_PLAN.md`
 - [ ] **按 `docs/PHASE2_PLAN.md` 继续第二阶段**：Phase 2 JSON 高保真导入 → Phase 3 Web Survey UI 2.0 → Phase 4 Report Engine 2.0 → Phase 5 Responsive Report → Phase 6 Template Editor → Phase 7 Playwright Visual QA

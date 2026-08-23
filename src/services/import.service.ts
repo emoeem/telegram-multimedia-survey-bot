@@ -1,4 +1,4 @@
-import type { MediaType, QuestionType } from "../db/schema";
+import type { MediaStorageKind, MediaType, QuestionType } from "../db/schema";
 import {
   createSurvey,
   deleteSurvey,
@@ -11,6 +11,8 @@ export interface ImportedMedia {
   id?: string;
   type: MediaType;
   source?: "telegram" | "r2" | "url";
+  /** Explicit storage provider override (e.g. imported data URLs stored in KV). */
+  storageKind?: MediaStorageKind;
   telegramFileId?: string;
   telegramFileUniqueId?: string;
   url?: string;
@@ -67,6 +69,38 @@ export interface ImportedSurvey {
 export type ImportedMediaResolver = (
   media: ImportedMedia,
 ) => Promise<ImportedMedia | null>;
+
+/**
+ * Decodes a `data:` URL into bytes and mime type. Returns null for anything
+ * that is not a valid data URL so callers can fall back gracefully.
+ */
+export function decodeDataUrl(
+  dataUrl: string,
+): { bytes: Uint8Array; mimeType: string } | null {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  const meta = dataUrl.slice(5, comma);
+  const payload = dataUrl.slice(comma + 1);
+  const match = /^([^;,]*)(;base64)?$/i.exec(meta);
+  if (!match) return null;
+  const mimeType = match[1] || "application/octet-stream";
+  try {
+    if (match[2]) {
+      const binary = atob(payload);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return { bytes, mimeType };
+    }
+    return {
+      bytes: new TextEncoder().encode(decodeURIComponent(payload)),
+      mimeType,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const QUESTION_TYPES = new Set<QuestionType>([
   "single",
@@ -599,6 +633,7 @@ export async function saveImportedSurvey(
     {
       mediaType: MediaType;
       storageKind: string;
+      storageKey: string | null;
       telegramFileId: string | null;
       telegramFileUniqueId: string | null;
       url: string | null;
@@ -635,17 +670,20 @@ export async function saveImportedSurvey(
     if (!mediaRows.has(mediaKey)) {
       mediaRows.set(mediaKey, {
         mediaType: media.type,
-        storageKind: media.telegramFileId
-          ? "telegram"
-          : media.storageKey
-            ? "r2"
-            : media.url
-              ? "url"
-              : "telegram",
+        storageKind:
+          media.storageKind ??
+          (media.telegramFileId
+            ? "telegram"
+            : media.storageKey
+              ? "r2"
+              : media.url
+                ? "url"
+                : "telegram"),
+        storageKey: media.storageKey ?? null,
         telegramFileId: media.telegramFileId ?? null,
         telegramFileUniqueId: media.telegramFileUniqueId ?? null,
         url: media.url ?? null,
-        r2Key: media.storageKey ?? null,
+        r2Key: media.storageKind === "r2" ? (media.storageKey ?? null) : null,
         mimeType: media.mimeType ?? null,
         fileName: media.fileName ?? null,
         fileSize: media.size ?? null,
@@ -741,8 +779,8 @@ export async function saveImportedSurvey(
         .prepare(
           `INSERT INTO media_assets (
             asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
-            url, storage_kind, mime_type, file_name, file_size, width, height,
-            duration, r2_key, created_at, updated_at
+            url, storage_kind, storage_key, mime_type, file_name, file_size,
+            width, height, duration, r2_key, created_at, updated_at
           )
           SELECT
             'survey',
@@ -751,6 +789,7 @@ export async function saveImportedSurvey(
             json_extract(item.value, '$.telegramFileUniqueId'),
             json_extract(item.value, '$.url'),
             json_extract(item.value, '$.storageKind'),
+            json_extract(item.value, '$.storageKey'),
             json_extract(item.value, '$.mimeType'),
             json_extract(item.value, '$.fileName'),
             json_extract(item.value, '$.fileSize'),
@@ -797,6 +836,8 @@ export async function saveImportedSurvey(
                  AND media.url = json_extract(item.value, '$.mediaKey'))
              OR (media.r2_key IS NOT NULL
                  AND media.r2_key = json_extract(item.value, '$.mediaKey'))
+             OR (media.storage_key IS NOT NULL
+                 AND media.storage_key = json_extract(item.value, '$.mediaKey'))
            )`,
         )
         .bind(
@@ -839,6 +880,8 @@ export async function saveImportedSurvey(
                  AND media.url = json_extract(item.value, '$.mediaKey'))
              OR (media.r2_key IS NOT NULL
                  AND media.r2_key = json_extract(item.value, '$.mediaKey'))
+             OR (media.storage_key IS NOT NULL
+                 AND media.storage_key = json_extract(item.value, '$.mediaKey'))
            )`,
         )
         .bind(

@@ -62,8 +62,8 @@ export function ImportPage() {
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setError("导入文件不能超过 2MB");
+    if (file.size > 40 * 1024 * 1024) {
+      setError("导入文件不能超过 40MB");
       return;
     }
     setError(null);

@@ -65,10 +65,17 @@ import {
 } from '../survey/question-rules';
 import { buildCsv, getExportRows, serializeExport } from '../services/export.service';
 import { exportUnifiedSurveyJson } from '../services/survey-json.service';
-import { parseImportedSurvey, saveImportedSurvey } from '../services/import.service';
+import {
+  decodeDataUrl,
+  parseImportedSurvey,
+  saveImportedSurvey,
+  type ImportedMedia,
+  type ImportedMediaResolver,
+} from '../services/import.service';
 import type { QuestionType } from '../db/schema';
 import type { Survey, SurveyQuestion } from '../db/schema';
 import type { Env } from '../index';
+import { KVMediaStore } from '../services/media/temporary-media-store';
 import { duplicateSurvey, publishSurvey } from '../services/survey.service';
 import {
   diffSurveyVersions,
@@ -98,6 +105,41 @@ import { downloadTelegramFile } from '../bot/telegram';
 // Telegram initData is signed when the Mini App session opens; treat anything
 // older than a day as stale.
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
+const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
+const IMPORT_MEDIA_KV_MAX_BYTES = 24 * 1024 * 1024;
+
+/**
+ * Resolves embedded data-URL media (produced by the PDF converter) into KV
+ * blobs so survey media survive with small D1 rows and are served through the
+ * normal media pipeline. Oversized payloads stay as data URLs as a fallback.
+ */
+function importedDataUrlMediaResolver(env: Env): ImportedMediaResolver {
+  const store = new KVMediaStore(env.MEDIA_KV);
+  return async (media: ImportedMedia) => {
+    if (!media.url?.startsWith('data:')) return media;
+    const decoded = decodeDataUrl(media.url);
+    if (!decoded || decoded.bytes.byteLength > IMPORT_MEDIA_KV_MAX_BYTES) {
+      return media;
+    }
+    const storageKey = `media:import:${crypto.randomUUID()}`;
+    await store.put({
+      storageKey,
+      bytes: decoded.bytes,
+      contentType: decoded.mimeType,
+    });
+    return {
+      type: media.type,
+      source: 'url',
+      storageKind: 'temporary',
+      storageKey,
+      mimeType: media.mimeType ?? decoded.mimeType,
+      ...(media.fileName ? { fileName: media.fileName } : {}),
+      ...(media.width !== undefined ? { width: media.width } : {}),
+      ...(media.height !== undefined ? { height: media.height } : {}),
+      size: decoded.bytes.byteLength,
+    };
+  };
+}
 
 function buildImportSummary(imported: ImportedSurvey) {
   const typeCounts: Record<string, number> = {};
@@ -1248,8 +1290,8 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     if (typeof body.content !== 'string' || !body.content.trim()) {
       return fail(400, 'validation_failed', '请选择 JSON 文件或粘贴 JSON 内容');
     }
-    if (new TextEncoder().encode(body.content).byteLength > 2 * 1024 * 1024) {
-      return fail(413, 'import_too_large', '导入文件不能超过 2MB');
+    if (new TextEncoder().encode(body.content).byteLength > IMPORT_MAX_BYTES) {
+      return fail(413, 'import_too_large', '导入文件不能超过 40MB');
     }
     let imported: ReturnType<typeof parseImportedSurvey>;
     try {
@@ -1260,7 +1302,12 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const summary = buildImportSummary(imported);
     if (url.pathname.endsWith('/validate')) return json(summary);
     try {
-      const id = await saveImportedSurvey(db, user.id, imported);
+      const id = await saveImportedSurvey(
+        db,
+        user.id,
+        imported,
+        importedDataUrlMediaResolver(env),
+      );
       await writeAudit(db, {
         actorUserId: user.id,
         action: 'survey.import',
