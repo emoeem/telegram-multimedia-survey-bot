@@ -77,6 +77,10 @@ import type { QuestionType } from '../db/schema';
 import type { Survey, SurveyQuestion } from '../db/schema';
 import type { Env } from '../index';
 import { KVMediaStore } from '../services/media/temporary-media-store';
+import {
+  normalizeSurveyTheme,
+  SURVEY_THEME_PRESETS,
+} from '../survey/theme';
 import { duplicateSurvey, publishSurvey } from '../services/survey.service';
 import {
   diffSurveyVersions,
@@ -108,6 +112,18 @@ import { downloadTelegramFile } from '../bot/telegram';
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
 const IMPORT_MEDIA_KV_MAX_BYTES = 24 * 1024 * 1024;
+
+function parseSettingsJson(value: string): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Resolves embedded data-URL media (produced by the PDF converter) into KV
@@ -1102,7 +1118,18 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       .first<Record<string, unknown>>();
     if (!survey) return fail(404, 'not_found', '问卷不存在');
     if (!isAdmin && survey.owner_id !== user.id) return fail(403, 'forbidden', '无权访问此问卷');
-    return json(survey);
+    let theme: ReturnType<typeof normalizeSurveyTheme> = null;
+    try {
+      theme = normalizeSurveyTheme(parseSettingsJson(String(survey.settings_json ?? '')));
+    } catch {
+      theme = null;
+    }
+    return json({
+      ...survey,
+      settings_json: undefined,
+      theme,
+      themePresets: SURVEY_THEME_PRESETS,
+    });
   }
 
   return fail(404, 'not_found', 'Not found');
@@ -1686,6 +1713,31 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       } else {
         return fail(400, 'validation_failed', 'reportTemplateId 必须是字符串或 null');
       }
+    }
+    if (body.theme !== undefined) {
+      const existingSurvey = await getSurveyById(db, surveyId);
+      const settings =
+        existingSurvey?.settingsJson
+          ? (parseSettingsJson(existingSurvey.settingsJson) ?? {})
+          : ({} as Record<string, unknown>);
+      if (body.theme === null) {
+        delete settings.theme;
+      } else if (
+        body.theme &&
+        typeof body.theme === 'object' &&
+        !Array.isArray(body.theme)
+      ) {
+        const normalized = normalizeSurveyTheme(body.theme);
+        if (!normalized) return fail(400, 'validation_failed', '主题内容无效');
+        settings.theme = normalized;
+      } else {
+        return fail(400, 'validation_failed', 'theme 必须是对象或 null');
+      }
+      const nextSettings = Object.keys(settings).length
+        ? JSON.stringify(settings)
+        : null;
+      updates.push('settings_json = ?');
+      binds.push(nextSettings);
     }
     if (!updates.length) return fail(400, 'validation_failed', '没有可更新的字段');
     const timestamp = new Date().toISOString();

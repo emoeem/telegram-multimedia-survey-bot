@@ -140,6 +140,18 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 - 主题库示例：Minimal（纯白黑字蓝按钮）、Dark（深色玻璃卡片）、Magazine（衬线+大图）、Mature/Private（暗色红黑、摄影杂志、丝绸/纹理、低照度等成熟向主题，但排除露骨色情图片资源，遵守平台内容政策）
 - Question Theme 独立：QuestionCard / Option 卡片（图片选项卡片化，而不是大图挤在选项旁）
 
+**主题来源 = 现成库（2026-08-23）**：预设主题直接使用 **DaisyUI 主题库**
+（`daisyui/theme/<id>.css`，每套约 1.2KB 纯 CSS 变量，仅引入主题、无组件类冲突）：
+
+```text
+明亮 light / 暗色 dark / 深蓝夜 night / 黑金奢华 luxury
+/ 复古纸张 retro / 粉彩 cupcake / 霓虹 synthwave / 纯黑 black
+```
+
+问卷页通过 `data-theme` 激活，`--survey-*` 令牌映射 DaisyUI 的
+`--color-*` / `--radius-*` 变量；后台问卷详情页提供预设选择器（实时色板预览）
++ 自定义令牌 JSON 叠加 + 清除主题。
+
 ## 7. Phase 4 — Report Engine 2.0（彻底模板化）
 
 已有基础不推翻：`ReportViewModel + ReportTemplateSpec + sections + theme + css`，扩展为：
@@ -229,3 +241,4 @@ JSON → JSON Import → Web Editor → Draft → Preview → Publish
 - 所有渲染（Admin/报告/PDF/Telegram/导出）共享同一 ViewModel 层
 - 媒体是 Question / Option / Answer 三层的资源，不做全局 if 分支
 - Telegram 永远只是外围基础设施
+- **优先使用现成库（2026-08-23 产品决策）**：新增能力先找成熟库（如主题用 DaisyUI），不手搓通用轮子；已有依赖（Tailwind/React/dnd-kit/Telegram SDK/Puppeteer/resvg/xlsx/Playwright）优先复用

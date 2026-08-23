@@ -8,6 +8,8 @@
  */
 
 export interface SurveyTheme {
+  /** Reference to a DaisyUI theme id (see SURVEY_THEME_PRESETS). */
+  preset?: string;
   background?: {
     color?: string;
     /** CSS background-image value (data:image or absolute URL only). */
@@ -43,6 +45,23 @@ export interface SurveyTheme {
     radius?: number;
   };
 }
+
+/**
+ * Ready-made survey themes sourced from the DaisyUI theme library
+ * (daisyui/theme/<id>.css). Only these ids are accepted anywhere.
+ */
+export const SURVEY_THEME_PRESETS = [
+  { id: "light", name: "明亮" },
+  { id: "dark", name: "暗色" },
+  { id: "night", name: "深蓝夜" },
+  { id: "luxury", name: "黑金奢华" },
+  { id: "retro", name: "复古纸张" },
+  { id: "cupcake", name: "粉彩" },
+  { id: "synthwave", name: "霓虹" },
+  { id: "black", name: "纯黑" },
+] as const;
+
+const PRESET_IDS = new Set<string>(SURVEY_THEME_PRESETS.map((preset) => preset.id));
 
 const COLOR_RE =
   /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\)|transparent)$/;
@@ -105,6 +124,9 @@ function safeRadius(value: unknown, max: number): number | undefined {
 export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
   if (!isRecord(value)) return null;
   const theme: SurveyTheme = {};
+
+  const preset = safeString(value.preset, 40);
+  if (preset && PRESET_IDS.has(preset)) theme.preset = preset;
 
   if (isRecord(value.background)) {
     const color = safeColor(value.background.color);

@@ -1,9 +1,38 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { apiSend, type ReportTemplateOption, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { formatDateTime } from "../format";
+
+function ThemeSwatch({ presetId }: { presetId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [colors, setColors] = useState<{ base: string; primary: string; content: string } | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const style = getComputedStyle(ref.current);
+    setColors({
+      base: style.getPropertyValue("--color-base-100").trim() || "#ffffff",
+      primary: style.getPropertyValue("--color-primary").trim() || "#4f46e5",
+      content: style.getPropertyValue("--color-base-content").trim() || "#111827",
+    });
+  }, [presetId]);
+
+  return (
+    <div ref={ref} data-theme={presetId} className="h-10 w-full overflow-hidden rounded-lg border border-black/10">
+      {colors ? (
+        <div
+          className="flex h-full items-center gap-1.5 px-2"
+          style={{ backgroundColor: colors.base, color: colors.content }}
+        >
+          <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: colors.primary }} />
+          <span className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: colors.content, opacity: 0.45 }} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,7 +42,21 @@ export function SurveyDetailPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [preset, setPreset] = useState("");
+  const [customJson, setCustomJson] = useState("");
+  const [themeBusy, setThemeBusy] = useState(false);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
+
+  useEffect(() => {
+    if (!data) return;
+    setPreset(data.theme?.preset ?? "");
+    if (data.theme) {
+      const { preset: _preset, ...custom } = data.theme;
+      setCustomJson(Object.keys(custom).length ? JSON.stringify(custom, null, 2) : "");
+    } else {
+      setCustomJson("");
+    }
+  }, [data]);
 
   const runAction = async (action: string, confirmText?: string) => {
     if (!id) return;
@@ -42,6 +85,38 @@ export function SurveyDetailPage() {
       setActionError(err instanceof Error ? err.message : "模板设置失败");
     } finally {
       setTemplateBusy(false);
+    }
+  };
+
+  const saveTheme = async (clear: boolean) => {
+    if (!id) return;
+    setThemeBusy(true);
+    setActionError(null);
+    try {
+      const theme: Record<string, unknown> = {};
+      if (!clear) {
+        if (preset) theme.preset = preset;
+        const customText = customJson.trim();
+        if (customText) {
+          try {
+            const parsed = JSON.parse(customText) as unknown;
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              Object.assign(theme, parsed);
+            } else {
+              throw new Error("必须是 JSON 对象");
+            }
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : "自定义主题 JSON 无效");
+            return;
+          }
+        }
+      }
+      await apiSend("PATCH", `/api/admin/surveys/${id}`, { theme: Object.keys(theme).length ? theme : null });
+      retry();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "主题保存失败");
+    } finally {
+      setThemeBusy(false);
     }
   };
 
@@ -141,6 +216,68 @@ export function SurveyDetailPage() {
         )}
         <span className="text-xs text-gray-400">Web 报告与 PDF 归档共用该模板</span>
       </div>
+
+      <div className="mt-4 border-t border-gray-100 pt-4">
+        <div className="text-sm text-gray-600">问卷主题</div>
+        <p className="mt-1 text-xs text-gray-400">
+          预设来自 DaisyUI 主题库，可直接选用；也可以叠加自定义令牌（JSON）。
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button
+            type="button"
+            className={`rounded-xl border p-2 text-left transition ${
+              preset === ""
+                ? "border-indigo-500 bg-indigo-50"
+                : "border-gray-200 bg-white"
+            }`}
+            onClick={() => setPreset("")}
+          >
+            <div className="h-10 w-full rounded-lg bg-gray-100" />
+            <div className="mt-1.5 text-sm font-medium text-gray-700">默认</div>
+          </button>
+          {data.themePresets.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`rounded-xl border p-2 text-left transition ${
+                preset === item.id
+                  ? "border-indigo-500 bg-indigo-50"
+                  : "border-gray-200 bg-white"
+              }`}
+              onClick={() => setPreset(item.id)}
+            >
+              <ThemeSwatch presetId={item.id} />
+              <div className="mt-1.5 text-sm font-medium text-gray-700">{item.name}</div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <div className="text-xs text-gray-400">自定义令牌（可选，覆盖预设）</div>
+          <textarea
+            className="input mt-1 w-full min-h-24 font-mono text-xs"
+            placeholder='{"background":{"color":"#1a1025"},"primaryColor":"#e54d9b"}'
+            value={customJson}
+            onChange={(event) => setCustomJson(event.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            className="btn btn-primary"
+            disabled={themeBusy}
+            onClick={() => void saveTheme(false)}
+          >
+            {themeBusy ? "保存中…" : "保存主题"}
+          </button>
+          <button
+            className="btn"
+            disabled={themeBusy}
+            onClick={() => void saveTheme(true)}
+          >
+            清除主题
+          </button>
+        </div>
+      </div>
+
       {actionError ? <p className="mt-2 text-sm text-red-600">{actionError}</p> : null}
     </section>
   );

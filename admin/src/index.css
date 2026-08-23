@@ -1,4 +1,12 @@
 @import "tailwindcss";
+@import "daisyui/theme/light.css";
+@import "daisyui/theme/dark.css";
+@import "daisyui/theme/night.css";
+@import "daisyui/theme/luxury.css";
+@import "daisyui/theme/retro.css";
+@import "daisyui/theme/cupcake.css";
+@import "daisyui/theme/synthwave.css";
+@import "daisyui/theme/black.css";
 
 @theme {
   --breakpoint-lg: 1000px;

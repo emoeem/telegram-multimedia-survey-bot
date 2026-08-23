@@ -34,6 +34,7 @@ export interface SurveyPageDto {
 }
 
 export interface SurveyThemeDto {
+  preset?: string;
   background?: {
     color?: string;
     image?: string;

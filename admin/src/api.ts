@@ -150,6 +150,17 @@ export interface SurveyDetailData {
   firstName?: string | null;
   username?: string | null;
   report_template_id?: string | null;
+  theme: {
+    preset?: string;
+    background?: { color?: string; image?: string; position?: string; size?: string };
+    overlay?: { color?: string; opacity?: number; blur?: number };
+    primaryColor?: string;
+    secondaryColor?: string;
+    card?: { background?: string; border?: string; radius?: number; glass?: boolean };
+    text?: { heading?: string; body?: string; muted?: string };
+    button?: { radius?: number };
+  } | null;
+  themePresets: Array<{ id: string; name: string }>;
 }
 
 export interface ReportTemplateOption {

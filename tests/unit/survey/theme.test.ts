@@ -70,4 +70,12 @@ describe("normalizeSurveyTheme", () => {
     expect(normalizeSurveyTheme({})).toBeNull();
     expect(normalizeSurveyTheme({ background: {}, card: {} })).toBeNull();
   });
+
+  it("accepts only known DaisyUI presets", () => {
+    expect(normalizeSurveyTheme({ preset: "night" })).toEqual({ preset: "night" });
+    expect(
+      normalizeSurveyTheme({ preset: "dark", primaryColor: "#ff0000" }),
+    ).toEqual({ preset: "dark", primaryColor: "#ff0000" });
+    expect(normalizeSurveyTheme({ preset: "unknown-theme" })).toBeNull();
+  });
 });

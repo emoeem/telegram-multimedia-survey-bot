@@ -42,6 +42,18 @@ function surveyIdFromPath(): number {
 function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
   if (!theme) return {};
   const vars: Record<string, string> = {};
+  if (theme.preset) {
+    // Map the DaisyUI theme library tokens onto the survey surface.
+    vars["--survey-primary"] = "var(--color-primary)";
+    vars["--survey-secondary"] = "var(--color-secondary)";
+    vars["--survey-card-bg"] = "var(--color-base-100)";
+    vars["--survey-card-border"] = "var(--color-base-200)";
+    vars["--survey-heading"] = "var(--color-base-content)";
+    vars["--survey-body"] = "var(--color-base-content)";
+    vars["--survey-muted"] = "color-mix(in oklab, var(--color-base-content) 65%, transparent)";
+    vars["--survey-radius"] = "var(--radius-box)";
+    vars["--survey-button-radius"] = "var(--radius-field)";
+  }
   if (theme.primaryColor) vars["--survey-primary"] = theme.primaryColor;
   if (theme.secondaryColor) vars["--survey-secondary"] = theme.secondaryColor;
   if (theme.card?.background) vars["--survey-card-bg"] = theme.card.background;
@@ -59,7 +71,9 @@ function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
 
 function themeBackgroundStyle(theme: SurveyThemeDto | null): CSSProperties {
   const background = theme?.background;
-  if (!background?.color && !background?.image) return {};
+  if (!background?.color && !background?.image) {
+    return theme?.preset ? { backgroundColor: "var(--color-base-100)" } : {};
+  }
   return {
     backgroundColor: background.color,
     backgroundImage: background.image ? `url("${background.image}")` : undefined,
@@ -752,6 +766,7 @@ export function SurveyApp() {
   return (
     <div
       className={`min-h-dvh pb-32 ${theme ? "" : "bg-page"}`}
+      data-theme={theme?.preset}
       style={{ ...vars, ...backgroundStyle }}
     >
       {overlay ? (
