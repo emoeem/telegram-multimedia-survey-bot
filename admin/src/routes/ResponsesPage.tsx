@@ -26,8 +26,10 @@ const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
   { value: "archived", label: "已归档" },
 ];
 
-function respondentName(item: ResponseListData["items"][number], anonymous: boolean): string {
-  if (anonymous || !item.respondent) return "匿名用户";
+function respondentName(item: ResponseListData["items"][number]): string {
+  if (!item.respondent) {
+    return item.participantKey ? `匿名 · ${item.participantKey}` : "匿名用户";
+  }
   const name = [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ");
   return name || (item.respondent.username ? `@${item.respondent.username}` : String(item.respondent.telegramUserId));
 }
@@ -307,7 +309,7 @@ export function ResponsesPage() {
                       <td className="text-sm">
                         <Link className="font-semibold text-blue-700" to={`/surveys/${data.survey.id}/responses/${item.id}`}>#{item.id}</Link>
                       </td>
-                      <td className="text-sm">{respondentName(item, data.survey.anonymous)}</td>
+                      <td className="text-sm">{respondentName(item)}</td>
                       <td className="text-sm">{item.statusLabel}</td>
                       <td className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
                       <td className="">

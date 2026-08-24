@@ -953,7 +953,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
     const response = await env.DB.prepare(
-      `SELECT r.id,r.survey_id,r.user_id,r.status,r.version,r.started_at,r.completed_at,r.submitted_at,r.updated_at,
+      `SELECT r.id,r.survey_id,r.user_id,r.status,r.version,r.started_at,r.completed_at,r.submitted_at,r.updated_at,r.participant_hash,
               u.telegram_user_id,u.username,u.first_name,u.last_name
        FROM survey_responses r
        LEFT JOIN users u ON u.id=r.user_id
@@ -1013,7 +1013,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         completedAt: response.completed_at === null ? null : String(response.completed_at),
         submittedAt: response.submitted_at === null ? null : String(response.submitted_at),
         updatedAt: String(response.updated_at),
-        respondent: survey.anonymous || response.telegram_user_id === null
+        respondent: response.telegram_user_id === null
           ? null
           : {
               telegramUserId: Number(response.telegram_user_id),
@@ -1021,6 +1021,9 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
               firstName: response.first_name === null ? null : String(response.first_name),
               lastName: response.last_name === null ? null : String(response.last_name),
             },
+        participantKey: response.telegram_user_id === null
+          ? (response.participant_hash === null ? null : String(response.participant_hash))
+          : null,
       },
       answers: questions.map((question) => {
         const answer = answersByQuestion.get(question.id);
@@ -1072,6 +1075,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const [items, count] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT r.id,r.status,r.started_at startedAt,r.completed_at completedAt,r.updated_at updatedAt,
+                r.participant_hash participantKey,
                 u.telegram_user_id telegramUserId,u.username,u.first_name firstName,u.last_name lastName
          FROM survey_responses r
          LEFT JOIN users u ON u.id=r.user_id
@@ -1092,7 +1096,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         startedAt: String(item.startedAt),
         completedAt: item.completedAt === null ? null : String(item.completedAt),
         updatedAt: String(item.updatedAt),
-        respondent: survey.anonymous || item.telegramUserId === null
+        respondent: item.telegramUserId === null
           ? null
           : {
               telegramUserId: Number(item.telegramUserId),
@@ -1100,6 +1104,9 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
               firstName: item.firstName === null ? null : String(item.firstName),
               lastName: item.lastName === null ? null : String(item.lastName),
             },
+        participantKey: item.telegramUserId === null
+          ? (item.participantKey === null ? null : String(item.participantKey))
+          : null,
       })),
       page,
       pageSize,

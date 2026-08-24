@@ -56,9 +56,20 @@ export interface ReportViewModel {
 export type ReportReadingWidth = "compact" | "standard" | "wide" | "full";
 export type ReportPresentation = "editorial" | "card" | "bento-tile" | "quote" | "image" | "data";
 
+/** Top-level composition blocks a template may choose and reorder. */
+export type ReportCompositionBlockKind =
+  | "hero"
+  | "overview"
+  | "featured"
+  | "analysis"
+  | "quotes"
+  | "responses"
+  | "gallery"
+  | "verdict";
+
 export interface ReportBlockSpec {
   id: string;
-  kind: "hero" | "overview" | "featured" | "analysis" | "quotes" | "responses" | "gallery" | "verdict";
+  kind: ReportCompositionBlockKind;
   presentation: ReportPresentation;
   columnSpan: number;
   readingWidth: ReportReadingWidth;

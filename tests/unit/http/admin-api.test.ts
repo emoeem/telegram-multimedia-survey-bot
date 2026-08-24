@@ -351,12 +351,12 @@ describe('handleAdminApi authentication and permissions', () => {
     expect(response.status).toBe(404);
   });
 
-  it('returns a paginated response list and hides identities for anonymous surveys', async () => {
+  it('returns a paginated response list and reveals identities to admins even for anonymous surveys', async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
     const harness = makeDb();
     harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7, anonymous: 1 }));
     harness.setBatchResults([
-      [{ id: 31, status: 'completed', startedAt: 'T1', completedAt: 'T2', updatedAt: 'T2', telegramUserId: 999, username: 'hidden', firstName: 'Hidden', lastName: null }],
+      [{ id: 31, status: 'completed', startedAt: 'T1', completedAt: 'T2', updatedAt: 'T2', telegramUserId: 999, username: 'hidden', firstName: 'Hidden', lastName: null, participantKey: null }],
       [{ count: 1 }],
     ]);
     const response = await handleAdminApi(
@@ -367,7 +367,25 @@ describe('handleAdminApi authentication and permissions', () => {
     expect(await response.json()).toMatchObject({
       survey: { id: 5, anonymous: true },
       total: 1,
-      items: [{ id: 31, statusLabel: '已完成', respondent: null }],
+      items: [{ id: 31, statusLabel: '已完成', respondent: { telegramUserId: 999, username: 'hidden', firstName: 'Hidden', lastName: null }, participantKey: null }],
+    });
+  });
+
+  it('labels web participants by their participant key in the response list', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = makeDb();
+    harness.firstOn('FROM surveys WHERE id', surveyRow({ owner_id: 7, anonymous: 1 }));
+    harness.setBatchResults([
+      [{ id: 32, status: 'completed', startedAt: 'T1', completedAt: 'T2', updatedAt: 'T2', telegramUserId: null, username: null, firstName: null, lastName: null, participantKey: 'web_abc123' }],
+      [{ count: 1 }],
+    ]);
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5/responses?page=1', { userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      items: [{ id: 32, respondent: null, participantKey: 'web_abc123' }],
     });
   });
 

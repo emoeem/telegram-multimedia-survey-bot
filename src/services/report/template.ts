@@ -1,6 +1,7 @@
 import type { ReportTheme } from "./themes";
 import { reportThemeIds } from "./theme-ids";
 import type { ReportLayout } from "./layouts";
+import type { ReportCompositionBlockKind } from "./model";
 
 /**
  * Report Template System.
@@ -47,6 +48,11 @@ export interface ReportTemplateSpec {
   theme: ReportTheme;
   /** Real layout engine hint; when set, the composition renderer is used. */
   layout?: ReportLayout;
+  /**
+   * Ordered composition blocks for layout templates. When omitted the engine
+   * auto-composes every available block in the layout's default order.
+   */
+  blocks?: ReportCompositionBlockKind[];
   /** Ordered sections rendered top to bottom. */
   sections: ReportTemplateSection[];
   renderers: ReportRendererId[];
@@ -55,6 +61,17 @@ export interface ReportTemplateSpec {
 }
 
 export const REPORT_TEMPLATE_SCHEMA_VERSION = 1;
+
+const compositionBlockKinds = new Set<ReportCompositionBlockKind>([
+  "hero",
+  "overview",
+  "featured",
+  "analysis",
+  "quotes",
+  "responses",
+  "gallery",
+  "verdict",
+]);
 
 export function isReportTheme(value: unknown): value is ReportTheme {
   return typeof value === "string" &&
@@ -117,6 +134,15 @@ export function validateReportTemplateSpec(
       theme: raw.theme as ReportTheme,
       ...(typeof raw.layout === "string" && reportLayoutIds.has(raw.layout as ReportLayout)
         ? { layout: raw.layout as ReportLayout }
+        : {}),
+      ...(Array.isArray(raw.blocks) && raw.blocks.length > 0
+        ? {
+            blocks: raw.blocks.filter(
+              (item): item is ReportCompositionBlockKind =>
+                typeof item === "string" &&
+                compositionBlockKinds.has(item as ReportCompositionBlockKind),
+            ),
+          }
         : {}),
       sections,
       renderers: renderers.length > 0 ? renderers : ["web", "pdf"],
@@ -185,18 +211,18 @@ export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
   name: "杂志暗色",
   version: 1,
   theme: "dracula",
-  layout: "magazine",
+  layout: "bento",
+  blocks: ["hero", "overview", "featured", "quotes", "responses", "gallery", "verdict"],
   sections: [
-    { kind: "cover", presentation: "full" },
-    { kind: "summary", presentation: "featured" },
-    { kind: "scores" },
-    { kind: "insights", presentation: "featured" },
+    { kind: "hero" },
+    { kind: "summary" },
+    { kind: "scores", presentation: "grid" },
+    { kind: "insights" },
     { kind: "quotes" },
-    { kind: "gallery", presentation: "grid" },
-    { kind: "answers" },
+    { kind: "gallery" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{min-height:52vh;border-radius:var(--radius);padding:38px 24px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:34px;line-height:1.25;text-shadow:0 2px 18px #0009}.report-cover .cover-sub{margin-top:8px;color:var(--muted)}`,
+  css: `.report-layout-bento .hero{border-top:0}.report-layout-bento .hero h1{text-transform:uppercase;letter-spacing:.02em}.report-layout-bento .hero-score strong{background:linear-gradient(90deg,var(--report-accent),#f472b6);-webkit-background-clip:text;background-clip:text;color:transparent}.report-layout-bento .bento-primary{background:linear-gradient(135deg,var(--report-accent),#7c3aed);border-radius:24px}.report-layout-bento .bento-primary strong{color:#fff}.report-layout-bento .bento-primary h3,.report-layout-bento .bento-primary>span{color:rgba(255,255,255,.85)}.report-layout-bento .bento-tile,.report-layout-bento .metric{background:color-mix(in srgb,var(--report-surface) 68%,transparent);border:1px solid rgba(255,255,255,.14);border-radius:20px;backdrop-filter:blur(8px);box-shadow:0 18px 40px -28px rgba(0,0,0,.6)}.report-layout-bento .featured-insight{background:color-mix(in srgb,var(--report-accent) 14%,transparent);border:1px solid rgba(255,255,255,.14);border-radius:28px;margin:48px auto 8px;padding:64px 48px}.report-layout-bento .featured-insight blockquote{font-size:34px}.report-layout-bento .editorial-answer{border-top:1px solid rgba(255,255,255,.14);padding:26px 0}.report-layout-bento .gallery-item img{border-radius:22px;height:420px}.report-layout-bento .final-verdict h2{font-size:52px}@media (min-width:961px){.report-layout-bento .hero{min-height:360px;padding:52px 0;grid-template-columns:minmax(0,1fr) 220px;gap:40px}.report-layout-bento .hero h1{font-size:56px}.report-layout-bento .hero-score strong{font-size:92px}.report-layout-bento .responses-composition .editorial-answer-grid{grid-template-columns:1fr 1fr;gap:40px}}`,
 };
 
 /** 数据分析型：浅色数据看板，量化指标优先。 */
@@ -206,17 +232,15 @@ export const DATA_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-light",
   layout: "data",
+  blocks: ["hero", "overview", "analysis", "verdict"],
   sections: [
     { kind: "hero" },
     { kind: "summary", presentation: "featured" },
-    { kind: "scores", presentation: "grid" },
-    { kind: "radar" },
     { kind: "insights" },
-    { kind: "answers", presentation: "list" },
-    { kind: "gallery" },
+    { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-section.summary{background:linear-gradient(135deg,var(--report-accent),var(--report-primary));color:#fff}.report-section.summary h2{color:rgba(255,255,255,.85)}.report-section.summary p{font-size:17px;line-height:1.7}.score-card{border-left:3px solid var(--report-accent);background:linear-gradient(180deg,#fff,var(--report-accent)06)}.score-card .bar span{background:linear-gradient(90deg,var(--report-accent),var(--report-primary))}`,
+  css: `.report-layout-data .hero{border-top:0}.report-layout-data .metric{border-radius:14px;padding:16px}.report-layout-data .metric strong{font-size:30px;color:var(--report-accent)}.report-layout-data .bar-row{font-size:14px}.report-layout-data .editorial-section{padding:36px 0}.report-layout-data .editorial-index{font-size:30px}.report-layout-data .final-verdict{margin-top:48px;padding:72px 0;border-top:3px solid var(--report-accent)}.report-layout-data .final-verdict h2{font-size:48px}@media (min-width:961px){.report-layout-data .hero{min-height:300px;grid-template-columns:minmax(0,1fr) 260px;padding:44px 0}.report-layout-data .hero-score{border-left:2px solid var(--report-accent);padding-left:30px}.report-layout-data .hero-score strong{font-size:84px}.report-layout-data .bento-overview{grid-auto-rows:auto}.report-layout-data .bento-primary{grid-column:span 4;grid-row:span 2;border-radius:20px;background:linear-gradient(135deg,var(--report-accent),color-mix(in srgb,var(--report-accent) 55%,#1e3a8a))}.report-layout-data .bento-primary strong{font-size:70px}.report-layout-data .bento-metrics{grid-column:span 8;grid-template-columns:repeat(4,1fr);gap:14px}.report-layout-data .bento-radar{grid-column:span 5}.report-layout-data .bento-bars{grid-column:span 7}.report-layout-data .bar-row{grid-template-columns:150px 1fr 46px}.report-layout-data .editorial-chapter{padding:40px 0}.report-layout-data .editorial-section{grid-template-columns:72px minmax(0,1fr)}}`,
 };
 
 /** 身份档案型：黑金档案袋风格，适合人物/身份类问卷。 */
@@ -226,15 +250,15 @@ export const IDENTITY_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-luxury",
   layout: "profile",
+  blocks: ["hero", "overview", "responses", "verdict"],
   sections: [
-    { kind: "cover", presentation: "full" },
-    { kind: "hero", presentation: "featured" },
+    { kind: "hero" },
     { kind: "scores", presentation: "grid" },
     { kind: "answers", presentation: "list" },
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{border:1px solid var(--report-border);border-radius:var(--radius);min-height:42vh;padding:36px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:32px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.08em;text-transform:uppercase}.report-cover .cover-sub{color:var(--report-text-muted)}.report-section{border-left:4px solid var(--report-accent)}.report-section h2::before{background:var(--report-accent)}.checklist strong::before{content:"◆ ";color:var(--report-accent)}.ring-card .ring{border:2px solid var(--report-border)}.score-head strong{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:24px}`,
+  css: `.report-layout-profile .hero{border-top:2px solid var(--report-accent);border-bottom:2px solid var(--report-accent)}.report-layout-profile .hero h1{font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em;font-size:34px}.report-layout-profile .hero-avatar{border-radius:8px;border:2px solid var(--report-accent);box-shadow:0 0 0 5px color-mix(in srgb,var(--report-accent) 12%,transparent)}.report-layout-profile .bento-metrics{grid-template-columns:repeat(2,1fr);gap:12px}.report-layout-profile .metric{border-left:4px solid var(--report-accent);border-radius:0 12px 12px 0;padding:14px 18px}.report-layout-profile .metric strong{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:32px}.report-layout-profile .responses-composition .compact-answer-grid{grid-template-columns:repeat(2,1fr);gap:16px}.report-layout-profile .compact-answer{border-left:4px solid var(--report-accent);border-radius:0 14px 14px 0;padding:20px 22px}.report-layout-profile .final-verdict{position:relative;border-top:3px double var(--report-accent)}.report-layout-profile .final-verdict::after{content:"ARCHIVE";position:absolute;right:16px;top:-22px;font-size:13px;letter-spacing:.3em;color:var(--report-accent);border:2px solid var(--report-accent);padding:6px 14px;transform:rotate(-4deg);background:var(--report-bg)}@media (min-width:961px){.report-layout-profile .hero{min-height:auto;grid-template-columns:180px minmax(0,1fr) 220px;align-items:center;gap:34px;padding:44px 0}.report-layout-profile .hero-avatar{position:static;width:150px;height:150px}.report-layout-profile .hero h1{font-size:38px}.report-layout-profile .hero-score{border-left:2px solid var(--report-accent);padding-left:26px}}`,
 };
 
 /** 杂志亮色：复古纸张编辑风。 */
@@ -244,15 +268,16 @@ export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-retro",
   layout: "magazine",
+  blocks: ["hero", "featured", "gallery", "analysis", "verdict"],
   sections: [
-    { kind: "cover", presentation: "full" },
+    { kind: "hero" },
     { kind: "quotes" },
-    { kind: "gallery", presentation: "grid" },
-    { kind: "answers" },
+    { kind: "gallery" },
+    { kind: "insights" },
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{min-height:46vh;padding:38px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--report-border)}.report-cover h1{font-size:38px;font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em}.report-cover .cover-sub{margin-top:8px;color:var(--report-text-muted)}.report-section{background:transparent;box-shadow:none;border:0;border-radius:0;border-top:3px double var(--report-text);padding:20px 2px}.report-section h2{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:20px;text-transform:uppercase;letter-spacing:.06em}.report-section h2::before{display:none}.hero-title{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:38px;text-transform:uppercase;letter-spacing:.03em}.avatar{border-radius:6px;border-color:var(--report-text)}blockquote{border-left:4px double var(--report-accent);font-style:italic}`,
+  css: `.report-layout-magazine .hero{border-top:0;border-bottom:4px double var(--report-accent)}.report-layout-magazine .hero h1{font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.01em;line-height:1.05;text-transform:uppercase}.report-layout-magazine .hero-thesis{font-style:italic}.report-layout-magazine .featured-insight{margin:56px auto 20px;padding:64px 48px;border-top:4px double var(--report-accent);border-bottom:4px double var(--report-accent)}.report-layout-magazine .featured-insight blockquote{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:32px;line-height:1.4}.report-layout-magazine .gallery-composition{padding:56px 0}.report-layout-magazine .gallery-item img{border-radius:0;height:420px}.report-layout-magazine .editorial-section{padding:48px 0;border-top:1px solid var(--report-border)}.report-layout-magazine .editorial-index{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:44px}.report-layout-magazine .editorial-copy h3{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:28px}.report-layout-magazine .editorial-copy p{line-height:1.9}.report-layout-magazine .final-verdict{min-height:480px;padding:80px 0;border-top:2px solid var(--report-accent)}.report-layout-magazine .final-verdict h2{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:44px}@media (min-width:961px){.report-layout-magazine .hero{min-height:420px;grid-template-columns:minmax(0,1fr) 260px;padding:64px 0}.report-layout-magazine .hero h1{font-size:60px}.report-layout-magazine .hero-thesis{font-size:22px}.report-layout-magazine .featured-insight blockquote{font-size:38px}.report-layout-magazine .gallery{grid-template-columns:1.4fr 1fr}.report-layout-magazine .gallery-item img{height:480px}.report-layout-magazine .editorial-section{grid-template-columns:110px minmax(0,1fr)}.report-layout-magazine .editorial-index{font-size:52px}.report-layout-magazine .editorial-copy h3{font-size:32px}.report-layout-magazine .editorial-copy p{font-size:17px}.report-layout-magazine .final-verdict h2{font-size:54px}}`,
 };
 
 /** 极简报告：白底黑字，只有内容。 */
@@ -277,13 +302,14 @@ export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-black",
   layout: "gallery",
+  blocks: ["hero", "gallery", "verdict"],
   sections: [
-    { kind: "cover", presentation: "full" },
-    { kind: "gallery", presentation: "featured" },
+    { kind: "hero" },
+    { kind: "gallery" },
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-cover{min-height:66vh;padding:40px 26px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end}.report-cover h1{font-size:38px;letter-spacing:.08em}.report-section{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.01));border:1px solid rgba(255,255,255,.14);box-shadow:none;border-radius:24px;backdrop-filter:blur(8px)}.report-section h2::before{background:#fff}.gallery{grid-template-columns:1fr}figure img{aspect-ratio:16/10;border-radius:20px}`,
+  css: `.report-layout-gallery .hero{border-top:0;border-bottom:1px solid var(--report-border)}.report-layout-gallery .hero h1{font-size:38px;letter-spacing:.06em}.report-layout-gallery .gallery-composition{padding:56px 0}.report-layout-gallery .gallery{grid-template-columns:1fr;gap:40px}.report-layout-gallery .gallery-item img{height:460px;border-radius:4px}.report-layout-gallery .gallery-item figcaption{font-size:14px;letter-spacing:.04em;padding-top:12px;text-align:center}.report-layout-gallery .final-verdict{margin-top:56px;padding:80px 0;min-height:420px;border-top:1px solid var(--report-border)}.report-layout-gallery .final-verdict h2{font-size:40px}.report-layout-gallery .closing-statement{font-style:italic;font-size:20px}@media (min-width:961px){.report-layout-gallery .hero{min-height:300px;padding:48px 0}.report-layout-gallery .hero h1{font-size:44px}.report-layout-gallery .gallery-item img{height:720px}.report-layout-gallery .final-verdict{padding:96px 0;min-height:480px}.report-layout-gallery .final-verdict h2{font-size:44px}}`,
 };
 
 export const REPORT_TEMPLATES: Record<string, ReportTemplateSpec> = {

@@ -87,9 +87,9 @@ describe("report template system", () => {
     expect(html).toContain(".report-cover{border:3px dashed red}");
   });
 
-  it("renders a magazine cover section from the built-in template", () => {
+  it("renders the dark editorial template through the bento composition engine", () => {
     const html = buildResponsiveReportHtml(view, {}, MAGAZINE_DARK_TEMPLATE);
-    expect(html).toContain('data-report-layout="magazine"');
+    expect(html).toContain('data-report-layout="bento"');
     expect(html).toContain("结果报告");
     expect(html).toContain("--report-bg:#282a36");
   });

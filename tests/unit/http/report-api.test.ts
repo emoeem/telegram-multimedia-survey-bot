@@ -124,7 +124,7 @@ describe("report API", () => {
       new URL(`https://worker.test/report/42?t=${token}`),
     );
     const html = await response?.text();
-    expect(html).toContain('data-report-layout="magazine"');
+    expect(html).toContain('data-report-layout="bento"');
     expect(html).toContain("--report-bg:#282a36");
   });
 

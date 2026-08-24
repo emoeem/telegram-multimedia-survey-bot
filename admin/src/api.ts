@@ -230,6 +230,7 @@ export interface ResponseListItem {
   completedAt: string | null;
   updatedAt: string;
   respondent: ResponseRespondent | null;
+  participantKey: string | null;
 }
 
 export interface ResponseListData {

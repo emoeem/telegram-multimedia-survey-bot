@@ -214,9 +214,10 @@ function renderComposition(
   view: ReportViewModel,
   layout: ReportLayout,
   colors: { accent: string; text: string; muted: string; border: string },
+  templateBlocks?: ReportTemplateSpec["blocks"],
 ): { html: string; density: string } {
   const content = prepareReportContent(view);
-  const composition = composeReport(view, content, layout);
+  const composition = composeReport(view, content, layout, templateBlocks);
   const primaryScore = view.scores[0];
   const thesis = /问卷完成|自动整理|根据本次问卷/.test(view.hero.subtitle)
     ? content.featuredInsight?.text ?? view.hero.title
@@ -271,7 +272,7 @@ export function buildResponsiveCompositionReport(
 ): string {
   const layout = template.layout ?? selectReportLayout(view, template.layout ? { layout: template.layout } : {});
   const theme = reportThemes[template.theme];
-  const composition = renderComposition(view, layout, themeChartColors(template.theme));
+  const composition = renderComposition(view, layout, themeChartColors(template.theme), template.blocks);
   const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
   const metaLine = [meta.surveyTitle, meta.completedAt, meta.reportId].filter(Boolean).map((value) => escapeHtml(text(value))).join(" · ");
   return `<!doctype html>

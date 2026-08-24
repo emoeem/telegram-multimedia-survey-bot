@@ -1,4 +1,11 @@
-import type { PreparedReportContent, ReportBlockSpec, ReportComposition, ReportCompositionRegion, ReportViewModel } from "../model";
+import type {
+  PreparedReportContent,
+  ReportBlockSpec,
+  ReportComposition,
+  ReportCompositionBlockKind,
+  ReportCompositionRegion,
+  ReportViewModel,
+} from "../model";
 import { reportLayouts, type ReportLayout } from "../layouts";
 
 const block = (
@@ -26,19 +33,44 @@ function available(view: ReportViewModel, content: PreparedReportContent): Recor
   };
 }
 
-export function composeReport(view: ReportViewModel, content: PreparedReportContent, layout: ReportLayout): ReportComposition {
+export function composeReport(
+  view: ReportViewModel,
+  content: PreparedReportContent,
+  layout: ReportLayout,
+  blocks?: ReportCompositionBlockKind[],
+): ReportComposition {
   const has = available(view, content);
   const hero = region("opening", "hero", [block("hero", "editorial", 12, "full", "primary")]);
   const overview = region("overview", "overview", has.overview ? [block("overview", "data", 12, "full", "featured")] : []);
   const featured = region("featured", "featured", has.featured ? [block("featured", "quote", 12, "wide", "featured")] : []);
   const analysis = region("analysis", "analysis", has.analysis ? [block("analysis", "editorial", 12, "wide")] : []);
-  const evidence = region("evidence", "evidence", [
+  const evidenceBoth = region("evidence", "evidence", [
     ...(has.quotes ? [block("quotes", "quote", 12, "wide")] : []),
     ...(has.responses ? [block("responses", "editorial", 12, "full")] : []),
   ]);
+  const quotes = region("evidence", "evidence", has.quotes ? [block("quotes", "quote", 12, "wide")] : []);
+  const responses = region("evidence", "evidence", has.responses ? [block("responses", "editorial", 12, "full")] : []);
   const gallery = region("gallery", "gallery", has.gallery ? [block("gallery", "image", 12, "full")] : []);
   const finale = region("finale", "finale", [block("verdict", "editorial", 12, "full", "primary")]);
-  const regionMap = new Map([hero, overview, featured, analysis, evidence, gallery, finale].map((item) => [item.role, item]));
+  const regionMap = new Map([hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]));
+  if (blocks && blocks.length > 0) {
+    const byKind: Record<ReportCompositionBlockKind, ReportCompositionRegion> = {
+      hero,
+      overview,
+      featured,
+      analysis,
+      quotes,
+      responses,
+      gallery,
+      verdict: finale,
+    };
+    const regions = blocks
+      .map((kind) => byKind[kind])
+      .filter((item) => item.blocks.length > 0);
+    const textVolume = content.analysis.reduce((sum, item) => sum + item.text.length, 0);
+    const density = textVolume > 2400 ? "airy" : view.profile.length > 12 ? "compact" : reportLayouts[layout].density;
+    return { layout, density, regions };
+  }
   const regions = reportLayouts[layout].regionOrder.map((role) => regionMap.get(role)!).filter((item) => item.blocks.length > 0);
   const textVolume = content.analysis.reduce((sum, item) => sum + item.text.length, 0);
   const density = textVolume > 2400 ? "airy" : view.profile.length > 12 ? "compact" : reportLayouts[layout].density;

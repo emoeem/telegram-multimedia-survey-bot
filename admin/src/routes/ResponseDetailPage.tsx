@@ -19,7 +19,9 @@ import { formatDateTime } from "../format";
 import { ResponseMediaPreview } from "../components/ResponseMediaPreview";
 
 function respondentName(data: ResponseDetailData): string {
-  if (data.survey.anonymous || !data.response.respondent) return "匿名用户";
+  if (!data.response.respondent) {
+    return data.response.participantKey ? `匿名 · ${data.response.participantKey}` : "匿名用户";
+  }
   const respondent = data.response.respondent;
   const name = [respondent.firstName, respondent.lastName].filter(Boolean).join(" ");
   return name || (respondent.username ? `@${respondent.username}` : String(respondent.telegramUserId));
