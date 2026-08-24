@@ -1,12 +1,82 @@
-import { useState } from "react";
-import { api, apiSend, type SystemSettingsData } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { apiSend, type SystemSettingsData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
-import { applyTheme, getStoredTheme, THEME_OPTIONS } from "../theme";
+import { applyTheme, getStoredTheme, THEME_OPTIONS, type AdminThemeId } from "../theme";
+
+function ThemeSwatch({
+  themeId,
+  name,
+  selected,
+  onSelect,
+}: {
+  themeId: AdminThemeId;
+  name: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [colors, setColors] = useState<{ base: string; primary: string } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    setColors({
+      base: style.getPropertyValue("--color-base-100").trim() || "#ffffff",
+      primary: style.getPropertyValue("--color-primary").trim() || "#4f46e5",
+    });
+  }, [themeId]);
+
+  return (
+    <button
+      type="button"
+      data-theme={themeId === "system" ? "light" : themeId}
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`flex w-36 flex-col gap-1.5 rounded-xl border p-2 text-left transition ${
+        selected
+          ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/25"
+          : "border-[var(--color-edge)] hover:border-[var(--color-primary)]/50"
+      }`}
+    >
+      <div
+        ref={ref}
+        className="h-12 w-full overflow-hidden rounded-lg border border-black/10"
+        style={colors ? { backgroundColor: colors.base } : undefined}
+      >
+        {colors ? (
+          <span className="block h-full w-1/3" style={{ backgroundColor: colors.primary }} />
+        ) : null}
+      </div>
+      <span className="truncate text-xs font-medium text-[var(--color-muted)]">
+        {selected ? "✓ " : ""}{name}
+      </span>
+    </button>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="grid gap-1.5 text-sm">
+      <span className="font-medium text-[var(--color-muted)]">{label}</span>
+      {children}
+      {hint ? <span className="text-xs text-[var(--color-muted-soft)]">{hint}</span> : null}
+    </label>
+  );
+}
 
 export function SettingsPage() {
   const { data, error, retry } = useApi<{ settings: SystemSettingsData }>("/api/admin/settings");
-  const [theme, setTheme] = useState(getStoredTheme());
+  const [theme, setTheme] = useState<AdminThemeId>(getStoredTheme());
   const [form, setForm] = useState<SystemSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -50,92 +120,93 @@ export function SettingsPage() {
     hint: string,
     step = 1,
   ) => (
-    <label className="grid gap-1 text-sm">
-      <span className="text-gray-500">{label}</span>
+    <Field key={key} label={label} hint={hint}>
       <input
-        className="input"
+        className="input w-full"
         type="number"
         min={1}
         step={step}
         value={settings[key]}
         onChange={(event) => update({ [key]: Number(event.target.value) } as Partial<SystemSettingsData>)}
       />
-      <span className="text-xs text-gray-400">{hint}</span>
-    </label>
+    </Field>
   );
 
   return (
-    <section className="card">
-      <h2 className="text-lg font-semibold">系统设置</h2>
-      <p className="mt-1 text-sm text-gray-500">敏感凭据（Bot Token 等）不在此展示，请通过 Cloudflare Secrets 管理。</p>
-
-      <label className="mt-5 grid max-w-xs gap-1 text-sm">
-        <span className="text-gray-500">界面主题</span>
-        <select
-          className="select"
-          value={theme}
-          onChange={(event) => {
-            const next = event.target.value as (typeof THEME_OPTIONS)[number]["id"];
-            setTheme(next);
-            applyTheme(next);
-          }}
-        >
+    <div className="space-y-5">
+      <section className="card">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-ink)]">界面外观</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">主题即时生效，仅影响当前浏览器。</p>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2.5">
           {THEME_OPTIONS.map((option) => (
-            <option key={option.id} value={option.id}>{option.name}</option>
+            <ThemeSwatch
+              key={option.id}
+              themeId={option.id}
+              name={option.name}
+              selected={theme === option.id}
+              onSelect={() => {
+                setTheme(option.id);
+                applyTheme(option.id);
+              }}
+            />
           ))}
-        </select>
-        <span className="text-xs text-gray-400">即时生效，仅影响本浏览器</span>
-      </label>
+        </div>
+      </section>
 
-      <div className="mt-5 grid max-w-2xl gap-4 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">
-          <span className="text-gray-500">报告归档频道 ID</span>
-          <input
-            className="input"
-            value={settings.reportChannelId}
-            onChange={(event) => update({ reportChannelId: event.target.value })}
-            placeholder="-100xxxxxxxxxx"
-          />
-          <span className="text-xs text-gray-400">优先级：环境变量 → KV 缓存 → 此处设置</span>
-        </label>
+      <section className="card">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-ink)]">系统设置</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            敏感凭据（Bot Token 等）不在此展示，请通过 Cloudflare Secrets 管理。
+          </p>
+        </div>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-gray-500">默认报告模板</span>
-          <select
-            className="select"
-            value={settings.defaultReportTemplate}
-            onChange={(event) => update({ defaultReportTemplate: event.target.value })}
-          >
-            <option value="classic">经典报告</option>
-            <option value="magazine-dark">杂志暗色</option>
-          </select>
-          <span className="text-xs text-gray-400">问卷未指定模板时使用</span>
-        </label>
+        <div className="mt-5 grid max-w-3xl gap-x-5 gap-y-4 sm:grid-cols-2">
+          <Field label="报告归档频道 ID" hint="优先级：环境变量 → KV 缓存 → 此处设置">
+            <input
+              className="input w-full"
+              value={settings.reportChannelId}
+              onChange={(event) => update({ reportChannelId: event.target.value })}
+              placeholder="-100xxxxxxxxxx"
+            />
+          </Field>
 
-        {numberField("mediaTtlSeconds", "临时媒体保留时间（秒）", "默认 604800（7 天）")}
-        {numberField("maxUploadMb", "单张图片上限（MB）", "默认 10")}
-        {numberField("maxResponseMediaMb", "单份答卷图片总量（MB）", "默认 50")}
-        {numberField("pdfMaxMb", "PDF 体积目标（MB）", "默认 15，非硬性限制", 0.5)}
+          <Field label="默认报告模板" hint="问卷未指定模板时使用">
+            <select
+              className="select w-full"
+              value={settings.defaultReportTemplate}
+              onChange={(event) => update({ defaultReportTemplate: event.target.value })}
+            >
+              <option value="classic">经典报告</option>
+              <option value="magazine-dark">杂志暗色</option>
+            </select>
+          </Field>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-gray-500">报告结尾水印</span>
-          <input
-            className="input"
-            value={settings.reportWatermark}
-            onChange={(event) => update({ reportWatermark: event.target.value })}
-            placeholder="更多问卷 @hnhgggfj_bot"
-          />
-          <span className="text-xs text-gray-400">显示在每份报告（网页 / PDF / 频道归档）的结尾</span>
-        </label>
-      </div>
+          <Field label="报告结尾水印" hint="显示在每份报告（网页 / PDF / 频道归档）的结尾">
+            <input
+              className="input w-full"
+              value={settings.reportWatermark}
+              onChange={(event) => update({ reportWatermark: event.target.value })}
+              placeholder="更多问卷 @hnhgggfj_bot"
+            />
+          </Field>
 
-      <div className="mt-6 flex items-center gap-3">
-        <button className="btn btn-primary" disabled={saving} onClick={() => void save()}>
-          {saving ? "保存中…" : "保存设置"}
-        </button>
-        {saved ? <span className="text-sm text-green-600">已保存</span> : null}
-        {saveError ? <span className="text-sm text-red-600">{saveError}</span> : null}
-      </div>
-    </section>
+          {numberField("mediaTtlSeconds", "临时媒体保留时间（秒）", "默认 604800（7 天）")}
+          {numberField("maxUploadMb", "单张图片上限（MB）", "默认 10")}
+          {numberField("maxResponseMediaMb", "单份答卷图片总量（MB）", "默认 50")}
+          {numberField("pdfMaxMb", "PDF 体积目标（MB）", "默认 15，非硬性限制", 0.5)}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 border-t border-[var(--color-edge-soft)] pt-5">
+          <button className="btn btn-primary" disabled={saving} onClick={() => void save()}>
+            {saving ? "保存中…" : "保存设置"}
+          </button>
+          {saved ? <span className="text-sm text-[var(--color-success)]">已保存</span> : null}
+          {saveError ? <span className="text-sm text-[var(--color-danger)]">{saveError}</span> : null}
+        </div>
+      </section>
+    </div>
   );
 }
