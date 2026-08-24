@@ -58,11 +58,11 @@ function NumberField({
   const [draft, setDraft] = useState(value === undefined ? "" : String(value));
   return (
     <label className="flex items-center gap-2 text-sm">
-      <span className="text-gray-500">{label}</span>
+      <span style={{ color: "var(--color-muted)" }}>{label}</span>
       <input
         type="number"
         min={0}
-        className="input w-24"
+        className="q-option-input w-24"
         value={draft}
         disabled={disabled}
         onChange={(event) => setDraft(event.target.value)}
@@ -107,17 +107,16 @@ export function QuestionCard({
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {dragHandle}
-        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-          第 {index + 1} 题
-        </span>
-        <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+    <div className="q-editor">
+      <div className="q-editor-head">
+        <div className="q-badges">
+          {dragHandle}
+          <span className="q-index">第 {index + 1} 题</span>
           {editableNow ? (
             <select
-              className="bg-transparent font-semibold text-blue-700"
+              className="q-type-select"
               value={question.type}
+              disabled={!editable}
               onChange={(event) => {
                 const next = event.target.value;
                 onLocalChange(question.id, { type: next });
@@ -129,20 +128,22 @@ export function QuestionCard({
               ))}
             </select>
           ) : (
-            QUESTION_TYPE_LABELS[question.type] ?? question.type
+            <span className="q-index" style={{ background: "color-mix(in srgb, var(--color-primary) 13%, var(--surface))", color: "var(--color-primary)" }}>
+              {QUESTION_TYPE_LABELS[question.type] ?? question.type}
+            </span>
           )}
-        </span>
-        {question.id < 0 ? (
-          <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">未保存</span>
-        ) : null}
-        {question.media.length ? (
-          <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
-            <Paperclip className="h-3.5 w-3.5" />媒体 ×{question.media.length}
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
+          {question.id < 0 ? (
+            <span className="q-chip q-chip-unsaved">未保存</span>
+          ) : null}
+          {question.media.length ? (
+            <span className="q-chip q-chip-media">
+              <Paperclip className="h-3.5 w-3.5" />媒体 ×{question.media.length}
+            </span>
+          ) : null}
+        </div>
+        <div className="q-head-actions">
           <button
-            className="btn btn-sm"
+            className="btn btn-sm btn-quiet"
             disabled={!editable}
             onClick={() => onDuplicateQuestion(question.id)}
             title="复制这道题"
@@ -150,9 +151,9 @@ export function QuestionCard({
             <Copy className="h-3.5 w-3.5" />复制
           </button>
           {confirmDelete ? (
-            <span className="flex items-center gap-2 text-xs">
-              <span className="text-red-600">确认删除？</span>
-              <button className="btn btn-sm bg-red-50 text-red-700" onClick={() => onDelete(question.id)}>
+            <span className="flex items-center gap-2 text-xs" style={{ color: "var(--color-danger)" }}>
+              <span>确认删除？</span>
+              <button className="btn btn-sm" style={{ background: "color-mix(in srgb, var(--color-danger) 14%, var(--surface))", color: "var(--color-danger)" }} onClick={() => onDelete(question.id)}>
                 删除
               </button>
               <button className="btn btn-sm" onClick={() => setConfirmDelete(false)}>
@@ -161,7 +162,7 @@ export function QuestionCard({
             </span>
           ) : (
             <button
-              className="btn btn-sm text-red-600"
+              className="btn btn-sm btn-danger-hover"
               disabled={!editable}
               onClick={() => setConfirmDelete(true)}
               title={editable ? "删除这道题" : "仅草稿可删除"}
@@ -172,14 +173,15 @@ export function QuestionCard({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3">
-        <label className="grid gap-1 text-sm">
-          <span className="text-gray-500">题目标题</span>
+      <div className="q-body">
+        <label className="q-field">
+          <span className="q-label">题目标题</span>
           <input
-            className="input"
+            className="q-title-input"
             defaultValue={question.title}
             key={`title-${question.id}`}
             disabled={!editableNow}
+            placeholder="输入题目标题"
             onBlur={(event) => {
               const next = event.target.value.trim();
               if (next && next !== question.title) {
@@ -190,13 +192,14 @@ export function QuestionCard({
           />
         </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-gray-500">描述 / 帮助文本（可选）</span>
+        <label className="q-field">
+          <span className="q-label">描述 / 帮助文本（可选）</span>
           <textarea
-            className="input min-h-16"
+            className="q-desc-input"
             defaultValue={question.description ?? ""}
             key={`description-${question.id}`}
             disabled={!editableNow}
+            placeholder="给答题者的一段说明（可选）"
             onBlur={(event) => {
               const next = event.target.value.trim() || null;
               if (next !== question.description) {
@@ -207,24 +210,31 @@ export function QuestionCard({
           />
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={question.required}
+        <div className="q-switch-row">
+          <div>
+            <div className="q-label">必答</div>
+            <div className="q-help">开启后，答题者必须回答此题才能继续</div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={question.required}
+            className="switch"
+            data-on={question.required}
             disabled={!editableNow}
-            onChange={(event) => {
-              onLocalChange(question.id, { required: event.target.checked });
-              onFieldCommit(question.id, { required: event.target.checked }, "必答设置");
+            onClick={() => {
+              const next = !question.required;
+              onLocalChange(question.id, { required: next });
+              onFieldCommit(question.id, { required: next }, "必答设置");
             }}
           />
-          <span className="text-gray-700">{question.required ? "必答" : "选答"}</span>
-        </label>
+        </div>
 
         {pages?.length ? (
-          <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">所属分页</span>
+          <label className="q-field">
+            <span className="q-label">所属分页</span>
             <select
-              className="select"
+              className="q-select"
               value={question.pageId ?? ""}
               disabled={!editableNow}
               onChange={(event) => {
@@ -242,11 +252,11 @@ export function QuestionCard({
         ) : null}
 
         {(CHOICE_TYPES.has(question.type) || question.type === "matrix") && editableNow ? (
-          <div className="grid gap-1.5 text-sm">
-            <span className="text-gray-500">跳题规则（可选）</span>
+          <div className="q-field">
+            <span className="q-label">跳题规则（可选）</span>
             <div className="flex flex-wrap items-center gap-2">
               <select
-                className="select flex-1"
+                className="q-select flex-1"
                 value=""
                 onChange={(event) => {
                   const optionId = Number(event.target.value);
@@ -266,7 +276,7 @@ export function QuestionCard({
               </select>
               {question.condition ? (
                 <button
-                  className="btn btn-sm text-red-600"
+                  className="btn btn-sm btn-danger-hover"
                   onClick={() => {
                     onLocalChange(question.id, { condition: null });
                     onFieldCommit(question.id, { condition: null }, "清除跳题");
@@ -276,23 +286,28 @@ export function QuestionCard({
                 </button>
               ) : null}
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="q-help">
               已设置：{JSON.stringify((question.condition as { rules?: unknown } | null)?.rules ?? null)}
             </p>
           </div>
         ) : null}
 
         {CHOICE_TYPES.has(question.type) || question.type === "matrix" ? (
-          <div className="grid gap-1.5">
-            <span className="text-sm text-gray-500">
+          <div className="q-field">
+            <span className="q-label">
               {question.type === "matrix" ? "行选项" : "选项"}
-              <span className="ml-1 text-xs text-gray-400">（修改文案不会影响已有答案关联）</span>
+              <span className="ml-1 q-help">（修改文案不会影响已有答案关联）</span>
             </span>
-            {question.options.map((option, optionIndex) => (
-              <div key={option.id} className="flex items-center gap-2">
-                <span className="w-5 text-right text-xs text-gray-400">{optionIndex + 1}</span>
+            {question.options.map((option) => (
+              <div key={option.id} className="q-option-row">
+                <span
+                  aria-hidden="true"
+                  className={`q-option-glyph ${question.type === "multiple" ? "square" : "round"}`}
+                >
+                  {question.type === "multiple" ? "✓" : "•"}
+                </span>
                 <input
-                  className="input flex-1"
+                  className="q-option-input"
                   defaultValue={option.label}
                   key={`option-${option.id}`}
                   disabled={!editableNow}
@@ -304,7 +319,7 @@ export function QuestionCard({
                   }}
                 />
                 <button
-                  className="btn btn-sm text-red-600"
+                  className="q-option-del"
                   disabled={!editableNow}
                   onClick={() => onDeleteOption(question.id, option.id)}
                   title="删除选项"
@@ -314,10 +329,10 @@ export function QuestionCard({
               </div>
             ))}
             {editableNow ? (
-              <div className="flex items-center gap-2">
-                <span className="w-5" />
+              <div className="q-option-row">
+                <span aria-hidden="true" className={`q-option-glyph ${question.type === "multiple" ? "square" : "round"}`} />
                 <input
-                  className="input flex-1"
+                  className="q-option-input"
                   placeholder="新选项文本…"
                   value={newOptionLabel}
                   onChange={(event) => setNewOptionLabel(event.target.value)}
@@ -344,18 +359,17 @@ export function QuestionCard({
         ) : null}
 
         {question.type === "matrix" ? (
-          <div className="grid gap-1.5">
-            <span className="text-sm text-gray-500">列（至少 2 列）</span>
+          <div className="q-field">
+            <span className="q-label">列（至少 2 列）</span>
             <div className="flex flex-wrap gap-1.5">
               {question.columns.map((column, columnIndex) => (
                 <span
                   key={`${column}-${columnIndex}`}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs text-amber-700"
+                  className="q-column-chip"
                 >
                   {column}
                   {editableNow ? (
                     <button
-                      className="text-amber-900"
                       title="删除列"
                       onClick={() => commitColumns(question.columns.filter((_, i) => i !== columnIndex))}
                     >
@@ -368,7 +382,7 @@ export function QuestionCard({
             {editableNow ? (
               <div className="flex items-center gap-2">
                 <input
-                  className="input max-w-48"
+                  className="q-option-input max-w-48"
                   placeholder="新列名…"
                   value={newColumn}
                   onChange={(event) => setNewColumn(event.target.value)}
@@ -446,7 +460,7 @@ export function QuestionCard({
         ) : null}
 
         {MEDIA_TYPES.has(question.type) ? (
-          <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-500">
+          <div className="q-note">
             媒体题：附件{question.media.length ? "已配置" : "未配置"}。上传 / 更换附件请前往 Bot 内完成；
             此处编辑标题、描述与必答设置。
           </div>

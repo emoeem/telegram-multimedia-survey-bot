@@ -2,29 +2,28 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
+  ArrowRight,
   Eye,
   FilePlus2,
-  Plus,
   Redo2,
   Rocket,
   Save,
   Undo2,
-  X,
 } from "lucide-react";
 import { useApi } from "../hooks";
 import { ApiError, apiSend, type EditorData, type PublishResult, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { QuestionCard, editableTypeList } from "../components/editor/QuestionCard";
-import { SortableQuestionList } from "../components/editor/SortableQuestionList";
+import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
+import { LivePreview } from "../components/editor/LivePreview";
 import { SurveyPreview } from "../components/editor/SurveyPreview";
-import { useSurveyEditor } from "../editor/useSurveyEditor";
+import { useSurveyEditor, type SurveyMetaState } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
-import { QUESTION_TYPE_LABELS, formatDateTime, matrixColumns } from "../format";
+import { formatDateTime, matrixColumns } from "../format";
 
 // Phase 2.4: field edits commit on blur into a pending-op
 // queue; 保存 flushes it sequentially (temp ids resolve to server ids).
 // Dirty state protects browser and SPA navigation; stale writes require reload.
-// Publish (2.6) stays disabled.
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const { data, error, retry } = useApi<EditorData>(
@@ -37,61 +36,18 @@ export function EditorPage() {
   return <EditableEditor data={data} />;
 }
 
-function SaveStatusBar({
-  saveState,
-  saveError,
-  onSave,
-  onDiscard,
-}: {
-  saveState: "saved" | "dirty" | "saving" | "error";
-  saveError: { message: string; stale: boolean } | null;
-  onSave: () => void;
-  onDiscard: () => void;
-}) {
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-      {saveState === "saving" ? (
-        <span className="text-blue-600">保存中…</span>
-      ) : saveState === "error" ? (
-        <>
-          <span className="text-red-600">
-            {saveError?.stale ? "检测到其他窗口的更新：" : "保存失败："}
-            {saveError?.message}
-          </span>
-          {!saveError?.stale ? (
-            <button className="btn btn-sm" onClick={onSave}>
-              重试保存
-            </button>
-          ) : null}
-          <button className="btn btn-sm" onClick={onDiscard}>
-            {saveError?.stale ? "放弃本地修改并加载最新版" : "放弃修改并刷新"}
-          </button>
-        </>
-      ) : saveState === "dirty" ? (
-        <span className="text-amber-600">有未保存的修改</span>
-      ) : (
-        <span className="text-green-600">已保存</span>
-      )}
-    </div>
-  );
-}
-
 function EditableEditor({ data }: { data: EditorData }) {
   const editor = useSurveyEditor(data);
   const navigate = useNavigate();
+  const [selection, setSelection] = useState<BuilderSelection>(() =>
+    data.questions.length
+      ? { kind: "question", id: data.questions[0]!.id }
+      : { kind: "settings" },
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
-  );
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1024px)");
-    const onChange = () => setIsDesktop(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
   const { survey } = data;
 
   useEffect(() => {
@@ -120,6 +76,19 @@ function EditableEditor({ data }: { data: EditorData }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editor]);
+
+  // Keep the selection valid as questions are added / removed / reloaded.
+  useEffect(() => {
+    if (selection.kind !== "question") return;
+    if (!editor.questions.some((question) => question.id === selection.id)) {
+      setSelection(
+        editor.questions.length
+          ? { kind: "question", id: editor.questions[0]!.id }
+          : { kind: "settings" },
+      );
+    }
+  }, [editor.questions, selection]);
+
   const editingDisabled = editor.saveState === "saving" || Boolean(editor.saveError?.stale);
   const previewQuestions = useMemo(
     () => buildEditorPreviewFlow(survey.id, editor.questions),
@@ -135,6 +104,20 @@ function EditableEditor({ data }: { data: EditorData }) {
     if (window.confirm("有未保存的修改，确定离开？")) blocker.proceed();
     else blocker.reset();
   }, [blocker]);
+
+  const selectedQuestion =
+    selection.kind === "question"
+      ? editor.questions.find((question) => question.id === selection.id) ?? null
+      : null;
+  const questionIndex = selectedQuestion
+    ? editor.questions.findIndex((question) => question.id === selectedQuestion.id)
+    : -1;
+  const previewIndex = selectedQuestion
+    ? Math.max(
+        0,
+        previewQuestions.findIndex((question) => question.id === selectedQuestion.id),
+      )
+    : 0;
 
   const handleFieldCommit = (questionId: number, patch: Record<string, unknown>, label: string) => {
     if (Object.keys(patch).length) editor.queueQuestionPatch(questionId, patch, label);
@@ -162,7 +145,9 @@ function EditableEditor({ data }: { data: EditorData }) {
       time: { title: "新的时间题" },
     };
     const draft = defaults[type] ?? { title: "新题目" };
-    editor.addQuestion({ type, ...draft });
+    const tempId = editor.addQuestion({ type, ...draft });
+    setSelection({ kind: "question", id: tempId });
+    setPickerOpen(false);
   };
 
   const duplicateQuestion = async (questionId: number) => {
@@ -204,6 +189,19 @@ function EditableEditor({ data }: { data: EditorData }) {
     }
   };
 
+  const moveQuestion = (questionId: number, direction: -1 | 1) => {
+    const ids = editor.questions.map((question) => question.id);
+    const index = ids.indexOf(questionId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ids.length) return;
+    const next = [...ids];
+    const current = next[index]!;
+    const swap = next[target]!;
+    next[index] = swap;
+    next[target] = current;
+    editor.reorderQuestions(next);
+  };
+
   const publish = async () => {
     if (editor.dirty || publishing) return;
     if (!window.confirm(`确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。`)) return;
@@ -220,52 +218,76 @@ function EditableEditor({ data }: { data: EditorData }) {
     }
   };
 
+  const saveStateLabel =
+    editor.saveState === "saving"
+      ? "保存中…"
+      : editor.saveState === "error"
+        ? "保存失败"
+        : editor.saveState === "dirty"
+          ? "有未保存的修改"
+          : "已保存";
+  const saveStateClass =
+    editor.saveState === "saving"
+      ? ""
+      : editor.saveState === "error"
+        ? "is-error"
+        : editor.saveState === "dirty"
+          ? "is-dirty"
+          : "is-saved";
+
+  const selectQuestion = (questionId: number) => setSelection({ kind: "question", id: questionId });
+  const navigatePreview = (index: number) => {
+    const question = previewQuestions[index];
+    if (question) selectQuestion(question.id);
+  };
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 card">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="editor-page">
+      <header className="editor-topbar">
+        <div className="editor-topbar-main">
           <button className="btn btn-icon" title="返回详情（有未保存修改时会确认）" onClick={backWithGuard}>
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-lg font-semibold">{editor.surveyMeta.title || "未命名问卷"}</h2>
+          <div className="editor-title">
+            <div className="editor-title-name">
+              <span className="truncate">{editor.surveyMeta.title || "未命名问卷"}</span>
               <StatusBadge status={survey.status} />
             </div>
-            <div className="text-xs text-gray-500">
-              {editor.questions.length} 题 · 基准更新于 {formatDateTime(editor.baseUpdatedAt)}
+            <div className="editor-title-meta">
+              {editor.questions.length} 题 · 最后保存于 {formatDateTime(editor.baseUpdatedAt)}
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="editor-actions">
+          <span className={`editor-save-state ${saveStateClass}`}>{saveStateLabel}</span>
           <button
-            className="btn"
-            disabled={editingDisabled || !editor.dirty}
-            onClick={() => editor.save()}
-          >
-            <Save className="h-4 w-4" />保存
-          </button>
-          <button
-            className="btn"
+            className="btn btn-sm btn-quiet"
             disabled={!editor.canUndo}
             title="撤销（Ctrl+Z）"
             onClick={() => editor.undo()}
           >
-            <Undo2 className="h-4 w-4" />撤销
+            <Undo2 className="h-4 w-4" />
           </button>
           <button
-            className="btn"
+            className="btn btn-sm btn-quiet"
             disabled={!editor.canRedo}
             title="重做（Ctrl+Shift+Z / Ctrl+Y）"
             onClick={() => editor.redo()}
           >
-            <Redo2 className="h-4 w-4" />重做
+            <Redo2 className="h-4 w-4" />
           </button>
-          <button className="btn" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
+          <button
+            className="btn btn-sm"
+            disabled={editor.saveState === "saving"}
+            onClick={() => editor.save()}
+          >
+            <Save className="h-4 w-4" />保存
+          </button>
+          <button className="btn btn-sm" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
             <Eye className="h-4 w-4" />预览
           </button>
           <button
-            className="btn"
+            className="btn btn-sm btn-accent"
             disabled={editingDisabled || editor.dirty || publishing || editor.questions.length === 0}
             title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
             onClick={publish}
@@ -273,192 +295,141 @@ function EditableEditor({ data }: { data: EditorData }) {
             {publishing ? "发布中…" : <><Rocket className="h-4 w-4" />发布</>}
           </button>
         </div>
-      </div>
-      <SaveStatusBar
-        saveState={editor.saveState}
-        saveError={editor.saveError}
-        onSave={() => editor.save()}
-        onDiscard={editor.discardAndReload}
-      />
+      </header>
+
       {publishError ? (
-        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          发布失败：{publishError}
+        <div className="alert alert-error">
+          操作失败：{publishError}
+        </div>
+      ) : null}
+      {editor.saveError ? (
+        <div className="alert alert-error">
+          <span>
+            {editor.saveError.stale ? "检测到其他窗口的更新：" : "保存失败："}
+            {editor.saveError.message}
+          </span>
+          {!editor.saveError.stale ? (
+            <button className="btn btn-sm" onClick={() => editor.save()}>
+              重试保存
+            </button>
+          ) : null}
+          <button className="btn btn-sm" onClick={editor.discardAndReload}>
+            {editor.saveError.stale ? "放弃本地修改并加载最新版" : "放弃修改并刷新"}
+          </button>
         </div>
       ) : null}
 
-      <div className="mt-4 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-      <div className="min-w-0 space-y-4">
-      <section className="card">
-        <h3 className="mb-3 font-semibold">问卷设置</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">标题</span>
-            <input
-              className="input"
-              defaultValue={editor.surveyMeta.title}
-              key={`survey-title-${survey.id}`}
-              disabled={editingDisabled}
-              onBlur={(event) => {
-                const next = event.target.value.trim();
-                if (next && next !== editor.surveyMeta.title) editor.updateSurveyMeta({ title: next });
-              }}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">描述</span>
-            <input
-              className="input"
-              defaultValue={editor.surveyMeta.description}
-              key={`survey-description-${survey.id}`}
-              disabled={editingDisabled}
-              onBlur={(event) => {
-                const next = event.target.value.trim();
-                if (next !== editor.surveyMeta.description) editor.updateSurveyMeta({ description: next });
-              }}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={editor.surveyMeta.anonymous}
-              disabled={editingDisabled}
-              onChange={(event) => editor.updateSurveyMeta({ anonymous: event.target.checked })}
-            />
-            <span className="text-gray-700">匿名填写</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={editor.surveyMeta.allowMultipleResponses}
-              disabled={editingDisabled}
-              onChange={(event) =>
-                editor.updateSurveyMeta({ allowMultipleResponses: event.target.checked })
-              }
-            />
-            <span className="text-gray-700">允许重复填写</span>
-          </label>
-          {editor.surveyMeta.allowMultipleResponses ? (
-            <label className="grid gap-1 text-sm">
-              <span className="text-gray-500">每人填写上限（0 = 不限）</span>
-              <input
-                type="number"
-                min={0}
-                max={999}
-                className="input w-32"
-                defaultValue={editor.surveyMeta.maxResponsesPerUser}
-                key={`survey-max-${survey.id}`}
-                disabled={editingDisabled}
-                onBlur={(event) => {
-                  const next = Number(event.target.value);
-                  if (Number.isInteger(next) && next !== editor.surveyMeta.maxResponsesPerUser) {
-                    editor.updateSurveyMeta({ maxResponsesPerUser: next });
-                  }
-                }}
-              />
-            </label>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="card">
-        {data.pages.length ? (
-          <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-gray-700">分页</h4>
-              <button className="btn btn-sm" disabled={editingDisabled} onClick={() => void addPage()}>
-                <Plus className="h-4 w-4" />新分页
-              </button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {data.pages.map((page) => (
-                <span key={page.id} className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm">
-                  {page.title || `第 ${page.order + 1} 页`}
-                  <button className="text-red-500" disabled={editingDisabled} onClick={() => void deletePage(page.id)}>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="mb-4 flex items-center justify-between rounded-lg border border-dashed border-gray-200 p-3">
-            <span className="text-sm text-gray-400">还没有分页（可在题目卡片中把题目归入分页）</span>
-            <button className="btn btn-sm" disabled={editingDisabled} onClick={() => void addPage()}>
-              <Plus className="h-4 w-4" />新建分页
-            </button>
-          </div>
-        )}
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="font-semibold">题目列表</h3>
-            {editor.questions.length > 1 ? (
-              <p className="mt-0.5 text-xs text-gray-400">拖动题目左侧把手排序；移动端请长按把手后拖动</p>
-            ) : null}
-          </div>
-          <button className="btn" disabled={editingDisabled} onClick={() => setPickerOpen((open) => !open)}>
-            <FilePlus2 className="h-4 w-4" />添加题目
-          </button>
-        </div>
-
-        {pickerOpen ? (
-          <div className="mb-3 grid grid-cols-2 gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3 sm:grid-cols-3 lg:grid-cols-5">
-            {editableTypeList().map(({ type, label }) => (
-              <button
-                key={type}
-                className="btn btn-sm"
-                disabled={editingDisabled}
-                onClick={() => {
-                  addDefaultQuestion(type);
-                  setPickerOpen(false);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-            <div className="col-span-2 text-xs text-gray-400 sm:col-span-3 lg:col-span-5">
-              图片 / 视频 / 音频 / 文件题请在 Bot 内创建后回到此处编辑文字部分。
-            </div>
-          </div>
-        ) : null}
-
-        {editor.questions.length ? (
-          <SortableQuestionList
-            questions={editor.questions}
-            editable={!editingDisabled}
-            onReorder={editor.reorderQuestions}
-            onFieldCommit={handleFieldCommit}
-            onLocalChange={editor.patchQuestionLocal}
-            onOptionRename={handleOptionRename}
-            onAddOption={editor.addOption}
-            onDeleteOption={editor.deleteOption}
-            onDelete={editor.deleteQuestion}
-            onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
-            onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
+      <div className="editor-body">
+        <aside className="editor-structure editor-col">
+          <StructureTree
             pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+            questions={editor.questions}
+            selection={selection}
+            onSelect={setSelection}
+            editable={!editingDisabled}
+            onAddPage={() => void addPage()}
+            onDeletePage={(pageId) => void deletePage(pageId)}
+            onMoveQuestion={moveQuestion}
           />
-        ) : (
-          <EmptyPanel text="这份问卷还没有题目，点击「添加题目」开始" />
-        )}
-      </section>
-      </div>
-      <div className="hidden lg:sticky lg:top-4 lg:block">
-        {previewOpen ? (
-          <SurveyPreview
+        </aside>
+
+        <main className="editor-canvas editor-col">
+          {selection.kind === "settings" ? (
+            <SurveySettingsPanel
+              meta={editor.surveyMeta}
+              surveyId={survey.id}
+              disabled={editingDisabled}
+              onUpdate={(patch) => editor.updateSurveyMeta(patch)}
+            />
+          ) : selectedQuestion ? (
+            <>
+              <QuestionCard
+                key={selectedQuestion.id}
+                question={selectedQuestion}
+                index={questionIndex}
+                editable={!editingDisabled}
+                onFieldCommit={handleFieldCommit}
+                onLocalChange={editor.patchQuestionLocal}
+                onOptionRename={handleOptionRename}
+                onAddOption={editor.addOption}
+                onDeleteOption={editor.deleteOption}
+                onDelete={(questionId) => editor.deleteQuestion(questionId)}
+                onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
+                onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
+                allQuestions={editor.questions}
+                pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+              />
+              <div className="q-nav">
+                <button
+                  className="btn btn-sm"
+                  disabled={questionIndex <= 0}
+                  onClick={() => questionIndex > 0 && selectQuestion(editor.questions[questionIndex - 1]!.id)}
+                >
+                  <ArrowLeft className="h-4 w-4" />上一题
+                </button>
+                <span className="q-nav-position">
+                  第 {questionIndex + 1} / {editor.questions.length} 题
+                </span>
+                <button
+                  className="btn btn-sm"
+                  disabled={questionIndex >= editor.questions.length - 1}
+                  onClick={() =>
+                    questionIndex < editor.questions.length - 1 &&
+                    selectQuestion(editor.questions[questionIndex + 1]!.id)
+                  }
+                >
+                  下一题<ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="add-question-wrap mt-3">
+                <button
+                  className="btn w-full"
+                  disabled={editingDisabled}
+                  onClick={() => setPickerOpen((open) => !open)}
+                >
+                  <FilePlus2 className="h-4 w-4" />添加题目
+                </button>
+                {pickerOpen ? (
+                  <div className="add-question-menu is-inline">
+                    <div className="add-question-menu-title">选择题型</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {editableTypeList().map(({ type, label }) => (
+                        <button
+                          key={type}
+                          className="add-question-item"
+                          disabled={editingDisabled}
+                          onClick={() => addDefaultQuestion(type)}
+                        >
+                          <span className="truncate">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="px-2 pb-1 pt-2 text-[11px]" style={{ color: "var(--color-muted-soft)" }}>
+                      图片 / 视频 / 音频 / 文件题请在 Bot 内创建后回到此处编辑文字部分。
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <EmptyPanel text="这份问卷还没有题目，点击「添加题目」开始" />
+          )}
+        </main>
+
+        <aside className="editor-preview editor-col">
+          <LivePreview
             title={editor.surveyMeta.title}
             description={editor.surveyMeta.description}
             questions={previewQuestions}
+            currentIndex={Math.min(previewIndex, Math.max(0, previewQuestions.length - 1))}
             dirty={editor.dirty}
-            onClose={() => setPreviewOpen(false)}
-            inline
+            onNavigate={navigatePreview}
+            onOpenFull={() => setPreviewOpen(true)}
           />
-        ) : (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm text-gray-400">
-          点击右上角「预览」查看实时效果
-          </div>
-        )}
+        </aside>
       </div>
-      </div>
-      {previewOpen && !isDesktop ? (
+
+      {previewOpen ? (
         <SurveyPreview
           title={editor.surveyMeta.title}
           description={editor.surveyMeta.description}
@@ -466,6 +437,110 @@ function EditableEditor({ data }: { data: EditorData }) {
           dirty={editor.dirty}
           onClose={() => setPreviewOpen(false)}
         />
+      ) : null}
+    </div>
+  );
+}
+
+function SurveySettingsPanel({
+  meta,
+  surveyId,
+  disabled,
+  onUpdate,
+}: {
+  meta: SurveyMetaState;
+  surveyId: number;
+  disabled: boolean;
+  onUpdate: (patch: Partial<SurveyMetaState>) => void;
+}) {
+  return (
+    <div className="settings-panel">
+      <div>
+        <div className="settings-panel-title">问卷设置</div>
+        <div className="settings-panel-sub">标题、描述与填写规则会应用到整个问卷</div>
+      </div>
+
+      <label className="settings-field">
+        <span className="q-label">标题</span>
+        <input
+          className="settings-input"
+          defaultValue={meta.title}
+          key={`survey-title-${surveyId}`}
+          disabled={disabled}
+          placeholder="问卷标题"
+          onBlur={(event) => {
+            const next = event.target.value.trim();
+            if (next && next !== meta.title) onUpdate({ title: next });
+          }}
+        />
+      </label>
+
+      <label className="settings-field">
+        <span className="q-label">描述</span>
+        <input
+          className="settings-input"
+          defaultValue={meta.description}
+          key={`survey-description-${surveyId}`}
+          disabled={disabled}
+          placeholder="给答题者的整体说明（可选）"
+          onBlur={(event) => {
+            const next = event.target.value.trim();
+            if (next !== meta.description) onUpdate({ description: next });
+          }}
+        />
+      </label>
+
+      <div className="settings-check">
+        <div>
+          <div className="q-label">匿名填写</div>
+          <div className="q-help">开启后不记录答题者的 Telegram 身份</div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={meta.anonymous}
+          className="switch"
+          data-on={meta.anonymous}
+          disabled={disabled}
+          onClick={() => onUpdate({ anonymous: !meta.anonymous })}
+        />
+      </div>
+
+      <div className="settings-check">
+        <div>
+          <div className="q-label">允许重复填写</div>
+          <div className="q-help">同一用户可多次提交本问卷</div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={meta.allowMultipleResponses}
+          className="switch"
+          data-on={meta.allowMultipleResponses}
+          disabled={disabled}
+          onClick={() => onUpdate({ allowMultipleResponses: !meta.allowMultipleResponses })}
+        />
+      </div>
+
+      {meta.allowMultipleResponses ? (
+        <label className="settings-field">
+          <span className="q-label">每人填写上限（0 = 不限）</span>
+          <input
+            type="number"
+            min={0}
+            max={999}
+            className="settings-input"
+            defaultValue={meta.maxResponsesPerUser}
+            key={`survey-max-${surveyId}`}
+            disabled={disabled}
+            onBlur={(event) => {
+              const next = Number(event.target.value);
+              if (Number.isInteger(next) && next !== meta.maxResponsesPerUser) {
+                onUpdate({ maxResponsesPerUser: next });
+              }
+            }}
+          />
+        </label>
       ) : null}
     </div>
   );
@@ -504,90 +579,63 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
     }
   };
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 card">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="editor-page">
+      <header className="editor-topbar">
+        <div className="editor-topbar-main">
           <Link to={`/surveys/${survey.id}`} className="btn btn-icon" title="返回详情">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-lg font-semibold">{survey.title || "未命名问卷"}</h2>
+          <div className="editor-title">
+            <div className="editor-title-name">
+              <span className="truncate">{survey.title || "未命名问卷"}</span>
               <StatusBadge status={survey.status} />
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="editor-title-meta">
               {survey.questionCount} 题 · 更新于 {formatDateTime(survey.updatedAt)}
             </div>
           </div>
-          <button className="btn" onClick={() => setPreviewOpen(true)}>
+        </div>
+        <div className="editor-actions">
+          <button className="btn btn-sm" onClick={() => setPreviewOpen(true)}>
             <Eye className="h-4 w-4" />预览
           </button>
-          <button className="btn" disabled={duplicating} onClick={duplicateAsDraft}>
+          <button className="btn btn-sm btn-accent" disabled={duplicating} onClick={duplicateAsDraft}>
             {duplicating ? "复制中…" : "复制为新草稿"}
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
+      <div className="alert alert-warning">
         该问卷当前不可编辑（{survey.status !== "draft" ? "非草稿状态" : `已有 ${survey.responseCount} 份答卷`}）。
         复制为新草稿后编辑的入口将在后续批次提供；当前为只读视图。
       </div>
       {duplicateError ? (
-        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          复制失败：{duplicateError}
-        </div>
+        <div className="alert alert-error">复制失败：{duplicateError}</div>
       ) : null}
 
-      <section className="mt-4 card">
-        <h3 className="mb-3 font-semibold">题目列表（只读）</h3>
-        {questions.length ? (
-          <div className="grid gap-3">
-            {questions.map((question, index) => (
-              <div key={question.id} className="rounded-lg border border-gray-200 bg-white p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    第 {index + 1} 题
-                  </span>
-                  <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                    {QUESTION_TYPE_LABELS[question.type] ?? question.type}
-                  </span>
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                      question.required ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {question.required ? "必答" : "选答"}
-                  </span>
-                </div>
-                <div className="mt-2 font-medium">{question.title}</div>
-                {question.description ? (
-                  <div className="mt-1 text-sm text-gray-500">{question.description}</div>
-                ) : null}
-                {question.options.length ? (
-                  <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                    {question.options.map((option, optionIndex) => (
-                      <li key={option.id}>
-                        {optionIndex + 1}. {option.label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {matrixColumns(question.settings).length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {matrixColumns(question.settings).map((column) => (
-                      <span key={column} className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs text-amber-700">
-                        列：{column}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+      <div className="editor-body">
+        <aside className="editor-structure editor-col">
+          <ReadOnlyTree questions={questions} />
+        </aside>
+        <main className="editor-canvas editor-col">
+          <div className="settings-panel">
+            <div>
+              <div className="settings-panel-title">题目列表（只读）</div>
+              <div className="settings-panel-sub">共 {questions.length} 题</div>
+            </div>
+            {questions.length ? (
+              <div className="grid gap-3">
+                {questions.map((question, index) => (
+                  <ReadOnlyQuestion key={question.id} question={question} index={index} />
+                ))}
               </div>
-            ))}
+            ) : (
+              <EmptyPanel text="这份问卷还没有题目" />
+            )}
           </div>
-        ) : (
-          <EmptyPanel text="这份问卷还没有题目" />
-        )}
-      </section>
+        </main>
+      </div>
+
       {previewOpen ? (
         <SurveyPreview
           title={survey.title}
@@ -597,6 +645,83 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
           onClose={() => setPreviewOpen(false)}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ReadOnlyTree({ questions }: { questions: EditorData["questions"] }) {
+  return (
+    <div className="structure-panel">
+      <div className="structure-head">
+        <span>问卷结构</span>
+      </div>
+      <div className="structure-tree">
+        {questions.map((question, index) => (
+          <div key={question.id} className="tree-question">
+            <span className="tree-question-index">{index + 1}</span>
+            <span className="tree-question-title">{question.title || "未命名题目"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReadOnlyQuestion({
+  question,
+  index,
+}: {
+  question: EditorData["questions"][number];
+  index: number;
+}) {
+  return (
+    <div className="q-editor">
+      <div className="q-editor-head">
+        <div className="q-badges">
+          <span className="q-index">第 {index + 1} 题</span>
+          <span className="q-chip" style={{ background: "color-mix(in srgb, var(--color-primary) 13%, var(--surface))", color: "var(--color-primary)" }}>
+            {question.type}
+          </span>
+          <span
+            className="q-chip"
+            style={{
+              background: question.required
+                ? "color-mix(in srgb, var(--color-danger) 12%, var(--surface))"
+                : "var(--surface-muted)",
+              color: question.required ? "var(--color-danger)" : "var(--color-muted)",
+            }}
+          >
+            {question.required ? "必答" : "选答"}
+          </span>
+        </div>
+      </div>
+      <div className="q-body">
+        <div className="q-title-input" style={{ background: "var(--surface-input)", padding: "11px 13px" }}>
+          {question.title || "未填写题目标题"}
+        </div>
+        {question.description ? (
+          <div className="q-help">{question.description}</div>
+        ) : null}
+        {question.options.length ? (
+          <div className="grid gap-1.5">
+            {question.options.map((option, optionIndex) => (
+              <div key={option.id} className="q-option-row">
+                <span className="q-option-glyph round">•</span>
+                <span className="q-option-input" style={{ padding: "8px 11px" }}>
+                  {optionIndex + 1}. {option.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {matrixColumns(question.settings).length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {matrixColumns(question.settings).map((column) => (
+              <span key={column} className="q-column-chip">列：{column}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

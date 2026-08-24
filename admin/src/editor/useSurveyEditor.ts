@@ -294,6 +294,7 @@ export function useSurveyEditor(data: EditorData) {
         tempId,
         label: "新增题目",
       });
+      return tempId;
     },
     [pushOp, surveyId],
   );
