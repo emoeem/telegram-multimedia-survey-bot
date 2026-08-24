@@ -20,7 +20,9 @@
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
     "license-admin:setup": "node scripts/setup-license-admin.mjs",
     "license:issue": "node scripts/issue-license.mjs",
-    "customer:deploy": "node scripts/deploy-customer.mjs"
+    "customer:deploy": "node scripts/deploy-customer.mjs",
+    "customer:update": "node scripts/update-customers.mjs",
+    "release": "node scripts/publish-release.mjs"
   },
   "devDependencies": {
     "@cloudflare/puppeteer": "^1.1.0",

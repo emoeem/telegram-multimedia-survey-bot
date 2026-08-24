@@ -4,6 +4,7 @@ import {
   deactivateLicense,
   validateLicense,
 } from "../services/license.service";
+import { createSoftwareRelease } from "../db/repositories/license.repository";
 
 const MAX_BODY_LENGTH = 16_384;
 const NO_STORE_HEADERS = {
@@ -252,6 +253,7 @@ export async function handleLicenseApiRequest(
     "/api/v1/licenses/activate",
     "/api/v1/licenses/validate",
     "/api/v1/licenses/deactivate",
+    "/api/v1/releases",
   ]);
   if (!supportedPaths.has(path)) return null;
   if (request.method !== "POST") {
@@ -287,6 +289,39 @@ export async function handleLicenseApiRequest(
         },
         licenseKey: created.licenseKey,
       });
+    }
+
+    if (path === "/api/v1/releases") {
+      const expectedToken = adminToken?.trim() ?? "";
+      const submittedToken = readAdminToken(request);
+      if (
+        !expectedToken ||
+        !submittedToken ||
+        !constantTimeEquals(expectedToken, submittedToken)
+      ) {
+        return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+      }
+      const body = await readJsonObject(request);
+      const version = typeof body.version === "string" ? body.version.trim() : "";
+      if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
+        return jsonResponse(
+          { ok: false, error: "invalid_version", message: "版本号格式无效（应为 x.y.z）" },
+          400,
+        );
+      }
+      const notes = typeof body.notes === "string" && body.notes.trim()
+        ? body.notes.trim().slice(0, 2000)
+        : null;
+      const channel = typeof body.channel === "string" && body.channel.trim()
+        ? body.channel.trim().slice(0, 40)
+        : "stable";
+      const release = await createSoftwareRelease(db, {
+        version,
+        releasedAt: new Date().toISOString(),
+        channel,
+        ...(notes ? { notes } : {}),
+      });
+      return jsonResponse({ ok: true, release });
     }
 
     const rawBody = await readJsonObject(request);

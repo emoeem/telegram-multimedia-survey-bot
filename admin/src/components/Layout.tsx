@@ -9,6 +9,7 @@ import {
   Menu,
   Package,
   Palette,
+  KeyRound,
   ScrollText,
   Settings,
   Users,
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: "/reports", icon: Package, label: "报告" },
   { to: "/templates", icon: Palette, label: "模板" },
   { to: "/audit", icon: ScrollText, label: "审计" },
+  { to: "/licenses", icon: KeyRound, label: "授权" },
   { to: "/settings", icon: Settings, label: "设置" },
 ];
 
@@ -76,6 +78,7 @@ export function Layout() {
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
     if (path.startsWith("/audit")) return "审计日志";
+    if (path.startsWith("/licenses")) return "授权管理";
     if (path.startsWith("/login")) return "浏览器登录";
     if (path.startsWith("/settings")) return "系统设置";
     return "总览";
@@ -89,6 +92,7 @@ export function Layout() {
   const isReportsActive = location.pathname.startsWith("/reports");
   const isTemplatesActive = location.pathname.startsWith("/templates");
   const isAuditActive = location.pathname.startsWith("/audit");
+  const isLicensesActive = location.pathname.startsWith("/licenses");
   const isSettingsActive = location.pathname.startsWith("/settings");
   const goBack = () => {
     if (window.history.length > 1) window.history.back();
@@ -133,7 +137,9 @@ export function Layout() {
                             ? isTemplatesActive
                             : item.to === "/audit"
                               ? isAuditActive
-                              : isSurveysActive;
+                              : item.to === "/licenses"
+                                ? isLicensesActive
+                                : isSurveysActive;
               const Icon = item.icon;
               return (
                 <Link

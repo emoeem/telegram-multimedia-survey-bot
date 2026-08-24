@@ -441,3 +441,51 @@ export interface SystemSettingsData {
   pdfMaxMb: number;
   reportWatermark: string;
 }
+
+export type SoftwareLicenseType = "timed" | "perpetual";
+export type SoftwareLicenseStatus = "active" | "suspended" | "revoked";
+
+export interface LicenseActivationView {
+  installationId: string;
+  installationName: string | null;
+  appVersion: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  deactivatedAt: string | null;
+}
+
+export interface LicenseView {
+  publicId: string;
+  customerName: string | null;
+  customerContact: string | null;
+  licenseType: SoftwareLicenseType;
+  status: SoftwareLicenseStatus;
+  startsAt: string;
+  expiresAt: string | null;
+  updatesUntil: string | null;
+  maxActivations: number;
+  notes: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+  activationCount: number;
+  activations: LicenseActivationView[];
+}
+
+export interface SoftwareReleaseView {
+  version: string;
+  channel: string;
+  releasedAt: string;
+  minimumVersion: string | null;
+  downloadUrl: string | null;
+  notes: string | null;
+}
+
+export interface CreatorTrialView {
+  userId: number;
+  telegramUserId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  expiresAt: string;
+  grantedAt: string;
+}

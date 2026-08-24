@@ -15,6 +15,7 @@ import { TemplatesPage } from "./routes/TemplatesPage";
 import { LoginPage } from "./routes/LoginPage";
 import { AuditPage } from "./routes/AuditPage";
 import { SettingsPage } from "./routes/SettingsPage";
+import { LicensesPage } from "./routes/LicensesPage";
 
 const router = createBrowserRouter(
   [
@@ -34,6 +35,7 @@ const router = createBrowserRouter(
         { path: "templates", element: <TemplatesPage /> },
         { path: "audit", element: <AuditPage /> },
         { path: "settings", element: <SettingsPage /> },
+        { path: "licenses", element: <LicensesPage /> },
         { path: "login", element: <LoginPage /> },
         { path: "users", element: <UsersPage /> },
         { path: "*", element: <Navigate to="/" replace /> },

@@ -54,6 +54,7 @@ function parseArgs(argv) {
     "webhook-secret",
     "installation-id",
     "deployment-dir",
+    "update-existing",
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -870,10 +871,77 @@ Webhook：${webhookUrl}
   }
 }
 
+function readTomlValue(contents, key) {
+  return contents.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"))?.[1] ?? "";
+}
+
+async function updateDeployment(args, values) {
+  const deploymentDir = path.resolve(values["update-existing"]);
+  const manifestPath = path.join(deploymentDir, "deployment-manifest.json");
+  const manifest = await readJsonIfExists(manifestPath);
+  if (!manifest?.workerName || !manifest?.resources?.d1?.id) {
+    throw new DeploymentError(
+      `部署目录没有有效的 deployment-manifest.json：${deploymentDir}`,
+    );
+  }
+  const configPath = path.join(deploymentDir, "wrangler.toml");
+  let existingConfig = "";
+  try {
+    existingConfig = await fs.readFile(configPath, "utf8");
+  } catch {
+    existingConfig = "";
+  }
+  const adminIds = readTomlValue(existingConfig, "ADMIN_IDS");
+  const licenseServerUrl =
+    readTomlValue(existingConfig, "LICENSE_SERVER_URL") ||
+    DEFAULT_LICENSE_SERVER_URL;
+  const installationId =
+    readTomlValue(existingConfig, "INSTALLATION_ID") ||
+    manifest.installationId ||
+    "";
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
+  if (apiToken) process.env.CLOUDFLARE_API_TOKEN = apiToken;
+  if (accountId) process.env.CLOUDFLARE_ACCOUNT_ID = accountId;
+
+  const config = buildWranglerConfig({
+    projectDir: args.projectDir,
+    workerName: manifest.workerName,
+    adminIds,
+    licenseServerUrl,
+    installationId,
+    resources: manifest.resources,
+    accountId,
+  });
+  await fs.writeFile(configPath, config, "utf8");
+
+  console.log(`\n> 更新客户实例：${manifest.workerName}`);
+  await runCommand(
+    ["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath],
+    { cwd: args.projectDir, dryRun: args.dryRun },
+  );
+  await runCommand(
+    ["wrangler", "deploy", "--config", configPath, "--keep-vars"],
+    { cwd: args.projectDir, dryRun: args.dryRun },
+  );
+  if (!args.dryRun) {
+    await writeJson(manifestPath, {
+      ...manifest,
+      appVersion: APP_VERSION,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  console.log(`✅ ${manifest.workerName} 已更新到 ${APP_VERSION}（${manifest.workerUrl ?? "地址不变"}）`);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     printHelp();
+    return;
+  }
+  if (args.values["update-existing"]) {
+    await updateDeployment(args, args.values);
     return;
   }
   const values = await promptValues(args);

@@ -19,6 +19,12 @@ export async function buildMediaResponse(
   env: MediaServeEnv,
   asset: MediaAsset,
 ): Promise<Response | null> {
+  const secureHeaders = (headers: Headers, cacheControl: string): Headers => {
+    headers.set("Cache-Control", cacheControl);
+    headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Referrer-Policy", "no-referrer");
+    return headers;
+  };
   if (asset.url) {
     if (asset.url.startsWith("data:")) {
       const decoded = decodeDataUrl(asset.url);
@@ -30,7 +36,7 @@ export async function buildMediaResponse(
       }
       const headers = new Headers();
       headers.set("Content-Type", decoded.mimeType);
-      headers.set("Cache-Control", "public, max-age=300");
+      secureHeaders(headers, "public, max-age=300");
       if (asset.fileName) {
         headers.set(
           "Content-Disposition",
@@ -55,7 +61,7 @@ export async function buildMediaResponse(
     }
     const headers = new Headers();
     if (asset.mimeType) headers.set("Content-Type", asset.mimeType);
-    headers.set("Cache-Control", "private, max-age=300");
+    secureHeaders(headers, "private, no-store");
     return new Response(new Uint8Array(data).buffer, { headers });
   }
 
@@ -64,6 +70,7 @@ export async function buildMediaResponse(
     if (!storageKey || !env.MEDIA) return null;
     const headers = new Headers();
     if (asset.mimeType) headers.set("Content-Type", asset.mimeType);
+    secureHeaders(headers, "public, max-age=300");
     if (asset.fileName) {
       headers.set(
         "Content-Disposition",
@@ -79,11 +86,13 @@ export async function buildMediaResponse(
     try {
       const downloaded = await downloadTelegramFile(env.BOT_TOKEN, asset.telegramFileId);
       return new Response(new Uint8Array(downloaded.data).buffer, {
-        headers: {
-          "Content-Type":
-            asset.mimeType ?? downloaded.contentType ?? "application/octet-stream",
-          "Cache-Control": "public, max-age=300",
-        },
+        headers: secureHeaders(
+          new Headers({
+            "Content-Type":
+              asset.mimeType ?? downloaded.contentType ?? "application/octet-stream",
+          }),
+          "public, max-age=300",
+        ),
       });
     } catch {
       return null;
