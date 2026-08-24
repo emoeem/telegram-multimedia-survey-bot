@@ -59,6 +59,10 @@ import {
   ADMIN_LOGIN_TTL_SECONDS,
   createBrowserLoginToken,
 } from "../services/admin-session.service";
+import {
+  createSurveyParticipantToken,
+  SURVEY_PARTICIPANT_TOKEN_PARAM,
+} from "../services/participant-session.service";
 import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
 import type { SurveyQuestionView } from "../survey/engine";
 import { answerCallbackQuery, downloadTelegramFile, getBotUsername, getChat, sendDocument, sendLongMessage, sendMessage, sendPhoto, sendPhotoAlbum, type InlineKeyboardMarkup } from "./telegram";
@@ -128,14 +132,19 @@ async function getSurveyShareUrl(
   return `https://t.me/${username}?start=survey_${surveyId}`;
 }
 
-function buildHomeKeyboard(
+async function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
   origin?: string,
-): InlineKeyboardMarkup {
+  webhookSecret?: string,
+  userId?: number,
+): Promise<InlineKeyboardMarkup> {
+  const participantParam = webhookSecret && userId
+    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(webhookSecret, userId)}`
+    : "";
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
-      ? [{ text: "浏览问卷", url: `${origin}/s?v=3` }]
+      ? [{ text: "浏览问卷", url: `${origin}/s?v=3${participantParam}` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
   ];
@@ -168,7 +177,7 @@ async function showHomeMenu(
     userId,
     screen: "home",
     text,
-    replyMarkup: buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), ctx.origin),
+    replyMarkup: await buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), ctx.origin, ctx.webhookSecret, userId),
     ...(messageId === undefined ? {} : { messageId }),
   });
 }
@@ -1465,11 +1474,14 @@ async function listSurveys(
     completed_count: number | null;
   }>();
   const surveys = result.results ?? [];
+  const participantParam = ctx.webhookSecret && userId !== undefined
+    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId)}`
+    : "";
   const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map((survey) => [
     {
       text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
       ...(ctx.origin
-        ? { url: `${ctx.origin}/s/${survey.id}?v=3` }
+        ? { url: `${ctx.origin}/s/${survey.id}?v=3${participantParam}` }
         : { callback_data: "home:menu" }),
     },
   ]);
@@ -1610,12 +1622,15 @@ export async function handleTelegramMessage(
     }
     if (Number.isSafeInteger(surveyId) && surveyId > 0) {
       if (ctx.origin) {
+        const participantParam = ctx.webhookSecret
+          ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId)}`
+          : "";
         await sendMessage(
           ctx.botToken,
           message.chat.id,
-          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}?v=3`,
+          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}?v=3${participantParam}`,
           {
-            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}?v=3` }]],
+            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}?v=3${participantParam}` }]],
           },
         );
       } else {
@@ -1633,7 +1648,7 @@ export async function handleTelegramMessage(
       text: creator
         ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-      replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin),
+      replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId),
     });
     return;
   }
@@ -1678,10 +1693,12 @@ export async function handleTelegramMessage(
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
       text: activeResponse ? "已取消当前问卷填写及未完成操作。请选择下一步。" : "已取消当前操作。请选择下一步。",
-      replyMarkup: buildHomeKeyboard(
+      replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
         ctx.origin,
+        ctx.webhookSecret,
+        userId,
       ),
     });
     return;
@@ -1840,10 +1857,12 @@ export async function handleTelegramMessage(
         await renderUiScreen(ctx, message.chat.id, userId, {
           screen: "survey_list",
           text: "已取消搜索。使用下方按钮浏览问卷。",
-          replyMarkup: buildHomeKeyboard(
+          replyMarkup: await buildHomeKeyboard(
             Boolean(dbUser && await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)),
             Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
             ctx.origin,
+            ctx.webhookSecret,
+            userId,
           ),
         });
         return;
@@ -1874,10 +1893,12 @@ export async function handleTelegramMessage(
       creator
         ? "快捷入口在下方。问卷创建和完整管理请进入网页后台。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-      replyMarkup: buildHomeKeyboard(
+      replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
         ctx.origin,
+        ctx.webhookSecret,
+        userId,
       ),
     });
     return;
@@ -2052,7 +2073,7 @@ export async function handleTelegramMessage(
     text: creator
       ? "请在下方选择入口；问卷填写请在网页完成。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
       : "请在下方选择“浏览问卷”开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-    replyMarkup: buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin),
+    replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId),
   });
 }
 

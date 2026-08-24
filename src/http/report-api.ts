@@ -88,7 +88,8 @@ async function serveReportPage(
   }
 
   const viewModel = buildReportViewModel(snapshot, images);
-  const defaultTemplate = (await loadSystemSettings(env.DB)).defaultReportTemplate;
+  const systemSettings = await loadSystemSettings(env.DB);
+  const defaultTemplate = systemSettings.defaultReportTemplate;
   const templateId =
     url.searchParams.get("template") ??
     survey?.reportTemplateId ??
@@ -100,6 +101,7 @@ async function serveReportPage(
   };
   if (survey?.title) meta.surveyTitle = survey.title;
   if (response.completedAt) meta.completedAt = response.completedAt;
+  meta.watermark = systemSettings.reportWatermark;
   const html = buildResponsiveReportHtml(viewModel, meta, template);
   return new Response(html, {
     headers: {

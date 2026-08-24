@@ -92,6 +92,7 @@ describe("report template system", () => {
     expect(html).toContain('data-report-layout="bento"');
     expect(html).toContain("结果报告");
     expect(html).toContain("--report-bg:#282a36");
+    expect(html).toContain("更多问卷 @hnhgggfj_bot");
   });
 
   it("uses the composition engine when a template declares a layout", () => {

@@ -74,6 +74,9 @@ export async function createResponse(
     userId: number | null;
     participantHash: string;
     currentQuestionId?: number | null;
+    deviceFingerprint?: string | null;
+    browserInfo?: string | null;
+    ipAddress?: string | null;
   },
 ): Promise<SurveyResponse> {
   const timestamp = nowIso();
@@ -81,10 +84,12 @@ export async function createResponse(
     .prepare(
       `INSERT INTO survey_responses (
         survey_id, user_id, participant_hash, status,
-        started_at, current_question_id, version, created_at, updated_at
+        started_at, current_question_id, version, created_at, updated_at,
+        device_fingerprint, browser_info, ip_address
       ) VALUES (
         ?, ?, ?, 'in_progress', ?, ?,
-        (SELECT version FROM surveys WHERE id = ?), ?, ?
+        (SELECT version FROM surveys WHERE id = ?), ?, ?,
+        ?, ?, ?
       )`,
     )
     .bind(
@@ -96,6 +101,9 @@ export async function createResponse(
       input.surveyId,
       timestamp,
       timestamp,
+      input.deviceFingerprint ?? null,
+      input.browserInfo ?? null,
+      input.ipAddress ?? null,
     )
     .run();
 

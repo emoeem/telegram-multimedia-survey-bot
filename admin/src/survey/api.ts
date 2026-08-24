@@ -1,4 +1,5 @@
 import { getTelegramInitData } from "../telegram";
+import { surveyDeviceHeaders } from "./deviceInfo";
 
 export interface SurveyMediaDto {
   url: string;
@@ -117,6 +118,18 @@ export function identityHeaders(): Record<string, string> {
   if (telegramInitData) {
     return { "x-telegram-init-data": encodeURIComponent(telegramInitData) };
   }
+  // The bot mints a signed participant token (pt=…) when a Telegram user
+  // opens a survey from the chat, so browser responses stay linked to the
+  // real Telegram account without forcing the WebView.
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("pt");
+  if (token) {
+    localStorage.setItem("webSurveyParticipantToken", token);
+  }
+  const storedToken = localStorage.getItem("webSurveyParticipantToken");
+  if (storedToken) {
+    return { "x-participant-token": storedToken };
+  }
   return { "x-participant-key": getParticipantKey() };
 }
 
@@ -132,11 +145,13 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const deviceHeaders = await surveyDeviceHeaders();
   const response = await fetch(path, {
     ...init,
     headers: {
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...identityHeaders(),
+      ...deviceHeaders,
       ...init?.headers,
     },
   });

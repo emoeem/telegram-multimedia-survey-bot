@@ -1,5 +1,6 @@
 import type { Env } from "../index";
 import { verifyTelegramWebAppUser } from "./admin-api";
+import { verifySurveyParticipantToken } from "../services/participant-session.service";
 import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
 import { getSurveyFlow } from "../services/question.service";
@@ -108,6 +109,36 @@ async function resolveParticipant(
     };
   }
 
+  const participantToken = request.headers.get("x-participant-token");
+  if (participantToken) {
+    const telegramUserId = await verifySurveyParticipantToken(
+      env.WEBHOOK_SECRET,
+      participantToken,
+    );
+    if (!Number.isInteger(telegramUserId) || telegramUserId === null || telegramUserId <= 0) {
+      return fail(401, "invalid_identity", "登录状态已失效，请重新从 Telegram 打开问卷。");
+    }
+    await upsertUser(env.DB, {
+      telegramUserId,
+      username: null,
+      firstName: null,
+      lastName: null,
+      languageCode: null,
+      systemRole: "participant",
+    });
+    const user = await getUserByTelegramId(env.DB, telegramUserId);
+    if (!user) {
+      return fail(500, "identity_lookup_failed", "无法创建用户身份");
+    }
+    return {
+      kind: "telegram",
+      dbUserId: user.id,
+      telegramUserId,
+      participantKey: null,
+      participantHash: `user_${user.id}`,
+    };
+  }
+
   const participantKey = request.headers.get("x-participant-key");
   if (!participantKey || !ANONYMOUS_KEY_PATTERN.test(participantKey)) {
     return fail(401, "identity_required", "缺少答卷者身份标识");
@@ -135,6 +166,12 @@ function parseValidation(value: string | null): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function sanitizeHeader(value: string | null, maxLength: number): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= maxLength ? trimmed : null;
 }
 
 function parseSettings(value: string | null): Record<string, unknown> | null {
@@ -417,6 +454,9 @@ export async function handleSurveyApiRequest(
       userId: participant.dbUserId,
       participantHash: participant.participantHash,
       currentQuestionId: firstQuestion.id,
+      deviceFingerprint: sanitizeHeader(request.headers.get("x-device-fingerprint"), 128),
+      browserInfo: sanitizeHeader(request.headers.get("x-browser-info"), 2048),
+      ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
     });
     return json({
       responseId: response.id,

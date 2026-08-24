@@ -83,6 +83,9 @@ describe("response repository", () => {
       3,
       expect.any(String),
       expect.any(String),
+      null,
+      null,
+      null,
     );
     expect(response.version).toBe(2);
   });

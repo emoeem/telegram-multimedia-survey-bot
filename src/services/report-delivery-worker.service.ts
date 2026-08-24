@@ -146,10 +146,12 @@ async function deliverReportToChannel(
     surveyTitle?: string;
     completedAt: string;
     reportId: string;
+    watermark?: string;
   } = { completedAt, reportId: `#${responseId}` };
   if (survey?.title) pdfMeta.surveyTitle = survey.title;
-  const pdf = await renderReportPdf(env.BROWSER, snapshot, images, pdfMeta, {}, template);
   const settings = await loadSystemSettings(env.DB);
+  pdfMeta.watermark = settings.reportWatermark;
+  const pdf = await renderReportPdf(env.BROWSER, snapshot, images, pdfMeta, {}, template);
   const pdfMaxBytes = settings.pdfMaxMb * 1024 * 1024;
   if (pdf.byteSize > pdfMaxBytes) {
     throw new Error(`PDF 超过大小限制（${settings.pdfMaxMb}MB，实际 ${(pdf.byteSize / 1024 / 1024).toFixed(1)}MB）`);

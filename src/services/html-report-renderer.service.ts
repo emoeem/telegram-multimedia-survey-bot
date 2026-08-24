@@ -267,7 +267,7 @@ function responsiveCompositionCss(): string {
  */
 export function buildResponsiveCompositionReport(
   view: ReportViewModel,
-  meta: { surveyTitle?: string; completedAt?: string; reportId?: string },
+  meta: { surveyTitle?: string; completedAt?: string; reportId?: string; watermark?: string },
   template: ReportTemplateSpec,
 ): string {
   const layout = template.layout ?? selectReportLayout(view, template.layout ? { layout: template.layout } : {});
@@ -275,6 +275,7 @@ export function buildResponsiveCompositionReport(
   const composition = renderComposition(view, layout, themeChartColors(template.theme), template.blocks);
   const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
   const metaLine = [meta.surveyTitle, meta.completedAt, meta.reportId].filter(Boolean).map((value) => escapeHtml(text(value))).join(" · ");
+  const watermark = `<div class="report-watermark">${escapeHtml(meta.watermark ?? "更多问卷 @hnhgggfj_bot")}</div>`;
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -285,6 +286,7 @@ export function buildResponsiveCompositionReport(
     :root{--report-bg:#f4f6fa;--report-surface:#fff;--report-border:#e5e9f0}
     @media (prefers-color-scheme: dark){:root{--report-bg:#0f172a;--report-surface:#131c2e;--report-border:#26334d}}
     ${responsiveCompositionCss()}
+    .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:.9}
   </style>
   <style>${themeCss(theme)}${template.css ?? ""}</style>
 </head>
@@ -293,6 +295,7 @@ export function buildResponsiveCompositionReport(
     <main class="page">
       ${composition.html}
       <footer class="report-metadata">${metaLine || "本报告由问卷回答自动整理生成"}</footer>
+      ${watermark}
     </main>
   </div>
 </body>

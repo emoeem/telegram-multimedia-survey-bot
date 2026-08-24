@@ -20,11 +20,39 @@ import { ResponseMediaPreview } from "../components/ResponseMediaPreview";
 
 function respondentName(data: ResponseDetailData): string {
   if (!data.response.respondent) {
-    return data.response.participantKey ? `匿名 · ${data.response.participantKey}` : "匿名用户";
+    return data.response.participantKey
+      ? `网页参与 · ${data.response.participantKey}`
+      : "网页参与（未登录）";
   }
   const respondent = data.response.respondent;
   const name = [respondent.firstName, respondent.lastName].filter(Boolean).join(" ");
   return name || (respondent.username ? `@${respondent.username}` : String(respondent.telegramUserId));
+}
+
+function deviceInfoRows(response: ResponseDetailData["response"]): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (response.ipAddress) rows.push(["IP 地址", response.ipAddress]);
+  if (response.browserInfo) {
+    try {
+      const info = JSON.parse(response.browserInfo) as Record<string, unknown>;
+      const parts: Array<[string, string]> = [];
+      if (typeof info.platform === "string" && info.platform) parts.push(["设备", info.platform]);
+      if (typeof info.ua === "string" && info.ua) {
+        const browser = /(Chrome|Firefox|Safari|Edg|OPR)\/([\d.]+)/.exec(info.ua);
+        if (browser) parts.push(["浏览器", `${browser[1]} ${browser[2]}`]);
+      }
+      if (typeof info.screen === "string" && info.screen) parts.push(["屏幕", info.screen]);
+      if (typeof info.language === "string" && info.language) parts.push(["语言", info.language]);
+      if (typeof info.timezone === "string" && info.timezone) parts.push(["时区", info.timezone]);
+      rows.push(...parts);
+    } catch {
+      rows.push(["浏览器信息", response.browserInfo.slice(0, 200)]);
+    }
+  }
+  if (response.deviceFingerprint) {
+    rows.push(["设备指纹", response.deviceFingerprint]);
+  }
+  return rows;
 }
 
 export function ResponseDetailPage() {
@@ -123,6 +151,24 @@ export function ResponseDetailPage() {
           </div>
         </div>
       </section>
+
+      {(() => {
+        const rows = deviceInfoRows(data.response);
+        if (!rows.length) return null;
+        return (
+          <section className="card mt-4">
+            <h3 className="text-sm font-semibold">设备信息</h3>
+            <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+              {rows.map(([label, value]) => (
+                <div key={label} className="flex gap-2">
+                  <dt className="shrink-0 text-gray-500">{label}</dt>
+                  <dd className="min-w-0 break-all text-gray-800">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        );
+      })()}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button

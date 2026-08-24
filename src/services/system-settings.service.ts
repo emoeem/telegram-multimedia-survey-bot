@@ -11,6 +11,7 @@ export const SYSTEM_SETTING_KEYS = [
   "max_upload_mb",
   "max_response_media_mb",
   "pdf_max_mb",
+  "report_watermark",
 ] as const;
 
 export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number];
@@ -22,6 +23,7 @@ export interface SystemSettings {
   maxUploadMb: number;
   maxResponseMediaMb: number;
   pdfMaxMb: number;
+  reportWatermark: string;
 }
 
 export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
@@ -31,6 +33,7 @@ export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   maxUploadMb: 10,
   maxResponseMediaMb: 50,
   pdfMaxMb: 15,
+  reportWatermark: "更多问卷 @hnhgggfj_bot",
 };
 
 export async function loadSystemSettings(
@@ -48,6 +51,7 @@ export async function loadSystemSettings(
     maxUploadMb: number("max_upload_mb", SYSTEM_SETTING_DEFAULTS.maxUploadMb),
     maxResponseMediaMb: number("max_response_media_mb", SYSTEM_SETTING_DEFAULTS.maxResponseMediaMb),
     pdfMaxMb: number("pdf_max_mb", SYSTEM_SETTING_DEFAULTS.pdfMaxMb),
+    reportWatermark: stored["report_watermark"] ?? SYSTEM_SETTING_DEFAULTS.reportWatermark,
   };
 }
 

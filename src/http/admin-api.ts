@@ -954,6 +954,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     if (survey instanceof Response) return survey;
     const response = await env.DB.prepare(
       `SELECT r.id,r.survey_id,r.user_id,r.status,r.version,r.started_at,r.completed_at,r.submitted_at,r.updated_at,r.participant_hash,
+              r.device_fingerprint deviceFingerprint, r.browser_info browserInfo, r.ip_address ipAddress,
               u.telegram_user_id,u.username,u.first_name,u.last_name
        FROM survey_responses r
        LEFT JOIN users u ON u.id=r.user_id
@@ -1024,6 +1025,9 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         participantKey: response.telegram_user_id === null
           ? (response.participant_hash === null ? null : String(response.participant_hash))
           : null,
+        deviceFingerprint: response.deviceFingerprint === null ? null : String(response.deviceFingerprint),
+        browserInfo: response.browserInfo === null ? null : String(response.browserInfo),
+        ipAddress: response.ipAddress === null ? null : String(response.ipAddress),
       },
       answers: questions.map((question) => {
         const answer = answersByQuestion.get(question.id);
@@ -1851,11 +1855,12 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       }
       const snapshot = deserializeResultProfile(prepared.profile);
       const images = await resolveReportProfileImages(env, snapshot);
+      const settings = await loadSystemSettings(db);
       const pdf = await renderReportPdf(
         env.BROWSER,
         snapshot,
         images,
-        { reportId: `#${responseId}`, surveyTitle: surveyRow.title },
+        { reportId: `#${responseId}`, surveyTitle: surveyRow.title, watermark: settings.reportWatermark },
         {},
         template,
       );

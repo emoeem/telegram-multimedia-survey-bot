@@ -694,3 +694,89 @@ input[type="radio"] {
     color: #cbd5e1;
   }
 }
+
+/* ---- Manual theme override (Settings → 界面主题) ------------------------
+ * DaisyUI themes apply through html[data-theme]; these blocks keep the app's
+ * own tokens consistent for each palette instead of following the OS. */
+html[data-theme="light"],
+html[data-theme="retro"],
+html[data-theme="cupcake"] {
+  color-scheme: light;
+  --color-page: #f4f6fa;
+  --color-ink: #172033;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #eef2ff;
+  --color-edge: #e5e9f0;
+  --color-edge-soft: #eef1f6;
+  --color-muted: #64748b;
+  --color-muted-soft: #9aa4b2;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #0284c7;
+  --color-sidebar: #0f172a;
+  --color-sidebar-hover: #1e293b;
+  --survey-primary: #4f46e5;
+  --survey-primary-soft: #eef2ff;
+  --survey-bg: #f4f6fa;
+  --survey-card-bg: #ffffff;
+  --survey-card-border: #e7ebf2;
+  --survey-heading: #172033;
+  --survey-body: #3c4a5f;
+  --survey-muted: #6b7280;
+  --survey-header-bg: rgba(255, 255, 255, 0.82);
+}
+
+html[data-theme="dark"],
+html[data-theme="night"],
+html[data-theme="luxury"],
+html[data-theme="synthwave"],
+html[data-theme="black"] {
+  color-scheme: dark;
+  --color-page: #0f172a;
+  --color-ink: #e2e8f0;
+  --color-primary: #818cf8;
+  --color-primary-hover: #6366f1;
+  --color-primary-soft: #1e2740;
+  --color-edge: #26334d;
+  --color-edge-soft: #1c2740;
+  --color-muted: #94a3b8;
+  --color-muted-soft: #64748b;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #38bdf8;
+  --color-sidebar: #0b1220;
+  --color-sidebar-hover: #1e293b;
+  --survey-primary: #818cf8;
+  --survey-primary-soft: #1e2740;
+  --survey-bg: #0f172a;
+  --survey-card-bg: #111c2e;
+  --survey-card-border: #26334d;
+  --survey-heading: #e2e8f0;
+  --survey-body: #cbd5e1;
+  --survey-muted: #94a3b8;
+  --survey-header-bg: rgba(15, 23, 42, 0.82);
+}
+
+html[data-theme="dark"] .skeleton,
+html[data-theme="night"] .skeleton,
+html[data-theme="luxury"] .skeleton,
+html[data-theme="synthwave"] .skeleton,
+html[data-theme="black"] .skeleton {
+  background: linear-gradient(90deg, #1b2740 25%, #22304d 50%, #1b2740 75%);
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stat,
+html[data-theme="night"] .card,
+html[data-theme="night"] .stat,
+html[data-theme="luxury"] .card,
+html[data-theme="luxury"] .stat,
+html[data-theme="synthwave"] .card,
+html[data-theme="synthwave"] .stat,
+html[data-theme="black"] .card,
+html[data-theme="black"] .stat {
+  background: #101b2d;
+}

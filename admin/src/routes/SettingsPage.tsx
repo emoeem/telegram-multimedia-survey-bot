@@ -2,9 +2,11 @@ import { useState } from "react";
 import { api, apiSend, type SystemSettingsData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
+import { applyTheme, getStoredTheme, THEME_OPTIONS } from "../theme";
 
 export function SettingsPage() {
   const { data, error, retry } = useApi<{ settings: SystemSettingsData }>("/api/admin/settings");
+  const [theme, setTheme] = useState(getStoredTheme());
   const [form, setForm] = useState<SystemSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function SettingsPage() {
         max_upload_mb: settings.maxUploadMb,
         max_response_media_mb: settings.maxResponseMediaMb,
         pdf_max_mb: settings.pdfMaxMb,
+        report_watermark: settings.reportWatermark,
       });
       setSaved(true);
       setForm(null);
@@ -66,6 +69,24 @@ export function SettingsPage() {
       <h2 className="text-lg font-semibold">系统设置</h2>
       <p className="mt-1 text-sm text-gray-500">敏感凭据（Bot Token 等）不在此展示，请通过 Cloudflare Secrets 管理。</p>
 
+      <label className="mt-5 grid max-w-xs gap-1 text-sm">
+        <span className="text-gray-500">界面主题</span>
+        <select
+          className="select"
+          value={theme}
+          onChange={(event) => {
+            const next = event.target.value as (typeof THEME_OPTIONS)[number]["id"];
+            setTheme(next);
+            applyTheme(next);
+          }}
+        >
+          {THEME_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+        <span className="text-xs text-gray-400">即时生效，仅影响本浏览器</span>
+      </label>
+
       <div className="mt-5 grid max-w-2xl gap-4 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           <span className="text-gray-500">报告归档频道 ID</span>
@@ -95,6 +116,17 @@ export function SettingsPage() {
         {numberField("maxUploadMb", "单张图片上限（MB）", "默认 10")}
         {numberField("maxResponseMediaMb", "单份答卷图片总量（MB）", "默认 50")}
         {numberField("pdfMaxMb", "PDF 体积目标（MB）", "默认 15，非硬性限制", 0.5)}
+
+        <label className="grid gap-1 text-sm">
+          <span className="text-gray-500">报告结尾水印</span>
+          <input
+            className="input"
+            value={settings.reportWatermark}
+            onChange={(event) => update({ reportWatermark: event.target.value })}
+            placeholder="更多问卷 @hnhgggfj_bot"
+          />
+          <span className="text-xs text-gray-400">显示在每份报告（网页 / PDF / 频道归档）的结尾</span>
+        </label>
       </div>
 
       <div className="mt-6 flex items-center gap-3">

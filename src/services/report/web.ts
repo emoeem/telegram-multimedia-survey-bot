@@ -197,6 +197,8 @@ export interface ResponsiveReportMeta {
   surveyTitle?: string;
   completedAt?: string;
   reportId?: string;
+  /** Footer watermark text; defaults to the platform promotion line. */
+  watermark?: string;
 }
 
 function baseCss(): string {
@@ -265,6 +267,7 @@ figure.missing img{display:none}
 figcaption{margin-top:6px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .summary p{margin:0;white-space:pre-wrap;font-size:15px;line-height:1.75}
 footer.meta{margin-top:36px;padding-top:20px;border-top:1px dashed var(--border);color:var(--muted);font-size:12px;text-align:center;letter-spacing:.03em}
+.report-watermark{margin-top:22px;padding-top:16px;border-top:1px dashed var(--border);color:var(--muted);font-size:12px;text-align:center;letter-spacing:.02em;opacity:.9}
 @media (max-width:639px){.answer-item,.checklist li{grid-template-columns:1fr;gap:3px;padding:11px 0}.answer-item dt,.checklist strong{margin-bottom:3px}.profile-hero{grid-template-columns:1fr;justify-items:start;gap:10px}.profile-hero .avatar{width:76px;height:76px}.hero-title{font-size:28px}.report-cover{min-height:38vh;padding:32px 22px}}
 @media (min-width:640px){.gallery{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.score-grid{grid-template-columns:repeat(2,1fr)}.score-rings{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 28px 64px}}
 @media (min-width:960px){.wrap{display:grid;grid-template-columns:repeat(12,1fr);gap:20px;max-width:1120px;padding:0 32px 64px}header.hero,.report-cover,.section-gallery,.report-divider{grid-column:1/-1}.report-section{margin-top:0}.section-summary{grid-column:span 5}.section-scores{grid-column:span 7}.section-radar{grid-column:span 6}.section-insights{grid-column:span 6}.section-quotes{grid-column:span 6}.section-answers{grid-column:span 6}.section-verdict{grid-column:span 12}.gallery{grid-template-columns:repeat(3,1fr)}.profile-hero .avatar{width:108px;height:108px}.hero-title{font-size:40px}header.hero{padding:52px 0 30px}.report-cover{min-height:50vh}}
@@ -302,6 +305,7 @@ export function buildResponsiveReportHtml(
     .filter(Boolean)
     .join("");
   const footer = `<footer class="meta">${meta.surveyTitle ? `${escapeHtml(meta.surveyTitle)} · ` : ""}${escapeHtml(text(meta.completedAt))}${meta.reportId ? ` · 报告 ${escapeHtml(meta.reportId)}` : ""}</footer>`;
+  const watermark = `<div class="report-watermark">${escapeHtml(meta.watermark ?? "更多问卷 @hnhgggfj_bot")}</div>`;
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -323,6 +327,7 @@ export function buildResponsiveReportHtml(
     ${nav}
     ${sections}
     ${footer}
+    ${watermark}
   </main>
 </body>
 </html>`;

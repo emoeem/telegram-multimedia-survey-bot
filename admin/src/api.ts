@@ -231,6 +231,9 @@ export interface ResponseListItem {
   updatedAt: string;
   respondent: ResponseRespondent | null;
   participantKey: string | null;
+  deviceFingerprint?: string | null;
+  browserInfo?: string | null;
+  ipAddress?: string | null;
 }
 
 export interface ResponseListData {
@@ -436,4 +439,5 @@ export interface SystemSettingsData {
   maxUploadMb: number;
   maxResponseMediaMb: number;
   pdfMaxMb: number;
+  reportWatermark: string;
 }

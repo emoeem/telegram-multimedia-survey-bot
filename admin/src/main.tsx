@@ -3,10 +3,12 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { App } from "./App";
 import { activateTelegramWebApp, waitForTelegramWebApp } from "./telegram";
+import { applyTheme, getStoredTheme } from "./theme";
 
 void (async () => {
   await waitForTelegramWebApp();
   activateTelegramWebApp();
+  applyTheme(getStoredTheme());
   // PWA offline shell; HTTPS only so the local QA server never registers it.
   if (import.meta.env.PROD && window.location.protocol === "https:") {
     navigator.serviceWorker?.register("/sw.js").catch(() => {

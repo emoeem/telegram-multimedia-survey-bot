@@ -28,7 +28,9 @@ const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
 
 function respondentName(item: ResponseListData["items"][number]): string {
   if (!item.respondent) {
-    return item.participantKey ? `匿名 · ${item.participantKey}` : "匿名用户";
+    return item.participantKey
+      ? `网页参与 · ${item.participantKey}`
+      : "网页参与（未登录）";
   }
   const name = [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ");
   return name || (item.respondent.username ? `@${item.respondent.username}` : String(item.respondent.telegramUserId));
