@@ -31,8 +31,12 @@ jobs:
       - name: Admin build
         working-directory: admin
         run: npm run build
-      - name: PDF parser regression
-        run: python3 -m venv /tmp/pdf-venv && /tmp/pdf-venv/bin/pip install -q pymupdf && /tmp/pdf-venv/bin/python scripts/test_forms_pdf_to_survey.py
+      - name: PDF parser + URL importer regression
+        run: |
+          python3 -m venv /tmp/pdf-venv
+          /tmp/pdf-venv/bin/pip install -q pymupdf
+          /tmp/pdf-venv/bin/python scripts/test_forms_pdf_to_survey.py
+          /tmp/pdf-venv/bin/python scripts/test_import_survey_from_url.py
 
   visual:
     runs-on: ubuntu-latest

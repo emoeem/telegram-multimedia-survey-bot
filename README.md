@@ -196,6 +196,42 @@ Windows 用户双击 `scripts\pdf-to-survey-easy.cmd`，再把 PDF 拖进弹出�
 Windows 示例和完整排错说明见
 `docs/WINDOWS_CUSTOMER_DEPLOYMENT.md`。
 
+## 通过 URL 导入 Microsoft 问卷
+
+支持直接输入 URL 自动完成“下载/转换 → PDF 解析 → 标准 survey.json”：
+
+```bash
+uv run python scripts/import_survey_from_url.py "https://forms.office.com/r/xxxx"
+```
+
+可指定的 URL 类型：
+
+- Microsoft Forms 问卷（`forms.office.com` / `forms.cloud.microsoft` /
+  `forms.microsoft.com` 的公开问卷），直接读取问卷定义生成 JSON；
+- OneDrive / SharePoint / Word Online 分享链接（`1drv.ms`、
+  `onedrive.live.com`、`*.sharepoint.com` 等），自动追加 `download=1`
+  下载原文档，再用 LibreOffice 转 PDF 后走现有解析器；
+- 直接指向 PDF 的链接，跳过转换直接解析；
+- 直接指向 survey JSON 的链接，校验后原样输出。
+
+指定输出文件与标题覆盖：
+
+```bash
+uv run python scripts/import_survey_from_url.py \
+  "https://1drv.ms/xxxx" \
+  --output /tmp/questionnaire.json
+```
+
+生成的 JSON 与 `forms_pdf_to_survey.py` 完全同构，可通过管理后台
+“导入问卷”直接创建草稿；后台也提供 Microsoft Forms 链接在线导入
+（PDF / Office 文档需先在本地用上面的命令转换）。
+
+测试：
+
+```bash
+uv run python scripts/test_import_survey_from_url.py
+```
+
 ## 商业授权
 
 当前 Worker 可以作为厂商控制的授权中心。许可证密钥只保存 SHA-256

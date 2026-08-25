@@ -85,6 +85,11 @@ import {
   updateSoftwareLicenseStatus,
 } from '../db/repositories/license.repository';
 import { createLicense } from '../services/license.service';
+import {
+  FormsImportError,
+  fetchMicrosoftFormsSurveyJson,
+  isFormsUrl,
+} from '../services/microsoft-forms.service';
 import { buildCsv, getExportRows, serializeExport } from '../services/export.service';
 import { exportUnifiedSurveyJson } from '../services/survey-json.service';
 import {
@@ -1526,6 +1531,77 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       return json({ ok: true });
     }
     return fail(405, 'method_not_allowed', '仅支持 POST / DELETE');
+  }
+
+  // POST /api/admin/imports/from-url — Microsoft Forms URL → survey JSON
+  // (the Worker can fetch public Forms definitions; PDF / Office documents
+  // must be imported through the local Python CLI importer).
+  if (request.method === 'POST' && url.pathname === '/api/admin/imports/from-url') {
+    if (!isAdmin && !(await hasActiveCreatorTrial(db, user.id))) {
+      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能导入问卷。');
+    }
+    const rawUrl = typeof body.url === 'string' ? body.url.trim() : '';
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl);
+    } catch {
+      return fail(400, 'invalid_url', '请输入有效的 http/https URL');
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return fail(400, 'invalid_url', '仅支持 http/https URL');
+    }
+    if (!isFormsUrl(rawUrl)) {
+      return fail(
+        400,
+        'unsupported_in_worker',
+        '当前仅支持 Microsoft Forms 链接在线导入。PDF / Word / Excel / PowerPoint 文档请在本地运行：\n' +
+          'uv run python scripts/import_survey_from_url.py "<URL>"\n' +
+          '然后把生成的 survey.json 粘贴到下方文本框完成导入。',
+      );
+    }
+    let content: string;
+    try {
+      content = await fetchMicrosoftFormsSurveyJson(rawUrl);
+    } catch (error) {
+      if (error instanceof FormsImportError) {
+        const status =
+          error.code === 'DOCUMENT_REQUIRES_AUTH'
+            ? 401
+            : error.code === 'HTTP_404'
+              ? 404
+              : error.code === 'NETWORK_ERROR'
+                ? 502
+                : 422;
+        return fail(status, error.code, error.message);
+      }
+      console.error('Microsoft Forms URL import failed', { url: rawUrl, error });
+      return fail(502, 'network_error', '获取 Microsoft Forms 问卷失败，请稍后重试。');
+    }
+    let imported: ReturnType<typeof parseImportedSurvey>;
+    try {
+      imported = parseImportedSurvey(content);
+    } catch (error) {
+      if (error instanceof ImportValidationError) {
+        return Response.json(
+          {
+            ok: false,
+            code: 'invalid_import',
+            message: error.message,
+            issues: error.issues,
+            requestId: ctx.requestId,
+          },
+          { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
+      return fail(400, 'invalid_import', error instanceof Error ? error.message : '问卷 JSON 无效');
+    }
+    const summary = buildImportSummary(imported);
+    return json({
+      ok: true,
+      content,
+      source: 'microsoft_forms',
+      ...summary,
+    });
   }
 
   if (request.method === 'POST' && (url.pathname === '/api/admin/imports/validate' || url.pathname === '/api/admin/imports')) {

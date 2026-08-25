@@ -8,7 +8,7 @@ import {
   type ImportSummary,
   type ReportTemplateOption,
 } from "../api";
-import { AlertTriangle, FilePlus2, FileSearch, FolderOpen } from "lucide-react";
+import { AlertTriangle, FilePlus2, FileSearch, FolderOpen, Link2 } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   single: "单选",
@@ -35,6 +35,8 @@ export function ImportPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [content, setContent] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
   const [validating, setValidating] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,15 +51,16 @@ export function ImportPage() {
       .catch(() => setTemplates([]));
   }, []);
 
-  const validate = async () => {
-    if (validating || !content.trim()) return;
+  const validate = async (overrideContent?: string) => {
+    const source = overrideContent ?? content;
+    if (validating || !source.trim()) return;
     setValidating(true);
     setError(null);
     setIssues([]);
     setSummary(null);
     try {
       const result = await apiSend<ImportSummary>("POST", "/api/admin/imports/validate", {
-        content,
+        content: source,
         ...(templateId ? { reportTemplateId: templateId } : {}),
       });
       setSummary(result);
@@ -68,6 +71,31 @@ export function ImportPage() {
       }
     } finally {
       setValidating(false);
+    }
+  };
+
+  const importFromUrl = async () => {
+    if (importingUrl || !urlInput.trim()) return;
+    setImportingUrl(true);
+    setError(null);
+    setIssues([]);
+    setSummary(null);
+    try {
+      const result = await apiSend<{ content: string; title: string }>(
+        "POST",
+        "/api/admin/imports/from-url",
+        { url: urlInput.trim() },
+      );
+      setContent(result.content);
+      setUrlInput("");
+      await validate(result.content);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "从 URL 导入失败");
+      if (requestError instanceof ApiError && Array.isArray(requestError.data?.issues)) {
+        setIssues(requestError.data.issues as ImportIssue[]);
+      }
+    } finally {
+      setImportingUrl(false);
     }
   };
 
@@ -106,6 +134,48 @@ export function ImportPage() {
 
   return (
     <div className="space-y-4">
+      <section className="card">
+        <h2 className="text-lg font-semibold">从 Microsoft URL 导入</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          输入公开的 Microsoft Forms 问卷链接（forms.office.com / forms.cloud.microsoft /
+          forms.microsoft.com），自动转换为标准问卷 JSON。PDF 与 Office 文档请在本地运行
+          <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">
+            uv run python scripts/import_survey_from_url.py
+          </code>
+          后把生成的 survey.json 粘贴到下方。
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <input
+            type="url"
+            className="min-w-64 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm"
+            placeholder="https://forms.office.com/r/…"
+            value={urlInput}
+            onChange={(event) => {
+              setUrlInput(event.target.value);
+              setIssues([]);
+              setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void importFromUrl();
+            }}
+          />
+          <button
+            className="btn"
+            disabled={importingUrl || !urlInput.trim()}
+            onClick={() => void importFromUrl()}
+          >
+            {importingUrl ? (
+              "导入中…"
+            ) : (
+              <>
+                <Link2 className="h-4 w-4" />
+                从 URL 导入
+              </>
+            )}
+          </button>
+        </div>
+      </section>
+
       <section className="card">
         <h2 className="text-lg font-semibold">导入问卷 JSON</h2>
         <p className="mt-1 text-sm text-gray-500">
