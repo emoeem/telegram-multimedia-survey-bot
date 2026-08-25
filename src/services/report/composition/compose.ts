@@ -22,6 +22,7 @@ function region(id: ReportCompositionRegion["id"], role: ReportCompositionRegion
 
 function available(view: ReportViewModel, content: PreparedReportContent): Record<ReportBlockSpec["kind"], boolean> {
   return {
+    cover: true,
     hero: true,
     overview: view.scores.length > 0 || view.tags.length > 0,
     featured: Boolean(content.featuredInsight),
@@ -41,6 +42,7 @@ export function composeReport(
   blocks?: ReportCompositionBlockKind[],
 ): ReportComposition {
   const has = available(view, content);
+  const cover = region("hero", "hero", [block("cover", "editorial", 12, "full", "primary")]);
   const hero = region("opening", "hero", [block("hero", "editorial", 12, "full", "primary")]);
   const overview = region("overview", "overview", has.overview ? [block("overview", "data", 12, "full", "featured")] : []);
   const featured = region("featured", "featured", has.featured ? [block("featured", "quote", 12, "wide", "featured")] : []);
@@ -54,9 +56,10 @@ export function composeReport(
   const transcript = region("evidence", "evidence", has.transcript ? [block("transcript", "editorial", 12, "full")] : []);
   const gallery = region("gallery", "gallery", has.gallery ? [block("gallery", "image", 12, "full")] : []);
   const finale = region("finale", "finale", [block("verdict", "editorial", 12, "full", "primary")]);
-  const regionMap = new Map([hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]));
+  const regionMap = new Map([cover, hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]));
   if (blocks && blocks.length > 0) {
     const byKind: Record<ReportCompositionBlockKind, ReportCompositionRegion> = {
+      cover,
       hero,
       overview,
       featured,

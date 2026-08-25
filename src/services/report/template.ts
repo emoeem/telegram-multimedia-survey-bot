@@ -63,6 +63,7 @@ export interface ReportTemplateSpec {
 export const REPORT_TEMPLATE_SCHEMA_VERSION = 1;
 
 const compositionBlockKinds = new Set<ReportCompositionBlockKind>([
+  "cover",
   "hero",
   "overview",
   "featured",
@@ -223,7 +224,7 @@ export const TRANSCRIPT_REPORT_TEMPLATE: ReportTemplateSpec = {
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],
-  css: `.report-layout-editorial .transcript-list{max-width:760px}.report-layout-editorial .transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .transcript-item:first-of-type{border-top:0}.report-layout-editorial .transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text)}.report-layout-editorial .transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap}.report-layout-editorial .answer-options{margin-top:10px;display:grid;gap:6px}.report-layout-editorial .answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.report-layout-editorial .answer-option.selected{color:var(--report-accent);font-weight:600}`,
+  css: `html .report-layout-editorial{--report-accent:#475569;--report-bg:#fbfbfc;--report-border:#e4e7ec}.report-layout-editorial .hero{min-height:0;padding:40px 0 44px}.report-layout-editorial .transcript-list{max-width:760px}.report-layout-editorial .transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .transcript-item:first-of-type{border-top:0}.report-layout-editorial .transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text)}.report-layout-editorial .transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap}.report-layout-editorial .answer-options{margin-top:10px;display:grid;gap:6px}.report-layout-editorial .answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.report-layout-editorial .answer-option.selected{color:var(--report-accent);font-weight:600}`,
 };
 
 export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
@@ -270,9 +271,9 @@ export const IDENTITY_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-luxury",
   layout: "profile",
-  blocks: ["hero", "overview", "responses", "verdict"],
+  blocks: ["cover", "overview", "responses", "verdict"],
   sections: [
-    { kind: "hero" },
+    { kind: "cover" },
     { kind: "scores", presentation: "grid" },
     { kind: "answers", presentation: "list" },
     { kind: "verdict" },
@@ -288,9 +289,9 @@ export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-retro",
   layout: "magazine",
-  blocks: ["hero", "featured", "gallery", "analysis", "verdict"],
+  blocks: ["cover", "featured", "gallery", "analysis", "verdict"],
   sections: [
-    { kind: "hero" },
+    { kind: "cover" },
     { kind: "quotes" },
     { kind: "gallery" },
     { kind: "insights" },
@@ -322,9 +323,9 @@ export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-black",
   layout: "gallery",
-  blocks: ["hero", "gallery", "verdict"],
+  blocks: ["cover", "gallery", "verdict"],
   sections: [
-    { kind: "hero" },
+    { kind: "cover" },
     { kind: "gallery" },
     { kind: "verdict" },
   ],

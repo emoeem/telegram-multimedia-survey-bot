@@ -62,6 +62,7 @@ export type ReportPresentation = "editorial" | "card" | "bento-tile" | "quote" |
 
 /** Top-level composition blocks a template may choose and reorder. */
 export type ReportCompositionBlockKind =
+  | "cover"
   | "hero"
   | "overview"
   | "featured"
