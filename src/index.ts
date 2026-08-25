@@ -17,6 +17,7 @@ import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-remind
 import { runDatabaseMaintenance } from "./services/database-maintenance.service";
 import { cleanupExpiredTemporaryMedia } from "./services/media/temporary-media.service";
 import { KVMediaStore } from "./services/media/temporary-media-store";
+import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { recoverStaleIdentityCardJobs } from "./services/identity-card-job-recovery.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
@@ -266,6 +267,14 @@ export default {
         if (summary.requeued || summary.failed) console.warn("Recovered stale result visual jobs", summary);
       } catch (error) {
         console.error("Result visual job recovery failed", error);
+      }
+      try {
+        const migrated = await migrateDataUrlCoversToKv(env.DB, env);
+        if (migrated > 0) {
+          console.info("Migrated data-URL covers into MEDIA_KV", { migrated });
+        }
+      } catch (error) {
+        console.error("Cover KV migration failed", error);
       }
       return;
     }
