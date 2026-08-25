@@ -31,50 +31,95 @@ function respondentName(data: ResponseDetailData): string {
     .join(" · ");
 }
 
-function deviceInfoRows(response: ResponseDetailData["response"]): Array<[string, string]> {
-  const rows: Array<[string, string]> = [];
-  if (response.ipAddress) rows.push(["IP 地址", response.ipAddress]);
+interface EnvRow {
+  label: string;
+  value: string;
+  source: "无感采集" | "服务端推断";
+}
+
+interface EnvGroup {
+  title: string;
+  rows: EnvRow[];
+}
+
+function envGroups(response: ResponseDetailData["response"]): EnvGroup[] {
+  const groups: EnvGroup[] = [];
+  const add = (title: string, rows: EnvRow[]) => {
+    if (rows.length) groups.push({ title, rows });
+  };
   if (response.browserInfo) {
+    let info: Record<string, unknown> = {};
     try {
-      const info = JSON.parse(response.browserInfo) as Record<string, unknown>;
-      const parts: Array<[string, string]> = [];
-      if (typeof info.platform === "string" && info.platform) parts.push(["设备", info.platform]);
-      if (typeof info.mobile === "boolean") parts.push(["移动端", info.mobile ? "是" : "否"]);
-      if (typeof info.ua === "string" && info.ua) {
-        const browser = /(Chrome|Firefox|Safari|Edg|OPR)\/([\d.]+)/.exec(info.ua);
-        if (browser) parts.push(["浏览器", `${browser[1]} ${browser[2]}`]);
-      }
-      if (typeof info.screen === "string" && info.screen) parts.push(["屏幕", info.screen]);
-      if (typeof info.viewport === "string" && info.viewport) parts.push(["视口", info.viewport]);
-      if (typeof info.dpr === "number" && info.dpr > 0) parts.push(["屏幕倍率", `×${info.dpr}`]);
-      if (typeof info.language === "string" && info.language) parts.push(["语言", info.language]);
-      if (typeof info.languages === "object" && Array.isArray(info.languages) && info.languages.length) {
-        parts.push(["全部语言", (info.languages as string[]).join(", ")]);
-      }
-      if (typeof info.timezone === "string" && info.timezone) parts.push(["时区", info.timezone]);
-      if (typeof info.cores === "number" && info.cores > 0) parts.push(["CPU 内核", String(info.cores)]);
-      if (typeof info.memory === "number" && info.memory > 0) parts.push(["内存", `${info.memory} GB`]);
-      if (typeof info.touch === "boolean") parts.push(["触摸屏", info.touch ? "支持" : "不支持"]);
-      if (typeof info.connection === "string" && info.connection) parts.push(["网络", info.connection]);
-      if (typeof info.online === "boolean") parts.push(["在线状态", info.online ? "在线" : "离线"]);
-      if (info.geo && typeof info.geo === "object") {
-        const geo = info.geo as Record<string, string>;
-        const location = [geo.country, geo.region, geo.city].filter(Boolean).join(" · ");
-        if (location) parts.push(["地理位置", location]);
-        if (geo.timezone) parts.push(["Geo 时区", geo.timezone]);
-        if (geo.asn) parts.push(["运营商 ASN", `AS${geo.asn}`]);
-        if (geo.colo) parts.push(["接入节点", geo.colo]);
-      }
-      if (typeof info.referrer === "string" && info.referrer) parts.push(["来源页面", info.referrer]);
-      rows.push(...parts);
+      info = JSON.parse(response.browserInfo) as Record<string, unknown>;
     } catch {
-      rows.push(["浏览器信息", response.browserInfo.slice(0, 200)]);
+      add("浏览器信息", [{ label: "原始数据", value: response.browserInfo.slice(0, 500), source: "无感采集" }]);
+      return groups;
     }
+    const geo = (info.geo && typeof info.geo === "object" ? info.geo : {}) as Record<string, string>;
+    const webgl = (info.webgl && typeof info.webgl === "object" ? info.webgl : {}) as Record<string, unknown>;
+
+    const network: EnvRow[] = [];
+    if (response.ipAddress) network.push({ label: "IP 地址", value: response.ipAddress, source: "服务端推断" });
+    const location = [geo.country, geo.region, geo.city].filter(Boolean).join(" · ");
+    if (location) network.push({ label: "IP 地理位置", value: location, source: "服务端推断" });
+    if (geo.asn) network.push({ label: "运营商 ASN", value: `AS${geo.asn}`, source: "服务端推断" });
+    if (geo.colo) network.push({ label: "接入节点", value: geo.colo, source: "服务端推断" });
+    if (typeof info.connection === "string" && info.connection) network.push({ label: "网络类型", value: info.connection, source: "无感采集" });
+    if (typeof info.connectionType === "string" && info.connectionType) network.push({ label: "连接类型", value: info.connectionType, source: "无感采集" });
+    if (typeof info.rtt === "number" && info.rtt > 0) network.push({ label: "网络延迟 RTT", value: `${info.rtt} ms`, source: "无感采集" });
+    if (typeof info.downlink === "number" && info.downlink > 0) network.push({ label: "下行速率", value: `${info.downlink} Mbps`, source: "无感采集" });
+    if (typeof info.online === "boolean") network.push({ label: "在线状态", value: info.online ? "在线" : "离线", source: "无感采集" });
+    add("网络", network);
+
+    const browser: EnvRow[] = [];
+    if (typeof info.ua === "string" && info.ua) {
+      const parsed = /(Chrome|Firefox|Safari|Edg|OPR|Mobile)\/([\d.]+)/.exec(info.ua);
+      if (parsed) browser.push({ label: "浏览器", value: `${parsed[1]} ${parsed[2]}`, source: "无感采集" });
+      browser.push({ label: "User-Agent", value: info.ua, source: "无感采集" });
+    }
+    if (typeof info.language === "string" && info.language) browser.push({ label: "语言", value: info.language, source: "无感采集" });
+    if (Array.isArray(info.languages) && info.languages.length) {
+      browser.push({ label: "全部语言", value: (info.languages as string[]).join(", "), source: "无感采集" });
+    }
+    if (typeof info.acceptLanguage === "string" && info.acceptLanguage) browser.push({ label: "Accept-Language", value: info.acceptLanguage, source: "服务端推断" });
+    if (typeof info.secChUa === "string" && info.secChUa) browser.push({ label: "客户端提示", value: info.secChUa, source: "服务端推断" });
+    if (typeof info.doNotTrack === "string" && info.doNotTrack) browser.push({ label: "Do Not Track", value: info.doNotTrack, source: "无感采集" });
+    if (typeof info.cookiesEnabled === "boolean") browser.push({ label: "Cookie 启用", value: info.cookiesEnabled ? "是" : "否", source: "无感采集" });
+    if (typeof info.plugins === "number") browser.push({ label: "浏览器插件数", value: String(info.plugins), source: "无感采集" });
+    if (typeof info.navigationType === "string" && info.navigationType) browser.push({ label: "进入方式", value: info.navigationType, source: "无感采集" });
+    add("浏览器", browser);
+
+    const device: EnvRow[] = [];
+    if (typeof info.platform === "string" && info.platform) device.push({ label: "操作系统", value: info.platform, source: "无感采集" });
+    if (typeof info.mobile === "boolean") device.push({ label: "移动设备", value: info.mobile ? "是" : "否", source: "无感采集" });
+    if (typeof info.screen === "string" && info.screen) device.push({ label: "屏幕", value: info.screen, source: "无感采集" });
+    if (typeof info.screenAvailable === "string" && info.screenAvailable) device.push({ label: "可用屏幕", value: info.screenAvailable, source: "无感采集" });
+    if (typeof info.viewport === "string" && info.viewport) device.push({ label: "视口", value: info.viewport, source: "无感采集" });
+    if (typeof info.dpr === "number" && info.dpr > 0) device.push({ label: "屏幕倍率", value: `×${info.dpr}`, source: "无感采集" });
+    if (typeof info.cores === "number" && info.cores > 0) device.push({ label: "CPU 内核", value: String(info.cores), source: "无感采集" });
+    if (typeof info.memory === "number" && info.memory > 0) device.push({ label: "设备内存", value: `${info.memory} GB`, source: "无感采集" });
+    if (typeof info.touch === "boolean") device.push({ label: "触摸屏", value: info.touch ? "支持" : "不支持", source: "无感采集" });
+    if (typeof info.touchPoints === "number") device.push({ label: "触点数", value: String(info.touchPoints), source: "无感采集" });
+    if (webgl.renderer) {
+      device.push({ label: "GPU 渲染器", value: String(webgl.renderer), source: "无感采集" });
+      if (webgl.vendor) device.push({ label: "GPU 厂商", value: String(webgl.vendor), source: "无感采集" });
+      if (webgl.version) device.push({ label: "WebGL 版本", value: String(webgl.version), source: "无感采集" });
+      if (typeof webgl.extensions === "number") device.push({ label: "WebGL 扩展数", value: String(webgl.extensions), source: "无感采集" });
+    }
+    add("设备", device);
+
+    const context: EnvRow[] = [];
+    if (typeof info.timezone === "string" && info.timezone) context.push({ label: "时区", value: info.timezone, source: "无感采集" });
+    if (geo.timezone) context.push({ label: "Geo 时区", value: geo.timezone, source: "服务端推断" });
+    if (typeof info.referrer === "string" && info.referrer) context.push({ label: "来源页面", value: info.referrer, source: "无感采集" });
+    if (typeof info.url === "string" && info.url) context.push({ label: "当前 URL", value: info.url, source: "无感采集" });
+    if (typeof info.query === "string" && info.query) context.push({ label: "URL 参数", value: info.query, source: "无感采集" });
+    add("上下文", context);
   }
   if (response.deviceFingerprint) {
-    rows.push(["设备指纹", response.deviceFingerprint]);
+    add("设备指纹", [{ label: "FingerprintJS 指纹", value: response.deviceFingerprint, source: "无感采集" }]);
   }
-  return rows;
+  return groups;
 }
 
 export function ResponseDetailPage() {
@@ -212,19 +257,72 @@ export function ResponseDetailPage() {
       </section>
 
       {(() => {
-        const rows = deviceInfoRows(data.response);
-        if (!rows.length) return null;
+        const groups = envGroups(data.response);
+        if (!groups.length) return null;
+        let envRisk: { score?: number | null; signals?: string[] } | null = null;
+        try {
+          const parsed = data.response.browserInfo
+            ? (JSON.parse(data.response.browserInfo) as Record<string, unknown>)
+            : {};
+          const risk = parsed.envRisk;
+          if (risk && typeof risk === "object") {
+            envRisk = risk as { score?: number | null; signals?: string[] };
+          }
+        } catch {
+          // ignore malformed browser info
+        }
         return (
           <section className="card mt-4">
-            <h3 className="text-sm font-semibold">设备信息</h3>
-            <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              {rows.map(([label, value]) => (
-                <div key={label} className="flex gap-2">
-                  <dt className="shrink-0 text-gray-500">{label}</dt>
-                  <dd className="min-w-0 break-all text-gray-800">{value}</dd>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">环境画像（无感采集）</h3>
+              {envRisk && typeof envRisk.score === "number" ? (
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    envRisk.score >= 80
+                      ? "bg-green-50 text-green-700"
+                      : envRisk.score >= 50
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-rose-50 text-rose-700"
+                  }`}
+                >
+                  环境一致性 {envRisk.score}%
+                </span>
+              ) : null}
+            </div>
+            {envRisk?.signals?.length ? (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {envRisk.signals.map((signal) => (
+                  <span
+                    key={signal}
+                    className={`rounded-full px-2.5 py-1 ${
+                      signal.includes("一致")
+                        ? "bg-green-50 text-green-700"
+                        : "bg-rose-50 text-rose-700"
+                    }`}
+                  >
+                    {signal}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-3 space-y-4">
+              {groups.map((group) => (
+                <div key={group.title}>
+                  <div className="text-xs font-semibold text-gray-400">{group.title}</div>
+                  <dl className="mt-1.5 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                    {group.rows.map((row) => (
+                      <div key={row.label} className="flex gap-2">
+                        <dt className="shrink-0 text-gray-500">{row.label}</dt>
+                        <dd className="min-w-0 break-all text-gray-800">{row.value}</dd>
+                        <span className="ml-auto shrink-0 text-[11px] text-gray-400">
+                          {row.source === "服务端推断" ? "服务端" : "无感"}
+                        </span>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               ))}
-            </dl>
+            </div>
           </section>
         );
       })()}

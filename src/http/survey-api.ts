@@ -213,7 +213,76 @@ function enrichBrowserInfo(raw: string | null, request: Request): string {
     const referer = request.headers.get("referer") ?? request.headers.get("referrer");
     if (referer) info.referrer = referer.replace(/[\r\n]/g, "").slice(0, 500);
   }
-  return JSON.stringify(info).slice(0, 4096);
+  const acceptLanguage = request.headers.get("accept-language");
+  if (acceptLanguage) info.acceptLanguage = acceptLanguage.slice(0, 200);
+  const secChUa = request.headers.get("sec-ch-ua");
+  if (secChUa) info.secChUa = secChUa.slice(0, 200);
+
+  // Environment consistency: compare IP-derived country against the browser's
+  // timezone and language. This never proves real location, but mismatches are
+  // a useful proxy/VPN/geo-inconsistency signal.
+  const ipCountry = geo.country;
+  const timezone = typeof info.timezone === "string" ? info.timezone : "";
+  const language = typeof info.language === "string" ? info.language : "";
+  const signals = envConsistencySignals(ipCountry, timezone, language);
+  if (signals.length > 0 || ipCountry) {
+    const matched = signals.filter((signal) => signal.includes("一致")).length;
+    const total = signals.length;
+    info.envRisk = {
+      score: total ? Math.round((matched / total) * 100) : null,
+      signals,
+    };
+  }
+  return JSON.stringify(info).slice(0, 16384);
+}
+
+const TZ_COUNTRY: Record<string, string> = {
+  "Asia/Shanghai": "CN", "Asia/Tokyo": "JP", "Asia/Seoul": "KR",
+  "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW", "Asia/Singapore": "SG",
+  "Europe/London": "GB", "Europe/Paris": "FR", "Europe/Berlin": "DE",
+  "Europe/Madrid": "ES", "Europe/Rome": "IT", "Europe/Amsterdam": "NL",
+  "Europe/Brussels": "BE", "Europe/Vienna": "AT", "Europe/Zurich": "CH",
+  "Europe/Stockholm": "SE", "Europe/Oslo": "NO", "Europe/Copenhagen": "DK",
+  "Europe/Helsinki": "FI", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+  "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Athens": "GR",
+  "Europe/Lisbon": "PT", "Europe/Moscow": "RU", "Europe/Istanbul": "TR",
+  "America/New_York": "US", "America/Chicago": "US", "America/Los_Angeles": "US",
+  "America/Denver": "US", "America/Toronto": "CA", "America/Vancouver": "CA",
+  "America/Sao_Paulo": "BR", "America/Mexico_City": "MX",
+  "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Pacific/Auckland": "NZ",
+  "Asia/Kolkata": "IN", "Asia/Karachi": "PK", "Asia/Dhaka": "BD",
+  "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Kuala_Lumpur": "MY",
+  "Asia/Manila": "PH", "Asia/Ho_Chi_Minh": "VN", "Asia/Dubai": "AE",
+  "Asia/Tehran": "IR", "Asia/Jerusalem": "IL", "Asia/Colombo": "LK",
+};
+
+const LANG_COUNTRY: Record<string, string> = {
+  zh: "CN", "zh-tw": "TW", "zh-hk": "HK", ja: "JP", ko: "KR",
+  en: "US", de: "DE", fr: "FR", es: "ES", it: "IT", pt: "PT",
+  ru: "RU", th: "TH", vi: "VN", id: "ID", ms: "MY", ar: "AE",
+  tr: "TR", nl: "NL", pl: "PL", sv: "SE", cs: "CZ", hu: "HU",
+  ro: "RO", fi: "FI", da: "DK", no: "NO", el: "GR", he: "IL",
+  hi: "IN", ur: "PK", bn: "BD", ta: "IN", uk: "UA", fa: "IR",
+};
+
+function envConsistencySignals(
+  ipCountry: string | undefined,
+  timezone: string,
+  language: string,
+): string[] {
+  const tzCountry = TZ_COUNTRY[timezone];
+  const langCountry = LANG_COUNTRY[language.split("-")[0]?.toLowerCase() ?? ""];
+  const signals: string[] = [];
+  if (ipCountry && tzCountry) {
+    signals.push(ipCountry === tzCountry ? "IP 国家与时区一致" : "IP 国家与时区不一致");
+  }
+  if (ipCountry && langCountry) {
+    signals.push(ipCountry === langCountry ? "IP 国家与浏览器语言一致" : "IP 国家与浏览器语言不一致");
+  }
+  if (tzCountry && langCountry) {
+    signals.push(tzCountry === langCountry ? "时区与浏览器语言一致" : "时区与浏览器语言不一致");
+  }
+  return signals;
 }
 
 function parseSettings(value: string | null): Record<string, unknown> | null {
