@@ -15,12 +15,12 @@ The URL file contains one Microsoft Forms URL per line.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import subprocess
 import sys
 import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,9 +35,7 @@ from survey_import.microsoft import (  # noqa: E402
     extract_office_form_server_info,
     fetch_forms_definition,
 )
-
-MEDIA_KV_NAMESPACE_ID = "1761c29892764597992c189096bc62c2"
-
+import pymupdf as fitz  # noqa: E402
 
 def normalize_title(text: str) -> str:
     return re.sub(r"[\s_.:：\-—,，。、()（）[\]【】]+", "", text).strip().lower()
@@ -73,6 +71,43 @@ def fetch_form_info(url: str) -> dict[str, Any]:
     }
 
 
+def compress_cover(data: bytes, mime_type: str | None) -> tuple[bytes, str]:
+    """Re-encode cover bytes to a JPEG small enough for one D1 statement.
+
+    D1 rejects statements above roughly 100KB (SQLITE_TOOBIG), so the base64
+    data URL must stay well under that; we keep it below ~80KB.
+    """
+
+    # (max width, jpeg quality) tried in order until the payload is small.
+    profiles = [(1200, 78), (900, 72), (700, 68), (520, 62)]
+    best: tuple[bytes, str] | None = None
+    try:
+        doc = fitz.open(stream=data, filetype=None)
+    except Exception:
+        return data, mime_type or "application/octet-stream"
+    width = doc[0].rect.width or 0
+    for max_width, quality in profiles:
+        scale = min(1.0, max_width / width) if width else 1.0
+        try:
+            pix = doc[0].get_pixmap(
+                matrix=fitz.Matrix(scale, scale),
+                colorspace=fitz.csRGB,
+                alpha=False,
+            )
+            jpeg = pix.tobytes("jpeg", jpg_quality=quality)
+        except Exception:
+            continue
+        if best is None or len(jpeg) < len(best[0]):
+            best = (jpeg, "image/jpeg")
+        if len(base64.b64encode(jpeg)) <= 80_000:
+            doc.close()
+            return jpeg, "image/jpeg"
+    doc.close()
+    if best is not None and len(best[0]) < len(data):
+        return best
+    return data, mime_type or "application/octet-stream"
+
+
 def run_wrangler(args: list[str]) -> Any:
     result = subprocess.run(
         ["npx", "wrangler", *args],
@@ -96,7 +131,12 @@ def load_surveys() -> list[dict[str, Any]]:
             "--remote",
             "--json",
             "--command",
-            "SELECT id, title, cover_media_id FROM surveys",
+            (
+                "SELECT s.id, s.title, s.cover_media_id, "
+                "m.storage_kind AS cover_kind, m.url AS cover_url "
+                "FROM surveys s "
+                "LEFT JOIN media_assets m ON m.id = s.cover_media_id"
+            ),
         ]
     )
     data = json.loads(result.stdout)
@@ -107,48 +147,71 @@ def apply_cover(survey_id: int, cover: dict[str, Any], work_dir: Path) -> None:
     image = fetch_url(cover["url"], user_agent=DEFAULT_USER_AGENT)
     if image.status_code != 200:
         raise RuntimeError(f"封面下载失败 HTTP {image.status_code}")
-    bytes_path = work_dir / f"cover-{survey_id}.bin"
-    bytes_path.write_bytes(image.body)
+    body, mime_type = compress_cover(image.body, cover.get("mime_type"))
 
-    storage_key = f"media:import:{uuid.uuid4()}"
-    run_wrangler(
-        [
-            "kv",
-            "key",
-            "put",
-            storage_key,
-            "--namespace-id",
-            MEDIA_KV_NAMESPACE_ID,
-            "--path",
-            str(bytes_path),
-        ]
-    )
-
-    mime_type = cover.get("mime_type") or "application/octet-stream"
     file_name = cover.get("file_name") or "cover"
     width = cover.get("width") or "NULL"
     height = cover.get("height") or "NULL"
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    # Covers are stored as data URLs directly in D1. This avoids depending on
+    # the KV namespace used by the runtime Worker binding, which the CLI
+    # cannot write to reliably; buildMediaResponse decodes data URLs inline.
+    data_url = (
+        f"data:{mime_type};base64,"
+        + base64.b64encode(body).decode("ascii")
+    )
+    escaped_name = file_name.replace("'", "''")
     sql = (
         "INSERT INTO media_assets ("
-        " asset_scope, media_type, storage_kind, storage_key, mime_type,"
+        " asset_scope, media_type, storage_kind, url, mime_type,"
         " file_name, file_size, width, height, created_at, updated_at"
         ") VALUES ("
-        f"'survey','photo','temporary','{storage_key}','{mime_type}',"
-        f"'{file_name}',{len(image.body)},{width},{height},"
+        f"'survey','photo','url','{data_url}','{mime_type}',"
+        f"'{escaped_name}',{len(body)},{width},{height},"
         f"'{timestamp}','{timestamp}'"
         ");"
         f"UPDATE surveys SET cover_media_id = "
-        f"(SELECT id FROM media_assets WHERE storage_key = '{storage_key}'),"
+        f"(SELECT id FROM media_assets WHERE url = '{data_url}'),"
         f" updated_at = '{timestamp}' WHERE id = {survey_id};"
     )
-    run_wrangler(["d1", "execute", "DB", "--remote", "--command", sql])
+    sql_path = work_dir / f"cover-{survey_id}.sql"
+    sql_path.write_text(sql, encoding="utf-8")
+    run_wrangler(["d1", "execute", "DB", "--remote", "--file", str(sql_path)])
+
+
+def remove_stale_cover(survey: dict[str, Any]) -> None:
+    """Delete a cover asset row that is not a usable data URL."""
+
+    cover_id = survey.get("cover_media_id")
+    cover_url = survey.get("cover_url")
+    if cover_id is None or (isinstance(cover_url, str) and cover_url.startswith("data:")):
+        return
+    run_wrangler(
+        [
+            "d1",
+            "execute",
+            "DB",
+            "--remote",
+            "--command",
+            (
+                "DELETE FROM media_assets WHERE id = "
+                f"{cover_id} AND NOT EXISTS (SELECT 1 FROM question_media "
+                f"WHERE media_asset_id = {cover_id}) AND NOT EXISTS "
+                f"(SELECT 1 FROM option_media WHERE media_asset_id = {cover_id})"
+            ),
+        ]
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("urls_file", help="每行一个 Microsoft Forms URL 的文本文件")
     parser.add_argument("--dry-run", action="store_true", help="只输出匹配结果，不写库")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="已有封面的问卷也重新更新（用于修复旧的数据 URL 存储）",
+    )
     args = parser.parse_args()
 
     urls = [
@@ -187,7 +250,11 @@ def main() -> int:
                 unmatched.append(url)
                 continue
             survey = candidates[0]
-            if survey.get("cover_media_id") is not None:
+            if (
+                isinstance(survey.get("cover_url"), str)
+                and survey["cover_url"].startswith("data:")
+                and not args.force
+            ):
                 print(f"· {info['title']} → 问卷 #{survey['id']}（已有封面，跳过）")
                 skipped += 1
                 continue
@@ -199,8 +266,9 @@ def main() -> int:
                 print(f"✓ {info['title']} → 问卷 #{survey['id']}（封面：{info['cover']['url'][:70]}…）")
             else:
                 try:
+                    remove_stale_cover(survey)
                     apply_cover(survey["id"], info["cover"], work_dir)
-                    print(f"✓ {info['title']} → 问卷 #{survey['id']} 封面已更新")
+                    print(f"✓ {info['title']} → 问卷 #{survey['id']} 封面已更新（data URL）")
                 except Exception as error:
                     print(f"✗ {info['title']} → 问卷 #{survey['id']} 更新失败：{error}")
                     unmatched.append(url)

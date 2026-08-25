@@ -275,12 +275,10 @@ export async function handleSurveyApiRequest(
         accessCodeRequired: Boolean(row.accessCode),
         publishedAt: row.publishedAt,
         questionCount: Number(row.questionCount ?? 0),
-        ...(row.coverMediaId !== null
-          ? {
-              coverUrl:
-                row.coverUrl ??
-                mediaPublicUrl(Number(row.coverMediaId)),
-            }
+        // Always serve the cover through the media endpoint so KV/R2/data-URL
+        // covers share one path and the public list stays small.
+        ...(typeof row.coverMediaId === "number"
+          ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) }
           : {}),
         theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
       })),
