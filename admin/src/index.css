@@ -598,6 +598,46 @@ input[type="radio"] {
     line-height: 1.3;
     color: var(--color-ink);
   }
+  .editor-title-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: min(46vw, 520px);
+    padding: 2px 6px;
+    margin-left: -6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .editor-title-edit:hover:not(:disabled) {
+    border-color: var(--color-border);
+    background: var(--color-surface-2, rgba(127, 127, 127, 0.08));
+  }
+  .editor-title-edit:disabled {
+    cursor: default;
+  }
+  .editor-title-edit .truncate {
+    max-width: 100%;
+  }
+  .editor-title-edit-icon {
+    flex: none;
+    opacity: 0.55;
+  }
+  .editor-title-input {
+    min-width: 240px;
+    max-width: min(46vw, 520px);
+    padding: 2px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: 15px;
+    font-weight: 650;
+  }
   .editor-title-meta {
     margin-top: 2px;
     font-size: 12px;

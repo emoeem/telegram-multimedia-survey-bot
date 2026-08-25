@@ -85,6 +85,7 @@ export function useSurveyEditor(data: EditorData) {
   const [baseUpdatedAt, setBaseUpdatedAt] = useState(data.survey.updatedAt);
   const baseUpdatedAtRef = useRef(baseUpdatedAt);
   const [ops, setOps] = useState<PendingOp[]>([]);
+  const opsRef = useRef<PendingOp[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<{ message: string; stale: boolean } | null>(null);
   const opKeyRef = useRef(1);
@@ -131,6 +132,10 @@ export function useSurveyEditor(data: EditorData) {
   useEffect(() => {
     stateRef.current = { surveyMeta, questions };
   }, [surveyMeta, questions]);
+
+  useEffect(() => {
+    opsRef.current = ops;
+  }, [ops]);
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(pastRef.current.length > 0);
@@ -211,22 +216,35 @@ export function useSurveyEditor(data: EditorData) {
   // ---- survey meta（合并为单个 PATCH） ----
   const updateSurveyMeta = useCallback(
     (patch: Partial<typeof surveyMeta>) => {
-      recordHistory();
+      const existingIndex = opsRef.current.findIndex(
+        (op) =>
+          op.method === "PATCH" &&
+          op.path === `/api/admin/surveys/${surveyId}`,
+      );
+      // Only the first meta change of an editing session becomes an undo
+      // step; rapid typing merges into the same pending PATCH op.
+      if (existingIndex < 0) {
+        recordHistory();
+      }
       setSurveyMeta((current) => ({ ...current, ...patch }));
       setOps((current) => {
-        const existingIndex = current.findIndex((op) => op.method === "PATCH" && op.path === `/api/admin/surveys/${surveyId}`);
-        const fields = { ...(current[existingIndex]?.body ?? {}), ...patch };
+        const opIndex = current.findIndex(
+          (op) =>
+            op.method === "PATCH" &&
+            op.path === `/api/admin/surveys/${surveyId}`,
+        );
+        const fields = { ...(current[opIndex]?.body ?? {}), ...patch };
         const op: PendingOp = {
-          key: existingIndex >= 0 ? current[existingIndex]!.key : opKeyRef.current++,
+          key: opIndex >= 0 ? current[opIndex]!.key : opKeyRef.current++,
           method: "PATCH",
           path: `/api/admin/surveys/${surveyId}`,
           body: fields,
           tempId: null,
           label: "问卷设置",
         };
-        if (existingIndex >= 0) {
+        if (opIndex >= 0) {
           const next = [...current];
-          next[existingIndex] = op;
+          next[opIndex] = op;
           return next;
         }
         return [...current, op];

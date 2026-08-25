@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Eye,
   FilePlus2,
+  Pencil,
   Redo2,
   Rocket,
   Save,
@@ -250,7 +251,15 @@ function EditableEditor({ data }: { data: EditorData }) {
           </button>
           <div className="editor-title">
             <div className="editor-title-name">
-              <span className="truncate">{editor.surveyMeta.title || "未命名问卷"}</span>
+              <EditableTitle
+                value={editor.surveyMeta.title || "未命名问卷"}
+                disabled={editingDisabled}
+                onCommit={(next) => {
+                  if (next && next !== editor.surveyMeta.title) {
+                    editor.updateSurveyMeta({ title: next });
+                  }
+                }}
+              />
               <StatusBadge status={survey.status} />
             </div>
             <div className="editor-title-meta">
@@ -337,7 +346,6 @@ function EditableEditor({ data }: { data: EditorData }) {
           {selection.kind === "settings" ? (
             <SurveySettingsPanel
               meta={editor.surveyMeta}
-              surveyId={survey.id}
               disabled={editingDisabled}
               onUpdate={(patch) => editor.updateSurveyMeta(patch)}
             />
@@ -442,14 +450,65 @@ function EditableEditor({ data }: { data: EditorData }) {
   );
 }
 
+function EditableTitle({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: string;
+  disabled: boolean;
+  onCommit: (next: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="editor-title-edit"
+        disabled={disabled}
+        title={disabled ? undefined : "点击修改问卷标题"}
+        onClick={() => {
+          setDraft(value);
+          setEditing(true);
+        }}
+      >
+        <span className="truncate">{value}</span>
+        {!disabled ? <Pencil className="editor-title-edit-icon h-3.5 w-3.5" /> : null}
+      </button>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      className="editor-title-input"
+      value={draft}
+      maxLength={200}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        const next = draft.trim();
+        if (next) onCommit(next);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          (event.target as HTMLInputElement).blur();
+        } else if (event.key === "Escape") {
+          setEditing(false);
+        }
+      }}
+    />
+  );
+}
+
 function SurveySettingsPanel({
   meta,
-  surveyId,
   disabled,
   onUpdate,
 }: {
   meta: SurveyMetaState;
-  surveyId: number;
   disabled: boolean;
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
 }) {
@@ -464,13 +523,12 @@ function SurveySettingsPanel({
         <span className="q-label">标题</span>
         <input
           className="settings-input"
-          defaultValue={meta.title}
-          key={`survey-title-${surveyId}`}
+          value={meta.title}
           disabled={disabled}
           placeholder="问卷标题"
-          onBlur={(event) => {
-            const next = event.target.value.trim();
-            if (next && next !== meta.title) onUpdate({ title: next });
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next !== meta.title) onUpdate({ title: next });
           }}
         />
       </label>
@@ -479,12 +537,11 @@ function SurveySettingsPanel({
         <span className="q-label">描述</span>
         <input
           className="settings-input"
-          defaultValue={meta.description}
-          key={`survey-description-${surveyId}`}
+          value={meta.description}
           disabled={disabled}
           placeholder="给答题者的整体说明（可选）"
-          onBlur={(event) => {
-            const next = event.target.value.trim();
+          onChange={(event) => {
+            const next = event.target.value;
             if (next !== meta.description) onUpdate({ description: next });
           }}
         />
@@ -531,7 +588,6 @@ function SurveySettingsPanel({
             max={999}
             className="settings-input"
             defaultValue={meta.maxResponsesPerUser}
-            key={`survey-max-${surveyId}`}
             disabled={disabled}
             onBlur={(event) => {
               const next = Number(event.target.value);
