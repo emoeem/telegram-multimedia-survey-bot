@@ -174,6 +174,48 @@ function sanitizeHeader(value: string | null, maxLength: number): string | null 
   return trimmed && trimmed.length <= maxLength ? trimmed : null;
 }
 
+/**
+ * Merges Cloudflare request geo metadata and referrer into the client-provided
+ * browser info JSON so anonymous web responses show more useful context.
+ */
+function enrichBrowserInfo(raw: string | null, request: Request): string {
+  let info: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        info = parsed as Record<string, unknown>;
+      }
+    } catch {
+      info = { raw };
+    }
+  }
+  const cf = (request as Request & { cf?: Record<string, unknown> }).cf ?? {};
+  const geo: Record<string, string> = {};
+  for (const key of [
+    "country",
+    "region",
+    "regionCode",
+    "city",
+    "postalCode",
+    "metroCode",
+    "timezone",
+    "asn",
+    "colo",
+  ]) {
+    const value = cf[key];
+    if (value !== undefined && value !== null && value !== "") {
+      geo[key] = String(value);
+    }
+  }
+  if (Object.keys(geo).length) info.geo = geo;
+  if (!info.referrer) {
+    const referer = request.headers.get("referer") ?? request.headers.get("referrer");
+    if (referer) info.referrer = referer.replace(/[\r\n]/g, "").slice(0, 500);
+  }
+  return JSON.stringify(info).slice(0, 4096);
+}
+
 function parseSettings(value: string | null): Record<string, unknown> | null {
   return parseValidation(value);
 }
@@ -462,7 +504,7 @@ export async function handleSurveyApiRequest(
       participantHash: participant.participantHash,
       currentQuestionId: firstQuestion.id,
       deviceFingerprint: sanitizeHeader(request.headers.get("x-device-fingerprint"), 128),
-      browserInfo: sanitizeHeader(request.headers.get("x-browser-info"), 2048),
+      browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request),
       ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
     });
     return json({

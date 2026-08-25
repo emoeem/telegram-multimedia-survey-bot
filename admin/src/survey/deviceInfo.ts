@@ -30,16 +30,25 @@ export function getBrowserInfo(): string {
     userAgentData?: { platform?: string; mobile?: boolean };
     hardwareConcurrency?: number;
     maxTouchPoints?: number;
+    deviceMemory?: number;
+    connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
   };
   return JSON.stringify({
     ua: navigator.userAgent,
     platform: nav.userAgentData?.platform ?? navigator.platform ?? "",
+    mobile: nav.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
     screen: `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
     language: navigator.language,
     languages: navigator.languages ?? [],
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
     cores: nav.hardwareConcurrency ?? 0,
+    memory: nav.deviceMemory ?? 0,
+    dpr: window.devicePixelRatio || 1,
     touch: "ontouchstart" in window || (nav.maxTouchPoints ?? 0) > 0,
+    connection: nav.connection?.effectiveType ?? "",
+    online: navigator.onLine,
+    referrer: document.referrer.slice(0, 500) || "",
   });
 }
 

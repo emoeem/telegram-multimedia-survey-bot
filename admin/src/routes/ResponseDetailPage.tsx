@@ -39,13 +39,33 @@ function deviceInfoRows(response: ResponseDetailData["response"]): Array<[string
       const info = JSON.parse(response.browserInfo) as Record<string, unknown>;
       const parts: Array<[string, string]> = [];
       if (typeof info.platform === "string" && info.platform) parts.push(["设备", info.platform]);
+      if (typeof info.mobile === "boolean") parts.push(["移动端", info.mobile ? "是" : "否"]);
       if (typeof info.ua === "string" && info.ua) {
         const browser = /(Chrome|Firefox|Safari|Edg|OPR)\/([\d.]+)/.exec(info.ua);
         if (browser) parts.push(["浏览器", `${browser[1]} ${browser[2]}`]);
       }
       if (typeof info.screen === "string" && info.screen) parts.push(["屏幕", info.screen]);
+      if (typeof info.viewport === "string" && info.viewport) parts.push(["视口", info.viewport]);
+      if (typeof info.dpr === "number" && info.dpr > 0) parts.push(["屏幕倍率", `×${info.dpr}`]);
       if (typeof info.language === "string" && info.language) parts.push(["语言", info.language]);
+      if (typeof info.languages === "object" && Array.isArray(info.languages) && info.languages.length) {
+        parts.push(["全部语言", (info.languages as string[]).join(", ")]);
+      }
       if (typeof info.timezone === "string" && info.timezone) parts.push(["时区", info.timezone]);
+      if (typeof info.cores === "number" && info.cores > 0) parts.push(["CPU 内核", String(info.cores)]);
+      if (typeof info.memory === "number" && info.memory > 0) parts.push(["内存", `${info.memory} GB`]);
+      if (typeof info.touch === "boolean") parts.push(["触摸屏", info.touch ? "支持" : "不支持"]);
+      if (typeof info.connection === "string" && info.connection) parts.push(["网络", info.connection]);
+      if (typeof info.online === "boolean") parts.push(["在线状态", info.online ? "在线" : "离线"]);
+      if (info.geo && typeof info.geo === "object") {
+        const geo = info.geo as Record<string, string>;
+        const location = [geo.country, geo.region, geo.city].filter(Boolean).join(" · ");
+        if (location) parts.push(["地理位置", location]);
+        if (geo.timezone) parts.push(["Geo 时区", geo.timezone]);
+        if (geo.asn) parts.push(["运营商 ASN", `AS${geo.asn}`]);
+        if (geo.colo) parts.push(["接入节点", geo.colo]);
+      }
+      if (typeof info.referrer === "string" && info.referrer) parts.push(["来源页面", info.referrer]);
       rows.push(...parts);
     } catch {
       rows.push(["浏览器信息", response.browserInfo.slice(0, 200)]);
