@@ -1063,7 +1063,22 @@ describe('handleAdminApi write endpoints', () => {
     expect(archived.status).toBe(200);
   });
 
-  it('blocks survey deletion when responses exist', async () => {
+  it('blocks non-admin survey deletion when responses exist', async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = writableDraftDb({
+      responses: 1,
+      survey: { owner_id: 7, status: 'archived' },
+    });
+    harness.firstOn('FROM creator_trial_grants', { id: 1 });
+    const response = await handleAdminApi(
+      apiRequest('/api/admin/surveys/5', { method: 'DELETE', userId: '222' }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()) as { code: string }).toMatchObject({ code: 'delete_blocked' });
+  });
+
+  it('lets admins force-delete surveys with responses', async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const harness = writableDraftDb({ responses: 1 });
     harness.firstOn('FROM surveys WHERE id', surveyRow({ status: 'archived' }));
@@ -1071,8 +1086,8 @@ describe('handleAdminApi write endpoints', () => {
       apiRequest('/api/admin/surveys/5', { method: 'DELETE', userId: '111' }),
       makeEnv(harness.db),
     );
-    expect(response.status).toBe(400);
-    expect((await response.json()) as { code: string }).toMatchObject({ code: 'delete_blocked' });
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes('DELETE FROM surveys'))).toBe(true);
   });
 
   it('deletes surveys without responses', async () => {

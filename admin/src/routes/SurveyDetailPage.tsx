@@ -237,15 +237,32 @@ export function SurveyDetailPage() {
         ) : null}
         <button
           className="btn btn-danger"
-          disabled={busy || data.responseCount > 0}
-          title={data.responseCount > 0 ? "已有答卷的问卷不能删除，请先归档" : undefined}
-          onClick={() => void runAction("delete", "确定永久删除该问卷？此操作不可恢复。")}
+          disabled={busy || (data.responseCount > 0 && !data.isAdmin)}
+          title={
+            data.responseCount > 0 && !data.isAdmin
+              ? "已有答卷的问卷不能删除，请先归档"
+              : data.responseCount > 0
+                ? "管理员可强制删除（含全部答卷）"
+                : undefined
+          }
+          onClick={() =>
+            void runAction(
+              "delete",
+              data.responseCount > 0
+                ? `确定永久删除该问卷？将同时删除 ${data.responseCount} 份答卷及其答案、媒体和报告，此操作不可恢复！`
+                : "确定永久删除该问卷？此操作不可恢复。",
+            )
+          }
         >
           <Trash2 className="h-4 w-4" />删除
         </button>
       </div>
-      {data.responseCount > 0 ? (
+      {data.responseCount > 0 && !data.isAdmin ? (
         <p className="mt-2 text-xs text-gray-400">已有答卷的问卷禁止删除（历史答卷保护）。</p>
+      ) : data.responseCount > 0 && data.isAdmin ? (
+        <p className="mt-2 text-xs text-amber-600">
+          管理员可强制删除该问卷，删除将同时移除 {data.responseCount} 份答卷。
+        </p>
       ) : null}
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
         <span className="text-sm text-gray-600">报告模板</span>

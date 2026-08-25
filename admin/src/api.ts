@@ -161,6 +161,7 @@ export interface SurveyDetailData {
   firstName?: string | null;
   username?: string | null;
   report_template_id?: string | null;
+  isAdmin?: boolean;
   theme: {
     preset?: string;
     background?: { color?: string; image?: string; position?: string; size?: string };

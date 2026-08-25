@@ -1271,6 +1271,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       settings_json: undefined,
       theme,
       themePresets: SURVEY_THEME_PRESETS,
+      isAdmin,
     });
   }
 
@@ -2147,13 +2148,14 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     try {
-      await deleteSurvey(db, surveyId);
+      // 管理员可以强制删除任何问卷（含已有答卷）；普通用户保留历史答卷保护。
+      await deleteSurvey(db, surveyId, { force: isAdmin });
       await writeAudit(db, {
         actorUserId: user.id,
         action: 'survey.delete',
         entityType: 'survey',
         entityId: String(surveyId),
-        before: { status: manageable.survey.status },
+        before: { status: manageable.survey.status, forced: isAdmin },
       });
       return json({ ok: true });
     } catch (error) {

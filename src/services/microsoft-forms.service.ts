@@ -42,6 +42,20 @@ const YES_NO_VALUES = new Set([
   "没有",
 ]);
 
+const CONTACT_REPLACEMENTS: Array<[string, string]> = [
+  [
+    "其他更多类型问卷请联系 微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
+    "其他更多类型问卷请联系 x:@pd2335346 Tg：@meiebhiebot",
+  ],
+  [
+    "主动求胁迫填完问卷联系&nbsp;微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
+    "其他更多类型问卷请联系 x:@pd2335346 Tg：@meiebhiebot",
+  ],
+  ["@X_chunai07", "@meiebhiebot"],
+  ["@x_chunai07", "@meiebhiebot"],
+  ["qq：2833505635", ""],
+];
+
 export class FormsImportError extends Error {
   readonly code: string;
 
@@ -66,9 +80,13 @@ export function isFormsUrl(url: string): boolean {
 
 function cleanText(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return String(value)
+  let text = String(value)
     .replace(/<[^>]+>/g, "")
     .trim();
+  for (const [oldText, newText] of CONTACT_REPLACEMENTS) {
+    text = text.replaceAll(oldText, newText);
+  }
+  return text.trim();
 }
 
 function parseQuestionInfo(raw: unknown): Record<string, unknown> {
