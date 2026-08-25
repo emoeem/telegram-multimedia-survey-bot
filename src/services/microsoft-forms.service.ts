@@ -476,10 +476,10 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
 /**
  * Fetch a public Microsoft Forms URL and return the standard survey.json text.
  */
-export async function fetchMicrosoftFormsSurveyJson(
+async function fetchFormsDefinition(
   url: string,
   timeoutMs = 25_000,
-): Promise<string> {
+): Promise<FormsDefinition> {
   const page = await fetchJson(url, {}, timeoutMs);
   if (page.status === 401 || page.status === 403) {
     throw new FormsImportError(
@@ -545,5 +545,49 @@ export async function fetchMicrosoftFormsSurveyJson(
     );
   }
 
+  return definition;
+}
+
+export async function fetchMicrosoftFormsSurveyJson(
+  url: string,
+  timeoutMs = 25_000,
+): Promise<string> {
+  const definition = await fetchFormsDefinition(url, timeoutMs);
   return JSON.stringify(formsDefinitionToSurvey(definition));
+}
+
+export interface MicrosoftFormsCover {
+  url: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  fileName?: string;
+}
+
+/**
+ * Fetch only the cover image (background / header / logo) of a public form.
+ * Used by the admin cover backfill so existing surveys can be updated
+ * without re-importing their questions.
+ */
+export async function fetchMicrosoftFormsCover(
+  url: string,
+  timeoutMs = 25_000,
+): Promise<MicrosoftFormsCover | null> {
+  const definition = await fetchFormsDefinition(url, timeoutMs);
+  const part = [definition.background, definition.header, definition.logo].find(
+    (item) =>
+      item &&
+      typeof item.resourceUrl === "string" &&
+      item.resourceUrl.startsWith("http"),
+  ) as FormsImagePart | undefined;
+  if (!part) return null;
+  return {
+    url: String(part.resourceUrl),
+    ...(part.contentType ? { mimeType: String(part.contentType) } : {}),
+    ...(typeof part.width === "number" ? { width: part.width } : {}),
+    ...(typeof part.height === "number" ? { height: part.height } : {}),
+    ...(part.originalFileName
+      ? { fileName: String(part.originalFileName) }
+      : {}),
+  };
 }

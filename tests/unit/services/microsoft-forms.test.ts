@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  fetchMicrosoftFormsCover,
   fetchMicrosoftFormsSurveyJson,
   isFormsUrl,
 } from "../../../src/services/microsoft-forms.service";
@@ -208,5 +209,23 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     ).rejects.toMatchObject({
       code: "FORMS_PARSE_FAILED",
     });
+  });
+
+  it("fetches only the cover image for backfill", async () => {
+    const page = formsPage("https://forms.cloud.microsoft/formapi/api/form");
+    stubFetch({
+      "https://forms.office.com/r/cover": { status: 200, body: page },
+      "https://forms.cloud.microsoft/formapi/api/form": {
+        status: 200,
+        body: JSON.stringify(FORM_DEFINITION),
+      },
+    });
+
+    const cover = await fetchMicrosoftFormsCover("https://forms.office.com/r/cover");
+    expect(cover?.url).toBe(
+      "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
+    );
+    expect(cover?.mimeType).toBe("image/jpeg");
+    expect(cover?.width).toBe(1600);
   });
 });
