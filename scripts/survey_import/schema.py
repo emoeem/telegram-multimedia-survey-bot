@@ -8,6 +8,7 @@ survey schema; it only checks the structure the existing importer requires.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .errors import SurveyImportError
@@ -95,6 +96,29 @@ def validate_survey_json(survey_file: Any) -> list[str]:
 
         if not isinstance(question.get("media"), list):
             issues.append(f"{path}.media: media must be an array")
+
+        def check_media_url(media: Any, media_path: str) -> None:
+            if not _is_record(media):
+                return
+            url = media.get("url")
+            if isinstance(url, str) and url and not re.match(
+                r"^(?:data:|https?://)", url
+            ):
+                issues.append(
+                    f"{media_path}.url: 媒体 URL 必须是 data: 或 http(s) "
+                    "绝对地址，不支持 assets/... 相对路径（请用新版脚本重新转换）"
+                )
+
+        for media_index, media in enumerate(question.get("media") or []):
+            check_media_url(media, f"{path}.media[{media_index}]")
+        for option_index, option in enumerate(question.get("options") or []):
+            if not _is_record(option):
+                continue
+            for media_index, media in enumerate(option.get("media") or []):
+                check_media_url(
+                    media,
+                    f"{path}.options[{option_index}].media[{media_index}]",
+                )
 
         if qtype == "matrix":
             settings = question.get("settings")

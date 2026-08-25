@@ -537,6 +537,34 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     throw new Error("JSON 必须包含 title 和 questions 数组");
   }
 
+  // Media URLs must be self-contained (data:) or absolute (http/https).
+  // Relative paths like assets/... come from old converter output and can
+  // never be served after import; fail loudly instead of storing broken links.
+  const relativeMediaIssues: ImportIssue[] = [];
+  data.questions.forEach((question, questionIndex) => {
+    const scan = (media: ImportedMedia, field: string) => {
+      if (media.url && !/^(data:|https?:\/\/)/i.test(media.url)) {
+        relativeMediaIssues.push({
+          path: `questions[${questionIndex}].${field}.url`,
+          message:
+            "JSON 中的图片仍是本地路径（如 assets/...）。请使用新版 PDF 转换脚本重新生成 survey.json",
+          questionNumber: questionIndex + 1,
+          questionTitle: question.title,
+          field: `${field}.url`,
+        });
+      }
+    };
+    (question.media ?? []).forEach((media) => scan(media, "media"));
+    (question.options ?? []).forEach((option, optionIndex) =>
+      option.media.forEach((media) =>
+        scan(media, `options[${optionIndex}].media`),
+      ),
+    );
+  });
+  if (relativeMediaIssues.length > 0) {
+    throw new ImportValidationError(relativeMediaIssues);
+  }
+
   const importWarnings = repairChoiceQuestions(data.questions);
   if (importWarnings.length > 0) {
     data.importWarnings = importWarnings;

@@ -537,6 +537,29 @@ class SchemaValidationTests(unittest.TestCase):
         issues = validate_survey_json(bad_matrix)
         self.assertTrue(any("matrix questions require" in issue for issue in issues))
 
+        relative_media = json.loads(json.dumps(base))
+        relative_media["survey"]["questions"][0]["media"] = [
+            {
+                "id": "m1",
+                "type": "photo",
+                "source": "url",
+                "url": "assets/img.png",
+            }
+        ]
+        issues = validate_survey_json(relative_media)
+        self.assertTrue(any("相对路径" in issue for issue in issues))
+
+        absolute_media = json.loads(json.dumps(base))
+        absolute_media["survey"]["questions"][0]["media"] = [
+            {
+                "id": "m1",
+                "type": "photo",
+                "source": "url",
+                "url": "data:image/png;base64,aGVsbG8=",
+            }
+        ]
+        self.assertEqual(validate_survey_json(absolute_media), [])
+
 
 class CliTests(unittest.TestCase):
     def test_cli_success_and_failure(self) -> None:

@@ -150,6 +150,11 @@ const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
 const IMPORT_MEDIA_KV_MAX_BYTES = 24 * 1024 * 1024;
 
+// Microsoft hosts that serve publicly shared form media (hive.forms.*).
+// Remote images are cached into KV at import time so surveys stay
+// self-contained even if Microsoft rotates or expires the source URLs.
+const MICROSOFT_MEDIA_HOST_SUFFIXES = [".usercontent.microsoft"];
+
 function parseSettingsJson(value: string): Record<string, unknown> | null {
   if (!value) return null;
   try {
@@ -170,28 +175,80 @@ function parseSettingsJson(value: string): Record<string, unknown> | null {
 function importedDataUrlMediaResolver(env: Env): ImportedMediaResolver {
   const store = new KVMediaStore(env.MEDIA_KV);
   return async (media: ImportedMedia) => {
-    if (!media.url?.startsWith('data:')) return media;
-    const decoded = decodeDataUrl(media.url);
-    if (!decoded || decoded.bytes.byteLength > IMPORT_MEDIA_KV_MAX_BYTES) {
-      return media;
+    if (media.url?.startsWith('data:')) {
+      const decoded = decodeDataUrl(media.url);
+      if (!decoded || decoded.bytes.byteLength > IMPORT_MEDIA_KV_MAX_BYTES) {
+        return media;
+      }
+      const storageKey = `media:import:${crypto.randomUUID()}`;
+      await store.put({
+        storageKey,
+        bytes: decoded.bytes,
+        contentType: decoded.mimeType,
+      });
+      return {
+        type: media.type,
+        source: 'url',
+        storageKind: 'temporary',
+        storageKey,
+        mimeType: media.mimeType ?? decoded.mimeType,
+        ...(media.fileName ? { fileName: media.fileName } : {}),
+        ...(media.width !== undefined ? { width: media.width } : {}),
+        ...(media.height !== undefined ? { height: media.height } : {}),
+        size: decoded.bytes.byteLength,
+      };
     }
-    const storageKey = `media:import:${crypto.randomUUID()}`;
-    await store.put({
-      storageKey,
-      bytes: decoded.bytes,
-      contentType: decoded.mimeType,
-    });
-    return {
-      type: media.type,
-      source: 'url',
-      storageKind: 'temporary',
-      storageKey,
-      mimeType: media.mimeType ?? decoded.mimeType,
-      ...(media.fileName ? { fileName: media.fileName } : {}),
-      ...(media.width !== undefined ? { width: media.width } : {}),
-      ...(media.height !== undefined ? { height: media.height } : {}),
-      size: decoded.bytes.byteLength,
-    };
+
+    // Cache publicly shared Microsoft form images into KV as well, so the
+    // survey does not depend on hive.forms... URLs that may rotate or expire.
+    if (media.url?.startsWith('https://')) {
+      let host: string;
+      try {
+        host = new URL(media.url).hostname;
+      } catch {
+        return media;
+      }
+      if (
+        host !== 'usercontent.microsoft' &&
+        !MICROSOFT_MEDIA_HOST_SUFFIXES.some((suffix) =>
+          host.endsWith(suffix),
+        )
+      ) {
+        return media;
+      }
+      try {
+        const response = await fetch(media.url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+          },
+        });
+        if (!response.ok) return media;
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > IMPORT_MEDIA_KV_MAX_BYTES) return media;
+        const contentType =
+          response.headers.get('content-type') ??
+          media.mimeType ??
+          'application/octet-stream';
+        const storageKey = `media:import:${crypto.randomUUID()}`;
+        await store.put({ storageKey, bytes, contentType });
+        return {
+          type: media.type,
+          source: 'url',
+          storageKind: 'temporary',
+          storageKey,
+          mimeType: media.mimeType ?? contentType,
+          ...(media.fileName ? { fileName: media.fileName } : {}),
+          ...(media.width !== undefined ? { width: media.width } : {}),
+          ...(media.height !== undefined ? { height: media.height } : {}),
+          size: bytes.byteLength,
+        };
+      } catch {
+        // Fall back to the remote URL when the image cannot be cached.
+        return media;
+      }
+    }
+    return media;
   };
 }
 

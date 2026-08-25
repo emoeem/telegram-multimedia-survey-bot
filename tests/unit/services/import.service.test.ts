@@ -304,6 +304,71 @@ describe("import service", () => {
     });
   });
 
+  it("rejects relative media paths instead of storing broken links", () => {
+    let caught: ImportValidationError | null = null;
+    try {
+      parseImportedSurvey(
+        JSON.stringify({
+          title: "旧版 JSON",
+          questions: [
+            {
+              id: "q1",
+              type: "image",
+              title: "看图",
+              required: true,
+              media: [{ type: "photo", source: "url", url: "assets/img.png" }],
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      caught = error as ImportValidationError;
+    }
+
+    expect(caught).toBeInstanceOf(ImportValidationError);
+    expect(caught?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          questionNumber: 1,
+          field: "media.url",
+          message: expect.stringContaining("本地路径"),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts data: and https media URLs", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "媒体问卷",
+        questions: [
+          {
+            id: "q1",
+            type: "image",
+            title: "看图",
+            required: true,
+            media: [
+              {
+                type: "photo",
+                source: "url",
+                url: "data:image/png;base64,aGVsbG8=",
+              },
+            ],
+          },
+          {
+            id: "q2",
+            type: "text",
+            title: "文字",
+            options: [],
+          },
+        ],
+      }),
+    );
+    expect(parsed.questions[0]?.media?.[0]?.url?.startsWith("data:")).toBe(
+      true,
+    );
+  });
+
   it("parses report template and theme from unified survey settings", () => {
     const parsed = parseImportedSurvey(
       JSON.stringify({
