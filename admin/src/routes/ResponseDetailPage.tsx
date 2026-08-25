@@ -26,7 +26,9 @@ function respondentName(data: ResponseDetailData): string {
   }
   const respondent = data.response.respondent;
   const name = [respondent.firstName, respondent.lastName].filter(Boolean).join(" ");
-  return name || (respondent.username ? `@${respondent.username}` : String(respondent.telegramUserId));
+  return [name, respondent.username ? `@${respondent.username}` : "", String(respondent.telegramUserId)]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function deviceInfoRows(response: ResponseDetailData["response"]): Array<[string, string]> {
@@ -150,6 +152,43 @@ export function ResponseDetailPage() {
             </Link>
           </div>
         </div>
+      </section>
+
+      <section className="card mt-4">
+        <h3 className="text-sm font-semibold">答卷者信息</h3>
+        <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+          {data.response.respondent ? (
+            <>
+              <div className="flex gap-2">
+                <dt className="shrink-0 text-gray-500">姓名</dt>
+                <dd className="min-w-0 break-all text-gray-800">
+                  {[data.response.respondent.firstName, data.response.respondent.lastName].filter(Boolean).join(" ") || "—"}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="shrink-0 text-gray-500">用户名</dt>
+                <dd className="min-w-0 break-all text-gray-800">
+                  {data.response.respondent.username ? `@${data.response.respondent.username}` : "—"}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="shrink-0 text-gray-500">Telegram ID</dt>
+                <dd className="min-w-0 break-all text-gray-800">{data.response.respondent.telegramUserId}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="shrink-0 text-gray-500">来源</dt>
+                <dd className="min-w-0 break-all text-gray-800">Telegram</dd>
+              </div>
+            </>
+          ) : (
+            <div className="flex gap-2">
+              <dt className="shrink-0 text-gray-500">参与方式</dt>
+              <dd className="min-w-0 break-all text-gray-800">
+                {data.response.participantKey ? `网页参与 · ${data.response.participantKey}` : "网页参与（未登录）"}
+              </dd>
+            </div>
+          )}
+        </dl>
       </section>
 
       {(() => {

@@ -1,5 +1,5 @@
 import type { Env } from "../index";
-import { verifyTelegramWebAppUser } from "./admin-api";
+import { verifyTelegramWebAppProfile } from "./admin-api";
 import { verifySurveyParticipantToken } from "../services/participant-session.service";
 import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
@@ -84,26 +84,26 @@ async function resolveParticipant(
 ): Promise<Participant | Response> {
   const initDataHeader = request.headers.get("x-telegram-init-data");
   if (initDataHeader) {
-    const telegramUserId = await verifyTelegramWebAppUser(request, env.BOT_TOKEN);
-    if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) {
+    const profile = await verifyTelegramWebAppProfile(request, env.BOT_TOKEN);
+    if (!profile || profile.telegramUserId <= 0) {
       return fail(401, "invalid_identity", "Telegram 身份验证失败");
     }
     await upsertUser(env.DB, {
-      telegramUserId,
-      username: null,
-      firstName: null,
-      lastName: null,
-      languageCode: null,
+      telegramUserId: profile.telegramUserId,
+      username: profile.username,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      languageCode: profile.languageCode,
       systemRole: "participant",
     });
-    const user = await getUserByTelegramId(env.DB, telegramUserId);
+    const user = await getUserByTelegramId(env.DB, profile.telegramUserId);
     if (!user) {
       return fail(500, "identity_lookup_failed", "无法创建用户身份");
     }
     return {
       kind: "telegram",
       dbUserId: user.id,
-      telegramUserId,
+      telegramUserId: profile.telegramUserId,
       participantKey: null,
       participantHash: `user_${user.id}`,
     };
@@ -111,29 +111,29 @@ async function resolveParticipant(
 
   const participantToken = request.headers.get("x-participant-token");
   if (participantToken) {
-    const telegramUserId = await verifySurveyParticipantToken(
+    const profile = await verifySurveyParticipantToken(
       env.WEBHOOK_SECRET,
       participantToken,
     );
-    if (!Number.isInteger(telegramUserId) || telegramUserId === null || telegramUserId <= 0) {
+    if (!profile || profile.telegramUserId <= 0) {
       return fail(401, "invalid_identity", "登录状态已失效，请重新从 Telegram 打开问卷。");
     }
     await upsertUser(env.DB, {
-      telegramUserId,
-      username: null,
-      firstName: null,
-      lastName: null,
-      languageCode: null,
+      telegramUserId: profile.telegramUserId,
+      username: profile.username,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      languageCode: profile.languageCode,
       systemRole: "participant",
     });
-    const user = await getUserByTelegramId(env.DB, telegramUserId);
+    const user = await getUserByTelegramId(env.DB, profile.telegramUserId);
     if (!user) {
       return fail(500, "identity_lookup_failed", "无法创建用户身份");
     }
     return {
       kind: "telegram",
       dbUserId: user.id,
-      telegramUserId,
+      telegramUserId: profile.telegramUserId,
       participantKey: null,
       participantHash: `user_${user.id}`,
     };

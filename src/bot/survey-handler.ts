@@ -138,9 +138,10 @@ async function buildHomeKeyboard(
   origin?: string,
   webhookSecret?: string,
   userId?: number,
+  from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
 ): Promise<InlineKeyboardMarkup> {
   const participantParam = webhookSecret && userId
-    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(webhookSecret, userId)}`
+    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(webhookSecret, userId, from ?? undefined)}`
     : "";
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
@@ -166,6 +167,7 @@ async function showHomeMenu(
   userId: number,
   dbUser: NonNullable<Awaited<ReturnType<typeof getUserByTelegramId>>>,
   messageId?: number,
+  from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
   const text = creator
@@ -177,7 +179,7 @@ async function showHomeMenu(
     userId,
     screen: "home",
     text,
-    replyMarkup: await buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), ctx.origin, ctx.webhookSecret, userId),
+    replyMarkup: await buildHomeKeyboard(creator, isAdmin(userId, ctx.adminIds), ctx.origin, ctx.webhookSecret, userId, from),
     ...(messageId === undefined ? {} : { messageId }),
   });
 }
@@ -1420,6 +1422,7 @@ async function listSurveys(
   page = 0,
   sort: "latest" | "popular" = "latest",
   messageId?: number,
+  from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
 ): Promise<void> {
   const search = userId
     ? (await ctx.cache?.get(publicSurveySearchKey(userId)))?.trim() ?? ""
@@ -1475,7 +1478,7 @@ async function listSurveys(
   }>();
   const surveys = result.results ?? [];
   const participantParam = ctx.webhookSecret && userId !== undefined
-    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId)}`
+    ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId, from ?? undefined)}`
     : "";
   const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map((survey) => [
     {
@@ -1623,7 +1626,7 @@ export async function handleTelegramMessage(
     if (Number.isSafeInteger(surveyId) && surveyId > 0) {
       if (ctx.origin) {
         const participantParam = ctx.webhookSecret
-          ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId)}`
+          ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId, message.from ?? undefined)}`
           : "";
         await sendMessage(
           ctx.botToken,
@@ -1648,7 +1651,7 @@ export async function handleTelegramMessage(
       text: creator
         ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
         : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-      replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId),
+      replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId, message.from),
     });
     return;
   }
@@ -1699,6 +1702,7 @@ export async function handleTelegramMessage(
         ctx.origin,
         ctx.webhookSecret,
         userId,
+        message.from,
       ),
     });
     return;
@@ -1863,6 +1867,7 @@ export async function handleTelegramMessage(
             ctx.origin,
             ctx.webhookSecret,
             userId,
+            message.from,
           ),
         });
         return;
@@ -1872,14 +1877,14 @@ export async function handleTelegramMessage(
           expirationTtl: 24 * 60 * 60,
         });
         await ctx.cache.delete(publicSurveySearchInputKey(userId));
-        await listSurveys(ctx, message.chat.id, userId);
+        await listSurveys(ctx, message.chat.id, userId, 0, "latest", undefined, message.from);
         return;
       }
     }
   }
 
   if (text === "/surveys") {
-    await listSurveys(ctx, message.chat.id, userId);
+    await listSurveys(ctx, message.chat.id, userId, 0, "latest", undefined, message.from);
     return;
   }
 
@@ -1899,6 +1904,7 @@ export async function handleTelegramMessage(
         ctx.origin,
         ctx.webhookSecret,
         userId,
+        message.from,
       ),
     });
     return;
@@ -2073,7 +2079,7 @@ export async function handleTelegramMessage(
     text: creator
       ? "请在下方选择入口；问卷填写请在网页完成。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
       : "请在下方选择“浏览问卷”开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
-    replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId),
+    replyMarkup: await buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), ctx.origin, ctx.webhookSecret, userId, message.from),
   });
 }
 
@@ -2106,13 +2112,13 @@ export async function handleTelegramCallback(
   }
 
   if (data === "home:menu") {
-    await showHomeMenu(ctx, chatId, userId, dbUser, callback.message?.message_id);
+    await showHomeMenu(ctx, chatId, userId, dbUser, callback.message?.message_id, callback.from);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
 
   if (data === "home:surveys") {
-    await listSurveys(ctx, chatId, userId);
+    await listSurveys(ctx, chatId, userId, 0, "latest", undefined, callback.from);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
@@ -2132,6 +2138,7 @@ export async function handleTelegramCallback(
       page,
       sort,
       callback.message?.message_id,
+      callback.from,
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
@@ -2160,6 +2167,7 @@ export async function handleTelegramCallback(
       0,
       sort,
       callback.message?.message_id,
+      callback.from,
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
@@ -2175,6 +2183,7 @@ export async function handleTelegramCallback(
       0,
       sort,
       callback.message?.message_id,
+      callback.from,
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
@@ -3095,7 +3104,7 @@ export async function handleTelegramCallback(
   }
 
   if (data === "/surveys" || data === "surveys:list") {
-    await listSurveys(ctx, chatId, userId);
+    await listSurveys(ctx, chatId, userId, 0, "latest", undefined, callback.from);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }

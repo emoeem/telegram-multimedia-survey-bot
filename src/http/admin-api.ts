@@ -2759,24 +2759,35 @@ async function insertQuestionWithOptions(
   return questionId;
 }
 
-export async function verifyTelegramWebAppUser(request: Request, botToken: string): Promise<number> {
+export interface TelegramWebAppProfile {
+  telegramUserId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  languageCode: string | null;
+}
+
+export async function verifyTelegramWebAppProfile(
+  request: Request,
+  botToken: string,
+): Promise<TelegramWebAppProfile | null> {
   const initDataHeader = request.headers.get('x-telegram-init-data');
-  if (!initDataHeader || !botToken) return NaN;
+  if (!initDataHeader || !botToken) return null;
   let initData: string;
   try {
     // The browser sends initData percent-encoded because header values must
     // stay ASCII (Telegram user names routinely contain non-ASCII characters).
     initData = decodeURIComponent(initDataHeader);
   } catch {
-    return NaN;
+    return null;
   }
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   const userJson = params.get('user');
-  if (!hash || !userJson) return NaN;
+  if (!hash || !userJson) return null;
   const authDate = Number(params.get('auth_date'));
   if (!Number.isFinite(authDate) || authDate <= 0 || Date.now() / 1000 - authDate > INIT_DATA_MAX_AGE_SECONDS) {
-    return NaN;
+    return null;
   }
   params.delete('hash');
   const dataCheckString = [...params.entries()]
@@ -2797,11 +2808,29 @@ export async function verifyTelegramWebAppUser(request: Request, botToken: strin
   ]);
   const digest = new Uint8Array(await crypto.subtle.sign('HMAC', checkMaterial, encoder.encode(dataCheckString)));
   const expected = [...digest].map((value) => value.toString(16).padStart(2, '0')).join('');
-  if (expected !== hash) return NaN;
+  if (expected !== hash) return null;
   try {
-    const telegramUser = JSON.parse(userJson) as { id?: number };
-    return typeof telegramUser.id === 'number' ? telegramUser.id : NaN;
+    const telegramUser = JSON.parse(userJson) as {
+      id?: number;
+      username?: string;
+      first_name?: string;
+      last_name?: string;
+      language_code?: string;
+    };
+    if (typeof telegramUser.id !== 'number') return null;
+    return {
+      telegramUserId: telegramUser.id,
+      username: telegramUser.username ?? null,
+      firstName: telegramUser.first_name ?? null,
+      lastName: telegramUser.last_name ?? null,
+      languageCode: telegramUser.language_code ?? null,
+    };
   } catch {
-    return NaN;
+    return null;
   }
+}
+
+export async function verifyTelegramWebAppUser(request: Request, botToken: string): Promise<number> {
+  const profile = await verifyTelegramWebAppProfile(request, botToken);
+  return profile ? profile.telegramUserId : NaN;
 }

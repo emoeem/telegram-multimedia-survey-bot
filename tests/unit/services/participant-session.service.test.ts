@@ -9,7 +9,29 @@ const SECRET = "test-secret";
 describe("survey participant session service", () => {
   it("issues and verifies participant tokens carrying the telegram user id", async () => {
     const token = await createSurveyParticipantToken(SECRET, 42);
-    expect(await verifySurveyParticipantToken(SECRET, token)).toBe(42);
+    expect(await verifySurveyParticipantToken(SECRET, token)).toEqual({
+      telegramUserId: 42,
+      username: null,
+      firstName: null,
+      lastName: null,
+      languageCode: null,
+    });
+  });
+
+  it("carries the telegram profile snapshot in the token", async () => {
+    const token = await createSurveyParticipantToken(SECRET, 42, {
+      username: "demo",
+      firstName: "张",
+      lastName: "三",
+      languageCode: "zh",
+    });
+    expect(await verifySurveyParticipantToken(SECRET, token)).toEqual({
+      telegramUserId: 42,
+      username: "demo",
+      firstName: "张",
+      lastName: "三",
+      languageCode: "zh",
+    });
   });
 
   it("rejects tokens signed with a different secret", async () => {

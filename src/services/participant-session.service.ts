@@ -15,6 +15,16 @@ interface ParticipantPayload {
   u: number;
   exp: number;
   p: "participant";
+  /** Optional Telegram profile snapshot (username / names / language). */
+  n?: { u?: string; f?: string; l?: string; c?: string };
+}
+
+export interface SurveyParticipantProfile {
+  telegramUserId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  languageCode: string | null;
 }
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
@@ -72,13 +82,25 @@ async function verifySignature(
 export async function createSurveyParticipantToken(
   secret: string,
   telegramUserId: number,
+  profile?: {
+    username?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    languageCode?: string | null;
+  },
 ): Promise<string> {
+  const n: ParticipantPayload["n"] = {};
+  if (profile?.username) n.u = profile.username;
+  if (profile?.firstName) n.f = profile.firstName;
+  if (profile?.lastName) n.l = profile.lastName;
+  if (profile?.languageCode) n.c = profile.languageCode;
   const payload = base64UrlEncode(
     encoder.encode(
       JSON.stringify({
         u: telegramUserId,
         exp: Math.floor(Date.now() / 1000) + SURVEY_PARTICIPANT_TOKEN_TTL_SECONDS,
         p: "participant",
+        ...(Object.keys(n).length ? { n } : {}),
       } satisfies ParticipantPayload),
     ),
   );
@@ -89,7 +111,7 @@ export async function createSurveyParticipantToken(
 export async function verifySurveyParticipantToken(
   secret: string,
   token: string,
-): Promise<number | null> {
+): Promise<SurveyParticipantProfile | null> {
   const dot = token.indexOf(".");
   if (dot <= 0) return null;
   const payloadPart = token.slice(0, dot);
@@ -107,7 +129,13 @@ export async function verifySurveyParticipantToken(
       return null;
     }
     if (parsed.exp * 1000 <= Date.now()) return null;
-    return parsed.u;
+    return {
+      telegramUserId: parsed.u,
+      username: parsed.n?.u ?? null,
+      firstName: parsed.n?.f ?? null,
+      lastName: parsed.n?.l ?? null,
+      languageCode: parsed.n?.c ?? null,
+    };
   } catch {
     return null;
   }
