@@ -234,7 +234,7 @@ function convertQuestion(
   const title =
     cleanText(question.formsProRTQuestionTitle ?? question.title) ||
     `Question ${index + 1}`;
-  const subtitle = cleanText(
+  let subtitle = cleanText(
     question.formsProRTSubtitle ?? question.subtitle,
   );
   const questionInfo = parseQuestionInfo(question.questionInfo);
@@ -244,11 +244,11 @@ function convertQuestion(
   let options: UnifiedSurveyImport["survey"]["questions"][number]["options"] = [];
   const validation: Record<string, unknown> = {};
 
-  if (question.type === "Question.Choice") {
+    if (question.type === "Question.Choice") {
     const rawChoices = Array.isArray(questionInfo.Choices)
       ? (questionInfo.Choices as Array<Record<string, unknown> | string>)
       : [];
-    const choices: string[] = [];
+    let choices: string[] = [];
     for (const choice of rawChoices) {
       if (typeof choice === "string") {
         if (choice.trim()) choices.push(choice.trim());
@@ -283,7 +283,21 @@ function convertQuestion(
     } else {
       type = "multiple";
     }
-    options = buildOptions(id, choices);
+    if (
+      (type === "single" || type === "multiple" || type === "yes_no") &&
+      choices.length < 2
+    ) {
+      if (choices.length === 1) {
+        const recovered = `导入识别到的原选项内容：\n${choices[0]!}`;
+        subtitle = subtitle ? `${subtitle}\n\n${recovered}` : recovered;
+      }
+      type = "text";
+      choices = [];
+      options = [];
+      warnings.push("选项不足两个，已按文本题导入");
+    } else {
+      options = buildOptions(id, choices);
+    }
 
     if (type === "multiple") {
       const restriction = questionInfo.ChoiceRestrictionType;

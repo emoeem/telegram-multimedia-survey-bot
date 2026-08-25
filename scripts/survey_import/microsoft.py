@@ -343,17 +343,28 @@ def _question_to_survey(
         question_type, choices, reasons = _choice_question_type(
             question, question_info
         )
-        options = [
-            {
-                "id": f"{question.get('id') or index}_o{option_index}",
-                "label": str(option_index + 1),
-                "text": choice,
-                "value": choice,
-                "order": option_index + 1,
-                "media": [],
-            }
-            for option_index, choice in enumerate(choices)
-        ]
+        if question_type in ("single", "multiple", "yes_no") and len(choices) < 2:
+            if len(choices) == 1:
+                recovered = f"导入识别到的原选项内容：\n{choices[0]}"
+                subtitle = (
+                    f"{subtitle}\n\n{recovered}" if subtitle else recovered
+                )
+            question_type = "text"
+            choices = []
+            options = []
+            warnings.append("选项不足两个，已按文本题导入")
+        else:
+            options = [
+                {
+                    "id": f"{question.get('id') or index}_o{option_index}",
+                    "label": str(option_index + 1),
+                    "text": choice,
+                    "value": choice,
+                    "order": option_index + 1,
+                    "media": [],
+                }
+                for option_index, choice in enumerate(choices)
+            ]
         warnings.extend(reasons)
     elif qtype == "Question.Rating":
         question_type, choices, reasons = _rating_question(question_info)

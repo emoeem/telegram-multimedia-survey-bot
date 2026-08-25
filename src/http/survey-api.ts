@@ -316,23 +316,25 @@ export async function handleSurveyApiRequest(
     const optionMediaByOption = new Map<number, Array<{ mediaAssetId: number }>>();
     const questionMediaByQuestion = new Map<number, Array<{ mediaAssetId: number }>>();
     if (questionIds.length > 0) {
+      // json_each keeps this at a single bind regardless of question count;
+      // D1 rejects queries with more than 100 bound variables.
+      const questionIdsJson = JSON.stringify(questionIds);
       const [questionMedia, optionMedia] = (await env.DB.batch([
         env.DB.prepare(
           `SELECT qm.question_id questionId, m.id mediaAssetId
            FROM question_media qm
            JOIN media_assets m ON m.id = qm.media_asset_id
-           WHERE qm.question_id IN (${questionIds.map(() => "?").join(",")})
+           JOIN json_each(?) AS q ON q.value = qm.question_id
            ORDER BY qm.sort_order ASC, qm.id ASC`,
-        ).bind(...questionIds),
+        ).bind(questionIdsJson),
         env.DB.prepare(
           `SELECT om.question_option_id optionId, m.id mediaAssetId
            FROM option_media om
            JOIN media_assets m ON m.id = om.media_asset_id
-           WHERE om.question_option_id IN (
-             SELECT id FROM question_options WHERE question_id IN (${questionIds.map(() => "?").join(",")})
-           )
+           JOIN question_options o ON o.id = om.question_option_id
+           JOIN json_each(?) AS q ON q.value = o.question_id
            ORDER BY om.sort_order ASC, om.id ASC`,
-        ).bind(...questionIds),
+        ).bind(questionIdsJson),
       ])) as [
         D1Result<{ questionId: number; mediaAssetId: number }>,
         D1Result<{ optionId: number; mediaAssetId: number }>,
