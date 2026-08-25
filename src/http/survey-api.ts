@@ -247,7 +247,7 @@ export async function handleSurveyApiRequest(
       .prepare(
         `SELECT s.id, s.title, s.description, s.access_code accessCode,
                 s.published_at publishedAt, s.settings_json settingsJson,
-                m.url coverUrl,
+                m.id coverMediaId, m.url coverUrl,
                 (SELECT COUNT(*) FROM survey_questions q
                  WHERE q.survey_id = s.id) questionCount
          FROM surveys s
@@ -264,6 +264,7 @@ export async function handleSurveyApiRequest(
         publishedAt: string | null;
         questionCount: number;
         settingsJson: string | null;
+        coverMediaId: number | null;
         coverUrl: string | null;
       }>();
     return json({
@@ -274,7 +275,13 @@ export async function handleSurveyApiRequest(
         accessCodeRequired: Boolean(row.accessCode),
         publishedAt: row.publishedAt,
         questionCount: Number(row.questionCount ?? 0),
-        ...(row.coverUrl ? { coverUrl: row.coverUrl } : {}),
+        ...(row.coverMediaId !== null
+          ? {
+              coverUrl:
+                row.coverUrl ??
+                mediaPublicUrl(Number(row.coverMediaId)),
+            }
+          : {}),
         theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
       })),
     });
@@ -805,7 +812,7 @@ async function serveSurveyMedia(
     // Admin-uploaded temporary media (e.g. background music) is allowed
     // before it is attached to any published question/option.
     if (asset.storageKind !== "temporary") {
-      const linked = await env.DB
+      let linked = await env.DB
         .prepare(
           `SELECT s.id FROM surveys s
            JOIN survey_questions q ON q.survey_id = s.id
@@ -820,6 +827,15 @@ async function serveSurveyMedia(
         )
         .bind(mediaId, mediaId)
         .first<{ id: number }>();
+      if (!linked) {
+        linked = await env.DB
+          .prepare(
+            `SELECT s.id FROM surveys s
+             WHERE s.status = 'published' AND s.cover_media_id = ?`,
+          )
+          .bind(mediaId)
+          .first<{ id: number }>();
+      }
       if (!linked) return fail(404, "media_not_found", "媒体不属于已发布问卷");
     }
   } else if (asset.scope === "response") {

@@ -9,6 +9,13 @@ const FORM_DEFINITION = {
   id: "form-1",
   title: "测试问卷",
   description: "描述",
+  background: {
+    resourceUrl: "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
+    contentType: "image/jpeg",
+    width: 1600,
+    height: 900,
+    originalFileName: "bg.jpg",
+  },
   questions: [
     {
       id: "q1",
@@ -136,6 +143,7 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
       survey: {
         title: string;
         metadata: { source: string };
+        cover?: { url: string };
         questions: Array<{
           id: string;
           type: string;
@@ -151,6 +159,9 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     expect(survey.schema_version).toBe(1);
     expect(survey.survey.title).toBe("测试问卷");
     expect(survey.survey.metadata.source).toBe("microsoft_forms");
+    expect(survey.survey.cover?.url).toBe(
+      "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
+    );
 
     const byId = new Map(survey.survey.questions.map((q) => [q.id, q]));
     expect(byId.get("q1")?.type).toBe("single");

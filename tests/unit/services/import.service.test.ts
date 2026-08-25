@@ -369,6 +369,54 @@ describe("import service", () => {
     );
   });
 
+  it("parses cover media from unified survey JSON", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带封面",
+          cover: {
+            type: "photo",
+            source: "url",
+            url: "https://hive.forms.usercontent.microsoft/images/x/cover.jpg",
+            mime_type: "image/jpeg",
+            width: 800,
+          },
+          questions: [{ type: "text", title: "问题" }],
+        },
+      }),
+    );
+
+    expect(parsed.cover?.url).toBe(
+      "https://hive.forms.usercontent.microsoft/images/x/cover.jpg",
+    );
+    expect(parsed.cover?.mimeType).toBe("image/jpeg");
+    expect(parsed.cover?.width).toBe(800);
+  });
+
+  it("persists cover media and links it to the survey row", async () => {
+    const { db, statements } = createD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "带封面",
+      cover: {
+        type: "photo",
+        source: "url",
+        storageKind: "temporary",
+        storageKey: "media:import:cover-key",
+        mimeType: "image/jpeg",
+      },
+      questions: [{ type: "text", title: "问题" }],
+    });
+
+    const update = statements.find((statement) =>
+      statement.sql.includes("cover_media_id"),
+    );
+    expect(update).toBeDefined();
+    expect(update?.bindings).toEqual(
+      expect.arrayContaining(["media:import:cover-key"]),
+    );
+  });
+
   it("parses report template and theme from unified survey settings", () => {
     const parsed = parseImportedSurvey(
       JSON.stringify({

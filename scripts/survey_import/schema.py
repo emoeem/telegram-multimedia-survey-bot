@@ -58,6 +58,19 @@ def validate_survey_json(survey_file: Any) -> list[str]:
         issues.append("$.survey: survey is required")
         return issues
 
+    cover = survey.get("cover")
+    if cover is not None:
+        if not _is_record(cover):
+            issues.append("$.survey.cover: cover must be an object or null")
+        else:
+            cover_url = cover.get("url")
+            if not isinstance(cover_url, str) or not re.match(
+                r"^(?:data:|https?://)", cover_url
+            ):
+                issues.append(
+                    "$.survey.cover.url: cover 的 URL 必须是 data: 或 http(s) 绝对地址"
+                )
+
     title = survey.get("title")
     if not isinstance(title, str) or not title.strip():
         issues.append("$.survey.title: title is required")

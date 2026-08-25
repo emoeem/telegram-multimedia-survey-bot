@@ -172,9 +172,21 @@ async function fetchJson(
 interface FormsDefinition {
   title?: unknown;
   description?: unknown;
+  background?: FormsImagePart;
+  header?: FormsImagePart;
+  logo?: FormsImagePart;
   questions?: unknown[];
   descriptiveQuestions?: unknown[];
   predefinedResponses?: unknown;
+}
+
+interface FormsImagePart {
+  resourceUrl?: unknown;
+  contentType?: unknown;
+  width?: unknown;
+  height?: unknown;
+  originalFileName?: unknown;
+  altText?: unknown;
 }
 
 interface RawQuestion {
@@ -353,6 +365,30 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
   const title = cleanText(data.title) || "Imported Survey";
   const description = cleanText(data.description) || "Imported from Microsoft Forms";
 
+  const coverPart = [data.background, data.header, data.logo].find(
+    (part) =>
+      part &&
+      typeof part.resourceUrl === "string" &&
+      part.resourceUrl.startsWith("http"),
+  ) as FormsImagePart | undefined;
+  const cover: UnifiedSurveyImport["survey"]["cover"] = coverPart
+    ? {
+        id: "cover",
+        type: "photo",
+        source: "url",
+        url: String(coverPart.resourceUrl),
+        ...(coverPart.contentType
+          ? { mime_type: String(coverPart.contentType) }
+          : {}),
+        ...(typeof coverPart.width === "number" ? { width: coverPart.width } : {}),
+        ...(typeof coverPart.height === "number" ? { height: coverPart.height } : {}),
+        ...(coverPart.originalFileName
+          ? { file_name: String(coverPart.originalFileName) }
+          : {}),
+        ...(coverPart.altText ? { caption: String(coverPart.altText) } : {}),
+      }
+    : null;
+
   const pages: UnifiedSurveyImport["survey"]["pages"] = [];
   const pageByDescriptive = new Map<string, string>();
   const descriptive = Array.isArray(data.descriptiveQuestions)
@@ -416,6 +452,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
     survey: {
       title,
       description,
+      ...(cover ? { cover } : {}),
       pages,
       questions: surveyQuestions,
       settings: {

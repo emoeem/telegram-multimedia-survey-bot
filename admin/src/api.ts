@@ -134,6 +134,7 @@ export interface ImportIssue {
 export interface ImportSummary {
   title: string;
   description: string | null;
+  cover: { url: string; mimeType?: string } | null;
   questionCount: number;
   optionCount: number;
   pageCount: number;

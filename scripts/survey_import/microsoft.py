@@ -535,26 +535,49 @@ def forms_definition_to_survey(data: dict[str, Any]) -> dict[str, Any]:
     for question in questions:
         warnings.extend(question["warnings"])
 
+    survey_object: dict[str, Any] = {
+        "title": title,
+        "description": description,
+        "pages": pages,
+        "questions": questions,
+        "settings": {
+            "anonymous": False,
+            "allow_multiple": False,
+            "max_responses": 1,
+            "shuffle_questions": False,
+            "shuffle_options": False,
+            "show_progress": True,
+            "allow_back": True,
+            "allow_resume": True,
+        },
+        "metadata": {
+            "source": "microsoft_forms",
+            "warnings": warnings,
+        },
+    }
+
+    # Microsoft Forms exposes the form cover as background / header / logo
+    # images; surface the first one available as the survey cover.
+    for part_name in ("background", "header", "logo"):
+        part = data.get(part_name) or {}
+        resource_url = part.get("resourceUrl")
+        if not isinstance(resource_url, str) or not resource_url.startswith("http"):
+            continue
+        cover: dict[str, Any] = {
+            "id": f"cover_{part_name}",
+            "type": "photo",
+            "source": "url",
+            "url": resource_url,
+            "mime_type": part.get("contentType"),
+            "width": part.get("width"),
+            "height": part.get("height"),
+            "file_name": part.get("originalFileName"),
+            "caption": part.get("altText"),
+        }
+        survey_object["cover"] = cover
+        break
+
     return {
         "schema_version": 1,
-        "survey": {
-            "title": title,
-            "description": description,
-            "pages": pages,
-            "questions": questions,
-            "settings": {
-                "anonymous": False,
-                "allow_multiple": False,
-                "max_responses": 1,
-                "shuffle_questions": False,
-                "shuffle_options": False,
-                "show_progress": True,
-                "allow_back": True,
-                "allow_resume": True,
-            },
-            "metadata": {
-                "source": "microsoft_forms",
-                "warnings": warnings,
-            },
-        },
+        "survey": survey_object,
     }

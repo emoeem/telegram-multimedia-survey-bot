@@ -56,6 +56,7 @@ export interface ImportedPage {
 export interface ImportedSurvey {
   title: string;
   description?: string;
+  cover?: ImportedMedia;
   pages?: ImportedPage[];
   questions: ImportedQuestion[];
   importWarnings?: string[];
@@ -466,6 +467,7 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     const unifiedSurvey = raw["survey"] as {
       title?: string;
       description?: string;
+      cover?: unknown;
       settings?: {
         anonymous?: boolean;
         allow_multiple?: boolean;
@@ -480,6 +482,9 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     data = {
       title: unifiedSurvey.title ?? "",
       ...(unifiedSurvey.description ? { description: unifiedSurvey.description } : {}),
+      ...(normalizeMedia(unifiedSurvey.cover)
+        ? { cover: normalizeMedia(unifiedSurvey.cover)! }
+        : {}),
       pages: normalizePages(unifiedSurvey.pages),
       settings: {
         anonymous: unifiedSurvey.settings?.anonymous ?? false,
@@ -502,6 +507,7 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     const legacy = raw as {
       title?: string;
       description?: string;
+      cover?: unknown;
       settings?: {
         anonymous?: boolean;
         allow_multiple?: boolean;
@@ -515,6 +521,9 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     data = {
       title: legacy.title ?? "",
       ...(legacy.description ? { description: legacy.description } : {}),
+      ...(normalizeMedia(legacy.cover)
+        ? { cover: normalizeMedia(legacy.cover)! }
+        : {}),
       settings: {
         anonymous: legacy.settings?.anonymous ?? false,
         allowMultipleResponses: legacy.settings?.allow_multiple ?? false,
@@ -645,7 +654,8 @@ async function resolveImportedMedia(
     });
   }
 
-  return { ...survey, questions };
+  const cover = survey.cover ? await resolveOne(survey.cover) : undefined;
+  return { ...survey, ...(cover ? { cover } : {}), questions };
 }
 
 export async function saveImportedSurvey(
@@ -789,6 +799,13 @@ export async function saveImportedSurvey(
     }
     return mediaKey;
   };
+
+  // Cover media is registered alongside question/option media so it is
+  // inserted in the same batch; the survey row is updated afterwards.
+  let coverMediaKey: string | null = null;
+  if (resolvedSurvey.cover) {
+    coverMediaKey = registerMedia(resolvedSurvey.cover);
+  }
 
   resolvedSurvey.questions.forEach((question, questionOrder) => {
     (question.media ?? []).forEach((media, sortOrder) => {
@@ -985,6 +1002,28 @@ export async function saveImportedSurvey(
           created.id,
           timestamp,
         ),
+    );
+  }
+
+  if (coverMediaKey !== null) {
+    const cover = resolvedSurvey.cover;
+    const keyField = cover?.telegramFileId
+      ? "telegram_file_id"
+      : cover?.storageKey
+        ? "storage_key"
+        : "url";
+    statements.push(
+      db
+        .prepare(
+          `UPDATE surveys
+           SET cover_media_id = (
+             SELECT id FROM media_assets
+             WHERE created_at = ? AND ${keyField} = ?
+             ORDER BY id DESC LIMIT 1
+           )
+           WHERE id = ?`,
+        )
+        .bind(timestamp, coverMediaKey, created.id),
     );
   }
 

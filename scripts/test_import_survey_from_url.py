@@ -41,6 +41,13 @@ SAMPLE_FORM_DEFINITION = {
     "id": "form-1",
     "title": "测试问卷",
     "description": "测试描述",
+    "background": {
+        "resourceUrl": "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
+        "contentType": "image/jpeg",
+        "width": 1600,
+        "height": 900,
+        "originalFileName": "bg.jpg",
+    },
     "questions": [
         {
             "id": "q1",
@@ -352,6 +359,10 @@ class FormsExtractionTests(unittest.TestCase):
         survey = forms_definition_to_survey(SAMPLE_FORM_DEFINITION)
         self.assertEqual(survey["schema_version"], 1)
         self.assertEqual(survey["survey"]["title"], "测试问卷")
+        self.assertEqual(
+            survey["survey"]["cover"]["url"],
+            "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
+        )
         self.assertEqual(
             survey["survey"]["metadata"]["source"],
             "microsoft_forms",

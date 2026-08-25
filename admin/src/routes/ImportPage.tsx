@@ -248,6 +248,13 @@ export function ImportPage() {
             <div>
               <h3 className="text-lg font-semibold">{summary.title || "未命名问卷"}</h3>
           {summary.description ? <p className="mt-1 text-sm text-gray-500">{summary.description}</p> : null}
+          {summary.cover ? (
+            <img
+              src={summary.cover.url}
+              alt="问卷封面"
+              className="mt-3 aspect-[16/7] w-full max-w-md rounded-xl object-cover"
+            />
+          ) : null}
           {summary.reportTemplateId ? (
             <p className="mt-1 text-sm text-indigo-600">
               报告模板：{summary.reportTemplateName ?? summary.reportTemplateId}
