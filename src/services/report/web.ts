@@ -133,16 +133,32 @@ function renderInsights(view: ReportViewModel): string {
 
 function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): string {
   if (!view.profile.length) return "";
+  const renderValue = (item: ReportViewModel["profile"][number]): string => {
+    if (item.options?.length) {
+      const options = item.options
+        .map(
+          (option) =>
+            `<div class="answer-option${option.selected ? " selected" : ""}">` +
+            `<span class="option-mark">${option.selected ? "✓" : "○"}</span>` +
+            `<span>${escapeHtml(option.label)}</span></div>`,
+        )
+        .join("");
+      return `<div class="answer-options">${options}</div>${
+        item.value ? `<div class="answer">${escapeHtml(item.value)}</div>` : ""
+      }`;
+    }
+    return `<span>${escapeHtml(item.value)}</span>`;
+  };
   if (section.presentation === "list") {
     return `<ul class="checklist">
       ${view.profile.map((item) => `
-        <li><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></li>`).join("")}
+        <li><strong>${escapeHtml(item.label)}</strong>${renderValue(item)}</li>`).join("")}
     </ul>`;
   }
   return `<section class="report-section"><h2>回答明细</h2>
     <dl class="answer-list">
       ${view.profile.map((item) => `
-        <div class="answer-item"><dt>${escapeHtml(item.label)}</dt><dd>${escapeHtml(item.value)}</dd></div>`).join("")}
+        <div class="answer-item"><dt>${escapeHtml(item.label)}</dt><dd>${renderValue(item)}</dd></div>`).join("")}
     </dl>
   </section>`;
 }

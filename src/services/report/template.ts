@@ -69,6 +69,7 @@ const compositionBlockKinds = new Set<ReportCompositionBlockKind>([
   "analysis",
   "quotes",
   "responses",
+  "transcript",
   "gallery",
   "verdict",
 ]);
@@ -193,6 +194,7 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "catppuccin-latte",
   layout: "editorial",
+  blocks: ["hero", "overview", "featured", "quotes", "transcript", "gallery", "verdict"],
   sections: [
     { kind: "hero" },
     { kind: "summary" },
@@ -204,6 +206,24 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplateSpec = {
     { kind: "answers" },
   ],
   renderers: ["web", "pdf"],
+};
+
+/** 完整问答：以原始 Q&A 明细为主体的浅色报告。 */
+export const TRANSCRIPT_REPORT_TEMPLATE: ReportTemplateSpec = {
+  id: "transcript",
+  name: "完整问答",
+  version: 1,
+  theme: "daisy-light",
+  layout: "editorial",
+  blocks: ["hero", "transcript", "gallery", "verdict"],
+  sections: [
+    { kind: "hero" },
+    { kind: "answers" },
+    { kind: "gallery" },
+    { kind: "verdict" },
+  ],
+  renderers: ["web", "pdf"],
+  css: `.report-layout-editorial .transcript-list{max-width:760px}.report-layout-editorial .transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .transcript-item:first-of-type{border-top:0}.report-layout-editorial .transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text)}.report-layout-editorial .transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap}.report-layout-editorial .answer-options{margin-top:10px;display:grid;gap:6px}.report-layout-editorial .answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.report-layout-editorial .answer-option.selected{color:var(--report-accent);font-weight:600}`,
 };
 
 export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
@@ -314,6 +334,7 @@ export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
 
 export const REPORT_TEMPLATES: Record<string, ReportTemplateSpec> = {
   [DEFAULT_REPORT_TEMPLATE.id]: DEFAULT_REPORT_TEMPLATE,
+  [TRANSCRIPT_REPORT_TEMPLATE.id]: TRANSCRIPT_REPORT_TEMPLATE,
   [MAGAZINE_DARK_TEMPLATE.id]: MAGAZINE_DARK_TEMPLATE,
   [DATA_REPORT_TEMPLATE.id]: DATA_REPORT_TEMPLATE,
   [IDENTITY_REPORT_TEMPLATE.id]: IDENTITY_REPORT_TEMPLATE,

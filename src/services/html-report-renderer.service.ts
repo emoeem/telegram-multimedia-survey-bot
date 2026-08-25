@@ -5,7 +5,7 @@ import { reportTokenCss } from "./report/tokens";
 import { type ReportLayout } from "./report/layouts";
 import { reportThemes, themeCss, type ReportTheme } from "./report/themes";
 import { inspectReportImage, reportImageByteSize, reportImageHash } from "./report/image-metadata";
-import type { PreparedReportContent, ReportArtifact, ReportGalleryItem, ReportPage, ReportPageBlock, ReportViewModel } from "./report/model";
+import type { PreparedReportContent, ReportAnswerItem, ReportArtifact, ReportGalleryItem, ReportPage, ReportPageBlock, ReportViewModel } from "./report/model";
 import { prepareReportContent, normalizeReportText } from "./report/composition/content";
 import { composeReport } from "./report/composition/compose";
 import { planReportPages, selectGalleryForPolicy } from "./report/composition/page-planner";
@@ -111,7 +111,22 @@ export function buildReportViewModel(profile: ResultProfileSnapshot, images: Rec
     const label = limitText(text(item.label), 120);
     const value = limitText(text(item.value), 20_000);
     const matchingField = Object.entries(profile.fields).find(([, field]) => text(field.value).trim() === value.trim());
-    return { id: `answer-${index}`, sourceId: matchingField?.[0] ?? `profile-${index}`, label, value };
+    const options = Array.isArray(item.options)
+      ? (item.options as Array<Record<string, unknown>>)
+          .map((option) => ({
+            label: text(option.label),
+            selected: option.selected === true,
+          }))
+          .filter((option) => option.label)
+      : undefined;
+    return {
+      id: `answer-${index}`,
+      sourceId: matchingField?.[0] ?? `profile-${index}`,
+      label,
+      value,
+      ...(typeof item.type === "string" ? { type: item.type } : {}),
+      ...(options?.length ? { options } : {}),
+    };
   }).filter((item) => item.label && item.value).slice(0, 250);
   const scores = profile.stats.filter((stat) => Number.isFinite(stat.value) && Number.isFinite(stat.max) && Number(stat.max) > 0).slice(0, 12).map((stat) => {
     const max = stat.max!;
@@ -227,6 +242,7 @@ function renderComposition(
     overview: renderOverview(view, colors), featured: renderFeaturedInsightBlock(content.featuredInsight, { escape: escapeHtml, limit: limitText }),
     analysis: renderEditorialAnalysisBlock(content.analysis, { escape: escapeHtml, limit: limitText }), quotes: renderQuoteBlock(content.quotes, { escape: escapeHtml, limit: limitText }),
     responses: renderSelectedResponses(content, { escape: escapeHtml }), gallery: renderGalleryBlock(view.gallery, { heroUrl: view.hero.avatar, escape: escapeHtml }),
+    transcript: renderFullTranscript(view, { escape: escapeHtml }),
     verdict: renderFinalVerdictBlock(content.verdict, primaryScore, { escape: escapeHtml, limit: limitText }),
   };
   const html = composition.regions.map((region) => `<div class="composition-region composition-region-${region.role}" data-region="${region.id}">${region.blocks.map((spec) => {
@@ -257,7 +273,8 @@ function responsiveCompositionCss(): string {
   return `${base}
 @media (max-width:960px){.composition-region{grid-template-columns:1fr}.composition-block{grid-column:auto}.bento-overview{grid-template-columns:1fr}.bento-primary,.bento-metrics,.bento-radar,.bento-bars,.bento-tags{grid-column:auto;grid-row:auto}.hero{grid-template-columns:1fr;gap:24px;padding:40px 0 48px}.hero h1{font-size:42px}.hero-thesis{font-size:20px}.hero-score{text-align:left;border-left:0;border-top:1px solid var(--report-border);padding:22px 0 0;margin-top:6px}.hero-score strong{font-size:54px}.hero-avatar{position:static;width:108px;height:108px;margin-top:22px}.quote-list,.editorial-answer-grid{grid-template-columns:1fr}.compact-answer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gallery-grid{grid-template-columns:repeat(2,1fr)}.gallery-feature-triple{grid-template-columns:1fr}.gallery-feature-triple .gallery-item:first-child{grid-row:auto}.gallery-feature-triple .gallery-item:first-child img{height:340px}.gallery-item img{height:280px}.gallery-single .gallery-item img{height:420px}.gallery-duo .gallery-item img{height:300px}.editorial-section{grid-template-columns:56px minmax(0,1fr);gap:20px;padding:34px 0}.editorial-section:not(.editorial-long):nth-of-type(3),.editorial-section:not(.editorial-long):nth-of-type(4){display:grid;width:100%;grid-template-columns:56px minmax(0,1fr)}.editorial-copy h3{font-size:24px}.featured-insight{padding:54px 24px}.featured-insight blockquote{font-size:30px}.selected-quote{padding:24px 0}.selected-quote blockquote{font-size:22px}.featured-question{padding:32px 0 40px}.featured-question .question{font-size:22px}.featured-question .answer{font-size:19px}.chapter-heading{flex-direction:column;align-items:flex-start;gap:8px;margin-bottom:28px}.chapter-heading h2{font-size:26px}.final-verdict{padding:64px 0}.final-verdict h2{font-size:40px}.verdict-main{grid-template-columns:1fr;gap:24px}.verdict-pillars{grid-template-columns:1fr;gap:22px;margin-top:44px}.closing-statement{margin-top:48px}.radar,.bars-chart svg{width:100%!important;height:280px}}
 @media (max-width:480px){.hero h1{font-size:32px}.hero-thesis{font-size:17px}.metric{padding:14px}.compact-answer-grid{grid-template-columns:1fr}.gallery-grid,.gallery-duo{grid-template-columns:1fr}.gallery-grid .gallery-item img{height:260px}.editorial-index{font-size:30px}.chapter-heading h2{font-size:22px}.page{padding:24px 16px 56px}}
-@media print{:root{--report-bg:#fff;--report-surface:#fff;--report-border:#dde3ea}body{background:#fff}.page{max-width:none;padding:0}.composition-region,.bento-overview{grid-template-columns:1fr}.bento-primary,.bento-metrics,.bento-radar,.bento-bars,.bento-tags,.featured-insight,.final-verdict{grid-column:auto;grid-row:auto}.hero,.bento-tile,.metric,.selected-quote,.compact-answer,.gallery-item,.editorial-section,.featured-question{break-inside:avoid}.hero{grid-template-columns:1fr}.hero h1{font-size:34px}.hero-score strong{font-size:44px}.gallery-grid{grid-template-columns:1fr}.compact-answer-grid{grid-template-columns:repeat(2,1fr)}}`;
+@media print{:root{--report-bg:#fff;--report-surface:#fff;--report-border:#dde3ea}body{background:#fff}.page{max-width:none;padding:0}.composition-region,.bento-overview{grid-template-columns:1fr}.bento-primary,.bento-metrics,.bento-radar,.bento-bars,.bento-tags,.featured-insight,.final-verdict{grid-column:auto;grid-row:auto}.hero,.bento-tile,.metric,.selected-quote,.compact-answer,.gallery-item,.editorial-section,.featured-question,.transcript-item{break-inside:avoid}.hero{grid-template-columns:1fr}.hero h1{font-size:34px}.hero-score strong{font-size:44px}.gallery-grid{grid-template-columns:1fr}.compact-answer-grid{grid-template-columns:repeat(2,1fr)}}
+.transcript-list{max-width:760px;margin:0 auto}.transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.transcript-item:first-of-type{border-top:0}.transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text);line-height:1.5}.transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap;overflow-wrap:anywhere}.answer-options{margin-top:10px;display:grid;gap:6px}.answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.answer-option.selected{color:var(--report-accent);font-weight:600}.option-mark{width:16px;flex:none;text-align:center}@media (max-width:480px){.transcript-item{padding:20px 0}}`;
 }
 
 /**
@@ -310,6 +327,47 @@ function partialResponses(content: PreparedReportContent, block: Extract<ReportP
     editorialAnswers: block.editorial,
     compactAnswers: block.compact,
   };
+}
+
+function renderAnswerValue(
+  item: ReportAnswerItem,
+  context: { escape(value: string): string },
+): string {
+  if (item.options?.length) {
+    const options = item.options
+      .map(
+        (option) =>
+          `<div class="answer-option${option.selected ? " selected" : ""}">` +
+          `<span class="option-mark">${option.selected ? "✓" : "○"}</span>` +
+          `<span>${context.escape(option.label)}</span></div>`,
+      )
+      .join("");
+    return `<div class="answer-options">${options}</div>${
+      item.value ? `<div class="answer">${context.escape(item.value)}</div>` : ""
+    }`;
+  }
+  return item.value ? `<div class="answer">${context.escape(item.value)}</div>` : "";
+}
+
+/** Full Q&A transcript: every answered question with options and selection. */
+function renderFullTranscript(
+  view: ReportViewModel,
+  context: { escape(value: string): string },
+): string {
+  if (!view.profile.length) return "";
+  return `<section class="responses-composition block block-responses block-transcript">
+    <header class="chapter-heading"><span>FULL TRANSCRIPT</span><h2>完整问答</h2></header>
+    <div class="transcript-list">
+      ${view.profile
+        .map(
+          (item, index) =>
+            `<article class="transcript-item"><div class="response-index">Q${String(index + 1).padStart(2, "0")}</div>` +
+            `<div class="question">${context.escape(item.label)}</div>` +
+            `${renderAnswerValue(item, context)}</article>`,
+        )
+        .join("")}
+    </div>
+  </section>`;
 }
 
 function renderPlannedBlock(

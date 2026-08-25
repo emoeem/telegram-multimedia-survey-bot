@@ -65,9 +65,16 @@ function fallbackResultProfile(
   surveyTitle: string,
   questions: Array<Pick<Awaited<ReturnType<typeof listQuestionsBySurvey>>[number], "id" | "type" | "title">>,
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>,
-  optionLabelById: ReadonlyMap<number, string>,
+  optionRows: Awaited<ReturnType<typeof listOptionsForQuestions>>,
 ): ResultProfileSnapshot {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer]));
+  const optionLabelById = new Map(optionRows.map((option) => [option.id, option.label]));
+  const optionsByQuestion = new Map<number, Array<{ id: number; label: string }>>();
+  for (const option of optionRows) {
+    const list = optionsByQuestion.get(option.questionId) ?? [];
+    list.push({ id: option.id, label: option.label });
+    optionsByQuestion.set(option.questionId, list);
+  }
   const fields: ResultProfileSnapshot["fields"] = {};
   const profile: Array<{ label: string; value: string }> = [];
   const stats: ResultProfileSnapshot["stats"] = [];
@@ -76,15 +83,36 @@ function fallbackResultProfile(
   const summary: string[] = [];
   const tags = new Set<string>();
 
+  const selectedOptionIds = (value: unknown): Set<number> => {
+    const ids = new Set<number>();
+    const push = (entry: unknown) => {
+      if (typeof entry === "number") ids.add(entry);
+      else if (typeof entry === "string" && /^\d+$/.test(entry)) ids.add(Number(entry));
+    };
+    if (Array.isArray(value)) value.forEach(push);
+    else push(value);
+    return ids;
+  };
+
   for (const question of questions) {
     const answer = answerMap.get(question.id);
     if (!answer) continue;
     const normalized = normalizeAnswer(answer, question.type);
     const fieldId = `question_${question.id}`;
     fields[fieldId] = { id: fieldId, type: fallbackFieldType(question.type), value: normalized.value };
+    const choiceOptions =
+      question.type === "single" || question.type === "multiple" || question.type === "yes_no"
+        ? (optionsByQuestion.get(question.id) ?? []).map((option) => ({
+            label: option.label,
+            selected: selectedOptionIds(normalized.value).has(option.id),
+          }))
+        : undefined;
     profile.push({
       label: question.title,
       value: displayAnswer(normalized.value, question.type, optionLabelById),
+      ...(choiceOptions?.length
+        ? { type: question.type, options: choiceOptions }
+        : {}),
     });
     if (Array.isArray(normalized.value)) {
       for (const item of normalized.value) if (typeof item === "string" && item.trim()) tags.add(item.trim());
@@ -161,8 +189,7 @@ export async function prepareResultProfileForResponse(
     db,
     questions.map((question) => question.id),
   );
-  const optionLabelById = new Map(optionRows.map((option) => [option.id, option.label]));
-  const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionLabelById);
+  const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionRows);
   const snapshot = ruleSetRecord
     ? (() => {
       const calculated = calculateResultProfile({ answers, ruleSet: parseResultRuleSet(ruleSetRecord.rulesJson) });

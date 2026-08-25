@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
 import { buildHtmlReport, buildReportViewModel, selectReportLayout } from "../../../src/services/html-report-renderer.service";
 import { prepareReportContent } from "../../../src/services/report/composition/content";
+import { buildResponsiveReportHtml } from "../../../src/services/report/web";
+import {
+  DEFAULT_REPORT_TEMPLATE,
+  TRANSCRIPT_REPORT_TEMPLATE,
+} from "../../../src/services/report/template";
 
 const profile: ResultProfileSnapshot = {
   resultType: "survey_result",
@@ -26,6 +31,79 @@ const profile: ResultProfileSnapshot = {
 };
 
 describe("HTML report renderer", () => {
+  it("keeps choice options with selection state on profile answers", () => {
+    const withOptions: ResultProfileSnapshot = {
+      ...profile,
+      metadata: {
+        profile: [
+          {
+            label: "喜欢的颜色",
+            value: "红、蓝",
+            type: "multiple",
+            options: [
+              { label: "红", selected: true },
+              { label: "蓝", selected: true },
+              { label: "绿", selected: false },
+            ],
+          },
+        ],
+        summary: "",
+      },
+    };
+    const view = buildReportViewModel(withOptions);
+    expect(view.profile[0]?.options).toEqual([
+      { label: "红", selected: true },
+      { label: "蓝", selected: true },
+      { label: "绿", selected: false },
+    ]);
+    expect(view.profile[0]?.type).toBe("multiple");
+  });
+
+  it("renders every answer in the default report template", () => {
+    const manyAnswers: ResultProfileSnapshot = {
+      ...profile,
+      metadata: {
+        profile: Array.from({ length: 15 }, (_, index) => ({
+          label: `第 ${index + 1} 题：你喜欢什么？`,
+          value: index % 3 === 0 ? "苹果、香蕉" : `回答内容 ${index + 1}`,
+          ...(index === 0
+            ? {
+                type: "multiple",
+                options: [
+                  { label: "苹果", selected: true },
+                  { label: "香蕉", selected: true },
+                  { label: "橙子", selected: false },
+                ],
+              }
+            : {}),
+        })),
+        summary: "测试",
+      },
+    };
+    const view = buildReportViewModel(manyAnswers);
+    const html = buildResponsiveReportHtml(view, {}, DEFAULT_REPORT_TEMPLATE);
+    expect(html).toContain("完整问答");
+    expect((html.match(/第 \d+ 题/g) ?? []).length).toBe(15);
+    expect(html).toContain("✓");
+    expect(html).toContain("苹果");
+  });
+
+  it("renders the transcript template with all answers and options", () => {
+    const view = buildReportViewModel({
+      ...profile,
+      metadata: {
+        profile: Array.from({ length: 12 }, (_, index) => ({
+          label: `题目 ${index + 1}`,
+          value: `答案 ${index + 1}`,
+        })),
+        summary: "测试",
+      },
+    });
+    const html = buildResponsiveReportHtml(view, {}, TRANSCRIPT_REPORT_TEMPLATE);
+    expect(html).toContain("完整问答");
+    expect((html.match(/题目 \d+/g) ?? []).length).toBe(12);
+  });
+
   it("builds a semantic view model from ResultProfile", () => {
     const view = buildReportViewModel(profile);
     expect(view.hero.title).toBe("独立思考型探索者");

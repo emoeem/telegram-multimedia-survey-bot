@@ -28,6 +28,7 @@ function available(view: ReportViewModel, content: PreparedReportContent): Recor
     analysis: content.analysis.length > 0,
     quotes: content.quotes.length > 0,
     responses: Boolean(content.featuredAnswer || content.editorialAnswers.length || content.compactAnswers.length),
+    transcript: view.profile.length > 0,
     gallery: view.gallery.some((item) => item.url !== view.hero.avatar),
     verdict: true,
   };
@@ -50,6 +51,7 @@ export function composeReport(
   ]);
   const quotes = region("evidence", "evidence", has.quotes ? [block("quotes", "quote", 12, "wide")] : []);
   const responses = region("evidence", "evidence", has.responses ? [block("responses", "editorial", 12, "full")] : []);
+  const transcript = region("evidence", "evidence", has.transcript ? [block("transcript", "editorial", 12, "full")] : []);
   const gallery = region("gallery", "gallery", has.gallery ? [block("gallery", "image", 12, "full")] : []);
   const finale = region("finale", "finale", [block("verdict", "editorial", 12, "full", "primary")]);
   const regionMap = new Map([hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]));
@@ -61,6 +63,7 @@ export function composeReport(
       analysis,
       quotes,
       responses,
+      transcript,
       gallery,
       verdict: finale,
     };

@@ -181,12 +181,28 @@ describe("result visual orchestration", () => {
     expect(prepared).not.toBeNull();
     expect(prepared!.reused).toBe(false);
     const metadata = JSON.parse(prepared!.profile.metadataJson) as {
-      profile: Array<{ label: string; value: string }>;
+      profile: Array<Record<string, unknown>>;
       summary: string;
     };
     expect(metadata.profile).toEqual([
-      { label: "喜欢的颜色", value: "蓝色" },
-      { label: "常用交通方式", value: "公交、地铁、999" },
+      {
+        label: "喜欢的颜色",
+        value: "蓝色",
+        type: "single",
+        options: [
+          { label: "蓝色", selected: true },
+          { label: "绿色", selected: false },
+        ],
+      },
+      {
+        label: "常用交通方式",
+        value: "公交、地铁、999",
+        type: "multiple",
+        options: [
+          { label: "公交", selected: true },
+          { label: "地铁", selected: true },
+        ],
+      },
       { label: "补充说明", value: "就这样" },
     ]);
     expect(metadata.summary).toContain("喜欢的颜色：蓝色");

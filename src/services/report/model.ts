@@ -37,6 +37,10 @@ export interface ReportAnswerItem {
   sourceId: string;
   label: string;
   value: string;
+  /** Question type from the source survey (e.g. single / multiple). */
+  type?: string;
+  /** For choice questions: every option with its selected state. */
+  options?: Array<{ label: string; selected: boolean }>;
 }
 
 export interface ReportViewModel {
@@ -64,6 +68,7 @@ export type ReportCompositionBlockKind =
   | "analysis"
   | "quotes"
   | "responses"
+  | "transcript"
   | "gallery"
   | "verdict";
 
