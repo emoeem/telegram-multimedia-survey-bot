@@ -200,18 +200,20 @@ function SurveyListPage() {
   return (
     <div className="survey-glow min-h-dvh pb-10">
       <header className="border-b border-gray-200 bg-white/80 px-5 pb-4 pt-7 backdrop-blur-md">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
-        <p className="mt-1 text-sm text-gray-500">选择一份问卷，开始你的回答</p>
-        <input
-          type="search"
-          className="input mt-4 w-full"
-          placeholder="搜索问卷…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="mx-auto w-full max-w-6xl">
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
+          <p className="mt-1 text-sm text-gray-500">选择一份问卷，开始你的回答</p>
+          <input
+            type="search"
+            className="input mt-4 w-full sm:max-w-md"
+            placeholder="搜索问卷…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       </header>
-      <main className="mx-auto w-full max-w-xl px-5 pt-5">
-        <div className="grid gap-4">
+      <main className="mx-auto w-full max-w-6xl px-5 pt-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {surveys.map((survey) => (
             <a
               key={survey.id}
@@ -1161,7 +1163,7 @@ export function SurveyApp() {
       ) : null}
       <div className="relative z-10">
         <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
-          <div className="mx-auto max-w-xl px-5 pt-3">
+          <div className="mx-auto max-w-xl px-5 pt-3 lg:max-w-3xl">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-[13px] font-semibold text-[var(--survey-heading)]">{survey.title}</p>
@@ -1213,7 +1215,7 @@ export function SurveyApp() {
         </header>
 
         <main
-          className="mx-auto w-full max-w-xl px-5 pb-2 pt-5"
+          className="mx-auto w-full max-w-xl px-5 pb-2 pt-5 lg:max-w-3xl"
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
@@ -1258,7 +1260,7 @@ export function SurveyApp() {
             navHidden ? "translate-y-full" : ""
           }`}
         >
-          <div className="mx-auto max-w-xl px-4 pt-1" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
+          <div className="mx-auto max-w-xl px-4 pt-1 lg:max-w-3xl" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             <div className="flex items-center gap-2 rounded-[20px] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]/90 p-2 shadow-[0_-6px_34px_-14px_rgba(15,23,42,.28)] backdrop-blur">
               {index > 0 ? (
                 <button

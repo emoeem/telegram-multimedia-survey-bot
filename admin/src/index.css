@@ -1551,7 +1551,9 @@ input[type="radio"] {
 
 /* ---- Native dark mode (follows the OS setting) ------------------------ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  /* The public survey pages always keep the light surface so hardcoded dark
+   * text stays readable; only the admin app follows the OS dark scheme. */
+  html:not(.survey-app) {
     color-scheme: dark;
     --color-page: #080d18;
     --color-ink: #f3f6fc;
