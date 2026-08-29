@@ -103,6 +103,7 @@ import { createSurveyFromTemplate, listSurveyTemplates, type SurveyTemplate } fr
 import { clearImageGeneratorInteractionState, ensureReportStyleTemplates, handleImageGeneratorCallback, handleImageGeneratorParticipantMessage } from "./image-generator-handler";
 import { clearResultVisualInteractionState } from "./result-visual-admin-handler";
 import { clearUiSession } from "../services/ui-session.service";
+import { handleMediaCardCallback } from "./media-card-handler";
 import { clearIdentityCardInteractionState, handleIdentityCardCallback, handleIdentityCardMessage } from "./identity-card-handler";
 import { listVisualTemplates } from "../db/repositories/visual-template.repository";
 
@@ -148,6 +149,7 @@ async function buildHomeKeyboard(
       ? [{ text: "浏览问卷", url: `${origin}/s?v=3${participantParam}` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
+    [{ text: "📷 资料卡画廊", callback_data: "mediacard:gallery" }],
   ];
   if (creator) {
     if (origin) {
@@ -2104,6 +2106,10 @@ export async function handleTelegramCallback(
   }
 
   if (await handleIdentityCardCallback(ctx, callback, dbUserId)) {
+    return;
+  }
+
+  if (await handleMediaCardCallback(ctx, callback)) {
     return;
   }
 

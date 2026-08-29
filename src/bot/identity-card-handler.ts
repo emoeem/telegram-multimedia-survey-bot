@@ -134,6 +134,7 @@ export async function startIdentityCard(ctx: BotContext, chatId: number, userId:
       [{ text: "☁️ 玻璃极简", callback_data: "identity:style:simple" }],
       [{ text: "⚡ 霓虹赛博档案", callback_data: "identity:style:dark" }],
       [{ text: "✦ Art Deco 复古", callback_data: "identity:style:classic" }],
+      [{ text: "📷 mpv 资料卡画廊", callback_data: "mediacard:gallery" }],
       [{ text: "取消", callback_data: "identity:cancel" }],
     ],
   }, "style");

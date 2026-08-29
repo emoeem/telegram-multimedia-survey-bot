@@ -2,6 +2,7 @@ import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
 import { UiSessionDO } from "./durable-objects/ui-session";
 import { handleTelegramUpdate } from "./bot/router";
+import { pollMediaCardsForChannel } from "./services/media-cards-gallery.service";
 import { syncDefaultBotCommands } from "./bot/telegram";
 import { getWebhookInfo, setWebhook } from "./bot/telegram";
 import type { BotContext } from "./bot/types";
@@ -58,6 +59,8 @@ export interface Env {
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
   ADMIN_IDS: string;
+  CARDS_CHANNEL_ID?: string;
+  CARDS_GALLERY_URL?: string;
   ENVIRONMENT: "development" | "production";
   APP_VERSION?: string;
   LICENSE_ENFORCEMENT?: "disabled" | "required";
@@ -226,6 +229,7 @@ export default {
           licenseAdminEnabled: Boolean(env.LICENSE_ADMIN_TOKEN),
           browser: env.BROWSER,
           webhookSecret: env.WEBHOOK_SECRET,
+          ...(env.CARDS_GALLERY_URL ? { cardsGalleryUrl: env.CARDS_GALLERY_URL } : {}),
         };
         await handleTelegramUpdate(update, context);
         return Response.json({ ok: true });
@@ -261,6 +265,12 @@ export default {
         if (summary.requeued || summary.failed) console.warn("Recovered stale identity card jobs", summary);
       } catch (error) {
         console.error("Identity card job recovery failed", error);
+      }
+      try {
+        const summary = await pollMediaCardsForChannel(env);
+        if (summary.announced > 0) console.info("Announced media cards", summary);
+      } catch (error) {
+        console.error("Media cards poll failed", error);
       }
       try {
         const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);

@@ -76,4 +76,5 @@ export interface BotContext {
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;
   webhookSecret?: string;
+  cardsGalleryUrl?: string;
 }
