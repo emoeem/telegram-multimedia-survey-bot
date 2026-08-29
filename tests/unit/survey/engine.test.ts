@@ -100,19 +100,21 @@ describe("survey engine", () => {
 
   it("uses the matching rule when a question has multiple branch rules", () => {
     const branched = buildSurveyFlow(
-      flow.questions.map((question) => question.id === 2
-        ? {
-            ...question,
-            conditionJson: JSON.stringify({
-              kind: "option_equals",
-              rules: [
-                { optionId: 20, targetQuestionId: 3 },
-                { optionId: 21, targetQuestionId: 4 },
-              ],
-            }),
-            skipToQuestionId: 3,
-          }
-        : question),
+      flow.questions.map((question) =>
+        question.id === 2
+          ? {
+              ...question,
+              conditionJson: JSON.stringify({
+                kind: "option_equals",
+                rules: [
+                  { optionId: 20, targetQuestionId: 3 },
+                  { optionId: 21, targetQuestionId: 4 },
+                ],
+              }),
+              skipToQuestionId: 3,
+            }
+          : question,
+      ),
       [
         ...flow.questions[1]!.options,
         { id: 21, questionId: 2, label: "B", value: "b", order: 1, isOther: false, createdAt: "", updatedAt: "" },

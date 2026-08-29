@@ -24,11 +24,13 @@ const deliveryRow = {
   updated_at: "2026-08-22T00:00:00.000Z",
 };
 
-function makeDb(overrides: {
-  lastRowId?: number;
-  changes?: number;
-  firstRow?: unknown;
-} = {}) {
+function makeDb(
+  overrides: {
+    lastRowId?: number;
+    changes?: number;
+    firstRow?: unknown;
+  } = {},
+) {
   const statement = {
     bind: vi.fn((..._args: unknown[]) => statement),
     run: vi.fn(async () => ({
@@ -52,13 +54,7 @@ describe("report delivery repository", () => {
 
     expect(delivery.id).toBe(9);
     expect(delivery.status).toBe("pending");
-    expect(statement.bind).toHaveBeenCalledWith(
-      10,
-      1,
-      "response_10_v1",
-      expect.any(String),
-      expect.any(String),
-    );
+    expect(statement.bind).toHaveBeenCalledWith(10, 1, "response_10_v1", expect.any(String), expect.any(String));
   });
 
   it("claims only pending/failed deliveries inside the retry window", async () => {

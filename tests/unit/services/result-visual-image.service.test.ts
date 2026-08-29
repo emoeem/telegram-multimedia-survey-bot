@@ -24,15 +24,25 @@ const template: VisualTemplateDefinition = {
 };
 
 const profile: ResultProfileSnapshot = {
-  resultType: "demo", title: "结果", subtitle: null, schemaVersion: 1,
-  fields: {}, stats: [], tags: [], metadata: {},
+  resultType: "demo",
+  title: "结果",
+  subtitle: null,
+  schemaVersion: 1,
+  fields: {},
+  stats: [],
+  tags: [],
+  metadata: {},
   images: { avatar: { telegramFileId: "avatar-file" } },
 };
 
 describe("result visual Telegram image resolver", () => {
   it("downloads the stored background asset and profile image directly from Telegram", async () => {
     getMediaAssetById.mockResolvedValue({
-      id: 7, mediaType: "photo", telegramFileId: "background-file", mimeType: "image/jpeg", fileSize: 1024,
+      id: 7,
+      mediaType: "photo",
+      telegramFileId: "background-file",
+      mimeType: "image/jpeg",
+      fileSize: 1024,
     });
     downloadTelegramFile.mockImplementation(async (_token: string, fileId: string) => ({
       data: new Uint8Array(fileId === "background-file" ? [1, 2] : [3, 4]),
@@ -50,12 +60,17 @@ describe("result visual Telegram image resolver", () => {
 
   it("recognizes a Telegram JPG even when the download response omits an image MIME type", async () => {
     getMediaAssetById.mockResolvedValue({
-      id: 7, mediaType: "photo", telegramFileId: "background-file", mimeType: null, fileSize: 1024,
+      id: 7,
+      mediaType: "photo",
+      telegramFileId: "background-file",
+      mimeType: null,
+      fileSize: 1024,
     });
     downloadTelegramFile.mockImplementation(async (_token: string, fileId: string) => ({
-      data: fileId === "background-file"
-        ? new Uint8Array([0xff, 0xd8, 0xff, 0xe0])
-        : new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      data:
+        fileId === "background-file"
+          ? new Uint8Array([0xff, 0xd8, 0xff, 0xe0])
+          : new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
       contentType: "application/octet-stream",
       filePath: "photos/file_123.jpg",
     }));
@@ -68,9 +83,19 @@ describe("result visual Telegram image resolver", () => {
 
   it("allows an 8000x6000 source image for browser-side report resizing", async () => {
     getMediaAssetById.mockResolvedValue({
-      id: 7, mediaType: "photo", telegramFileId: "background-file", mimeType: "image/jpeg", fileSize: 7 * 1024 * 1024, width: 8000, height: 6000,
+      id: 7,
+      mediaType: "photo",
+      telegramFileId: "background-file",
+      mimeType: "image/jpeg",
+      fileSize: 7 * 1024 * 1024,
+      width: 8000,
+      height: 6000,
     });
-    downloadTelegramFile.mockResolvedValue({ data: new Uint8Array([0xff, 0xd8, 0xff]), contentType: "image/jpeg", filePath: "photos/large.jpg" });
+    downloadTelegramFile.mockResolvedValue({
+      data: new Uint8Array([0xff, 0xd8, 0xff]),
+      contentType: "image/jpeg",
+      filePath: "photos/large.jpg",
+    });
     const images = await resolveResultVisualImages({} as D1Database, "token", template, profile);
     expect(images[TEMPLATE_BACKGROUND_IMAGE_KEY]).toMatch(/^data:image\/jpeg;base64,/);
   });

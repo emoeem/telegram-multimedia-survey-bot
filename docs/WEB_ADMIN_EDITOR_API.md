@@ -16,20 +16,20 @@
 
 ## 1. 端点总表
 
-| 方法 | 路径 | 权限 | 说明 |
-| -- | -- | -- | -- |
-| GET | `/api/admin/surveys/:id/editor` | owner/admin（Phase 1 语义） | 编辑器装配文档（§2） |
-| POST | `/api/admin/surveys` | canCreateSurvey | 创建 draft 问卷（可带初始题目，§3） |
-| PATCH | `/api/admin/surveys/:id` | canManageSurvey | 改 title/description/响应策略（draft） |
-| POST | `/api/admin/surveys/:id/questions` | +assertEditable | 新增题目（含选项） |
-| PATCH | `/api/admin/surveys/:id/questions/:qid` | +assertEditable | 改题目字段（保 ID） |
-| DELETE | `/api/admin/surveys/:id/questions/:qid` | +assertEditable | 删题（order 补位） |
-| POST | `/api/admin/surveys/:id/questions/reorder` | +assertEditable | 批量重排（§4.4） |
-| PATCH | `/api/admin/surveys/:id/options/:optionId` | +assertEditable | 改选项 label（保 ID） |
-| DELETE | `/api/admin/surveys/:id/options/:optionId` | +assertEditable | 删选项（order 补位） |
-| POST | `/api/admin/surveys/:id/duplicate` | canManageSurvey | 复制为新 draft（复用 duplicateSurvey） |
-| POST | `/api/admin/surveys/:id/publish` | canManageSurvey | 发布（§4.6） |
-| POST | `/api/admin/surveys/:id/close` | canManageSurvey | 关闭（可选，低优先） |
+| 方法   | 路径                                       | 权限                        | 说明                                   |
+| ------ | ------------------------------------------ | --------------------------- | -------------------------------------- |
+| GET    | `/api/admin/surveys/:id/editor`            | owner/admin（Phase 1 语义） | 编辑器装配文档（§2）                   |
+| POST   | `/api/admin/surveys`                       | canCreateSurvey             | 创建 draft 问卷（可带初始题目，§3）    |
+| PATCH  | `/api/admin/surveys/:id`                   | canManageSurvey             | 改 title/description/响应策略（draft） |
+| POST   | `/api/admin/surveys/:id/questions`         | +assertEditable             | 新增题目（含选项）                     |
+| PATCH  | `/api/admin/surveys/:id/questions/:qid`    | +assertEditable             | 改题目字段（保 ID）                    |
+| DELETE | `/api/admin/surveys/:id/questions/:qid`    | +assertEditable             | 删题（order 补位）                     |
+| POST   | `/api/admin/surveys/:id/questions/reorder` | +assertEditable             | 批量重排（§4.4）                       |
+| PATCH  | `/api/admin/surveys/:id/options/:optionId` | +assertEditable             | 改选项 label（保 ID）                  |
+| DELETE | `/api/admin/surveys/:id/options/:optionId` | +assertEditable             | 删选项（order 补位）                   |
+| POST   | `/api/admin/surveys/:id/duplicate`         | canManageSurvey             | 复制为新 draft（复用 duplicateSurvey） |
+| POST   | `/api/admin/surveys/:id/publish`           | canManageSurvey             | 发布（§4.6）                           |
+| POST   | `/api/admin/surveys/:id/close`             | canManageSurvey             | 关闭（可选，低优先）                   |
 
 选项的新增挂在题目端点内（创建题目带 options；PATCH 题目可追加选项）——避免碎片化；独立的选项端点只做改文案/删除。
 
@@ -39,22 +39,35 @@
 
 ```jsonc
 {
-  "survey": { "id": 1, "title": "…", "description": null, "status": "draft",
-              "anonymous": false, "allowMultipleResponses": false,
-              "maxResponsesPerUser": 1, "version": 3,
-              "createdAt": "…", "updatedAt": "…",         // updatedAt 即 baseUpdatedAt
-              "responseCount": 0,                           // >0 → 前端直接锁 UI
-              "editable": true },                           // status==='draft' && responseCount===0
-  "questions": [{
-    "id": 11, "type": "single", "title": "…", "description": null,
-    "required": true, "order": 0,
-    "settings": { "columns": ["…"] },                       // matrix 才有
-    "validation": { "max_length": 200 },                    // validation_json 解析，可 null
-    "condition": { "kind": "option_equals", "rules": [] },  // 原样带回，v1 不编辑
-    "media": [{ "mediaAssetId": 7, "mediaType": "photo" }], // 只读引用
-    "options": [{ "id": 21, "label": "是", "order": 0,
-                  "media": [{ "mediaAssetId": 8, "mediaType": "photo" }] }]
-  }]
+  "survey": {
+    "id": 1,
+    "title": "…",
+    "description": null,
+    "status": "draft",
+    "anonymous": false,
+    "allowMultipleResponses": false,
+    "maxResponsesPerUser": 1,
+    "version": 3,
+    "createdAt": "…",
+    "updatedAt": "…", // updatedAt 即 baseUpdatedAt
+    "responseCount": 0, // >0 → 前端直接锁 UI
+    "editable": true,
+  }, // status==='draft' && responseCount===0
+  "questions": [
+    {
+      "id": 11,
+      "type": "single",
+      "title": "…",
+      "description": null,
+      "required": true,
+      "order": 0,
+      "settings": { "columns": ["…"] }, // matrix 才有
+      "validation": { "max_length": 200 }, // validation_json 解析，可 null
+      "condition": { "kind": "option_equals", "rules": [] }, // 原样带回，v1 不编辑
+      "media": [{ "mediaAssetId": 7, "mediaType": "photo" }], // 只读引用
+      "options": [{ "id": 21, "label": "是", "order": 0, "media": [{ "mediaAssetId": 8, "mediaType": "photo" }] }],
+    },
+  ],
 }
 ```
 
@@ -64,10 +77,16 @@
 
 ```jsonc
 // 请求（questions 可省略；结构同 editor 响应的 questions 元素，不传 id）
-{ "title": "新问卷", "description": null,
-  "anonymous": false, "allowMultipleResponses": false, "maxResponsesPerUser": 1,
-  "questions": [ { "type": "single", "title": "…", "required": true,
-                   "options": [{ "label": "是" }, { "label": "否" }] } ] }
+{
+  "title": "新问卷",
+  "description": null,
+  "anonymous": false,
+  "allowMultipleResponses": false,
+  "maxResponsesPerUser": 1,
+  "questions": [
+    { "type": "single", "title": "…", "required": true, "options": [{ "label": "是" }, { "label": "否" }] },
+  ],
+}
 // 201 响应：{ "id": 42, "updatedAt": "…" }   // 跳转编辑器
 ```
 
@@ -101,18 +120,18 @@ PATCH：`{ label, baseUpdatedAt }` → `updateQuestionOptionLabel`（保 ID，la
 
 ## 5. 权限矩阵（也是测试矩阵）
 
-| 场景 | 预期 |
-| -- | -- |
-| 无身份 / users 表无记录 | 401 |
-| owner（有 trial）→ 自己的 draft | 200/201 |
+| 场景                                  | 预期                                                      |
+| ------------------------------------- | --------------------------------------------------------- |
+| 无身份 / users 表无记录               | 401                                                       |
+| owner（有 trial）→ 自己的 draft       | 200/201                                                   |
 | owner（无 trial）→ 创建或写自己的问卷 | 403 `creator_trial_required`（bot 同语义：不能创建/管理） |
-| owner A → 问卷 B（任何写端点） | 403 |
-| admin → 任意问卷写 | 200 |
-| 任何身份 → 非 draft 问卷的结构端点 | 403 `survey_locked` |
-| 任何身份 → 有答卷问卷的结构端点 | 403（assertSurveyQuestionsEditable 语义） |
-| baseUpdatedAt 过期 | 409 `stale_write` |
-| 非 GET/POST/PATCH/DELETE 混用 | 405 |
-| 路径不存在 | 404 |
+| owner A → 问卷 B（任何写端点）        | 403                                                       |
+| admin → 任意问卷写                    | 200                                                       |
+| 任何身份 → 非 draft 问卷的结构端点    | 403 `survey_locked`                                       |
+| 任何身份 → 有答卷问卷的结构端点       | 403（assertSurveyQuestionsEditable 语义）                 |
+| baseUpdatedAt 过期                    | 409 `stale_write`                                         |
+| 非 GET/POST/PATCH/DELETE 混用         | 405                                                       |
+| 路径不存在                            | 404                                                       |
 
 ## 6. 错误码清单
 

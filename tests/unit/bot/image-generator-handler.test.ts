@@ -54,8 +54,12 @@ function cache() {
   return {
     values,
     get: vi.fn(async (key: string) => values.get(key) ?? null),
-    put: vi.fn(async (key: string, value: string) => { values.set(key, value); }),
-    delete: vi.fn(async (key: string) => { values.delete(key); }),
+    put: vi.fn(async (key: string, value: string) => {
+      values.set(key, value);
+    }),
+    delete: vi.fn(async (key: string) => {
+      values.delete(key);
+    }),
   };
 }
 
@@ -104,14 +108,31 @@ describe("image generator conversation UI", () => {
     const ctx = context(state);
     mocks.getGenerator.mockResolvedValue(publishedGenerator);
     mocks.listGeneratorQuestions.mockResolvedValue([
-      { id: 1, generatorId: 7, variableName: "name", prompt: "请输入人物名称", type: "text", required: true, sortOrder: 1 },
+      {
+        id: 1,
+        generatorId: 7,
+        variableName: "name",
+        prompt: "请输入人物名称",
+        type: "text",
+        required: true,
+        sortOrder: 1,
+      },
     ]);
     mocks.getVisualTemplateById.mockResolvedValue({ id: 12, status: "published", currentVersion: 2 });
 
     await expect(handleImageGeneratorCallback(ctx, callback("generator:use:7"), 1, false)).resolves.toBe(true);
-    await expect(handleImageGeneratorParticipantMessage(ctx, {
-      message_id: 501, chat: { id: 3 }, from: { id: 99 }, text: "张三",
-    }, 1)).resolves.toBe(true);
+    await expect(
+      handleImageGeneratorParticipantMessage(
+        ctx,
+        {
+          message_id: 501,
+          chat: { id: 3 },
+          from: { id: 99 },
+          text: "张三",
+        },
+        1,
+      ),
+    ).resolves.toBe(true);
     await expect(handleImageGeneratorCallback(ctx, callback("generator:render"), 1, false)).resolves.toBe(true);
 
     expect(mocks.enqueueImageGeneratorJob).toHaveBeenCalledWith(
@@ -140,9 +161,18 @@ describe("image generator conversation UI", () => {
     mocks.listGeneratorBackgrounds.mockResolvedValue([]);
 
     await expect(handleImageGeneratorCallback(ctx, callback("generator:new:12"), 1, true)).resolves.toBe(true);
-    await expect(handleImageGeneratorAdminMessage(ctx, {
-      message_id: 501, chat: { id: 3 }, from: { id: 99 }, text: "人物海报 | 创建人物介绍海报",
-    }, 1)).resolves.toBe(true);
+    await expect(
+      handleImageGeneratorAdminMessage(
+        ctx,
+        {
+          message_id: 501,
+          chat: { id: 3 },
+          from: { id: 99 },
+          text: "人物海报 | 创建人物介绍海报",
+        },
+        1,
+      ),
+    ).resolves.toBe(true);
 
     expect(mocks.createGenerator).toHaveBeenCalledWith(ctx.db, {
       ownerId: 1,
@@ -167,17 +197,33 @@ describe("image generator conversation UI", () => {
   it("returns to the same report settings page after uploading its default background", async () => {
     const state = cache();
     const ctx = context(state);
-    const generator = { ...publishedGenerator, status: "draft" as const, reportBackgroundAssetId: null, reportContrastMode: "auto" as const };
+    const generator = {
+      ...publishedGenerator,
+      status: "draft" as const,
+      reportBackgroundAssetId: null,
+      reportContrastMode: "auto" as const,
+    };
     mocks.getGenerator.mockResolvedValue(generator);
     mocks.getVisualTemplateById.mockResolvedValue({ id: 12, name: "浅色数据报告" });
     mocks.listGeneratorQuestions.mockResolvedValue([]);
     mocks.listGeneratorBackgrounds.mockResolvedValue([]);
     mocks.registerMediaAsset.mockResolvedValue(33);
 
-    await expect(handleImageGeneratorCallback(ctx, callback("generator:report_background:7"), 1, true)).resolves.toBe(true);
-    await expect(handleImageGeneratorAdminMessage(ctx, {
-      message_id: 501, chat: { id: 3 }, from: { id: 99 }, photo: [{ file_id: "background-file", file_unique_id: "background-unique" }],
-    }, 1)).resolves.toBe(true);
+    await expect(handleImageGeneratorCallback(ctx, callback("generator:report_background:7"), 1, true)).resolves.toBe(
+      true,
+    );
+    await expect(
+      handleImageGeneratorAdminMessage(
+        ctx,
+        {
+          message_id: 501,
+          chat: { id: 3 },
+          from: { id: 99 },
+          photo: [{ file_id: "background-file", file_unique_id: "background-unique" }],
+        },
+        1,
+      ),
+    ).resolves.toBe(true);
 
     expect(mocks.updateGenerator).toHaveBeenCalledWith(ctx.db, 7, { reportBackgroundAssetId: 33 });
     expect(mocks.renderScreen.mock.calls.at(-1)?.[0].text).toContain("报告默认背景");
@@ -185,12 +231,18 @@ describe("image generator conversation UI", () => {
 
   it("asks before permanently deleting a report and then returns to the report list", async () => {
     const ctx = context();
-    mocks.getGenerator.mockResolvedValue({ ...publishedGenerator, reportBackgroundAssetId: null, reportContrastMode: "auto" });
+    mocks.getGenerator.mockResolvedValue({
+      ...publishedGenerator,
+      reportBackgroundAssetId: null,
+      reportContrastMode: "auto",
+    });
     mocks.listGenerators.mockResolvedValue([]);
 
     await expect(handleImageGeneratorCallback(ctx, callback("generator:delete_ask:7"), 1, true)).resolves.toBe(true);
     expect(mocks.renderScreen.mock.calls.at(-1)?.[0].text).toContain("确认永久删除报告");
-    await expect(handleImageGeneratorCallback(ctx, callback("generator:delete_confirm:7"), 1, true)).resolves.toBe(true);
+    await expect(handleImageGeneratorCallback(ctx, callback("generator:delete_confirm:7"), 1, true)).resolves.toBe(
+      true,
+    );
 
     expect(mocks.deleteGenerator).toHaveBeenCalledWith(ctx.db, 7);
     expect(mocks.renderScreen.mock.calls.at(-1)?.[0].screen).toBe("IMAGE_GENERATOR_ADMIN");

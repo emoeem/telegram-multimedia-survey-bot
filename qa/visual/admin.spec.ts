@@ -48,8 +48,28 @@ const API_MOCKS: Record<string, unknown> = {
   },
   "/api/admin/surveys": {
     items: [
-      { id: 1, title: "示例问卷", description: null, status: "published", ownerId: 1, createdAt: now, updatedAt: now, questionCount: 3, responseCount: 5 },
-      { id: 2, title: "草稿问卷", description: null, status: "draft", ownerId: 1, createdAt: now, updatedAt: now, questionCount: 1, responseCount: 0 },
+      {
+        id: 1,
+        title: "示例问卷",
+        description: null,
+        status: "published",
+        ownerId: 1,
+        createdAt: now,
+        updatedAt: now,
+        questionCount: 3,
+        responseCount: 5,
+      },
+      {
+        id: 2,
+        title: "草稿问卷",
+        description: null,
+        status: "draft",
+        ownerId: 1,
+        createdAt: now,
+        updatedAt: now,
+        questionCount: 1,
+        responseCount: 0,
+      },
     ],
     page: 1,
     pageSize: 20,
@@ -169,7 +189,11 @@ async function mockAdminApi(page: Page) {
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/health", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ environment: "production" }) }),
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ environment: "production" }),
+    }),
   );
   await page.route("**://telegram.org/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: TELEGRAM_STUB }),

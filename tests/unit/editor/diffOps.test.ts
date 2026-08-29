@@ -65,9 +65,7 @@ describe("buildOpsFromDiff", () => {
 
     const ops = buildOpsFromDiff(baseline, target, 5, ids());
     const labels = ops.map((op) => op.label);
-    expect(labels).toEqual(
-      expect.arrayContaining(["题目修改", "删除选项", "新增题目", "题目排序"]),
-    );
+    expect(labels).toEqual(expect.arrayContaining(["题目修改", "删除选项", "新增题目", "题目排序"]));
 
     const questionPatch = ops.find((op) => op.label === "题目修改");
     expect(questionPatch?.method).toBe("PATCH");

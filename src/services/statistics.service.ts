@@ -29,11 +29,10 @@ function escapeLikeQuery(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
 }
 
-export async function getSurveyPortfolioStatistics(
-  db: D1Database,
-): Promise<SurveyPortfolioStatistics> {
-  const row = await db.prepare(
-    `SELECT
+export async function getSurveyPortfolioStatistics(db: D1Database): Promise<SurveyPortfolioStatistics> {
+  const row = await db
+    .prepare(
+      `SELECT
        COUNT(s.id) AS total_surveys,
        SUM(CASE WHEN s.status = 'published' THEN 1 ELSE 0 END) AS published_surveys,
        COALESCE(SUM(r.total_started), 0) AS total_started,
@@ -46,12 +45,13 @@ export async function getSurveyPortfolioStatistics(
        FROM survey_responses
        GROUP BY survey_id
      ) r ON r.survey_id = s.id`,
-  ).first<{
-    total_surveys: number;
-    published_surveys: number | null;
-    total_started: number;
-    total_completed: number;
-  }>();
+    )
+    .first<{
+      total_surveys: number;
+      published_surveys: number | null;
+      total_started: number;
+      total_completed: number;
+    }>();
 
   return {
     totalSurveys: row?.total_surveys ?? 0,
@@ -69,14 +69,11 @@ export async function listSurveyPerformance(
 ): Promise<{ items: SurveyPerformance[]; total: number }> {
   const normalizedSearch = search.trim().slice(0, 80);
   const searchPattern = `%${escapeLikeQuery(normalizedSearch)}%`;
-  const where = normalizedSearch
-    ? "WHERE s.title LIKE ? ESCAPE '\\' OR CAST(s.id AS TEXT) = ?"
-    : "";
-  const bindings = normalizedSearch
-    ? [searchPattern, normalizedSearch, limit, offset]
-    : [limit, offset];
-  const result = await db.prepare(
-    `SELECT
+  const where = normalizedSearch ? "WHERE s.title LIKE ? ESCAPE '\\' OR CAST(s.id AS TEXT) = ?" : "";
+  const bindings = normalizedSearch ? [searchPattern, normalizedSearch, limit, offset] : [limit, offset];
+  const result = await db
+    .prepare(
+      `SELECT
        s.id, s.title, s.status,
        COALESCE(NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.username), ''), '未命名创建者') AS owner_name,
        COALESCE(r.total_started, 0) AS total_started,
@@ -97,19 +94,22 @@ export async function listSurveyPerformance(
      ${where}
      ORDER BY total_completed DESC, s.updated_at DESC, s.id DESC
      LIMIT ? OFFSET ?`,
-  ).bind(...bindings).all<{
-    id: number;
-    title: string;
-    status: SurveyPerformance["status"];
-    owner_name: string;
-    total_started: number;
-    total_completed: number;
-    in_progress: number;
-    last_completed_at: string | null;
-  }>();
-  const totalRow = await db.prepare(
-    `SELECT COUNT(*) AS count FROM surveys s ${where}`,
-  ).bind(...(normalizedSearch ? [searchPattern, normalizedSearch] : [])).first<{ count: number }>();
+    )
+    .bind(...bindings)
+    .all<{
+      id: number;
+      title: string;
+      status: SurveyPerformance["status"];
+      owner_name: string;
+      total_started: number;
+      total_completed: number;
+      in_progress: number;
+      last_completed_at: string | null;
+    }>();
+  const totalRow = await db
+    .prepare(`SELECT COUNT(*) AS count FROM surveys s ${where}`)
+    .bind(...(normalizedSearch ? [searchPattern, normalizedSearch] : []))
+    .first<{ count: number }>();
 
   return {
     items: (result.results ?? []).map((row) => ({
@@ -146,10 +146,7 @@ export interface NumericStat {
   count: number;
 }
 
-export async function getSurveyStatistics(
-  db: D1Database,
-  surveyId: number,
-): Promise<SurveyStatistics> {
+export async function getSurveyStatistics(db: D1Database, surveyId: number): Promise<SurveyStatistics> {
   const row = await db
     .prepare(
       `SELECT
@@ -171,10 +168,7 @@ export async function getSurveyStatistics(
   };
 }
 
-export async function getOptionStatistics(
-  db: D1Database,
-  surveyId: number,
-): Promise<OptionStat[]> {
+export async function getOptionStatistics(db: D1Database, surveyId: number): Promise<OptionStat[]> {
   const optionsResult = await db
     .prepare(
       `SELECT
@@ -220,10 +214,7 @@ export async function getOptionStatistics(
       for (const optionId of selected) {
         const numericOptionId = Number(optionId);
         if (Number.isInteger(numericOptionId)) {
-          counts.set(
-            numericOptionId,
-            (counts.get(numericOptionId) ?? 0) + 1,
-          );
+          counts.set(numericOptionId, (counts.get(numericOptionId) ?? 0) + 1);
         }
       }
     } catch {
@@ -256,10 +247,7 @@ export async function getOptionStatistics(
   return stats;
 }
 
-export async function getNumericStatistics(
-  db: D1Database,
-  surveyId: number,
-): Promise<NumericStat[]> {
+export async function getNumericStatistics(db: D1Database, surveyId: number): Promise<NumericStat[]> {
   const result = await db
     .prepare(
       `SELECT
@@ -305,10 +293,7 @@ export async function getNumericStatistics(
   }));
 }
 
-export async function getResponseCount(
-  db: D1Database,
-  surveyId: number,
-): Promise<number> {
+export async function getResponseCount(db: D1Database, surveyId: number): Promise<number> {
   const row = await db
     .prepare("SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?")
     .bind(surveyId)

@@ -9,14 +9,10 @@ const IMPORT_MEDIA_KV_MAX_BYTES = 24 * 1024 * 1024;
 // self-contained even if Microsoft rotates or expires the source URLs.
 const MICROSOFT_MEDIA_HOST_SUFFIXES = [".usercontent.microsoft"];
 
-const IMPORT_USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36";
+const IMPORT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36";
 
 function isMicrosoftMediaHost(host: string): boolean {
-  return (
-    host === "usercontent.microsoft" ||
-    MICROSOFT_MEDIA_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
-  );
+  return host === "usercontent.microsoft" || MICROSOFT_MEDIA_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
 }
 
 /**
@@ -25,9 +21,7 @@ function isMicrosoftMediaHost(host: string): boolean {
  * with small D1 rows and are served through the normal media pipeline.
  * Oversized or unfetchable payloads fall back to their original form.
  */
-export function createImportMediaResolver(env: {
-  MEDIA_KV: KVNamespace;
-}): ImportedMediaResolver {
+export function createImportMediaResolver(env: { MEDIA_KV: KVNamespace }): ImportedMediaResolver {
   const store = new KVMediaStore(env.MEDIA_KV);
   return async (media: ImportedMedia) => {
     if (media.url?.startsWith("data:")) {
@@ -69,10 +63,7 @@ export function createImportMediaResolver(env: {
         if (!response.ok) return media;
         const bytes = new Uint8Array(await response.arrayBuffer());
         if (bytes.byteLength > IMPORT_MEDIA_KV_MAX_BYTES) return media;
-        const contentType =
-          response.headers.get("content-type") ??
-          media.mimeType ??
-          "application/octet-stream";
+        const contentType = response.headers.get("content-type") ?? media.mimeType ?? "application/octet-stream";
         const storageKey = `media:import:${crypto.randomUUID()}`;
         await store.put({ storageKey, bytes, contentType });
         return {

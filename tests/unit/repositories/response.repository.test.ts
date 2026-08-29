@@ -33,9 +33,7 @@ function createD1Mock(answerId = 91): {
           return statement;
         }),
         run: vi.fn(async () => ({ success: true })),
-        first: vi.fn(async () =>
-          sql.includes("SELECT id FROM answers") ? { id: answerId } : null,
-        ),
+        first: vi.fn(async () => (sql.includes("SELECT id FROM answers") ? { id: answerId } : null)),
       };
       statements.push(statement);
       return statement;
@@ -99,9 +97,7 @@ describe("response repository", () => {
       selectedOptionIds: [101, 102],
     });
 
-    const deleteStatement = statements.find((statement) =>
-      statement.sql.includes("DELETE FROM answer_options"),
-    );
+    const deleteStatement = statements.find((statement) => statement.sql.includes("DELETE FROM answer_options"));
     expect(deleteStatement?.bindings).toEqual([91]);
 
     const insertedOptions = batch.mock.calls[0]?.[0] as CapturedStatement[];
@@ -111,9 +107,7 @@ describe("response repository", () => {
       [91, 102],
     ]);
 
-    const answerInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO answers"),
-    );
+    const answerInsert = statements.find((statement) => statement.sql.includes("INSERT INTO answers"));
     expect(answerInsert?.bindings[8]).toBe("[101,102]");
   });
 
@@ -136,35 +130,9 @@ describe("response repository", () => {
       timeValue: "21:30",
     });
 
-    const inserts = statements.filter((statement) =>
-      statement.sql.includes("INSERT INTO answers"),
-    );
-    expect(inserts[0]?.bindings.slice(2, 9)).toEqual([
-      null,
-      12.5,
-      null,
-      null,
-      null,
-      null,
-      null,
-    ]);
-    expect(inserts[1]?.bindings.slice(2, 9)).toEqual([
-      null,
-      null,
-      null,
-      null,
-      "2026-08-14",
-      null,
-      null,
-    ]);
-    expect(inserts[2]?.bindings.slice(2, 9)).toEqual([
-      null,
-      null,
-      null,
-      null,
-      null,
-      "21:30",
-      null,
-    ]);
+    const inserts = statements.filter((statement) => statement.sql.includes("INSERT INTO answers"));
+    expect(inserts[0]?.bindings.slice(2, 9)).toEqual([null, 12.5, null, null, null, null, null]);
+    expect(inserts[1]?.bindings.slice(2, 9)).toEqual([null, null, null, null, "2026-08-14", null, null]);
+    expect(inserts[2]?.bindings.slice(2, 9)).toEqual([null, null, null, null, null, "21:30", null]);
   });
 });

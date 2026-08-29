@@ -19,9 +19,7 @@ class MemoryKv {
 
 const BASE_TIME = new Date("2026-08-15T08:00:00.000Z");
 
-function decision(
-  overrides: Partial<LicenseActivationDecision> = {},
-): LicenseActivationDecision {
+function decision(overrides: Partial<LicenseActivationDecision> = {}): LicenseActivationDecision {
   return {
     valid: true,
     code: "valid",
@@ -104,10 +102,7 @@ describe("deployment license client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const first = await checkDeploymentLicense(env(cache), BASE_TIME);
-    const second = await checkDeploymentLicense(
-      env(cache),
-      new Date(BASE_TIME.getTime() + 60 * 60 * 1000),
-    );
+    const second = await checkDeploymentLicense(env(cache), new Date(BASE_TIME.getTime() + 60 * 60 * 1000));
 
     expect(first.allowed).toBe(true);
     expect(first.source).toBe("server");
@@ -119,21 +114,12 @@ describe("deployment license client", () => {
 
   it("uses a valid stale cache only inside the offline grace period", async () => {
     const cache = new MemoryKv();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(response(decision()))
-      .mockRejectedValue(new Error("network down"));
+    const fetchMock = vi.fn().mockResolvedValueOnce(response(decision())).mockRejectedValue(new Error("network down"));
     vi.stubGlobal("fetch", fetchMock);
 
     await checkDeploymentLicense(env(cache), BASE_TIME);
-    const grace = await checkDeploymentLicense(
-      env(cache),
-      new Date(BASE_TIME.getTime() + 7 * 60 * 60 * 1000),
-    );
-    const denied = await checkDeploymentLicense(
-      env(cache),
-      new Date(BASE_TIME.getTime() + 31 * 60 * 60 * 1000),
-    );
+    const grace = await checkDeploymentLicense(env(cache), new Date(BASE_TIME.getTime() + 7 * 60 * 60 * 1000));
+    const denied = await checkDeploymentLicense(env(cache), new Date(BASE_TIME.getTime() + 31 * 60 * 60 * 1000));
 
     expect(grace.allowed).toBe(true);
     expect(grace.source).toBe("grace");
@@ -156,10 +142,7 @@ describe("deployment license client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await checkDeploymentLicense(env(cache), BASE_TIME);
-    const result = await checkDeploymentLicense(
-      env(cache),
-      new Date("2026-08-15T09:00:00.000Z"),
-    );
+    const result = await checkDeploymentLicense(env(cache), new Date("2026-08-15T09:00:00.000Z"));
 
     expect(result.allowed).toBe(false);
     expect(result.code).toBe("license_expired");
@@ -182,10 +165,7 @@ describe("deployment license client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const first = await checkDeploymentLicense(env(cache), BASE_TIME);
-    const second = await checkDeploymentLicense(
-      env(cache),
-      new Date(BASE_TIME.getTime() + 60 * 1000),
-    );
+    const second = await checkDeploymentLicense(env(cache), new Date(BASE_TIME.getTime() + 60 * 1000));
 
     expect(first.allowed).toBe(false);
     expect(first.code).toBe("license_revoked");

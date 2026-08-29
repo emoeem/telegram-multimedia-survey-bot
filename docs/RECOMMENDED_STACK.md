@@ -12,4 +12,3 @@
 - **Telegraph:** official HTTPS API or dcdunkan/telegraph after package/license/runtime verification.
 
 All integrations use adapters and the current D1 schema. No second identity, database, media store, queue, or server is introduced.
-

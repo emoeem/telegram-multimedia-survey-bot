@@ -89,9 +89,7 @@ window.OfficeFormServerInfo = {"antiForgeryToken":"tok","serverSessionId":"sess"
 </body></html>`;
 }
 
-function stubFetch(
-  routes: Record<string, { status: number; body: string }>,
-): void {
+function stubFetch(routes: Record<string, { status: number; body: string }>): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL | Request) => {
@@ -112,14 +110,8 @@ afterEach(() => {
 describe("isFormsUrl", () => {
   it("recognizes Microsoft Forms hosts", () => {
     expect(isFormsUrl("https://forms.office.com/r/abc")).toBe(true);
-    expect(
-      isFormsUrl(
-        "https://forms.cloud.microsoft/pages/responsepage.aspx?id=x",
-      ),
-    ).toBe(true);
-    expect(isFormsUrl("https://forms.microsoft.com/Pages/ResponsePage.aspx?id=x")).toBe(
-      true,
-    );
+    expect(isFormsUrl("https://forms.cloud.microsoft/pages/responsepage.aspx?id=x")).toBe(true);
+    expect(isFormsUrl("https://forms.microsoft.com/Pages/ResponsePage.aspx?id=x")).toBe(true);
     expect(isFormsUrl("https://example.com/form")).toBe(false);
     expect(isFormsUrl("not a url")).toBe(false);
   });
@@ -136,9 +128,7 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
       },
     });
 
-    const content = await fetchMicrosoftFormsSurveyJson(
-      "https://forms.office.com/r/abc",
-    );
+    const content = await fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/abc");
     const survey = JSON.parse(content) as {
       schema_version: number;
       survey: {
@@ -160,24 +150,15 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     expect(survey.schema_version).toBe(1);
     expect(survey.survey.title).toBe("测试问卷");
     expect(survey.survey.metadata.source).toBe("microsoft_forms");
-    expect(survey.survey.cover?.url).toBe(
-      "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
-    );
+    expect(survey.survey.cover?.url).toBe("https://hive.forms.usercontent.microsoft/images/x/bg.jpg");
 
     const byId = new Map(survey.survey.questions.map((q) => [q.id, q]));
     expect(byId.get("q1")?.type).toBe("single");
-    expect(byId.get("q1")?.options.map((option) => option.value)).toEqual([
-      "男",
-      "女",
-    ]);
+    expect(byId.get("q1")?.options.map((option) => option.value)).toEqual(["男", "女"]);
     expect(byId.get("q1")?.media[0]?.url).toBe("https://example.invalid/img.png");
 
     expect(byId.get("q2")?.type).toBe("multiple");
-    expect(byId.get("q2")?.options.map((option) => option.value)).toEqual([
-      "红",
-      "蓝",
-      "其他",
-    ]);
+    expect(byId.get("q2")?.options.map((option) => option.value)).toEqual(["红", "蓝", "其他"]);
 
     expect(byId.get("q3")?.type).toBe("yes_no");
     expect(byId.get("q4")?.type).toBe("long_text");
@@ -193,9 +174,7 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
         body: "<html>sign in</html>",
       },
     });
-    await expect(
-      fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/private"),
-    ).rejects.toMatchObject({
+    await expect(fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/private")).rejects.toMatchObject({
       code: "DOCUMENT_REQUIRES_AUTH",
     });
   });
@@ -204,9 +183,7 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     stubFetch({
       "https://forms.office.com/r/empty": { status: 200, body: "<html></html>" },
     });
-    await expect(
-      fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/empty"),
-    ).rejects.toMatchObject({
+    await expect(fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/empty")).rejects.toMatchObject({
       code: "FORMS_PARSE_FAILED",
     });
   });
@@ -222,9 +199,7 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     });
 
     const cover = await fetchMicrosoftFormsCover("https://forms.office.com/r/cover");
-    expect(cover?.url).toBe(
-      "https://hive.forms.usercontent.microsoft/images/x/bg.jpg",
-    );
+    expect(cover?.url).toBe("https://hive.forms.usercontent.microsoft/images/x/bg.jpg");
     expect(cover?.mimeType).toBe("image/jpeg");
     expect(cover?.width).toBe(1600);
   });

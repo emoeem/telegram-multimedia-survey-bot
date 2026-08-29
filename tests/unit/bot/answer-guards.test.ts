@@ -8,37 +8,26 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/db/repositories/user.repository")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/db/repositories/user.repository")>()),
   getUserByTelegramId: mocks.getUserByTelegramId,
 }));
 
 vi.mock("../../../src/db/repositories/response.repository", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/db/repositories/response.repository")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/db/repositories/response.repository")>()),
   getActiveResponseByUser: mocks.getActiveResponseByUser,
 }));
 
 vi.mock("../../../src/services/survey-builder.service", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/services/survey-builder.service")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/services/survey-builder.service")>()),
   getBuilderState: mocks.getBuilderState,
 }));
 
 vi.mock("../../../src/services/session.service", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/services/session.service")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/services/session.service")>()),
   completeSession: mocks.completeSession,
 }));
 
-import {
-  handleTelegramCallback,
-  handleTelegramMessage,
-} from "../../../src/bot/survey-handler";
+import { handleTelegramCallback, handleTelegramMessage } from "../../../src/bot/survey-handler";
 import { editMessageReplyMarkup, sendMessage } from "../../../src/bot/telegram";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
@@ -94,9 +83,7 @@ describe("survey answer guards", () => {
       currentQuestionId: 50,
       status: "in_progress",
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await handleTelegramMessage(createContext(), {
@@ -115,9 +102,7 @@ describe("survey answer guards", () => {
       };
     };
     expect(body.reply_markup.inline_keyboard.flat()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ callback_data: "home:surveys" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ callback_data: "home:surveys" })]),
     );
   });
 

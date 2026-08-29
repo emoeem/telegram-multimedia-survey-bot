@@ -1,8 +1,4 @@
-import {
-  getSystemSetting,
-  listSystemSettings,
-  setSystemSetting,
-} from "../db/repositories/system-settings.repository";
+import { getSystemSetting, listSystemSettings, setSystemSetting } from "../db/repositories/system-settings.repository";
 
 export const SYSTEM_SETTING_KEYS = [
   "report_channel_id",
@@ -36,9 +32,7 @@ export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   reportWatermark: "更多问卷 @hnhgggfj_bot",
 };
 
-export async function loadSystemSettings(
-  db: D1Database,
-): Promise<SystemSettings> {
+export async function loadSystemSettings(db: D1Database): Promise<SystemSettings> {
   const stored = await listSystemSettings(db);
   const number = (key: string, fallback: number): number => {
     const value = Number(stored[key]);
@@ -55,10 +49,7 @@ export async function loadSystemSettings(
   };
 }
 
-export async function getSystemSettingValue(
-  db: D1Database,
-  key: SystemSettingKey,
-): Promise<string | null> {
+export async function getSystemSettingValue(db: D1Database, key: SystemSettingKey): Promise<string | null> {
   return getSystemSetting(db, key);
 }
 

@@ -35,9 +35,7 @@ function assertSafePath(path: string): string[] {
   const segments = path.split(".");
   if (
     segments.length === 0 ||
-    segments.some((segment) =>
-      !/^[A-Za-z0-9_-]+$/.test(segment) || forbiddenPathSegments.has(segment)
-    )
+    segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment) || forbiddenPathSegments.has(segment))
   ) {
     throw new Error(`Invalid result rule path: ${path}`);
   }
@@ -50,9 +48,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function assertRuleTarget(path: string): void {
   const segments = assertSafePath(path);
-  const valid = segments.length === 1 &&
-    ["result_type", "title", "subtitle", "tags", "stats"].includes(segments[0] ?? "") ||
-    segments.length === 2 && ["fields", "images", "metadata"].includes(segments[0] ?? "");
+  const valid =
+    (segments.length === 1 && ["result_type", "title", "subtitle", "tags", "stats"].includes(segments[0] ?? "")) ||
+    (segments.length === 2 && ["fields", "images", "metadata"].includes(segments[0] ?? ""));
   if (!valid) throw new Error(`Unsupported result rule target: ${path}`);
 }
 
@@ -80,7 +78,10 @@ function assertCondition(condition: unknown): void {
   if (!isRecord(condition)) throw new Error("Invalid result condition");
   if (typeof condition.path === "string") {
     assertSafePath(condition.path);
-    if (typeof condition.operator !== "string" || !conditionOperators.has(condition.operator as ResultCondition["operator"])) {
+    if (
+      typeof condition.operator !== "string" ||
+      !conditionOperators.has(condition.operator as ResultCondition["operator"])
+    ) {
       throw new Error("Invalid result condition operator");
     }
     if ("value" in condition) assertExpression(condition.value, "condition.value");
@@ -154,19 +155,28 @@ function isResultJsonValue(value: unknown): value is ResultJsonValue {
     return true;
   }
   if (Array.isArray(value)) return value.every(isResultJsonValue);
-  return Boolean(value && typeof value === "object" &&
-    Object.values(value).every(isResultJsonValue));
+  return Boolean(value && typeof value === "object" && Object.values(value).every(isResultJsonValue));
 }
 
 function isPathExpression(value: ResultValueExpression): value is { $from: string } {
-  return typeof value === "object" && value !== null && !Array.isArray(value) &&
-    Object.keys(value).length === 1 && typeof (value as { $from?: unknown }).$from === "string";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    typeof (value as { $from?: unknown }).$from === "string"
+  );
 }
 
 function isSumExpression(value: ResultValueExpression): value is { $sum: string[] } {
-  return typeof value === "object" && value !== null && !Array.isArray(value) &&
-    Object.keys(value).length === 1 && Array.isArray((value as { $sum?: unknown }).$sum) &&
-    (value as { $sum: unknown[] }).$sum.every((entry) => typeof entry === "string");
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    Array.isArray((value as { $sum?: unknown }).$sum) &&
+    (value as { $sum: unknown[] }).$sum.every((entry) => typeof entry === "string")
+  );
 }
 
 function resolveValue(context: ResultContext, expression: ResultValueExpression): ResultContextValue {
@@ -187,42 +197,50 @@ function valuesEqual(left: ResultContextValue, right: ResultContextValue): boole
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function evaluateCondition(
-  context: ResultContext,
-  condition: ResultCondition,
-): boolean {
+function evaluateCondition(context: ResultContext, condition: ResultCondition): boolean {
   const actual = resolvePath(context, condition.path);
   const expected = condition.value === undefined ? undefined : resolveValue(context, condition.value);
   switch (condition.operator) {
-    case "exists": return actual !== undefined && actual !== null;
-    case "not_exists": return actual === undefined || actual === null;
-    case "equals": return valuesEqual(actual, expected);
-    case "not_equals": return !valuesEqual(actual, expected);
-    case "greater_than": return typeof actual === "number" && typeof expected === "number" && actual > expected;
-    case "less_than": return typeof actual === "number" && typeof expected === "number" && actual < expected;
-    case "greater_or_equal": return typeof actual === "number" && typeof expected === "number" && actual >= expected;
-    case "less_or_equal": return typeof actual === "number" && typeof expected === "number" && actual <= expected;
-    case "contains": return Array.isArray(actual)
-      ? actual.some((entry) => valuesEqual(entry, expected))
-      : typeof actual === "string" && typeof expected === "string" && actual.includes(expected);
-    case "not_contains": return Array.isArray(actual)
-      ? !actual.some((entry) => valuesEqual(entry, expected))
-      : !(typeof actual === "string" && typeof expected === "string" && actual.includes(expected));
-    case "in": return Array.isArray(expected) && expected.some((entry) => valuesEqual(actual, entry));
-    case "not_in": return Array.isArray(expected) && !expected.some((entry) => valuesEqual(actual, entry));
+    case "exists":
+      return actual !== undefined && actual !== null;
+    case "not_exists":
+      return actual === undefined || actual === null;
+    case "equals":
+      return valuesEqual(actual, expected);
+    case "not_equals":
+      return !valuesEqual(actual, expected);
+    case "greater_than":
+      return typeof actual === "number" && typeof expected === "number" && actual > expected;
+    case "less_than":
+      return typeof actual === "number" && typeof expected === "number" && actual < expected;
+    case "greater_or_equal":
+      return typeof actual === "number" && typeof expected === "number" && actual >= expected;
+    case "less_or_equal":
+      return typeof actual === "number" && typeof expected === "number" && actual <= expected;
+    case "contains":
+      return Array.isArray(actual)
+        ? actual.some((entry) => valuesEqual(entry, expected))
+        : typeof actual === "string" && typeof expected === "string" && actual.includes(expected);
+    case "not_contains":
+      return Array.isArray(actual)
+        ? !actual.some((entry) => valuesEqual(entry, expected))
+        : !(typeof actual === "string" && typeof expected === "string" && actual.includes(expected));
+    case "in":
+      return Array.isArray(expected) && expected.some((entry) => valuesEqual(actual, entry));
+    case "not_in":
+      return Array.isArray(expected) && !expected.some((entry) => valuesEqual(actual, entry));
   }
 }
 
-function matchesCondition(
-  context: ResultContext,
-  condition: ResultCondition | ResultConditionGroup,
-): boolean {
+function matchesCondition(context: ResultContext, condition: ResultCondition | ResultConditionGroup): boolean {
   if ("path" in condition) return evaluateCondition(context, condition);
   const all = condition.all ?? [];
   const any = condition.any ?? [];
   if (all.length === 0 && any.length === 0) throw new Error("Result condition group cannot be empty");
-  return (all.length === 0 || all.every((entry) => matchesCondition(context, entry))) &&
-    (any.length === 0 || any.some((entry) => matchesCondition(context, entry)));
+  return (
+    (all.length === 0 || all.every((entry) => matchesCondition(context, entry))) &&
+    (any.length === 0 || any.some((entry) => matchesCondition(context, entry)))
+  );
 }
 
 function cloneJson<T>(value: T): T {
@@ -238,17 +256,17 @@ function inferFieldType(value: ResultContextValue): ResultField["type"] {
 }
 
 function isResultField(value: unknown): value is ResultField {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
     typeof (value as { id?: unknown }).id === "string" &&
     typeof (value as { type?: unknown }).type === "string" &&
-    "value" in value);
+    "value" in value,
+  );
 }
 
-function setRuleValue(
-  profile: ResultProfileSnapshot,
-  path: string,
-  value: ResultContextValue,
-): void {
+function setRuleValue(profile: ResultProfileSnapshot, path: string, value: ResultContextValue): void {
   const segments = assertSafePath(path);
   if (segments.length === 1) {
     if (segments[0] === "result_type") {
@@ -262,7 +280,8 @@ function setRuleValue(
       return;
     }
     if (segments[0] === "tags") {
-      if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) throw new Error("tags must be a text list");
+      if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string"))
+        throw new Error("tags must be a text list");
       profile.tags = [...value];
       return;
     }
@@ -299,11 +318,15 @@ function setRuleValue(
 }
 
 function isStat(value: unknown): value is ResultStat {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
     typeof (value as { id?: unknown }).id === "string" &&
     typeof (value as { label?: unknown }).label === "string" &&
     typeof (value as { value?: unknown }).value === "number" &&
-    typeof (value as { max?: unknown }).max === "number");
+    typeof (value as { max?: unknown }).max === "number",
+  );
 }
 
 function emptyProfile(ruleSet: ResultRuleSetDefinition): ResultProfileSnapshot {

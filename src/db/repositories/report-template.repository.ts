@@ -17,9 +17,9 @@ function mapRow(row: ReportTemplateRow): { id: string; name: string; spec: Repor
   };
 }
 
-export async function listCustomReportTemplates(db: D1Database): Promise<
-  Array<{ id: string; name: string; spec: ReportTemplateSpec }>
-> {
+export async function listCustomReportTemplates(
+  db: D1Database,
+): Promise<Array<{ id: string; name: string; spec: ReportTemplateSpec }>> {
   const result = await db
     .prepare(
       `SELECT id, name, spec_json, created_by, created_at, updated_at
@@ -58,14 +58,7 @@ export async function upsertCustomReportTemplate(
          spec_json = excluded.spec_json,
          updated_at = excluded.updated_at`,
     )
-    .bind(
-      input.id,
-      input.name,
-      JSON.stringify(input.spec),
-      input.createdBy,
-      timestamp,
-      timestamp,
-    )
+    .bind(input.id, input.name, JSON.stringify(input.spec), input.createdBy, timestamp, timestamp)
     .run();
 }
 

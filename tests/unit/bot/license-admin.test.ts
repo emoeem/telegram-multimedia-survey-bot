@@ -31,10 +31,7 @@ vi.mock("../../../src/services/license.service", () => ({
   setLicenseStatus: mocks.setLicenseStatus,
 }));
 
-import {
-  handleAdminCallback,
-  handleAdminMessage,
-} from "../../../src/bot/admin-handler";
+import { handleAdminCallback, handleAdminMessage } from "../../../src/bot/admin-handler";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
@@ -78,10 +75,7 @@ describe("license admin commands", () => {
       telegramUserId: 99,
       systemRole: "admin",
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
   });
 
   afterEach(() => {
@@ -113,9 +107,7 @@ describe("license admin commands", () => {
     );
     const fetchMock = vi.mocked(fetch);
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(String(request.body)).toContain(
-      "TSB-AAAAA-BBBBB-CCCCC-DDDDD",
-    );
+    expect(String(request.body)).toContain("TSB-AAAAA-BBBBB-CCCCC-DDDDD");
   });
 
   it("supports the simple duration and customer syntax", async () => {
@@ -203,12 +195,7 @@ describe("license admin commands", () => {
     });
 
     expect(handled).toBe(true);
-    expect(mocks.setLicenseStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      LICENSE.publicId,
-      "revoked",
-      1,
-    );
+    expect(mocks.setLicenseStatus).toHaveBeenCalledWith(expect.anything(), LICENSE.publicId, "revoked", 1);
   });
 
   it("starts a click-based license issue flow from the admin workspace", async () => {
@@ -226,22 +213,20 @@ describe("license admin commands", () => {
     });
 
     expect(handled).toBe(true);
-    expect(cache.put).toHaveBeenCalledWith(
-      "license-issue:99",
-      JSON.stringify({ licenseType: "timed", days: 365 }),
-      { expirationTtl: 15 * 60 },
-    );
-    expect(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).toContain(
-      "请直接发送客户名称",
-    );
+    expect(cache.put).toHaveBeenCalledWith("license-issue:99", JSON.stringify({ licenseType: "timed", days: 365 }), {
+      expirationTtl: 15 * 60,
+    });
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).toContain("请直接发送客户名称");
   });
 
   it("issues the license after the administrator sends the customer name", async () => {
     const cache = {
-      get: vi.fn().mockResolvedValue(JSON.stringify({
-        licenseType: "timed",
-        days: 365,
-      })),
+      get: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          licenseType: "timed",
+          days: 365,
+        }),
+      ),
       put: vi.fn(),
       delete: vi.fn(),
     } as unknown as KVNamespace;

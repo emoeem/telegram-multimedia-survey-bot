@@ -17,11 +17,13 @@ import { REPORT_CHANNEL_CACHE_KEY } from "../../../src/services/report-delivery.
 import { REPORT_CHANNEL_DETECT_REQUEST_KEY } from "../../../src/bot/channel-detection";
 
 function makeCtx(overrides: { pending?: boolean; cache?: KVNamespace } = {}) {
-  const cache = overrides.cache ?? {
-    get: vi.fn(async () => (overrides.pending === false ? null : "111")),
-    put: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
-  } as unknown as KVNamespace;
+  const cache =
+    overrides.cache ??
+    ({
+      get: vi.fn(async () => (overrides.pending === false ? null : "111")),
+      put: vi.fn(async () => {}),
+      delete: vi.fn(async () => {}),
+    } as unknown as KVNamespace);
   return {
     botToken: "token",
     cache,
@@ -51,11 +53,7 @@ describe("report channel detection via channel_post", () => {
 
     expect(cache.put).toHaveBeenCalledWith(REPORT_CHANNEL_CACHE_KEY, "-1001234567890");
     expect(cache.delete).toHaveBeenCalledWith(REPORT_CHANNEL_DETECT_REQUEST_KEY);
-    expect(telegramMocks.sendMessage).toHaveBeenCalledWith(
-      "token",
-      111,
-      expect.stringContaining("-1001234567890"),
-    );
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("token", 111, expect.stringContaining("-1001234567890"));
   });
 
   it("warns the admin when the bot is not a channel administrator", async () => {
@@ -73,11 +71,7 @@ describe("report channel detection via channel_post", () => {
     });
 
     expect(cache.put).not.toHaveBeenCalled();
-    expect(telegramMocks.sendMessage).toHaveBeenCalledWith(
-      "token",
-      111,
-      expect.stringContaining("不是该频道的管理员"),
-    );
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("token", 111, expect.stringContaining("不是该频道的管理员"));
   });
 
   it("ignores channel posts when no admin is waiting for detection", async () => {

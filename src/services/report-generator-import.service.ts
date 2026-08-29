@@ -22,7 +22,16 @@ function normalizePrompt(value: string): string {
 }
 
 function questionType(type: string): GeneratorQuestionType {
-  if (type === "long_text" || type === "number" || type === "single" || type === "multiple" || type === "rating" || type === "image" || type === "date") return type;
+  if (
+    type === "long_text" ||
+    type === "number" ||
+    type === "single" ||
+    type === "multiple" ||
+    type === "rating" ||
+    type === "image" ||
+    type === "date"
+  )
+    return type;
   if (type === "yes_no") return "boolean";
   return "text";
 }
@@ -43,7 +52,10 @@ export function parseReportGeneratorImport(input: string): ImportedReportGenerat
       skippedCount += 1;
       continue;
     }
-    const options = (source.options ?? []).map((option) => option.label.trim()).filter(Boolean).slice(0, 50);
+    const options = (source.options ?? [])
+      .map((option) => option.label.trim())
+      .filter(Boolean)
+      .slice(0, 50);
     if ((type === "single" || type === "multiple") && options.length < 2) {
       skippedCount += 1;
       continue;

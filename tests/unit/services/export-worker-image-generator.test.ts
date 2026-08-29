@@ -33,7 +33,16 @@ describe("image generator queue dispatch", () => {
   it("acknowledges only after direct Telegram image delivery succeeds", async () => {
     const item = message(1);
     processImageGeneratorMessage.mockResolvedValueOnce(undefined);
-    await handleExportQueue({ messages: [item], queue: "telegram-survey-export", metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } }, retryAll: vi.fn(), ackAll: vi.fn() }, { DB: {} as D1Database, BOT_TOKEN: "token" });
+    await handleExportQueue(
+      {
+        messages: [item],
+        queue: "telegram-survey-export",
+        metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+        retryAll: vi.fn(),
+        ackAll: vi.fn(),
+      },
+      { DB: {} as D1Database, BOT_TOKEN: "token" },
+    );
     expect(processImageGeneratorMessage).toHaveBeenCalledWith({ DB: expect.anything(), BOT_TOKEN: "token" }, item.body);
     expect(item.ack).toHaveBeenCalledOnce();
     expect(item.retry).not.toHaveBeenCalled();
@@ -43,7 +52,16 @@ describe("image generator queue dispatch", () => {
     const item = message(1);
     processImageGeneratorMessage.mockRejectedValueOnce(new Error("Telegram sendPhoto failed"));
     const db = {} as D1Database;
-    await handleExportQueue({ messages: [item], queue: "telegram-survey-export", metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } }, retryAll: vi.fn(), ackAll: vi.fn() }, { DB: db, BOT_TOKEN: "token" });
+    await handleExportQueue(
+      {
+        messages: [item],
+        queue: "telegram-survey-export",
+        metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } },
+        retryAll: vi.fn(),
+        ackAll: vi.fn(),
+      },
+      { DB: db, BOT_TOKEN: "token" },
+    );
     expect(retryImageGeneratorJob).toHaveBeenCalledWith(db, 8, "Telegram sendPhoto failed", false);
     expect(item.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
     expect(item.ack).not.toHaveBeenCalled();

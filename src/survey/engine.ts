@@ -8,10 +8,7 @@ export interface SurveyFlow {
   questions: SurveyQuestionView[];
 }
 
-export function buildSurveyFlow(
-  questions: SurveyQuestion[],
-  options: QuestionOption[],
-): SurveyFlow {
+export function buildSurveyFlow(questions: SurveyQuestion[], options: QuestionOption[]): SurveyFlow {
   const optionsByQuestion = new Map<number, QuestionOption[]>();
 
   for (const option of options) {
@@ -28,26 +25,16 @@ export function buildSurveyFlow(
   };
 }
 
-export function getFirstQuestion(
-  flow: SurveyFlow,
-): SurveyQuestionView | null {
+export function getFirstQuestion(flow: SurveyFlow): SurveyQuestionView | null {
   return flow.questions[0] ?? null;
 }
 
-export function getQuestionById(
-  flow: SurveyFlow,
-  questionId: number,
-): SurveyQuestionView | null {
+export function getQuestionById(flow: SurveyFlow, questionId: number): SurveyQuestionView | null {
   return flow.questions.find((question) => question.id === questionId) ?? null;
 }
 
-export function getNextQuestion(
-  flow: SurveyFlow,
-  currentQuestionId: number,
-): SurveyQuestionView | null {
-  const index = flow.questions.findIndex(
-    (question) => question.id === currentQuestionId,
-  );
+export function getNextQuestion(flow: SurveyFlow, currentQuestionId: number): SurveyQuestionView | null {
+  const index = flow.questions.findIndex((question) => question.id === currentQuestionId);
 
   if (index < 0 || index >= flow.questions.length - 1) {
     return null;
@@ -64,7 +51,11 @@ export function getNextQuestionAfterOption(
   const current = getQuestionById(flow, currentQuestionId);
   if (current?.conditionJson && current.skipToQuestionId && optionId !== null) {
     try {
-      const condition = JSON.parse(current.conditionJson) as { kind?: string; optionId?: unknown; rules?: Array<{ optionId?: unknown; targetQuestionId?: unknown }> };
+      const condition = JSON.parse(current.conditionJson) as {
+        kind?: string;
+        optionId?: unknown;
+        rules?: Array<{ optionId?: unknown; targetQuestionId?: unknown }>;
+      };
       const rule = Array.isArray(condition.rules)
         ? condition.rules.find((item) => Number(item.optionId) === optionId)
         : condition.kind === "option_equals" && Number(condition.optionId) === optionId
@@ -84,13 +75,8 @@ export function getNextQuestionAfterOption(
   return getNextQuestion(flow, currentQuestionId);
 }
 
-export function getPreviousQuestion(
-  flow: SurveyFlow,
-  currentQuestionId: number,
-): SurveyQuestionView | null {
-  const index = flow.questions.findIndex(
-    (question) => question.id === currentQuestionId,
-  );
+export function getPreviousQuestion(flow: SurveyFlow, currentQuestionId: number): SurveyQuestionView | null {
+  const index = flow.questions.findIndex((question) => question.id === currentQuestionId);
 
   if (index <= 0) {
     return null;
@@ -99,13 +85,8 @@ export function getPreviousQuestion(
   return flow.questions[index - 1] ?? null;
 }
 
-export function isLastQuestion(
-  flow: SurveyFlow,
-  currentQuestionId: number,
-): boolean {
-  const index = flow.questions.findIndex(
-    (question) => question.id === currentQuestionId,
-  );
+export function isLastQuestion(flow: SurveyFlow, currentQuestionId: number): boolean {
+  const index = flow.questions.findIndex((question) => question.id === currentQuestionId);
 
   return index >= 0 && index === flow.questions.length - 1;
 }

@@ -12,7 +12,11 @@ export interface NormalizedAnswerValue {
 
 function parsedJson(answer: Answer): ResultJsonValue | null {
   if (answer.jsonValue === null) return null;
-  try { return JSON.parse(answer.jsonValue) as ResultJsonValue; } catch { return answer.jsonValue; }
+  try {
+    return JSON.parse(answer.jsonValue) as ResultJsonValue;
+  } catch {
+    return answer.jsonValue;
+  }
 }
 
 function mediaFrom(value: ResultJsonValue): Array<{ mediaAssetId: number }> {
@@ -20,7 +24,9 @@ function mediaFrom(value: ResultJsonValue): Array<{ mediaAssetId: number }> {
   return values.flatMap((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
     const assetId = entry.mediaAssetId;
-    return typeof assetId === "number" && Number.isSafeInteger(assetId) && assetId > 0 ? [{ mediaAssetId: assetId }] : [];
+    return typeof assetId === "number" && Number.isSafeInteger(assetId) && assetId > 0
+      ? [{ mediaAssetId: assetId }]
+      : [];
   });
 }
 
@@ -45,6 +51,6 @@ export function normalizeAnswer(
               ? answer.dateValue
               : answer.timeValue !== null
                 ? answer.timeValue
-                : json ?? null;
+                : (json ?? null);
   return { questionId: answer.questionId, type: questionType, value, media: mediaFrom(value) };
 }

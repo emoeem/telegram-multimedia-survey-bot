@@ -30,16 +30,16 @@ describe("UI screen renderer", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("edits the existing UI message for navigation", async () => {
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"),
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
 
     await renderUiScreen(
-      context(uiNamespace([
-        { messageId: 100, screen: "survey_list", screenState: {}, stack: [], version: 1 },
-        { messageId: 100, screen: "survey_list", screenState: {}, stack: [], version: 2 },
-      ])),
+      context(
+        uiNamespace([
+          { messageId: 100, screen: "survey_list", screenState: {}, stack: [], version: 1 },
+          { messageId: 100, screen: "survey_list", screenState: {}, stack: [], version: 2 },
+        ]),
+      ),
       42,
       99,
       {
@@ -66,11 +66,13 @@ describe("UI screen renderer", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await renderUiScreen(
-      context(uiNamespace([
-        { messageId: null, screen: null, screenState: {}, stack: [], version: 0 },
-        { messageId: 101, screen: null, screenState: {}, stack: [], version: 0 },
-        { messageId: 101, screen: "home", screenState: {}, stack: [], version: 1 },
-      ])),
+      context(
+        uiNamespace([
+          { messageId: null, screen: null, screenState: {}, stack: [], version: 0 },
+          { messageId: 101, screen: null, screenState: {}, stack: [], version: 0 },
+          { messageId: 101, screen: "home", screenState: {}, stack: [], version: 1 },
+        ]),
+      ),
       42,
       99,
       { screen: "home", text: "主菜单" },

@@ -22,13 +22,7 @@ export type VisualElementType =
   | "qr_code"
   | "radar_chart";
 
-export type VisualReportSectionType =
-  | "section"
-  | "summary"
-  | "table"
-  | "gallery"
-  | "status_grid"
-  | "metrics";
+export type VisualReportSectionType = "section" | "summary" | "table" | "gallery" | "status_grid" | "metrics";
 
 export type TemplateVariableType = ResultFieldType | "stats" | "image_map";
 
@@ -72,10 +66,7 @@ export interface TemplateBackgroundTelegramAsset {
 }
 
 export type TemplateBackground =
-  | TemplateBackgroundSolid
-  | TemplateBackgroundGradient
-  | TemplateBackgroundImage
-  | TemplateBackgroundTelegramAsset;
+  TemplateBackgroundSolid | TemplateBackgroundGradient | TemplateBackgroundImage | TemplateBackgroundTelegramAsset;
 
 export interface VisualTemplateElement {
   id: string;

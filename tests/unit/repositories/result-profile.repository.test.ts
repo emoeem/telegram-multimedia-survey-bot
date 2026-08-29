@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  getSurveyResultRuleSet,
-  upsertResultProfile,
-} from "../../../src/db/repositories/result-profile.repository";
+import { getSurveyResultRuleSet, upsertResultProfile } from "../../../src/db/repositories/result-profile.repository";
 
 function createD1Mock(): { db: D1Database; statements: Array<{ sql: string; bindings: unknown[] }> } {
   const statements: Array<{ sql: string; bindings: unknown[] }> = [];
@@ -19,9 +16,32 @@ function createD1Mock(): { db: D1Database; statements: Array<{ sql: string; bind
         run: vi.fn(async () => ({ success: true })),
         first: vi.fn(async () => {
           if (sql.includes("survey_result_rule_sets")) {
-            return { id: 3, survey_id: 7, schema_version: 1, rules_json: "{\"rules\":[]}", created_by: 2, created_at: "now", updated_at: "now" };
+            return {
+              id: 3,
+              survey_id: 7,
+              schema_version: 1,
+              rules_json: '{"rules":[]}',
+              created_by: 2,
+              created_at: "now",
+              updated_at: "now",
+            };
           }
-          return { id: 9, survey_id: 7, response_id: 8, result_type: "custom", schema_version: 1, title: "A", subtitle: null, fields_json: "{}", stats_json: "[]", tags_json: "[]", images_json: "{}", metadata_json: "{}", created_at: "now", updated_at: "now" };
+          return {
+            id: 9,
+            survey_id: 7,
+            response_id: 8,
+            result_type: "custom",
+            schema_version: 1,
+            title: "A",
+            subtitle: null,
+            fields_json: "{}",
+            stats_json: "[]",
+            tags_json: "[]",
+            images_json: "{}",
+            metadata_json: "{}",
+            created_at: "now",
+            updated_at: "now",
+          };
         }),
       };
       statements.push(statement);
@@ -54,6 +74,8 @@ describe("result profile repository", () => {
     });
 
     expect(profile.responseId).toBe(8);
-    expect(statements.find((statement) => statement.sql.includes("ON CONFLICT(response_id)"))?.bindings.slice(0, 2)).toEqual([7, 8]);
+    expect(
+      statements.find((statement) => statement.sql.includes("ON CONFLICT(response_id)"))?.bindings.slice(0, 2),
+    ).toEqual([7, 8]);
   });
 });

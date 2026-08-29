@@ -124,10 +124,12 @@ function makeDb(responseStatus = "completed") {
   return db;
 }
 
-function makeEnv(overrides: {
-  channelId?: string | null;
-  cache?: KVNamespace;
-} = {}): ReportDeliveryWorkerEnvironment {
+function makeEnv(
+  overrides: {
+    channelId?: string | null;
+    cache?: KVNamespace;
+  } = {},
+): ReportDeliveryWorkerEnvironment {
   const env: ReportDeliveryWorkerEnvironment = {
     DB: makeDb(),
     BOT_TOKEN: "token",
@@ -188,11 +190,11 @@ describe("report delivery worker", () => {
       expect.stringContaining("#答卷42"),
     );
     expect(mocks.sendPhoto).not.toHaveBeenCalled();
-    expect(mocks.completeReportDelivery).toHaveBeenCalledWith(
-      env.DB,
-      1,
-      { telegramChatId: -100123, pdfMessageId: 55, imageMessageIds: [] },
-    );
+    expect(mocks.completeReportDelivery).toHaveBeenCalledWith(env.DB, 1, {
+      telegramChatId: -100123,
+      pdfMessageId: 55,
+      imageMessageIds: [],
+    });
     expect(mocks.deleteTemporaryMediaForResponse).toHaveBeenCalled();
     expect(mocks.renderReportPdf).toHaveBeenCalledWith(
       expect.anything(),

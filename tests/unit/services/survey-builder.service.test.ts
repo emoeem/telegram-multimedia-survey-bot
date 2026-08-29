@@ -38,15 +38,10 @@ vi.mock("../../../src/db/repositories/media.repository", () => ({
   getQuestionMediaByQuestionId: repositoryMocks.getQuestionMediaByQuestionId,
 }));
 
-import {
-  finishOptions,
-  saveDraftSurvey,
-} from "../../../src/services/survey-builder.service";
+import { finishOptions, saveDraftSurvey } from "../../../src/services/survey-builder.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 
-function createBuilderState(
-  overrides: Partial<SurveyBuilderState> = {},
-): SurveyBuilderState {
+function createBuilderState(overrides: Partial<SurveyBuilderState> = {}): SurveyBuilderState {
   return {
     userId: 99,
     step: "question_type",
@@ -102,37 +97,27 @@ describe("survey builder service", () => {
       status: "draft",
     });
     repositoryMocks.createQuestion.mockResolvedValue(21);
-    repositoryMocks.createQuestionOption
-      .mockResolvedValueOnce(31)
-      .mockResolvedValueOnce(32);
+    repositoryMocks.createQuestionOption.mockResolvedValueOnce(31).mockResolvedValueOnce(32);
   });
 
   it("persists question media and option media with the draft", async () => {
-    const surveyId = await saveDraftSurvey(
-      createDbMock(),
-      createBuilderState(),
-      7,
-    );
+    const surveyId = await saveDraftSurvey(createDbMock(), createBuilderState(), 7);
 
     expect(surveyId).toBe(12);
-    expect(repositoryMocks.createQuestionMedia).toHaveBeenCalledWith(
-      expect.anything(),
-      { questionId: 21, mediaAssetId: 501 },
-    );
-    expect(repositoryMocks.createOptionMedia).toHaveBeenCalledWith(
-      expect.anything(),
-      { questionOptionId: 31, mediaAssetId: 601 },
-    );
-    expect(repositoryMocks.createQuestionOption).toHaveBeenNthCalledWith(
-      2,
-      expect.anything(),
-      {
-        questionId: 21,
-        label: "选项 B",
-        value: "选项 B",
-        order: 1,
-      },
-    );
+    expect(repositoryMocks.createQuestionMedia).toHaveBeenCalledWith(expect.anything(), {
+      questionId: 21,
+      mediaAssetId: 501,
+    });
+    expect(repositoryMocks.createOptionMedia).toHaveBeenCalledWith(expect.anything(), {
+      questionOptionId: 31,
+      mediaAssetId: 601,
+    });
+    expect(repositoryMocks.createQuestionOption).toHaveBeenNthCalledWith(2, expect.anything(), {
+      questionId: 21,
+      label: "选项 B",
+      value: "选项 B",
+      order: 1,
+    });
   });
 
   it("updates an existing draft instead of creating a duplicate", async () => {
@@ -143,43 +128,27 @@ describe("survey builder service", () => {
     });
     const db = createDbMock();
 
-    const surveyId = await saveDraftSurvey(
-      db,
-      createBuilderState({ draftSurveyId: 12 }),
-      7,
-    );
+    const surveyId = await saveDraftSurvey(db, createBuilderState({ draftSurveyId: 12 }), 7);
 
     expect(surveyId).toBe(12);
     expect(repositoryMocks.createSurvey).not.toHaveBeenCalled();
-    expect(repositoryMocks.updateDraftSurvey).toHaveBeenCalledWith(
-      db,
-      {
-        id: 12,
-        ownerId: 7,
-        title: "媒体问卷",
-        description: "描述",
-      },
-    );
-    expect(db.prepare).toHaveBeenCalledWith(
-      "DELETE FROM survey_questions WHERE survey_id = ?",
-    );
+    expect(repositoryMocks.updateDraftSurvey).toHaveBeenCalledWith(db, {
+      id: 12,
+      ownerId: 7,
+      title: "媒体问卷",
+      description: "描述",
+    });
+    expect(db.prepare).toHaveBeenCalledWith("DELETE FROM survey_questions WHERE survey_id = ?");
   });
 
   it("turns a builder 400 into a useful validation error", async () => {
     const namespace = {
       idFromName: vi.fn(() => ({ id: "builder-id" })),
       get: vi.fn(() => ({
-        fetch: vi.fn(async () =>
-          Response.json(
-            { error: "choice_options_incomplete" },
-            { status: 400 },
-          ),
-        ),
+        fetch: vi.fn(async () => Response.json({ error: "choice_options_incomplete" }, { status: 400 })),
       })),
     } as unknown as SurveyBuilderNamespace;
 
-    await expect(finishOptions(namespace, 99)).rejects.toThrow(
-      "单选题或多选题至少需要两个选项",
-    );
+    await expect(finishOptions(namespace, 99)).rejects.toThrow("单选题或多选题至少需要两个选项");
   });
 });

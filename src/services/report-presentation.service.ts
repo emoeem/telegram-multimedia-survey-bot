@@ -22,7 +22,7 @@ export function applyReportPresentation(
       readability: {
         mode: contrastMode,
         overlay: { color: dark ? "#020617" : "#ffffff", opacity: dark ? 0.48 : 0.32 },
-        card: { color: dark ? "#0f172a" : "#ffffff", opacity: dark ? 0.90 : 0.90, radius: 36, inset: 28 },
+        card: { color: dark ? "#0f172a" : "#ffffff", opacity: dark ? 0.9 : 0.9, radius: 36, inset: 28 },
         textColor: dark ? "#f8fafc" : "#172033",
         itemBackground: dark ? "#1e293b" : "#ffffff",
       },

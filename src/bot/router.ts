@@ -18,10 +18,7 @@ async function ensureUser(ctx: BotContext, telegramUser: TelegramUser): Promise<
   });
 }
 
-export async function handleTelegramUpdate(
-  update: TelegramUpdate,
-  ctx: BotContext,
-): Promise<void> {
+export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotContext): Promise<void> {
   const kind = getUpdateKind(update);
 
   if (kind === "channel_post" && update.channel_post) {
@@ -38,7 +35,11 @@ export async function handleTelegramUpdate(
       await ensureUser(ctx, update.message.from);
       const user = await getUserByTelegramId(ctx.db, update.message.from.id);
       if (user?.bannedAt && !ctx.adminIds.includes(update.message.from.id)) {
-        await sendMessage(ctx.botToken, update.message.chat.id, "⛔ 你的账号当前无法使用此机器人。如有疑问，请联系管理员。");
+        await sendMessage(
+          ctx.botToken,
+          update.message.chat.id,
+          "⛔ 你的账号当前无法使用此机器人。如有疑问，请联系管理员。",
+        );
         return;
       }
     }
@@ -46,11 +47,7 @@ export async function handleTelegramUpdate(
       await handleTelegramMessage(ctx, update.message);
     } catch (error) {
       console.error("Telegram message handler failed", error);
-      await sendMessage(
-        ctx.botToken,
-        update.message.chat.id,
-        "⚠️ 处理失败，请稍后重试。",
-      );
+      await sendMessage(ctx.botToken, update.message.chat.id, "⚠️ 处理失败，请稍后重试。");
     }
     return;
   }
@@ -79,11 +76,7 @@ export async function handleTelegramUpdate(
       await handleTelegramCallback(ctx, update.callback_query);
     } catch (error) {
       console.error("Telegram callback handler failed", error);
-      await answerCallbackQuery(
-        ctx.botToken,
-        update.callback_query.id,
-        "处理失败，请稍后重试",
-      );
+      await answerCallbackQuery(ctx.botToken, update.callback_query.id, "处理失败，请稍后重试");
     }
   }
 }

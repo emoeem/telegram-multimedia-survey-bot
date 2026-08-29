@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createReportAccessToken,
-  verifyReportAccessToken,
-} from "../../../src/services/report-access-token.service";
+import { createReportAccessToken, verifyReportAccessToken } from "../../../src/services/report-access-token.service";
 
 describe("report access token", () => {
   it("round-trips a signed token", async () => {

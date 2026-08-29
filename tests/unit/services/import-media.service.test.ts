@@ -41,11 +41,12 @@ describe("createImportMediaResolver", () => {
     const kv = createKvMock();
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(new Uint8Array([1, 2, 3, 4]), {
-          status: 200,
-          headers: { "Content-Type": "image/jpeg" },
-        }),
+      vi.fn(
+        async () =>
+          new Response(new Uint8Array([1, 2, 3, 4]), {
+            status: 200,
+            headers: { "Content-Type": "image/jpeg" },
+          }),
       ),
     );
     const resolver = createImportMediaResolver({
@@ -82,7 +83,10 @@ describe("createImportMediaResolver", () => {
 
   it("falls back to the remote URL when fetching fails", async () => {
     const kv = createKvMock();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 500 })),
+    );
     const resolver = createImportMediaResolver({
       MEDIA_KV: kv as unknown as KVNamespace,
     });

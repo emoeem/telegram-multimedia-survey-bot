@@ -23,27 +23,26 @@ function mapSetting(row: FeatureAccessSettingRow): FeatureAccessSetting {
   };
 }
 
-export async function getIdentityCardAccessSetting(
-  db: D1Database,
-): Promise<FeatureAccessSetting | null> {
-  const row = await db.prepare(
-    "SELECT feature, access_code, version, updated_at FROM feature_access_settings WHERE feature = ? LIMIT 1",
-  ).bind(IDENTITY_CARD_FEATURE).first<FeatureAccessSettingRow>();
+export async function getIdentityCardAccessSetting(db: D1Database): Promise<FeatureAccessSetting | null> {
+  const row = await db
+    .prepare("SELECT feature, access_code, version, updated_at FROM feature_access_settings WHERE feature = ? LIMIT 1")
+    .bind(IDENTITY_CARD_FEATURE)
+    .first<FeatureAccessSettingRow>();
   return row ? mapSetting(row) : null;
 }
 
-export async function setIdentityCardAccessCode(
-  db: D1Database,
-  accessCode: string,
-): Promise<void> {
-  await db.prepare(
-    `INSERT INTO feature_access_settings (feature, access_code, version, updated_at)
+export async function setIdentityCardAccessCode(db: D1Database, accessCode: string): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO feature_access_settings (feature, access_code, version, updated_at)
      VALUES (?, ?, 1, ?)
      ON CONFLICT(feature) DO UPDATE SET
        access_code = excluded.access_code,
        version = feature_access_settings.version + 1,
        updated_at = excluded.updated_at`,
-  ).bind(IDENTITY_CARD_FEATURE, accessCode, new Date().toISOString()).run();
+    )
+    .bind(IDENTITY_CARD_FEATURE, accessCode, new Date().toISOString())
+    .run();
 }
 
 export async function clearIdentityCardAccessCode(db: D1Database): Promise<void> {
@@ -53,31 +52,30 @@ export async function clearIdentityCardAccessCode(db: D1Database): Promise<void>
   ]);
 }
 
-export async function grantIdentityCardAccess(
-  db: D1Database,
-  userId: number,
-  settingVersion: number,
-): Promise<void> {
-  await db.prepare(
-    `INSERT INTO feature_access_grants (feature, user_id, setting_version, granted_at)
+export async function grantIdentityCardAccess(db: D1Database, userId: number, settingVersion: number): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO feature_access_grants (feature, user_id, setting_version, granted_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(feature, user_id) DO UPDATE SET
        setting_version = excluded.setting_version,
        granted_at = excluded.granted_at`,
-  ).bind(IDENTITY_CARD_FEATURE, userId, settingVersion, new Date().toISOString()).run();
+    )
+    .bind(IDENTITY_CARD_FEATURE, userId, settingVersion, new Date().toISOString())
+    .run();
 }
 
-export async function hasIdentityCardAccess(
-  db: D1Database,
-  userId: number,
-): Promise<boolean> {
-  const row = await db.prepare(
-    `SELECT 1 AS allowed
+export async function hasIdentityCardAccess(db: D1Database, userId: number): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS allowed
      FROM feature_access_grants grant
      JOIN feature_access_settings setting ON setting.feature = grant.feature
      WHERE grant.feature = ? AND grant.user_id = ?
        AND grant.setting_version = setting.version
      LIMIT 1`,
-  ).bind(IDENTITY_CARD_FEATURE, userId).first<{ allowed: number }>();
+    )
+    .bind(IDENTITY_CARD_FEATURE, userId)
+    .first<{ allowed: number }>();
   return Boolean(row?.allowed);
 }

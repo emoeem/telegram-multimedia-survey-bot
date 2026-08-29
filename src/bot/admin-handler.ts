@@ -1,19 +1,18 @@
+import { deleteSurvey, getSurveyById, listAllSurveys, updateSurveyStatus } from "../db/repositories/survey.repository";
 import {
-  deleteSurvey,
-  getSurveyById,
-  listAllSurveys,
-  updateSurveyStatus,
-} from "../db/repositories/survey.repository";
-import { cancelActiveResponsesForUser, getUserById, getUserByTelegramId, listBotUsers, setUserBan, upsertUser } from "../db/repositories/user.repository";
+  cancelActiveResponsesForUser,
+  getUserById,
+  getUserByTelegramId,
+  listBotUsers,
+  setUserBan,
+  upsertUser,
+} from "../db/repositories/user.repository";
 import {
   grantCreatorTrial,
   listActiveCreatorTrials,
   revokeCreatorTrial,
 } from "../db/repositories/creator-trial.repository";
-import {
-  isAdmin,
-  assertCanManageSurvey,
-} from "../services/permission.service";
+import { isAdmin, assertCanManageSurvey } from "../services/permission.service";
 import { answerCallbackQuery, sendMessage, type InlineKeyboardMarkup } from "./telegram";
 import {
   getSurveyPortfolioStatistics,
@@ -33,18 +32,11 @@ import {
   registerSoftwareRelease,
   setLicenseStatus,
 } from "../services/license.service";
-import type {
-  SoftwareLicense,
-  SoftwareLicenseActivation,
-  SoftwareLicenseType,
-} from "../db/schema";
+import type { SoftwareLicense, SoftwareLicenseActivation, SoftwareLicenseType } from "../db/schema";
 import { sendLongMessage } from "./telegram";
 import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
-import {
-  handleResultVisualAdminCallback,
-  handleResultVisualAdminMessage,
-} from "./result-visual-admin-handler";
+import { handleResultVisualAdminCallback, handleResultVisualAdminMessage } from "./result-visual-admin-handler";
 import { handleImageGeneratorAdminMessage, handleImageGeneratorCallback } from "./image-generator-handler";
 import {
   clearIdentityCardAccessCode,
@@ -93,9 +85,15 @@ function adminSurveySearchInputKey(userId: number): string {
   return `admin-survey-search-input:${userId}`;
 }
 
-function adminUserSearchKey(userId: number): string { return `admin-user-search:${userId}`; }
-function adminUserSearchInputKey(userId: number): string { return `admin-user-search-input:${userId}`; }
-function identityCardPasswordInputKey(userId: number): string { return `admin-identity-card-password:${userId}`; }
+function adminUserSearchKey(userId: number): string {
+  return `admin-user-search:${userId}`;
+}
+function adminUserSearchInputKey(userId: number): string {
+  return `admin-user-search-input:${userId}`;
+}
+function identityCardPasswordInputKey(userId: number): string {
+  return `admin-identity-card-password:${userId}`;
+}
 
 export async function clearAdminInteractionState(ctx: BotContext, userId: number): Promise<void> {
   await Promise.all([
@@ -109,10 +107,7 @@ export async function clearAdminInteractionState(ctx: BotContext, userId: number
   ]);
 }
 
-async function getCreatorTrialIssueState(
-  ctx: BotContext,
-  userId: number,
-): Promise<CreatorTrialIssueState | null> {
+async function getCreatorTrialIssueState(ctx: BotContext, userId: number): Promise<CreatorTrialIssueState | null> {
   if (!ctx.cache) return null;
   const value = await ctx.cache.get(creatorTrialIssueStateKey(userId));
   if (!value) return null;
@@ -126,10 +121,7 @@ async function getCreatorTrialIssueState(
   }
 }
 
-async function getLicenseIssueState(
-  ctx: BotContext,
-  userId: number,
-): Promise<LicenseIssueState | null> {
+async function getLicenseIssueState(ctx: BotContext, userId: number): Promise<LicenseIssueState | null> {
   if (!ctx.cache) return null;
   const value = await ctx.cache.get(licenseIssueStateKey(userId));
   if (!value) return null;
@@ -147,20 +139,13 @@ async function getLicenseIssueState(
   }
 }
 
-async function showAdminHome(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  messageId?: number,
-): Promise<void> {
+async function showAdminHome(ctx: BotContext, chatId: number, userId: number, messageId?: number): Promise<void> {
   const text = "管理员中心\n\n完整管理请进入网页后台；Bot 仅保留问卷发布、关闭和导出等快捷操作。";
   const replyMarkup: InlineKeyboardMarkup = {
-      inline_keyboard: [
-        ...(ctx.origin
-          ? [[{ text: "🌐 网页管理后台", url: `${ctx.origin}/admin` }]]
-          : []),
-        [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
-      ],
+    inline_keyboard: [
+      ...(ctx.origin ? [[{ text: "🌐 网页管理后台", url: `${ctx.origin}/admin` }]] : []),
+      [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
+    ],
   };
   if (messageId !== undefined) {
     await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_HOME", text, replyMarkup });
@@ -187,16 +172,26 @@ async function showIdentityCardPasswordSettings(
     ],
   };
   if (messageId !== undefined) {
-    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_IDENTITY_PASSWORD", text, replyMarkup });
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_IDENTITY_PASSWORD",
+      text,
+      replyMarkup,
+    });
   } else {
     await sendMessage(ctx.botToken, chatId, text, replyMarkup);
   }
 }
 
 function userDisplayName(user: Awaited<ReturnType<typeof listBotUsers>>["users"][number]): string {
-  return [user.firstName, user.lastName].filter((value): value is string => Boolean(value?.trim())).join(" ")
-    || user.username
-    || "未命名用户";
+  return (
+    [user.firstName, user.lastName].filter((value): value is string => Boolean(value?.trim())).join(" ") ||
+    user.username ||
+    "未命名用户"
+  );
 }
 
 function shortDate(value: string | null): string {
@@ -220,7 +215,9 @@ async function showBotUserDirectory(
   const result = safePage === page ? initial : await listBotUsers(ctx.db, pageSize, safePage * pageSize, search);
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
   for (const member of result.users) {
-    rows.push([{ text: `👤 ${userDisplayName(member)} · ${member.telegramUserId}`, callback_data: `admin:user:${member.id}` }]);
+    rows.push([
+      { text: `👤 ${userDisplayName(member)} · ${member.telegramUserId}`, callback_data: `admin:user:${member.id}` },
+    ]);
   }
   if (safePage > 0 || safePage < lastPage) {
     const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];
@@ -248,23 +245,59 @@ async function showBotUserDirectory(
   const text = lines.join("\n");
   const replyMarkup = { inline_keyboard: rows };
   if (messageId !== undefined) {
-    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_BOT_USERS", text, replyMarkup });
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_BOT_USERS",
+      text,
+      replyMarkup,
+    });
   } else {
     await sendMessage(ctx.botToken, chatId, text, replyMarkup);
   }
 }
 
-async function showBotUserDetails(ctx: BotContext, chatId: number, userId: number, internalUserId: number, messageId?: number): Promise<void> {
+async function showBotUserDetails(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  internalUserId: number,
+  messageId?: number,
+): Promise<void> {
   const member = await getUserById(ctx.db, internalUserId);
-  if (!member) { await sendMessage(ctx.botToken, chatId, "用户不存在或已删除。", { inline_keyboard: [[{ text: "返回用户目录", callback_data: "admin:users:0" }]] }); return; }
+  if (!member) {
+    await sendMessage(ctx.botToken, chatId, "用户不存在或已删除。", {
+      inline_keyboard: [[{ text: "返回用户目录", callback_data: "admin:users:0" }]],
+    });
+    return;
+  }
   const name = userDisplayName(member);
-  const text = ["👤 Bot 用户详情", `姓名：${name}`, `Telegram ID：${member.telegramUserId}`, `用户名：${member.username ? `@${member.username}` : "未设置"}`, `启动：${shortDate(member.botStartedAt)}`, `最近活动：${shortDate(member.updatedAt)}`, `状态：${member.bannedAt ? `⛔ 已封禁（${member.banReason ?? "无原因"}）` : "✅ 可使用"}`].join("\n");
+  const text = [
+    "👤 Bot 用户详情",
+    `姓名：${name}`,
+    `Telegram ID：${member.telegramUserId}`,
+    `用户名：${member.username ? `@${member.username}` : "未设置"}`,
+    `启动：${shortDate(member.botStartedAt)}`,
+    `最近活动：${shortDate(member.updatedAt)}`,
+    `状态：${member.bannedAt ? `⛔ 已封禁（${member.banReason ?? "无原因"}）` : "✅ 可使用"}`,
+  ].join("\n");
   const rows: InlineKeyboardMarkup["inline_keyboard"] = member.bannedAt
     ? [[{ text: "✅ 解除封禁", callback_data: `admin:user_unban:${member.id}` }]]
     : [[{ text: "⛔ 封禁用户", callback_data: `admin:user_ban:${member.id}` }]];
   rows.push([{ text: "⬅️ 返回用户目录", callback_data: "admin:users:0" }]);
   const replyMarkup = { inline_keyboard: rows };
-  if (messageId !== undefined) await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_BOT_USER_DETAIL", text, replyMarkup });
+  if (messageId !== undefined)
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_BOT_USER_DETAIL",
+      text,
+      replyMarkup,
+    });
   else await sendMessage(ctx.botToken, chatId, text, replyMarkup);
 }
 
@@ -313,24 +346,13 @@ function formatDate(value: string | null): string {
   return date.toISOString().slice(0, 10);
 }
 
-function formatLicenseSummary(
-  license: SoftwareLicense,
-  activeActivations?: number,
-): string {
-  const usage =
-    license.licenseType === "timed"
-      ? `使用至 ${formatDate(license.expiresAt)}`
-      : "永久使用";
-  const activationText =
-    activeActivations === undefined
-      ? ""
-      : `，激活 ${activeActivations}/${license.maxActivations}`;
+function formatLicenseSummary(license: SoftwareLicense, activeActivations?: number): string {
+  const usage = license.licenseType === "timed" ? `使用至 ${formatDate(license.expiresAt)}` : "永久使用";
+  const activationText = activeActivations === undefined ? "" : `，激活 ${activeActivations}/${license.maxActivations}`;
   return `${license.publicId} | ${licenseStatusLabels[license.status]} | ${usage}${activationText}\n客户：${license.customerName ?? "未填写"}`;
 }
 
-function formatActivationList(
-  activations: SoftwareLicenseActivation[],
-): string {
+function formatActivationList(activations: SoftwareLicenseActivation[]): string {
   if (activations.length === 0) return "激活设备：无";
   return [
     "激活设备：",
@@ -341,24 +363,15 @@ function formatActivationList(
   ].join("\n");
 }
 
-async function sendLicenseDetails(
-  ctx: BotContext,
-  chatId: number,
-  publicId: string,
-): Promise<boolean> {
+async function sendLicenseDetails(ctx: BotContext, chatId: number, publicId: string): Promise<boolean> {
   const license = await getSoftwareLicenseByPublicId(ctx.db, publicId);
   if (!license) {
     await sendMessage(ctx.botToken, chatId, "授权不存在。");
     return false;
   }
   const activations = await listLicenseActivations(ctx.db, license.id);
-  const activeCount = activations.filter(
-    (activation) => !activation.deactivatedAt,
-  ).length;
-  const usage =
-    license.licenseType === "timed"
-      ? `限时，使用至 ${formatDate(license.expiresAt)}`
-      : "永久使用";
+  const activeCount = activations.filter((activation) => !activation.deactivatedAt).length;
+  const usage = license.licenseType === "timed" ? `限时，使用至 ${formatDate(license.expiresAt)}` : "永久使用";
   const text = [
     `授权编号：${license.publicId}`,
     `客户：${license.customerName ?? "未填写"}`,
@@ -393,35 +406,22 @@ async function sendLicenseDetails(
       },
     ]);
   }
-  await sendLongMessage(
-    ctx.botToken,
-    chatId,
-    text,
-    rows.length > 0 ? { inline_keyboard: rows } : undefined,
-  );
+  await sendLongMessage(ctx.botToken, chatId, text, rows.length > 0 ? { inline_keyboard: rows } : undefined);
   return true;
 }
 
-async function sendLicenseList(
-  ctx: BotContext,
-  chatId: number,
-): Promise<void> {
+async function sendLicenseList(ctx: BotContext, chatId: number): Promise<void> {
   const licenses = await listSoftwareLicenses(ctx.db, 12);
   if (licenses.length === 0) {
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "暂无已发放的授权。请选择授权期限后输入客户名称即可发放。",
-      {
-        inline_keyboard: [
-          [
-            { text: "发放 365 天", callback_data: "license:create:timed:365" },
-            { text: "发放永久", callback_data: "license:create:perpetual:forever" },
-          ],
-          [{ text: "返回管理员中心", callback_data: "admin:home" }],
+    await sendMessage(ctx.botToken, chatId, "暂无已发放的授权。请选择授权期限后输入客户名称即可发放。", {
+      inline_keyboard: [
+        [
+          { text: "发放 365 天", callback_data: "license:create:timed:365" },
+          { text: "发放永久", callback_data: "license:create:perpetual:forever" },
         ],
-      },
-    );
+        [{ text: "返回管理员中心", callback_data: "admin:home" }],
+      ],
+    });
     return;
   }
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
@@ -450,9 +450,7 @@ async function sendCreatedLicense(
 ): Promise<void> {
   const created = await createLicense(ctx.db, {
     licenseType: input.licenseType,
-    ...(input.licenseType === "timed"
-      ? { usageDays: input.days as number }
-      : { updateDays: input.days }),
+    ...(input.licenseType === "timed" ? { usageDays: input.days as number } : { updateDays: input.days }),
     maxActivations: input.maxActivations ?? 1,
     customerName: input.customerName,
     actorUserId,
@@ -484,70 +482,80 @@ async function sendCreatedLicense(
   );
 }
 
-async function sendCreatorTrialList(
-  ctx: BotContext,
-  chatId: number,
-): Promise<void> {
+async function sendCreatorTrialList(ctx: BotContext, chatId: number): Promise<void> {
   const grants = await listActiveCreatorTrials(ctx.db, 30);
   if (grants.length === 0) {
-    await sendMessage(ctx.botToken, chatId, "当前没有体验创作者。选择体验天数后，输入对方的 Telegram 数字 ID 即可发放。", {
-      inline_keyboard: [
-        [{ text: "体验 30 天", callback_data: "trial:create:30" }],
-        [{ text: "返回管理员中心", callback_data: "admin:home" }],
-      ],
-    });
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      "当前没有体验创作者。选择体验天数后，输入对方的 Telegram 数字 ID 即可发放。",
+      {
+        inline_keyboard: [
+          [{ text: "体验 30 天", callback_data: "trial:create:30" }],
+          [{ text: "返回管理员中心", callback_data: "admin:home" }],
+        ],
+      },
+    );
     return;
   }
 
   const rows: InlineKeyboardMarkup["inline_keyboard"] = grants.map((grant) => {
     const name = grant.user.firstName ?? grant.user.username ?? "未命名用户";
-    return [{
-      text: `${name} · ${grant.user.telegramUserId} · 至 ${formatDate(grant.expiresAt)}`,
-      callback_data: `trial:view:${grant.userId}`,
-    }];
+    return [
+      {
+        text: `${name} · ${grant.user.telegramUserId} · 至 ${formatDate(grant.expiresAt)}`,
+        callback_data: `trial:view:${grant.userId}`,
+      },
+    ];
   });
   rows.push([{ text: "新增体验创作者", callback_data: "trial:create:30" }]);
   rows.push([{ text: "返回管理员中心", callback_data: "admin:home" }]);
-  await sendMessage(ctx.botToken, chatId, "体验创作者\n\n他们只能创建和管理自己的问卷，不具备管理员或软件授权权限。", { inline_keyboard: rows });
+  await sendMessage(ctx.botToken, chatId, "体验创作者\n\n他们只能创建和管理自己的问卷，不具备管理员或软件授权权限。", {
+    inline_keyboard: rows,
+  });
 }
 
-async function sendCreatorTrialDetails(
-  ctx: BotContext,
-  chatId: number,
-  internalUserId: number,
-): Promise<void> {
-  const grant = (await listActiveCreatorTrials(ctx.db, 100)).find(
-    (item) => item.userId === internalUserId,
-  );
+async function sendCreatorTrialDetails(ctx: BotContext, chatId: number, internalUserId: number): Promise<void> {
+  const grant = (await listActiveCreatorTrials(ctx.db, 100)).find((item) => item.userId === internalUserId);
   if (!grant) {
     await sendMessage(ctx.botToken, chatId, "该体验授权已失效或不存在。");
     return;
   }
-  const usage = await ctx.db.prepare(
-    `SELECT COUNT(*) AS total, SUM(CASE WHEN s.status = 'published' THEN 1 ELSE 0 END) AS published,
+  const usage = await ctx.db
+    .prepare(
+      `SELECT COUNT(*) AS total, SUM(CASE WHEN s.status = 'published' THEN 1 ELSE 0 END) AS published,
             (SELECT COUNT(*) FROM survey_responses r JOIN surveys rs ON rs.id = r.survey_id WHERE rs.owner_id = ?) AS responses
      FROM surveys s WHERE s.owner_id = ?`,
-  ).bind(grant.userId, grant.userId).first<{ total: number; published: number | null; responses: number }>();
-  await sendMessage(ctx.botToken, chatId, [
-    "体验创作者",
-    `用户：${grant.user.firstName ?? grant.user.username ?? "未命名用户"}`,
-    `Telegram ID：${grant.user.telegramUserId}`,
-    `有效至：${formatDate(grant.expiresAt)}`,
-    `问卷：${usage?.total ?? 0} 份，已发布 ${usage?.published ?? 0} 份，收到答卷 ${usage?.responses ?? 0} 份`,
-    "权限：创建、发布和管理自己的问卷。",
-  ].join("\n"), {
-    inline_keyboard: [
-      [{ text: "撤销体验权限", callback_data: `trial:revoke:${grant.userId}` }],
-      [{ text: "返回体验列表", callback_data: "trial:list" }],
-    ],
-  });
+    )
+    .bind(grant.userId, grant.userId)
+    .first<{ total: number; published: number | null; responses: number }>();
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "体验创作者",
+      `用户：${grant.user.firstName ?? grant.user.username ?? "未命名用户"}`,
+      `Telegram ID：${grant.user.telegramUserId}`,
+      `有效至：${formatDate(grant.expiresAt)}`,
+      `问卷：${usage?.total ?? 0} 份，已发布 ${usage?.published ?? 0} 份，收到答卷 ${usage?.responses ?? 0} 份`,
+      "权限：创建、发布和管理自己的问卷。",
+    ].join("\n"),
+    {
+      inline_keyboard: [
+        [{ text: "撤销体验权限", callback_data: `trial:revoke:${grant.userId}` }],
+        [{ text: "返回体验列表", callback_data: "trial:list" }],
+      ],
+    },
+  );
 }
 
 function compactAdminSurveyTitle(title: string, maxLength = 28): string {
   const compact = title.replace(/\s+/g, " ").trim();
   return Array.from(compact).length <= maxLength
     ? compact
-    : `${Array.from(compact).slice(0, maxLength - 1).join("")}…`;
+    : `${Array.from(compact)
+        .slice(0, maxLength - 1)
+        .join("")}…`;
 }
 
 function surveyStatusIcon(status: keyof typeof surveyStatusLabels): string {
@@ -559,10 +567,7 @@ function surveyStatusIcon(status: keyof typeof surveyStatusLabels): string {
   }[status];
 }
 
-async function getAdminSurveySearch(
-  ctx: BotContext,
-  userId: number,
-): Promise<string> {
+async function getAdminSurveySearch(ctx: BotContext, userId: number): Promise<string> {
   return (await ctx.cache?.get(adminSurveySearchKey(userId)))?.trim() ?? "";
 }
 
@@ -576,26 +581,21 @@ async function showAdminSurveyDirectory(
 ): Promise<void> {
   const pageSize = 8;
   const search = await getAdminSurveySearch(ctx, userId);
-  const result = await listSurveyPerformance(
-    ctx.db,
-    pageSize,
-    Math.max(0, page) * pageSize,
-    search,
-  );
+  const result = await listSurveyPerformance(ctx.db, pageSize, Math.max(0, page) * pageSize, search);
   const lastPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
   const safePage = Math.min(Math.max(0, page), lastPage);
-  const items = safePage === page
-    ? result.items
-    : (await listSurveyPerformance(ctx.db, pageSize, safePage * pageSize, search)).items;
-  const portfolio = overview
-    ? await getSurveyPortfolioStatistics(ctx.db)
-    : null;
-  const completionRate = portfolio && portfolio.totalStarted > 0
-    ? (portfolio.totalCompleted / portfolio.totalStarted) * 100
-    : 0;
-  const attention = overview && typeof ctx.db.prepare === "function"
-    ? await ctx.db.prepare(
-      `SELECT
+  const items =
+    safePage === page
+      ? result.items
+      : (await listSurveyPerformance(ctx.db, pageSize, safePage * pageSize, search)).items;
+  const portfolio = overview ? await getSurveyPortfolioStatistics(ctx.db) : null;
+  const completionRate =
+    portfolio && portfolio.totalStarted > 0 ? (portfolio.totalCompleted / portfolio.totalStarted) * 100 : 0;
+  const attention =
+    overview && typeof ctx.db.prepare === "function"
+      ? await ctx.db
+          .prepare(
+            `SELECT
          SUM(CASE WHEN s.status = 'published' AND COALESCE(r.total_completed, 0) = 0 THEN 1 ELSE 0 END) AS zero_completed,
          COALESCE(SUM(r.in_progress), 0) AS in_progress
        FROM surveys s
@@ -606,8 +606,9 @@ async function showAdminSurveyDirectory(
          FROM survey_responses
          GROUP BY survey_id
        ) r ON r.survey_id = s.id`,
-    ).first<{ zero_completed: number | null; in_progress: number | null }>()
-    : null;
+          )
+          .first<{ zero_completed: number | null; in_progress: number | null }>()
+      : null;
   const heading = overview ? "📊 问卷统计总览" : "📋 全部问卷";
   const lines = [
     heading,
@@ -630,10 +631,12 @@ async function showAdminSurveyDirectory(
   } else {
     lines.push(
       "",
-      ...items.map((survey, index) => [
-        `${safePage * pageSize + index + 1}. ${surveyStatusIcon(survey.status)} ${compactAdminSurveyTitle(survey.title, 42)}`,
-        `   ${surveyStatusLabels[survey.status]} · 创建者 ${survey.ownerName} · #${survey.id}`,
-      ].join("\n")),
+      ...items.map((survey, index) =>
+        [
+          `${safePage * pageSize + index + 1}. ${surveyStatusIcon(survey.status)} ${compactAdminSurveyTitle(survey.title, 42)}`,
+          `   ${surveyStatusLabels[survey.status]} · 创建者 ${survey.ownerName} · #${survey.id}`,
+        ].join("\n"),
+      ),
     );
   }
 
@@ -692,21 +695,31 @@ async function showAdminSurveyDetail(
   const surveyIndex = surveys.findIndex((item) => item.id === survey.id);
   const listPosition = surveyIndex >= 0 ? `当前序号：${surveyIndex + 1}\n` : "";
   const text = `📋 ${survey.title}\n${listPosition}内部编号：${survey.id}\n状态：${surveyStatusLabels[survey.status]}\n\n完整编辑、统计和权限管理请进入网页后台。`;
-  const statusAction = survey.status === "published"
-    ? { text: "⏹ 关闭问卷", callback_data: `admin:close:${survey.id}` }
-    : { text: survey.status === "draft" ? "🚀 发布确认" : "🚀 重新发布", callback_data: `owner:publish_ask:${survey.id}` };
+  const statusAction =
+    survey.status === "published"
+      ? { text: "⏹ 关闭问卷", callback_data: `admin:close:${survey.id}` }
+      : {
+          text: survey.status === "draft" ? "🚀 发布确认" : "🚀 重新发布",
+          callback_data: `owner:publish_ask:${survey.id}`,
+        };
   const replyMarkup: InlineKeyboardMarkup = {
     inline_keyboard: [
-      ...(ctx.origin
-        ? [[{ text: "🌐 在网页后台打开", url: `${ctx.origin}/admin/surveys/${survey.id}` }]]
-        : []),
+      ...(ctx.origin ? [[{ text: "🌐 在网页后台打开", url: `${ctx.origin}/admin/surveys/${survey.id}` }]] : []),
       [statusAction],
       [{ text: "📦 导出数据", callback_data: `owner:reports:${survey.id}` }],
       [{ text: "⬅️ 返回全部问卷", callback_data: "admin:surveys" }],
     ],
   };
   if (messageId !== undefined) {
-    await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen: "ADMIN_SURVEY_DETAIL", text, replyMarkup });
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_SURVEY_DETAIL",
+      text,
+      replyMarkup,
+    });
   } else {
     await sendMessage(ctx.botToken, chatId, text, replyMarkup);
   }
@@ -785,7 +798,10 @@ async function handleLicenseAdminCommand(
         : "timed";
     const period = advanced ? parts[2] : parts[1];
     const maxActivations = advanced ? Number(parts[3]) : 1;
-    const customerName = parts.slice(advanced ? 4 : 2).join(" ").trim();
+    const customerName = parts
+      .slice(advanced ? 4 : 2)
+      .join(" ")
+      .trim();
     if (!period || !Number.isInteger(maxActivations) || !customerName) {
       throw new Error("参数错误，请发送 /license_help 查看简单格式");
     }
@@ -812,37 +828,21 @@ async function handleLicenseAdminCommand(
     if (!publicId || !Number.isInteger(days)) {
       throw new Error("格式：/license_extend <授权编号> <天数>");
     }
-    const license = await extendTimedLicense(
-      ctx.db,
-      publicId,
-      days,
-      actorUserId,
-    );
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      `${license.publicId} 已延期至 ${formatDate(license.expiresAt)}。`,
-    );
+    const license = await extendTimedLicense(ctx.db, publicId, days, actorUserId);
+    await sendMessage(ctx.botToken, message.chat.id, `${license.publicId} 已延期至 ${formatDate(license.expiresAt)}。`);
     return true;
   }
 
   if (text.startsWith("/license_updates ")) {
     const [, publicId, period] = text.split(/\s+/);
     if (!publicId || !period) {
-      throw new Error(
-        "格式：/license_updates <授权编号> <天数|forever>",
-      );
+      throw new Error("格式：/license_updates <授权编号> <天数|forever>");
     }
     const days = period.toLowerCase() === "forever" ? null : Number(period);
     if (days !== null && !Number.isInteger(days)) {
       throw new Error("升级天数必须是整数或 forever");
     }
-    const license = await extendLicenseUpdates(
-      ctx.db,
-      publicId,
-      days,
-      actorUserId,
-    );
+    const license = await extendLicenseUpdates(ctx.db, publicId, days, actorUserId);
     await sendMessage(
       ctx.botToken,
       message.chat.id,
@@ -854,39 +854,20 @@ async function handleLicenseAdminCommand(
   if (text.startsWith("/license_deactivate ")) {
     const [, publicId, installationId] = text.split(/\s+/);
     if (!publicId || !installationId) {
-      throw new Error(
-        "格式：/license_deactivate <授权编号> <设备ID>",
-      );
+      throw new Error("格式：/license_deactivate <授权编号> <设备ID>");
     }
-    await deactivateLicenseInstallation(
-      ctx.db,
-      publicId,
-      installationId,
-      actorUserId,
-    );
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      `${publicId} 的设备 ${installationId} 已停用，激活名额已释放。`,
-    );
+    await deactivateLicenseInstallation(ctx.db, publicId, installationId, actorUserId);
+    await sendMessage(ctx.botToken, message.chat.id, `${publicId} 的设备 ${installationId} 已停用，激活名额已释放。`);
     return true;
   }
 
-  if (
-    text.startsWith("/license_suspend ") ||
-    text.startsWith("/license_resume ")
-  ) {
+  if (text.startsWith("/license_suspend ") || text.startsWith("/license_resume ")) {
     const [command, publicId] = text.split(/\s+/);
     if (!publicId) {
       throw new Error(`${command} 后需要授权编号`);
     }
     const status = command === "/license_suspend" ? "suspended" : "active";
-    const license = await setLicenseStatus(
-      ctx.db,
-      publicId,
-      status,
-      actorUserId,
-    );
+    const license = await setLicenseStatus(ctx.db, publicId, status, actorUserId);
     await sendMessage(
       ctx.botToken,
       message.chat.id,
@@ -902,25 +883,20 @@ async function handleLicenseAdminCommand(
     }
     const license = await getSoftwareLicenseByPublicId(ctx.db, publicId);
     if (!license) throw new Error("授权不存在");
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      `确认永久吊销 ${license.publicId}？吊销后不能恢复。`,
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "确认吊销",
-              callback_data: `license:revoke_confirm:${license.publicId}`,
-            },
-            {
-              text: "取消",
-              callback_data: `license:view:${license.publicId}`,
-            },
-          ],
+    await sendMessage(ctx.botToken, message.chat.id, `确认永久吊销 ${license.publicId}？吊销后不能恢复。`, {
+      inline_keyboard: [
+        [
+          {
+            text: "确认吊销",
+            callback_data: `license:revoke_confirm:${license.publicId}`,
+          },
+          {
+            text: "取消",
+            callback_data: `license:view:${license.publicId}`,
+          },
         ],
-      },
-    );
+      ],
+    });
     return true;
   }
 
@@ -929,9 +905,7 @@ async function handleLicenseAdminCommand(
     if (!version) {
       throw new Error("格式：/release_add <版本号> [YYYY-MM-DD]");
     }
-    const releasedAt = dateText
-      ? `${dateText}T00:00:00.000Z`
-      : new Date().toISOString();
+    const releasedAt = dateText ? `${dateText}T00:00:00.000Z` : new Date().toISOString();
     const release = await registerSoftwareRelease(ctx.db, {
       version,
       releasedAt,
@@ -983,10 +957,7 @@ function isAdminCommand(text: string): boolean {
   ].some((command) => text === command || text.startsWith(`${command} `));
 }
 
-export async function handleAdminMessage(
-  ctx: BotContext,
-  message: TelegramMessage,
-): Promise<boolean> {
+export async function handleAdminMessage(ctx: BotContext, message: TelegramMessage): Promise<boolean> {
   const text = message.text?.trim();
   const userId = message.from?.id;
 
@@ -1019,7 +990,11 @@ export async function handleAdminMessage(
         }
         await setIdentityCardAccessCode(ctx.db, await hashSurveyAccessCode(text));
         await ctx.cache.delete(identityCardPasswordInputKey(userId));
-        await sendMessage(ctx.botToken, message.chat.id, "✅ 图片生成功能密码已保存。普通用户现在需要先输入该密码才能制作身份卡。");
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          "✅ 图片生成功能密码已保存。普通用户现在需要先输入该密码才能制作身份卡。",
+        );
         await showIdentityCardPasswordSettings(ctx, message.chat.id, userId);
         return true;
       }
@@ -1030,7 +1005,13 @@ export async function handleAdminMessage(
       if (!user || !isAdmin(user.telegramUserId, ctx.adminIds)) return false;
       if (text === "/cancel") {
         await ctx.cache.delete(adminUserSearchInputKey(userId));
-        await showBotUserDirectory(ctx, message.chat.id, userId, 0, await ctx.cache.get(adminUserSearchKey(userId)) ?? "");
+        await showBotUserDirectory(
+          ctx,
+          message.chat.id,
+          userId,
+          0,
+          (await ctx.cache.get(adminUserSearchKey(userId))) ?? "",
+        );
         return true;
       }
       if (!text.startsWith("/")) {
@@ -1055,13 +1036,7 @@ export async function handleAdminMessage(
           expirationTtl: 24 * 60 * 60,
         });
         await ctx.cache.delete(adminSurveySearchInputKey(userId));
-        await showAdminSurveyDirectory(
-          ctx,
-          message.chat.id,
-          userId,
-          0,
-          searchMode === "overview",
-        );
+        await showAdminSurveyDirectory(ctx, message.chat.id, userId, 0, searchMode === "overview");
         return true;
       }
     }
@@ -1115,14 +1090,19 @@ export async function handleAdminMessage(
         days: trialState.days,
       });
       await ctx.cache?.delete(creatorTrialIssueStateKey(userId));
-      await sendMessage(ctx.botToken, message.chat.id, [
-        "体验创作者已开通",
-        `Telegram ID：${target.telegramUserId}`,
-        `有效至：${formatDate(grant.expiresAt)}`,
-        "对方可创建、发布和管理自己的问卷，不具备管理员或软件授权权限。",
-      ].join("\n"), {
-        inline_keyboard: [[{ text: "查看体验用户", callback_data: "trial:list" }]],
-      });
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        [
+          "体验创作者已开通",
+          `Telegram ID：${target.telegramUserId}`,
+          `有效至：${formatDate(grant.expiresAt)}`,
+          "对方可创建、发布和管理自己的问卷，不具备管理员或软件授权权限。",
+        ].join("\n"),
+        {
+          inline_keyboard: [[{ text: "查看体验用户", callback_data: "trial:list" }]],
+        },
+      );
       return true;
     }
     if (!issueState) return false;
@@ -1142,12 +1122,7 @@ export async function handleAdminMessage(
 
   if (
     ctx.licenseAdminEnabled === false &&
-    (
-      text.startsWith("/license_") ||
-      text === "/licenses" ||
-      text === "/releases" ||
-      text.startsWith("/release_add")
-    )
+    (text.startsWith("/license_") || text === "/licenses" || text === "/releases" || text.startsWith("/release_add"))
   ) {
     await sendMessage(ctx.botToken, message.chat.id, "此部署不是授权中心，无法发放或管理软件授权。");
     return true;
@@ -1175,10 +1150,7 @@ export async function handleAdminMessage(
   return true;
 }
 
-export async function handleAdminCallback(
-  ctx: BotContext,
-  callback: TelegramCallbackQuery,
-): Promise<boolean> {
+export async function handleAdminCallback(ctx: BotContext, callback: TelegramCallbackQuery): Promise<boolean> {
   const data = callback.data;
   const userId = callback.from.id;
   const chatId = callback.message?.chat.id;
@@ -1233,7 +1205,11 @@ export async function handleAdminCallback(
       return true;
     }
     await ctx.cache.put(identityCardPasswordInputKey(userId), "1", { expirationTtl: 15 * 60 });
-    await sendMessage(ctx.botToken, chatId, "请输入图片生成功能的新密码（4-64 个字符）；发送 /cancel 取消。\n\n密码只保存校验摘要，无法被机器人读取或显示。");
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      "请输入图片生成功能的新密码（4-64 个字符）；发送 /cancel 取消。\n\n密码只保存校验摘要，无法被机器人读取或显示。",
+    );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1263,14 +1239,23 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "页码无效");
       return true;
     }
-    await showBotUserDirectory(ctx, chatId, userId, page, await ctx.cache?.get(adminUserSearchKey(userId)) ?? "", callback.message?.message_id);
+    await showBotUserDirectory(
+      ctx,
+      chatId,
+      userId,
+      page,
+      (await ctx.cache?.get(adminUserSearchKey(userId))) ?? "",
+      callback.message?.message_id,
+    );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
 
   if (data === "admin:users_search") {
     await ctx.cache?.put(adminUserSearchInputKey(userId), "1", { expirationTtl: 10 * 60 });
-    await sendMessage(ctx.botToken, chatId, "发送姓名、用户名或 Telegram ID 搜索用户；发送 /cancel 取消。", { inline_keyboard: [[{ text: "取消", callback_data: "admin:users:0" }]] });
+    await sendMessage(ctx.botToken, chatId, "发送姓名、用户名或 Telegram ID 搜索用户；发送 /cancel 取消。", {
+      inline_keyboard: [[{ text: "取消", callback_data: "admin:users:0" }]],
+    });
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1284,7 +1269,10 @@ export async function handleAdminCallback(
 
   if (data.startsWith("admin:user:") && !data.startsWith("admin:user_ban:") && !data.startsWith("admin:user_unban:")) {
     const internalUserId = Number(data.slice("admin:user:".length));
-    if (!Number.isSafeInteger(internalUserId) || internalUserId <= 0) { await answerCallbackQuery(ctx.botToken, callback.id, "用户编号无效"); return true; }
+    if (!Number.isSafeInteger(internalUserId) || internalUserId <= 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "用户编号无效");
+      return true;
+    }
     await showBotUserDetails(ctx, chatId, userId, internalUserId, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1294,8 +1282,14 @@ export async function handleAdminCallback(
     const banned = data.startsWith("admin:user_ban:");
     const internalUserId = Number(data.slice(banned ? "admin:user_ban:".length : "admin:user_unban:".length));
     const member = await getUserById(ctx.db, internalUserId);
-    if (!member) { await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在"); return true; }
-    if (member.systemRole === "admin" || isAdmin(member.telegramUserId, ctx.adminIds)) { await answerCallbackQuery(ctx.botToken, callback.id, "不能封禁系统管理员"); return true; }
+    if (!member) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "用户不存在");
+      return true;
+    }
+    if (member.systemRole === "admin" || isAdmin(member.telegramUserId, ctx.adminIds)) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "不能封禁系统管理员");
+      return true;
+    }
     await setUserBan(ctx.db, internalUserId, { banned, bannedBy: user.id, reason: banned ? "管理员操作" : null });
     if (banned) await cancelActiveResponsesForUser(ctx.db, internalUserId);
     await showBotUserDetails(ctx, chatId, userId, internalUserId, callback.message?.message_id);
@@ -1329,16 +1323,10 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用搜索功能");
       return true;
     }
-    await ctx.cache.put(
-      adminSurveySearchInputKey(userId),
-      overview ? "overview" : "manage",
-      { expirationTtl: 10 * 60 },
-    );
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "请发送问卷标题关键词或内部编号；发送 /cancel 取消搜索。",
-    );
+    await ctx.cache.put(adminSurveySearchInputKey(userId), overview ? "overview" : "manage", {
+      expirationTtl: 10 * 60,
+    });
+    await sendMessage(ctx.botToken, chatId, "请发送问卷标题关键词或内部编号；发送 /cancel 取消搜索。");
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1377,12 +1365,14 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用授权工作台");
       return true;
     }
-    await ctx.cache.put(
-      creatorTrialIssueStateKey(userId),
-      JSON.stringify({ kind: "creator_trial", days }),
-      { expirationTtl: 15 * 60 },
+    await ctx.cache.put(creatorTrialIssueStateKey(userId), JSON.stringify({ kind: "creator_trial", days }), {
+      expirationTtl: 15 * 60,
+    });
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      `开通 ${days} 天体验创作者。\n\n请发送对方的 Telegram 数字 ID；发送 /cancel 取消。`,
     );
-    await sendMessage(ctx.botToken, chatId, `开通 ${days} 天体验创作者。\n\n请发送对方的 Telegram 数字 ID；发送 /cancel 取消。`);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1428,11 +1418,9 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用授权工作台");
       return true;
     }
-    await ctx.cache.put(
-      licenseIssueStateKey(userId),
-      JSON.stringify({ licenseType, days }),
-      { expirationTtl: 15 * 60 },
-    );
+    await ctx.cache.put(licenseIssueStateKey(userId), JSON.stringify({ licenseType, days }), {
+      expirationTtl: 15 * 60,
+    });
     await sendMessage(
       ctx.botToken,
       chatId,
@@ -1449,25 +1437,11 @@ export async function handleAdminCallback(
     return true;
   }
 
-  if (
-    data.startsWith("license:suspend:") ||
-    data.startsWith("license:resume:")
-  ) {
+  if (data.startsWith("license:suspend:") || data.startsWith("license:resume:")) {
     const suspend = data.startsWith("license:suspend:");
-    const publicId = data.slice(
-      suspend ? "license:suspend:".length : "license:resume:".length,
-    );
-    const license = await setLicenseStatus(
-      ctx.db,
-      publicId,
-      suspend ? "suspended" : "active",
-      user.id,
-    );
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `${license.publicId} 状态已更新为${licenseStatusLabels[license.status]}。`,
-    );
+    const publicId = data.slice(suspend ? "license:suspend:".length : "license:resume:".length);
+    const license = await setLicenseStatus(ctx.db, publicId, suspend ? "suspended" : "active", user.id);
+    await sendMessage(ctx.botToken, chatId, `${license.publicId} 状态已更新为${licenseStatusLabels[license.status]}。`);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1479,55 +1453,35 @@ export async function handleAdminCallback(
       await answerCallbackQuery(ctx.botToken, callback.id, "授权不存在");
       return true;
     }
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `确认永久吊销 ${license.publicId}？吊销后不能恢复。`,
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "确认吊销",
-              callback_data: `license:revoke_confirm:${license.publicId}`,
-            },
-            {
-              text: "取消",
-              callback_data: `license:view:${license.publicId}`,
-            },
-          ],
+    await sendMessage(ctx.botToken, chatId, `确认永久吊销 ${license.publicId}？吊销后不能恢复。`, {
+      inline_keyboard: [
+        [
+          {
+            text: "确认吊销",
+            callback_data: `license:revoke_confirm:${license.publicId}`,
+          },
+          {
+            text: "取消",
+            callback_data: `license:view:${license.publicId}`,
+          },
         ],
-      },
-    );
+      ],
+    });
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
 
   if (data.startsWith("license:revoke_confirm:")) {
     const publicId = data.slice("license:revoke_confirm:".length);
-    const license = await setLicenseStatus(
-      ctx.db,
-      publicId,
-      "revoked",
-      user.id,
-    );
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      `${license.publicId} 已永久吊销。`,
-    );
+    const license = await setLicenseStatus(ctx.db, publicId, "revoked", user.id);
+    await sendMessage(ctx.botToken, chatId, `${license.publicId} 已永久吊销。`);
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
 
   if (data.startsWith("admin:survey:")) {
     const surveyId = Number(data.slice("admin:survey:".length));
-    const displayed = await showAdminSurveyDetail(
-      ctx,
-      chatId,
-      userId,
-      surveyId,
-      callback.message?.message_id,
-    );
+    const displayed = await showAdminSurveyDetail(ctx, chatId, userId, surveyId, callback.message?.message_id);
     if (!displayed) {
       await answerCallbackQuery(ctx.botToken, callback.id, "问卷不存在");
       return true;
@@ -1560,21 +1514,29 @@ export async function handleAdminCallback(
     }
     const text = `确认永久删除问卷“${survey.title}”？问卷、题目和所有答卷都会被删除。`;
     const replyMarkup: InlineKeyboardMarkup = {
-        inline_keyboard: [
-          [
-            {
-              text: "确认删除",
-              callback_data: `admin:delete_confirm:${survey.id}`,
-            },
-            {
-              text: "取消",
-              callback_data: `admin:survey:${survey.id}`,
-            },
-          ],
+      inline_keyboard: [
+        [
+          {
+            text: "确认删除",
+            callback_data: `admin:delete_confirm:${survey.id}`,
+          },
+          {
+            text: "取消",
+            callback_data: `admin:survey:${survey.id}`,
+          },
         ],
+      ],
     };
     if (callback.message?.message_id !== undefined) {
-      await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId: callback.message.message_id, screen: "ADMIN_DELETE_CONFIRM", text, replyMarkup });
+      await renderScreen({
+        botToken: ctx.botToken,
+        chatId,
+        userId,
+        messageId: callback.message.message_id,
+        screen: "ADMIN_DELETE_CONFIRM",
+        text,
+        replyMarkup,
+      });
     } else {
       await sendMessage(ctx.botToken, chatId, text, replyMarkup);
     }

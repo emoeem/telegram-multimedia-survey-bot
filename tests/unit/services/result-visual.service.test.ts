@@ -47,25 +47,56 @@ describe("result visual orchestration", () => {
               profileLookups += 1;
               return profileLookups === 1 ? null : { ...existingProfileRow, title: "结果名称" };
             }
-            if (sql.includes("survey_responses")) return {
-              id: 10, survey_id: 3, user_id: 4, participant_hash: "hash", status: "completed",
-              started_at: "now", completed_at: "now", submitted_at: "now", current_question_id: null,
-              version: 1, created_at: "now", updated_at: "now",
-            };
-            if (sql.includes("survey_result_rule_sets")) return {
-              id: 1, survey_id: 3, schema_version: 1,
-              rules_json: JSON.stringify({ schemaVersion: 1, rules: [{ set: { title: { $from: "answers.1.value" } } }] }),
-              created_by: 4, created_at: "now", updated_at: "now",
-            };
+            if (sql.includes("survey_responses"))
+              return {
+                id: 10,
+                survey_id: 3,
+                user_id: 4,
+                participant_hash: "hash",
+                status: "completed",
+                started_at: "now",
+                completed_at: "now",
+                submitted_at: "now",
+                current_question_id: null,
+                version: 1,
+                created_at: "now",
+                updated_at: "now",
+              };
+            if (sql.includes("survey_result_rule_sets"))
+              return {
+                id: 1,
+                survey_id: 3,
+                schema_version: 1,
+                rules_json: JSON.stringify({
+                  schemaVersion: 1,
+                  rules: [{ set: { title: { $from: "answers.1.value" } } }],
+                }),
+                created_by: 4,
+                created_at: "now",
+                updated_at: "now",
+              };
             return null;
           }),
           all: vi.fn(async () => {
             if (sql.includes("FROM question_options")) return { results: [] };
-            return { results: [{
-              id: 1, response_id: 10, question_id: 1, text_value: "结果名称", number_value: null,
-              boolean_value: null, rating_value: null, date_value: null, time_value: null, json_value: null,
-              created_at: "now", updated_at: "now",
-            }] };
+            return {
+              results: [
+                {
+                  id: 1,
+                  response_id: 10,
+                  question_id: 1,
+                  text_value: "结果名称",
+                  number_value: null,
+                  boolean_value: null,
+                  rating_value: null,
+                  date_value: null,
+                  time_value: null,
+                  json_value: null,
+                  created_at: "now",
+                  updated_at: "now",
+                },
+              ],
+            };
           }),
         };
         return statement;
@@ -100,74 +131,174 @@ describe("result visual orchestration", () => {
                 : { ...existingProfileRow, title: insertedTitle, metadata_json: insertedMetadata };
             }
             if (sql.includes("survey_versions")) return null;
-            if (sql.includes("survey_responses")) return {
-              id: 10, survey_id: 3, user_id: 4, participant_hash: "hash", status: "completed",
-              started_at: "now", completed_at: "now", submitted_at: "now", current_question_id: null,
-              version: 1, created_at: "now", updated_at: "now",
-            };
+            if (sql.includes("survey_responses"))
+              return {
+                id: 10,
+                survey_id: 3,
+                user_id: 4,
+                participant_hash: "hash",
+                status: "completed",
+                started_at: "now",
+                completed_at: "now",
+                submitted_at: "now",
+                current_question_id: null,
+                version: 1,
+                created_at: "now",
+                updated_at: "now",
+              };
             return null;
           }),
           all: vi.fn(async () => {
             if (sql.includes("FROM survey_questions")) {
-              return { results: [
-                {
-                  id: 1, survey_id: 3, type: "single", title: "喜欢的颜色", description: null,
-                  required: 1, order: 0, page_id: null, validation_json: null, settings_json: null,
-                  parent_question_id: null, condition_json: null, skip_to_question_id: null,
-                  created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 2, survey_id: 3, type: "multiple", title: "常用交通方式", description: null,
-                  required: 1, order: 1, page_id: null, validation_json: null, settings_json: null,
-                  parent_question_id: null, condition_json: null, skip_to_question_id: null,
-                  created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 3, survey_id: 3, type: "text", title: "补充说明", description: null,
-                  required: 0, order: 2, page_id: null, validation_json: null, settings_json: null,
-                  parent_question_id: null, condition_json: null, skip_to_question_id: null,
-                  created_at: "now", updated_at: "now",
-                },
-              ] };
+              return {
+                results: [
+                  {
+                    id: 1,
+                    survey_id: 3,
+                    type: "single",
+                    title: "喜欢的颜色",
+                    description: null,
+                    required: 1,
+                    order: 0,
+                    page_id: null,
+                    validation_json: null,
+                    settings_json: null,
+                    parent_question_id: null,
+                    condition_json: null,
+                    skip_to_question_id: null,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 2,
+                    survey_id: 3,
+                    type: "multiple",
+                    title: "常用交通方式",
+                    description: null,
+                    required: 1,
+                    order: 1,
+                    page_id: null,
+                    validation_json: null,
+                    settings_json: null,
+                    parent_question_id: null,
+                    condition_json: null,
+                    skip_to_question_id: null,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 3,
+                    survey_id: 3,
+                    type: "text",
+                    title: "补充说明",
+                    description: null,
+                    required: 0,
+                    order: 2,
+                    page_id: null,
+                    validation_json: null,
+                    settings_json: null,
+                    parent_question_id: null,
+                    condition_json: null,
+                    skip_to_question_id: null,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                ],
+              };
             }
             if (sql.includes("FROM question_options")) {
-              return { results: [
-                {
-                  id: 10, question_id: 1, label: "蓝色", value: "蓝色", order: 0, is_other: 0,
-                  created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 11, question_id: 1, label: "绿色", value: "绿色", order: 1, is_other: 0,
-                  created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 20, question_id: 2, label: "公交", value: "公交", order: 0, is_other: 0,
-                  created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 21, question_id: 2, label: "地铁", value: "地铁", order: 1, is_other: 0,
-                  created_at: "now", updated_at: "now",
-                },
-              ] };
+              return {
+                results: [
+                  {
+                    id: 10,
+                    question_id: 1,
+                    label: "蓝色",
+                    value: "蓝色",
+                    order: 0,
+                    is_other: 0,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 11,
+                    question_id: 1,
+                    label: "绿色",
+                    value: "绿色",
+                    order: 1,
+                    is_other: 0,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 20,
+                    question_id: 2,
+                    label: "公交",
+                    value: "公交",
+                    order: 0,
+                    is_other: 0,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 21,
+                    question_id: 2,
+                    label: "地铁",
+                    value: "地铁",
+                    order: 1,
+                    is_other: 0,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                ],
+              };
             }
             if (sql.includes("FROM answers")) {
-              return { results: [
-                {
-                  id: 1, response_id: 10, question_id: 1, text_value: null, number_value: null,
-                  boolean_value: null, rating_value: null, date_value: null, time_value: null,
-                  json_value: JSON.stringify([10]), created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 2, response_id: 10, question_id: 2, text_value: null, number_value: null,
-                  boolean_value: null, rating_value: null, date_value: null, time_value: null,
-                  json_value: JSON.stringify([20, 21, 999]), created_at: "now", updated_at: "now",
-                },
-                {
-                  id: 3, response_id: 10, question_id: 3, text_value: "就这样", number_value: null,
-                  boolean_value: null, rating_value: null, date_value: null, time_value: null,
-                  json_value: null, created_at: "now", updated_at: "now",
-                },
-              ] };
+              return {
+                results: [
+                  {
+                    id: 1,
+                    response_id: 10,
+                    question_id: 1,
+                    text_value: null,
+                    number_value: null,
+                    boolean_value: null,
+                    rating_value: null,
+                    date_value: null,
+                    time_value: null,
+                    json_value: JSON.stringify([10]),
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 2,
+                    response_id: 10,
+                    question_id: 2,
+                    text_value: null,
+                    number_value: null,
+                    boolean_value: null,
+                    rating_value: null,
+                    date_value: null,
+                    time_value: null,
+                    json_value: JSON.stringify([20, 21, 999]),
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                  {
+                    id: 3,
+                    response_id: 10,
+                    question_id: 3,
+                    text_value: "就这样",
+                    number_value: null,
+                    boolean_value: null,
+                    rating_value: null,
+                    date_value: null,
+                    time_value: null,
+                    json_value: null,
+                    created_at: "now",
+                    updated_at: "now",
+                  },
+                ],
+              };
             }
             return { results: [] };
           }),

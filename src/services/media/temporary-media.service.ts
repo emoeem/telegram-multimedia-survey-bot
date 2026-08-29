@@ -1,26 +1,23 @@
 import type { MediaAsset } from "../../db/schema";
-import { createMediaAsset, expireMediaAsset, listTemporaryMediaByResponse, sumTemporaryMediaBytesForResponse } from "../../db/repositories/media.repository";
+import {
+  createMediaAsset,
+  expireMediaAsset,
+  listTemporaryMediaByResponse,
+  sumTemporaryMediaBytesForResponse,
+} from "../../db/repositories/media.repository";
 import type { TemporaryMediaStore } from "./temporary-media-store";
 
 export const TEMP_MEDIA_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const MAX_TEMP_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_RESPONSE_MEDIA_BYTES = 50 * 1024 * 1024;
 
-export const TEMP_IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-]);
+export const TEMP_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 export function temporaryMediaKey(responseId: number): string {
   return `media:temp:${responseId}:${crypto.randomUUID()}`;
 }
 
-export function temporaryMediaExpiry(
-  now = new Date(),
-  ttlSeconds = TEMP_MEDIA_TTL_SECONDS,
-): string {
+export function temporaryMediaExpiry(now = new Date(), ttlSeconds = TEMP_MEDIA_TTL_SECONDS): string {
   return new Date(now.getTime() + ttlSeconds * 1000).toISOString();
 }
 
@@ -92,10 +89,7 @@ export async function deleteTemporaryMediaForResponse(
   return deleted;
 }
 
-export async function countTemporaryMediaBytesForResponse(
-  db: D1Database,
-  responseId: number,
-): Promise<number> {
+export async function countTemporaryMediaBytesForResponse(db: D1Database, responseId: number): Promise<number> {
   return sumTemporaryMediaBytesForResponse(db, responseId);
 }
 

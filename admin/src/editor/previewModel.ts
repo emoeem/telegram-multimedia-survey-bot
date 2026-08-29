@@ -1,5 +1,5 @@
-import type { QuestionOption, QuestionType, SurveyQuestion } from '../../../src/db/schema';
-import { buildSurveyFlow, type SurveyQuestionView } from '../../../src/survey/engine';
+import type { QuestionOption, QuestionType, SurveyQuestion } from "../../../src/db/schema";
+import { buildSurveyFlow, type SurveyQuestionView } from "../../../src/survey/engine";
 
 interface PreviewMediaRef {
   mediaAssetId: number;
@@ -45,8 +45,8 @@ export function buildEditorPreviewFlow(surveyId: number, questions: PreviewQuest
     parentQuestionId: null,
     conditionJson: question.condition ? JSON.stringify(question.condition) : null,
     skipToQuestionId: null,
-    createdAt: '',
-    updatedAt: '',
+    createdAt: "",
+    updatedAt: "",
   }));
   const optionRows: QuestionOption[] = questions.flatMap((question) =>
     question.options.map((option) => ({
@@ -56,8 +56,8 @@ export function buildEditorPreviewFlow(surveyId: number, questions: PreviewQuest
       value: option.label,
       order: option.order,
       isOther: false,
-      createdAt: '',
-      updatedAt: '',
+      createdAt: "",
+      updatedAt: "",
     })),
   );
   const sourceById = new Map(questions.map((question) => [question.id, question]));

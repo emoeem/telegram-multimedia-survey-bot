@@ -66,10 +66,7 @@ export async function createReportDelivery(
   return delivery;
 }
 
-export async function getReportDeliveryById(
-  db: D1Database,
-  id: number,
-): Promise<ReportDelivery | null> {
+export async function getReportDeliveryById(db: D1Database, id: number): Promise<ReportDelivery | null> {
   const row = await db
     .prepare("SELECT * FROM report_deliveries WHERE id = ? LIMIT 1")
     .bind(id)
@@ -103,10 +100,7 @@ export async function getReportDeliveryByDeliveryId(
  * Atomically claims a delivery for processing. Only one worker can win per
  * delivery; retries respect the backoff window stored in next_retry_at.
  */
-export async function claimReportDelivery(
-  db: D1Database,
-  id: number,
-): Promise<boolean> {
+export async function claimReportDelivery(db: D1Database, id: number): Promise<boolean> {
   const timestamp = nowIso();
   const result = await db
     .prepare(
@@ -144,14 +138,7 @@ export async function completeReportDelivery(
            updated_at = ?
        WHERE id = ?`,
     )
-    .bind(
-      input.telegramChatId,
-      input.pdfMessageId,
-      JSON.stringify(input.imageMessageIds),
-      timestamp,
-      timestamp,
-      id,
-    )
+    .bind(input.telegramChatId, input.pdfMessageId, JSON.stringify(input.imageMessageIds), timestamp, timestamp, id)
     .run();
 }
 
@@ -174,13 +161,7 @@ export async function failReportDelivery(
            updated_at = ?
        WHERE id = ?`,
     )
-    .bind(
-      input.retryable ? "pending" : "failed",
-      input.error.slice(0, 2000),
-      input.nextRetryAt,
-      timestamp,
-      id,
-    )
+    .bind(input.retryable ? "pending" : "failed", input.error.slice(0, 2000), input.nextRetryAt, timestamp, id)
     .run();
 }
 
@@ -243,10 +224,7 @@ export async function listReportDeliveries(
          ${whereSql}`,
       )
       .bind(...binds),
-  ])) as [
-    D1Result<ReportDeliveryRowWithSurvey>,
-    D1Result<{ count: number }>,
-  ];
+  ])) as [D1Result<ReportDeliveryRowWithSurvey>, D1Result<{ count: number }>];
   return {
     items: items.results ?? [],
     total: Number(count.results?.[0]?.count ?? 0),

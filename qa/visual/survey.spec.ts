@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const GIF_1PX =
-  "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const GIF_1PX = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 const TELEGRAM_STUB = `
 window.Telegram = {
@@ -110,12 +109,7 @@ const FIXTURES: Fixture[] = [
           id: 2,
           type: "single",
           title: "最喜欢的颜色",
-          options: [
-            option(1, "红色"),
-            option(2, "蓝色"),
-            option(3, "绿色"),
-            option(4, "其他"),
-          ],
+          options: [option(1, "红色"), option(2, "蓝色"), option(3, "绿色"), option(4, "其他")],
         }),
         question({ id: 3, type: "long_text", title: "自我介绍", required: false }),
       ],
@@ -195,10 +189,7 @@ const FIXTURES: Fixture[] = [
           type: "single",
           title: "带媒体题目",
           media: [{ url: "/api/survey/media/1" }, { url: "/api/survey/media/2" }],
-          options: [
-            option(1, "带图选项", [{ url: "/api/survey/media/3" }]),
-            option(2, "普通选项"),
-          ],
+          options: [option(1, "带图选项", [{ url: "/api/survey/media/3" }]), option(2, "普通选项")],
         }),
         question({ id: 2, type: "image", title: "图片上传题", required: false }),
       ],
@@ -221,11 +212,7 @@ const FIXTURES: Fixture[] = [
           id: 1,
           type: "single",
           title: "主题问卷",
-          options: [
-            option(1, "选项 A"),
-            option(2, "选项 B"),
-            option(3, "选项 C"),
-          ],
+          options: [option(1, "选项 A"), option(2, "选项 B"), option(3, "选项 C")],
         }),
       ],
     },
@@ -300,9 +287,7 @@ for (const fixture of FIXTURES) {
 
       const problems: string[] = [];
       page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
-      page.on("requestfailed", (request) =>
-        problems.push(`requestfailed: ${request.method()} ${request.url()}`),
-      );
+      page.on("requestfailed", (request) => problems.push(`requestfailed: ${request.method()} ${request.url()}`));
       page.on("console", (message) => {
         if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
       });
@@ -311,22 +296,16 @@ for (const fixture of FIXTURES) {
       await expect(page.getByText(fixture.firstQuestionTitle).first()).toBeVisible();
 
       if (fixture.survey.theme?.preset) {
-        await expect(page.locator(".min-h-dvh")).toHaveAttribute(
-          "data-theme",
-          String(fixture.survey.theme.preset),
-        );
+        await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", String(fixture.survey.theme.preset));
       }
 
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth - window.innerWidth,
-      );
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);
       expect(problems).toEqual([]);
 
-      await expect(page).toHaveScreenshot(
-        `survey-${fixture.id}-${viewport.width}x${viewport.height}.png`,
-        { maxDiffPixelRatio: 0.002 },
-      );
+      await expect(page).toHaveScreenshot(`survey-${fixture.id}-${viewport.width}x${viewport.height}.png`, {
+        maxDiffPixelRatio: 0.002,
+      });
     });
   }
 }

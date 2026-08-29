@@ -8,10 +8,7 @@ import { KVMediaStore } from "./media/temporary-media-store";
  * buildMediaResponse reads. Idempotent: once a cover row is `temporary` it is
  * skipped, so the scheduled task becomes a cheap no-op afterwards.
  */
-export async function migrateDataUrlCoversToKv(
-  db: D1Database,
-  env: { MEDIA_KV: KVNamespace },
-): Promise<number> {
+export async function migrateDataUrlCoversToKv(db: D1Database, env: { MEDIA_KV: KVNamespace }): Promise<number> {
   const store = new KVMediaStore(env.MEDIA_KV);
   const rows = await db
     .prepare(

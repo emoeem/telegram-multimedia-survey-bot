@@ -108,10 +108,7 @@ export async function getLatestSurveyVersionSnapshot(
   return parseSnapshotRecord(row.snapshot_json)?.schema ?? null;
 }
 
-export async function getResponseSurveyVersion(
-  db: D1Database,
-  responseId: number,
-): Promise<number | null> {
+export async function getResponseSurveyVersion(db: D1Database, responseId: number): Promise<number | null> {
   const row = await db
     .prepare("SELECT version FROM survey_responses WHERE id = ? LIMIT 1")
     .bind(responseId)
@@ -146,10 +143,7 @@ export interface SurveyVersionSummary {
   questionCount: number;
 }
 
-export async function listSurveyVersions(
-  db: D1Database,
-  surveyId: number,
-): Promise<SurveyVersionSummary[]> {
+export async function listSurveyVersions(db: D1Database, surveyId: number): Promise<SurveyVersionSummary[]> {
   const rows = await db
     .prepare(
       `SELECT version, created_by createdBy, created_at createdAt, snapshot_json snapshotJson
@@ -184,12 +178,7 @@ export interface SurveyVersionDiff {
   changed: Array<{ id: string; from: string; to: string }>;
 }
 
-function questionFingerprint(question: {
-  id?: string;
-  title?: string;
-  type?: string;
-  options?: unknown[];
-}): string {
+function questionFingerprint(question: { id?: string; title?: string; type?: string; options?: unknown[] }): string {
   return JSON.stringify({
     title: question.title ?? "",
     type: question.type ?? "",
@@ -197,16 +186,9 @@ function questionFingerprint(question: {
   });
 }
 
-export function diffSurveyVersions(
-  from: UnifiedSurveyImport,
-  to: UnifiedSurveyImport,
-): SurveyVersionDiff {
-  const fromMap = new Map(
-    (from.survey.questions ?? []).map((question) => [question.id, question]),
-  );
-  const toMap = new Map(
-    (to.survey.questions ?? []).map((question) => [question.id, question]),
-  );
+export function diffSurveyVersions(from: UnifiedSurveyImport, to: UnifiedSurveyImport): SurveyVersionDiff {
+  const fromMap = new Map((from.survey.questions ?? []).map((question) => [question.id, question]));
+  const toMap = new Map((to.survey.questions ?? []).map((question) => [question.id, question]));
   const added: string[] = [];
   const removed: string[] = [];
   const changed: SurveyVersionDiff["changed"] = [];

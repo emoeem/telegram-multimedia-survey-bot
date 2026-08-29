@@ -57,13 +57,9 @@ function makeDb(overrides: Record<string, unknown> = {}) {
           },
         );
       } else if (sql.includes("answer_media am")) {
-        statement.first.mockResolvedValue(
-          overrides.owned === undefined ? { found: 1 } : overrides.owned,
-        );
+        statement.first.mockResolvedValue(overrides.owned === undefined ? { found: 1 } : overrides.owned);
       } else if (sql.includes("question_media qm")) {
-        statement.first.mockResolvedValue(
-          overrides.linked === undefined ? { found: 1 } : overrides.linked,
-        );
+        statement.first.mockResolvedValue(overrides.linked === undefined ? { found: 1 } : overrides.linked);
       }
       return statement;
     }),

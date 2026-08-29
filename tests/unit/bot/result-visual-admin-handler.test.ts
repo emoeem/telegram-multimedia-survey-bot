@@ -98,12 +98,14 @@ describe("result visual admin UI", () => {
   });
 
   it("edits the existing admin message to show template management", async () => {
-    mocks.listVisualTemplates.mockResolvedValue([{
-      id: 5,
-      name: "通用完成结果卡",
-      status: "published",
-      currentVersion: 1,
-    }]);
+    mocks.listVisualTemplates.mockResolvedValue([
+      {
+        id: 5,
+        name: "通用完成结果卡",
+        status: "published",
+        currentVersion: 1,
+      },
+    ]);
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -129,12 +131,14 @@ describe("result visual admin UI", () => {
     });
     mocks.getSurveyResultRuleSet.mockResolvedValue(null);
     mocks.getSurveyById.mockResolvedValue({ id: 40, title: "满意度调查" });
-    mocks.listVisualTemplates.mockResolvedValue([{
-      id: 5,
-      name: "通用完成结果卡",
-      status: "published",
-      currentVersion: 1,
-    }]);
+    mocks.listVisualTemplates.mockResolvedValue([
+      {
+        id: 5,
+        name: "通用完成结果卡",
+        status: "published",
+        currentVersion: 1,
+      },
+    ]);
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -162,20 +166,38 @@ describe("result visual admin UI", () => {
       elements: [],
     };
     mocks.getVisualTemplateById.mockResolvedValue({
-      id: 5, name: "海报模板", description: null, type: "custom", status: "draft", currentVersion: 1,
+      id: 5,
+      name: "海报模板",
+      description: null,
+      type: "custom",
+      status: "draft",
+      currentVersion: 1,
     });
     mocks.getVisualTemplateVersion.mockResolvedValue({
-      templateId: 5, version: 1, definitionJson: JSON.stringify(blankDefinition), variablesJson: "[]",
+      templateId: 5,
+      version: 1,
+      definitionJson: JSON.stringify(blankDefinition),
+      variablesJson: "[]",
     });
     mocks.registerMediaAsset.mockResolvedValue(11);
     const state = new Map<string, string>();
-    state.set("result-visual-template-editor:99", JSON.stringify({
-      mode: "background", templateId: 5, chatId: 3, messageId: 500,
-    }));
+    state.set(
+      "result-visual-template-editor:99",
+      JSON.stringify({
+        mode: "background",
+        templateId: 5,
+        chatId: 3,
+        messageId: 500,
+      }),
+    );
     const cache = {
       get: vi.fn(async (key: string) => state.get(key) ?? null),
-      put: vi.fn(async (key: string, value: string) => { state.set(key, value); }),
-      delete: vi.fn(async (key: string) => { state.delete(key); }),
+      put: vi.fn(async (key: string, value: string) => {
+        state.set(key, value);
+      }),
+      delete: vi.fn(async (key: string) => {
+        state.delete(key);
+      }),
     } as unknown as KVNamespace;
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -195,7 +217,9 @@ describe("result visual admin UI", () => {
     expect(mocks.registerMediaAsset).toHaveBeenCalledOnce();
     const versionInput = mocks.createVisualTemplateVersion.mock.calls[0]?.[1] as { definitionJson: string };
     expect(JSON.parse(versionInput.definitionJson).background).toEqual({
-      type: "telegram_asset", assetId: 11, fit: "cover",
+      type: "telegram_asset",
+      assetId: 11,
+      fit: "cover",
     });
   });
 
@@ -210,20 +234,39 @@ describe("result visual admin UI", () => {
       elements: [],
     };
     mocks.getVisualTemplateById.mockResolvedValue({
-      id: 5, name: "海报模板", description: null, type: "custom", status: "draft", currentVersion: 1,
+      id: 5,
+      name: "海报模板",
+      description: null,
+      type: "custom",
+      status: "draft",
+      currentVersion: 1,
     });
     mocks.getVisualTemplateVersion.mockResolvedValue({
-      templateId: 5, version: 1, definitionJson: JSON.stringify(blankDefinition), variablesJson: "[]",
+      templateId: 5,
+      version: 1,
+      definitionJson: JSON.stringify(blankDefinition),
+      variablesJson: "[]",
     });
     const state = new Map<string, string>();
-    state.set("result-visual-template-editor:99", JSON.stringify({
-      mode: "element_layout", templateId: 5, chatId: 3, messageId: 500,
-      elementType: "text", source: "{{result.fields.name}}",
-    }));
+    state.set(
+      "result-visual-template-editor:99",
+      JSON.stringify({
+        mode: "element_layout",
+        templateId: 5,
+        chatId: 3,
+        messageId: 500,
+        elementType: "text",
+        source: "{{result.fields.name}}",
+      }),
+    );
     const cache = {
       get: vi.fn(async (key: string) => state.get(key) ?? null),
-      put: vi.fn(async (key: string, value: string) => { state.set(key, value); }),
-      delete: vi.fn(async (key: string) => { state.delete(key); }),
+      put: vi.fn(async (key: string, value: string) => {
+        state.set(key, value);
+      }),
+      delete: vi.fn(async (key: string) => {
+        state.delete(key);
+      }),
     } as unknown as KVNamespace;
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -241,9 +284,14 @@ describe("result visual admin UI", () => {
       elements: Array<{ type: string; value: string; x: number; align: string }>;
     };
     expect(definition.variables).toContainEqual(expect.objectContaining({ path: "result.fields.name" }));
-    expect(definition.elements).toContainEqual(expect.objectContaining({
-      type: "text", value: "{{result.fields.name}}", x: 90, align: "center",
-    }));
+    expect(definition.elements).toContainEqual(
+      expect.objectContaining({
+        type: "text",
+        value: "{{result.fields.name}}",
+        x: 90,
+        align: "center",
+      }),
+    );
   });
 
   it("acknowledges a preview click before sending the rendered PNG", async () => {
@@ -257,10 +305,16 @@ describe("result visual admin UI", () => {
       elements: [],
     };
     mocks.getVisualTemplateById.mockResolvedValue({
-      id: 5, name: "海报模板", status: "draft", currentVersion: 1,
+      id: 5,
+      name: "海报模板",
+      status: "draft",
+      currentVersion: 1,
     });
     mocks.getVisualTemplateVersion.mockResolvedValue({
-      templateId: 5, version: 1, definitionJson: JSON.stringify(definition), variablesJson: "[]",
+      templateId: 5,
+      version: 1,
+      definitionJson: JSON.stringify(definition),
+      variablesJson: "[]",
     });
     mocks.resolveResultVisualImages.mockResolvedValue({});
     mocks.renderResultVisualPng.mockResolvedValue(new Uint8Array([1, 2, 3]));

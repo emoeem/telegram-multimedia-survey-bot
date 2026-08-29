@@ -25,12 +25,7 @@ describe("license API", () => {
   });
 
   it("ignores unrelated paths", async () => {
-    await expect(
-      handleLicenseApiRequest(
-        post("/other", {}),
-        {} as D1Database,
-      ),
-    ).resolves.toBeNull();
+    await expect(handleLicenseApiRequest(post("/other", {}), {} as D1Database)).resolves.toBeNull();
   });
 
   it("rejects malformed activation input", async () => {
@@ -86,11 +81,7 @@ describe("license API", () => {
       maxActivations: 1,
     });
     request.headers.set("Authorization", "Bearer vendor-admin-secret");
-    const response = await handleLicenseApiRequest(
-      request,
-      {} as D1Database,
-      "vendor-admin-secret",
-    );
+    const response = await handleLicenseApiRequest(request, {} as D1Database, "vendor-admin-secret");
     const body = (await response?.json()) as {
       ok: boolean;
       licenseKey: string;
@@ -124,9 +115,7 @@ describe("license API", () => {
   });
 
   it("does not expose internal database errors", async () => {
-    serviceMocks.validateLicense.mockRejectedValue(
-      new Error("D1 connection details"),
-    );
+    serviceMocks.validateLicense.mockRejectedValue(new Error("D1 connection details"));
 
     const response = await handleLicenseApiRequest(
       post("/api/v1/licenses/validate", {

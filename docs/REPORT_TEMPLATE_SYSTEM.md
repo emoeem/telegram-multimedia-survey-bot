@@ -25,14 +25,15 @@ interface ReportTemplateSpec {
   id: string;
   name: string;
   version: number;
-  theme: ReportTheme;                    // 15 套内置主题之一
-  sections: Array<{                      // 顺序即渲染顺序，控制"显示什么"
-    kind: "cover"|"hero"|"summary"|"scores"|"radar"|"insights"|"quotes"|"answers"|"gallery"|"verdict";
-    title?: string;                      // 覆盖内置标题
-    presentation?: "cards"|"list"|"grid"|"featured"|"full";
+  theme: ReportTheme; // 15 套内置主题之一
+  sections: Array<{
+    // 顺序即渲染顺序，控制"显示什么"
+    kind: "cover" | "hero" | "summary" | "scores" | "radar" | "insights" | "quotes" | "answers" | "gallery" | "verdict";
+    title?: string; // 覆盖内置标题
+    presentation?: "cards" | "list" | "grid" | "featured" | "full";
   }>;
-  renderers: Array<"web"|"pdf"|"image">;
-  css?: string;                          // 自定义样式（渐变/字体/动画/封面）
+  renderers: Array<"web" | "pdf" | "image">;
+  css?: string; // 自定义样式（渐变/字体/动画/封面）
 }
 ```
 
@@ -66,11 +67,11 @@ interface ReportTemplateSpec {
 
 ## Renderer 边界
 
-| Renderer | 实现 | 说明 |
-| -- | -- | -- |
-| Web | `src/services/report/web.ts` | 模板驱动响应式单页（移动端优先） |
-| PDF | `src/services/report/pdf.ts` | 同一模板 + `@media print`，图片压缩 ≤1200px |
-| Image | 现有 PNG 管线（`html-report-renderer` 固定画布 / `visual-template` resvg） | 分享卡/结果卡导出 |
+| Renderer | 实现                                                                       | 说明                                        |
+| -------- | -------------------------------------------------------------------------- | ------------------------------------------- |
+| Web      | `src/services/report/web.ts`                                               | 模板驱动响应式单页（移动端优先）            |
+| PDF      | `src/services/report/pdf.ts`                                               | 同一模板 + `@media print`，图片压缩 ≤1200px |
+| Image    | 现有 PNG 管线（`html-report-renderer` 固定画布 / `visual-template` resvg） | 分享卡/结果卡导出                           |
 
 ## 后续（未实现）
 

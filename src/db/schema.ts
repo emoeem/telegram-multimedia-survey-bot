@@ -131,12 +131,7 @@ export interface QuestionOption {
   updatedAt: string;
 }
 
-export type SurveyResponseStatus =
-  | "in_progress"
-  | "completed"
-  | "abandoned"
-  | "cancelled"
-  | "archived";
+export type SurveyResponseStatus = "in_progress" | "completed" | "abandoned" | "cancelled" | "archived";
 
 export interface SurveyResponse {
   id: number;
@@ -168,15 +163,7 @@ export interface Answer {
   updatedAt: string;
 }
 
-export type MediaType =
-  | "photo"
-  | "video"
-  | "audio"
-  | "voice"
-  | "animation"
-  | "gif"
-  | "sticker"
-  | "document";
+export type MediaType = "photo" | "video" | "audio" | "voice" | "animation" | "gif" | "sticker" | "document";
 
 /** Explicit storage provider for a media asset. Legacy rows are 'telegram';
  * temporary response uploads are 'temporary' with an expiry. */
@@ -184,7 +171,8 @@ export type MediaStorageKind = "temporary" | "telegram" | "r2" | "url";
 
 /** Ownership boundary for media. A media type alone must never decide whether
  * an image can be used by the template editor. */
-export type MediaAssetScope = "survey" | "response" | "template" | "generated_result" | "template_preview" | "identity_card" | "legacy";
+export type MediaAssetScope =
+  "survey" | "response" | "template" | "generated_result" | "template_preview" | "identity_card" | "legacy";
 
 export interface MediaAsset {
   id: number;

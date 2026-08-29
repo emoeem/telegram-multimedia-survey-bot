@@ -5,12 +5,43 @@ import { prepareReportContent } from "../../../src/services/report/composition/c
 import { planReportPages } from "../../../src/services/report/composition/page-planner";
 import { DEFAULT_REPORT_SIZE_POLICY } from "../../../src/services/report/size-policy";
 
-function report(answerCount: number, imageCount = 0, longText = ""): { profile: ResultProfileSnapshot; images: Record<string, string> } {
-  const profileItems = Array.from({ length: answerCount }, (_, index) => ({ label: `问题 ${index + 1}`, value: index === 0 && longText ? longText : `回答 ${index + 1}` }));
-  const fields = Object.fromEntries(profileItems.map((item, index) => [`question_${index + 1}`, { id: `question_${index + 1}`, type: index === 0 && longText ? "long_text" as const : "text" as const, value: item.value }]));
-  const images = Object.fromEntries(Array.from({ length: imageCount }, (_, index) => [`result.images.${index + 1}`, `data:image/png;base64,${String(index).padStart(4, "A")}`]));
+function report(
+  answerCount: number,
+  imageCount = 0,
+  longText = "",
+): { profile: ResultProfileSnapshot; images: Record<string, string> } {
+  const profileItems = Array.from({ length: answerCount }, (_, index) => ({
+    label: `问题 ${index + 1}`,
+    value: index === 0 && longText ? longText : `回答 ${index + 1}`,
+  }));
+  const fields = Object.fromEntries(
+    profileItems.map((item, index) => [
+      `question_${index + 1}`,
+      {
+        id: `question_${index + 1}`,
+        type: index === 0 && longText ? ("long_text" as const) : ("text" as const),
+        value: item.value,
+      },
+    ]),
+  );
+  const images = Object.fromEntries(
+    Array.from({ length: imageCount }, (_, index) => [
+      `result.images.${index + 1}`,
+      `data:image/png;base64,${String(index).padStart(4, "A")}`,
+    ]),
+  );
   return {
-    profile: { resultType: "survey_result", title: "规模测试", subtitle: "内容决定页面", fields, stats: [], tags: [], images: {}, metadata: { profile: profileItems, summary: "最终结论" }, schemaVersion: 1 },
+    profile: {
+      resultType: "survey_result",
+      title: "规模测试",
+      subtitle: "内容决定页面",
+      fields,
+      stats: [],
+      tags: [],
+      images: {},
+      metadata: { profile: profileItems, summary: "最终结论" },
+      schemaVersion: 1,
+    },
     images,
   };
 }
@@ -51,7 +82,12 @@ describe("semantic report page planner", () => {
     const result = pagesFor(100, 10);
     expect(result.content.densityMode).toBe("extended");
     expect(result.pages.length).toBeLessThanOrEqual(DEFAULT_REPORT_SIZE_POLICY.maxPages);
-    expect(result.pages.every((page) => page.estimatedHeight <= DEFAULT_REPORT_SIZE_POLICY.maxPageHeight - DEFAULT_REPORT_SIZE_POLICY.pagePaddingY)).toBe(true);
+    expect(
+      result.pages.every(
+        (page) =>
+          page.estimatedHeight <= DEFAULT_REPORT_SIZE_POLICY.maxPageHeight - DEFAULT_REPORT_SIZE_POLICY.pagePaddingY,
+      ),
+    ).toBe(true);
   });
 
   it("enters large mode for 150 questions and paginates 30 images", () => {
@@ -59,7 +95,13 @@ describe("semantic report page planner", () => {
     expect(result.content.densityMode).toBe("large");
     const galleryPages = result.pages.filter((page) => page.kind === "gallery");
     expect(galleryPages.length).toBeGreaterThan(1);
-    expect(galleryPages.every((page) => page.blocks.every((block) => block.kind !== "gallery" || block.items.length <= DEFAULT_REPORT_SIZE_POLICY.maxImagesPerPage))).toBe(true);
+    expect(
+      galleryPages.every((page) =>
+        page.blocks.every(
+          (block) => block.kind !== "gallery" || block.items.length <= DEFAULT_REPORT_SIZE_POLICY.maxImagesPerPage,
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("splits a 10000-character editorial answer with continuation labels", () => {
@@ -67,7 +109,12 @@ describe("semantic report page planner", () => {
     const analysis = result.pages.flatMap((page) => page.blocks).filter((block) => block.kind === "analysis");
     expect(analysis.length).toBeGreaterThan(5);
     expect(analysis.some((block) => block.items.some((item) => item.title.includes("continued")))).toBe(true);
-    expect(result.pages.every((page) => page.estimatedHeight <= DEFAULT_REPORT_SIZE_POLICY.maxPageHeight - DEFAULT_REPORT_SIZE_POLICY.pagePaddingY)).toBe(true);
+    expect(
+      result.pages.every(
+        (page) =>
+          page.estimatedHeight <= DEFAULT_REPORT_SIZE_POLICY.maxPageHeight - DEFAULT_REPORT_SIZE_POLICY.pagePaddingY,
+      ),
+    ).toBe(true);
   });
 
   it("always preserves cover and final verdict when applying a strict page cap", () => {

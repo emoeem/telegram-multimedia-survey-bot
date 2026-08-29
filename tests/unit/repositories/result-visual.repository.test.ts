@@ -33,7 +33,7 @@ function createD1Mock(): { db: D1Database; sql: string[] } {
       const statement = {
         bind: vi.fn(() => statement),
         run: vi.fn(async () => ({ success: true, meta: { last_row_id: 9, changes: 1 } })),
-        first: vi.fn(async () => statementSql.includes("render_jobs") ? jobRow : null),
+        first: vi.fn(async () => (statementSql.includes("render_jobs") ? jobRow : null)),
       };
       return statement;
     }),

@@ -1,18 +1,18 @@
-import type { Survey } from '../db/schema';
-import { MATRIX_COLUMN_MIN, isMatrixQuestionType, minOptionCount, parseMatrixColumns } from '../survey/question-rules';
+import type { Survey } from "../db/schema";
+import { MATRIX_COLUMN_MIN, isMatrixQuestionType, minOptionCount, parseMatrixColumns } from "../survey/question-rules";
 import {
   createSurvey,
   getSurveyById,
   listSurveysByOwner,
   updateSurveyStatus,
-} from '../db/repositories/survey.repository';
-import { createSurveyVersionSnapshot } from './survey-version.service';
+} from "../db/repositories/survey.repository";
+import { createSurveyVersionSnapshot } from "./survey-version.service";
 import {
   createQuestion,
   createQuestionOption,
   listOptionsForQuestions,
   listQuestionsBySurvey,
-} from '../db/repositories/question.repository';
+} from "../db/repositories/question.repository";
 
 export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
   const result = await db.prepare("SELECT * FROM surveys WHERE status = 'published' ORDER BY id DESC").all();
@@ -20,34 +20,34 @@ export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
   return (result.results ?? []).map((row) => {
     const surveyRow = row as Record<string, unknown>;
     return {
-      id: Number(surveyRow['id']),
-      ownerId: Number(surveyRow['owner_id']),
-      title: String(surveyRow['title']),
-      description: surveyRow['description'] === null ? null : String(surveyRow['description']),
-      coverMediaId: surveyRow['cover_media_id'] === null ? null : Number(surveyRow['cover_media_id']),
-      status: String(surveyRow['status']) as Survey['status'],
-      anonymous: Number(surveyRow['anonymous']) === 1,
-      allowMultipleResponses: Number(surveyRow['allow_multiple_responses']) === 1,
-      maxResponsesPerUser: Number(surveyRow['max_responses_per_user']),
-      version: Number(surveyRow['version']),
-      createdAt: String(surveyRow['created_at']),
-      updatedAt: String(surveyRow['updated_at']),
-      publishedAt: surveyRow['published_at'] === null ? null : String(surveyRow['published_at']),
-      closedAt: surveyRow['closed_at'] === null ? null : String(surveyRow['closed_at']),
-      archivedAt: surveyRow['archived_at'] === null ? null : String(surveyRow['archived_at']),
-      accessCode: surveyRow['access_code'] === null ? null : String(surveyRow['access_code']),
+      id: Number(surveyRow["id"]),
+      ownerId: Number(surveyRow["owner_id"]),
+      title: String(surveyRow["title"]),
+      description: surveyRow["description"] === null ? null : String(surveyRow["description"]),
+      coverMediaId: surveyRow["cover_media_id"] === null ? null : Number(surveyRow["cover_media_id"]),
+      status: String(surveyRow["status"]) as Survey["status"],
+      anonymous: Number(surveyRow["anonymous"]) === 1,
+      allowMultipleResponses: Number(surveyRow["allow_multiple_responses"]) === 1,
+      maxResponsesPerUser: Number(surveyRow["max_responses_per_user"]),
+      version: Number(surveyRow["version"]),
+      createdAt: String(surveyRow["created_at"]),
+      updatedAt: String(surveyRow["updated_at"]),
+      publishedAt: surveyRow["published_at"] === null ? null : String(surveyRow["published_at"]),
+      closedAt: surveyRow["closed_at"] === null ? null : String(surveyRow["closed_at"]),
+      archivedAt: surveyRow["archived_at"] === null ? null : String(surveyRow["archived_at"]),
+      accessCode: surveyRow["access_code"] === null ? null : String(surveyRow["access_code"]),
       accessCodeEncrypted:
-        surveyRow['access_code_encrypted'] === null || surveyRow['access_code_encrypted'] === undefined
+        surveyRow["access_code_encrypted"] === null || surveyRow["access_code_encrypted"] === undefined
           ? null
-          : String(surveyRow['access_code_encrypted']),
+          : String(surveyRow["access_code_encrypted"]),
       reportTemplateId:
-        surveyRow['report_template_id'] === null || surveyRow['report_template_id'] === undefined
+        surveyRow["report_template_id"] === null || surveyRow["report_template_id"] === undefined
           ? null
-          : String(surveyRow['report_template_id']),
+          : String(surveyRow["report_template_id"]),
       settingsJson:
-        surveyRow['settings_json'] === null || surveyRow['settings_json'] === undefined
+        surveyRow["settings_json"] === null || surveyRow["settings_json"] === undefined
           ? null
-          : String(surveyRow['settings_json']),
+          : String(surveyRow["settings_json"]),
     };
   });
 }
@@ -63,15 +63,15 @@ export async function listMySurveys(db: D1Database, ownerId: number): Promise<Su
 export async function assertSurveyCanPublish(db: D1Database, surveyId: number): Promise<void> {
   const survey = await getSurveyById(db, surveyId);
   if (!survey) {
-    throw new Error('问卷不存在');
+    throw new Error("问卷不存在");
   }
   if (!survey.title.trim()) {
-    throw new Error('问卷标题不能为空');
+    throw new Error("问卷标题不能为空");
   }
 
   const questions = await listQuestionsBySurvey(db, surveyId);
   if (questions.length === 0) {
-    throw new Error('问卷至少需要一道题');
+    throw new Error("问卷至少需要一道题");
   }
 
   const options = await listOptionsForQuestions(
@@ -113,9 +113,9 @@ export async function publishSurvey(
   publishedBy: number | null = null,
 ): Promise<Survey> {
   await assertSurveyCanPublish(db, surveyId);
-  const published = await updateSurveyStatus(db, surveyId, 'published');
+  const published = await updateSurveyStatus(db, surveyId, "published");
   if (!published) {
-    throw new Error('问卷不存在');
+    throw new Error("问卷不存在");
   }
   await createSurveyVersionSnapshot(db, surveyId, publishedBy);
   return published;
@@ -124,23 +124,23 @@ export async function publishSurvey(
 export async function assertSurveyQuestionsEditable(db: D1Database, surveyId: number): Promise<void> {
   const survey = await getSurveyById(db, surveyId);
   if (!survey) {
-    throw new Error('问卷不存在');
+    throw new Error("问卷不存在");
   }
 
   const responseCount = await db
-    .prepare('SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?')
+    .prepare("SELECT COUNT(*) AS count FROM survey_responses WHERE survey_id = ?")
     .bind(surveyId)
     .first<{ count: number }>();
 
   if ((responseCount?.count ?? 0) > 0) {
-    throw new Error('该问卷已有答卷，题目和附件已锁定。请复制问卷后再修改。');
+    throw new Error("该问卷已有答卷，题目和附件已锁定。请复制问卷后再修改。");
   }
 }
 
 export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId: number): Promise<Survey> {
   const original = await getSurveyById(db, surveyId);
   if (!original) {
-    throw new Error('Survey not found');
+    throw new Error("Survey not found");
   }
 
   const duplicate = await createSurvey(db, {
@@ -256,16 +256,13 @@ export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId:
       try {
         const remapReferences = (value: unknown, key?: string): unknown => {
           if (Array.isArray(value)) return value.map((item) => remapReferences(item));
-          if (value && typeof value === 'object') {
+          if (value && typeof value === "object") {
             return Object.fromEntries(
-              Object.entries(value).map(([childKey, childValue]) => [
-                childKey,
-                remapReferences(childValue, childKey),
-              ]),
+              Object.entries(value).map(([childKey, childValue]) => [childKey, remapReferences(childValue, childKey)]),
             );
           }
-          if (key === 'optionId' && typeof value === 'number') return optionIdMap.get(value) ?? value;
-          if (key === 'targetQuestionId' && typeof value === 'number') return questionIdMap.get(value) ?? value;
+          if (key === "optionId" && typeof value === "number") return optionIdMap.get(value) ?? value;
+          if (key === "targetQuestionId" && typeof value === "number") return questionIdMap.get(value) ?? value;
           return value;
         };
         conditionJson = JSON.stringify(remapReferences(JSON.parse(conditionJson)));

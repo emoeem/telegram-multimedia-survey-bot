@@ -1,17 +1,9 @@
 import type { UnifiedSurveyImport } from "../survey/schema";
 import { getSurveyById } from "../db/repositories/survey.repository";
-import {
-  listOptionsForQuestions,
-  listQuestionsBySurvey,
-} from "../db/repositories/question.repository";
+import { listOptionsForQuestions, listQuestionsBySurvey } from "../db/repositories/question.repository";
 import { getMediaAssetById } from "../db/repositories/media.repository";
 import type { SurveyMedia, SurveyOption, SurveyValidation } from "../survey/schema";
-import {
-  surveyMediaId,
-  surveyOptionId,
-  surveyPageId,
-  surveyQuestionId,
-} from "../survey/id-mapping";
+import { surveyMediaId, surveyOptionId, surveyPageId, surveyQuestionId } from "../survey/id-mapping";
 
 interface QuestionMediaRow {
   questionId: number;
@@ -67,18 +59,13 @@ function parseJsonObject(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
 }
 
-export async function exportUnifiedSurveyJson(
-  db: D1Database,
-  surveyId: number,
-): Promise<UnifiedSurveyImport | null> {
+export async function exportUnifiedSurveyJson(db: D1Database, surveyId: number): Promise<UnifiedSurveyImport | null> {
   const survey = await getSurveyById(db, surveyId);
   if (!survey) {
     return null;
@@ -98,8 +85,9 @@ export async function exportUnifiedSurveyJson(
   }
 
   const [questionMediaRows, optionMediaRows, pageRows] = (await db.batch([
-    db.prepare(
-      `SELECT qm.question_id questionId, m.id mediaAssetId,
+    db
+      .prepare(
+        `SELECT qm.question_id questionId, m.id mediaAssetId,
               m.media_type mediaType, m.telegram_file_id telegramFileId,
               m.telegram_file_unique_id telegramFileUniqueId, m.url url,
               m.r2_key r2Key, m.mime_type mimeType, m.file_name fileName,
@@ -109,9 +97,11 @@ export async function exportUnifiedSurveyJson(
        JOIN media_assets m ON m.id = qm.media_asset_id
        WHERE qm.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?)
        ORDER BY qm.question_id ASC, qm.sort_order ASC, qm.id ASC`,
-    ).bind(surveyId),
-    db.prepare(
-      `SELECT om.question_option_id optionId, m.id mediaAssetId,
+      )
+      .bind(surveyId),
+    db
+      .prepare(
+        `SELECT om.question_option_id optionId, m.id mediaAssetId,
               m.media_type mediaType, m.telegram_file_id telegramFileId,
               m.telegram_file_unique_id telegramFileUniqueId, m.url url,
               m.r2_key r2Key, m.mime_type mimeType, m.file_name fileName,
@@ -125,18 +115,17 @@ export async function exportUnifiedSurveyJson(
          )
        )
        ORDER BY om.question_option_id ASC, om.sort_order ASC, om.id ASC`,
-    ).bind(surveyId),
-    db.prepare(
-      `SELECT id, title, description, "order"
+      )
+      .bind(surveyId),
+    db
+      .prepare(
+        `SELECT id, title, description, "order"
        FROM survey_pages
        WHERE survey_id = ?
        ORDER BY "order" ASC, id ASC`,
-    ).bind(surveyId),
-  ])) as [
-    D1Result<QuestionMediaRow>,
-    D1Result<OptionMediaRow>,
-    D1Result<PageRow>,
-  ];
+      )
+      .bind(surveyId),
+  ])) as [D1Result<QuestionMediaRow>, D1Result<OptionMediaRow>, D1Result<PageRow>];
 
   const questionMediaByQuestion = new Map<number, SurveyMedia[]>();
   for (const row of questionMediaRows.results ?? []) {
@@ -201,8 +190,7 @@ export async function exportUnifiedSurveyJson(
           order: number;
         }> = optionsByQuestion.get(question.id) ?? [];
         const questionId = surveyQuestionId(index);
-        const pageIdValue =
-          question.pageId !== null ? pageIdMap.get(question.pageId) : undefined;
+        const pageIdValue = question.pageId !== null ? pageIdMap.get(question.pageId) : undefined;
         const validation = parseJsonObject(question.validationJson);
         const settings = parseJsonObject(question.settingsJson);
         return {

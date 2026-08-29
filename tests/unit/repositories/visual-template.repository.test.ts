@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createVisualTemplateVersion, getVisualTemplateVersion } from "../../../src/db/repositories/visual-template.repository";
+import {
+  createVisualTemplateVersion,
+  getVisualTemplateVersion,
+} from "../../../src/db/repositories/visual-template.repository";
 
 function createD1Mock(): { db: D1Database; sql: string[] } {
   const sql: string[] = [];
@@ -23,7 +26,7 @@ function createD1Mock(): { db: D1Database; sql: string[] } {
       };
       return statement;
     }),
-    batch: vi.fn(async () => ([{ success: true, meta: { last_row_id: 4 } }])),
+    batch: vi.fn(async () => [{ success: true, meta: { last_row_id: 4 } }]),
   } as unknown as D1Database;
   return { db, sql };
 }

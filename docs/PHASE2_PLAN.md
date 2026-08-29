@@ -102,13 +102,13 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 
 媒体抽象为 `MediaAsset`（storage / mime_type / file_size / width / height / duration / thumbnail / scope / owner / expires_at），支持 image / video / audio / gif / sticker / document，场景决定允许类型：
 
-| 场景 | 图片 | 视频 | 音频 | Sticker |
-| -- | -: | -: | -: | -: |
-| 问题媒体 | ✅ | ✅ | ✅ | ✅ |
-| Option | ✅ | ✅ | ✅ | ✅ |
-| 用户上传 | ✅ | 可选 | 可选 | 可选 |
-| Report | ✅ | 可选 | 可选 | 可选 |
-| PDF | ✅ | ❌ | ❌ | 转图片 |
+| 场景     | 图片 | 视频 | 音频 | Sticker |
+| -------- | ---: | ---: | ---: | ------: |
+| 问题媒体 |   ✅ |   ✅ |   ✅ |      ✅ |
+| Option   |   ✅ |   ✅ |   ✅ |      ✅ |
+| 用户上传 |   ✅ | 可选 | 可选 |    可选 |
+| Report   |   ✅ | 可选 | 可选 |    可选 |
+| PDF      |   ✅ |   ❌ |   ❌ |  转图片 |
 
 ## 5. Phase 3 — Web Survey UI 2.0（手机优先）
 
@@ -152,7 +152,8 @@ Question Media / Option Media / Answer Media / Report Media 分别处理
 
 问卷页通过 `data-theme` 激活，`--survey-*` 令牌映射 DaisyUI 的
 `--color-*` / `--radius-*` 变量；后台问卷详情页提供预设选择器（实时色板预览）
-+ 自定义令牌 JSON 叠加 + 清除主题。
+
+- 自定义令牌 JSON 叠加 + 清除主题。
 
 ## 7. Phase 4 — Report Engine 2.0（彻底模板化）
 

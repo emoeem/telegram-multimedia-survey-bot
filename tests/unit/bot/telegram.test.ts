@@ -38,22 +38,12 @@ describe("telegram media requests", () => {
   });
 
   it("sends an existing Telegram document by file ID", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response('{"ok":true}', { status: 200 }),
-    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await sendDocumentByFileId(
-      "token",
-      42,
-      "telegram-file-id",
-      "题目附件",
-      {
-        inline_keyboard: [
-          [{ text: "退出", callback_data: "q:exit:1" }],
-        ],
-      },
-    );
+    await sendDocumentByFileId("token", 42, "telegram-file-id", "题目附件", {
+      inline_keyboard: [[{ text: "退出", callback_data: "q:exit:1" }]],
+    });
 
     const request = fetchMock.mock.calls[0];
     const body = JSON.parse(String(request?.[1]?.body)) as {
@@ -67,9 +57,7 @@ describe("telegram media requests", () => {
   });
 
   it("replaces legacy command entries with the compact command menu", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response('{"ok":true}', { status: 200 }),
-    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await syncDefaultBotCommands("token");
@@ -86,9 +74,9 @@ describe("telegram media requests", () => {
   });
 
   it("reads the bot username for direct survey links", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response('{"ok":true,"result":{"username":"survey_demo_bot"}}', { status: 200 }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('{"ok":true,"result":{"username":"survey_demo_bot"}}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getBotUsername("token")).resolves.toBe("survey_demo_bot");
@@ -105,9 +93,7 @@ describe("telegram media requests", () => {
       ),
     );
 
-    await expect(
-      sendPhoto("token", 42, "bad-file-id"),
-    ).rejects.toThrow("Telegram sendPhoto failed: 400");
+    await expect(sendPhoto("token", 42, "bad-file-id")).rejects.toThrow("Telegram sendPhoto failed: 400");
   });
 
   it("uploads two to ten report pages as a Telegram media group", async () => {
@@ -127,16 +113,11 @@ describe("telegram media requests", () => {
   });
 
   it("splits long previews below the Telegram message limit", () => {
-    const chunks = splitTelegramText(
-      `${"第一段".repeat(800)}\n\n${"第二段".repeat(800)}`,
-      1000,
-    );
+    const chunks = splitTelegramText(`${"第一段".repeat(800)}\n\n${"第二段".repeat(800)}`, 1000);
 
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((chunk) => chunk.length <= 1000)).toBe(true);
-    expect(chunks.join("").replace(/\s/g, "")).toBe(
-      `${"第一段".repeat(800)}${"第二段".repeat(800)}`,
-    );
+    expect(chunks.join("").replace(/\s/g, "")).toBe(`${"第一段".repeat(800)}${"第二段".repeat(800)}`);
   });
 
   it("uploads an embedded data URL and returns a reusable file ID", async () => {

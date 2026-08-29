@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { applyReportPresentation } from "../../../src/services/report-presentation.service";
-import { renderResultVisualSvg, TEMPLATE_BACKGROUND_IMAGE_KEY } from "../../../src/services/result-visual-renderer.service";
+import {
+  renderResultVisualSvg,
+  TEMPLATE_BACKGROUND_IMAGE_KEY,
+} from "../../../src/services/result-visual-renderer.service";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
 import { visualReportExampleTemplate } from "../../../src/visual-template/examples";
 

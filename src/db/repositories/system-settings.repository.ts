@@ -1,9 +1,6 @@
 import { nowIso } from "../client";
 
-export async function getSystemSetting(
-  db: D1Database,
-  key: string,
-): Promise<string | null> {
+export async function getSystemSetting(db: D1Database, key: string): Promise<string | null> {
   const row = await db
     .prepare("SELECT value FROM system_settings WHERE key = ? LIMIT 1")
     .bind(key)
@@ -11,9 +8,7 @@ export async function getSystemSetting(
   return row?.value ?? null;
 }
 
-export async function listSystemSettings(
-  db: D1Database,
-): Promise<Record<string, string>> {
+export async function listSystemSettings(db: D1Database): Promise<Record<string, string>> {
   const rows = await db
     .prepare("SELECT key, value FROM system_settings ORDER BY key ASC")
     .all<{ key: string; value: string }>();

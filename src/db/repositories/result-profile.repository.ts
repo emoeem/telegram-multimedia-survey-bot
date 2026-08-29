@@ -58,10 +58,7 @@ function mapRuleSet(row: RuleSetRow): SurveyResultRuleSet {
   };
 }
 
-export async function getSurveyResultRuleSet(
-  db: D1Database,
-  surveyId: number,
-): Promise<SurveyResultRuleSet | null> {
+export async function getSurveyResultRuleSet(db: D1Database, surveyId: number): Promise<SurveyResultRuleSet | null> {
   const row = await db
     .prepare("SELECT * FROM survey_result_rule_sets WHERE survey_id = ? LIMIT 1")
     .bind(surveyId)
@@ -91,14 +88,7 @@ export async function saveSurveyResultRuleSet(
         created_by = excluded.created_by,
         updated_at = excluded.updated_at`,
     )
-    .bind(
-      input.surveyId,
-      input.schemaVersion,
-      input.rulesJson,
-      input.createdBy,
-      timestamp,
-      timestamp,
-    )
+    .bind(input.surveyId, input.schemaVersion, input.rulesJson, input.createdBy, timestamp, timestamp)
     .run();
 
   const saved = await getSurveyResultRuleSet(db, input.surveyId);
@@ -108,10 +98,7 @@ export async function saveSurveyResultRuleSet(
   return saved;
 }
 
-export async function getResultProfileByResponseId(
-  db: D1Database,
-  responseId: number,
-): Promise<ResultProfile | null> {
+export async function getResultProfileByResponseId(db: D1Database, responseId: number): Promise<ResultProfile | null> {
   const row = await db
     .prepare("SELECT * FROM result_profiles WHERE response_id = ? LIMIT 1")
     .bind(responseId)
@@ -120,14 +107,8 @@ export async function getResultProfileByResponseId(
   return row ? mapResultProfile(row) : null;
 }
 
-export async function getResultProfileById(
-  db: D1Database,
-  id: number,
-): Promise<ResultProfile | null> {
-  const row = await db
-    .prepare("SELECT * FROM result_profiles WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<ResultProfileRow>();
+export async function getResultProfileById(db: D1Database, id: number): Promise<ResultProfile | null> {
+  const row = await db.prepare("SELECT * FROM result_profiles WHERE id = ? LIMIT 1").bind(id).first<ResultProfileRow>();
 
   return row ? mapResultProfile(row) : null;
 }

@@ -1,20 +1,59 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ launch: vi.fn(), screenshot: vi.fn(), pdf: vi.fn(), closePage: vi.fn(), viewportDpr: 2, pageCount: 1 }));
+const mocks = vi.hoisted(() => ({
+  launch: vi.fn(),
+  screenshot: vi.fn(),
+  pdf: vi.fn(),
+  closePage: vi.fn(),
+  viewportDpr: 2,
+  pageCount: 1,
+}));
 
 vi.mock("@cloudflare/puppeteer", () => ({ default: { launch: mocks.launch } }));
 
 import { renderResponseReport, type ResponseReport } from "../../../src/services/response-report.service";
 
 function source(): ResponseReport {
-  return { surveyTitle: "完整答卷", responseNumber: 1, status: "已完成", respondent: "Tester", startedAt: "start", completedAt: "end", items: [{ questionId: 1, number: 1, type: "text", title: "问题", required: true, answered: true, answerId: 1, answer: "完整答案", rawAnswer: "完整答案", options: [], questionMedia: [], answerMedia: [] }] };
+  return {
+    surveyTitle: "完整答卷",
+    responseNumber: 1,
+    status: "已完成",
+    respondent: "Tester",
+    startedAt: "start",
+    completedAt: "end",
+    items: [
+      {
+        questionId: 1,
+        number: 1,
+        type: "text",
+        title: "问题",
+        required: true,
+        answered: true,
+        answerId: 1,
+        answer: "完整答案",
+        rawAnswer: "完整答案",
+        options: [],
+        questionMedia: [],
+        answerMedia: [],
+      },
+    ],
+  };
 }
 
 beforeEach(() => {
-  mocks.screenshot.mockReset(); mocks.pdf.mockReset(); mocks.closePage.mockReset(); mocks.launch.mockReset(); mocks.viewportDpr = 2; mocks.pageCount = 1;
+  mocks.screenshot.mockReset();
+  mocks.pdf.mockReset();
+  mocks.closePage.mockReset();
+  mocks.launch.mockReset();
+  mocks.viewportDpr = 2;
+  mocks.pageCount = 1;
   const page = {
-    setViewport: vi.fn(async (viewport: { deviceScaleFactor: number }) => { mocks.viewportDpr = viewport.deviceScaleFactor; }),
-    setContent: vi.fn(async (html: string) => { mocks.pageCount = html.match(/class="page"/g)?.length ?? 1; }),
+    setViewport: vi.fn(async (viewport: { deviceScaleFactor: number }) => {
+      mocks.viewportDpr = viewport.deviceScaleFactor;
+    }),
+    setContent: vi.fn(async (html: string) => {
+      mocks.pageCount = html.match(/class="page"/g)?.length ?? 1;
+    }),
     evaluate: vi.fn(async (script: string) => {
       if (script.includes("const isOverflowing")) {
         new Function(script);
@@ -58,7 +97,11 @@ describe("complete response artifact rendering", () => {
 
   it("keeps every PNG page when total size exceeds 40 MB", async () => {
     const input = source();
-    input.items[0]!.answerMedia = Array.from({ length: 27 }, (_, index) => ({ id: index + 1, role: "answer" as const, label: `图片 ${index + 1}` }));
+    input.items[0]!.answerMedia = Array.from({ length: 27 }, (_, index) => ({
+      id: index + 1,
+      role: "answer" as const,
+      label: `图片 ${index + 1}`,
+    }));
     const expectedPages = 10;
     const pageBytes = new Uint8Array(4.5 * 1024 * 1024);
     mocks.screenshot.mockResolvedValue(pageBytes);
@@ -75,10 +118,18 @@ describe("complete response artifact rendering", () => {
     const browser = await mocks.launch.mock.results[0]?.value;
     void browser;
     const overflowPage = {
-      setViewport: vi.fn(), setContent: vi.fn(), screenshot: vi.fn(), pdf: vi.fn(),
-      evaluate: vi.fn(async (script: string) => script.includes("const isOverflowing") ? 1 : script.includes("querySelectorAll('.page')") ? "1" : undefined),
+      setViewport: vi.fn(),
+      setContent: vi.fn(),
+      screenshot: vi.fn(),
+      pdf: vi.fn(),
+      evaluate: vi.fn(async (script: string) =>
+        script.includes("const isOverflowing") ? 1 : script.includes("querySelectorAll('.page')") ? "1" : undefined,
+      ),
     };
-    mocks.launch.mockResolvedValue({ newPage: vi.fn(async () => ({ ...overflowPage, close: vi.fn() })), close: vi.fn() });
+    mocks.launch.mockResolvedValue({
+      newPage: vi.fn(async () => ({ ...overflowPage, close: vi.fn() })),
+      close: vi.fn(),
+    });
     await expect(renderResponseReport({} as never, source(), "png")).rejects.toThrow(/overflows its fixed canvas/);
   });
 });

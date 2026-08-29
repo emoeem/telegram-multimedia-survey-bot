@@ -15,34 +15,40 @@ export async function recoverStaleIdentityCardJobs(
   now = Date.now(),
 ): Promise<{ requeued: number; failed: number }> {
   const cutoff = new Date(now - staleProcessingMs).toISOString();
-  const stale = await db.prepare(
-    `SELECT id, chat_id, attempts
+  const stale = await db
+    .prepare(
+      `SELECT id, chat_id, attempts
      FROM identity_card_jobs
      WHERE status = 'processing'
        AND COALESCE(processing_started_at, created_at) < ?
      ORDER BY id ASC
      LIMIT 20`,
-  ).bind(cutoff).all<StaleIdentityCardJob>();
+    )
+    .bind(cutoff)
+    .all<StaleIdentityCardJob>();
   const jobs = stale.results ?? [];
   let requeued = 0;
   let failed = 0;
 
   for (const job of jobs) {
     const terminal = job.attempts >= 3;
-    const result = await db.prepare(
-      `UPDATE identity_card_jobs
+    const result = await db
+      .prepare(
+        `UPDATE identity_card_jobs
        SET status = ?, processing_started_at = NULL,
            error_message = ?, completed_at = ?
        WHERE id = ? AND status = 'processing'
          AND COALESCE(processing_started_at, created_at) < ?`,
-    ).bind(
-      terminal ? "failed" : "queued",
-      terminal ? "任务多次超时" : "任务超时，已自动重试",
-      terminal ? new Date(now).toISOString() : null,
-      job.id,
-      cutoff,
-    ).run();
-    if (!(result.meta?.changes)) continue;
+      )
+      .bind(
+        terminal ? "failed" : "queued",
+        terminal ? "任务多次超时" : "任务超时，已自动重试",
+        terminal ? new Date(now).toISOString() : null,
+        job.id,
+        cutoff,
+      )
+      .run();
+    if (!result.meta?.changes) continue;
     if (terminal) {
       failed += 1;
       try {

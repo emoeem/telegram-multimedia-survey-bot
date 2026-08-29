@@ -72,17 +72,16 @@ export async function getVisualTemplateById(db: D1Database, id: number): Promise
   return row ? mapTemplate(row) : null;
 }
 
-export async function listVisualTemplates(
-  db: D1Database,
-  limit = 20,
-  offset = 0,
-): Promise<VisualTemplate[]> {
-  const result = await db.prepare(
-    `SELECT * FROM visual_templates
+export async function listVisualTemplates(db: D1Database, limit = 20, offset = 0): Promise<VisualTemplate[]> {
+  const result = await db
+    .prepare(
+      `SELECT * FROM visual_templates
      ORDER BY CASE status WHEN 'published' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
        updated_at DESC, id DESC
      LIMIT ? OFFSET ?`,
-  ).bind(limit, offset).all<TemplateRow>();
+    )
+    .bind(limit, offset)
+    .all<TemplateRow>();
   return (result.results ?? []).map(mapTemplate);
 }
 
@@ -91,9 +90,10 @@ export async function updateVisualTemplateStatus(
   id: number,
   status: VisualTemplateStatus,
 ): Promise<VisualTemplate> {
-  await db.prepare(
-    "UPDATE visual_templates SET status = ?, updated_at = ? WHERE id = ?",
-  ).bind(status, new Date().toISOString(), id).run();
+  await db
+    .prepare("UPDATE visual_templates SET status = ?, updated_at = ? WHERE id = ?")
+    .bind(status, new Date().toISOString(), id)
+    .run();
   const template = await getVisualTemplateById(db, id);
   if (!template) throw new Error("Visual template not found");
   return template;
@@ -108,9 +108,10 @@ export async function getVisualTemplateVersion(
   templateId: number,
   version: number,
 ): Promise<VisualTemplateVersion | null> {
-  const row = await db.prepare(
-    "SELECT * FROM visual_template_versions WHERE template_id = ? AND version = ? LIMIT 1",
-  ).bind(templateId, version).first<VersionRow>();
+  const row = await db
+    .prepare("SELECT * FROM visual_template_versions WHERE template_id = ? AND version = ? LIMIT 1")
+    .bind(templateId, version)
+    .first<VersionRow>();
   return row ? mapVersion(row) : null;
 }
 
@@ -125,11 +126,14 @@ export async function createVisualTemplate(
   },
 ): Promise<VisualTemplate> {
   const timestamp = new Date().toISOString();
-  const result = await db.prepare(
-    `INSERT INTO visual_templates (
+  const result = await db
+    .prepare(
+      `INSERT INTO visual_templates (
       owner_id, survey_id, name, description, type, status, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)`,
-  ).bind(input.ownerId, input.surveyId, input.name, input.description, input.type, timestamp, timestamp).run();
+    )
+    .bind(input.ownerId, input.surveyId, input.name, input.description, input.type, timestamp, timestamp)
+    .run();
   const id = result.meta?.last_row_id;
   if (typeof id !== "number") throw new Error("Failed to create visual template");
   const template = await getVisualTemplateById(db, id);
@@ -149,24 +153,35 @@ export async function createVisualTemplateVersion(
   },
 ): Promise<VisualTemplateVersion> {
   const timestamp = new Date().toISOString();
-  const versionInsert = db.prepare(
-    `INSERT INTO visual_template_versions (
+  const versionInsert = db
+    .prepare(
+      `INSERT INTO visual_template_versions (
       template_id, version, template_schema_version, definition_json, variables_json, created_by, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    input.templateId, input.version, input.templateSchemaVersion, input.definitionJson,
-    input.variablesJson, input.createdBy, timestamp,
-  );
+    )
+    .bind(
+      input.templateId,
+      input.version,
+      input.templateSchemaVersion,
+      input.definitionJson,
+      input.variablesJson,
+      input.createdBy,
+      timestamp,
+    );
   const statements = [
     versionInsert,
-    db.prepare(
-      "UPDATE visual_templates SET current_version = ?, updated_at = ? WHERE id = ?",
-    ).bind(input.version, timestamp, input.templateId),
-    ...referencedAssetIds(input.definitionJson).map((reference) => db.prepare(
-      `INSERT OR IGNORE INTO visual_template_assets
+    db
+      .prepare("UPDATE visual_templates SET current_version = ?, updated_at = ? WHERE id = ?")
+      .bind(input.version, timestamp, input.templateId),
+    ...referencedAssetIds(input.definitionJson).map((reference) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO visual_template_assets
         (template_id, template_version, asset_id, role, created_at)
        VALUES (?, ?, ?, ?, ?)`,
-    ).bind(input.templateId, input.version, reference.assetId, reference.role, timestamp)),
+        )
+        .bind(input.templateId, input.version, reference.assetId, reference.role, timestamp),
+    ),
   ];
   const results = await db.batch(statements);
   const id = results[0]?.meta?.last_row_id;

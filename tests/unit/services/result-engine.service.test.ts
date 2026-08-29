@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateResultProfile, parseResultRuleSet, serializeResultProfile } from "../../../src/services/result-engine.service";
+import {
+  calculateResultProfile,
+  parseResultRuleSet,
+  serializeResultProfile,
+} from "../../../src/services/result-engine.service";
 import type { Answer } from "../../../src/db/schema";
 
 function answer(input: Partial<Answer> & Pick<Answer, "questionId">): Answer {
@@ -37,7 +41,12 @@ describe("result engine", () => {
           },
         },
         rules: [
-          { set: { title: { $from: "answers.11.value" }, "fields.total": { $sum: ["answers.12.value", "answers.13.value"] } } },
+          {
+            set: {
+              title: { $from: "answers.11.value" },
+              "fields.total": { $sum: ["answers.12.value", "answers.13.value"] },
+            },
+          },
           {
             when: { path: "answers.12.value", operator: "greater_or_equal", value: 40 },
             set: {
@@ -58,7 +67,7 @@ describe("result engine", () => {
 
   it("supports nested condition groups without running template code", () => {
     const profile = calculateResultProfile({
-      answers: [answer({ questionId: 20, jsonValue: "[\"night\",\"city\"]" })],
+      answers: [answer({ questionId: 20, jsonValue: '["night","city"]' })],
       ruleSet: {
         schemaVersion: 1,
         rules: [
@@ -79,27 +88,37 @@ describe("result engine", () => {
   });
 
   it("serializes a stable profile snapshot for persistence", () => {
-    const serialized = serializeResultProfile(calculateResultProfile({
-      answers: [],
-      ruleSet: {
-        schemaVersion: 1,
-        defaults: { title: "人格结果", metadata: { source: "rules" } },
-        rules: [],
-      },
-    }));
+    const serialized = serializeResultProfile(
+      calculateResultProfile({
+        answers: [],
+        ruleSet: {
+          schemaVersion: 1,
+          defaults: { title: "人格结果", metadata: { source: "rules" } },
+          rules: [],
+        },
+      }),
+    );
 
     expect(serialized.title).toBe("人格结果");
     expect(JSON.parse(serialized.metadataJson)).toEqual({ source: "rules" });
   });
 
   it("rejects executable-looking or unsafe rule definitions before evaluation", () => {
-    expect(() => parseResultRuleSet(JSON.stringify({
-      schemaVersion: 1,
-      rules: [{ set: { "fields.__proto__": { $from: "answers.1.value" } } }],
-    }))).toThrow("Invalid result rule path");
-    expect(() => parseResultRuleSet(JSON.stringify({
-      schemaVersion: 1,
-      rules: [{ set: { title: { $eval: "score > 1" } } }],
-    }))).toThrow("Invalid result expression");
+    expect(() =>
+      parseResultRuleSet(
+        JSON.stringify({
+          schemaVersion: 1,
+          rules: [{ set: { "fields.__proto__": { $from: "answers.1.value" } } }],
+        }),
+      ),
+    ).toThrow("Invalid result rule path");
+    expect(() =>
+      parseResultRuleSet(
+        JSON.stringify({
+          schemaVersion: 1,
+          rules: [{ set: { title: { $eval: "score > 1" } } }],
+        }),
+      ),
+    ).toThrow("Invalid result expression");
   });
 });

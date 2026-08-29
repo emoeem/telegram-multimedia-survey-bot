@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
-import { buildHtmlReport, buildReportViewModel, selectReportLayout } from "../../../src/services/html-report-renderer.service";
+import {
+  buildHtmlReport,
+  buildReportViewModel,
+  selectReportLayout,
+} from "../../../src/services/html-report-renderer.service";
 import { prepareReportContent } from "../../../src/services/report/composition/content";
 import { buildResponsiveReportHtml } from "../../../src/services/report/web";
-import {
-  DEFAULT_REPORT_TEMPLATE,
-  TRANSCRIPT_REPORT_TEMPLATE,
-} from "../../../src/services/report/template";
+import { DEFAULT_REPORT_TEMPLATE, TRANSCRIPT_REPORT_TEMPLATE } from "../../../src/services/report/template";
 
 const profile: ResultProfileSnapshot = {
   resultType: "survey_result",
@@ -14,7 +15,11 @@ const profile: ResultProfileSnapshot = {
   subtitle: "中文与 emoji 😀 ✨",
   fields: {
     name: { id: "name", type: "text", value: "小明 & <测试>" },
-    answer: { id: "answer", type: "long_text", value: "这是很长的一段回答。\n包含换行、中文和 emoji 🚀，用于验证自动排版。" },
+    answer: {
+      id: "answer",
+      type: "long_text",
+      value: "这是很长的一段回答。\n包含换行、中文和 emoji 🚀，用于验证自动排版。",
+    },
   },
   stats: [
     { id: "logic", label: "逻辑性", value: 92, max: 100 },
@@ -122,7 +127,9 @@ describe("HTML report renderer", () => {
     });
     expect(view.hero.avatar).toBe(image);
     expect(view.gallery).toHaveLength(2);
-    expect(buildHtmlReport(profile, "个人报告 · 玻璃极简", { "result.images.avatar": image })).toContain("object-fit:cover");
+    expect(buildHtmlReport(profile, "个人报告 · 玻璃极简", { "result.images.avatar": image })).toContain(
+      "object-fit:cover",
+    );
   });
 
   it("escapes user text and renders the radar only with three dimensions", () => {
@@ -167,7 +174,9 @@ describe("HTML report renderer", () => {
     const view = buildReportViewModel(profile);
     expect(selectReportLayout(view)).toBe("bento");
     expect(selectReportLayout(view, { layout: "magazine" })).toBe("magazine");
-    expect(buildHtmlReport(profile, "个人报告 · Magazine", {}, { layout: "magazine" })).toContain("report-layout-magazine");
+    expect(buildHtmlReport(profile, "个人报告 · Magazine", {}, { layout: "magazine" })).toContain(
+      "report-layout-magazine",
+    );
   });
 
   it("uses a gallery layout when the report contains many images", () => {
@@ -180,11 +189,13 @@ describe("HTML report renderer", () => {
       "result.images.3": imageThree,
     });
     expect(selectReportLayout(view)).toBe("gallery");
-    expect(buildHtmlReport(profile, "个人报告 · 图片 Gallery", {
-      "result.images.1": image,
-      "result.images.2": imageTwo,
-      "result.images.3": imageThree,
-    })).toContain("block-gallery");
+    expect(
+      buildHtmlReport(profile, "个人报告 · 图片 Gallery", {
+        "result.images.1": image,
+        "result.images.2": imageTwo,
+        "result.images.3": imageThree,
+      }),
+    ).toContain("block-gallery");
   });
 
   it("composes layouts with independent mature themes", () => {
@@ -218,12 +229,13 @@ describe("HTML report renderer", () => {
   it("renders the supported layout and theme matrix deterministically", () => {
     const layouts = ["editorial", "bento", "magazine", "data", "gallery", "profile"] as const;
     const themes = ["catppuccin-mocha", "dracula", "tokyo-night", "nord"] as const;
-    for (const layout of layouts) for (const theme of themes) {
-      const html = buildHtmlReport(profile, "matrix", {}, { layout, theme });
-      expect(html).toContain(`data-report-layout="${layout}"`);
-      expect(html).toContain(`data-report-theme="${theme}"`);
-      expect(html).toContain("--report-bg:");
-    }
+    for (const layout of layouts)
+      for (const theme of themes) {
+        const html = buildHtmlReport(profile, "matrix", {}, { layout, theme });
+        expect(html).toContain(`data-report-layout="${layout}"`);
+        expect(html).toContain(`data-report-theme="${theme}"`);
+        expect(html).toContain("--report-bg:");
+      }
   });
 
   it("uses a 3:4 mobile viewport and readable content canvas", () => {
@@ -235,7 +247,10 @@ describe("HTML report renderer", () => {
 
   it("keeps editorial analysis outside the shared card model", () => {
     const long = "长篇分析".repeat(180);
-    const rich = { ...profile, fields: { ...profile.fields, answer: { id: "answer", type: "long_text" as const, value: long } } };
+    const rich = {
+      ...profile,
+      fields: { ...profile.fields, answer: { id: "answer", type: "long_text" as const, value: long } },
+    };
     const html = buildHtmlReport(rich, "report", {}, { layout: "editorial" });
     expect(html).toContain('class="editorial-chapter block block-analysis"');
     expect(html).toContain('class="editorial-section editorial-long"');
@@ -265,8 +280,16 @@ describe("HTML report renderer", () => {
   });
 
   it("deduplicates long answers across analysis quotes and responses", () => {
-    const fields = Object.fromEntries(Array.from({ length: 6 }, (_, index) => [`long_${index}`, { id: `long_${index}`, type: "long_text" as const, value: `唯一回答 ${index} ${"内容".repeat(50)}` }]));
-    const metadataProfile = Object.values(fields).map((field, index) => ({ label: `问题 ${index}`, value: field.value }));
+    const fields = Object.fromEntries(
+      Array.from({ length: 6 }, (_, index) => [
+        `long_${index}`,
+        { id: `long_${index}`, type: "long_text" as const, value: `唯一回答 ${index} ${"内容".repeat(50)}` },
+      ]),
+    );
+    const metadataProfile = Object.values(fields).map((field, index) => ({
+      label: `问题 ${index}`,
+      value: field.value,
+    }));
     const rich = { ...profile, fields, metadata: { profile: metadataProfile, summary: "独立总结" } };
     const view = buildReportViewModel(rich);
     const content = prepareReportContent(view);
@@ -280,9 +303,9 @@ describe("HTML report renderer", () => {
   it("uses full-width featured and finale blocks with natural editorial breaking", () => {
     const html = buildHtmlReport(profile, "report", {}, { layout: "editorial" });
     expect(html).toContain('data-block="featured"');
-    expect(html).toContain('reading-wide emphasis-featured');
+    expect(html).toContain("reading-wide emphasis-featured");
     expect(html).toContain('data-block="verdict"');
-    expect(html).toContain('reading-full emphasis-primary');
+    expect(html).toContain("reading-full emphasis-primary");
     expect(html).toContain(".editorial-section{display:grid");
     expect(html).toContain("break-inside:auto");
     expect(html).not.toContain(".block{break-inside:avoid}");

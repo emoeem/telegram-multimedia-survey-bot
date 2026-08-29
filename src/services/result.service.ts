@@ -1,8 +1,4 @@
-import type {
-  Answer,
-  SurveyResponse,
-  SurveyResponseStatus,
-} from "../db/schema";
+import type { Answer, SurveyResponse, SurveyResponseStatus } from "../db/schema";
 
 export interface ResponseListItem {
   id: number;
@@ -36,9 +32,7 @@ export async function listResponses(
   status?: SurveyResponseStatus,
 ): Promise<ResponseListItem[]> {
   const statusClause = status ? "AND status = ?" : "";
-  const bindings = status
-    ? [surveyId, status, limit, offset]
-    : [surveyId, limit, offset];
+  const bindings = status ? [surveyId, status, limit, offset] : [surveyId, limit, offset];
   const result = await db
     .prepare(
       `SELECT r.id, r.status, r.started_at, r.completed_at,
@@ -67,14 +61,15 @@ export async function listResponses(
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
-    respondent: row.telegram_user_id === null
-      ? null
-      : {
-          telegramUserId: row.telegram_user_id,
-          username: row.username,
-          firstName: row.first_name,
-          lastName: row.last_name,
-        },
+    respondent:
+      row.telegram_user_id === null
+        ? null
+        : {
+            telegramUserId: row.telegram_user_id,
+            username: row.username,
+            firstName: row.first_name,
+            lastName: row.last_name,
+          },
   }));
 }
 

@@ -51,12 +51,16 @@ export async function renderReportPdf(
     const html = buildReportPdfDocument(profile, optimizedImages, meta, template);
     await page.setContent(html, { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");
-    await page.evaluate("Promise.all(Array.from(document.images).map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => { image.addEventListener('load', resolve, { once: true }); image.addEventListener('error', resolve, { once: true }); })))");
-    const bytes = new Uint8Array(await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "10mm", right: "10mm", bottom: "12mm", left: "10mm" },
-    }));
+    await page.evaluate(
+      "Promise.all(Array.from(document.images).map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => { image.addEventListener('load', resolve, { once: true }); image.addEventListener('error', resolve, { once: true }); })))",
+    );
+    const bytes = new Uint8Array(
+      await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "10mm", right: "10mm", bottom: "12mm", left: "10mm" },
+      }),
+    );
     return { bytes, byteSize: bytes.byteLength };
   } finally {
     await browser.close();

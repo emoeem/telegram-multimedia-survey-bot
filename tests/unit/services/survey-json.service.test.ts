@@ -130,18 +130,14 @@ describe("survey JSON export", () => {
           ],
         },
         {
-          results: [
-            { id: 100, title: "第一页", description: "开始", order: 0 },
-          ],
+          results: [{ id: 100, title: "第一页", description: "开始", order: 0 }],
         },
       ]),
     } as unknown as D1Database;
 
     const exported = await exportUnifiedSurveyJson(db, 1);
 
-    expect(exported?.survey.pages).toEqual([
-      { id: "p1", order: 1, title: "第一页", description: "开始" },
-    ]);
+    expect(exported?.survey.pages).toEqual([{ id: "p1", order: 1, title: "第一页", description: "开始" }]);
     expect(exported?.survey.cover?.source).toBe("telegram");
     expect(exported?.survey.cover?.telegram_file_id).toBe("tg-file");
 

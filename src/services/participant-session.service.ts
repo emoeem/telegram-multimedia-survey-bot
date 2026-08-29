@@ -28,13 +28,10 @@ export interface SurveyParticipantProfile {
 }
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
+  return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
+  ]);
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -64,11 +61,7 @@ async function sign(secret: string, payload: string): Promise<string> {
   return base64UrlEncode(new Uint8Array(signature));
 }
 
-async function verifySignature(
-  secret: string,
-  payload: string,
-  signature: string,
-): Promise<boolean> {
+async function verifySignature(secret: string, payload: string, signature: string): Promise<boolean> {
   const key = await hmacKey(secret);
   const decoded = base64UrlDecode(signature);
   if (!decoded) return false;
@@ -121,11 +114,7 @@ export async function verifySurveyParticipantToken(
   if (!bytes) return null;
   try {
     const parsed = JSON.parse(decoder.decode(bytes)) as ParticipantPayload;
-    if (
-      parsed.p !== "participant" ||
-      typeof parsed.u !== "number" ||
-      typeof parsed.exp !== "number"
-    ) {
+    if (parsed.p !== "participant" || typeof parsed.u !== "number" || typeof parsed.exp !== "number") {
       return null;
     }
     if (parsed.exp * 1000 <= Date.now()) return null;

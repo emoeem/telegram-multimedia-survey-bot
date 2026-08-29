@@ -1,8 +1,5 @@
 import type { MediaStorageKind, MediaType, QuestionType } from "../db/schema";
-import {
-  createSurvey,
-  deleteSurvey,
-} from "../db/repositories/survey.repository";
+import { createSurvey, deleteSurvey } from "../db/repositories/survey.repository";
 import { legacyToUnified } from "../survey/converters/legacy-to-unified";
 import { validateUnifiedSurvey } from "../survey/validator";
 import { surveyPageId } from "../survey/id-mapping";
@@ -70,9 +67,7 @@ export interface ImportedSurvey {
   };
 }
 
-export type ImportedMediaResolver = (
-  media: ImportedMedia,
-) => Promise<ImportedMedia | null>;
+export type ImportedMediaResolver = (media: ImportedMedia) => Promise<ImportedMedia | null>;
 
 export interface ImportIssue {
   path: string;
@@ -109,9 +104,7 @@ function enrichImportIssues(
     const question = questions[index];
     if (!question) return { ...issue };
     const marker = `questions[${index}]`;
-    const field =
-      issue.path.slice(issue.path.indexOf(marker) + marker.length).replace(/^\./, "") ||
-      "question";
+    const field = issue.path.slice(issue.path.indexOf(marker) + marker.length).replace(/^\./, "") || "question";
     return {
       ...issue,
       questionNumber: index + 1,
@@ -125,9 +118,7 @@ function enrichImportIssues(
  * Decodes a `data:` URL into bytes and mime type. Returns null for anything
  * that is not a valid data URL so callers can fall back gracefully.
  */
-export function decodeDataUrl(
-  dataUrl: string,
-): { bytes: Uint8Array; mimeType: string } | null {
+export function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; mimeType: string } | null {
   const comma = dataUrl.indexOf(",");
   if (comma < 0) return null;
   const meta = dataUrl.slice(5, comma);
@@ -170,16 +161,7 @@ const QUESTION_TYPES = new Set<QuestionType>([
   "file",
 ]);
 
-const MEDIA_TYPES = new Set<MediaType>([
-  "photo",
-  "video",
-  "audio",
-  "voice",
-  "animation",
-  "gif",
-  "sticker",
-  "document",
-]);
+const MEDIA_TYPES = new Set<MediaType>(["photo", "video", "audio", "voice", "animation", "gif", "sticker", "document"]);
 
 function nonEmptyString(...values: unknown[]): string | undefined {
   for (const value of values) {
@@ -194,9 +176,7 @@ function normalizeQuestionType(value: unknown): QuestionType {
   if (value === "boolean") {
     return "yes_no";
   }
-  return QUESTION_TYPES.has(value as QuestionType)
-    ? (value as QuestionType)
-    : "text";
+  return QUESTION_TYPES.has(value as QuestionType) ? (value as QuestionType) : "text";
 }
 
 function normalizeMedia(value: unknown): ImportedMedia | null {
@@ -212,9 +192,7 @@ function normalizeMedia(value: unknown): ImportedMedia | null {
   const media: ImportedMedia = { type: mediaType as MediaType };
   const id = nonEmptyString(raw["id"]);
   const telegramFileId = nonEmptyString(raw["telegram_file_id"]);
-  const telegramFileUniqueId = nonEmptyString(
-    raw["telegram_file_unique_id"],
-  );
+  const telegramFileUniqueId = nonEmptyString(raw["telegram_file_unique_id"]);
   const url = nonEmptyString(raw["url"]);
   const storageKey = nonEmptyString(raw["storage_key"]);
   const mimeType = nonEmptyString(raw["mime_type"]);
@@ -222,11 +200,7 @@ function normalizeMedia(value: unknown): ImportedMedia | null {
   const caption = nonEmptyString(raw["caption"]);
 
   if (id) media.id = id;
-  if (
-    raw["source"] === "telegram" ||
-    raw["source"] === "r2" ||
-    raw["source"] === "url"
-  ) {
+  if (raw["source"] === "telegram" || raw["source"] === "r2" || raw["source"] === "url") {
     media.source = raw["source"];
   }
   if (telegramFileId) media.telegramFileId = telegramFileId;
@@ -250,9 +224,7 @@ function normalizeMedia(value: unknown): ImportedMedia | null {
 
 function normalizeMediaList(value: unknown): ImportedMedia[] {
   const values = Array.isArray(value) ? value : value ? [value] : [];
-  return values
-    .map(normalizeMedia)
-    .filter((media): media is ImportedMedia => media !== null);
+  return values.map(normalizeMedia).filter((media): media is ImportedMedia => media !== null);
 }
 
 function normalizeOptions(value: unknown): ImportedOption[] {
@@ -290,16 +262,12 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
   }
 
   return value.map((question): ImportedQuestion => {
-    const raw =
-      question && typeof question === "object"
-        ? (question as Record<string, unknown>)
-        : {};
+    const raw = question && typeof question === "object" ? (question as Record<string, unknown>) : {};
     const required = raw["required"];
     const importedQuestion: ImportedQuestion = {
       type: normalizeQuestionType(raw["type"]),
       title: nonEmptyString(raw["title"]) ?? "",
-      required:
-        typeof required === "boolean" || required === null ? required : true,
+      required: typeof required === "boolean" || required === null ? required : true,
       options: normalizeOptions(raw["options"]),
       media: normalizeMediaList(raw["media"]),
     };
@@ -358,18 +326,10 @@ function isOtherOnlyOption(option: ImportedOption): boolean {
     .trim()
     .toLowerCase()
     .replace(/[\s_.:：\-—,，。、()（）[\]【】]+/g, "");
-  return (
-    value === "其他" ||
-    value === "其它" ||
-    value === "other" ||
-    value === "otheroption" ||
-    value === "其他选项"
-  );
+  return value === "其他" || value === "其它" || value === "other" || value === "otheroption" || value === "其他选项";
 }
 
-function splitMergedShortOption(
-  option: ImportedOption,
-): ImportedOption[] | null {
+function splitMergedShortOption(option: ImportedOption): ImportedOption[] | null {
   const parts = option.label
     .split(/\r?\n/)
     .map((part) => part.replace(/\s+/g, " ").trim())
@@ -392,18 +352,11 @@ function splitMergedShortOption(
   }));
 }
 
-function appendDescription(
-  question: ImportedQuestion,
-  text: string,
-): void {
-  question.description = question.description
-    ? `${question.description}\n\n${text}`
-    : text;
+function appendDescription(question: ImportedQuestion, text: string): void {
+  question.description = question.description ? `${question.description}\n\n${text}` : text;
 }
 
-function repairChoiceQuestions(
-  questions: ImportedQuestion[],
-): string[] {
+function repairChoiceQuestions(questions: ImportedQuestion[]): string[] {
   const warnings: string[] = [];
   questions.forEach((question, index) => {
     const isChoice =
@@ -420,9 +373,7 @@ function repairChoiceQuestions(
       const splitOptions = splitMergedShortOption(options[0]!);
       if (splitOptions) {
         question.options = splitOptions;
-        warnings.push(
-          `第 ${index + 1} 题“${question.title || "未命名题目"}”检测到两个被换行合并的选项，已自动拆分`,
-        );
+        warnings.push(`第 ${index + 1} 题“${question.title || "未命名题目"}”检测到两个被换行合并的选项，已自动拆分`);
         return;
       }
     }
@@ -432,25 +383,17 @@ function repairChoiceQuestions(
       question.type = "text";
       question.options = [];
       question.media = [...(question.media ?? []), ...otherMedia];
-      warnings.push(
-        `第 ${index + 1} 题“${question.title || "未命名题目"}”只有“其他”填写项，已自动转为文本题`,
-      );
+      warnings.push(`第 ${index + 1} 题“${question.title || "未命名题目"}”只有“其他”填写项，已自动转为文本题`);
       return;
     }
 
     const recoveredText = options[0]?.label.trim();
     if (recoveredText) {
-      appendDescription(
-        question,
-        `导入识别到的原选项内容：\n${recoveredText}`,
-      );
+      appendDescription(question, `导入识别到的原选项内容：\n${recoveredText}`);
     }
     question.type = "text";
     question.options = [];
-    question.media = [
-      ...(question.media ?? []),
-      ...(options[0]?.media ?? []),
-    ];
+    question.media = [...(question.media ?? []), ...(options[0]?.media ?? [])];
     warnings.push(
       `第 ${index + 1} 题“${question.title || "未命名题目"}”可识别选项不足两个，已自动转为文本题，请检查题目`,
     );
@@ -482,24 +425,16 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     data = {
       title: unifiedSurvey.title ?? "",
       ...(unifiedSurvey.description ? { description: unifiedSurvey.description } : {}),
-      ...(normalizeMedia(unifiedSurvey.cover)
-        ? { cover: normalizeMedia(unifiedSurvey.cover)! }
-        : {}),
+      ...(normalizeMedia(unifiedSurvey.cover) ? { cover: normalizeMedia(unifiedSurvey.cover)! } : {}),
       pages: normalizePages(unifiedSurvey.pages),
       settings: {
         anonymous: unifiedSurvey.settings?.anonymous ?? false,
-        allowMultipleResponses:
-          unifiedSurvey.settings?.allow_multiple ?? false,
-        maxResponsesPerUser: Math.max(
-          1,
-          Math.floor(unifiedSurvey.settings?.max_responses ?? 1),
-        ),
+        allowMultipleResponses: unifiedSurvey.settings?.allow_multiple ?? false,
+        maxResponsesPerUser: Math.max(1, Math.floor(unifiedSurvey.settings?.max_responses ?? 1)),
         ...(typeof unifiedSurvey.settings?.report_template_id === "string"
           ? { reportTemplateId: unifiedSurvey.settings.report_template_id }
           : {}),
-        ...(unifiedSurvey.settings?.theme !== undefined
-          ? { theme: unifiedSurvey.settings.theme }
-          : {}),
+        ...(unifiedSurvey.settings?.theme !== undefined ? { theme: unifiedSurvey.settings.theme } : {}),
       },
       questions: normalizeQuestions(unifiedSurvey.questions),
     };
@@ -521,22 +456,15 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     data = {
       title: legacy.title ?? "",
       ...(legacy.description ? { description: legacy.description } : {}),
-      ...(normalizeMedia(legacy.cover)
-        ? { cover: normalizeMedia(legacy.cover)! }
-        : {}),
+      ...(normalizeMedia(legacy.cover) ? { cover: normalizeMedia(legacy.cover)! } : {}),
       settings: {
         anonymous: legacy.settings?.anonymous ?? false,
         allowMultipleResponses: legacy.settings?.allow_multiple ?? false,
-        maxResponsesPerUser: Math.max(
-          1,
-          Math.floor(legacy.settings?.max_responses ?? 1),
-        ),
+        maxResponsesPerUser: Math.max(1, Math.floor(legacy.settings?.max_responses ?? 1)),
         ...(typeof legacy.settings?.report_template_id === "string"
           ? { reportTemplateId: legacy.settings.report_template_id }
           : {}),
-        ...(legacy.settings?.theme !== undefined
-          ? { theme: legacy.settings.theme }
-          : {}),
+        ...(legacy.settings?.theme !== undefined ? { theme: legacy.settings.theme } : {}),
       },
       questions: normalizeQuestions(legacy.questions),
     };
@@ -555,8 +483,7 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
       if (media.url && !/^(data:|https?:\/\/)/i.test(media.url)) {
         relativeMediaIssues.push({
           path: `questions[${questionIndex}].${field}.url`,
-          message:
-            "JSON 中的图片仍是本地路径（如 assets/...）。请使用新版 PDF 转换脚本重新生成 survey.json",
+          message: "JSON 中的图片仍是本地路径（如 assets/...）。请使用新版 PDF 转换脚本重新生成 survey.json",
           questionNumber: questionIndex + 1,
           questionTitle: question.title,
           field: `${field}.url`,
@@ -565,9 +492,7 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
     };
     (question.media ?? []).forEach((media) => scan(media, "media"));
     (question.options ?? []).forEach((option, optionIndex) =>
-      option.media.forEach((media) =>
-        scan(media, `options[${optionIndex}].media`),
-      ),
+      option.media.forEach((media) => scan(media, `options[${optionIndex}].media`)),
     );
   });
   if (relativeMediaIssues.length > 0) {
@@ -589,24 +514,13 @@ export function parseImportedSurvey(input: string): ImportedSurvey {
 }
 
 function mediaCacheKey(media: ImportedMedia): string {
-  return (
-    media.telegramFileId ??
-    media.id ??
-    media.url ??
-    media.storageKey ??
-    JSON.stringify(media)
-  );
+  return media.telegramFileId ?? media.id ?? media.url ?? media.storageKey ?? JSON.stringify(media);
 }
 
-async function resolveImportedMedia(
-  survey: ImportedSurvey,
-  resolver?: ImportedMediaResolver,
-): Promise<ImportedSurvey> {
+async function resolveImportedMedia(survey: ImportedSurvey, resolver?: ImportedMediaResolver): Promise<ImportedSurvey> {
   const cache = new Map<string, ImportedMedia | null>();
 
-  const resolveOne = async (
-    media: ImportedMedia,
-  ): Promise<ImportedMedia | null> => {
+  const resolveOne = async (media: ImportedMedia): Promise<ImportedMedia | null> => {
     if (media.telegramFileId) {
       return media;
     }
@@ -625,9 +539,7 @@ async function resolveImportedMedia(
     return resolved;
   };
 
-  const resolveList = async (
-    mediaList: ImportedMedia[],
-  ): Promise<ImportedMedia[]> => {
+  const resolveList = async (mediaList: ImportedMedia[]): Promise<ImportedMedia[]> => {
     const resolved: ImportedMedia[] = [];
     for (const media of mediaList) {
       const item = await resolveOne(media);
@@ -670,14 +582,11 @@ export async function saveImportedSurvey(
     title: resolvedSurvey.title,
     description: resolvedSurvey.description ?? null,
     anonymous: resolvedSurvey.settings?.anonymous ?? false,
-    allowMultipleResponses:
-      resolvedSurvey.settings?.allowMultipleResponses ?? false,
+    allowMultipleResponses: resolvedSurvey.settings?.allowMultipleResponses ?? false,
     maxResponsesPerUser: resolvedSurvey.settings?.maxResponsesPerUser ?? 1,
     reportTemplateId: resolvedSurvey.settings?.reportTemplateId ?? null,
     settingsJson:
-      resolvedSurvey.settings?.theme !== undefined
-        ? JSON.stringify({ theme: resolvedSurvey.settings.theme })
-        : null,
+      resolvedSurvey.settings?.theme !== undefined ? JSON.stringify({ theme: resolvedSurvey.settings.theme }) : null,
   });
 
   const timestamp = new Date().toISOString();
@@ -696,14 +605,7 @@ export async function saveImportedSurvey(
           survey_id, title, description, "order", created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .bind(
-        created.id,
-        page.title ?? null,
-        page.description ?? null,
-        index,
-        timestamp,
-        timestamp,
-      )
+      .bind(created.id, page.title ?? null, page.description ?? null, index, timestamp, timestamp)
       .run();
     const pageId = result.meta?.last_row_id;
     if (typeof pageId !== "number") {
@@ -718,10 +620,7 @@ export async function saveImportedSurvey(
     description: question.description ?? null,
     required: question.required === false ? 0 : 1,
     order,
-    pageId:
-      question.pageId !== undefined
-        ? (pageIdsBySource.get(question.pageId) ?? null)
-        : null,
+    pageId: question.pageId !== undefined ? (pageIdsBySource.get(question.pageId) ?? null) : null,
     settingsJson: question.settings ? JSON.stringify(question.settings) : null,
   }));
   const optionRows = resolvedSurvey.questions.flatMap((question, questionOrder) =>
@@ -764,11 +663,7 @@ export async function saveImportedSurvey(
   }> = [];
 
   const registerMedia = (media: ImportedMedia): string | null => {
-    const mediaKey =
-      media.telegramFileId ??
-      media.url ??
-      media.storageKey ??
-      null;
+    const mediaKey = media.telegramFileId ?? media.url ?? media.storageKey ?? null;
     if (!mediaKey) {
       return null;
     }
@@ -777,13 +672,7 @@ export async function saveImportedSurvey(
         mediaType: media.type,
         storageKind:
           media.storageKind ??
-          (media.telegramFileId
-            ? "telegram"
-            : media.storageKey
-              ? "r2"
-              : media.url
-                ? "url"
-                : "telegram"),
+          (media.telegramFileId ? "telegram" : media.storageKey ? "r2" : media.url ? "url" : "telegram"),
         storageKey: media.storageKey ?? null,
         telegramFileId: media.telegramFileId ?? null,
         telegramFileUniqueId: media.telegramFileUniqueId ?? null,
@@ -876,12 +765,7 @@ export async function saveImportedSurvey(
            AND question."order" =
              CAST(json_extract(item.value, '$.questionOrder') AS INTEGER)`,
         )
-        .bind(
-          timestamp,
-          timestamp,
-          JSON.stringify(optionRows),
-          created.id,
-        ),
+        .bind(timestamp, timestamp, JSON.stringify(optionRows), created.id),
     );
   }
 
@@ -913,11 +797,7 @@ export async function saveImportedSurvey(
             ?
           FROM json_each(?) AS item`,
         )
-        .bind(
-          timestamp,
-          timestamp,
-          JSON.stringify([...mediaRows.values()]),
-        ),
+        .bind(timestamp, timestamp, JSON.stringify([...mediaRows.values()])),
     );
   }
 
@@ -952,12 +832,7 @@ export async function saveImportedSurvey(
                  AND media.storage_key = json_extract(item.value, '$.mediaKey'))
            )`,
         )
-        .bind(
-          timestamp,
-          JSON.stringify(questionMediaRows),
-          created.id,
-          timestamp,
-        ),
+        .bind(timestamp, JSON.stringify(questionMediaRows), created.id, timestamp),
     );
   }
 
@@ -996,22 +871,13 @@ export async function saveImportedSurvey(
                  AND media.storage_key = json_extract(item.value, '$.mediaKey'))
            )`,
         )
-        .bind(
-          timestamp,
-          JSON.stringify(optionMediaRows),
-          created.id,
-          timestamp,
-        ),
+        .bind(timestamp, JSON.stringify(optionMediaRows), created.id, timestamp),
     );
   }
 
   if (coverMediaKey !== null) {
     const cover = resolvedSurvey.cover;
-    const keyField = cover?.telegramFileId
-      ? "telegram_file_id"
-      : cover?.storageKey
-        ? "storage_key"
-        : "url";
+    const keyField = cover?.telegramFileId ? "telegram_file_id" : cover?.storageKey ? "storage_key" : "url";
     statements.push(
       db
         .prepare(

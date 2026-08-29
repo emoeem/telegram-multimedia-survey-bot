@@ -32,12 +32,16 @@ function profileFor(fields: Record<string, unknown>) {
     answers: Object.entries(fields).map(([questionId, value]) => answer(Number(questionId), String(value))),
     ruleSet: {
       schemaVersion: 1,
-      rules: [{
-        set: Object.fromEntries(Object.keys(fields).map((questionId) => [
-          `fields.field_${questionId}`,
-          { $from: `answers.${questionId}.value` },
-        ])),
-      }],
+      rules: [
+        {
+          set: Object.fromEntries(
+            Object.keys(fields).map((questionId) => [
+              `fields.field_${questionId}`,
+              { $from: `answers.${questionId}.value` },
+            ]),
+          ),
+        },
+      ],
     },
   });
 }
@@ -55,9 +59,15 @@ describe("result visual example templates", () => {
     }
 
     expect(characterCardExampleTemplate.variables.map((entry) => entry.path)).toContain("result.stats");
-    expect(personalityResultExampleTemplate.variables.map((entry) => entry.path)).toContain("result.fields.personality");
-    expect(customResultPosterExampleTemplate.variables.map((entry) => entry.path)).toContain("result.fields.relationship");
-    expect(characterCardExampleTemplate.variables.map((entry) => entry.path)).not.toContain("result.fields.relationship");
+    expect(personalityResultExampleTemplate.variables.map((entry) => entry.path)).toContain(
+      "result.fields.personality",
+    );
+    expect(customResultPosterExampleTemplate.variables.map((entry) => entry.path)).toContain(
+      "result.fields.relationship",
+    );
+    expect(characterCardExampleTemplate.variables.map((entry) => entry.path)).not.toContain(
+      "result.fields.relationship",
+    );
   });
 
   it("runs answer to ResultProfile to template SVG without renderer-specific field logic", () => {

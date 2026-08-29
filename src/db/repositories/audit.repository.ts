@@ -92,11 +92,7 @@ export async function listAuditLogs(
         after = row.afterJson;
       }
     }
-    const actorName = row.first_name
-      ? String(row.first_name)
-      : row.username
-        ? `@${row.username}`
-        : null;
+    const actorName = row.first_name ? String(row.first_name) : row.username ? `@${row.username}` : null;
     return {
       id: Number(row.id),
       actorUserId: row.actorUserId === null ? null : Number(row.actorUserId),

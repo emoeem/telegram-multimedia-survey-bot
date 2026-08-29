@@ -1,9 +1,4 @@
-import type {
-  SoftwareLicense,
-  SoftwareLicenseStatus,
-  SoftwareLicenseType,
-  SoftwareRelease,
-} from "../db/schema";
+import type { SoftwareLicense, SoftwareLicenseStatus, SoftwareLicenseType, SoftwareRelease } from "../db/schema";
 import { createAuditLog } from "../db/repositories/audit.repository";
 import {
   claimLicenseActivation,
@@ -74,10 +69,7 @@ export interface LicenseActivationDecision extends LicenseDecision {
 function randomCharacters(length: number): string {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
-  return Array.from(
-    bytes,
-    (byte) => LICENSE_KEY_ALPHABET[byte % LICENSE_KEY_ALPHABET.length],
-  ).join("");
+  return Array.from(bytes, (byte) => LICENSE_KEY_ALPHABET[byte % LICENSE_KEY_ALPHABET.length]).join("");
 }
 
 function parseDate(value: string | null): number | null {
@@ -121,10 +113,7 @@ export function generateLicensePublicId(now = new Date()): string {
 }
 
 export async function hashLicenseKey(licenseKey: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(licenseKey.trim().toUpperCase()),
-  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(licenseKey.trim().toUpperCase()));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -182,85 +171,38 @@ export async function evaluateSoftwareLicense(
 ): Promise<LicenseDecision> {
   const checkedAt = now.toISOString();
   if (!license) {
-    return invalidDecision(
-      "license_not_found",
-      "授权密钥不存在",
-      checkedAt,
-      null,
-    );
+    return invalidDecision("license_not_found", "授权密钥不存在", checkedAt, null);
   }
   if (license.status === "revoked") {
-    return invalidDecision(
-      "license_revoked",
-      "授权已被永久吊销",
-      checkedAt,
-      license,
-    );
+    return invalidDecision("license_revoked", "授权已被永久吊销", checkedAt, license);
   }
   if (license.status === "suspended") {
-    return invalidDecision(
-      "license_suspended",
-      "授权已暂停",
-      checkedAt,
-      license,
-    );
+    return invalidDecision("license_suspended", "授权已暂停", checkedAt, license);
   }
 
   const nowTimestamp = now.getTime();
   const startsAt = parseDate(license.startsAt);
   if (startsAt === null || startsAt > nowTimestamp) {
-    return invalidDecision(
-      "license_not_started",
-      "授权尚未生效",
-      checkedAt,
-      license,
-    );
+    return invalidDecision("license_not_started", "授权尚未生效", checkedAt, license);
   }
   const expiresAt = parseDate(license.expiresAt);
-  if (
-    license.licenseType === "timed" &&
-    (expiresAt === null || expiresAt <= nowTimestamp)
-  ) {
-    return invalidDecision(
-      "license_expired",
-      "授权使用期限已到期",
-      checkedAt,
-      license,
-    );
+  if (license.licenseType === "timed" && (expiresAt === null || expiresAt <= nowTimestamp)) {
+    return invalidDecision("license_expired", "授权使用期限已到期", checkedAt, license);
   }
 
   const version = normalizeSoftwareVersion(appVersion);
   if (!version) {
-    return invalidDecision(
-      "version_invalid",
-      "软件版本号格式无效",
-      checkedAt,
-      license,
-    );
+    return invalidDecision("version_invalid", "软件版本号格式无效", checkedAt, license);
   }
   const release = await getSoftwareReleaseByVersion(db, version);
   if (!release) {
-    return invalidDecision(
-      "version_not_registered",
-      `版本 ${version} 尚未在授权中心登记`,
-      checkedAt,
-      license,
-    );
+    return invalidDecision("version_not_registered", `版本 ${version} 尚未在授权中心登记`, checkedAt, license);
   }
 
   const updatesUntil = parseDate(license.updatesUntil);
   const releasedAt = parseDate(release.releasedAt);
-  if (
-    updatesUntil !== null &&
-    (releasedAt === null || releasedAt > updatesUntil)
-  ) {
-    return invalidDecision(
-      "updates_expired",
-      `当前授权不包含版本 ${version} 的升级权益`,
-      checkedAt,
-      license,
-      release,
-    );
+  if (updatesUntil !== null && (releasedAt === null || releasedAt > updatesUntil)) {
+    return invalidDecision("updates_expired", `当前授权不包含版本 ${version} 的升级权益`, checkedAt, license, release);
   }
 
   return {
@@ -350,10 +292,7 @@ export async function createLicense(
   throw new Error("生成唯一授权编号失败，请重试");
 }
 
-async function getLicenseByKey(
-  db: D1Database,
-  licenseKey: string,
-): Promise<SoftwareLicense | null> {
+async function getLicenseByKey(db: D1Database, licenseKey: string): Promise<SoftwareLicense | null> {
   if (!licenseKey.trim()) return null;
   return getSoftwareLicenseByKeyHash(db, await hashLicenseKey(licenseKey));
 }
@@ -377,23 +316,13 @@ export async function activateLicense(
   },
 ): Promise<LicenseActivationDecision> {
   const license = await getLicenseByKey(db, input.licenseKey);
-  const decision = await evaluateSoftwareLicense(
-    db,
-    license,
-    input.appVersion,
-    input.now,
-  );
+  const decision = await evaluateSoftwareLicense(db, license, input.appVersion, input.now);
   if (!decision.valid || !license) {
     return withActivation(decision, null);
   }
 
-  const existing = await getLicenseActivation(
-    db,
-    license.id,
-    input.installationId,
-  );
-  const metadataJson =
-    input.metadata === undefined ? null : JSON.stringify(input.metadata);
+  const existing = await getLicenseActivation(db, license.id, input.installationId);
+  const metadataJson = input.metadata === undefined ? null : JSON.stringify(input.metadata);
   const activation = await claimLicenseActivation(db, {
     licenseId: license.id,
     installationId: input.installationId,
@@ -415,9 +344,7 @@ export async function activateLicense(
   }
   if (!existing || existing.deactivatedAt) {
     await createAuditLog(db, {
-      action: existing
-        ? "software_license.activation_reactivated"
-        : "software_license.activation_created",
+      action: existing ? "software_license.activation_reactivated" : "software_license.activation_created",
       entityType: "software_license",
       entityId: license.publicId,
       after: {
@@ -447,46 +374,24 @@ export async function validateLicense(
   },
 ): Promise<LicenseActivationDecision> {
   const license = await getLicenseByKey(db, input.licenseKey);
-  const decision = await evaluateSoftwareLicense(
-    db,
-    license,
-    input.appVersion,
-    input.now,
-  );
+  const decision = await evaluateSoftwareLicense(db, license, input.appVersion, input.now);
   if (!decision.valid || !license) {
     return withActivation(decision, null);
   }
-  const activation = await getLicenseActivation(
-    db,
-    license.id,
-    input.installationId,
-  );
+  const activation = await getLicenseActivation(db, license.id, input.installationId);
   if (!activation) {
     return withActivation(
-      invalidDecision(
-        "activation_not_found",
-        "当前安装尚未激活",
-        decision.checkedAt,
-        license,
-      ),
+      invalidDecision("activation_not_found", "当前安装尚未激活", decision.checkedAt, license),
       null,
     );
   }
   if (activation.deactivatedAt) {
-    return withActivation(
-      invalidDecision(
-        "activation_deactivated",
-        "当前安装已停用",
-        decision.checkedAt,
-        license,
-      ),
-      {
-        installationId: activation.installationId,
-        active: false,
-        firstSeenAt: activation.firstSeenAt,
-        lastSeenAt: activation.lastSeenAt,
-      },
-    );
+    return withActivation(invalidDecision("activation_deactivated", "当前安装已停用", decision.checkedAt, license), {
+      installationId: activation.installationId,
+      active: false,
+      firstSeenAt: activation.firstSeenAt,
+      lastSeenAt: activation.lastSeenAt,
+    });
   }
 
   const touched = await touchLicenseActivation(db, {
@@ -494,8 +399,7 @@ export async function validateLicense(
     installationId: input.installationId,
     installationName: input.installationName ?? null,
     appVersion: normalizeSoftwareVersion(input.appVersion),
-    metadataJson:
-      input.metadata === undefined ? null : JSON.stringify(input.metadata),
+    metadataJson: input.metadata === undefined ? null : JSON.stringify(input.metadata),
   });
   return withActivation(decision, {
     installationId: activation.installationId,
@@ -514,11 +418,7 @@ export async function deactivateLicense(
 ): Promise<boolean> {
   const license = await getLicenseByKey(db, input.licenseKey);
   if (!license) return false;
-  const activation = await getLicenseActivation(
-    db,
-    license.id,
-    input.installationId,
-  );
+  const activation = await getLicenseActivation(db, license.id, input.installationId);
   if (!activation || activation.deactivatedAt) return false;
   await deactivateLicenseActivation(db, license.id, input.installationId);
   await createAuditLog(db, {
@@ -545,11 +445,7 @@ export async function deactivateLicenseInstallation(
 ): Promise<void> {
   const license = await getSoftwareLicenseByPublicId(db, publicId);
   if (!license) throw new Error("授权不存在");
-  const activation = await getLicenseActivation(
-    db,
-    license.id,
-    installationId,
-  );
+  const activation = await getLicenseActivation(db, license.id, installationId);
   if (!activation) throw new Error("激活设备不存在");
   if (activation.deactivatedAt) throw new Error("该设备已经停用");
   await deactivateLicenseActivation(db, license.id, installationId);
@@ -613,10 +509,7 @@ export async function extendTimedLicense(
   const updatesUntil =
     before.updatesUntil === null
       ? null
-      : addDays(
-          new Date(Math.max(currentUpdates ?? base, now.getTime())),
-          days,
-        ).toISOString();
+      : addDays(new Date(Math.max(currentUpdates ?? base, now.getTime())), days).toISOString();
   const after = await updateSoftwareLicenseDates(db, publicId, {
     expiresAt,
     updatesUntil,
@@ -647,10 +540,7 @@ export async function extendLicenseUpdates(
   const updatesUntil =
     days === null || before.updatesUntil === null
       ? null
-      : addDays(
-          new Date(Math.max(currentUpdates, now.getTime())),
-          days,
-        ).toISOString();
+      : addDays(new Date(Math.max(currentUpdates, now.getTime())), days).toISOString();
   const after = await updateSoftwareLicenseDates(db, publicId, {
     expiresAt: before.expiresAt,
     updatesUntil,
@@ -699,9 +589,4 @@ export async function registerSoftwareRelease(
   return release;
 }
 
-export {
-  getSoftwareLicenseByPublicId,
-  listLicenseActivations,
-  listSoftwareLicenses,
-  listSoftwareReleases,
-};
+export { getSoftwareLicenseByPublicId, listLicenseActivations, listSoftwareLicenses, listSoftwareReleases };

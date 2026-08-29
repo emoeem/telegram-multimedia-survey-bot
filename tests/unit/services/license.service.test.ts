@@ -35,9 +35,7 @@ import {
 
 const NOW = new Date("2026-08-15T08:00:00.000Z");
 
-function license(
-  overrides: Partial<SoftwareLicense> = {},
-): SoftwareLicense {
+function license(overrides: Partial<SoftwareLicense> = {}): SoftwareLicense {
   return {
     id: 1,
     publicId: "LIC-260815-ABCDEFGH",
@@ -59,9 +57,7 @@ function license(
   };
 }
 
-function release(
-  overrides: Partial<SoftwareRelease> = {},
-): SoftwareRelease {
+function release(overrides: Partial<SoftwareRelease> = {}): SoftwareRelease {
   return {
     id: 1,
     version: "0.2.0",
@@ -85,12 +81,7 @@ describe("software license service", () => {
   });
 
   it("accepts an active timed license for a registered version", async () => {
-    const result = await evaluateSoftwareLicense(
-      {} as D1Database,
-      license(),
-      "v0.2.0",
-      NOW,
-    );
+    const result = await evaluateSoftwareLicense({} as D1Database, license(), "v0.2.0", NOW);
 
     expect(result.valid).toBe(true);
     expect(result.code).toBe("valid");
@@ -110,9 +101,7 @@ describe("software license service", () => {
   });
 
   it("keeps perpetual usage but rejects versions released after updates end", async () => {
-    repositoryMocks.getSoftwareReleaseByVersion.mockResolvedValue(
-      release({ releasedAt: "2026-08-01T00:00:00.000Z" }),
-    );
+    repositoryMocks.getSoftwareReleaseByVersion.mockResolvedValue(release({ releasedAt: "2026-08-01T00:00:00.000Z" }));
 
     const result = await evaluateSoftwareLicense(
       {} as D1Database,
@@ -152,19 +141,9 @@ describe("software license service", () => {
   });
 
   it("rejects revoked licenses and unknown versions", async () => {
-    const revoked = await evaluateSoftwareLicense(
-      {} as D1Database,
-      license({ status: "revoked" }),
-      "0.2.0",
-      NOW,
-    );
+    const revoked = await evaluateSoftwareLicense({} as D1Database, license({ status: "revoked" }), "0.2.0", NOW);
     repositoryMocks.getSoftwareReleaseByVersion.mockResolvedValueOnce(null);
-    const unknownVersion = await evaluateSoftwareLicense(
-      {} as D1Database,
-      license(),
-      "9.9.9",
-      NOW,
-    );
+    const unknownVersion = await evaluateSoftwareLicense({} as D1Database, license(), "9.9.9", NOW);
 
     expect(revoked.code).toBe("license_revoked");
     expect(unknownVersion.code).toBe("version_not_registered");
@@ -208,11 +187,8 @@ describe("software license service", () => {
       now: NOW,
     });
 
-    expect(result.licenseKey).toMatch(
-      /^TSB-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}$/,
-    );
-    const createInput = repositoryMocks.createSoftwareLicense.mock
-      .calls[0]?.[1] as { licenseKeyHash: string };
+    expect(result.licenseKey).toMatch(/^TSB-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+    const createInput = repositoryMocks.createSoftwareLicense.mock.calls[0]?.[1] as { licenseKeyHash: string };
     expect(createInput.licenseKeyHash).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(createInput)).not.toContain(result.licenseKey);
   });

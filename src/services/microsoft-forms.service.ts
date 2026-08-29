@@ -28,19 +28,9 @@ const FORMS_HOST_SUFFIXES = [
 ];
 
 const USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " + "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-const YES_NO_VALUES = new Set([
-  "是",
-  "否",
-  "yes",
-  "no",
-  "可以",
-  "不可以",
-  "有",
-  "没有",
-]);
+const YES_NO_VALUES = new Set(["是", "否", "yes", "no", "可以", "不可以", "有", "没有"]);
 
 const CONTACT_REPLACEMENTS: Array<[string, string]> = [
   [
@@ -69,10 +59,7 @@ export class FormsImportError extends Error {
 export function isFormsUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    return (
-      FORMS_HOSTS.has(host) ||
-      FORMS_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
-    );
+    return FORMS_HOSTS.has(host) || FORMS_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
   } catch {
     return false;
   }
@@ -94,9 +81,7 @@ function parseQuestionInfo(raw: unknown): Record<string, unknown> {
   if (typeof raw !== "string" || !raw.trim()) return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, unknown>)
-      : {};
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
@@ -141,17 +126,11 @@ function extractOfficeFormServerInfo(html: string): Record<string, unknown> {
   }
   const brace = html.indexOf("{", markerIndex);
   if (brace < 0) {
-    throw new FormsImportError(
-      "FORMS_PARSE_FAILED",
-      "Microsoft Forms 页面中的问卷信息格式异常。",
-    );
+    throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 页面中的问卷信息格式异常。");
   }
   const raw = extractBalancedJsonObject(html, brace);
   if (!raw) {
-    throw new FormsImportError(
-      "FORMS_PARSE_FAILED",
-      "Microsoft Forms 页面中的问卷信息不完整。",
-    );
+    throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 页面中的问卷信息不完整。");
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -160,10 +139,7 @@ function extractOfficeFormServerInfo(html: string): Record<string, unknown> {
     }
     return parsed as Record<string, unknown>;
   } catch {
-    throw new FormsImportError(
-      "FORMS_PARSE_FAILED",
-      "Microsoft Forms 页面中的问卷信息不是有效 JSON。",
-    );
+    throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 页面中的问卷信息不是有效 JSON。");
   }
 }
 
@@ -229,10 +205,7 @@ interface RawQuestion {
   questionInfo?: unknown;
 }
 
-function buildOptions(
-  id: string,
-  choices: string[],
-): UnifiedSurveyImport["survey"]["questions"][number]["options"] {
+function buildOptions(id: string, choices: string[]): UnifiedSurveyImport["survey"]["questions"][number]["options"] {
   return choices.map((choice, index) => ({
     id: `${id}_o${index + 1}`,
     label: String(index + 1),
@@ -249,12 +222,8 @@ function convertQuestion(
   pageId: string,
 ): UnifiedSurveyImport["survey"]["questions"][number] {
   const id = String(question.id ?? `q_${index + 1}`);
-  const title =
-    cleanText(question.formsProRTQuestionTitle ?? question.title) ||
-    `Question ${index + 1}`;
-  let subtitle = cleanText(
-    question.formsProRTSubtitle ?? question.subtitle,
-  );
+  const title = cleanText(question.formsProRTQuestionTitle ?? question.title) || `Question ${index + 1}`;
+  let subtitle = cleanText(question.formsProRTSubtitle ?? question.subtitle);
   const questionInfo = parseQuestionInfo(question.questionInfo);
   const warnings: string[] = [];
 
@@ -262,7 +231,7 @@ function convertQuestion(
   let options: UnifiedSurveyImport["survey"]["questions"][number]["options"] = [];
   const validation: Record<string, unknown> = {};
 
-    if (question.type === "Question.Choice") {
+  if (question.type === "Question.Choice") {
     const rawChoices = Array.isArray(questionInfo.Choices)
       ? (questionInfo.Choices as Array<Record<string, unknown> | string>)
       : [];
@@ -271,29 +240,18 @@ function convertQuestion(
       if (typeof choice === "string") {
         if (choice.trim()) choices.push(choice.trim());
       } else if (choice && typeof choice === "object") {
-        const description = cleanText(
-          choice.Description ?? choice.FormsProDisplayRTText,
-        );
+        const description = cleanText(choice.Description ?? choice.FormsProDisplayRTText);
         if (description) choices.push(description);
       }
     }
     if (questionInfo.AllowOtherAnswer === true) choices.push("其他");
 
     const choiceType = questionInfo.ChoiceType;
-    const multi =
-      question.allowMultipleValues === true || choiceType === 3;
+    const multi = question.allowMultipleValues === true || choiceType === 3;
     if (!multi) {
-      const normalized = new Set(
-        choices.map((choice) => choice.trim().toLowerCase()),
-      );
-      const yesNoHits = choices.filter((choice) =>
-        YES_NO_VALUES.has(choice.trim().toLowerCase()),
-      );
-      if (
-        choices.length >= 2 &&
-        yesNoHits.length === choices.length &&
-        normalized.size >= 2
-      ) {
+      const normalized = new Set(choices.map((choice) => choice.trim().toLowerCase()));
+      const yesNoHits = choices.filter((choice) => YES_NO_VALUES.has(choice.trim().toLowerCase()));
+      if (choices.length >= 2 && yesNoHits.length === choices.length && normalized.size >= 2) {
         type = "yes_no";
       } else {
         type = "single";
@@ -301,10 +259,7 @@ function convertQuestion(
     } else {
       type = "multiple";
     }
-    if (
-      (type === "single" || type === "multiple" || type === "yes_no") &&
-      choices.length < 2
-    ) {
+    if ((type === "single" || type === "multiple" || type === "yes_no") && choices.length < 2) {
       if (choices.length === 1) {
         const recovered = `导入识别到的原选项内容：\n${choices[0]!}`;
         subtitle = subtitle ? `${subtitle}\n\n${recovered}` : recovered;
@@ -352,9 +307,7 @@ function convertQuestion(
   } else if (question.type === "Question.FileUpload") {
     type = "file";
   } else {
-    warnings.push(
-      `未识别的 Forms 题型 ${String(question.type ?? "unknown")}，已按文本题导入`,
-    );
+    warnings.push(`未识别的 Forms 题型 ${String(question.type ?? "unknown")}，已按文本题导入`);
   }
 
   const media: UnifiedSurveyImport["survey"]["questions"][number]["media"] = [];
@@ -368,9 +321,7 @@ function convertQuestion(
       ...(image.contentType ? { mime_type: String(image.contentType) } : {}),
       ...(typeof image.width === "number" ? { width: image.width } : {}),
       ...(typeof image.height === "number" ? { height: image.height } : {}),
-      ...(image.originalFileName
-        ? { file_name: String(image.originalFileName) }
-        : {}),
+      ...(image.originalFileName ? { file_name: String(image.originalFileName) } : {}),
       ...(image.altText ? { caption: String(image.altText) } : {}),
     });
   }
@@ -398,10 +349,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
   const description = cleanText(data.description) || "Imported from Microsoft Forms";
 
   const coverPart = [data.background, data.header, data.logo].find(
-    (part) =>
-      part &&
-      typeof part.resourceUrl === "string" &&
-      part.resourceUrl.startsWith("http"),
+    (part) => part && typeof part.resourceUrl === "string" && part.resourceUrl.startsWith("http"),
   ) as FormsImagePart | undefined;
   const cover: UnifiedSurveyImport["survey"]["cover"] = coverPart
     ? {
@@ -409,23 +357,17 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
         type: "photo",
         source: "url",
         url: String(coverPart.resourceUrl),
-        ...(coverPart.contentType
-          ? { mime_type: String(coverPart.contentType) }
-          : {}),
+        ...(coverPart.contentType ? { mime_type: String(coverPart.contentType) } : {}),
         ...(typeof coverPart.width === "number" ? { width: coverPart.width } : {}),
         ...(typeof coverPart.height === "number" ? { height: coverPart.height } : {}),
-        ...(coverPart.originalFileName
-          ? { file_name: String(coverPart.originalFileName) }
-          : {}),
+        ...(coverPart.originalFileName ? { file_name: String(coverPart.originalFileName) } : {}),
         ...(coverPart.altText ? { caption: String(coverPart.altText) } : {}),
       }
     : null;
 
   const pages: UnifiedSurveyImport["survey"]["pages"] = [];
   const pageByDescriptive = new Map<string, string>();
-  const descriptive = Array.isArray(data.descriptiveQuestions)
-    ? [...data.descriptiveQuestions]
-    : [];
+  const descriptive = Array.isArray(data.descriptiveQuestions) ? [...data.descriptiveQuestions] : [];
   descriptive.sort((a, b) => {
     const left = (a as Record<string, unknown>).order;
     const right = (b as Record<string, unknown>).order;
@@ -463,11 +405,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
   let currentPage = pages[0]!.id;
   const surveyQuestions = questions.map((question, index) => {
     const raw = question as RawQuestion;
-    if (
-      raw.groupId !== null &&
-      raw.groupId !== undefined &&
-      pageByDescriptive.has(String(raw.groupId))
-    ) {
+    if (raw.groupId !== null && raw.groupId !== undefined && pageByDescriptive.has(String(raw.groupId))) {
       currentPage = pageByDescriptive.get(String(raw.groupId))!;
     }
     return convertQuestion(raw, index, currentPage);
@@ -475,7 +413,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
 
   const warnings = surveyQuestions.flatMap((question) =>
     Array.isArray((question as unknown as Record<string, unknown>).warnings)
-      ? (((question as unknown as Record<string, unknown>).warnings as unknown[]) as string[])
+      ? ((question as unknown as Record<string, unknown>).warnings as unknown[] as string[])
       : [],
   );
 
@@ -508,10 +446,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
 /**
  * Fetch a public Microsoft Forms URL and return the standard survey.json text.
  */
-async function fetchFormsDefinition(
-  url: string,
-  timeoutMs = 25_000,
-): Promise<FormsDefinition> {
+async function fetchFormsDefinition(url: string, timeoutMs = 25_000): Promise<FormsDefinition> {
   const page = await fetchJson(url, {}, timeoutMs);
   if (page.status === 401 || page.status === 403) {
     throw new FormsImportError(
@@ -523,20 +458,13 @@ async function fetchFormsDefinition(
     throw new FormsImportError("HTTP_404", "问卷链接返回 404，可能已失效。");
   }
   if (page.status !== 200) {
-    throw new FormsImportError(
-      "DOWNLOAD_FAILED",
-      `Microsoft Forms 页面请求失败（HTTP ${page.status}）。`,
-    );
+    throw new FormsImportError("DOWNLOAD_FAILED", `Microsoft Forms 页面请求失败（HTTP ${page.status}）。`);
   }
 
   const info = extractOfficeFormServerInfo(page.body);
-  const apiUrl =
-    info.prefetchFormUrl ?? info.prefetchFormWithResponsesUrl;
+  const apiUrl = info.prefetchFormUrl ?? info.prefetchFormWithResponsesUrl;
   if (typeof apiUrl !== "string" || !/^https?:\/\//.test(apiUrl)) {
-    throw new FormsImportError(
-      "FORMS_PARSE_FAILED",
-      "Microsoft Forms 页面未提供问卷定义 API 地址，无法获取问卷内容。",
-    );
+    throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 页面未提供问卷定义 API 地址，无法获取问卷内容。");
   }
 
   const apiResponse = await fetchJson(
@@ -565,10 +493,7 @@ async function fetchFormsDefinition(
   try {
     definition = JSON.parse(apiResponse.body) as FormsDefinition;
   } catch {
-    throw new FormsImportError(
-      "FORMS_PARSE_FAILED",
-      "Microsoft Forms 问卷定义不是有效 JSON。",
-    );
+    throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 问卷定义不是有效 JSON。");
   }
   if (!definition || !Array.isArray(definition.questions)) {
     throw new FormsImportError(
@@ -580,10 +505,7 @@ async function fetchFormsDefinition(
   return definition;
 }
 
-export async function fetchMicrosoftFormsSurveyJson(
-  url: string,
-  timeoutMs = 25_000,
-): Promise<string> {
+export async function fetchMicrosoftFormsSurveyJson(url: string, timeoutMs = 25_000): Promise<string> {
   const definition = await fetchFormsDefinition(url, timeoutMs);
   return JSON.stringify(formsDefinitionToSurvey(definition));
 }
@@ -601,16 +523,10 @@ export interface MicrosoftFormsCover {
  * Used by the admin cover backfill so existing surveys can be updated
  * without re-importing their questions.
  */
-export async function fetchMicrosoftFormsCover(
-  url: string,
-  timeoutMs = 25_000,
-): Promise<MicrosoftFormsCover | null> {
+export async function fetchMicrosoftFormsCover(url: string, timeoutMs = 25_000): Promise<MicrosoftFormsCover | null> {
   const definition = await fetchFormsDefinition(url, timeoutMs);
   const part = [definition.background, definition.header, definition.logo].find(
-    (item) =>
-      item &&
-      typeof item.resourceUrl === "string" &&
-      item.resourceUrl.startsWith("http"),
+    (item) => item && typeof item.resourceUrl === "string" && item.resourceUrl.startsWith("http"),
   ) as FormsImagePart | undefined;
   if (!part) return null;
   return {
@@ -618,8 +534,6 @@ export async function fetchMicrosoftFormsCover(
     ...(part.contentType ? { mimeType: String(part.contentType) } : {}),
     ...(typeof part.width === "number" ? { width: part.width } : {}),
     ...(typeof part.height === "number" ? { height: part.height } : {}),
-    ...(part.originalFileName
-      ? { fileName: String(part.originalFileName) }
-      : {}),
+    ...(part.originalFileName ? { fileName: String(part.originalFileName) } : {}),
   };
 }

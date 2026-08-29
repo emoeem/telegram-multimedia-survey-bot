@@ -16,11 +16,7 @@ function bytesToDataUrl(bytes: Uint8Array, contentType: string): string {
   return `data:${contentType};base64,${btoa(binary)}`;
 }
 
-function detectedImageContentType(
-  data: Uint8Array,
-  responseContentType: string,
-  filePath: string,
-): string | null {
+function detectedImageContentType(data: Uint8Array, responseContentType: string, filePath: string): string | null {
   const contentType = responseContentType.toLowerCase().split(";", 1)[0]!.trim();
   if (contentType.startsWith("image/")) return contentType;
 
@@ -32,7 +28,11 @@ function detectedImageContentType(
   }
   if (data.length >= 6 && String.fromCharCode(...data.subarray(0, 6)) === "GIF87a") return "image/gif";
   if (data.length >= 6 && String.fromCharCode(...data.subarray(0, 6)) === "GIF89a") return "image/gif";
-  if (data.length >= 12 && String.fromCharCode(...data.subarray(0, 4)) === "RIFF" && String.fromCharCode(...data.subarray(8, 12)) === "WEBP") {
+  if (
+    data.length >= 12 &&
+    String.fromCharCode(...data.subarray(0, 4)) === "RIFF" &&
+    String.fromCharCode(...data.subarray(8, 12)) === "WEBP"
+  ) {
     return "image/webp";
   }
 
@@ -44,22 +44,28 @@ function detectedImageContentType(
   return null;
 }
 
-function resolveProfileValue(
-  profile: ResultProfileSnapshot,
-  path: string,
-): ResultJsonValue | undefined {
+function resolveProfileValue(profile: ResultProfileSnapshot, path: string): ResultJsonValue | undefined {
   const segments = path.split(".");
   if (segments[0] !== "result") return undefined;
   let value: unknown;
   switch (segments[1]) {
-    case "title": value = profile.title; break;
-    case "subtitle": value = profile.subtitle; break;
-    case "images": value = profile.images; break;
+    case "title":
+      value = profile.title;
+      break;
+    case "subtitle":
+      value = profile.subtitle;
+      break;
+    case "images":
+      value = profile.images;
+      break;
     case "fields":
       value = Object.fromEntries(Object.entries(profile.fields).map(([key, field]) => [key, field.value]));
       break;
-    case "metadata": value = profile.metadata; break;
-    default: return undefined;
+    case "metadata":
+      value = profile.metadata;
+      break;
+    default:
+      return undefined;
   }
   for (const segment of segments.slice(2)) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -80,9 +86,7 @@ function telegramFileId(value: ResultJsonValue): string | null {
 function mediaAssetId(value: ResultJsonValue): number | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value.mediaAssetId;
-  return typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate > 0
-    ? candidate
-    : null;
+  return typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate > 0 ? candidate : null;
 }
 
 async function downloadImageDataUrl(botToken: string, fileId: string): Promise<string> {
@@ -90,11 +94,7 @@ async function downloadImageDataUrl(botToken: string, fileId: string): Promise<s
   if (downloaded.data.byteLength > maxVisualImageBytes) {
     throw new Error("视觉模板图片超过 8 MB 限制");
   }
-  const contentType = detectedImageContentType(
-    downloaded.data,
-    downloaded.contentType,
-    downloaded.filePath,
-  );
+  const contentType = detectedImageContentType(downloaded.data, downloaded.contentType, downloaded.filePath);
   if (!contentType) {
     throw new Error("视觉模板资源必须是图片");
   }
@@ -109,7 +109,8 @@ async function resolveAssetImage(
 ): Promise<string> {
   const asset = await getMediaAssetById(db, assetId);
   if (!asset?.telegramFileId) throw new Error("视觉模板背景资源不存在或没有 Telegram file_id");
-  if (!allowedScopes.includes(asset.scope ?? "legacy")) throw new Error("该媒体属于问卷/答卷素材，不能作为模板背景使用");
+  if (!allowedScopes.includes(asset.scope ?? "legacy"))
+    throw new Error("该媒体属于问卷/答卷素材，不能作为模板背景使用");
   if (asset.mediaType !== "photo" && !asset.mimeType?.toLowerCase().startsWith("image/")) {
     throw new Error("视觉模板背景资源必须是图片");
   }
@@ -141,10 +142,10 @@ export async function resolveResultVisualImages(
   if (template.background.type === "telegram_asset") {
     try {
       images[TEMPLATE_BACKGROUND_IMAGE_KEY] = await resolveAssetImage(
-      db,
-      botToken,
-      template.background.assetId,
-      profile.resultType === "identity_card" ? ["identity_card", "template", "legacy"] : ["template", "legacy"],
+        db,
+        botToken,
+        template.background.assetId,
+        profile.resultType === "identity_card" ? ["identity_card", "template", "legacy"] : ["template", "legacy"],
       );
     } catch (error) {
       // A background should never prevent delivery of the user's report.
@@ -176,11 +177,7 @@ export async function resolveResultVisualImages(
     const path = expression.exec(section.source)?.[1];
     if (!path) continue;
     const value = resolveProfileValue(profile, path);
-    const items = Array.isArray(value)
-      ? value
-      : value && typeof value === "object"
-        ? Object.values(value)
-        : [];
+    const items = Array.isArray(value) ? value : value && typeof value === "object" ? Object.values(value) : [];
     for (const [index, item] of items.entries()) {
       const key = `${path}.${index}`;
       if (images[key]) continue;

@@ -46,10 +46,11 @@ describe("report delivery service", () => {
     });
 
     expect(result.queued).toBe(true);
-    expect(repositoryMocks.createReportDelivery).toHaveBeenCalledWith(
-      {} as D1Database,
-      { responseId: 10, reportVersion: 1, deliveryId: "response_10_v1" },
-    );
+    expect(repositoryMocks.createReportDelivery).toHaveBeenCalledWith({} as D1Database, {
+      responseId: 10,
+      reportVersion: 1,
+      deliveryId: "response_10_v1",
+    });
     expect(queue.send).toHaveBeenCalledWith({
       kind: "report_delivery",
       deliveryId: "response_10_v1",

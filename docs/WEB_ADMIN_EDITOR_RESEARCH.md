@@ -28,15 +28,15 @@ Cloudflare Worker（单 Worker，生产 wrangler.toml）
 
 `surveys` 表（`db/migrations/0001_users_surveys.sql` + 0007）：
 
-| 字段 | 说明 |
-| -- | -- |
-| `id`, `owner_id` | 数值主键；归属 users.id |
-| `title`, `description`, `cover_media_id` | 基本信息；封面指向 media_assets |
-| `status` | `draft / published / closed / archived`，DEFAULT draft |
-| `anonymous`, `allow_multiple_responses`, `max_responses_per_user` | 响应策略 |
-| `version` | INTEGER DEFAULT 1——**只是状态/策略变更计数器**：仅在 `updateSurveyStatus`（publish/close 等）与 `updateSurveyResponsePolicy` 时 +1；题目增删改不递增；**不是乐观锁、无历史版本表**（`survey_publications` 表建了但从未写入） |
-| `published_at / closed_at`（`archived_at` 列存在但从不写入） | 状态时间戳 |
-| `access_code(+encrypted)` | 访问密码（bot 侧管理） |
+| 字段                                                              | 说明                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `owner_id`                                                  | 数值主键；归属 users.id                                                                                                                                                                                                      |
+| `title`, `description`, `cover_media_id`                          | 基本信息；封面指向 media_assets                                                                                                                                                                                              |
+| `status`                                                          | `draft / published / closed / archived`，DEFAULT draft                                                                                                                                                                       |
+| `anonymous`, `allow_multiple_responses`, `max_responses_per_user` | 响应策略                                                                                                                                                                                                                     |
+| `version`                                                         | INTEGER DEFAULT 1——**只是状态/策略变更计数器**：仅在 `updateSurveyStatus`（publish/close 等）与 `updateSurveyResponsePolicy` 时 +1；题目增删改不递增；**不是乐观锁、无历史版本表**（`survey_publications` 表建了但从未写入） |
+| `published_at / closed_at`（`archived_at` 列存在但从不写入）      | 状态时间戳                                                                                                                                                                                                                   |
+| `access_code(+encrypted)`                                         | 访问密码（bot 侧管理）                                                                                                                                                                                                       |
 
 Repository 写方法（`src/db/repositories/survey.repository.ts`）：`createSurvey`（version=1）、`updateSurveyResponsePolicy`（version+1）、`updateDraftSurvey`（**仅 draft 且 owner 匹配**，改 title/description）、`updateSurveyStatus`、`deleteSurvey`、`duplicateSurvey`（`survey.service.ts:124-207`，深拷贝题目/选项/媒体）、`getLatestDraftSurveyByOwner`（草稿恢复）。
 
@@ -78,6 +78,7 @@ idle → survey_title → survey_description → [每道题循环:]
 **DraftQuestion 结构**（DO 内）：`{type, title, required?, options:[{label, mediaAssetId}], matrixColumns?, mediaAssetId}`——**不含 condition/跳题规则、不含 description/validation**。
 
 **落库**（`saveDraftSurvey`，`survey-builder.service.ts:359-404`）：
+
 - 仅 draft 且 owner 匹配才可覆盖（`updateDraftSurvey` 约束）；
 - 已有草稿：更新 title/description 后 **`DELETE FROM survey_questions WHERE survey_id=?` 全删 → `insertDraftQuestions` 整批重建**（含选项与媒体关联）；
 - ⚠️ **发现现存缺陷：全删重插会丢跳题规则与 validation/settings（DraftQuestion 不携带 condition_json）**——bot 侧"保存草稿"后，此前在题目编辑器里配好的跳题会被静默清除。Web 编辑器设计必须避免沿用此模式（见 §7）。
@@ -88,14 +89,14 @@ idle → survey_title → survey_description → [每道题循环:]
 
 ## 5. Draft / Publish 分析
 
-| 操作 | Bot 现状 | Web 编辑器建议 |
-| -- | -- | -- |
-| 创建 | `/create` 进向导，保存时 createSurvey（draft） | `POST /api/admin/surveys`（需 `canCreateSurvey`） |
-| 编辑 draft | 向导恢复 + 全删重插 | **增量操作**（保 ID、保跳题），见 §7 |
-| 编辑 published | `assertSurveyQuestionsEditable`：0 答卷可增量编辑；有答卷锁结构（标题/响应策略另有通道） | **v1 只允许编辑 draft**；published 提供只读视图 + "复制为新草稿"（duplicateSurvey 已存在）。避免"编辑 published 期间有人开始答题"的竞态 |
-| 发布 | `owner:publish_ask/confirm` → `assertCanManageSurvey` + `assertSurveyCanPublish` → `updateSurveyStatus` | 同一校验链搬到 API（见 API 文档） |
-| 关闭 | `owner:close` | v1 可选（低风险，复用同一链路） |
-| 删除 | `deleteSurvey`（裸删） | v1 不做（不可逆；后续若做需连带清理策略讨论） |
+| 操作           | Bot 现状                                                                                                | Web 编辑器建议                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 创建           | `/create` 进向导，保存时 createSurvey（draft）                                                          | `POST /api/admin/surveys`（需 `canCreateSurvey`）                                                                                       |
+| 编辑 draft     | 向导恢复 + 全删重插                                                                                     | **增量操作**（保 ID、保跳题），见 §7                                                                                                    |
+| 编辑 published | `assertSurveyQuestionsEditable`：0 答卷可增量编辑；有答卷锁结构（标题/响应策略另有通道）                | **v1 只允许编辑 draft**；published 提供只读视图 + "复制为新草稿"（duplicateSurvey 已存在）。避免"编辑 published 期间有人开始答题"的竞态 |
+| 发布           | `owner:publish_ask/confirm` → `assertCanManageSurvey` + `assertSurveyCanPublish` → `updateSurveyStatus` | 同一校验链搬到 API（见 API 文档）                                                                                                       |
+| 关闭           | `owner:close`                                                                                           | v1 可选（低风险，复用同一链路）                                                                                                         |
+| 删除           | `deleteSurvey`（裸删）                                                                                  | v1 不做（不可逆；后续若做需连带清理策略讨论）                                                                                           |
 
 **版本化问题**（规范文档 §七）：当前无 Survey↔Question 版本关系、无发布快照。**v1 不引入版本化**——通过"draft-only 编辑 + 有答卷即锁 + 复制再改"达成"已发布问卷不破坏历史数据"的目标，这正是现有 bot 的既定语义（既有不变量），零迁移。快照/revision 方案作为未来选项写入 MIGRATION 文档，不在本阶段做。
 
@@ -110,6 +111,7 @@ idle → survey_title → survey_description → [每道题循环:]
 5. **跳题规则在提交时镜像重放**：`findMissingRequiredQuestion` 沿同一跳题路径检查必答——编辑条件会改变校验语义。
 
 **结论（编辑器安全边界）**：
+
 - **draft 问卷**：无答卷、无答题会话 → 任何编辑安全（含全删重插，但会丢跳题规则——见 §4 缺陷，仍建议增量）。
 - **published + 0 答卷**：编辑安全但存在竞态窗口（保存时校验 responseCount 后、提交前有人开始答题）——缓解：保存事务内复查；v1 干脆不开放（§5）。
 - **有任何答卷**：结构锁定（沿用 `assertSurveyQuestionsEditable`），仅允许复制后编辑。
@@ -175,31 +177,31 @@ Bot `/preview` = `getSurveyFlow` → 纯文本编号列表（`survey-handler.ts:
 
 ## 10. 风险列表
 
-| # | 问题 | 影响 | 建议 | 代价/风险 | 阶段 |
-| -- | -- | -- | -- | -- | -- |
-| R1 | bot"保存草稿"全删重插会**丢跳题规则**（DraftQuestion 不携带 condition_json） | 现存数据破坏路径；Web 若沿用同模式会复现 | Web 用增量操作；bot 侧缺陷单列修复项（DraftQuestion 增加 condition 携带） | 小/低 | 2.2 |
-| R2 | 选项/题目 ID 是答卷外键（CASCADE） | 重建式保存会静默删历史答案 | 保 ID 增量编辑 + 保存时复查 responseCount | —/低 | 全程 |
-| R3 | published+0 答卷编辑存在答题竞态窗口 | 保存瞬间新答卷引用被改结构 | v1 仅 draft 可编辑；published 走复制再改 | 体验取舍/低 | 2.x |
-| R4 | 题型集合与选项数量规则三处不一致（含幽灵 `boolean`） | 编辑器校验与 bot/导入行为漂移 | Phase 2.1 前置：统一常量模块 + 修 validator | 小/低 | 2.1 |
-| R5 | 无乐观锁/version 语义弱 | 双开浏览器互相覆盖 | baseUpdatedAt 轻量 409 方案（零迁移） | 小/低 | 2.4 |
-| R6 | 媒体上传无浏览器通路 | 媒体题 Web 不可编辑附件 | v1 只读 + 后置 multipart→Bot API 中继方案 | 中/中 | 后置 |
-| R7 | admin-api 写面缺失 + 未接 trial 检查 | 权限边界不完整 | 新写端点统一接 canCreate/canManage/assertEditable | 小/低 | 2.1-2.2 |
-| R8 | 前端无构建，CI 无 build 步骤 | 编辑器代码规模失控 / 部署断裂 | 引入 Vite + CI build + dist 入库策略变更 | 中/中 | 2.1 |
-| R9 | `scripts/research-web-admin.sh` 不存在 | dnd-kit 等依赖 license 审计前置缺失 | 引入任何 npm 依赖前补审计（含精确版本+license） | 小/低 | 2.1 |
-| R10 | matrix 列顺序 = 历史答案语义（索引存储） | 重排列改变历史含义 | 有答卷本就锁结构（R2 防线覆盖）；draft 内自由 | —/低 | 已覆盖 |
-| R11 | 删除问卷为裸 DELETE 无清理策略 | 不可逆+孤儿数据 | v1 不提供删除 UI | —/低 | 后置 |
+| #   | 问题                                                                         | 影响                                     | 建议                                                                      | 代价/风险   | 阶段    |
+| --- | ---------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------- | ----------- | ------- |
+| R1  | bot"保存草稿"全删重插会**丢跳题规则**（DraftQuestion 不携带 condition_json） | 现存数据破坏路径；Web 若沿用同模式会复现 | Web 用增量操作；bot 侧缺陷单列修复项（DraftQuestion 增加 condition 携带） | 小/低       | 2.2     |
+| R2  | 选项/题目 ID 是答卷外键（CASCADE）                                           | 重建式保存会静默删历史答案               | 保 ID 增量编辑 + 保存时复查 responseCount                                 | —/低        | 全程    |
+| R3  | published+0 答卷编辑存在答题竞态窗口                                         | 保存瞬间新答卷引用被改结构               | v1 仅 draft 可编辑；published 走复制再改                                  | 体验取舍/低 | 2.x     |
+| R4  | 题型集合与选项数量规则三处不一致（含幽灵 `boolean`）                         | 编辑器校验与 bot/导入行为漂移            | Phase 2.1 前置：统一常量模块 + 修 validator                               | 小/低       | 2.1     |
+| R5  | 无乐观锁/version 语义弱                                                      | 双开浏览器互相覆盖                       | baseUpdatedAt 轻量 409 方案（零迁移）                                     | 小/低       | 2.4     |
+| R6  | 媒体上传无浏览器通路                                                         | 媒体题 Web 不可编辑附件                  | v1 只读 + 后置 multipart→Bot API 中继方案                                 | 中/中       | 后置    |
+| R7  | admin-api 写面缺失 + 未接 trial 检查                                         | 权限边界不完整                           | 新写端点统一接 canCreate/canManage/assertEditable                         | 小/低       | 2.1-2.2 |
+| R8  | 前端无构建，CI 无 build 步骤                                                 | 编辑器代码规模失控 / 部署断裂            | 引入 Vite + CI build + dist 入库策略变更                                  | 中/中       | 2.1     |
+| R9  | `scripts/research-web-admin.sh` 不存在                                       | dnd-kit 等依赖 license 审计前置缺失      | 引入任何 npm 依赖前补审计（含精确版本+license）                           | 小/低       | 2.1     |
+| R10 | matrix 列顺序 = 历史答案语义（索引存储）                                     | 重排列改变历史含义                       | 有答卷本就锁结构（R2 防线覆盖）；draft 内自由                             | —/低        | 已覆盖  |
+| R11 | 删除问卷为裸 DELETE 无清理策略                                               | 不可逆+孤儿数据                          | v1 不提供删除 UI                                                          | —/低        | 后置    |
 
 ## 11. Phase 2 实施计划（对齐总规范 §二十三）
 
-| 阶段 | 内容 | 关键点 |
-| -- | -- | -- |
-| **2.0（本文档）** | 调研 + 架构/API/迁移提案 | **已完成，等待确认后进入 2.1** |
-| 2.1 Editor Shell | Vite 工具链接入（产物仍 admin/dist）+ CI build；题型/校验统一（R4）；编辑器路由/头/设置/题目列表（只读渲染）+ 桌面/移动布局；依赖审计（R9） | 不接写 API |
-| 2.2 Question Editing | 写 API 第一批（创建问卷/增删改题目/选项，见 API 文档）+ 编辑 UI（10 种题型完整、4 种媒体题只读）；修复 R1 顺带验证 | 增量操作、保 ID |
-| 2.3 Ordering | 拖拽排序（dnd-kit）+ 批量 normalize API + 校验 | 0..n-1 不变量 |
-| 2.4 Draft/Save | Dirty/Saving/Saved/Failed 状态机 + baseUpdatedAt 409 + 离开提醒 | 自动保存后置 |
-| 2.5 Preview | 基于 SurveyQuestionView 的 Web 预览 | 复用 engine |
-| 2.6 Publish | 发布确认 + assertSurveyCanPublish 链 + 状态展示 + published 只读视图/复制再改 | 复用 bot 校验链 |
-| 验收 | Staging 全量验证（权限矩阵/并发/兼容性/三端响应式）后评伋生产 | 沿用 Phase 1 手册流程 |
+| 阶段                 | 内容                                                                                                                                        | 关键点                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **2.0（本文档）**    | 调研 + 架构/API/迁移提案                                                                                                                    | **已完成，等待确认后进入 2.1** |
+| 2.1 Editor Shell     | Vite 工具链接入（产物仍 admin/dist）+ CI build；题型/校验统一（R4）；编辑器路由/头/设置/题目列表（只读渲染）+ 桌面/移动布局；依赖审计（R9） | 不接写 API                     |
+| 2.2 Question Editing | 写 API 第一批（创建问卷/增删改题目/选项，见 API 文档）+ 编辑 UI（10 种题型完整、4 种媒体题只读）；修复 R1 顺带验证                          | 增量操作、保 ID                |
+| 2.3 Ordering         | 拖拽排序（dnd-kit）+ 批量 normalize API + 校验                                                                                              | 0..n-1 不变量                  |
+| 2.4 Draft/Save       | Dirty/Saving/Saved/Failed 状态机 + baseUpdatedAt 409 + 离开提醒                                                                             | 自动保存后置                   |
+| 2.5 Preview          | 基于 SurveyQuestionView 的 Web 预览                                                                                                         | 复用 engine                    |
+| 2.6 Publish          | 发布确认 + assertSurveyCanPublish 链 + 状态展示 + published 只读视图/复制再改                                                               | 复用 bot 校验链                |
+| 验收                 | Staging 全量验证（权限矩阵/并发/兼容性/三端响应式）后评伋生产                                                                               | 沿用 Phase 1 手册流程          |
 
 每阶段完成按总规范 §二十六格式汇报；任何 schema/迁移/domain 重大修改先提案再动（本文档即 2.0 提案）。

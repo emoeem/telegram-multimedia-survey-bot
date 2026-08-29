@@ -15,10 +15,7 @@ export interface MediaServeEnv {
  * when the provider cannot serve it (missing config or unknown kind); callers
  * translate null into their own 404/503 response.
  */
-export async function buildMediaResponse(
-  env: MediaServeEnv,
-  asset: MediaAsset,
-): Promise<Response | null> {
+export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset): Promise<Response | null> {
   const secureHeaders = (headers: Headers, cacheControl: string): Headers => {
     headers.set("Cache-Control", cacheControl);
     headers.set("X-Content-Type-Options", "nosniff");
@@ -38,15 +35,15 @@ export async function buildMediaResponse(
       headers.set("Content-Type", decoded.mimeType);
       secureHeaders(headers, "public, max-age=300");
       if (asset.fileName) {
-        headers.set(
-          "Content-Disposition",
-          `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`,
-        );
+        headers.set("Content-Disposition", `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`);
       }
-      return new Response(decoded.bytes.buffer.slice(
-        decoded.bytes.byteOffset,
-        decoded.bytes.byteOffset + decoded.bytes.byteLength,
-      ) as ArrayBuffer, { headers });
+      return new Response(
+        decoded.bytes.buffer.slice(
+          decoded.bytes.byteOffset,
+          decoded.bytes.byteOffset + decoded.bytes.byteLength,
+        ) as ArrayBuffer,
+        { headers },
+      );
     }
     return Response.redirect(asset.url, 302);
   }
@@ -72,10 +69,7 @@ export async function buildMediaResponse(
     if (asset.mimeType) headers.set("Content-Type", asset.mimeType);
     secureHeaders(headers, "public, max-age=300");
     if (asset.fileName) {
-      headers.set(
-        "Content-Disposition",
-        `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`,
-      );
+      headers.set("Content-Disposition", `inline; filename="${asset.fileName.replace(/[\r\n"]/g, "_")}"`);
     }
     const object = await env.MEDIA.get(storageKey);
     if (!object) return null;
@@ -88,8 +82,7 @@ export async function buildMediaResponse(
       return new Response(new Uint8Array(downloaded.data).buffer, {
         headers: secureHeaders(
           new Headers({
-            "Content-Type":
-              asset.mimeType ?? downloaded.contentType ?? "application/octet-stream",
+            "Content-Type": asset.mimeType ?? downloaded.contentType ?? "application/octet-stream",
           }),
           "public, max-age=300",
         ),

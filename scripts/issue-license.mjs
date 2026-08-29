@@ -9,8 +9,7 @@ import { stdin as input, stdout as output } from "node:process";
 
 const ROOT_DIR = fileURLToPath(new URL("..", import.meta.url));
 const TOKEN_FILE = path.join(ROOT_DIR, ".license-admin.env");
-const DEFAULT_LICENSE_SERVER_URL =
-  "https://telegram-multimedia-survey-bot.pd2335346.workers.dev";
+const DEFAULT_LICENSE_SERVER_URL = "https://telegram-multimedia-survey-bot.pd2335346.workers.dev";
 
 function readEnvValue(contents, key) {
   return contents.match(new RegExp(`^${key}=(.+)$`, "m"))?.[1]?.trim() ?? "";
@@ -45,9 +44,10 @@ async function main() {
       (await rl.question("授权期限（直接回车为 365，永久输入 forever）: ")).trim() || "365",
     );
     const configuredUrl = readEnvValue(config, "LICENSE_SERVER_URL");
-    const licenseServerUrl = (
-      await rl.question(`授权中心地址（直接回车使用 ${configuredUrl || DEFAULT_LICENSE_SERVER_URL}）: `)
-    ).trim() || configuredUrl || DEFAULT_LICENSE_SERVER_URL;
+    const licenseServerUrl =
+      (await rl.question(`授权中心地址（直接回车使用 ${configuredUrl || DEFAULT_LICENSE_SERVER_URL}）: `)).trim() ||
+      configuredUrl ||
+      DEFAULT_LICENSE_SERVER_URL;
     if (!/^https:\/\//i.test(licenseServerUrl)) {
       throw new Error("授权中心地址必须以 https:// 开头。");
     }
@@ -56,27 +56,26 @@ async function main() {
       : `${config.trimEnd()}\nLICENSE_SERVER_URL=${licenseServerUrl}\n`;
     await fs.writeFile(TOKEN_FILE, savedConfig, { encoding: "utf8", mode: 0o600 });
 
-    const response = await fetch(
-      `${licenseServerUrl.replace(/\/+$/, "")}/api/v1/licenses/create`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        body: JSON.stringify({
-          customerName,
-          period,
-          maxActivations: 1,
-          notes: "Created by owner issue-license wizard",
-        }),
+    const response = await fetch(`${licenseServerUrl.replace(/\/+$/, "")}/api/v1/licenses/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${adminToken}`,
       },
-    );
+      body: JSON.stringify({
+        customerName,
+        period,
+        maxActivations: 1,
+        notes: "Created by owner issue-license wizard",
+      }),
+    });
     const body = await response.json().catch(() => null);
     if (!response.ok || body?.ok !== true || typeof body.licenseKey !== "string") {
       throw new Error(`授权创建失败（HTTP ${response.status}）：${JSON.stringify(body)}`);
     }
-    console.log(`\n授权已创建\n客户：${customerName}\n授权编号：${body.license?.publicId ?? "未知"}\n\n请只把下面这一行发给部署者：\n${body.licenseKey}\n`);
+    console.log(
+      `\n授权已创建\n客户：${customerName}\n授权编号：${body.license?.publicId ?? "未知"}\n\n请只把下面这一行发给部署者：\n${body.licenseKey}\n`,
+    );
   } finally {
     rl.close();
   }

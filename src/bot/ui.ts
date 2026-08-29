@@ -10,21 +10,17 @@ export interface UiScreen {
 }
 
 function messageIdFromResponse(response: Response): Promise<number | null> {
-  return response.clone().json()
+  return response
+    .clone()
+    .json()
     .then((body: unknown) => {
-      const messageId = (body as { result?: { message_id?: unknown } })
-        .result?.message_id;
+      const messageId = (body as { result?: { message_id?: unknown } }).result?.message_id;
       return typeof messageId === "number" ? messageId : null;
     })
     .catch(() => null);
 }
 
-export async function renderUiScreen(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  screen: UiScreen,
-): Promise<void> {
+export async function renderUiScreen(ctx: BotContext, chatId: number, userId: number, screen: UiScreen): Promise<void> {
   if (!ctx.ui) {
     await sendMessage(ctx.botToken, chatId, screen.text, screen.replyMarkup);
     return;
@@ -40,13 +36,7 @@ export async function renderUiScreen(
   }
   if (session.messageId !== null) {
     try {
-      await editMessageText(
-        ctx.botToken,
-        chatId,
-        session.messageId,
-        screen.text,
-        screen.replyMarkup,
-      );
+      await editMessageText(ctx.botToken, chatId, session.messageId, screen.text, screen.replyMarkup);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (!message.includes("message to edit not found") && !message.includes("can't be edited")) {

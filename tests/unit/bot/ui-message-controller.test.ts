@@ -6,9 +6,7 @@ describe("UiMessageController", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("edits the supplied UI message id for navigation", async () => {
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"),
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await renderScreen({
@@ -36,9 +34,7 @@ describe("UiMessageController", () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ description: "Bad Request: message to edit not found" }), { status: 400 }),
       )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { message_id: 101 } })),
-      );
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: { message_id: 101 } })));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await renderScreen({
@@ -63,14 +59,16 @@ describe("UiMessageController", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(renderScreen({
-      botToken: "token",
-      chatId: 42,
-      userId: 99,
-      messageId: 100,
-      screen: "MY_SURVEYS",
-      text: "我的问卷",
-    })).rejects.toThrow("chat not found");
+    await expect(
+      renderScreen({
+        botToken: "token",
+        chatId: 42,
+        userId: 99,
+        messageId: 100,
+        screen: "MY_SURVEYS",
+        text: "我的问卷",
+      }),
+    ).rejects.toThrow("chat not found");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

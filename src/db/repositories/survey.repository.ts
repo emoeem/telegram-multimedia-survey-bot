@@ -98,14 +98,8 @@ export async function createSurvey(
   return survey;
 }
 
-export async function getSurveyById(
-  db: D1Database,
-  id: number,
-): Promise<Survey | null> {
-  const row = await db
-    .prepare("SELECT * FROM surveys WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<SurveyRow>();
+export async function getSurveyById(db: D1Database, id: number): Promise<Survey | null> {
+  const row = await db.prepare("SELECT * FROM surveys WHERE id = ? LIMIT 1").bind(id).first<SurveyRow>();
 
   return row ? mapSurvey(row) : null;
 }
@@ -117,24 +111,24 @@ export async function updateSurveyResponsePolicy(
   maxResponsesPerUser = 0,
 ): Promise<Survey | null> {
   const timestamp = nowIso();
-  await db.prepare(
-    `UPDATE surveys
+  await db
+    .prepare(
+      `UPDATE surveys
      SET allow_multiple_responses = ?, max_responses_per_user = ?,
          version = version + 1, updated_at = ?
      WHERE id = ?`,
-  ).bind(
-    allowMultipleResponses ? 1 : 0,
-    allowMultipleResponses ? Math.max(0, Math.floor(maxResponsesPerUser)) : 1,
-    timestamp,
-    surveyId,
-  ).run();
+    )
+    .bind(
+      allowMultipleResponses ? 1 : 0,
+      allowMultipleResponses ? Math.max(0, Math.floor(maxResponsesPerUser)) : 1,
+      timestamp,
+      surveyId,
+    )
+    .run();
   return getSurveyById(db, surveyId);
 }
 
-export async function listSurveysByOwner(
-  db: D1Database,
-  ownerId: number,
-): Promise<Survey[]> {
+export async function listSurveysByOwner(db: D1Database, ownerId: number): Promise<Survey[]> {
   const result = await db
     .prepare("SELECT * FROM surveys WHERE owner_id = ? ORDER BY id DESC")
     .bind(ownerId)
@@ -143,10 +137,7 @@ export async function listSurveysByOwner(
   return (result.results ?? []).map(mapSurvey);
 }
 
-export async function getLatestDraftSurveyByOwner(
-  db: D1Database,
-  ownerId: number,
-): Promise<Survey | null> {
+export async function getLatestDraftSurveyByOwner(db: D1Database, ownerId: number): Promise<Survey | null> {
   const row = await db
     .prepare(
       `SELECT * FROM surveys
@@ -161,18 +152,12 @@ export async function getLatestDraftSurveyByOwner(
 }
 
 export async function listAllSurveys(db: D1Database): Promise<Survey[]> {
-  const result = await db
-    .prepare("SELECT * FROM surveys ORDER BY id DESC")
-    .all<SurveyRow>();
+  const result = await db.prepare("SELECT * FROM surveys ORDER BY id DESC").all<SurveyRow>();
 
   return (result.results ?? []).map(mapSurvey);
 }
 
-export async function updateSurveyStatus(
-  db: D1Database,
-  id: number,
-  status: SurveyStatus,
-): Promise<Survey | null> {
+export async function updateSurveyStatus(db: D1Database, id: number, status: SurveyStatus): Promise<Survey | null> {
   const timestamp = nowIso();
   await db
     .prepare(
@@ -201,11 +186,7 @@ export async function updateSurveyStatus(
   return getSurveyById(db, id);
 }
 
-export async function deleteSurvey(
-  db: D1Database,
-  id: number,
-  options: { force?: boolean } = {},
-): Promise<void> {
+export async function deleteSurvey(db: D1Database, id: number, options: { force?: boolean } = {}): Promise<void> {
   if (!options.force) {
     // Historical responses must never be destroyed by a survey deletion
     // unless an admin explicitly forces it. The only internal caller is
@@ -249,13 +230,7 @@ export async function updateDraftSurvey(
        SET title = ?, description = ?, updated_at = ?
        WHERE id = ? AND owner_id = ? AND status = 'draft'`,
     )
-    .bind(
-      input.title,
-      input.description,
-      nowIso(),
-      input.id,
-      input.ownerId,
-    )
+    .bind(input.title, input.description, nowIso(), input.id, input.ownerId)
     .run();
 
   if ((result.meta?.changes ?? 0) === 0) {

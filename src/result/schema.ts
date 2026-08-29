@@ -3,10 +3,7 @@ import type { Answer, ResultField, ResultStat } from "../db/schema";
 export const RESULT_SCHEMA_VERSION = 1;
 
 export type ResultJsonPrimitive = string | number | boolean | null;
-export type ResultJsonValue =
-  | ResultJsonPrimitive
-  | ResultJsonValue[]
-  | { [key: string]: ResultJsonValue };
+export type ResultJsonValue = ResultJsonPrimitive | ResultJsonValue[] | { [key: string]: ResultJsonValue };
 
 export interface ResultProfileSnapshot {
   resultType: string;
@@ -42,10 +39,7 @@ export interface ResultSumExpression {
   $sum: string[];
 }
 
-export type ResultValueExpression =
-  | ResultJsonValue
-  | ResultPathExpression
-  | ResultSumExpression;
+export type ResultValueExpression = ResultJsonValue | ResultPathExpression | ResultSumExpression;
 
 export interface ResultCondition {
   path: string;

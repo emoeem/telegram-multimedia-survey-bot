@@ -23,10 +23,7 @@ function mapPage(row: PageRow): SurveyPage {
   };
 }
 
-export async function listSurveyPages(
-  db: D1Database,
-  surveyId: number,
-): Promise<SurveyPage[]> {
+export async function listSurveyPages(db: D1Database, surveyId: number): Promise<SurveyPage[]> {
   const result = await db
     .prepare(
       `SELECT * FROM survey_pages
@@ -38,14 +35,8 @@ export async function listSurveyPages(
   return (result.results ?? []).map(mapPage);
 }
 
-export async function getSurveyPageById(
-  db: D1Database,
-  id: number,
-): Promise<SurveyPage | null> {
-  const row = await db
-    .prepare("SELECT * FROM survey_pages WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<PageRow>();
+export async function getSurveyPageById(db: D1Database, id: number): Promise<SurveyPage | null> {
+  const row = await db.prepare("SELECT * FROM survey_pages WHERE id = ? LIMIT 1").bind(id).first<PageRow>();
   return row ? mapPage(row) : null;
 }
 
@@ -65,14 +56,7 @@ export async function createSurveyPage(
         survey_id, title, description, "order", created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .bind(
-      input.surveyId,
-      input.title ?? null,
-      input.description ?? null,
-      input.order,
-      timestamp,
-      timestamp,
-    )
+    .bind(input.surveyId, input.title ?? null, input.description ?? null, input.order, timestamp, timestamp)
     .run();
   const id = result.meta?.last_row_id;
   if (typeof id !== "number") throw new Error("Failed to create survey page");
@@ -107,10 +91,7 @@ export async function updateSurveyPage(
     .run();
 }
 
-export async function deleteSurveyPage(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function deleteSurveyPage(db: D1Database, id: number): Promise<void> {
   const page = await getSurveyPageById(db, id);
   if (!page) return;
   const timestamp = nowIso();
@@ -133,11 +114,7 @@ export async function deleteSurveyPage(
   ]);
 }
 
-export async function normalizePageOrder(
-  db: D1Database,
-  surveyId: number,
-  orderedIds: number[],
-): Promise<void> {
+export async function normalizePageOrder(db: D1Database, surveyId: number, orderedIds: number[]): Promise<void> {
   const timestamp = nowIso();
   await db.batch(
     orderedIds.map((id, index) =>

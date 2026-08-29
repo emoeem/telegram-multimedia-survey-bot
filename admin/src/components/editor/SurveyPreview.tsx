@@ -1,12 +1,12 @@
-import { useEffect, useId } from 'react';
-import { Check, ChevronRight, Paperclip, X } from 'lucide-react';
-import { QUESTION_TYPE_LABELS } from '../../format';
-import type { EditorPreviewQuestion } from '../../editor/previewModel';
+import { useEffect, useId } from "react";
+import { Check, ChevronRight, Paperclip, X } from "lucide-react";
+import { QUESTION_TYPE_LABELS } from "../../format";
+import type { EditorPreviewQuestion } from "../../editor/previewModel";
 import {
   getMatrixColumns,
   getQuestionInstruction,
   isSingleChoiceQuestion,
-} from '../../../../src/survey/question-presentation';
+} from "../../../../src/survey/question-presentation";
 
 interface SurveyPreviewProps {
   title: string;
@@ -18,31 +18,43 @@ interface SurveyPreviewProps {
   inline?: boolean;
 }
 
-export function PreviewChoice({ label, multiple, mediaCount }: { label: string; multiple: boolean; mediaCount: number }) {
+export function PreviewChoice({
+  label,
+  multiple,
+  mediaCount,
+}: {
+  label: string;
+  multiple: boolean;
+  mediaCount: number;
+}) {
   return (
     <div className="phone-choice">
-      <span aria-hidden="true" className={`phone-choice-glyph ${multiple ? 'square' : 'round'}`}>
-        {multiple ? '✓' : '•'}
+      <span aria-hidden="true" className={`phone-choice-glyph ${multiple ? "square" : "round"}`}>
+        {multiple ? "✓" : "•"}
       </span>
       <span className="min-w-0 flex-1">{label}</span>
-      {mediaCount ? <span className="inline-flex items-center gap-1 text-xs"><Paperclip className="h-3 w-3" />×{mediaCount}</span> : null}
+      {mediaCount ? (
+        <span className="inline-flex items-center gap-1 text-xs">
+          <Paperclip className="h-3 w-3" />×{mediaCount}
+        </span>
+      ) : null}
     </div>
   );
 }
 
 export function PreviewAnswer({ question }: { question: EditorPreviewQuestion }) {
-  if (isSingleChoiceQuestion(question) || question.type === 'multiple') {
+  if (isSingleChoiceQuestion(question) || question.type === "multiple") {
     return (
       <div className="grid gap-2">
         {question.options.map((option) => (
           <PreviewChoice
             key={option.id}
             label={option.label}
-            multiple={question.type === 'multiple'}
+            multiple={question.type === "multiple"}
             mediaCount={question.optionMediaById.get(option.id)?.length ?? 0}
           />
         ))}
-        {question.type === 'multiple' ? (
+        {question.type === "multiple" ? (
           <button type="button" className="phone-btn secondary" disabled>
             完成选择
           </button>
@@ -51,12 +63,12 @@ export function PreviewAnswer({ question }: { question: EditorPreviewQuestion })
     );
   }
 
-  if (question.type === 'matrix') {
+  if (question.type === "matrix") {
     const columns = getMatrixColumns(question);
     return (
-      <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--survey-card-border)' }}>
-        <table className="w-full min-w-[440px] border-collapse text-sm" style={{ color: 'var(--survey-body)' }}>
-          <thead style={{ background: 'var(--survey-bg)', color: 'var(--survey-muted)' }}>
+      <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--survey-card-border)" }}>
+        <table className="w-full min-w-[440px] border-collapse text-sm" style={{ color: "var(--survey-body)" }}>
+          <thead style={{ background: "var(--survey-bg)", color: "var(--survey-muted)" }}>
             <tr>
               <th className="px-3 py-2 text-left">行</th>
               {columns.map((column, index) => (
@@ -68,10 +80,14 @@ export function PreviewAnswer({ question }: { question: EditorPreviewQuestion })
           </thead>
           <tbody>
             {question.options.map((option) => (
-              <tr key={option.id} style={{ borderTop: '1px solid var(--survey-card-border)' }}>
+              <tr key={option.id} style={{ borderTop: "1px solid var(--survey-card-border)" }}>
                 <td className="px-3 py-2">{option.label}</td>
                 {columns.map((column, index) => (
-                  <td key={`${column}-${index}`} className="px-3 py-2 text-center" style={{ color: 'var(--survey-muted)' }}>
+                  <td
+                    key={`${column}-${index}`}
+                    className="px-3 py-2 text-center"
+                    style={{ color: "var(--survey-muted)" }}
+                  >
                     ○
                   </td>
                 ))}
@@ -83,53 +99,46 @@ export function PreviewAnswer({ question }: { question: EditorPreviewQuestion })
     );
   }
 
-  if (question.type === 'long_text') {
+  if (question.type === "long_text") {
     return <textarea className="phone-input min-h-24" disabled placeholder="在 Telegram 中输入回答" />;
   }
-  if (question.type === 'number') {
+  if (question.type === "number") {
     return <input className="phone-input" type="number" disabled placeholder="输入数字" />;
   }
-  if (question.type === 'date' || question.type === 'time') {
+  if (question.type === "date" || question.type === "time") {
     return <input className="phone-input" type={question.type} disabled />;
   }
-  if (['image', 'video', 'audio', 'file'].includes(question.type)) {
+  if (["image", "video", "audio", "file"].includes(question.type)) {
     return (
       <div
         className="rounded-lg border border-dashed p-4 text-center text-sm"
         style={{
-          borderColor: 'var(--survey-card-border)',
-          background: 'var(--survey-bg)',
-          color: 'var(--survey-muted)',
+          borderColor: "var(--survey-card-border)",
+          background: "var(--survey-bg)",
+          color: "var(--survey-muted)",
         }}
       >
-        {question.media.length ? `已配置 ${question.media.length} 个题目附件` : '请在 Telegram 中发送对应媒体文件'}
+        {question.media.length ? `已配置 ${question.media.length} 个题目附件` : "请在 Telegram 中发送对应媒体文件"}
       </div>
     );
   }
   return <input className="phone-input" disabled placeholder="在 Telegram 中输入回答" />;
 }
 
-export function SurveyPreview({
-  title,
-  description,
-  questions,
-  dirty,
-  onClose,
-  inline = false,
-}: SurveyPreviewProps) {
+export function SurveyPreview({ title, description, questions, dirty, onClose, inline = false }: SurveyPreviewProps) {
   const titleId = useId();
 
   useEffect(() => {
     if (inline) return;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [inline, onClose]);
 
@@ -169,22 +178,29 @@ export function SurveyPreview({
               问卷填写预览
             </h2>
             <p className="mt-0.5 text-xs" style={{ color: "var(--color-muted)" }}>
-              {dirty ? '包含尚未保存的本地修改' : '当前已保存版本'} · Telegram 实际填写时每次显示一题
+              {dirty ? "包含尚未保存的本地修改" : "当前已保存版本"} · Telegram 实际填写时每次显示一题
             </p>
           </div>
           <button type="button" className="btn btn-sm" onClick={onClose} autoFocus>
-            <X className="h-4 w-4" />关闭
+            <X className="h-4 w-4" />
+            关闭
           </button>
         </header>
 
         <div className="overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto max-w-xl" style={{ background: "var(--survey-bg)" }}>
             <div className="survey-card p-5">
-              <h3 className="text-xl font-bold" style={{ color: "var(--survey-heading)" }}>{title || '未命名问卷'}</h3>
+              <h3 className="text-xl font-bold" style={{ color: "var(--survey-heading)" }}>
+                {title || "未命名问卷"}
+              </h3>
               {description ? (
-                <p className="mt-2 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-body)" }}>{description}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-body)" }}>
+                  {description}
+                </p>
               ) : null}
-              <p className="mt-3 text-xs" style={{ color: "var(--survey-muted)" }}>共 {questions.length} 题</p>
+              <p className="mt-3 text-xs" style={{ color: "var(--survey-muted)" }}>
+                共 {questions.length} 题
+              </p>
             </div>
 
             {questions.length ? (
@@ -205,11 +221,11 @@ export function SurveyPreview({
                         {QUESTION_TYPE_LABELS[question.type] ?? question.type}
                       </span>
                       <span style={{ color: question.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
-                        {question.required ? '必答' : '选答'}
+                        {question.required ? "必答" : "选答"}
                       </span>
                     </div>
                     <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
-                      {question.title || '未填写题目标题'}
+                      {question.title || "未填写题目标题"}
                     </h4>
                     {question.description ? (
                       <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-muted)" }}>
@@ -217,18 +233,36 @@ export function SurveyPreview({
                       </p>
                     ) : null}
                     {question.media.length ? (
-                      <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}>
+                      <div
+                        className="mt-3 rounded-lg p-3 text-xs"
+                        style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
+                      >
                         题目媒体附件 ×{question.media.length}（Web 预览仅展示引用状态）
                       </div>
                     ) : null}
-                    <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>{getQuestionInstruction(question)}</p>
+                    <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>
+                      {getQuestionInstruction(question)}
+                    </p>
                     <PreviewAnswer question={question} />
                     <div className="mt-3 flex gap-2 border-t pt-3" style={{ borderColor: "var(--survey-card-border)" }}>
                       {index > 0 ? (
-                        <span className="phone-btn secondary flex-1"><ChevronRight className="h-4 w-4 rotate-180" />上一题</span>
+                        <span className="phone-btn secondary flex-1">
+                          <ChevronRight className="h-4 w-4 rotate-180" />
+                          上一题
+                        </span>
                       ) : null}
                       <span className="phone-btn flex-1">
-                        {index === questions.length - 1 ? <><Check className="h-4 w-4" />提交</> : <>下一题<ChevronRight className="h-4 w-4" /></>}
+                        {index === questions.length - 1 ? (
+                          <>
+                            <Check className="h-4 w-4" />
+                            提交
+                          </>
+                        ) : (
+                          <>
+                            下一题
+                            <ChevronRight className="h-4 w-4" />
+                          </>
+                        )}
                       </span>
                     </div>
                   </article>

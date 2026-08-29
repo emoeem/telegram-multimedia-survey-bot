@@ -7,7 +7,11 @@ import {
   upsertResultProfile,
 } from "../db/repositories/result-profile.repository";
 import { getSurveyResultVisualSettings } from "../db/repositories/survey-result-visual-settings.repository";
-import { getVisualTemplateById, getVisualTemplateVersion, listVisualTemplates } from "../db/repositories/visual-template.repository";
+import {
+  getVisualTemplateById,
+  getVisualTemplateVersion,
+  listVisualTemplates,
+} from "../db/repositories/visual-template.repository";
 import type { QuestionType, ResultFieldType, ResultProfile, SurveyQuestion } from "../db/schema";
 import { calculateResultProfile, parseResultRuleSet, serializeResultProfile } from "./result-engine.service";
 import { enqueueResultVisualJob, type ResultVisualEnqueueResult } from "./result-visual-queue.service";
@@ -31,11 +35,7 @@ function fallbackFieldType(type: string): ResultFieldType {
   return "text";
 }
 
-function displayAnswer(
-  value: unknown,
-  type: string,
-  optionLabelById: ReadonlyMap<number, string>,
-): string {
+function displayAnswer(value: unknown, type: string, optionLabelById: ReadonlyMap<number, string>): string {
   if (value === null || value === undefined) return "未填写";
   if (Array.isArray(value)) {
     const isChoice = type === "single" || type === "multiple";
@@ -43,11 +43,7 @@ function displayAnswer(
       .map((entry) => {
         if (isChoice) {
           const id =
-            typeof entry === "number"
-              ? entry
-              : typeof entry === "string" && /^\d+$/.test(entry)
-                ? Number(entry)
-                : null;
+            typeof entry === "number" ? entry : typeof entry === "string" && /^\d+$/.test(entry) ? Number(entry) : null;
           if (id !== null && Number.isInteger(id)) {
             return optionLabelById.get(id) ?? String(entry);
           }
@@ -110,15 +106,18 @@ function fallbackResultProfile(
     profile.push({
       label: question.title,
       value: displayAnswer(normalized.value, question.type, optionLabelById),
-      ...(choiceOptions?.length
-        ? { type: question.type, options: choiceOptions }
-        : {}),
+      ...(choiceOptions?.length ? { type: question.type, options: choiceOptions } : {}),
     });
     if (Array.isArray(normalized.value)) {
       for (const item of normalized.value) if (typeof item === "string" && item.trim()) tags.add(item.trim());
     }
     if (typeof normalized.value === "number" && Number.isFinite(normalized.value)) {
-      stats.push({ id: fieldId, label: question.title, value: normalized.value, max: question.type === "rating" ? 10 : Math.max(100, normalized.value) });
+      stats.push({
+        id: fieldId,
+        label: question.title,
+        value: normalized.value,
+        max: question.type === "rating" ? 10 : Math.max(100, normalized.value),
+      });
     }
     if (normalized.media.length > 0) {
       const mediaValues = normalized.media.map((item) => ({ mediaAssetId: item.mediaAssetId }));
@@ -163,8 +162,10 @@ export async function prepareResultProfileForResponse(
   const ruleSetRecord = await getSurveyResultRuleSet(db, response.surveyId);
   const answers = await listAnswersByResponseId(db, response.id);
   let surveyTitle = (await getSurveyById(db, response.surveyId))?.title ?? "问卷结果";
-  let questions: Array<Pick<SurveyQuestion, "id" | "type" | "title">> =
-    await listQuestionsBySurvey(db, response.surveyId);
+  let questions: Array<Pick<SurveyQuestion, "id" | "type" | "title">> = await listQuestionsBySurvey(
+    db,
+    response.surveyId,
+  );
   const versionSnapshot = await getResponseSurveySnapshot(db, response.id);
   if (versionSnapshot && versionSnapshot.questionOrderIds.length > 0) {
     const snapshotQuestions = versionSnapshot.questionOrderIds
@@ -177,9 +178,7 @@ export async function prepareResultProfileForResponse(
           title: schemaQuestion.title,
         };
       })
-      .filter((question): question is { id: number; type: QuestionType; title: string } =>
-        question !== null,
-      );
+      .filter((question): question is { id: number; type: QuestionType; title: string } => question !== null);
     if (snapshotQuestions.length > 0) {
       questions = snapshotQuestions;
       surveyTitle = versionSnapshot.schema.survey.title ?? surveyTitle;
@@ -192,23 +191,23 @@ export async function prepareResultProfileForResponse(
   const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionRows);
   const snapshot = ruleSetRecord
     ? (() => {
-      const calculated = calculateResultProfile({ answers, ruleSet: parseResultRuleSet(ruleSetRecord.rulesJson) });
-      const profile = Array.isArray(calculated.metadata.profile) ? calculated.metadata.profile : [];
-      const fallbackProfile = Array.isArray(fallback.metadata.profile) ? fallback.metadata.profile : [];
-      const gallery = Array.isArray(calculated.metadata.gallery) ? calculated.metadata.gallery : [];
-      const fallbackGallery = Array.isArray(fallback.metadata.gallery) ? fallback.metadata.gallery : [];
-      return {
-        ...calculated,
-        fields: { ...fallback.fields, ...calculated.fields },
-        images: { ...fallback.images, ...calculated.images },
-        metadata: {
-          ...fallback.metadata,
-          ...calculated.metadata,
-          profile: [...fallbackProfile, ...profile],
-          gallery: [...fallbackGallery, ...gallery],
-        },
-      };
-    })()
+        const calculated = calculateResultProfile({ answers, ruleSet: parseResultRuleSet(ruleSetRecord.rulesJson) });
+        const profile = Array.isArray(calculated.metadata.profile) ? calculated.metadata.profile : [];
+        const fallbackProfile = Array.isArray(fallback.metadata.profile) ? fallback.metadata.profile : [];
+        const gallery = Array.isArray(calculated.metadata.gallery) ? calculated.metadata.gallery : [];
+        const fallbackGallery = Array.isArray(fallback.metadata.gallery) ? fallback.metadata.gallery : [];
+        return {
+          ...calculated,
+          fields: { ...fallback.fields, ...calculated.fields },
+          images: { ...fallback.images, ...calculated.images },
+          metadata: {
+            ...fallback.metadata,
+            ...calculated.metadata,
+            profile: [...fallbackProfile, ...profile],
+            gallery: [...fallbackGallery, ...gallery],
+          },
+        };
+      })()
     : fallback;
   const serialized = serializeResultProfile(snapshot);
   return {
@@ -245,8 +244,13 @@ export async function requestConfiguredResultVisual(
     : settings.enabled && settings.templateId
       ? [await getVisualTemplateById(db, settings.templateId)]
       : await listVisualTemplates(db, 100);
-  const template = templates.find((candidate) => candidate?.type === "report" && candidate.status === "published" && candidate.currentVersion &&
-    (candidate.surveyId === null || candidate.surveyId === prepared.profile.surveyId));
+  const template = templates.find(
+    (candidate) =>
+      candidate?.type === "report" &&
+      candidate.status === "published" &&
+      candidate.currentVersion &&
+      (candidate.surveyId === null || candidate.surveyId === prepared.profile.surveyId),
+  );
   if (!template) return null;
   if (!template || template.status !== "published" || !template.currentVersion) {
     throw new Error("Configured result visual template is not published");

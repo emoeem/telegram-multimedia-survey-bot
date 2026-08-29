@@ -1,8 +1,20 @@
-import type { ReportFragment, ResponseReport, ResponseReportDensity, ResponseReportMedia, ResponseReportOption, ResponseReportPage } from "./model";
+import type {
+  ReportFragment,
+  ResponseReport,
+  ResponseReportDensity,
+  ResponseReportMedia,
+  ResponseReportOption,
+  ResponseReportPage,
+} from "./model";
 import { responseReportDensity } from "./pagination";
 
 export function escapeResponseReportHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function control(selected: boolean, multiple: boolean): string {
@@ -25,7 +37,9 @@ function optionColumns(options: ResponseReportOption[]): number {
 
 function renderOptions(fragment: ReportFragment): string {
   const item = fragment.item;
-  const options = item.options.slice(fragment.optionStart ?? 0, fragment.optionEnd ?? item.options.length).map((option) => ({ ...option, media: fragment.optionMediaById?.[String(option.id)] ?? option.media }));
+  const options = item.options
+    .slice(fragment.optionStart ?? 0, fragment.optionEnd ?? item.options.length)
+    .map((option) => ({ ...option, media: fragment.optionMediaById?.[String(option.id)] ?? option.media }));
   const columns = optionColumns(options);
   return `<section class="option-section"><div class="section-label">OPTIONS</div><div class="options columns-${columns}">${options.map((option, index) => `<div class="option" data-option-id="${option.id}" data-option-order="${(fragment.optionStart ?? 0) + index}" data-selected="${option.selected}">${control(option.selected, item.type === "multiple")}<div class="option-content"><div class="option-label">${escapeResponseReportHtml(option.label)}</div>${mediaGrid(option.media, "OPTION MEDIA")}</div></div>`).join("")}</div></section>`;
 }
@@ -47,7 +61,10 @@ function renderMatrix(fragment: ReportFragment): string {
 
 function renderAnswer(fragment: ReportFragment): string {
   const value = fragment.answer ?? fragment.item.answer;
-  const answerIdentity = fragment.answerStart === false ? "" : ` data-answer-question-id="${fragment.item.questionId}"${fragment.item.answerId === null ? "" : ` data-answer-id="${fragment.item.answerId}"`}`;
+  const answerIdentity =
+    fragment.answerStart === false
+      ? ""
+      : ` data-answer-question-id="${fragment.item.questionId}"${fragment.item.answerId === null ? "" : ` data-answer-id="${fragment.item.answerId}"`}`;
   return `<section class="answer-section"${answerIdentity} data-answered="${fragment.item.answered}"><div class="section-label">YOUR ANSWER</div><div class="answer-text">${escapeResponseReportHtml(value)}</div></section>`;
 }
 

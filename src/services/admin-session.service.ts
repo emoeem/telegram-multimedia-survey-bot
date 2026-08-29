@@ -12,13 +12,10 @@ export const ADMIN_SESSION_TTL_SECONDS = 7 * 24 * 3600;
 export const ADMIN_SESSION_COOKIE = "admin_session";
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
+  return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+    "verify",
+  ]);
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -48,11 +45,7 @@ async function sign(secret: string, payload: string): Promise<string> {
   return base64UrlEncode(new Uint8Array(signature));
 }
 
-async function verifySignature(
-  secret: string,
-  payload: string,
-  signature: string,
-): Promise<boolean> {
+async function verifySignature(secret: string, payload: string, signature: string): Promise<boolean> {
   const key = await hmacKey(secret);
   const decoded = base64UrlDecode(signature);
   if (!decoded) return false;
@@ -88,11 +81,7 @@ async function issueToken(
   return `${payload}.${signature}`;
 }
 
-async function verifyToken(
-  secret: string,
-  token: string,
-  purpose: SessionPayload["p"],
-): Promise<number | null> {
+async function verifyToken(secret: string, token: string, purpose: SessionPayload["p"]): Promise<number | null> {
   const dot = token.indexOf(".");
   if (dot <= 0) return null;
   const payloadPart = token.slice(0, dot);
@@ -112,30 +101,18 @@ async function verifyToken(
   }
 }
 
-export async function createBrowserLoginToken(
-  secret: string,
-  userId: number,
-): Promise<string> {
+export async function createBrowserLoginToken(secret: string, userId: number): Promise<string> {
   return issueToken(secret, userId, ADMIN_LOGIN_TTL_SECONDS, "login");
 }
 
-export async function verifyBrowserLoginToken(
-  secret: string,
-  token: string,
-): Promise<number | null> {
+export async function verifyBrowserLoginToken(secret: string, token: string): Promise<number | null> {
   return verifyToken(secret, token, "login");
 }
 
-export async function createAdminSessionValue(
-  secret: string,
-  userId: number,
-): Promise<string> {
+export async function createAdminSessionValue(secret: string, userId: number): Promise<string> {
   return issueToken(secret, userId, ADMIN_SESSION_TTL_SECONDS, "session");
 }
 
-export async function verifyAdminSessionValue(
-  secret: string,
-  value: string,
-): Promise<number | null> {
+export async function verifyAdminSessionValue(secret: string, value: string): Promise<number | null> {
   return verifyToken(secret, value, "session");
 }

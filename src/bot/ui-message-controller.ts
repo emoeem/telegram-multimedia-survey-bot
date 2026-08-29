@@ -1,8 +1,4 @@
-import {
-  editMessageText,
-  sendMessage,
-  type InlineKeyboardMarkup,
-} from "./telegram";
+import { editMessageText, sendMessage, type InlineKeyboardMarkup } from "./telegram";
 
 export interface UiScreen {
   screen: string;
@@ -27,15 +23,21 @@ interface RenderInput extends UiScreen {
 }
 
 function responseMessageId(response: Response): Promise<number | null> {
-  return response.clone().json().then((body: unknown) => {
-    const value = (body as { result?: { message_id?: unknown } }).result?.message_id;
-    return typeof value === "number" ? value : null;
-  }).catch(() => null);
+  return response
+    .clone()
+    .json()
+    .then((body: unknown) => {
+      const value = (body as { result?: { message_id?: unknown } }).result?.message_id;
+      return typeof value === "number" ? value : null;
+    })
+    .catch(() => null);
 }
 
 function isEditFallbackError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /message (?:to edit )?not found|message can't be edited|there is no text in the message|message type/i.test(message);
+  return /message (?:to edit )?not found|message can't be edited|there is no text in the message|message type/i.test(
+    message,
+  );
 }
 
 export async function renderScreen(input: RenderInput): Promise<UiMessageState> {
@@ -50,13 +52,7 @@ export async function renderScreen(input: RenderInput): Promise<UiMessageState> 
 
   if (input.messageId !== undefined) {
     try {
-      await editMessageText(
-        input.botToken,
-        input.chatId,
-        input.messageId,
-        input.text,
-        input.replyMarkup,
-      );
+      await editMessageText(input.botToken, input.chatId, input.messageId, input.text, input.replyMarkup);
       console.info("UI render", { ...base, action: "render", method: "edit", success: true });
       return {
         chatId: input.chatId,
@@ -77,12 +73,7 @@ export async function renderScreen(input: RenderInput): Promise<UiMessageState> 
     }
   }
 
-  const response = await sendMessage(
-    input.botToken,
-    input.chatId,
-    input.text,
-    input.replyMarkup,
-  );
+  const response = await sendMessage(input.botToken, input.chatId, input.text, input.replyMarkup);
   const messageId = await responseMessageId(response);
   if (messageId === null) {
     throw new Error("Telegram sendMessage did not return a message id");

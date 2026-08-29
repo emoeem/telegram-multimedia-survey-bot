@@ -26,13 +26,15 @@ export async function getSurveyResultVisualSettings(
     .prepare("SELECT * FROM survey_result_visual_settings WHERE survey_id = ? LIMIT 1")
     .bind(surveyId)
     .first<SettingsRow>();
-  return row ? mapSettings(row) : {
-    surveyId,
-    enabled: false,
-    autoGenerate: false,
-    templateId: null,
-    updatedAt: "",
-  };
+  return row
+    ? mapSettings(row)
+    : {
+        surveyId,
+        enabled: false,
+        autoGenerate: false,
+        templateId: null,
+        updatedAt: "",
+      };
 }
 
 export async function saveSurveyResultVisualSettings(
@@ -40,19 +42,16 @@ export async function saveSurveyResultVisualSettings(
   input: Omit<SurveyResultVisualSettings, "updatedAt">,
 ): Promise<SurveyResultVisualSettings> {
   const timestamp = new Date().toISOString();
-  await db.prepare(
-    `INSERT INTO survey_result_visual_settings (
+  await db
+    .prepare(
+      `INSERT INTO survey_result_visual_settings (
       survey_id, enabled, auto_generate, template_id, updated_at
     ) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(survey_id) DO UPDATE SET
       enabled = excluded.enabled, auto_generate = excluded.auto_generate,
       template_id = excluded.template_id, updated_at = excluded.updated_at`,
-  ).bind(
-    input.surveyId,
-    input.enabled ? 1 : 0,
-    input.autoGenerate ? 1 : 0,
-    input.templateId,
-    timestamp,
-  ).run();
+    )
+    .bind(input.surveyId, input.enabled ? 1 : 0, input.autoGenerate ? 1 : 0, input.templateId, timestamp)
+    .run();
   return { ...input, updatedAt: timestamp };
 }

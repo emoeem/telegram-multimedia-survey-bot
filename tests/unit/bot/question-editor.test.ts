@@ -66,18 +66,14 @@ function callbackData(): string[] {
   const replyMarkup = mocks.sendMessage.mock.calls[0]?.[3] as {
     inline_keyboard: Array<Array<{ callback_data: string }>>;
   };
-  return replyMarkup.inline_keyboard
-    .flat()
-    .map((button) => button.callback_data);
+  return replyMarkup.inline_keyboard.flat().map((button) => button.callback_data);
 }
 
 function buttonTexts(): string[] {
   const replyMarkup = mocks.sendMessage.mock.calls[0]?.[3] as {
     inline_keyboard: Array<Array<{ text: string }>>;
   };
-  return replyMarkup.inline_keyboard
-    .flat()
-    .map((button) => button.text);
+  return replyMarkup.inline_keyboard.flat().map((button) => button.text);
 }
 
 describe("question editor", () => {
@@ -161,11 +157,7 @@ describe("question editor", () => {
     await showQuestionEditor(createContext(), 2, 99, 10);
 
     const callbacks = callbackData();
-    expect(callbacks).toEqual([
-      "owner:duplicate:5",
-      "qedit:list:5",
-      "owner:survey:5",
-    ]);
+    expect(callbacks).toEqual(["owner:duplicate:5", "qedit:list:5", "owner:survey:5"]);
   });
 
   it("paginates a long question list", async () => {

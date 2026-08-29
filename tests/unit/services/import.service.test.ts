@@ -189,9 +189,7 @@ describe("import service", () => {
     expect(parsed.questions[0]?.type).toBe("text");
     expect(parsed.questions[0]?.options).toEqual([]);
     expect(parsed.questions[0]?.media?.[0]?.type).toBe("photo");
-    expect(parsed.importWarnings).toEqual([
-      "第 1 题“补充信息”只有“其他”填写项，已自动转为文本题",
-    ]);
+    expect(parsed.importWarnings).toEqual(["第 1 题“补充信息”只有“其他”填写项，已自动转为文本题"]);
   });
 
   it("keeps pages that only carry an id so PDF pagination survives", () => {
@@ -222,14 +220,8 @@ describe("import service", () => {
       }),
     );
 
-    expect(parsed.pages?.map((page) => page.id)).toEqual([
-      "pdf_page_1",
-      "pdf_page_2",
-    ]);
-    expect(parsed.questions.map((question) => question.pageId)).toEqual([
-      "pdf_page_1",
-      "pdf_page_2",
-    ]);
+    expect(parsed.pages?.map((page) => page.id)).toEqual(["pdf_page_1", "pdf_page_2"]);
+    expect(parsed.questions.map((question) => question.pageId)).toEqual(["pdf_page_1", "pdf_page_2"]);
   });
 
   it("passes parser warnings and confidence through for the import preview", () => {
@@ -364,9 +356,7 @@ describe("import service", () => {
         ],
       }),
     );
-    expect(parsed.questions[0]?.media?.[0]?.url?.startsWith("data:")).toBe(
-      true,
-    );
+    expect(parsed.questions[0]?.media?.[0]?.url?.startsWith("data:")).toBe(true);
   });
 
   it("parses cover media from unified survey JSON", () => {
@@ -387,9 +377,7 @@ describe("import service", () => {
       }),
     );
 
-    expect(parsed.cover?.url).toBe(
-      "https://hive.forms.usercontent.microsoft/images/x/cover.jpg",
-    );
+    expect(parsed.cover?.url).toBe("https://hive.forms.usercontent.microsoft/images/x/cover.jpg");
     expect(parsed.cover?.mimeType).toBe("image/jpeg");
     expect(parsed.cover?.width).toBe(800);
   });
@@ -408,13 +396,9 @@ describe("import service", () => {
       questions: [{ type: "text", title: "问题" }],
     });
 
-    const update = statements.find((statement) =>
-      statement.sql.includes("cover_media_id"),
-    );
+    const update = statements.find((statement) => statement.sql.includes("cover_media_id"));
     expect(update).toBeDefined();
-    expect(update?.bindings).toEqual(
-      expect.arrayContaining(["media:import:cover-key"]),
-    );
+    expect(update?.bindings).toEqual(expect.arrayContaining(["media:import:cover-key"]));
   });
 
   it("parses report template and theme from unified survey settings", () => {
@@ -509,13 +493,9 @@ describe("import service", () => {
     );
 
     expect(surveyId).toBe(41);
-    const mediaInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO media_assets"),
-    );
+    const mediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO media_assets"));
     expect(mediaInsert?.sql).toContain("storage_key");
-    const rows = JSON.parse(String(mediaInsert?.bindings[2])) as Array<
-      Record<string, unknown>
-    >;
+    const rows = JSON.parse(String(mediaInsert?.bindings[2])) as Array<Record<string, unknown>>;
     expect(rows[0]).toMatchObject({
       storageKind: "temporary",
       storageKey: "media:import:kv-1",
@@ -539,13 +519,8 @@ describe("import service", () => {
     );
 
     expect(parsed.questions[0]?.type).toBe("single");
-    expect(parsed.questions[0]?.options?.map((option) => option.label)).toEqual([
-      "是",
-      "还没有",
-    ]);
-    expect(parsed.importWarnings).toEqual([
-      "第 1 题“是否继续”检测到两个被换行合并的选项，已自动拆分",
-    ]);
+    expect(parsed.questions[0]?.options?.map((option) => option.label)).toEqual(["是", "还没有"]);
+    expect(parsed.importWarnings).toEqual(["第 1 题“是否继续”检测到两个被换行合并的选项，已自动拆分"]);
   });
 
   it("converts an ambiguous long singleton option to text and preserves it", () => {
@@ -566,15 +541,9 @@ describe("import service", () => {
 
     expect(parsed.questions[0]?.type).toBe("text");
     expect(parsed.questions[0]?.options).toEqual([]);
-    expect(parsed.questions[0]?.description).toContain(
-      "导入识别到的原选项内容：",
-    );
-    expect(parsed.questions[0]?.description).toContain(
-      "不能按换行拆成多个选项",
-    );
-    expect(parsed.importWarnings).toEqual([
-      "第 1 题“请回答”可识别选项不足两个，已自动转为文本题，请检查题目",
-    ]);
+    expect(parsed.questions[0]?.description).toContain("导入识别到的原选项内容：");
+    expect(parsed.questions[0]?.description).toContain("不能按换行拆成多个选项");
+    expect(parsed.importWarnings).toEqual(["第 1 题“请回答”可识别选项不足两个，已自动转为文本题，请检查题目"]);
   });
 
   it("converts a choice with no recognized options instead of rejecting the import", () => {
@@ -593,9 +562,7 @@ describe("import service", () => {
 
     expect(parsed.questions[0]?.type).toBe("text");
     expect(parsed.questions[0]?.options).toEqual([]);
-    expect(parsed.importWarnings).toEqual([
-      "第 1 题“请选择”可识别选项不足两个，已自动转为文本题，请检查题目",
-    ]);
+    expect(parsed.importWarnings).toEqual(["第 1 题“请选择”可识别选项不足两个，已自动转为文本题，请检查题目"]);
   });
 
   it("saves a large import through a small batch of JSON1 statements", async () => {
@@ -614,21 +581,14 @@ describe("import service", () => {
       };
     });
 
-    const surveyId = await saveImportedSurvey(
-      db,
-      7,
-      importedSurvey(),
-      resolver,
-    );
+    const surveyId = await saveImportedSurvey(db, 7, importedSurvey(), resolver);
 
     expect(surveyId).toBe(41);
     expect(resolver).toHaveBeenCalledTimes(2);
     expect(maxActiveResolvers).toBe(1);
     expect(batch).toHaveBeenCalledOnce();
     expect(statements).toHaveLength(5);
-    expect(statements.every((statement) =>
-      statement.sql.includes("json_each"),
-    )).toBe(true);
+    expect(statements.every((statement) => statement.sql.includes("json_each"))).toBe(true);
     expect(surveyRepositoryMocks.deleteSurvey).not.toHaveBeenCalled();
   });
 
@@ -695,35 +655,20 @@ describe("import service", () => {
 
     expect(surveyId).toBe(41);
 
-    const pageInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO survey_pages"),
-    );
+    const pageInsert = statements.find((statement) => statement.sql.includes("INSERT INTO survey_pages"));
     expect(pageInsert).toBeDefined();
-    expect(pageInsert?.bindings.slice(1, 4)).toEqual([
-      "第一页",
-      "开始",
-      0,
-    ]);
+    expect(pageInsert?.bindings.slice(1, 4)).toEqual(["第一页", "开始", 0]);
 
-    const questionInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO survey_questions"),
-    );
+    const questionInsert = statements.find((statement) => statement.sql.includes("INSERT INTO survey_questions"));
     expect(questionInsert?.sql).toContain("page_id");
 
-    const mediaInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO media_assets"),
-    );
+    const mediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO media_assets"));
     expect(mediaInsert?.sql).toContain("url");
     const mediaBindings = JSON.parse(String(mediaInsert?.bindings[2])) as Array<Record<string, unknown>>;
     expect(mediaBindings).toHaveLength(2);
-    expect(mediaBindings.map((row) => row.url)).toEqual([
-      "https://example.com/q.png",
-      "https://example.com/b.png",
-    ]);
+    expect(mediaBindings.map((row) => row.url)).toEqual(["https://example.com/q.png", "https://example.com/b.png"]);
 
-    const questionMediaInsert = statements.find((statement) =>
-      statement.sql.includes("INSERT INTO question_media"),
-    );
+    const questionMediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO question_media"));
     expect(questionMediaInsert?.sql).toContain("mediaKey");
     expect(JSON.parse(String(questionMediaInsert?.bindings[1]))).toEqual([
       { questionOrder: 0, mediaKey: "https://example.com/q.png", sortOrder: 0 },

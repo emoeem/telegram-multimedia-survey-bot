@@ -47,12 +47,15 @@ export async function findActiveRenderJob(
   templateId: number,
   templateVersion: number,
 ): Promise<RenderJob | null> {
-  const row = await db.prepare(
-    `SELECT * FROM render_jobs
+  const row = await db
+    .prepare(
+      `SELECT * FROM render_jobs
      WHERE result_profile_id = ? AND template_id = ? AND template_version = ?
        AND status IN ('queued', 'processing')
      ORDER BY id DESC LIMIT 1`,
-  ).bind(resultProfileId, templateId, templateVersion).first<RenderJobRow>();
+    )
+    .bind(resultProfileId, templateId, templateVersion)
+    .first<RenderJobRow>();
   return row ? mapRenderJob(row) : null;
 }
 
@@ -68,15 +71,23 @@ export async function createRenderJob(
   },
 ): Promise<RenderJob> {
   const timestamp = new Date().toISOString();
-  const result = await db.prepare(
-    `INSERT INTO render_jobs (
+  const result = await db
+    .prepare(
+      `INSERT INTO render_jobs (
       result_profile_id, template_id, template_version, chat_id, requested_by,
       status, attempts, force_regenerate, created_at
     ) VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
-  ).bind(
-    input.resultProfileId, input.templateId, input.templateVersion, input.chatId,
-    input.requestedBy, input.forceRegenerate ? 1 : 0, timestamp,
-  ).run();
+    )
+    .bind(
+      input.resultProfileId,
+      input.templateId,
+      input.templateVersion,
+      input.chatId,
+      input.requestedBy,
+      input.forceRegenerate ? 1 : 0,
+      timestamp,
+    )
+    .run();
   const id = result.meta?.last_row_id;
   if (typeof id !== "number") throw new Error("Failed to create render job");
   const job = await getRenderJobById(db, id);
@@ -86,24 +97,27 @@ export async function createRenderJob(
 
 export async function claimRenderJob(db: D1Database, id: number): Promise<boolean> {
   const timestamp = new Date().toISOString();
-  const result = await db.prepare(
-    `UPDATE render_jobs
+  const result = await db
+    .prepare(
+      `UPDATE render_jobs
      SET status = 'processing', attempts = attempts + 1, started_at = ?,
          error_code = NULL, error_message = NULL
      WHERE id = ? AND status = 'queued'`,
-  ).bind(timestamp, id).run();
+    )
+    .bind(timestamp, id)
+    .run();
   return (result.meta?.changes ?? 0) === 1;
 }
 
-export async function completeRenderJob(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function completeRenderJob(db: D1Database, id: number): Promise<void> {
   const timestamp = new Date().toISOString();
-  await db.prepare(
-    `UPDATE render_jobs SET status = 'completed', error_code = NULL,
+  await db
+    .prepare(
+      `UPDATE render_jobs SET status = 'completed', error_code = NULL,
       error_message = NULL, completed_at = ? WHERE id = ?`,
-  ).bind(timestamp, id).run();
+    )
+    .bind(timestamp, id)
+    .run();
 }
 
 export async function releaseRenderJobForRetry(
@@ -111,10 +125,13 @@ export async function releaseRenderJobForRetry(
   id: number,
   input: { code: string; message: string },
 ): Promise<void> {
-  await db.prepare(
-    `UPDATE render_jobs SET status = 'queued', error_code = ?, error_message = ?
+  await db
+    .prepare(
+      `UPDATE render_jobs SET status = 'queued', error_code = ?, error_message = ?
      WHERE id = ? AND status = 'processing'`,
-  ).bind(input.code.slice(0, 100), input.message.slice(0, 500), id).run();
+    )
+    .bind(input.code.slice(0, 100), input.message.slice(0, 500), id)
+    .run();
 }
 
 export async function failRenderJob(
@@ -123,8 +140,11 @@ export async function failRenderJob(
   input: { code: string; message: string },
 ): Promise<void> {
   const timestamp = new Date().toISOString();
-  await db.prepare(
-    `UPDATE render_jobs SET status = 'failed', error_code = ?, error_message = ?,
+  await db
+    .prepare(
+      `UPDATE render_jobs SET status = 'failed', error_code = ?, error_message = ?,
       completed_at = ? WHERE id = ?`,
-  ).bind(input.code.slice(0, 100), input.message.slice(0, 500), timestamp, id).run();
+    )
+    .bind(input.code.slice(0, 100), input.message.slice(0, 500), timestamp, id)
+    .run();
 }

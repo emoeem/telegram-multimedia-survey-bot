@@ -1,20 +1,11 @@
-import {
-  answerCallbackQuery,
-  sendDocument,
-  sendMessage,
-  sendPhoto,
-  type InlineKeyboardMarkup,
-} from "./telegram";
+import { answerCallbackQuery, sendDocument, sendMessage, sendPhoto, type InlineKeyboardMarkup } from "./telegram";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import { registerMediaAsset } from "../services/media.service";
 import { applyReportPresentation, type ReportContrastMode } from "../services/report-presentation.service";
 import { getMediaAssetById } from "../db/repositories/media.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
-import {
-  getSurveyResultRuleSet,
-  saveSurveyResultRuleSet,
-} from "../db/repositories/result-profile.repository";
+import { getSurveyResultRuleSet, saveSurveyResultRuleSet } from "../db/repositories/result-profile.repository";
 import {
   getSurveyResultVisualSettings,
   saveSurveyResultVisualSettings,
@@ -74,7 +65,10 @@ type TemplateEditorState =
       source: string;
     };
 
-const builtInTemplates: Record<BuiltInTemplateKind, { name: string; type: string; definition: VisualTemplateDefinition }> = {
+const builtInTemplates: Record<
+  BuiltInTemplateKind,
+  { name: string; type: string; definition: VisualTemplateDefinition }
+> = {
   completion: { name: "通用完成结果卡", type: "result_card", definition: completionResultExampleTemplate },
   character: { name: "游戏角色卡", type: "character_card", definition: characterCardExampleTemplate },
   personality: { name: "人格结果卡", type: "result_card", definition: personalityResultExampleTemplate },
@@ -90,10 +84,7 @@ function templateEditorStateKey(userId: number): string {
   return `${templateEditorStatePrefix}${userId}`;
 }
 
-async function getTemplateEditorState(
-  ctx: BotContext,
-  userId: number,
-): Promise<TemplateEditorState | null> {
+async function getTemplateEditorState(ctx: BotContext, userId: number): Promise<TemplateEditorState | null> {
   const raw = await ctx.cache?.get(templateEditorStateKey(userId));
   if (!raw) return null;
   try {
@@ -103,26 +94,36 @@ async function getTemplateEditorState(
     const messageId = value.messageId;
     const mode = value.mode;
     if (
-      typeof templateId !== "number" || !Number.isSafeInteger(templateId) ||
-      typeof chatId !== "number" || !Number.isSafeInteger(chatId) ||
-      typeof messageId !== "number" || !Number.isSafeInteger(messageId) ||
+      typeof templateId !== "number" ||
+      !Number.isSafeInteger(templateId) ||
+      typeof chatId !== "number" ||
+      !Number.isSafeInteger(chatId) ||
+      typeof messageId !== "number" ||
+      !Number.isSafeInteger(messageId) ||
       !["background", "element_variable", "element_layout"].includes(String(mode))
-    ) return null;
+    )
+      return null;
     if (mode === "background") {
       return { mode: "background", templateId, chatId, messageId };
     }
-    if (
-      !["text", "image", "badge"].includes(String(value.elementType))
-    ) return null;
+    if (!["text", "image", "badge"].includes(String(value.elementType))) return null;
     const elementType = value.elementType as "text" | "image" | "badge";
     if (mode === "element_variable") {
       return {
-        mode: "element_variable", templateId, chatId, messageId, elementType,
+        mode: "element_variable",
+        templateId,
+        chatId,
+        messageId,
+        elementType,
       };
     }
     if (typeof value.source !== "string") return null;
     return {
-      mode: "element_layout", templateId, chatId, messageId, elementType,
+      mode: "element_layout",
+      templateId,
+      chatId,
+      messageId,
+      elementType,
       source: value.source,
     };
   } catch {
@@ -130,11 +131,7 @@ async function getTemplateEditorState(
   }
 }
 
-async function setTemplateEditorState(
-  ctx: BotContext,
-  userId: number,
-  state: TemplateEditorState,
-): Promise<void> {
+async function setTemplateEditorState(ctx: BotContext, userId: number, state: TemplateEditorState): Promise<void> {
   if (!ctx.cache) throw new Error("当前部署未启用模板编辑状态");
   await ctx.cache.put(templateEditorStateKey(userId), JSON.stringify(state), { expirationTtl: 15 * 60 });
 }
@@ -153,22 +150,19 @@ function blankPosterTemplate(): VisualTemplateDefinition {
 
 function elementSummary(element: VisualTemplateDefinition["elements"][number], index: number): string {
   const source = element.type === "image" ? element.source : element.value;
-  const dimensions = element.type === "image"
-    ? `${element.width ?? 0}×${element.height ?? 0}`
-    : `字号 ${element.fontSize ?? 32}`;
+  const dimensions =
+    element.type === "image" ? `${element.width ?? 0}×${element.height ?? 0}` : `字号 ${element.fontSize ?? 32}`;
   return `${index + 1}. ${element.type === "image" ? "🖼" : element.type === "badge" ? "🏷" : "📝"} ${source ?? ""}\n   X: ${element.x ?? 0} · Y: ${element.y ?? 0} · ${dimensions}`;
 }
 
-function ensureEditorVariable(
-  definition: VisualTemplateDefinition,
-  expression: string,
-  type: "text" | "image",
-): void {
+function ensureEditorVariable(definition: VisualTemplateDefinition, expression: string, type: "text" | "image"): void {
   const path = expression.slice(2, -2);
   if (definition.variables.some((variable) => variable.path === path)) return;
   definition.variables.push({
     path,
-    label: path.startsWith("result.images.") ? `图片：${path.slice("result.images.".length)}` : `结果字段：${path.slice("result.".length)}`,
+    label: path.startsWith("result.images.")
+      ? `图片：${path.slice("result.images.".length)}`
+      : `结果字段：${path.slice("result.".length)}`,
     type,
   });
 }
@@ -182,7 +176,11 @@ function statusLabel(status: "draft" | "published" | "archived"): string {
 }
 
 function compact(value: string, max = 28): string {
-  return Array.from(value).length <= max ? value : `${Array.from(value).slice(0, max - 1).join("")}…`;
+  return Array.from(value).length <= max
+    ? value
+    : `${Array.from(value)
+        .slice(0, max - 1)
+        .join("")}…`;
 }
 
 async function render(
@@ -239,16 +237,18 @@ async function showTemplateEditor(
   messageId?: number,
 ): Promise<void> {
   const { template, definition } = await loadTemplateDefinition(ctx, templateId);
-  const backgroundAsset = definition.background.type === "telegram_asset"
-    ? await getMediaAssetById(ctx.db, definition.background.assetId)
-    : null;
-  const background = definition.background.type === "telegram_asset"
-    ? `🖼 Telegram 图片 #${definition.background.assetId}${backgroundAsset?.width && backgroundAsset.height ? ` · ${backgroundAsset.width} × ${backgroundAsset.height}` : ""}`
-    : definition.background.type === "gradient"
-      ? "🎨 渐变背景"
-      : definition.background.type === "solid"
-        ? `🎨 纯色 ${definition.background.color}`
-        : "🖼 动态图片背景";
+  const backgroundAsset =
+    definition.background.type === "telegram_asset"
+      ? await getMediaAssetById(ctx.db, definition.background.assetId)
+      : null;
+  const background =
+    definition.background.type === "telegram_asset"
+      ? `🖼 Telegram 图片 #${definition.background.assetId}${backgroundAsset?.width && backgroundAsset.height ? ` · ${backgroundAsset.width} × ${backgroundAsset.height}` : ""}`
+      : definition.background.type === "gradient"
+        ? "🎨 渐变背景"
+        : definition.background.type === "solid"
+          ? `🎨 纯色 ${definition.background.color}`
+          : "🖼 动态图片背景";
   const elements = definition.elements.map(elementSummary);
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     [{ text: "🖼 上传背景", callback_data: `visual:editor:background:${templateId}` }],
@@ -257,23 +257,36 @@ async function showTemplateEditor(
       { text: "➕ 添加图片", callback_data: `visual:editor:add:image:${templateId}` },
     ],
     [{ text: "🏷 添加属性/标签", callback_data: `visual:editor:add:badge:${templateId}` }],
-    [{ text: "👁 预览", callback_data: `visual:preview:${templateId}` }, { text: "💾 保存草稿", callback_data: `visual:editor:save:${templateId}` }],
-    [template.status === "published"
-      ? { text: "⏸ 停用", callback_data: `visual:archive:${templateId}` }
-      : { text: "🚀 发布", callback_data: `visual:publish:${templateId}` }],
+    [
+      { text: "👁 预览", callback_data: `visual:preview:${templateId}` },
+      { text: "💾 保存草稿", callback_data: `visual:editor:save:${templateId}` },
+    ],
+    [
+      template.status === "published"
+        ? { text: "⏸ 停用", callback_data: `visual:archive:${templateId}` }
+        : { text: "🚀 发布", callback_data: `visual:publish:${templateId}` },
+    ],
     [{ text: "⬅️ 返回模板详情", callback_data: `visual:view:${templateId}` }],
   ];
-  await render(ctx, chatId, userId, "VISUAL_TEMPLATE_EDITOR", [
-    "🎨 模板编辑器",
-    `模板：${template.name}`,
-    `画布：${definition.width} × ${definition.height}`,
-    `背景：${background}`,
-    "",
-    "元素：",
-    ...(elements.length > 0 ? elements : ["尚未添加动态元素。"]),
-    "",
-    "添加动态元素后，从字段列表选择数据来源；无需输入变量地址。",
-  ].join("\n"), { inline_keyboard: rows }, messageId);
+  await render(
+    ctx,
+    chatId,
+    userId,
+    "VISUAL_TEMPLATE_EDITOR",
+    [
+      "🎨 模板编辑器",
+      `模板：${template.name}`,
+      `画布：${definition.width} × ${definition.height}`,
+      `背景：${background}`,
+      "",
+      "元素：",
+      ...(elements.length > 0 ? elements : ["尚未添加动态元素。"]),
+      "",
+      "添加动态元素后，从字段列表选择数据来源；无需输入变量地址。",
+    ].join("\n"),
+    { inline_keyboard: rows },
+    messageId,
+  );
 }
 
 async function createBlankPosterTemplate(ctx: BotContext, userId: number): Promise<number> {
@@ -296,51 +309,48 @@ async function createBlankPosterTemplate(ctx: BotContext, userId: number): Promi
   return template.id;
 }
 
-async function showTemplateList(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  messageId?: number,
-): Promise<void> {
+async function showTemplateList(ctx: BotContext, chatId: number, userId: number, messageId?: number): Promise<void> {
   const templates = await listVisualTemplates(ctx.db, 20);
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = templates.map((template) => [{
-    text: `${template.status === "published" ? "🟢" : template.status === "archived" ? "⚫" : "📝"} ${compact(template.name)} · v${template.currentVersion ?? "-"}`,
-    callback_data: `visual:view:${template.id}`,
-  }]);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = templates.map((template) => [
+    {
+      text: `${template.status === "published" ? "🟢" : template.status === "archived" ? "⚫" : "📝"} ${compact(template.name)} · v${template.currentVersion ?? "-"}`,
+      callback_data: `visual:view:${template.id}`,
+    },
+  ]);
   rows.push([{ text: "➕ 创建模板", callback_data: "visual:create" }]);
   rows.push([{ text: "📊 报告生成器", callback_data: "generator:list" }]);
   rows.push([{ text: "📥 导入 JSON", callback_data: "visual:import" }]);
   rows.push([{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }]);
-  const text = templates.length === 0
-    ? "🎨 视觉模板\n\n还没有模板。可从内置结果卡开始，之后也能导入经过校验的模板 JSON。"
-    : `🎨 视觉模板\n\n共 ${templates.length} 个模板。已发布模板可关联到问卷，用于生成 PNG 结果卡。`;
+  const text =
+    templates.length === 0
+      ? "🎨 视觉模板\n\n还没有模板。可从内置结果卡开始，之后也能导入经过校验的模板 JSON。"
+      : `🎨 视觉模板\n\n共 ${templates.length} 个模板。已发布模板可关联到问卷，用于生成 PNG 结果卡。`;
   await render(ctx, chatId, userId, "VISUAL_TEMPLATE_LIST", text, { inline_keyboard: rows }, messageId);
 }
 
-async function showCreateMenu(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  messageId?: number,
-): Promise<void> {
-  await render(ctx, chatId, userId, "VISUAL_TEMPLATE_CREATE", "🎨 创建视觉模板\n\n先选择一个可编辑、可复制的内置结构。它们使用不同的 ResultProfile 字段，不会把角色卡字段写死到 Renderer。", {
-    inline_keyboard: [
-      [{ text: "🖼 上传海报背景并编辑", callback_data: "visual:create:blank" }],
-      [{ text: "✅ 通用完成结果卡", callback_data: "visual:seed:completion" }],
-      [{ text: "🎮 游戏角色卡", callback_data: "visual:seed:character" }],
-      [{ text: "🧠 人格结果卡", callback_data: "visual:seed:personality" }],
-      [{ text: "🖼 自定义结果海报", callback_data: "visual:seed:poster" }],
-      [{ text: "📊 长图量化报告", callback_data: "visual:seed:report" }],
-      [{ text: "⬅️ 返回模板列表", callback_data: "visual:list" }],
-    ],
-  }, messageId);
+async function showCreateMenu(ctx: BotContext, chatId: number, userId: number, messageId?: number): Promise<void> {
+  await render(
+    ctx,
+    chatId,
+    userId,
+    "VISUAL_TEMPLATE_CREATE",
+    "🎨 创建视觉模板\n\n先选择一个可编辑、可复制的内置结构。它们使用不同的 ResultProfile 字段，不会把角色卡字段写死到 Renderer。",
+    {
+      inline_keyboard: [
+        [{ text: "🖼 上传海报背景并编辑", callback_data: "visual:create:blank" }],
+        [{ text: "✅ 通用完成结果卡", callback_data: "visual:seed:completion" }],
+        [{ text: "🎮 游戏角色卡", callback_data: "visual:seed:character" }],
+        [{ text: "🧠 人格结果卡", callback_data: "visual:seed:personality" }],
+        [{ text: "🖼 自定义结果海报", callback_data: "visual:seed:poster" }],
+        [{ text: "📊 长图量化报告", callback_data: "visual:seed:report" }],
+        [{ text: "⬅️ 返回模板列表", callback_data: "visual:list" }],
+      ],
+    },
+    messageId,
+  );
 }
 
-async function createBuiltInTemplate(
-  ctx: BotContext,
-  userId: number,
-  kind: BuiltInTemplateKind,
-): Promise<number> {
+async function createBuiltInTemplate(ctx: BotContext, userId: number, kind: BuiltInTemplateKind): Promise<number> {
   const builtIn = builtInTemplates[kind];
   const definition = parseVisualTemplateDefinition(JSON.stringify(builtIn.definition));
   const template = await createVisualTemplate(ctx.db, {
@@ -373,28 +383,45 @@ async function showTemplateDetail(
   const version = template.currentVersion
     ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion)
     : null;
-  const variables = version ? JSON.parse(version.variablesJson) as Array<{ label?: string; path?: string }> : [];
+  const variables = version ? (JSON.parse(version.variablesJson) as Array<{ label?: string; path?: string }>) : [];
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     [{ text: "🛠 编辑背景与元素", callback_data: `visual:editor:${template.id}` }],
-    [{ text: "👁 预览", callback_data: `visual:preview:${template.id}` }, { text: "📤 导出 JSON", callback_data: `visual:export:${template.id}` }],
+    [
+      { text: "👁 预览", callback_data: `visual:preview:${template.id}` },
+      { text: "📤 导出 JSON", callback_data: `visual:export:${template.id}` },
+    ],
     [{ text: "📋 复制模板", callback_data: `visual:copy:${template.id}` }],
-    [template.status === "published"
-      ? { text: "⏸ 停用", callback_data: `visual:archive:${template.id}` }
-      : { text: "🚀 发布", callback_data: `visual:publish:${template.id}` }],
+    [
+      template.status === "published"
+        ? { text: "⏸ 停用", callback_data: `visual:archive:${template.id}` }
+        : { text: "🚀 发布", callback_data: `visual:publish:${template.id}` },
+    ],
     [{ text: "🗑 删除", callback_data: `visual:delete_ask:${template.id}` }],
     [{ text: "⬅️ 返回模板列表", callback_data: "visual:list" }],
   ];
-  const variableLines = variables.slice(0, 8).map((variable) => `• ${variable.label ?? "变量"}：${variable.path ?? ""}`);
-  await render(ctx, chatId, userId, "VISUAL_TEMPLATE_DETAIL", [
-    `🎨 ${template.name}`,
-    `类型：${template.type}`,
-    `状态：${statusLabel(template.status)}`,
-    `版本：v${template.currentVersion ?? "未创建"}`,
-    template.description ? `说明：${template.description}` : "",
-    "",
-    "模板变量：",
-    ...(variableLines.length > 0 ? variableLines : ["尚无变量"]),
-  ].filter(Boolean).join("\n"), { inline_keyboard: rows }, messageId);
+  const variableLines = variables
+    .slice(0, 8)
+    .map((variable) => `• ${variable.label ?? "变量"}：${variable.path ?? ""}`);
+  await render(
+    ctx,
+    chatId,
+    userId,
+    "VISUAL_TEMPLATE_DETAIL",
+    [
+      `🎨 ${template.name}`,
+      `类型：${template.type}`,
+      `状态：${statusLabel(template.status)}`,
+      `版本：v${template.currentVersion ?? "未创建"}`,
+      template.description ? `说明：${template.description}` : "",
+      "",
+      "模板变量：",
+      ...(variableLines.length > 0 ? variableLines : ["尚无变量"]),
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    { inline_keyboard: rows },
+    messageId,
+  );
 }
 
 function demoProfile(): ResultProfileSnapshot {
@@ -409,7 +436,11 @@ function demoProfile(): ResultProfileSnapshot {
       role: { id: "role", type: "text", value: "探索者" },
       level: { id: "level", type: "integer", value: 42 },
       rarity: { id: "rarity", type: "enum", value: "SSR" },
-      description: { id: "description", type: "long_text", value: "此图片只使用脱敏的 Demo ResultProfile，展示模板布局、文字和属性区域。" },
+      description: {
+        id: "description",
+        type: "long_text",
+        value: "此图片只使用脱敏的 Demo ResultProfile，展示模板布局、文字和属性区域。",
+      },
       personality: { id: "personality", type: "enum", value: "分析者" },
       summary: { id: "summary", type: "long_text", value: "你倾向于先理解环境，再做出清晰的判断。" },
       traits: { id: "traits", type: "tags", value: ["冷静", "好奇"] },
@@ -426,12 +457,22 @@ function demoProfile(): ResultProfileSnapshot {
     ],
     tags: ["冷静", "观察者"],
     images: {
-      demoPhotoOne: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZkYmE3NCIvPjxjaXJjbGUgY3g9IjEwMCIgY3k9Ijc2IiByPSI0MCIgZmlsbD0iI2ZmZWVkNSIvPjxwYXRoIGQ9Ik0zMCAyMDBjMTAtNTAgMTMwLTUwIDE0MCAwIiBmaWxsPSIjZmZlZWQ1Ii8+PC9zdmc+",
-      demoPhotoTwo: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZiNzE4NSIvPjxwYXRoIGQ9Ik00MCAxNjBMODAgNjBsNDAgNjBsNDAtNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIxNiIvPjwvc3ZnPg==",
+      demoPhotoOne:
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZkYmE3NCIvPjxjaXJjbGUgY3g9IjEwMCIgY3k9Ijc2IiByPSI0MCIgZmlsbD0iI2ZmZWVkNSIvPjxwYXRoIGQ9Ik0zMCAyMDBjMTAtNTAgMTMwLTUwIDE0MCAwIiBmaWxsPSIjZmZlZWQ1Ii8+PC9zdmc+",
+      demoPhotoTwo:
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZiNzE4NSIvPjxwYXRoIGQ9Ik00MCAxNjBMODAgNjBsNDAgNjBsNDAtNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIxNiIvPjwvc3ZnPg==",
     },
     metadata: {
-      profile: [{ label: "姓名", value: "测试角色" }, { label: "所在地区", value: "上海" }, { label: "角色", value: "探索者" }],
-      status: [{ name: "已完成", passed: true }, { name: "已验证", passed: true }, { name: "公开展示", passed: false }],
+      profile: [
+        { label: "姓名", value: "测试角色" },
+        { label: "所在地区", value: "上海" },
+        { label: "角色", value: "探索者" },
+      ],
+      status: [
+        { name: "已完成", passed: true },
+        { name: "已验证", passed: true },
+        { name: "公开展示", passed: false },
+      ],
       summary: "这是一段仅用于预览的脱敏长文本。模板会根据实际回答自动换行并向下扩展，不会读取任何真实答卷。",
       gallery: [
         "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZkYmE3NCIvPjxjaXJjbGUgY3g9IjEwMCIgY3k9Ijc2IiByPSI0MCIgZmlsbD0iI2ZmZWVkNSIvPjxwYXRoIGQ9Ik0zMCAyMDBjMTAtNTAgMTMwLTUwIDE0MCAwIiBmaWxsPSIjZmZlZWQ1Ii8+PC9zdmc+",
@@ -441,23 +482,28 @@ function demoProfile(): ResultProfileSnapshot {
   };
 }
 
-export async function previewTemplate(ctx: BotContext, chatId: number, templateId: number, presentation?: { backgroundAssetId: number | null; contrastMode: ReportContrastMode }): Promise<void> {
+export async function previewTemplate(
+  ctx: BotContext,
+  chatId: number,
+  templateId: number,
+  presentation?: { backgroundAssetId: number | null; contrastMode: ReportContrastMode },
+): Promise<void> {
   const template = await getVisualTemplateById(ctx.db, templateId);
-  const version = template?.currentVersion ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion) : null;
+  const version = template?.currentVersion
+    ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion)
+    : null;
   if (!template || !version) throw new Error("模板版本不存在");
   const parsed = parseVisualTemplateDefinition(version.definitionJson);
-  const definition = presentation ? applyReportPresentation(parsed, presentation.backgroundAssetId, presentation.contrastMode) : parsed;
-  const [
-    { renderResultVisualPng },
-    { RESULT_VISUAL_FONTS },
-    { RESULT_VISUAL_WASM },
-    { resolveResultVisualImages },
-  ] = await Promise.all([
-    import("../services/result-visual-renderer.service"),
-    import("../services/result-visual-font"),
-    import("../services/result-visual-wasm"),
-    import("../services/result-visual-image.service"),
-  ]);
+  const definition = presentation
+    ? applyReportPresentation(parsed, presentation.backgroundAssetId, presentation.contrastMode)
+    : parsed;
+  const [{ renderResultVisualPng }, { RESULT_VISUAL_FONTS }, { RESULT_VISUAL_WASM }, { resolveResultVisualImages }] =
+    await Promise.all([
+      import("../services/result-visual-renderer.service"),
+      import("../services/result-visual-font"),
+      import("../services/result-visual-wasm"),
+      import("../services/result-visual-image.service"),
+    ]);
   const profile = demoProfile();
   const images = await resolveResultVisualImages(ctx.db, ctx.botToken, definition, profile);
   const png = await renderResultVisualPng(definition, profile, {
@@ -482,24 +528,38 @@ async function showSurveySettings(
     listVisualTemplates(ctx.db, 20),
   ]);
   const published = templates.filter((template) => template.status === "published" && template.currentVersion !== null);
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = published.map((template) => [{
-    text: `${settings.templateId === template.id ? "✅" : "▫️"} ${compact(template.name)}`,
-    callback_data: `visual:select:${surveyId}:${template.id}`,
-  }]);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = published.map((template) => [
+    {
+      text: `${settings.templateId === template.id ? "✅" : "▫️"} ${compact(template.name)}`,
+      callback_data: `visual:select:${surveyId}:${template.id}`,
+    },
+  ]);
   rows.push([{ text: `${settings.enabled ? "✅" : "▫️"} 启用结果卡`, callback_data: `visual:enable:${surveyId}` }]);
-  rows.push([{ text: `${settings.autoGenerate ? "✅" : "▫️"} 完成后自动生成`, callback_data: `visual:auto:${surveyId}` }]);
+  rows.push([
+    { text: `${settings.autoGenerate ? "✅" : "▫️"} 完成后自动生成`, callback_data: `visual:auto:${surveyId}` },
+  ]);
   rows.push([{ text: "📄 从已完成答卷生成报告", callback_data: `owner:responses:${surveyId}:0` }]);
   rows.push([{ text: "🎨 管理模板", callback_data: "visual:list" }]);
   rows.push([{ text: "⬅️ 返回问卷详情", callback_data: `admin:survey:${surveyId}` }]);
-  await render(ctx, chatId, userId, "SURVEY_RESULT_VISUAL_SETTINGS", [
-    `🎨 ${survey.title} · 结果卡`,
-    "",
-    `功能：${settings.enabled ? "已启用" : "未启用"}`,
-    `生成方式：${settings.autoGenerate ? "完成后自动生成" : "用户手动点击生成"}`,
-    `当前模板：${templates.find((template) => template.id === settings.templateId)?.name ?? "未选择"}`,
-    "",
-    published.length > 0 ? "选择一个已发布模板，然后开启功能。首次选择会创建安全的默认结果规则。" : "还没有已发布模板，请先创建并发布模板。",
-  ].join("\n"), { inline_keyboard: rows }, messageId);
+  await render(
+    ctx,
+    chatId,
+    userId,
+    "SURVEY_RESULT_VISUAL_SETTINGS",
+    [
+      `🎨 ${survey.title} · 结果卡`,
+      "",
+      `功能：${settings.enabled ? "已启用" : "未启用"}`,
+      `生成方式：${settings.autoGenerate ? "完成后自动生成" : "用户手动点击生成"}`,
+      `当前模板：${templates.find((template) => template.id === settings.templateId)?.name ?? "未选择"}`,
+      "",
+      published.length > 0
+        ? "选择一个已发布模板，然后开启功能。首次选择会创建安全的默认结果规则。"
+        : "还没有已发布模板，请先创建并发布模板。",
+    ].join("\n"),
+    { inline_keyboard: rows },
+    messageId,
+  );
 }
 
 async function ensureDefaultRuleSet(ctx: BotContext, surveyId: number, userId: number): Promise<void> {
@@ -537,7 +597,8 @@ function parseTextLayout(value: string): {
   const width = Number(widthRaw);
   const fontSize = Number(sizeRaw);
   const align = alignRaw === "left" || alignRaw === "center" || alignRaw === "right" ? alignRaw : null;
-  if (![x, y, width, fontSize].every(Number.isFinite) || width <= 0 || fontSize <= 0 || !align || !colorRaw) return null;
+  if (![x, y, width, fontSize].every(Number.isFinite) || width <= 0 || fontSize <= 0 || !align || !colorRaw)
+    return null;
   return { x, y, width, fontSize, align, color: colorRaw };
 }
 
@@ -608,24 +669,40 @@ async function handleTemplateEditorMessage(
   if (state.elementType === "image") {
     const layout = parseImageLayout(text);
     if (!layout) {
-      await sendMessage(ctx.botToken, message.chat.id, "图片布局格式无效。请使用：X,Y,宽度,高度,cover|contain|stretch,rectangle|rounded|circle");
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "图片布局格式无效。请使用：X,Y,宽度,高度,cover|contain|stretch,rectangle|rounded|circle",
+      );
       return true;
     }
     ensureEditorVariable(definition, state.source, "image");
     definition.elements.push({
-      id: nextElementId("image"), type: "image", source: state.source,
-      ...layout, zIndex: definition.elements.length + 1,
+      id: nextElementId("image"),
+      type: "image",
+      source: state.source,
+      ...layout,
+      zIndex: definition.elements.length + 1,
     });
   } else {
     const layout = parseTextLayout(text);
     if (!layout) {
-      await sendMessage(ctx.botToken, message.chat.id, "文字布局格式无效。请使用：X,Y,宽度,字号,left|center|right,#RRGGBB");
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "文字布局格式无效。请使用：X,Y,宽度,字号,left|center|right,#RRGGBB",
+      );
       return true;
     }
     ensureEditorVariable(definition, state.source, "text");
     definition.elements.push({
-      id: nextElementId(state.elementType), type: state.elementType, value: state.source,
-      ...layout, maxLines: 3, overflow: "ellipsis", zIndex: definition.elements.length + 1,
+      id: nextElementId(state.elementType),
+      type: state.elementType,
+      value: state.source,
+      ...layout,
+      maxLines: 3,
+      overflow: "ellipsis",
+      zIndex: definition.elements.length + 1,
     });
   }
   await saveTemplateDefinition(ctx, state.templateId, internalUserId, definition);
@@ -645,7 +722,7 @@ export async function handleResultVisualAdminMessage(
   if (!telegramUserId || !ctx.cache) return false;
   if (await handleTemplateEditorMessage(ctx, message, internalUserId)) return true;
   if (!text) return false;
-  if (await ctx.cache.get(templateImportStateKey(telegramUserId)) !== "1") return false;
+  if ((await ctx.cache.get(templateImportStateKey(telegramUserId))) !== "1") return false;
   if (text === "/cancel") {
     await ctx.cache.delete(templateImportStateKey(telegramUserId));
     await sendMessage(ctx.botToken, message.chat.id, "已取消模板导入。");
@@ -713,39 +790,79 @@ export async function handleResultVisualAdminCallback(
       await showTemplateEditor(ctx, chatId, userId, templateId, messageId);
     } else if (action === "background") {
       await setTemplateEditorState(ctx, userId, { mode: "background", templateId, chatId, messageId });
-      await sendMessage(ctx.botToken, chatId, "请发送一张图片作为海报背景。图片仅保留 Telegram file_id，不上传到 R2；发送 /cancel 取消。");
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        "请发送一张图片作为海报背景。图片仅保留 Telegram file_id，不上传到 R2；发送 /cancel 取消。",
+      );
     } else if (action === "add") {
       const elementType = parts[3];
       if (elementType !== "text" && elementType !== "image" && elementType !== "badge") {
         throw new Error("不支持的动态元素类型");
       }
-      const choices = elementType === "image"
-        ? [[{ text: "用户上传图片", callback_data: `visual:editor:bind:image:avatar:${templateId}` }]]
-        : elementType === "badge"
-          ? [[{ text: "结果标签", callback_data: `visual:editor:bind:badge:tags:${templateId}` }]]
-          : [
-              [{ text: "报告标题", callback_data: `visual:editor:bind:text:title:${templateId}` }, { text: "报告副标题", callback_data: `visual:editor:bind:text:subtitle:${templateId}` }],
-              [{ text: "姓名", callback_data: `visual:editor:bind:text:name:${templateId}` }, { text: "描述", callback_data: `visual:editor:bind:text:description:${templateId}` }],
-              [{ text: "提交日期", callback_data: `visual:editor:bind:text:submitted_at:${templateId}` }],
-            ];
+      const choices =
+        elementType === "image"
+          ? [[{ text: "用户上传图片", callback_data: `visual:editor:bind:image:avatar:${templateId}` }]]
+          : elementType === "badge"
+            ? [[{ text: "结果标签", callback_data: `visual:editor:bind:badge:tags:${templateId}` }]]
+            : [
+                [
+                  { text: "报告标题", callback_data: `visual:editor:bind:text:title:${templateId}` },
+                  { text: "报告副标题", callback_data: `visual:editor:bind:text:subtitle:${templateId}` },
+                ],
+                [
+                  { text: "姓名", callback_data: `visual:editor:bind:text:name:${templateId}` },
+                  { text: "描述", callback_data: `visual:editor:bind:text:description:${templateId}` },
+                ],
+                [{ text: "提交日期", callback_data: `visual:editor:bind:text:submitted_at:${templateId}` }],
+              ];
       choices.push([{ text: "⬅️ 返回编辑器", callback_data: `visual:editor:${templateId}` }]);
-      await render(ctx, chatId, userId, "VISUAL_TEMPLATE_BINDING", "选择这个元素的数据来源：", { inline_keyboard: choices }, messageId);
+      await render(
+        ctx,
+        chatId,
+        userId,
+        "VISUAL_TEMPLATE_BINDING",
+        "选择这个元素的数据来源：",
+        { inline_keyboard: choices },
+        messageId,
+      );
     } else if (action === "bind") {
       const elementType = parts[3];
       const selection = parts[4];
-      if ((elementType !== "text" && elementType !== "image" && elementType !== "badge") || !selection) throw new Error("字段绑定无效");
+      if ((elementType !== "text" && elementType !== "image" && elementType !== "badge") || !selection)
+        throw new Error("字段绑定无效");
       const paths: Record<string, string> = {
-        title: "{{result.title}}", subtitle: "{{result.subtitle}}", name: "{{result.fields.name}}",
-        description: "{{result.fields.description}}", submitted_at: "{{result.metadata.submitted_at}}",
-        avatar: "{{result.images.avatar}}", tags: "{{result.tags}}",
+        title: "{{result.title}}",
+        subtitle: "{{result.subtitle}}",
+        name: "{{result.fields.name}}",
+        description: "{{result.fields.description}}",
+        submitted_at: "{{result.metadata.submitted_at}}",
+        avatar: "{{result.images.avatar}}",
+        tags: "{{result.tags}}",
       };
       const source = paths[selection];
-      const allowed = elementType === "image" ? selection === "avatar" : elementType === "badge" ? selection === "tags" : selection !== "avatar" && selection !== "tags";
+      const allowed =
+        elementType === "image"
+          ? selection === "avatar"
+          : elementType === "badge"
+            ? selection === "tags"
+            : selection !== "avatar" && selection !== "tags";
       if (!source || !allowed) throw new Error("该字段不能绑定到此元素类型");
-      await setTemplateEditorState(ctx, userId, { mode: "element_layout", templateId, chatId, messageId, elementType, source });
-      await sendMessage(ctx.botToken, chatId, elementType === "image"
-        ? "请输入图片布局：X,Y,宽度,高度,裁剪,形状\n例如：340,600,400,400,cover,circle\n裁剪：cover / contain / stretch；形状：rectangle / rounded / circle"
-        : "请输入文字布局：X,Y,宽度,字号,对齐,色值\n例如：90,300,900,64,center,#FFFFFF\n对齐：left / center / right");
+      await setTemplateEditorState(ctx, userId, {
+        mode: "element_layout",
+        templateId,
+        chatId,
+        messageId,
+        elementType,
+        source,
+      });
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        elementType === "image"
+          ? "请输入图片布局：X,Y,宽度,高度,裁剪,形状\n例如：340,600,400,400,cover,circle\n裁剪：cover / contain / stretch；形状：rectangle / rounded / circle"
+          : "请输入文字布局：X,Y,宽度,字号,对齐,色值\n例如：90,300,900,64,center,#FFFFFF\n对齐：left / center / right",
+      );
     } else if (action === "save") {
       await showTemplateEditor(ctx, chatId, userId, templateId, messageId);
     } else {
@@ -767,7 +884,9 @@ export async function handleResultVisualAdminCallback(
     await showTemplateDetail(ctx, chatId, userId, templateId, messageId);
   } else if (data.startsWith("visual:copy:")) {
     const source = await getVisualTemplateById(ctx.db, Number(data.slice("visual:copy:".length)));
-    const version = source?.currentVersion ? await getVisualTemplateVersion(ctx.db, source.id, source.currentVersion) : null;
+    const version = source?.currentVersion
+      ? await getVisualTemplateVersion(ctx.db, source.id, source.currentVersion)
+      : null;
     if (!source || !version) throw new Error("模板版本不存在");
     const copy = await createVisualTemplate(ctx.db, {
       ownerId: internalUserId,
@@ -789,11 +908,22 @@ export async function handleResultVisualAdminCallback(
     const templateId = Number(data.slice("visual:delete_ask:".length));
     const template = await getVisualTemplateById(ctx.db, templateId);
     if (!template) throw new Error("模板不存在");
-    await render(ctx, chatId, userId, "VISUAL_TEMPLATE_DELETE_CONFIRM", `⚠️ 删除模板“${template.name}”？\n\n已关联的问卷会保留设置，但无法再生成结果卡。`, {
-      inline_keyboard: [
-        [{ text: "确认删除", callback_data: `visual:delete:${templateId}` }, { text: "取消", callback_data: `visual:view:${templateId}` }],
-      ],
-    }, messageId);
+    await render(
+      ctx,
+      chatId,
+      userId,
+      "VISUAL_TEMPLATE_DELETE_CONFIRM",
+      `⚠️ 删除模板“${template.name}”？\n\n已关联的问卷会保留设置，但无法再生成结果卡。`,
+      {
+        inline_keyboard: [
+          [
+            { text: "确认删除", callback_data: `visual:delete:${templateId}` },
+            { text: "取消", callback_data: `visual:view:${templateId}` },
+          ],
+        ],
+      },
+      messageId,
+    );
   } else if (data.startsWith("visual:delete:")) {
     await deleteVisualTemplate(ctx.db, Number(data.slice("visual:delete:".length)));
     await showTemplateList(ctx, chatId, userId, messageId);
@@ -804,18 +934,34 @@ export async function handleResultVisualAdminCallback(
     } catch (error) {
       const detail = error instanceof Error ? error.message : "未知错误";
       console.error("Visual template preview failed", { templateId: data, error: detail });
-      await sendMessage(ctx.botToken, chatId, `⚠️ 模板预览失败：${detail.slice(0, 300)}\n\n请确认背景图片可由 Telegram 下载后重试。`);
+      await sendMessage(
+        ctx.botToken,
+        chatId,
+        `⚠️ 模板预览失败：${detail.slice(0, 300)}\n\n请确认背景图片可由 Telegram 下载后重试。`,
+      );
     }
     return true;
   } else if (data.startsWith("visual:export:")) {
     const template = await getVisualTemplateById(ctx.db, Number(data.slice("visual:export:".length)));
-    const version = template?.currentVersion ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion) : null;
+    const version = template?.currentVersion
+      ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion)
+      : null;
     if (!template || !version) throw new Error("模板版本不存在");
-    await sendDocument(ctx.botToken, chatId, `visual-template-${template.id}-v${version.version}.json`, version.definitionJson, "application/json");
+    await sendDocument(
+      ctx.botToken,
+      chatId,
+      `visual-template-${template.id}-v${version.version}.json`,
+      version.definitionJson,
+      "application/json",
+    );
   } else if (data === "visual:import") {
     if (!ctx.cache) throw new Error("当前部署未启用模板导入状态");
     await ctx.cache.put(templateImportStateKey(userId), "1", { expirationTtl: 15 * 60 });
-    await sendMessage(ctx.botToken, chatId, "请发送完整的 VisualTemplate JSON；发送 /cancel 取消。导入前会校验变量、颜色、元素和条件，不执行任何脚本。");
+    await sendMessage(
+      ctx.botToken,
+      chatId,
+      "请发送完整的 VisualTemplate JSON；发送 /cancel 取消。导入前会校验变量、颜色、元素和条件，不执行任何脚本。",
+    );
   } else if (data.startsWith("visual:settings:")) {
     await showSurveySettings(ctx, chatId, userId, Number(data.slice("visual:settings:".length)), messageId);
   } else if (data.startsWith("visual:select:")) {

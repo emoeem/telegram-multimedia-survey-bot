@@ -45,26 +45,17 @@ function ThemeSwatch({
         className="h-12 w-full overflow-hidden rounded-lg border border-black/10"
         style={colors ? { backgroundColor: colors.base } : undefined}
       >
-        {colors ? (
-          <span className="block h-full w-1/3" style={{ backgroundColor: colors.primary }} />
-        ) : null}
+        {colors ? <span className="block h-full w-1/3" style={{ backgroundColor: colors.primary }} /> : null}
       </div>
       <span className="truncate text-xs font-medium text-[var(--color-muted)]">
-        {selected ? "✓ " : ""}{name}
+        {selected ? "✓ " : ""}
+        {name}
       </span>
     </button>
   );
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium text-[var(--color-muted)]">{label}</span>
@@ -114,12 +105,7 @@ export function SettingsPage() {
     }
   };
 
-  const numberField = (
-    key: keyof SystemSettingsData,
-    label: string,
-    hint: string,
-    step = 1,
-  ) => (
+  const numberField = (key: keyof SystemSettingsData, label: string, hint: string, step = 1) => (
     <Field key={key} label={label} hint={hint}>
       <input
         className="input w-full"

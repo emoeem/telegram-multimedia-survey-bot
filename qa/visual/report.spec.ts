@@ -33,16 +33,13 @@ for (const template of TEMPLATES) {
       await page.goto(`/fixtures/report/${template.id}.html`);
       await expect(page.locator("h1").first()).toBeVisible();
 
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth - window.innerWidth,
-      );
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);
       expect(problems).toEqual([]);
 
-      await expect(page).toHaveScreenshot(
-        `report-${template.id}-${viewport.width}x${viewport.height}.png`,
-        { maxDiffPixelRatio: 0.002 },
-      );
+      await expect(page).toHaveScreenshot(`report-${template.id}-${viewport.width}x${viewport.height}.png`, {
+        maxDiffPixelRatio: 0.002,
+      });
     });
   }
 }
@@ -78,9 +75,6 @@ for (const template of TEMPLATES) {
     }
     expect(problems).toEqual([]);
 
-    await expect(page).toHaveScreenshot(
-      `report-${template.id}-print-A4.png`,
-      { maxDiffPixelRatio: 0.002 },
-    );
+    await expect(page).toHaveScreenshot(`report-${template.id}-print-A4.png`, { maxDiffPixelRatio: 0.002 });
   });
 }

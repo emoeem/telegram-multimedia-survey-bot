@@ -10,10 +10,7 @@ import { REPORT_TEMPLATES } from "../src/services/report/template";
 import { buildResponsiveReportHtml } from "../src/services/report/web";
 import { reportFixtureViewModel } from "../qa/report-fixture";
 
-const outDir = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../qa/fixtures/report",
-);
+const outDir = resolve(dirname(fileURLToPath(import.meta.url)), "../qa/fixtures/report");
 
 await mkdir(outDir, { recursive: true });
 

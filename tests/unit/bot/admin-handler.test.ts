@@ -57,10 +57,7 @@ vi.mock("../../../src/db/repositories/feature-access.repository", () => ({
   clearIdentityCardAccessCode: mocks.clearIdentityCardAccessCode,
 }));
 
-import {
-  handleAdminCallback,
-  handleAdminMessage,
-} from "../../../src/bot/admin-handler";
+import { handleAdminCallback, handleAdminMessage } from "../../../src/bot/admin-handler";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
@@ -82,9 +79,7 @@ describe("admin survey list", () => {
       { id: 8, title: "第二份", status: "draft" },
     ]);
 
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const ctx: BotContext = {
@@ -110,9 +105,7 @@ describe("admin survey list", () => {
         inline_keyboard: Array<Array<{ text: string }>>;
       };
     };
-    const buttonTexts = body.reply_markup.inline_keyboard
-      .flat()
-      .map((button) => button.text);
+    const buttonTexts = body.reply_markup.inline_keyboard.flat().map((button) => button.text);
 
     expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作"]);
     expect(buttonTexts).not.toContain("🎨 视觉模板");
@@ -135,16 +128,30 @@ describe("admin survey list", () => {
     const cache = { get: vi.fn(), put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    const ctx: BotContext = { botToken: "token", db: {} as D1Database, cache, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue };
+    const ctx: BotContext = {
+      botToken: "token",
+      db: {} as D1Database,
+      cache,
+      session: {} as SurveySessionNamespace,
+      builder: {} as SurveyBuilderNamespace,
+      adminIds: [99],
+      exportQueue: {} as Queue,
+    };
 
     await handleAdminCallback(ctx, {
-      id: "set", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:identity_password_set",
+      id: "set",
+      from: { id: 99 },
+      message: { message_id: 1, chat: { id: 2 } },
+      data: "admin:identity_password_set",
     });
     expect(cache.put).toHaveBeenCalledWith("admin-identity-card-password:99", "1", { expirationTtl: 15 * 60 });
 
     (cache.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce("1");
     await handleAdminMessage(ctx, {
-      message_id: 2, chat: { id: 2 }, from: { id: 99 }, text: "safe-password",
+      message_id: 2,
+      chat: { id: 2 },
+      from: { id: 99 },
+      text: "safe-password",
     });
     expect(mocks.setIdentityCardAccessCode).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^sha256:/));
   });
@@ -153,13 +160,38 @@ describe("admin survey list", () => {
     mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
     mocks.listBotUsers.mockResolvedValue({
       total: 1,
-      users: [{ telegramUserId: 123, firstName: "Alice", lastName: null, username: "alice", systemRole: "participant", botStartedAt: "2026-08-19T10:00:00.000Z", updatedAt: "2026-08-19T10:01:00.000Z" }],
+      users: [
+        {
+          telegramUserId: 123,
+          firstName: "Alice",
+          lastName: null,
+          username: "alice",
+          systemRole: "participant",
+          botStartedAt: "2026-08-19T10:00:00.000Z",
+          updatedAt: "2026-08-19T10:01:00.000Z",
+        },
+      ],
     });
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(handleAdminCallback({ botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue }, {
-      id: "callback", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:users:0",
-    })).resolves.toBe(true);
+    await expect(
+      handleAdminCallback(
+        {
+          botToken: "token",
+          db: {} as D1Database,
+          session: {} as SurveySessionNamespace,
+          builder: {} as SurveyBuilderNamespace,
+          adminIds: [99],
+          exportQueue: {} as Queue,
+        },
+        {
+          id: "callback",
+          from: { id: 99 },
+          message: { message_id: 1, chat: { id: 2 } },
+          data: "admin:users:0",
+        },
+      ),
+    ).resolves.toBe(true);
     const editCall = fetchMock.mock.calls.find(([url]) => String(url).includes("editMessageText"));
     const body = JSON.parse(String((editCall?.[1] as RequestInit).body)) as { text: string };
     expect(body.text).toContain("已启动机器人：1 人");
@@ -168,14 +200,40 @@ describe("admin survey list", () => {
 
   it("allows banning a non-admin user and cancels active responses", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
-    mocks.getUserById.mockResolvedValue({ id: 7, telegramUserId: 123, firstName: "Alice", username: "alice", systemRole: "participant", bannedAt: null, botStartedAt: "2026-08-19T10:00:00.000Z", updatedAt: "2026-08-19T10:01:00.000Z" });
+    mocks.getUserById.mockResolvedValue({
+      id: 7,
+      telegramUserId: 123,
+      firstName: "Alice",
+      username: "alice",
+      systemRole: "participant",
+      bannedAt: null,
+      botStartedAt: "2026-08-19T10:00:00.000Z",
+      updatedAt: "2026-08-19T10:01:00.000Z",
+    });
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    const handled = await handleAdminCallback({ botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue }, {
-      id: "callback", from: { id: 99 }, message: { message_id: 1, chat: { id: 2 } }, data: "admin:user_ban:7",
-    });
+    const handled = await handleAdminCallback(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+      },
+      {
+        id: "callback",
+        from: { id: 99 },
+        message: { message_id: 1, chat: { id: 2 } },
+        data: "admin:user_ban:7",
+      },
+    );
     expect(handled).toBe(true);
-    expect(mocks.setUserBan).toHaveBeenCalledWith(expect.anything(), 7, { banned: true, bannedBy: 1, reason: "管理员操作" });
+    expect(mocks.setUserBan).toHaveBeenCalledWith(expect.anything(), 7, {
+      banned: true,
+      bannedBy: 1,
+      reason: "管理员操作",
+    });
     expect(mocks.cancelActiveResponsesForUser).toHaveBeenCalledWith(expect.anything(), 7);
   });
 
@@ -196,12 +254,14 @@ describe("admin survey list", () => {
       exportQueue: {} as Queue,
     };
 
-    await expect(handleAdminMessage(ctx, {
-      message_id: 2,
-      chat: { id: 3 },
-      from: { id: 99 },
-      photo: [{ file_id: "background-file", file_unique_id: "background-unique", width: 1080, height: 1920 }],
-    })).resolves.toBe(true);
+    await expect(
+      handleAdminMessage(ctx, {
+        message_id: 2,
+        chat: { id: 3 },
+        from: { id: 99 },
+        photo: [{ file_id: "background-file", file_unique_id: "background-unique", width: 1080, height: 1920 }],
+      }),
+    ).resolves.toBe(true);
 
     expect(mocks.handleImageGeneratorAdminMessage).toHaveBeenCalledOnce();
     expect(mocks.handleResultVisualAdminMessage).toHaveBeenCalledOnce();
@@ -223,13 +283,9 @@ describe("admin survey list", () => {
       totalCompleted: 2,
       completionRate: 25,
     });
-    mocks.listAllSurveys.mockResolvedValue([
-      { id: 16, title: "他人的问卷", status: "published" },
-    ]);
+    mocks.listAllSurveys.mockResolvedValue([{ id: 16, title: "他人的问卷", status: "published" }]);
 
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const handled = await handleAdminCallback(
@@ -251,12 +307,8 @@ describe("admin survey list", () => {
     );
 
     expect(handled).toBe(true);
-    const editMessageCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/editMessageText"),
-    );
-    const body = JSON.parse(
-      String((editMessageCall?.[1] as RequestInit | undefined)?.body),
-    ) as {
+    const editMessageCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
+    const body = JSON.parse(String((editMessageCall?.[1] as RequestInit | undefined)?.body)) as {
       reply_markup: {
         inline_keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>>;
       };
@@ -292,21 +344,21 @@ describe("admin survey list", () => {
     });
     mocks.listSurveyPerformance.mockResolvedValue({
       total: 18,
-      items: [{
-        id: 16,
-        title: "报名问卷",
-        status: "published",
-        ownerName: "管理员",
-        totalStarted: 20,
-        totalCompleted: 12,
-        inProgress: 8,
-        completionRate: 60,
-        lastCompletedAt: "2026-08-15T15:30:00.000Z",
-      }],
+      items: [
+        {
+          id: 16,
+          title: "报名问卷",
+          status: "published",
+          ownerName: "管理员",
+          totalStarted: 20,
+          totalCompleted: 12,
+          inProgress: 8,
+          completionRate: 60,
+          lastCompletedAt: "2026-08-15T15:30:00.000Z",
+        },
+      ],
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const handled = await handleAdminCallback(
@@ -327,9 +379,7 @@ describe("admin survey list", () => {
     );
 
     expect(handled).toBe(true);
-    const request = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/editMessageText"),
-    );
+    const request = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
     const body = JSON.parse(String((request?.[1] as RequestInit).body)) as {
       text: string;
       reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> };
@@ -359,8 +409,20 @@ describe("admin survey list", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await handleAdminCallback(
-      { botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue },
-      { id: "callback", from: { id: 99 }, message: { message_id: 500, chat: { id: 2 } }, data: "admin:survey_list:1:0" },
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+      },
+      {
+        id: "callback",
+        from: { id: 99 },
+        message: { message_id: 500, chat: { id: 2 } },
+        data: "admin:survey_list:1:0",
+      },
     );
 
     const edit = fetchMock.mock.calls.find(([url]) => String(url).includes("/editMessageText"));
@@ -377,7 +439,14 @@ describe("admin survey list", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await handleAdminCallback(
-      { botToken: "token", db: {} as D1Database, session: {} as SurveySessionNamespace, builder: {} as SurveyBuilderNamespace, adminIds: [99], exportQueue: {} as Queue },
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+      },
       { id: "callback", from: { id: 99 }, message: { message_id: 500, chat: { id: 2 } }, data: "admin:delete_ask:16" },
     );
 

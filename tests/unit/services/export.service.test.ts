@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  buildCsv,
-  buildExportZip,
-  getExportRows,
-  type ResponseRow,
-} from "../../../src/services/export.service";
+import { buildCsv, buildExportZip, getExportRows, type ResponseRow } from "../../../src/services/export.service";
 
 describe("export service", () => {
   it("builds CSV from response rows", () => {
@@ -30,7 +25,7 @@ describe("export service", () => {
         status: "completed",
         started_at: "",
         completed_at: null,
-        "=危险标题": "\t=HYPERLINK(\"https://example.com\")",
+        "=危险标题": '\t=HYPERLINK("https://example.com")',
       },
     ]);
 
@@ -74,11 +69,7 @@ describe("export service", () => {
                 ],
               };
             }
-            if (
-              sql.includes(
-                "SELECT id AS response_id, status, started_at, completed_at",
-              )
-            ) {
+            if (sql.includes("SELECT id AS response_id, status, started_at, completed_at")) {
               return {
                 results: [
                   {
@@ -166,10 +157,29 @@ describe("export service", () => {
         const statement = {
           bind: vi.fn(() => statement),
           all: vi.fn(async () => {
-            if (sql.includes("FROM survey_questions")) return { results: [{ id: 10, title: "满意度", type: "matrix", settings_json: '{"columns":["满意","一般"]}' }] };
+            if (sql.includes("FROM survey_questions"))
+              return {
+                results: [{ id: 10, title: "满意度", type: "matrix", settings_json: '{"columns":["满意","一般"]}' }],
+              };
             if (sql.includes("FROM question_options")) return { results: [{ id: 101, label: "响应速度" }] };
-            if (sql.includes("SELECT id AS response_id")) return { results: [{ response_id: 1, status: "completed", started_at: "", completed_at: "" }] };
-            return { results: [{ response_id: 1, question_id: 10, text_value: null, number_value: null, boolean_value: null, rating_value: null, date_value: null, time_value: null, json_value: '{"kind":"matrix","selections":{"101":0}}', selected_options: null }] };
+            if (sql.includes("SELECT id AS response_id"))
+              return { results: [{ response_id: 1, status: "completed", started_at: "", completed_at: "" }] };
+            return {
+              results: [
+                {
+                  response_id: 1,
+                  question_id: 10,
+                  text_value: null,
+                  number_value: null,
+                  boolean_value: null,
+                  rating_value: null,
+                  date_value: null,
+                  time_value: null,
+                  json_value: '{"kind":"matrix","selections":{"101":0}}',
+                  selected_options: null,
+                },
+              ],
+            };
           }),
         };
         return statement;

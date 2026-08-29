@@ -42,11 +42,14 @@ interface DeliveryResult {
 }
 
 function messageIdFromResponse(response: Response): Promise<number> {
-  return response.clone().json().then((body: unknown) => {
-    const messageId = (body as { result?: { message_id?: unknown } }).result?.message_id;
-    if (typeof messageId !== "number") throw new Error("Telegram 未返回消息 ID");
-    return messageId;
-  });
+  return response
+    .clone()
+    .json()
+    .then((body: unknown) => {
+      const messageId = (body as { result?: { message_id?: unknown } }).result?.message_id;
+      if (typeof messageId !== "number") throw new Error("Telegram 未返回消息 ID");
+      return messageId;
+    });
 }
 
 function isRetryableDeliveryError(error: unknown): boolean {
@@ -56,10 +59,7 @@ function isRetryableDeliveryError(error: unknown): boolean {
   return true;
 }
 
-export async function processReportDeliveryMessage(
-  env: ReportDeliveryWorkerEnvironment,
-  body: unknown,
-): Promise<void> {
+export async function processReportDeliveryMessage(env: ReportDeliveryWorkerEnvironment, body: unknown): Promise<void> {
   if (!isReportDeliveryMessage(body)) return;
   const delivery = await getReportDeliveryByDeliveryId(env.DB, body.deliveryId);
   if (!delivery) return;
@@ -72,11 +72,7 @@ export async function processReportDeliveryMessage(
     await completeReportDelivery(env.DB, delivery.id, result);
     if (env.MEDIA_KV) {
       try {
-        await deleteTemporaryMediaForResponse(
-          env.DB,
-          new KVMediaStore(env.MEDIA_KV),
-          delivery.responseId,
-        );
+        await deleteTemporaryMediaForResponse(env.DB, new KVMediaStore(env.MEDIA_KV), delivery.responseId);
       } catch (cleanupError) {
         console.warn("Temporary media cleanup after delivery failed", {
           responseId: delivery.responseId,
@@ -134,9 +130,7 @@ async function deliverReportToChannel(
   }
   const snapshot = deserializeResultProfile(prepared.profile);
   const images = await resolveReportProfileImages(env, snapshot);
-  const respondentInfo = response.userId === null
-    ? null
-    : await getUserById(env.DB, response.userId);
+  const respondentInfo = response.userId === null ? null : await getUserById(env.DB, response.userId);
   const respondent = respondentInfo
     ? (respondentInfo.username ?? respondentInfo.firstName ?? `用户 ${respondentInfo.telegramUserId}`)
     : "匿名";
@@ -162,10 +156,7 @@ async function deliverReportToChannel(
   const mediaFiles = Object.values(images)
     .filter((url) => url.startsWith("data:image/"))
     .map((url) => ({ bytes: dataUrlToBytes(url), extension: dataUrlExtension(url) }));
-  const zip =
-    mediaFiles.length > 0
-      ? buildReportZip(responseId, pdf.bytes, mediaFiles)
-      : null;
+  const zip = mediaFiles.length > 0 ? buildReportZip(responseId, pdf.bytes, mediaFiles) : null;
   const sendZip = zip !== null && zip.byteLength <= 45 * 1024 * 1024;
   const archiveName = sendZip ? `report-${responseId}.zip` : `report-${responseId}.pdf`;
   const archiveBytes = sendZip ? (zip as Uint8Array) : pdf.bytes;
@@ -179,9 +170,7 @@ async function deliverReportToChannel(
     `用户：${respondent}`,
     `完成时间：${completedAt}`,
     "",
-    sendZip
-      ? `📦 报告+用户图片：report-${responseId}.zip`
-      : `📄 报告：report-${responseId}.pdf`,
+    sendZip ? `📦 报告+用户图片：report-${responseId}.zip` : `📄 报告：report-${responseId}.pdf`,
   ].join("\n");
   const tags = [`#答卷${responseId}`, `#问卷${response.surveyId}`];
   tags.push(respondentInfo ? `#用户${respondentInfo.telegramUserId}` : "#匿名答卷");
@@ -206,12 +195,7 @@ async function deliverReportToChannel(
       const bytes = gallery[index]?.bytes;
       if (!bytes) continue;
       try {
-        const photoResponse = await sendPhoto(
-          env.BOT_TOKEN,
-          chatId,
-          bytes,
-          `用户附件 ${index + 1}/${gallery.length}`,
-        );
+        const photoResponse = await sendPhoto(env.BOT_TOKEN, chatId, bytes, `用户附件 ${index + 1}/${gallery.length}`);
         imageMessageIds.push(await messageIdFromResponse(photoResponse));
       } catch {
         const documentResponse = await sendDocument(
@@ -287,11 +271,7 @@ async function notifyAdminDeliveryFailure(
     .filter((value) => Number.isInteger(value) && value > 0);
   for (const adminId of adminIds) {
     try {
-      await sendMessage(
-        env.BOT_TOKEN,
-        adminId,
-        `❌ 答卷 #${responseId} 报告归档失败：${error.slice(0, 300)}`,
-      );
+      await sendMessage(env.BOT_TOKEN, adminId, `❌ 答卷 #${responseId} 报告归档失败：${error.slice(0, 300)}`);
     } catch (notificationError) {
       console.error("Failed to notify admin of delivery failure", {
         responseId,

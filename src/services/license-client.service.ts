@@ -54,20 +54,14 @@ function resultFromDecision(
   };
 }
 
-function contractHasExpired(
-  decision: LicenseActivationDecision,
-  now: number,
-): boolean {
+function contractHasExpired(decision: LicenseActivationDecision, now: number): boolean {
   const expiresAt = decision.license?.expiresAt;
   if (!expiresAt) return false;
   const timestamp = Date.parse(expiresAt);
   return Number.isFinite(timestamp) && timestamp <= now;
 }
 
-async function readCache(
-  cache: KVNamespace,
-  key: string,
-): Promise<CachedLicenseDecision | null> {
+async function readCache(cache: KVNamespace, key: string): Promise<CachedLicenseDecision | null> {
   try {
     return await cache.get<CachedLicenseDecision>(key, "json");
   } catch (error) {
@@ -112,17 +106,14 @@ async function callLicenseServer(
     metadata: Record<string, unknown>;
   },
 ): Promise<LicenseActivationDecision> {
-  const response = await fetch(
-    `${serverUrl.replace(/\/+$/, "")}/api/v1/licenses/${path}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payload),
+  const response = await fetch(`${serverUrl.replace(/\/+$/, "")}/api/v1/licenses/${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
-  );
+    body: JSON.stringify(payload),
+  });
   if (!response.ok) {
     throw new Error(`授权中心返回 HTTP ${response.status}`);
   }
@@ -181,24 +172,14 @@ export async function checkDeploymentLicense(
 
   const nowTimestamp = now.getTime();
   const graceSeconds = parseGraceSeconds(env.LICENSE_GRACE_SECONDS);
-  const keyHash = await hashLicenseKey(
-    `${licenseKey}:${installationId}:${appVersion}`,
-  );
+  const keyHash = await hashLicenseKey(`${licenseKey}:${installationId}:${appVersion}`);
   const cacheKey = `deployment-license:v1:${keyHash}`;
   const cached = await readCache(env.CACHE, cacheKey);
   if (cached) {
-    const ageSeconds = Math.max(
-      0,
-      Math.floor((nowTimestamp - cached.storedAt) / 1000),
-    );
-    const freshFor = cached.decision.valid
-      ? VALID_CACHE_SECONDS
-      : INVALID_CACHE_SECONDS;
+    const ageSeconds = Math.max(0, Math.floor((nowTimestamp - cached.storedAt) / 1000));
+    const freshFor = cached.decision.valid ? VALID_CACHE_SECONDS : INVALID_CACHE_SECONDS;
     if (ageSeconds <= freshFor) {
-      if (
-        cached.decision.valid &&
-        contractHasExpired(cached.decision, nowTimestamp)
-      ) {
+      if (cached.decision.valid && contractHasExpired(cached.decision, nowTimestamp)) {
         return {
           ...resultFromDecision(cached.decision, "cache"),
           allowed: false,
@@ -229,26 +210,16 @@ export async function checkDeploymentLicense(
       env.CACHE,
       cacheKey,
       { storedAt: nowTimestamp, decision },
-      decision.valid
-        ? VALID_CACHE_SECONDS + graceSeconds + 300
-        : INVALID_CACHE_SECONDS,
+      decision.valid ? VALID_CACHE_SECONDS + graceSeconds + 300 : INVALID_CACHE_SECONDS,
     );
     return resultFromDecision(decision, "server");
   } catch (error) {
-    if (
-      cached?.decision.valid &&
-      !contractHasExpired(cached.decision, nowTimestamp)
-    ) {
-      const ageSeconds = Math.max(
-        0,
-        Math.floor((nowTimestamp - cached.storedAt) / 1000),
-      );
+    if (cached?.decision.valid && !contractHasExpired(cached.decision, nowTimestamp)) {
+      const ageSeconds = Math.max(0, Math.floor((nowTimestamp - cached.storedAt) / 1000));
       if (ageSeconds <= VALID_CACHE_SECONDS + graceSeconds) {
         return {
           ...resultFromDecision(cached.decision, "grace"),
-          message: `授权中心暂时不可用，正在使用离线宽限：${
-            error instanceof Error ? error.message : "网络错误"
-          }`,
+          message: `授权中心暂时不可用，正在使用离线宽限：${error instanceof Error ? error.message : "网络错误"}`,
         };
       }
     }
@@ -256,8 +227,7 @@ export async function checkDeploymentLicense(
       allowed: false,
       source: "server",
       code: "license_server_unavailable",
-      message:
-        error instanceof Error ? error.message : "授权中心暂时不可用",
+      message: error instanceof Error ? error.message : "授权中心暂时不可用",
       checkedAt: now.toISOString(),
       license: cached?.decision.license ?? null,
     };

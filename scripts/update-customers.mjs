@@ -23,9 +23,7 @@ async function findManifests() {
   try {
     entries = await fs.readdir(DEPLOYMENTS_ROOT, { withFileTypes: true });
   } catch {
-    throw new Error(
-      `未找到 ${DEPLOYMENTS_ROOT}，请先用 scripts/deploy-customer.mjs 部署客户。`,
-    );
+    throw new Error(`未找到 ${DEPLOYMENTS_ROOT}，请先用 scripts/deploy-customer.mjs 部署客户。`);
   }
   const manifests = [];
   for (const entry of entries) {

@@ -12,8 +12,7 @@ import { Writable } from "node:stream";
 import { stdin as input, stdout as output } from "node:process";
 
 const ROOT_DIR = fileURLToPath(new URL("..", import.meta.url));
-const DEFAULT_LICENSE_SERVER_URL =
-  "https://telegram-multimedia-survey-bot.pd2335346.workers.dev";
+const DEFAULT_LICENSE_SERVER_URL = "https://telegram-multimedia-survey-bot.pd2335346.workers.dev";
 const APP_VERSION = "0.3.0";
 const COMPATIBILITY_DATE = "2026-08-14";
 const WRANGLER = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -127,22 +126,13 @@ function normalizeName(value) {
 
 function makeSlug(customerName) {
   const base = normalizeName(customerName) || "customer";
-  const suffix = createHash("sha256")
-    .update(customerName)
-    .digest("hex")
-    .slice(0, 8);
+  const suffix = createHash("sha256").update(customerName).digest("hex").slice(0, 8);
   return `survey-${base.slice(0, 32)}-${suffix}`;
 }
 
 function validateWorkerName(workerName) {
-  if (
-    !workerName ||
-    workerName.length > 63 ||
-    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(workerName)
-  ) {
-    throw new DeploymentError(
-      "Worker 名称只能使用小写字母、数字和连字符，长度不能超过 63。",
-    );
+  if (!workerName || workerName.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(workerName)) {
+    throw new DeploymentError("Worker 名称只能使用小写字母、数字和连字符，长度不能超过 63。");
   }
 }
 
@@ -151,13 +141,8 @@ function validateAdminIds(value) {
     .split(/[,\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
-  if (
-    ids.length === 0 ||
-    ids.some((item) => !/^[1-9]\d*$/.test(item))
-  ) {
-    throw new DeploymentError(
-      "管理员 ID 必须是 Telegram 数字 ID，例如 123456789。",
-    );
+  if (ids.length === 0 || ids.some((item) => !/^[1-9]\d*$/.test(item))) {
+    throw new DeploymentError("管理员 ID 必须是 Telegram 数字 ID，例如 123456789。");
   }
   return [...new Set(ids)].join(",");
 }
@@ -188,34 +173,25 @@ async function promptValues(args) {
   const rl = createInterface({ input, output });
   const ask = async (key, label, fallback = "") => {
     if (values[key]) return values[key];
-    const answer = await rl.question(
-      fallback ? `${label} [${fallback}]: ` : `${label}: `,
-    );
+    const answer = await rl.question(fallback ? `${label} [${fallback}]: ` : `${label}: `);
     return answer.trim() || fallback;
   };
 
   try {
     values["customer-name"] = await ask("customer-name", "客户名称");
-    const workerName =
-      values["worker-name"]?.trim() || makeSlug(values["customer-name"]);
+    const workerName = values["worker-name"]?.trim() || makeSlug(values["customer-name"]);
     const deploymentDir = path.resolve(
-      values["deployment-dir"] ||
-        path.join(args.outputRoot, normalizeName(workerName)),
+      values["deployment-dir"] || path.join(args.outputRoot, normalizeName(workerName)),
     );
-    const existingDeploymentManifest = await readJsonIfExists(
-      path.join(deploymentDir, "deployment-manifest.json"),
-    );
+    const existingDeploymentManifest = await readJsonIfExists(path.join(deploymentDir, "deployment-manifest.json"));
     reuseExistingLicense = existingDeploymentManifest?.licenseConfigured === true;
     values["admin-id"] = await ask("admin-id", "管理员 Telegram ID");
-    values["license-key"] =
-      values["license-key"] ?? process.env.LICENSE_KEY ?? "";
+    values["license-key"] = values["license-key"] ?? process.env.LICENSE_KEY ?? "";
     if (reuseExistingLicense) {
       values["reuse-existing-license"] = "true";
     }
     values["license-server-url"] =
-      values["license-server-url"] ??
-      process.env.LICENSE_SERVER_URL ??
-      DEFAULT_LICENSE_SERVER_URL;
+      values["license-server-url"] ?? process.env.LICENSE_SERVER_URL ?? DEFAULT_LICENSE_SERVER_URL;
     values["account-id"] = await ask(
       "account-id",
       "Cloudflare Account ID（已登录可留空）",
@@ -229,17 +205,11 @@ async function promptValues(args) {
     values["license-key"] = await promptSecret("项目所有者提供的授权密钥");
   }
   if (!values["bot-token"]) {
-    values["bot-token"] = await promptSecret(
-      "Telegram Bot Token",
-      process.env.TELEGRAM_BOT_TOKEN ?? "",
-    );
+    values["bot-token"] = await promptSecret("Telegram Bot Token", process.env.TELEGRAM_BOT_TOKEN ?? "");
   }
-  values["api-token"] =
-    values["api-token"] ?? process.env.CLOUDFLARE_API_TOKEN ?? "";
+  values["api-token"] = values["api-token"] ?? process.env.CLOUDFLARE_API_TOKEN ?? "";
   if (!values["api-token"] && !process.env.CLOUDFLARE_API_TOKEN) {
-    values["api-token"] = await promptSecret(
-      "Cloudflare API Token（已执行 wrangler login 可留空）",
-    );
+    values["api-token"] = await promptSecret("Cloudflare API Token（已执行 wrangler login 可留空）");
   }
   return values;
 }
@@ -248,9 +218,7 @@ async function promptSecret(label, fallback = "") {
   if (!input.isTTY || !output.isTTY) {
     const rl = createInterface({ input, output });
     try {
-      const answer = await rl.question(
-        fallback ? `${label}（已设置，直接回车使用）: ` : `${label}: `,
-      );
+      const answer = await rl.question(fallback ? `${label}（已设置，直接回车使用）: ` : `${label}: `);
       return answer.trim() || fallback;
     } finally {
       rl.close();
@@ -269,9 +237,7 @@ async function promptSecret(label, fallback = "") {
     output: hiddenOutput,
     terminal: true,
   });
-  output.write(
-    fallback ? `${label}（已设置，直接回车使用）: ` : `${label}: `,
-  );
+  output.write(fallback ? `${label}（已设置，直接回车使用）: ` : `${label}: `);
   muted = true;
   return new Promise((resolve) => {
     rl.question("", (answer) => {
@@ -284,21 +250,10 @@ async function promptSecret(label, fallback = "") {
 }
 
 function commandText(args) {
-  return [WRANGLER, ...args]
-    .map((value) => (/\s/.test(value) ? JSON.stringify(value) : value))
-    .join(" ");
+  return [WRANGLER, ...args].map((value) => (/\s/.test(value) ? JSON.stringify(value) : value)).join(" ");
 }
 
-function runCommand(
-  args,
-  {
-    cwd,
-    secrets = [],
-    dryRun = false,
-    allowFailure = false,
-    quiet = false,
-  } = {},
-) {
+function runCommand(args, { cwd, secrets = [], dryRun = false, allowFailure = false, quiet = false } = {}) {
   const rendered = commandText(args);
   console.log(`\n> ${redact(rendered, secrets)}`);
   if (dryRun) {
@@ -325,12 +280,7 @@ function runCommand(
       if (!quiet) process.stderr.write(redact(text, secrets));
     });
     child.on("error", (error) => {
-      reject(
-        new DeploymentError(
-          `无法执行 ${WRANGLER}。请确认已安装 Node.js 和 Wrangler。`,
-          error.message,
-        ),
-      );
+      reject(new DeploymentError(`无法执行 ${WRANGLER}。请确认已安装 Node.js 和 Wrangler。`, error.message));
     });
     child.on("close", (code) => {
       if (code === 0 || allowFailure) {
@@ -361,10 +311,7 @@ function parseJsonOutput(text, label) {
   try {
     return JSON.parse(normalized.slice(start));
   } catch (error) {
-    throw new DeploymentError(
-      `${label} 返回的数据无法解析。`,
-      error instanceof Error ? error.message : String(error),
-    );
+    throw new DeploymentError(`${label} 返回的数据无法解析。`, error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -393,12 +340,7 @@ function resourceNames(workerName) {
   };
 }
 
-async function createResources({
-  workerName,
-  deploymentDir,
-  dryRun,
-  manifest,
-}) {
+async function createResources({ workerName, deploymentDir, dryRun, manifest }) {
   const names = resourceNames(workerName);
   const state = {
     ...(manifest ?? {}),
@@ -414,29 +356,16 @@ async function createResources({
   if (!state.resources.d1?.id) {
     let d1Id = "<created-d1-id>";
     if (!dryRun) {
-      const listResult = await runCommand(
-        ["wrangler", "d1", "list", "--json"],
-        { cwd: ROOT_DIR, quiet: true },
-      );
+      const listResult = await runCommand(["wrangler", "d1", "list", "--json"], { cwd: ROOT_DIR, quiet: true });
       const databases = parseJsonOutput(listResult.stdout, "D1 列表");
-      let database = Array.isArray(databases)
-        ? databases.find((item) => item?.name === names.d1)
-        : null;
+      let database = Array.isArray(databases) ? databases.find((item) => item?.name === names.d1) : null;
       if (!database) {
         await runCommand(["wrangler", "d1", "create", names.d1], {
           cwd: ROOT_DIR,
         });
-        const refreshedResult = await runCommand(
-          ["wrangler", "d1", "list", "--json"],
-          { cwd: ROOT_DIR, quiet: true },
-        );
-        const refreshed = parseJsonOutput(
-          refreshedResult.stdout,
-          "D1 列表",
-        );
-        database = Array.isArray(refreshed)
-          ? refreshed.find((item) => item?.name === names.d1)
-          : null;
+        const refreshedResult = await runCommand(["wrangler", "d1", "list", "--json"], { cwd: ROOT_DIR, quiet: true });
+        const refreshed = parseJsonOutput(refreshedResult.stdout, "D1 列表");
+        database = Array.isArray(refreshed) ? refreshed.find((item) => item?.name === names.d1) : null;
       } else {
         console.log(`复用现有 D1：${names.d1}`);
       }
@@ -452,9 +381,7 @@ async function createResources({
       id: d1Id,
     };
     if (!state.resources.d1.id) {
-      throw new DeploymentError(
-        "D1 已执行创建命令，但未能从资源列表中读取 database_id。",
-      );
+      throw new DeploymentError("D1 已执行创建命令，但未能从资源列表中读取 database_id。");
     }
     if (!dryRun) await save();
   }
@@ -462,48 +389,30 @@ async function createResources({
   if (!state.resources.kv?.id) {
     let kvId = "<created-kv-id>";
     if (!dryRun) {
-      const listResult = await runCommand(
-        ["wrangler", "kv", "namespace", "list"],
-        { cwd: ROOT_DIR, quiet: true },
-      );
+      const listResult = await runCommand(["wrangler", "kv", "namespace", "list"], { cwd: ROOT_DIR, quiet: true });
       const namespaces = parseJsonOutput(listResult.stdout, "KV 列表");
-      let namespace = Array.isArray(namespaces)
-        ? namespaces.find((item) => item?.title === names.kv)
-        : null;
+      let namespace = Array.isArray(namespaces) ? namespaces.find((item) => item?.title === names.kv) : null;
       if (!namespace) {
-        await runCommand(
-          ["wrangler", "kv", "namespace", "create", names.kv],
-          { cwd: ROOT_DIR },
-        );
-        const refreshedResult = await runCommand(
-          ["wrangler", "kv", "namespace", "list"],
-          { cwd: ROOT_DIR, quiet: true },
-        );
-        const refreshed = parseJsonOutput(
-          refreshedResult.stdout,
-          "KV 列表",
-        );
-        namespace = Array.isArray(refreshed)
-          ? refreshed.find((item) => item?.title === names.kv)
-          : null;
+        await runCommand(["wrangler", "kv", "namespace", "create", names.kv], { cwd: ROOT_DIR });
+        const refreshedResult = await runCommand(["wrangler", "kv", "namespace", "list"], {
+          cwd: ROOT_DIR,
+          quiet: true,
+        });
+        const refreshed = parseJsonOutput(refreshedResult.stdout, "KV 列表");
+        namespace = Array.isArray(refreshed) ? refreshed.find((item) => item?.title === names.kv) : null;
       } else {
         console.log(`复用现有 KV：${names.kv}`);
       }
       kvId = namespace?.id ?? null;
     } else {
-      await runCommand(
-        ["wrangler", "kv", "namespace", "create", names.kv],
-        { cwd: ROOT_DIR, dryRun: true },
-      );
+      await runCommand(["wrangler", "kv", "namespace", "create", names.kv], { cwd: ROOT_DIR, dryRun: true });
     }
     state.resources.kv = {
       name: names.kv,
       id: kvId,
     };
     if (!state.resources.kv.id) {
-      throw new DeploymentError(
-        "KV 已执行创建命令，但未能从资源列表中读取 namespace ID。",
-      );
+      throw new DeploymentError("KV 已执行创建命令，但未能从资源列表中读取 namespace ID。");
     }
     if (!dryRun) await save();
   }
@@ -516,14 +425,11 @@ async function createResources({
         dryRun: true,
       });
     } else {
-      const queueInfo = await runCommand(
-        ["wrangler", "queues", "info", names.queue],
-        {
-          cwd: ROOT_DIR,
-          allowFailure: true,
-          quiet: true,
-        },
-      );
+      const queueInfo = await runCommand(["wrangler", "queues", "info", names.queue], {
+        cwd: ROOT_DIR,
+        allowFailure: true,
+        quiet: true,
+      });
       if (queueInfo.code === 0) {
         console.log(`复用现有 Queue：${names.queue}`);
       } else {
@@ -548,8 +454,7 @@ function buildWranglerConfig({
   resources,
   accountId,
 }) {
-  const sourcePath = (value) =>
-    path.resolve(projectDir, value).replaceAll("\\", "/");
+  const sourcePath = (value) => path.resolve(projectDir, value).replaceAll("\\", "/");
   const lines = [
     `name = ${tomlString(workerName)}`,
     `main = ${tomlString(sourcePath("src/index.ts"))}`,
@@ -607,9 +512,7 @@ function buildWranglerConfig({
 }
 
 async function writeSecretsFile(filePath, values) {
-  const lines = Object.entries(values).map(
-    ([key, value]) => `${key}=${String(value).replace(/\r?\n/g, "")}`,
-  );
+  const lines = Object.entries(values).map(([key, value]) => `${key}=${String(value).replace(/\r?\n/g, "")}`);
   await fs.writeFile(filePath, `${lines.join("\n")}\n`, {
     encoding: "utf8",
     mode: 0o600,
@@ -619,19 +522,16 @@ async function writeSecretsFile(filePath, values) {
 async function setWebhook(botToken, webhookUrl, webhookSecret, dryRun) {
   console.log(`\n> Telegram setWebhook ${webhookUrl}`);
   if (dryRun) return;
-  const response = await fetch(
-    `https://api.telegram.org/bot${encodeURIComponent(botToken)}/setWebhook`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: webhookUrl,
-        secret_token: webhookSecret,
-        drop_pending_updates: false,
-        allowed_updates: ["message", "callback_query", "channel_post"],
-      }),
-    },
-  );
+  const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setWebhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: webhookUrl,
+      secret_token: webhookSecret,
+      drop_pending_updates: false,
+      allowed_updates: ["message", "callback_query", "channel_post"],
+    }),
+  });
   let body;
   try {
     body = await response.json();
@@ -639,24 +539,18 @@ async function setWebhook(botToken, webhookUrl, webhookSecret, dryRun) {
     body = null;
   }
   if (!response.ok || !body?.ok) {
-    throw new DeploymentError(
-      `Telegram setWebhook 失败（HTTP ${response.status}）。`,
-      JSON.stringify(body),
-    );
+    throw new DeploymentError(`Telegram setWebhook 失败（HTTP ${response.status}）。`, JSON.stringify(body));
   }
 }
 
 async function setBotCommands(botToken, dryRun) {
   console.log("\n> Telegram 同步精简命令菜单");
   if (dryRun) return;
-  const response = await fetch(
-    `https://api.telegram.org/bot${encodeURIComponent(botToken)}/setMyCommands`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands: BOT_COMMANDS }),
-    },
-  );
+  const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(botToken)}/setMyCommands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commands: BOT_COMMANDS }),
+  });
   let body;
   try {
     body = await response.json();
@@ -664,10 +558,7 @@ async function setBotCommands(botToken, dryRun) {
     body = null;
   }
   if (!response.ok || !body?.ok) {
-    throw new DeploymentError(
-      `Telegram setMyCommands 失败（HTTP ${response.status}）。`,
-      JSON.stringify(body),
-    );
+    throw new DeploymentError(`Telegram setMyCommands 失败（HTTP ${response.status}）。`, JSON.stringify(body));
   }
 }
 
@@ -675,8 +566,7 @@ async function deploy(args, values) {
   const customerName = validateRequired(values["customer-name"], "客户名称");
   const botToken = validateRequired(values["bot-token"], "Bot Token");
   const adminIds = validateAdminIds(values["admin-id"]);
-  const licenseServerUrl =
-    values["license-server-url"]?.trim() || DEFAULT_LICENSE_SERVER_URL;
+  const licenseServerUrl = values["license-server-url"]?.trim() || DEFAULT_LICENSE_SERVER_URL;
   if (!/^https?:\/\//i.test(licenseServerUrl)) {
     throw new DeploymentError("授权中心地址必须以 http:// 或 https:// 开头。");
   }
@@ -685,48 +575,26 @@ async function deploy(args, values) {
   validateWorkerName(workerName);
   const installationId =
     values["installation-id"]?.trim() ||
-    `install-${createHash("sha256")
-      .update(`${workerName}:${customerName}`)
-      .digest("hex")
-      .slice(0, 24)}`;
-  const webhookSecret =
-    values["webhook-secret"]?.trim() || randomBytes(24).toString("base64url");
-  const accountId =
-    values["account-id"]?.trim() || process.env.CLOUDFLARE_ACCOUNT_ID || "";
-  const apiToken =
-    values["api-token"]?.trim() || process.env.CLOUDFLARE_API_TOKEN || "";
+    `install-${createHash("sha256").update(`${workerName}:${customerName}`).digest("hex").slice(0, 24)}`;
+  const webhookSecret = values["webhook-secret"]?.trim() || randomBytes(24).toString("base64url");
+  const accountId = values["account-id"]?.trim() || process.env.CLOUDFLARE_ACCOUNT_ID || "";
+  const apiToken = values["api-token"]?.trim() || process.env.CLOUDFLARE_API_TOKEN || "";
   if (apiToken) process.env.CLOUDFLARE_API_TOKEN = apiToken;
   if (accountId) process.env.CLOUDFLARE_ACCOUNT_ID = accountId;
 
-  const deploymentDir = path.resolve(
-    values["deployment-dir"] ||
-      path.join(args.outputRoot, normalizeName(workerName)),
-  );
+  const deploymentDir = path.resolve(values["deployment-dir"] || path.join(args.outputRoot, normalizeName(workerName)));
   await fs.mkdir(deploymentDir, { recursive: true });
   const manifestPath = path.join(deploymentDir, "deployment-manifest.json");
   const existingManifest = await readJsonIfExists(manifestPath);
-  const pendingLicensePath = path.join(
-    deploymentDir,
-    ".pending-license.json",
-  );
+  const pendingLicensePath = path.join(deploymentDir, ".pending-license.json");
   const pendingLicense = await readJsonIfExists(pendingLicensePath);
   let licenseKey =
-    values["license-key"]?.trim() ||
-    (typeof pendingLicense?.licenseKey === "string"
-      ? pendingLicense.licenseKey
-      : "");
-  let licensePublicId =
-    typeof pendingLicense?.publicId === "string"
-      ? pendingLicense.publicId
-      : null;
+    values["license-key"]?.trim() || (typeof pendingLicense?.licenseKey === "string" ? pendingLicense.licenseKey : "");
+  let licensePublicId = typeof pendingLicense?.publicId === "string" ? pendingLicense.publicId : null;
   const reuseExistingLicense =
-    !licenseKey &&
-    (existingManifest?.licenseConfigured === true ||
-      values["reuse-existing-license"] === "true");
+    !licenseKey && (existingManifest?.licenseConfigured === true || values["reuse-existing-license"] === "true");
   if (!licenseKey && !reuseExistingLicense) {
-    throw new DeploymentError(
-      "缺少授权密钥。请向项目所有者索取密钥，然后重新运行部署脚本。",
-    );
+    throw new DeploymentError("缺少授权密钥。请向项目所有者索取密钥，然后重新运行部署脚本。");
   }
 
   const plan = {
@@ -742,14 +610,8 @@ async function deploy(args, values) {
   };
   console.log("\n部署计划：");
   console.log(JSON.stringify(plan, null, 2));
-  if (
-    existingManifest &&
-    existingManifest.workerName &&
-    existingManifest.workerName !== workerName
-  ) {
-    throw new DeploymentError(
-      `部署目录已绑定 Worker ${existingManifest.workerName}，不能改用 ${workerName}。`,
-    );
+  if (existingManifest && existingManifest.workerName && existingManifest.workerName !== workerName) {
+    throw new DeploymentError(`部署目录已绑定 Worker ${existingManifest.workerName}，不能改用 ${workerName}。`);
   }
 
   const resourceState = await createResources({
@@ -772,12 +634,7 @@ async function deploy(args, values) {
   await fs.writeFile(configPath, config, "utf8");
 
   const secretsPath = path.join(deploymentDir, ".customer-secrets.tmp");
-  const secrets = [
-    botToken,
-    licenseKey,
-    webhookSecret,
-    apiToken,
-  ].filter(Boolean);
+  const secrets = [botToken, licenseKey, webhookSecret, apiToken].filter(Boolean);
   try {
     await writeSecretsFile(secretsPath, {
       BOT_TOKEN: botToken,
@@ -785,43 +642,21 @@ async function deploy(args, values) {
       ...(licenseKey ? { LICENSE_KEY: licenseKey } : {}),
     });
 
-    await runCommand(
-      [
-        "wrangler",
-        "d1",
-        "migrations",
-        "apply",
-        "DB",
-        "--remote",
-        "--config",
-        configPath,
-      ],
-      { cwd: args.projectDir, secrets, dryRun: args.dryRun },
-    );
+    await runCommand(["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath], {
+      cwd: args.projectDir,
+      secrets,
+      dryRun: args.dryRun,
+    });
     const deployResult = await runCommand(
-      [
-        "wrangler",
-        "deploy",
-        "--config",
-        configPath,
-        "--secrets-file",
-        secretsPath,
-        "--keep-vars",
-      ],
+      ["wrangler", "deploy", "--config", configPath, "--secrets-file", secretsPath, "--keep-vars"],
       { cwd: args.projectDir, secrets, dryRun: args.dryRun },
     );
 
-    const workerUrl =
-      deployResult.stdout.match(
-        /https:\/\/[a-z0-9.-]+\.workers\.dev/i,
-      )?.[0] ?? null;
+    const workerUrl = deployResult.stdout.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/i)?.[0] ?? null;
     if (!workerUrl && !args.dryRun) {
-      throw new DeploymentError(
-        "Worker 已部署，但未能从 Wrangler 输出中识别 workers.dev 地址。",
-      );
+      throw new DeploymentError("Worker 已部署，但未能从 Wrangler 输出中识别 workers.dev 地址。");
     }
-    const resolvedWorkerUrl =
-      workerUrl ?? `https://${workerName}.example.workers.dev`;
+    const resolvedWorkerUrl = workerUrl ?? `https://${workerName}.example.workers.dev`;
     const webhookUrl = `${resolvedWorkerUrl}/telegram/webhook`;
     await setBotCommands(botToken, args.dryRun);
     await setWebhook(botToken, webhookUrl, webhookSecret, args.dryRun);
@@ -880,9 +715,7 @@ async function updateDeployment(args, values) {
   const manifestPath = path.join(deploymentDir, "deployment-manifest.json");
   const manifest = await readJsonIfExists(manifestPath);
   if (!manifest?.workerName || !manifest?.resources?.d1?.id) {
-    throw new DeploymentError(
-      `部署目录没有有效的 deployment-manifest.json：${deploymentDir}`,
-    );
+    throw new DeploymentError(`部署目录没有有效的 deployment-manifest.json：${deploymentDir}`);
   }
   const configPath = path.join(deploymentDir, "wrangler.toml");
   let existingConfig = "";
@@ -892,13 +725,8 @@ async function updateDeployment(args, values) {
     existingConfig = "";
   }
   const adminIds = readTomlValue(existingConfig, "ADMIN_IDS");
-  const licenseServerUrl =
-    readTomlValue(existingConfig, "LICENSE_SERVER_URL") ||
-    DEFAULT_LICENSE_SERVER_URL;
-  const installationId =
-    readTomlValue(existingConfig, "INSTALLATION_ID") ||
-    manifest.installationId ||
-    "";
+  const licenseServerUrl = readTomlValue(existingConfig, "LICENSE_SERVER_URL") || DEFAULT_LICENSE_SERVER_URL;
+  const installationId = readTomlValue(existingConfig, "INSTALLATION_ID") || manifest.installationId || "";
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
   const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
   if (apiToken) process.env.CLOUDFLARE_API_TOKEN = apiToken;
@@ -916,14 +744,14 @@ async function updateDeployment(args, values) {
   await fs.writeFile(configPath, config, "utf8");
 
   console.log(`\n> 更新客户实例：${manifest.workerName}`);
-  await runCommand(
-    ["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath],
-    { cwd: args.projectDir, dryRun: args.dryRun },
-  );
-  await runCommand(
-    ["wrangler", "deploy", "--config", configPath, "--keep-vars"],
-    { cwd: args.projectDir, dryRun: args.dryRun },
-  );
+  await runCommand(["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath], {
+    cwd: args.projectDir,
+    dryRun: args.dryRun,
+  });
+  await runCommand(["wrangler", "deploy", "--config", configPath, "--keep-vars"], {
+    cwd: args.projectDir,
+    dryRun: args.dryRun,
+  });
   if (!args.dryRun) {
     await writeJson(manifestPath, {
       ...manifest,
@@ -955,9 +783,7 @@ try {
     console.error(`\n部署未完成：${error.message}`);
     if (error.details) console.error(error.details);
   } else {
-    console.error(
-      `\n部署未完成：${error instanceof Error ? error.message : String(error)}`,
-    );
+    console.error(`\n部署未完成：${error instanceof Error ? error.message : String(error)}`);
   }
   process.exitCode = 1;
 }

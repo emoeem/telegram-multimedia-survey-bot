@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createSurvey,
-  getSurveyById,
-  listSurveysByOwner,
-} from "../../../src/db/repositories/survey.repository";
+import { createSurvey, getSurveyById, listSurveysByOwner } from "../../../src/db/repositories/survey.repository";
 
 interface StatementMock {
   bind: ReturnType<typeof vi.fn>;
@@ -13,11 +9,7 @@ interface StatementMock {
   all: ReturnType<typeof vi.fn>;
 }
 
-function createD1Mock(input: {
-  firstRow?: unknown;
-  allRows?: unknown[];
-  lastRowId?: number;
-}): D1Database {
+function createD1Mock(input: { firstRow?: unknown; allRows?: unknown[]; lastRowId?: number }): D1Database {
   const statement: StatementMock = {
     bind: vi.fn(() => statement),
     first: vi.fn(async () => input.firstRow ?? null),

@@ -56,9 +56,7 @@ describe("statistics service", () => {
     expect(stats[0]?.percentage).toBeCloseTo(66.67, 1);
 
     const prepare = db.prepare as unknown as ReturnType<typeof vi.fn>;
-    const answerQuery = prepare.mock.calls
-      .map((call) => String(call[0]))
-      .find((sql) => sql.includes("FROM answers a"));
+    const answerQuery = prepare.mock.calls.map((call) => String(call[0])).find((sql) => sql.includes("FROM answers a"));
     expect(answerQuery).toContain("r.status = 'completed'");
   });
 });

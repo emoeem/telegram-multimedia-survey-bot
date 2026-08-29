@@ -1,0 +1,20 @@
+# Package manager / build output
+node_modules/
+admin/dist/
+package-lock.json
+
+# Python venv used by local PDF tooling
+.pdf-tools-venv/
+
+# Local assistant/tooling state
+.zcode/
+
+# Deployment hand-off documents and customer bundles
+delivery/
+
+# Generated report fixtures (output of scripts/generate-report-fixtures.ts)
+qa/fixtures/
+
+# Test runner output
+test-results/
+playwright-report/

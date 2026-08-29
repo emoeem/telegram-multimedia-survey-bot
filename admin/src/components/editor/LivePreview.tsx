@@ -65,7 +65,9 @@ export function LivePreview({
               </div>
               <div className="phone-card">
                 <div className="phone-card-meta">
-                  <strong>第 {currentIndex + 1} / {total} 题</strong>
+                  <strong>
+                    第 {currentIndex + 1} / {total} 题
+                  </strong>
                   <span>·</span>
                   <span>{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
                   <span>·</span>
@@ -74,9 +76,7 @@ export function LivePreview({
                   </span>
                 </div>
                 <div className="phone-card-title">{question.title || "未填写题目标题"}</div>
-                {question.description ? (
-                  <p className="phone-card-desc">{question.description}</p>
-                ) : null}
+                {question.description ? <p className="phone-card-desc">{question.description}</p> : null}
                 <div className="mt-3" style={{ color: "var(--survey-muted)", fontSize: 12 }}>
                   {getQuestionInstruction(question)}
                 </div>
@@ -90,7 +90,8 @@ export function LivePreview({
                       className="phone-btn secondary flex-1"
                       onClick={() => onNavigate(currentIndex - 1)}
                     >
-                      <ChevronLeft className="h-4 w-4" />上一题
+                      <ChevronLeft className="h-4 w-4" />
+                      上一题
                     </button>
                   ) : null}
                   <button
@@ -101,9 +102,15 @@ export function LivePreview({
                     }}
                   >
                     {currentIndex === total - 1 ? (
-                      <><Check className="h-4 w-4" />提交</>
+                      <>
+                        <Check className="h-4 w-4" />
+                        提交
+                      </>
                     ) : (
-                      <>下一题<ChevronRight className="h-4 w-4" /></>
+                      <>
+                        下一题
+                        <ChevronRight className="h-4 w-4" />
+                      </>
                     )}
                   </button>
                 </div>

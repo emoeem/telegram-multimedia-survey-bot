@@ -1,6 +1,8 @@
 import type { PreparedReportContent, ReportAnswerItem } from "../model";
 
-export interface AnswerBlockContext { escape(value: string): string; }
+export interface AnswerBlockContext {
+  escape(value: string): string;
+}
 
 function answer(item: ReportAnswerItem, index: number, className: string, context: AnswerBlockContext): string {
   return `<article class="${className}"><div class="response-index">QUESTION ${String(index + 1).padStart(2, "0")}</div><div class="question">${context.escape(item.label)}</div><div class="answer">${context.escape(item.value)}</div></article>`;

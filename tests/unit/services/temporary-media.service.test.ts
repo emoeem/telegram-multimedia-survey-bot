@@ -99,15 +99,7 @@ describe("temporary media lifecycle", () => {
 
     expect(summary).toEqual({ scanned: 2, deleted: 1 });
     expect(kvDelete).toHaveBeenCalledWith("media:temp:9:x");
-    expect(repositoryMocks.expireMediaAsset).toHaveBeenCalledWith(
-      db,
-      1,
-      "2026-08-22T00:00:00.000Z",
-    );
-    expect(repositoryMocks.expireMediaAsset).toHaveBeenCalledWith(
-      db,
-      2,
-      "2026-08-22T00:00:00.000Z",
-    );
+    expect(repositoryMocks.expireMediaAsset).toHaveBeenCalledWith(db, 1, "2026-08-22T00:00:00.000Z");
+    expect(repositoryMocks.expireMediaAsset).toHaveBeenCalledWith(db, 2, "2026-08-22T00:00:00.000Z");
   });
 });

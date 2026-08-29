@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  enqueueResultVisualJob,
-  isResultVisualJobMessage,
-} from "../../../src/services/result-visual-queue.service";
+import { enqueueResultVisualJob, isResultVisualJobMessage } from "../../../src/services/result-visual-queue.service";
 
 function createD1Mock(active = false): D1Database {
   return {
@@ -12,18 +9,41 @@ function createD1Mock(active = false): D1Database {
         bind: vi.fn(() => statement),
         run: vi.fn(async () => ({ success: true, meta: { last_row_id: 12 } })),
         first: vi.fn(async () => {
-          if (sql.includes("status IN ('queued', 'processing')")) return active ? {
-            id: 11, result_profile_id: 4, template_id: 5, template_version: 6,
-            chat_id: 7, requested_by: 8, status: "processing", attempts: 1,
-            force_regenerate: 0, error_code: null, error_message: null,
-            created_at: "now", started_at: "now", completed_at: null,
-          } : null;
+          if (sql.includes("status IN ('queued', 'processing')"))
+            return active
+              ? {
+                  id: 11,
+                  result_profile_id: 4,
+                  template_id: 5,
+                  template_version: 6,
+                  chat_id: 7,
+                  requested_by: 8,
+                  status: "processing",
+                  attempts: 1,
+                  force_regenerate: 0,
+                  error_code: null,
+                  error_message: null,
+                  created_at: "now",
+                  started_at: "now",
+                  completed_at: null,
+                }
+              : null;
           if (sql.includes("FROM render_jobs")) {
             return {
-              id: 12, result_profile_id: 4, template_id: 5, template_version: 6,
-              chat_id: 7, requested_by: 8, status: "queued", attempts: 0,
-              force_regenerate: 0, error_code: null, error_message: null,
-              created_at: "now", started_at: null, completed_at: null,
+              id: 12,
+              result_profile_id: 4,
+              template_id: 5,
+              template_version: 6,
+              chat_id: 7,
+              requested_by: 8,
+              status: "queued",
+              attempts: 0,
+              force_regenerate: 0,
+              error_code: null,
+              error_message: null,
+              created_at: "now",
+              started_at: null,
+              completed_at: null,
             };
           }
           return null;

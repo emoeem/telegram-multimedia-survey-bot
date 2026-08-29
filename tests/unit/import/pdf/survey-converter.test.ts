@@ -15,9 +15,7 @@ describe("pdf survey converter", () => {
           title: "Question 1",
           required: true,
           page_id: "page_1",
-          options: [
-            { id: "a", label: "A", value: "a", order: 1 },
-          ],
+          options: [{ id: "a", label: "A", value: "a", order: 1 }],
           media: [],
           warnings: [],
         },

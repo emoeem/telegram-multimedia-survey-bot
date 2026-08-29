@@ -110,14 +110,8 @@ export async function createMediaAsset(
   return asset;
 }
 
-export async function getMediaAssetById(
-  db: D1Database,
-  id: number,
-): Promise<MediaAsset | null> {
-  const row = await db
-    .prepare("SELECT * FROM media_assets WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<MediaAssetRow>();
+export async function getMediaAssetById(db: D1Database, id: number): Promise<MediaAsset | null> {
+  const row = await db.prepare("SELECT * FROM media_assets WHERE id = ? LIMIT 1").bind(id).first<MediaAssetRow>();
 
   return row ? mapMediaAsset(row) : null;
 }
@@ -137,12 +131,7 @@ export async function createQuestionMedia(
         question_id, media_asset_id, sort_order, created_at
       ) VALUES (?, ?, ?, ?)`,
     )
-    .bind(
-      input.questionId,
-      input.mediaAssetId,
-      input.sortOrder ?? 0,
-      timestamp,
-    )
+    .bind(input.questionId, input.mediaAssetId, input.sortOrder ?? 0, timestamp)
     .run();
 }
 
@@ -167,14 +156,8 @@ export async function getQuestionMediaByQuestionId(
   }));
 }
 
-export async function deleteQuestionMedia(
-  db: D1Database,
-  questionMediaId: number,
-): Promise<void> {
-  await db
-    .prepare("DELETE FROM question_media WHERE id = ?")
-    .bind(questionMediaId)
-    .run();
+export async function deleteQuestionMedia(db: D1Database, questionMediaId: number): Promise<void> {
+  await db.prepare("DELETE FROM question_media WHERE id = ?").bind(questionMediaId).run();
 }
 
 export async function createAnswerMedia(
@@ -264,10 +247,7 @@ export interface TemporaryMediaRow {
 }
 
 /** Temporary (KV-backed) media linked to a response, newest first. */
-export async function listTemporaryMediaByResponse(
-  db: D1Database,
-  responseId: number,
-): Promise<TemporaryMediaRow[]> {
+export async function listTemporaryMediaByResponse(db: D1Database, responseId: number): Promise<TemporaryMediaRow[]> {
   const result = await db
     .prepare(
       `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt
@@ -283,10 +263,7 @@ export async function listTemporaryMediaByResponse(
   return result.results ?? [];
 }
 
-export async function sumTemporaryMediaBytesForResponse(
-  db: D1Database,
-  responseId: number,
-): Promise<number> {
+export async function sumTemporaryMediaBytesForResponse(db: D1Database, responseId: number): Promise<number> {
   const row = await db
     .prepare(
       `SELECT COALESCE(SUM(m.file_size), 0) AS total
@@ -342,11 +319,7 @@ export async function listOptionMediaByOptionIds(
     mediaAssetId: number;
     sortOrder: number;
   }> = [];
-  for (
-    let start = 0;
-    start < uniqueOptionIds.length;
-    start += OPTION_ID_BATCH_SIZE
-  ) {
+  for (let start = 0; start < uniqueOptionIds.length; start += OPTION_ID_BATCH_SIZE) {
     const optionIdBatch = uniqueOptionIds.slice(start, start + OPTION_ID_BATCH_SIZE);
     const placeholders = optionIdBatch.map(() => "?").join(",");
     const result = await db
@@ -376,9 +349,6 @@ export async function listOptionMediaByOptionIds(
   return media;
 }
 
-export async function deleteOptionMedia(
-  db: D1Database,
-  optionMediaId: number,
-): Promise<void> {
+export async function deleteOptionMedia(db: D1Database, optionMediaId: number): Promise<void> {
   await db.prepare("DELETE FROM option_media WHERE id = ?").bind(optionMediaId).run();
 }

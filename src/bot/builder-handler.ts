@@ -1,13 +1,7 @@
 import type { QuestionType } from "../db/schema";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
-import {
-  assertCanManageSurvey,
-  canCreateSurvey,
-} from "../services/permission.service";
-import {
-  deleteSurvey,
-  setSurveyAccessCode,
-} from "../db/repositories/survey.repository";
+import { assertCanManageSurvey, canCreateSurvey } from "../services/permission.service";
+import { deleteSurvey, setSurveyAccessCode } from "../db/repositories/survey.repository";
 import {
   addOption,
   addMatrixColumn,
@@ -39,10 +33,7 @@ import {
   type ImportedMedia,
   type ImportedSurvey,
 } from "../services/import.service";
-import {
-  createOptionMedia,
-  createQuestionMedia,
-} from "../db/repositories/media.repository";
+import { createOptionMedia, createQuestionMedia } from "../db/repositories/media.repository";
 import {
   createQuestionOption,
   getQuestionById,
@@ -93,25 +84,40 @@ async function showImportReview(
   imported: ImportedSurvey,
 ): Promise<void> {
   if (!ctx.cache) throw new Error("当前部署未启用导入审核");
-  await ctx.cache.put(importReviewKey(userId), JSON.stringify({ rawJson, imported } satisfies ImportReviewState), { expirationTtl: 15 * 60 });
-  const preview = imported.questions.slice(0, 8).map((question, index) => `${index + 1}. ${question.title}（${question.type}）`).join("\n");
-  await sendMessage(ctx.botToken, chatId, [
-    "导入审核",
-    "",
-    `标题：${imported.title}`,
-    `题目：${imported.questions.length} 道`,
-    imported.importWarnings?.length ? `自动修复或需注意：${imported.importWarnings.length} 项` : "未发现自动修复项。",
-    "",
-    preview,
-    imported.questions.length > 8
-      ? `\n当前仅预览第 1-8 题。保存后会保留全部 ${imported.questions.length} 题（包含以上 8 题），可在题目编辑页查看第 9-${imported.questions.length} 题。`
-      : "",
-  ].filter(Boolean).join("\n"), {
-    inline_keyboard: [
-      [{ text: "保存为草稿", callback_data: "import_review:save" }],
-      [{ text: "查看警告", callback_data: "import_review:warnings" }, { text: "取消导入", callback_data: "import_review:cancel" }],
-    ],
+  await ctx.cache.put(importReviewKey(userId), JSON.stringify({ rawJson, imported } satisfies ImportReviewState), {
+    expirationTtl: 15 * 60,
   });
+  const preview = imported.questions
+    .slice(0, 8)
+    .map((question, index) => `${index + 1}. ${question.title}（${question.type}）`)
+    .join("\n");
+  await sendMessage(
+    ctx.botToken,
+    chatId,
+    [
+      "导入审核",
+      "",
+      `标题：${imported.title}`,
+      `题目：${imported.questions.length} 道`,
+      imported.importWarnings?.length ? `自动修复或需注意：${imported.importWarnings.length} 项` : "未发现自动修复项。",
+      "",
+      preview,
+      imported.questions.length > 8
+        ? `\n当前仅预览第 1-8 题。保存后会保留全部 ${imported.questions.length} 题（包含以上 8 题），可在题目编辑页查看第 9-${imported.questions.length} 题。`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    {
+      inline_keyboard: [
+        [{ text: "保存为草稿", callback_data: "import_review:save" }],
+        [
+          { text: "查看警告", callback_data: "import_review:warnings" },
+          { text: "取消导入", callback_data: "import_review:cancel" },
+        ],
+      ],
+    },
+  );
 }
 
 const questionTypes: QuestionType[] = [
@@ -148,9 +154,7 @@ const questionTypeLabels: Record<QuestionType, string> = {
   file: "上传文件",
 };
 
-function buildQuestionTypeKeyboard(
-  appendMode = false,
-): InlineKeyboardMarkup {
+function buildQuestionTypeKeyboard(appendMode = false): InlineKeyboardMarkup {
   const typeRows = [];
   for (let index = 0; index < questionTypes.length; index += 2) {
     const row = questionTypes.slice(index, index + 2).map((type) => ({
@@ -168,9 +172,7 @@ function buildQuestionTypeKeyboard(
           text: appendMode ? "✅ 添加题目" : "✅ 完成问卷",
           callback_data: "builder:finish",
         },
-        ...(appendMode
-          ? []
-          : [{ text: "💾 保存草稿", callback_data: "builder:save" }]),
+        ...(appendMode ? [] : [{ text: "💾 保存草稿", callback_data: "builder:save" }]),
       ],
     ],
   };
@@ -308,11 +310,7 @@ function normalizeOptionLabels(text: string): string[] {
     .filter(Boolean);
 }
 
-async function getEditableQuestion(
-  ctx: BotContext,
-  telegramUserId: number,
-  questionId: number,
-) {
+async function getEditableQuestion(ctx: BotContext, telegramUserId: number, questionId: number) {
   const [question, user] = await Promise.all([
     getQuestionById(ctx.db, questionId),
     getUserByTelegramId(ctx.db, telegramUserId),
@@ -321,38 +319,21 @@ async function getEditableQuestion(
     throw new Error("题目不存在或用户不存在");
   }
 
-  await assertCanManageSurvey(
-    ctx.db,
-    user,
-    question.surveyId,
-    ctx.adminIds,
-  );
+  await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
   await assertSurveyQuestionsEditable(ctx.db, question.surveyId);
   return question;
 }
 
-async function getEditableOption(
-  ctx: BotContext,
-  telegramUserId: number,
-  optionId: number,
-) {
+async function getEditableOption(ctx: BotContext, telegramUserId: number, optionId: number) {
   const option = await getQuestionOptionById(ctx.db, optionId);
   if (!option) {
     throw new Error("选项不存在");
   }
-  const question = await getEditableQuestion(
-    ctx,
-    telegramUserId,
-    option.questionId,
-  );
+  const question = await getEditableQuestion(ctx, telegramUserId, option.questionId);
   return { option, question };
 }
 
-async function showBuilderStep(
-  ctx: BotContext,
-  chatId: number,
-  state: SurveyBuilderState,
-): Promise<void> {
+async function showBuilderStep(ctx: BotContext, chatId: number, state: SurveyBuilderState): Promise<void> {
   const render = (text: string, replyMarkup?: InlineKeyboardMarkup) =>
     renderUiScreen(ctx, chatId, state.userId, {
       screen: "builder",
@@ -361,15 +342,9 @@ async function showBuilderStep(
       state: { step: state.step, questionCount: state.questions.length },
     });
   if (state.step === "survey_title") {
-    await render(
-      "问卷设置 1/2 · 问卷标题\n\n请输入问卷标题：",
-      builderNavKeyboard(false),
-    );
+    await render("问卷设置 1/2 · 问卷标题\n\n请输入问卷标题：", builderNavKeyboard(false));
   } else if (state.step === "survey_description") {
-    await render(
-      "问卷设置 2/2 · 问卷说明\n\n可输入问卷描述，也可以直接跳过：",
-      descriptionKeyboard(),
-    );
+    await render("问卷设置 2/2 · 问卷说明\n\n可输入问卷描述，也可以直接跳过：", descriptionKeyboard());
   } else if (state.step === "question_type") {
     await render(
       `第 ${state.questions.length + 1} 题 · 1/4 选择题型\n\n已完成 ${state.questions.length} 题，请选择下一道题的题型：`,
@@ -403,9 +378,7 @@ async function showBuilderStep(
   } else if (state.step === "import") {
     await render("请发送 survey.json 文件。");
   } else {
-    await render(
-      "当前创建步骤已结束。发送 /continue 继续草稿，或 /create 新建问卷。",
-    );
+    await render("当前创建步骤已结束。发送 /continue 继续草稿，或 /create 新建问卷。");
   }
 }
 
@@ -449,11 +422,7 @@ async function completeQuestionSetup(
   });
 }
 
-async function saveCurrentDraft(
-  ctx: BotContext,
-  userId: number,
-  state: SurveyBuilderState,
-): Promise<number> {
+async function saveCurrentDraft(ctx: BotContext, userId: number, state: SurveyBuilderState): Promise<number> {
   const user = await getUserByTelegramId(ctx.db, userId);
   if (!user) {
     throw new Error("用户不存在，请先发送 /start");
@@ -469,11 +438,7 @@ async function saveCurrentDraft(
   return persistBuilderDraft(ctx.db, ctx.builder, state, user.id);
 }
 
-async function discardCurrentDraft(
-  ctx: BotContext,
-  userId: number,
-  state: SurveyBuilderState,
-): Promise<void> {
+async function discardCurrentDraft(ctx: BotContext, userId: number, state: SurveyBuilderState): Promise<void> {
   if (state.draftSurveyId) {
     const user = await getUserByTelegramId(ctx.db, userId);
     if (user) {
@@ -494,11 +459,7 @@ function cancelDraftKeyboard(): InlineKeyboardMarkup {
   };
 }
 
-export async function startBuilder(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-): Promise<void> {
+export async function startBuilder(ctx: BotContext, chatId: number, userId: number): Promise<void> {
   const state = await initBuilder(ctx.builder, userId);
   if (hasDraftContent(state) && state.step !== "idle") {
     await renderUiScreen(ctx, chatId, userId, {
@@ -517,10 +478,7 @@ export async function startBuilder(
   });
 }
 
-export async function handleBuilderMessage(
-  ctx: BotContext,
-  message: TelegramMessage,
-): Promise<boolean> {
+export async function handleBuilderMessage(ctx: BotContext, message: TelegramMessage): Promise<boolean> {
   const text = message.text?.trim();
   const inputText = text ?? message.caption?.trim();
   const userId = message.from?.id;
@@ -529,18 +487,10 @@ export async function handleBuilderMessage(
     return false;
   }
 
-  if (
-    text === "/create" ||
-    text === "/continue" ||
-    text === "/import"
-  ) {
+  if (text === "/create" || text === "/continue" || text === "/import") {
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "你没有创建或导入问卷的权限。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, "你没有创建或导入问卷的权限。");
       return true;
     }
   }
@@ -555,14 +505,7 @@ export async function handleBuilderMessage(
     let state = await getBuilderState(ctx.builder, userId);
     if (!hasDraftContent(state) || state?.step === "idle") {
       const user = await getUserByTelegramId(ctx.db, userId);
-      state = user
-        ? await restoreLatestBuilderDraft(
-          ctx.db,
-          ctx.builder,
-          userId,
-          user.id,
-        )
-        : null;
+      state = user ? await restoreLatestBuilderDraft(ctx.db, ctx.builder, userId, user.id) : null;
     }
 
     if (!state) {
@@ -577,11 +520,7 @@ export async function handleBuilderMessage(
   if (text === "/import") {
     const state = await initBuilder(ctx.builder, userId);
     if (hasDraftContent(state) && state.step !== "idle") {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "当前还有未完成草稿，请先 /save 保存或 /discard 放弃。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, "当前还有未完成草稿，请先 /save 保存或 /discard 放弃。");
       return true;
     }
     await startImport(ctx.builder, userId);
@@ -616,21 +555,13 @@ export async function handleBuilderMessage(
     try {
       await assertCanManageSurvey(ctx.db, user, optionRow.survey_id, ctx.adminIds);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "无权管理该选项。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权管理该选项。");
       return true;
     }
 
     await initBuilder(ctx.builder, userId);
     await startOptionMedia(ctx.builder, userId, optionId);
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      `请发送要绑定到选项 #${optionId} 的媒体文件。`,
-    );
+    await sendMessage(ctx.botToken, message.chat.id, `请发送要绑定到选项 #${optionId} 的媒体文件。`);
     return true;
   }
 
@@ -645,21 +576,13 @@ export async function handleBuilderMessage(
     try {
       await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "无权管理该题目。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权管理该题目。");
       return true;
     }
 
     await initBuilder(ctx.builder, userId);
     await startQuestionMedia(ctx.builder, userId, questionId);
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      `请发送要绑定到题目 #${questionId} 的媒体文件。`,
-    );
+    await sendMessage(ctx.botToken, message.chat.id, `请发送要绑定到题目 #${questionId} 的媒体文件。`);
     return true;
   }
 
@@ -674,11 +597,7 @@ export async function handleBuilderMessage(
     try {
       await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "无权编辑该题目。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权编辑该题目。");
       return true;
     }
 
@@ -735,11 +654,7 @@ export async function handleBuilderMessage(
         `✅ 草稿已保存，内部编号：${surveyId}\n可继续添加题目，稍后也能用 /continue 恢复。`,
       );
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "保存失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "保存失败。");
     }
     return true;
   }
@@ -754,11 +669,7 @@ export async function handleBuilderMessage(
     const importingUser = await getUserByTelegramId(ctx.db, userId);
     if (!importingUser || !(await canCreateSurvey(ctx.db, importingUser, ctx.adminIds))) {
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "你没有导入问卷的权限，导入操作已取消。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, "你没有导入问卷的权限，导入操作已取消。");
       return true;
     }
 
@@ -769,7 +680,7 @@ export async function handleBuilderMessage(
     try {
       const jsonText = message.document
         ? await getTelegramFileText(ctx.botToken, message.document.file_id)
-        : inputText ?? "";
+        : (inputText ?? "");
       const imported = parseImportedSurvey(jsonText);
       if (message.document) {
         await showImportReview(ctx, message.chat.id, userId, jsonText, imported);
@@ -778,64 +689,50 @@ export async function handleBuilderMessage(
       const temporaryMediaMessageIds: number[] = [];
       let surveyId: number;
       try {
-        surveyId = await saveImportedSurvey(
-          ctx.db,
-          importingUser.id,
-          imported,
-          async (media) => {
-            if (media.type === "sticker") {
-              throw new Error("暂不支持从 JSON 内嵌导入贴纸");
-            }
-            const uploadInput = {
-              type: media.type,
-              ...(media.url ? { url: media.url } : {}),
-              ...(media.telegramFileId
-                ? { telegramFileId: media.telegramFileId }
-                : {}),
-              ...(media.telegramFileUniqueId
-                ? {
-                  telegramFileUniqueId:
-                    media.telegramFileUniqueId,
+        surveyId = await saveImportedSurvey(ctx.db, importingUser.id, imported, async (media) => {
+          if (media.type === "sticker") {
+            throw new Error("暂不支持从 JSON 内嵌导入贴纸");
+          }
+          const uploadInput = {
+            type: media.type,
+            ...(media.url ? { url: media.url } : {}),
+            ...(media.telegramFileId ? { telegramFileId: media.telegramFileId } : {}),
+            ...(media.telegramFileUniqueId
+              ? {
+                  telegramFileUniqueId: media.telegramFileUniqueId,
                 }
-                : {}),
-              ...(media.mimeType ? { mimeType: media.mimeType } : {}),
-              ...(media.fileName ? { fileName: media.fileName } : {}),
-              ...(media.width !== undefined ? { width: media.width } : {}),
-              ...(media.height !== undefined ? { height: media.height } : {}),
-              ...(media.duration !== undefined
-                ? { duration: media.duration }
-                : {}),
-              ...(media.size !== undefined ? { size: media.size } : {}),
-            };
-            const uploaded = await uploadMediaForReuse(
-              ctx.botToken,
-              message.chat.id,
-              uploadInput,
-            );
-            if (uploaded.messageId !== null) {
-              temporaryMediaMessageIds.push(uploaded.messageId);
-            }
-            const resolvedMedia: ImportedMedia = {
-              ...media,
-              source: "telegram",
-              telegramFileId: uploaded.file.file_id,
-              telegramFileUniqueId: uploaded.file.file_unique_id,
-            };
-            const mimeType = uploaded.file.mime_type ?? media.mimeType;
-            const fileName = uploaded.file.file_name ?? media.fileName;
-            const size = uploaded.file.file_size ?? media.size;
-            const width = uploaded.file.width ?? media.width;
-            const height = uploaded.file.height ?? media.height;
-            const duration = uploaded.file.duration ?? media.duration;
-            if (mimeType) resolvedMedia.mimeType = mimeType;
-            if (fileName) resolvedMedia.fileName = fileName;
-            if (size !== undefined) resolvedMedia.size = size;
-            if (width !== undefined) resolvedMedia.width = width;
-            if (height !== undefined) resolvedMedia.height = height;
-            if (duration !== undefined) resolvedMedia.duration = duration;
-            return resolvedMedia;
-          },
-        );
+              : {}),
+            ...(media.mimeType ? { mimeType: media.mimeType } : {}),
+            ...(media.fileName ? { fileName: media.fileName } : {}),
+            ...(media.width !== undefined ? { width: media.width } : {}),
+            ...(media.height !== undefined ? { height: media.height } : {}),
+            ...(media.duration !== undefined ? { duration: media.duration } : {}),
+            ...(media.size !== undefined ? { size: media.size } : {}),
+          };
+          const uploaded = await uploadMediaForReuse(ctx.botToken, message.chat.id, uploadInput);
+          if (uploaded.messageId !== null) {
+            temporaryMediaMessageIds.push(uploaded.messageId);
+          }
+          const resolvedMedia: ImportedMedia = {
+            ...media,
+            source: "telegram",
+            telegramFileId: uploaded.file.file_id,
+            telegramFileUniqueId: uploaded.file.file_unique_id,
+          };
+          const mimeType = uploaded.file.mime_type ?? media.mimeType;
+          const fileName = uploaded.file.file_name ?? media.fileName;
+          const size = uploaded.file.file_size ?? media.size;
+          const width = uploaded.file.width ?? media.width;
+          const height = uploaded.file.height ?? media.height;
+          const duration = uploaded.file.duration ?? media.duration;
+          if (mimeType) resolvedMedia.mimeType = mimeType;
+          if (fileName) resolvedMedia.fileName = fileName;
+          if (size !== undefined) resolvedMedia.size = size;
+          if (width !== undefined) resolvedMedia.width = width;
+          if (height !== undefined) resolvedMedia.height = height;
+          if (duration !== undefined) resolvedMedia.duration = duration;
+          return resolvedMedia;
+        });
       } finally {
         for (const messageId of temporaryMediaMessageIds) {
           try {
@@ -855,11 +752,7 @@ export async function handleBuilderMessage(
           `题目：${imported.questions.length}`,
           `内部编号：${surveyId}`,
           ...(imported.importWarnings?.length
-            ? [
-              "",
-              `自动修复：${imported.importWarnings.length} 项`,
-              ...imported.importWarnings,
-            ]
+            ? ["", `自动修复：${imported.importWarnings.length} 项`, ...imported.importWarnings]
             : []),
           "",
           "发送 /my_surveys 查看并发布。",
@@ -892,22 +785,13 @@ export async function handleBuilderMessage(
     }
 
     try {
-      const question = await getEditableQuestion(
-        ctx,
-        userId,
-        state.targetQuestionId,
-      );
-      if (
-        question.type !== "single" &&
-        question.type !== "multiple"
-      ) {
+      const question = await getEditableQuestion(ctx, userId, state.targetQuestionId);
+      if (question.type !== "single" && question.type !== "multiple") {
         throw new Error("只有单选题和多选题可以新增选项");
       }
 
       const hasMedia = messageHasMedia(message);
-      const labels = hasMedia
-        ? [inputText]
-        : normalizeOptionLabels(inputText);
+      const labels = hasMedia ? [inputText] : normalizeOptionLabels(inputText);
       if (labels.length === 0) {
         throw new Error("请输入有效的选项名称");
       }
@@ -939,18 +823,9 @@ export async function handleBuilderMessage(
       }
 
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await showQuestionEditor(
-        ctx,
-        message.chat.id,
-        userId,
-        question.id,
-      );
+      await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "新增选项失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "新增选项失败。");
     }
     return true;
   }
@@ -963,11 +838,7 @@ export async function handleBuilderMessage(
     }
 
     try {
-      const { question } = await getEditableOption(
-        ctx,
-        userId,
-        state.targetOptionId,
-      );
+      const { question } = await getEditableOption(ctx, userId, state.targetOptionId);
       const mediaAssetId = await registerMediaAsset(ctx, message);
       if (!mediaAssetId) {
         throw new Error("无法识别媒体，请重新发送");
@@ -978,18 +849,9 @@ export async function handleBuilderMessage(
         mediaAssetId,
       });
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await showQuestionEditor(
-        ctx,
-        message.chat.id,
-        userId,
-        question.id,
-      );
+      await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "绑定选项附件失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "绑定选项附件失败。");
     }
     return true;
   }
@@ -1002,11 +864,7 @@ export async function handleBuilderMessage(
     }
 
     try {
-      const question = await getEditableQuestion(
-        ctx,
-        userId,
-        state.targetQuestionId,
-      );
+      const question = await getEditableQuestion(ctx, userId, state.targetQuestionId);
       const mediaAssetId = await registerMediaAsset(ctx, message);
       if (!mediaAssetId) {
         throw new Error("无法识别媒体，请重新发送");
@@ -1017,18 +875,9 @@ export async function handleBuilderMessage(
         mediaAssetId,
       });
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await showQuestionEditor(
-        ctx,
-        message.chat.id,
-        userId,
-        question.id,
-      );
+      await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "绑定题目附件失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "绑定题目附件失败。");
     }
     return true;
   }
@@ -1040,25 +889,12 @@ export async function handleBuilderMessage(
     }
 
     try {
-      const question = await getEditableQuestion(
-        ctx,
-        userId,
-        state.targetQuestionId,
-      );
+      const question = await getEditableQuestion(ctx, userId, state.targetQuestionId);
       await updateQuestionTitle(ctx.db, question.id, inputText);
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await showQuestionEditor(
-        ctx,
-        message.chat.id,
-        userId,
-        question.id,
-      );
+      await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "更新题目失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "更新题目失败。");
     }
     return true;
   }
@@ -1070,29 +906,12 @@ export async function handleBuilderMessage(
     }
 
     try {
-      const { question } = await getEditableOption(
-        ctx,
-        userId,
-        state.targetOptionId,
-      );
-      await updateQuestionOptionLabel(
-        ctx.db,
-        state.targetOptionId,
-        inputText,
-      );
+      const { question } = await getEditableOption(ctx, userId, state.targetOptionId);
+      await updateQuestionOptionLabel(ctx.db, state.targetOptionId, inputText);
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await showQuestionEditor(
-        ctx,
-        message.chat.id,
-        userId,
-        question.id,
-      );
+      await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "更新选项失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "更新选项失败。");
     }
     return true;
   }
@@ -1110,12 +929,7 @@ export async function handleBuilderMessage(
     }
 
     try {
-      await assertCanManageSurvey(
-        ctx.db,
-        user,
-        state.targetSurveyId,
-        ctx.adminIds,
-      );
+      await assertCanManageSurvey(ctx.db, user, state.targetSurveyId, ctx.adminIds);
       if (text === "/clear") {
         await setSurveyAccessCode(ctx.db, state.targetSurveyId, null);
       } else {
@@ -1138,11 +952,7 @@ export async function handleBuilderMessage(
           : `访问密码已保存。请复制并妥善保存：\n\n${inputText}\n\n以后可在“问卷访问密码”中查看或更换。`,
       );
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        error instanceof Error ? error.message : "设置密码失败。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "设置密码失败。");
     }
     return true;
   }
@@ -1179,11 +989,7 @@ export async function handleBuilderMessage(
 
   if (state.step === "question_title") {
     if (!inputText) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "媒体需要附带说明文字，该说明文字会作为题目内容。",
-      );
+      await sendMessage(ctx.botToken, message.chat.id, "媒体需要附带说明文字，该说明文字会作为题目内容。");
       return true;
     }
 
@@ -1202,12 +1008,7 @@ export async function handleBuilderMessage(
       }
     }
 
-    await sendMessage(
-      ctx.botToken,
-      message.chat.id,
-      "第 3/4 步：请选择这道题是否必答。",
-      questionRequiredKeyboard(),
-    );
+    await sendMessage(ctx.botToken, message.chat.id, "第 3/4 步：请选择这道题是否必答。", questionRequiredKeyboard());
     return true;
   }
 
@@ -1238,7 +1039,13 @@ export async function handleBuilderMessage(
       try {
         const nextState = await finishOptions(ctx.builder, userId);
         if (nextState.step === "matrix_columns") await showBuilderStep(ctx, message.chat.id, nextState);
-        else await sendMessage(ctx.botToken, message.chat.id, `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`, buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)));
+        else
+          await sendMessage(
+            ctx.botToken,
+            message.chat.id,
+            `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
+            buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
+          );
       } catch (error) {
         await sendMessage(
           ctx.botToken,
@@ -1258,17 +1065,18 @@ export async function handleBuilderMessage(
       }
       let nextState = state;
       for (const label of labels) nextState = await addMatrixColumn(ctx.builder, userId, label);
-      await sendMessage(ctx.botToken, message.chat.id, `已添加 ${labels.length} 个列，当前共 ${nextState.currentMatrixColumns?.length ?? 0} 个。\n至少两个列后点击“完成选项”。`, optionEntryKeyboard());
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        `已添加 ${labels.length} 个列，当前共 ${nextState.currentMatrixColumns?.length ?? 0} 个。\n至少两个列后点击“完成选项”。`,
+        optionEntryKeyboard(),
+      );
       return true;
     }
 
     if (messageHasMedia(message)) {
       if (!message.caption?.trim()) {
-        await sendMessage(
-          ctx.botToken,
-          message.chat.id,
-          "请给媒体添加说明文字，说明文字会作为选项名称。",
-        );
+        await sendMessage(ctx.botToken, message.chat.id, "请给媒体添加说明文字，说明文字会作为选项名称。");
         return true;
       }
       const mediaAssetId = await registerMediaAsset(ctx, message);
@@ -1276,12 +1084,7 @@ export async function handleBuilderMessage(
         await sendMessage(ctx.botToken, message.chat.id, "无法识别该媒体，请重新上传。");
         return true;
       }
-      const nextState = await addOption(
-        ctx.builder,
-        userId,
-        message.caption.trim(),
-        mediaAssetId,
-      );
+      const nextState = await addOption(ctx.builder, userId, message.caption.trim(), mediaAssetId);
       await sendMessage(
         ctx.botToken,
         message.chat.id,
@@ -1313,10 +1116,7 @@ export async function handleBuilderMessage(
   return false;
 }
 
-export async function handleBuilderCallback(
-  ctx: BotContext,
-  callback: TelegramCallbackQuery,
-): Promise<boolean> {
+export async function handleBuilderCallback(ctx: BotContext, callback: TelegramCallbackQuery): Promise<boolean> {
   const data = callback.data;
   const userId = callback.from.id;
   const chatId = callback.message?.chat.id;
@@ -1332,7 +1132,7 @@ export async function handleBuilderCallback(
       return true;
     }
     const raw = await ctx.cache?.get(importReviewKey(userId));
-    const review = raw ? JSON.parse(raw) as ImportReviewState : null;
+    const review = raw ? (JSON.parse(raw) as ImportReviewState) : null;
     if (!review) {
       await answerCallbackQuery(ctx.botToken, callback.id, "导入审核已过期，请重新上传文件");
       return true;
@@ -1345,9 +1145,16 @@ export async function handleBuilderCallback(
       return true;
     }
     if (data === "import_review:warnings") {
-      await sendLongMessage(ctx.botToken, chatId, review.imported.importWarnings?.length ? `导入提示：\n${review.imported.importWarnings.map((warning) => `- ${warning}`).join("\n")}` : "未发现导入提示。", {
-        inline_keyboard: [[{ text: "返回审核", callback_data: "import_review:back" }]],
-      });
+      await sendLongMessage(
+        ctx.botToken,
+        chatId,
+        review.imported.importWarnings?.length
+          ? `导入提示：\n${review.imported.importWarnings.map((warning) => `- ${warning}`).join("\n")}`
+          : "未发现导入提示。",
+        {
+          inline_keyboard: [[{ text: "返回审核", callback_data: "import_review:back" }]],
+        },
+      );
       await answerCallbackQuery(ctx.botToken, callback.id);
       return true;
     }
@@ -1359,7 +1166,12 @@ export async function handleBuilderCallback(
     if (data === "import_review:save") {
       await ctx.cache?.delete(importReviewKey(userId));
       await answerCallbackQuery(ctx.botToken, callback.id, "正在保存草稿");
-      await handleBuilderMessage(ctx, { message_id: callback.message?.message_id ?? 0, chat: { id: chatId }, from: callback.from, text: review.rawJson });
+      await handleBuilderMessage(ctx, {
+        message_id: callback.message?.message_id ?? 0,
+        chat: { id: chatId },
+        from: callback.from,
+        text: review.rawJson,
+      });
       return true;
     }
   }
@@ -1490,11 +1302,7 @@ export async function handleBuilderCallback(
       }
       await answerCallbackQuery(ctx.botToken, callback.id);
     } catch (error) {
-      await answerCallbackQuery(
-        ctx.botToken,
-        callback.id,
-        error instanceof Error ? error.message : "选项尚未填写完整",
-      );
+      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "选项尚未填写完整");
     }
     return true;
   }
@@ -1520,11 +1328,7 @@ export async function handleBuilderCallback(
           : `问卷创建完成，已保存为草稿。\n内部编号：${surveyId}\n发送 /my_surveys 可设置密码、编辑或发布。`,
       );
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `保存失败：${error instanceof Error ? error.message : "未知错误"}`,
-      );
+      await sendMessage(ctx.botToken, chatId, `保存失败：${error instanceof Error ? error.message : "未知错误"}`);
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1538,17 +1342,9 @@ export async function handleBuilderCallback(
 
     try {
       const surveyId = await saveCurrentDraft(ctx, userId, state);
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `草稿已保存，内部编号：${surveyId}\n创建状态已保留，可继续添加题目。`,
-      );
+      await sendMessage(ctx.botToken, chatId, `草稿已保存，内部编号：${surveyId}\n创建状态已保留，可继续添加题目。`);
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        error instanceof Error ? error.message : "保存草稿失败",
-      );
+      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "保存草稿失败");
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;

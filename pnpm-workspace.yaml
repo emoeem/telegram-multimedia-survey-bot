@@ -2,4 +2,4 @@ allowBuilds:
   esbuild: true
   workerd: true
 minimumReleaseAgeExclude:
-  - '@cloudflare/workers-types@5.20260814.1'
+  - "@cloudflare/workers-types@5.20260814.1"

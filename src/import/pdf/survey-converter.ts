@@ -1,9 +1,7 @@
 import type { SurveyMedia, UnifiedSurveyImport } from "../../survey/schema";
 import type { PdfDetectedSurvey } from "./document-model";
 
-export function convertPdfDetectedSurveyToUnified(
-  detected: PdfDetectedSurvey,
-): UnifiedSurveyImport {
+export function convertPdfDetectedSurveyToUnified(detected: PdfDetectedSurvey): UnifiedSurveyImport {
   return {
     schema_version: 1,
     survey: {

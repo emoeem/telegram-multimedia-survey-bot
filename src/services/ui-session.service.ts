@@ -13,23 +13,16 @@ async function callUiSession(
   body: Record<string, unknown>,
 ): Promise<UiSessionState> {
   const id = namespace.idFromName(idFor(userId, chatId));
-  const response = await namespace.get(id).fetch(
-    `https://ui-session.internal/?userId=${userId}&chatId=${chatId}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const response = await namespace.get(id).fetch(`https://ui-session.internal/?userId=${userId}&chatId=${chatId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) throw new Error(`UI session request failed: ${response.status}`);
   return response.json() as Promise<UiSessionState>;
 }
 
-export function getUiSession(
-  namespace: UiSessionNamespace,
-  userId: number,
-  chatId: number,
-): Promise<UiSessionState> {
+export function getUiSession(namespace: UiSessionNamespace, userId: number, chatId: number): Promise<UiSessionState> {
   return callUiSession(namespace, userId, chatId, { action: "get" });
 }
 
@@ -59,10 +52,6 @@ export function replaceUiScreen(
   });
 }
 
-export function clearUiSession(
-  namespace: UiSessionNamespace,
-  userId: number,
-  chatId: number,
-): Promise<UiSessionState> {
+export function clearUiSession(namespace: UiSessionNamespace, userId: number, chatId: number): Promise<UiSessionState> {
   return callUiSession(namespace, userId, chatId, { action: "clear" });
 }

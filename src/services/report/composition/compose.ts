@@ -14,9 +14,21 @@ const block = (
   columnSpan = 12,
   readingWidth: ReportBlockSpec["readingWidth"] = "full",
   emphasis: ReportBlockSpec["emphasis"] = "standard",
-): ReportBlockSpec => ({ id: kind, kind, presentation, columnSpan, readingWidth, emphasis, breakPolicy: presentation === "editorial" ? "auto" : "avoid" });
+): ReportBlockSpec => ({
+  id: kind,
+  kind,
+  presentation,
+  columnSpan,
+  readingWidth,
+  emphasis,
+  breakPolicy: presentation === "editorial" ? "auto" : "avoid",
+});
 
-function region(id: ReportCompositionRegion["id"], role: ReportCompositionRegion["role"], blocks: ReportBlockSpec[]): ReportCompositionRegion {
+function region(
+  id: ReportCompositionRegion["id"],
+  role: ReportCompositionRegion["role"],
+  blocks: ReportBlockSpec[],
+): ReportCompositionRegion {
   return { id, role, blocks };
 }
 
@@ -44,8 +56,16 @@ export function composeReport(
   const has = available(view, content);
   const cover = region("hero", "hero", [block("cover", "editorial", 12, "full", "primary")]);
   const hero = region("opening", "hero", [block("hero", "editorial", 12, "full", "primary")]);
-  const overview = region("overview", "overview", has.overview ? [block("overview", "data", 12, "full", "featured")] : []);
-  const featured = region("featured", "featured", has.featured ? [block("featured", "quote", 12, "wide", "featured")] : []);
+  const overview = region(
+    "overview",
+    "overview",
+    has.overview ? [block("overview", "data", 12, "full", "featured")] : [],
+  );
+  const featured = region(
+    "featured",
+    "featured",
+    has.featured ? [block("featured", "quote", 12, "wide", "featured")] : [],
+  );
   const analysis = region("analysis", "analysis", has.analysis ? [block("analysis", "editorial", 12, "wide")] : []);
   const evidenceBoth = region("evidence", "evidence", [
     ...(has.quotes ? [block("quotes", "quote", 12, "wide")] : []),
@@ -53,10 +73,16 @@ export function composeReport(
   ]);
   const quotes = region("evidence", "evidence", has.quotes ? [block("quotes", "quote", 12, "wide")] : []);
   const responses = region("evidence", "evidence", has.responses ? [block("responses", "editorial", 12, "full")] : []);
-  const transcript = region("evidence", "evidence", has.transcript ? [block("transcript", "editorial", 12, "full")] : []);
+  const transcript = region(
+    "evidence",
+    "evidence",
+    has.transcript ? [block("transcript", "editorial", 12, "full")] : [],
+  );
   const gallery = region("gallery", "gallery", has.gallery ? [block("gallery", "image", 12, "full")] : []);
   const finale = region("finale", "finale", [block("verdict", "editorial", 12, "full", "primary")]);
-  const regionMap = new Map([cover, hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]));
+  const regionMap = new Map(
+    [cover, hero, overview, featured, analysis, evidenceBoth, gallery, finale].map((item) => [item.role, item]),
+  );
   if (blocks && blocks.length > 0) {
     const byKind: Record<ReportCompositionBlockKind, ReportCompositionRegion> = {
       cover,
@@ -70,14 +96,14 @@ export function composeReport(
       gallery,
       verdict: finale,
     };
-    const regions = blocks
-      .map((kind) => byKind[kind])
-      .filter((item) => item.blocks.length > 0);
+    const regions = blocks.map((kind) => byKind[kind]).filter((item) => item.blocks.length > 0);
     const textVolume = content.analysis.reduce((sum, item) => sum + item.text.length, 0);
     const density = textVolume > 2400 ? "airy" : view.profile.length > 12 ? "compact" : reportLayouts[layout].density;
     return { layout, density, regions };
   }
-  const regions = reportLayouts[layout].regionOrder.map((role) => regionMap.get(role)!).filter((item) => item.blocks.length > 0);
+  const regions = reportLayouts[layout].regionOrder
+    .map((role) => regionMap.get(role)!)
+    .filter((item) => item.blocks.length > 0);
   const textVolume = content.analysis.reduce((sum, item) => sum + item.text.length, 0);
   const density = textVolume > 2400 ? "airy" : view.profile.length > 12 ? "compact" : reportLayouts[layout].density;
   return { layout, density, regions };

@@ -21,26 +21,31 @@
 ## 2. 已完成功能清单
 
 ### 数据层（稳定，勿动）
+
 - D1 全套：users / surveys / survey_questions / question_options / media_assets(scope+storage_kind) / survey_responses / answers / answer_options / answer_media / survey_versions / result_profiles / report_deliveries / user_tags / audit_logs / system_settings
 - 迁移 0000–0030 全部可增量应用（0026 分页+版本快照；0027 临时媒体+报告交付；0028 用户标签；0029 报告模板列；0030 系统设置）
 - `survey_versions` 快照 + `survey_responses.version` 关联：历史答卷绑定提交时版本
 - `report_deliveries`：UNIQUE(response_id) + delivery_id 幂等键 + 状态机（pending/delivering/delivered/failed）+ 指数退避 + cron 重试驱动
 
 ### Web Survey
+
 - `/s` 问卷列表（题数后端计算、密码标识）；`/s/:id` 移动端优先填写：全题型、进度、分页、校验、跳题、断点续填、访问码、图片上传（仅 JPEG/PNG/WebP，单张 ≤10MB、答卷 ≤50MB）
 
 ### Web Report + 报告模板
+
 - `/report/:id?t=<签名token>` 响应式单页；`?template=` 可切换模板
 - Report Template System：`ReportTemplateSpec`（sections/theme/css）+ 注册表（classic、magazine-dark）+ 校验
 - PDF 与 Web 共用同一模板与 ReportViewModel；PDF 图片压缩至 ≤1200px，目标 ≤15MB
 - 问卷可绑定 `report_template_id`（Admin 问卷详情选择）
 
 ### 报告归档（Telegram 频道）
+
 - 完成即入队；Worker 生成 PDF + 必要图片 → `sendDocument`（带"📋 新答卷"摘要 + `#答卷X #问卷Y #用户Z`）→ 成功后才删临时媒体
 - 失败退避重试（1m/5m/15m/1h，最多 5 次）+ 管理员通知 + Admin 重试/重新生成
 - 频道识别：`/detect_channel` + `channel_post` 自动识别（验证 Bot 是频道管理员）；也可在设置页配 `report_channel_id`
 
 ### Admin Web（当前控制台）
+
 - Dashboard：计数/今日答卷/报告交付状态/最近操作
 - 问卷：列表/搜索/筛选/详情/关闭/重新发布/归档/删除（带答卷保护）/复制/导入导出/预览
 - 编辑器：题目与选项 CRUD、拖拽排序、改题型、校验、跳题规则、分页管理、题目/选项复制、保存队列、409 并发、发布、版本恢复
@@ -52,12 +57,14 @@
 - 审计：问卷创建/发布/关闭/归档/删除/导入/复制/恢复、报告重试/重新生成、设置变更
 
 ### Telegram Bot（保留职责）
+
 - /start 入口、Web 问卷列表入口、完成通知（含网页版报告链接）、身份绑定、报告重发、频道识别、大文件人工渠道（后续）
 - **旧 Bot 答题 UI 已下线（P10 第一块完成，2026-08-23）**：survey-handler 删除了内联答题渲染/消息答题路由/q:* 回调/继续填写入口及 `src/survey/renderer.ts`；问卷列表行改为 Web 链接（`/s/:id`），`/start survey_<id>` 深链打开 Web 问卷。**仍在代码中**：Builder（builder-handler 49KB）、QuestionEditor、导入 UI、owner:* 管理流程（P10 后续块，待 Bot 回归确认后继续）
 
 ## 3. 环境与部署现状
 
 ### 生产（唯一在跑的环境）
+
 - Cloudflare 账号：`pd2335346@gmail.com`（Account ID `ed1957935f0efde06a68432e5fc48d97`）
 - Worker：`telegram-multimedia-survey-bot` → `https://telegram-multimedia-survey-bot.pd2335346.workers.dev`
 - D1：`telegram-survey-db`（id `159e8169-a233-4bd7-b3e9-723586f850c2`，有真实数据）
@@ -70,6 +77,7 @@
 - 最近部署版本：`7a041cbc`（2026-08-23，对应 git `9417dd5`；注：形如 `xxxxxxxx` 的 8 位短串是 wrangler 部署 ID 前缀，不是 git commit）
 
 ### Staging（备用）
+
 - 账号：`3353745917@gmail.com`（Account ID `fb8f4c599afffea6f419532f2d95ab54`）
 - Worker：`telegram-multimedia-survey-bot-staging`
 - 注：**本机 wrangler OAuth 目前是生产账号**；部署 staging 前需 `wrangler login` 切回 staging 账号
@@ -82,13 +90,14 @@
 4. **`assets` 配置三件套（2026-08-23）**：`run_worker_first=true` + `html_handling="none"` + `not_found_handling="none"`。Worker 先于静态资产执行，`/s`、`/admin`、`/api/*` 由 Worker 显式路由，JS/CSS 由 ASSETS 兜底，未知路径返回真 404。**不要把 `not_found_handling` 改回 `single-page-application`**：那会让带 `Sec-Fetch-Dest: document` 的真实浏览器导航请求被 SPA fallback 拦截并直接返回 admin index.html（Worker 不执行），导致 `/s`、`/s/:id` 黑屏——这是此前 curl 正常但浏览器黑屏的根因。`/admin` 入口在 Worker 里显式取 `/index.html`（`html_handling="none"` 下无目录索引）；`/s` 显式取 `/survey.html`，勿改回默认否则路径被重定向丢失
 5. **前端页面不再阻塞加载 telegram.org 脚本（2026-08-23）**：survey/admin 均改为挂载前带超时动态加载（`waitForTelegramWebApp`）+ initData 惰性读取；`/s`、`/admin` 的 HTML 响应 `Cache-Control: no-store`，防止 WebView 缓存旧页面。普通浏览器（含国内）不再黑屏；Telegram WebView 内由客户端本地提供该脚本，鉴权不受影响
 6. 系统设置页里的 TTL/上传/PDF 限制目前是**存储+展示**，运行时媒体限制仍用代码常量（`temporary-media.service.ts`）；接入设置值属后续项
-6. `.dev.vars` 的 BOT_TOKEN 是占位符，别当真；真实 token 只在 Cloudflare Secrets
-7. **Bot token 曾在对话中暴露过**，建议在 BotFather 轮换一次并更新 Secrets
-8. 本机 `~/.config/.wrangler` 的 OAuth 会随 `wrangler login` 切换账号，注意当前指向哪个账号
+7. `.dev.vars` 的 BOT_TOKEN 是占位符，别当真；真实 token 只在 Cloudflare Secrets
+8. **Bot token 曾在对话中暴露过**，建议在 BotFather 轮换一次并更新 Secrets
+9. 本机 `~/.config/.wrangler` 的 OAuth 会随 `wrangler login` 切换账号，注意当前指向哪个账号
 
 ## 5. 待办（下一步）
 
 ### 近期（建议优先级）
+
 - [x] **提升批 1-7 + GitHub CI（2026-08-23）**：系统设置生效、问卷列表搜索/封面、审计日志页、编辑器撤销重做+自动保存、PWA、模板编辑器拖拽+字体配色可视化、批量导出进度；GitHub Actions CI（typecheck/单测/lint/构建/PDF 回归/视觉回归）。详见 `docs/PHASE2_PLAN.md` §14
 - [x] **答卷批量导出/内嵌预览/分享链接（2026-08-23）**：答卷列表勾选批量导出到私人频道、桌面双栏内嵌报告预览（可切模板）、一键复制分享链接（30 天 token）。详见 `docs/PHASE2_PLAN.md` §14
 - [x] **报告打包直发频道 + 后台响应式（2026-08-23）**：有用户图片的答卷归档改为 PDF+图片打包单个 zip 发私人频道（>45MB 降级分开发）；答卷详情「导出到私人频道」；草稿编辑器桌面分栏 + 粘性实时预览。详见 `docs/PHASE2_PLAN.md` §14
@@ -120,6 +129,7 @@
 - [x] 单选 fallback 显示选项标签（`result-visual.service.ts` + 单测覆盖）
 
 ### 中期（C1–C5）
+
 - [ ] 编辑器自动保存 + 撤销/重做
 - [ ] PWA（manifest + service worker）
 - [ ] Web 媒体库：Survey 静态媒体上传（走频道 file_id 或临时→长期）
@@ -129,6 +139,7 @@
 - [ ] 问卷预计耗时展示
 
 ### 持续
+
 - [ ] 每次改动跑 `npm run typecheck && npm test && npm run lint && npm --prefix admin run build`
 - [ ] 前端 UI 改动后跑 `npm run test:visual`（视觉回归；`test:visual:update` 仅在有意变更时重生成基线）
 - [ ] PDF 转换器改动后跑 `.venv/bin/python scripts/test_forms_pdf_to_survey.py`
@@ -149,22 +160,22 @@ npx wrangler deploy                 # 生产部署（当前 OAuth 指向生产�
 
 ## 7. 关键文件地图
 
-| 区域 | 文件 |
-| -- | -- |
-| Worker 入口/路由 | `src/index.ts` |
-| 公开 Survey API | `src/http/survey-api.ts` |
-| 公开 Report 页 | `src/http/report-api.ts` |
-| Admin API | `src/http/admin-api.ts` |
-| 报告模板系统 | `src/services/report/template.ts` + `web.ts` + `pdf.ts` |
-| 报告归档 Worker | `src/services/report-delivery-worker.service.ts` |
-| 临时媒体 | `src/services/media/temporary-media.service.ts` |
-| 版本快照 | `src/services/survey-version.service.ts` |
-| 系统设置 | `src/services/system-settings.service.ts` |
-| Bot 主处理器（旧 UI） | `src/bot/survey-handler.ts` |
-| 频道识别 | `src/bot/channel-detection.ts` |
-| 前端 Admin | `admin/src/`（EditorPage/UsersPage/ReportsPage/VersionsPage/SettingsPage…） |
-| 前端 Web Survey | `admin/src/survey/SurveyApp.tsx` |
-| 迁移 | `db/migrations/`（当前到 0030） |
+| 区域                  | 文件                                                                        |
+| --------------------- | --------------------------------------------------------------------------- |
+| Worker 入口/路由      | `src/index.ts`                                                              |
+| 公开 Survey API       | `src/http/survey-api.ts`                                                    |
+| 公开 Report 页        | `src/http/report-api.ts`                                                    |
+| Admin API             | `src/http/admin-api.ts`                                                     |
+| 报告模板系统          | `src/services/report/template.ts` + `web.ts` + `pdf.ts`                     |
+| 报告归档 Worker       | `src/services/report-delivery-worker.service.ts`                            |
+| 临时媒体              | `src/services/media/temporary-media.service.ts`                             |
+| 版本快照              | `src/services/survey-version.service.ts`                                    |
+| 系统设置              | `src/services/system-settings.service.ts`                                   |
+| Bot 主处理器（旧 UI） | `src/bot/survey-handler.ts`                                                 |
+| 频道识别              | `src/bot/channel-detection.ts`                                              |
+| 前端 Admin            | `admin/src/`（EditorPage/UsersPage/ReportsPage/VersionsPage/SettingsPage…） |
+| 前端 Web Survey       | `admin/src/survey/SurveyApp.tsx`                                            |
+| 迁移                  | `db/migrations/`（当前到 0030）                                             |
 
 ## 8. 接手第一步
 

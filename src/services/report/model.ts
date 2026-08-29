@@ -119,7 +119,15 @@ export type ReportPageBlock =
   | { id: string; kind: "featured"; priority: number; estimatedHeight: number; item: ReportTextItem }
   | { id: string; kind: "analysis"; priority: number; estimatedHeight: number; items: ReportTextItem[] }
   | { id: string; kind: "quotes"; priority: number; estimatedHeight: number; items: ReportTextItem[] }
-  | { id: string; kind: "responses"; priority: number; estimatedHeight: number; featured?: ReportAnswerItem; editorial: ReportAnswerItem[]; compact: ReportAnswerItem[] }
+  | {
+      id: string;
+      kind: "responses";
+      priority: number;
+      estimatedHeight: number;
+      featured?: ReportAnswerItem;
+      editorial: ReportAnswerItem[];
+      compact: ReportAnswerItem[];
+    }
   | { id: string; kind: "gallery"; priority: number; estimatedHeight: number; items: ReportGalleryItem[] }
   | { id: string; kind: "verdict"; priority: number; estimatedHeight: number };
 
@@ -155,7 +163,17 @@ export interface ReportArtifactPage {
   finalStatus: "ready" | "delivered" | "failed";
 }
 
-export type ReportFailureStage = "render" | "optimization" | "size_limit" | "telegram_photo" | "telegram_document" | "network" | "invalid_media" | "timeout" | "browser_screenshot" | "browser_memory";
+export type ReportFailureStage =
+  | "render"
+  | "optimization"
+  | "size_limit"
+  | "telegram_photo"
+  | "telegram_document"
+  | "network"
+  | "invalid_media"
+  | "timeout"
+  | "browser_screenshot"
+  | "browser_memory";
 
 export interface ReportPageFailure {
   pageId: string;

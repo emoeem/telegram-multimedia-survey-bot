@@ -12,12 +12,13 @@ export interface ChartColors {
   border: string;
 }
 
-const REPORT_FONT =
-  "-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif";
+const REPORT_FONT = "-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif";
 
 function withAlpha(hex: string, alpha: number): string {
   if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
-    return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+    return `${hex}${Math.round(alpha * 255)
+      .toString(16)
+      .padStart(2, "0")}`;
   }
   return hex;
 }

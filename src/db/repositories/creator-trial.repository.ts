@@ -29,14 +29,9 @@ function mapGrant(row: CreatorTrialGrantRow): CreatorTrialGrant {
   };
 }
 
-export async function hasActiveCreatorTrial(
-  db: D1Database,
-  userId: number,
-): Promise<boolean> {
+export async function hasActiveCreatorTrial(db: D1Database, userId: number): Promise<boolean> {
   const row = await db
-    .prepare(
-      "SELECT id FROM creator_trial_grants WHERE user_id = ? AND expires_at > ? LIMIT 1",
-    )
+    .prepare("SELECT id FROM creator_trial_grants WHERE user_id = ? AND expires_at > ? LIMIT 1")
     .bind(userId, new Date().toISOString())
     .first<{ id: number }>();
   return Boolean(row);
@@ -68,14 +63,8 @@ export async function grantCreatorTrial(
   return mapGrant(row);
 }
 
-export async function revokeCreatorTrial(
-  db: D1Database,
-  userId: number,
-): Promise<void> {
-  await db
-    .prepare("DELETE FROM creator_trial_grants WHERE user_id = ?")
-    .bind(userId)
-    .run();
+export async function revokeCreatorTrial(db: D1Database, userId: number): Promise<void> {
+  await db.prepare("DELETE FROM creator_trial_grants WHERE user_id = ?").bind(userId).run();
 }
 
 export async function listActiveCreatorTrials(
@@ -94,17 +83,19 @@ export async function listActiveCreatorTrials(
        LIMIT ?`,
     )
     .bind(new Date().toISOString(), limit)
-    .all<CreatorTrialGrantRow & {
-      telegram_user_id: number;
-      username: string | null;
-      first_name: string | null;
-      last_name: string | null;
-      language_code: string | null;
-      system_role: User["systemRole"];
-      bot_started_at: string | null;
-      user_created_at: string;
-      user_updated_at: string;
-    }>();
+    .all<
+      CreatorTrialGrantRow & {
+        telegram_user_id: number;
+        username: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        language_code: string | null;
+        system_role: User["systemRole"];
+        bot_started_at: string | null;
+        user_created_at: string;
+        user_updated_at: string;
+      }
+    >();
   return (result.results ?? []).map((row) => ({
     ...mapGrant(row),
     user: {
@@ -129,24 +120,44 @@ export async function listCreatorTrialsExpiringBefore(
   db: D1Database,
   expiresBefore: string,
 ): Promise<Array<CreatorTrialGrant & { user: User }>> {
-  const result = await db.prepare(
-    `SELECT t.*, u.telegram_user_id, u.username, u.first_name, u.last_name,
+  const result = await db
+    .prepare(
+      `SELECT t.*, u.telegram_user_id, u.username, u.first_name, u.last_name,
             u.language_code, u.system_role, u.bot_started_at, u.created_at AS user_created_at,
             u.updated_at AS user_updated_at
      FROM creator_trial_grants t JOIN users u ON u.id = t.user_id
      WHERE t.expires_at > ? AND t.expires_at <= ? ORDER BY t.expires_at ASC`,
-  ).bind(new Date().toISOString(), expiresBefore).all<CreatorTrialGrantRow & {
-    telegram_user_id: number; username: string | null; first_name: string | null;
-    last_name: string | null; language_code: string | null; system_role: User["systemRole"];
-    bot_started_at: string | null;
-    user_created_at: string; user_updated_at: string;
-  }>();
+    )
+    .bind(new Date().toISOString(), expiresBefore)
+    .all<
+      CreatorTrialGrantRow & {
+        telegram_user_id: number;
+        username: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        language_code: string | null;
+        system_role: User["systemRole"];
+        bot_started_at: string | null;
+        user_created_at: string;
+        user_updated_at: string;
+      }
+    >();
   return (result.results ?? []).map((row) => ({
     ...mapGrant(row),
     user: {
-      id: row.user_id, telegramUserId: row.telegram_user_id, username: row.username,
-      firstName: row.first_name, lastName: row.last_name, languageCode: row.language_code,
-      systemRole: row.system_role, botStartedAt: row.bot_started_at, bannedAt: null, bannedBy: null, banReason: null, createdAt: row.user_created_at, updatedAt: row.user_updated_at,
+      id: row.user_id,
+      telegramUserId: row.telegram_user_id,
+      username: row.username,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      languageCode: row.language_code,
+      systemRole: row.system_role,
+      botStartedAt: row.bot_started_at,
+      bannedAt: null,
+      bannedBy: null,
+      banReason: null,
+      createdAt: row.user_created_at,
+      updatedAt: row.user_updated_at,
     },
   }));
 }

@@ -120,10 +120,7 @@ export async function createResponse(
   return response;
 }
 
-export async function getResponseById(
-  db: D1Database,
-  id: number,
-): Promise<SurveyResponse | null> {
+export async function getResponseById(db: D1Database, id: number): Promise<SurveyResponse | null> {
   const row = await db
     .prepare("SELECT * FROM survey_responses WHERE id = ? LIMIT 1")
     .bind(id)
@@ -149,10 +146,7 @@ export async function getActiveResponse(
   return row ? mapResponse(row) : null;
 }
 
-export async function getActiveResponseByUser(
-  db: D1Database,
-  userId: number,
-): Promise<SurveyResponse | null> {
+export async function getActiveResponseByUser(db: D1Database, userId: number): Promise<SurveyResponse | null> {
   const row = await db
     .prepare(
       `SELECT * FROM survey_responses
@@ -216,25 +210,16 @@ export async function getResponseBySurveyAndHash(
   return row ? mapResponse(row) : null;
 }
 
-export async function getAnswer(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): Promise<Answer | null> {
+export async function getAnswer(db: D1Database, responseId: number, questionId: number): Promise<Answer | null> {
   const row = await db
-    .prepare(
-      "SELECT * FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT * FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(responseId, questionId)
     .first<AnswerRow>();
 
   return row ? mapAnswer(row) : null;
 }
 
-export async function listAnswersByResponseId(
-  db: D1Database,
-  responseId: number,
-): Promise<Answer[]> {
+export async function listAnswersByResponseId(db: D1Database, responseId: number): Promise<Answer[]> {
   const result = await db
     .prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC")
     .bind(responseId)
@@ -248,17 +233,12 @@ export async function updateResponseCurrentQuestion(
   questionId: number | null,
 ): Promise<void> {
   await db
-    .prepare(
-      "UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?",
-    )
+    .prepare("UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?")
     .bind(questionId, nowIso(), id)
     .run();
 }
 
-export async function completeResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function completeResponse(db: D1Database, id: number): Promise<void> {
   const timestamp = nowIso();
   await db
     .prepare(
@@ -270,26 +250,16 @@ export async function completeResponse(
     .run();
 }
 
-export async function cancelResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function cancelResponse(db: D1Database, id: number): Promise<void> {
   await db
-    .prepare(
-      "UPDATE survey_responses SET status = 'cancelled', updated_at = ? WHERE id = ?",
-    )
+    .prepare("UPDATE survey_responses SET status = 'cancelled', updated_at = ? WHERE id = ?")
     .bind(nowIso(), id)
     .run();
 }
 
-export async function archiveResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function archiveResponse(db: D1Database, id: number): Promise<void> {
   await db
-    .prepare(
-      "UPDATE survey_responses SET status = 'archived', updated_at = ? WHERE id = ?",
-    )
+    .prepare("UPDATE survey_responses SET status = 'archived', updated_at = ? WHERE id = ?")
     .bind(nowIso(), id)
     .run();
 }
@@ -298,10 +268,7 @@ export async function archiveResponse(
  * Deletes a response and its answers. Completed responses are permanent and
  * cannot be deleted; only abandoned/in-progress/cancelled rows may be removed.
  */
-export async function deleteResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function deleteResponse(db: D1Database, id: number): Promise<void> {
   const row = await db
     .prepare("SELECT status FROM survey_responses WHERE id = ? LIMIT 1")
     .bind(id)
@@ -328,11 +295,7 @@ export async function deleteResponse(
   ]);
 }
 
-export async function restartResponse(
-  db: D1Database,
-  id: number,
-  currentQuestionId: number,
-): Promise<SurveyResponse> {
+export async function restartResponse(db: D1Database, id: number, currentQuestionId: number): Promise<SurveyResponse> {
   const timestamp = nowIso();
   await db.batch([
     db
@@ -410,8 +373,7 @@ async function upsertAnswerValues(
       input.questionId,
       input.values.textValue ?? null,
       input.values.numberValue ?? null,
-      input.values.booleanValue === undefined ||
-        input.values.booleanValue === null
+      input.values.booleanValue === undefined || input.values.booleanValue === null
         ? null
         : input.values.booleanValue
           ? 1
@@ -426,9 +388,7 @@ async function upsertAnswerValues(
     .run();
 
   const answer = await db
-    .prepare(
-      "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(input.responseId, input.questionId)
     .first<{ id: number }>();
 
@@ -457,7 +417,11 @@ export async function upsertJsonAnswer(
   db: D1Database,
   input: { responseId: number; questionId: number; jsonValue: string },
 ): Promise<void> {
-  await upsertAnswerValues(db, { responseId: input.responseId, questionId: input.questionId, values: { jsonValue: input.jsonValue } });
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { jsonValue: input.jsonValue },
+  });
 }
 
 export async function upsertNumberAnswer(
@@ -520,20 +484,13 @@ export async function upsertOptionAnswer(
     responseId: input.responseId,
     questionId: input.questionId,
     values: {
-      ...(input.booleanValue !== undefined
-        ? { booleanValue: input.booleanValue }
-        : {}),
-      ...(input.ratingValue !== undefined
-        ? { ratingValue: input.ratingValue }
-        : {}),
+      ...(input.booleanValue !== undefined ? { booleanValue: input.booleanValue } : {}),
+      ...(input.ratingValue !== undefined ? { ratingValue: input.ratingValue } : {}),
       jsonValue: JSON.stringify(input.selectedOptionIds),
     },
   });
 
-  await db
-    .prepare("DELETE FROM answer_options WHERE answer_id = ?")
-    .bind(answerId)
-    .run();
+  await db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answerId).run();
 
   if (input.selectedOptionIds.length > 0) {
     await db.batch(
@@ -566,23 +523,14 @@ export async function upsertMediaAnswer(
     },
   });
 
-  await db
-    .prepare("DELETE FROM answer_media WHERE answer_id = ?")
-    .bind(answerId)
-    .run();
+  await db.prepare("DELETE FROM answer_media WHERE answer_id = ?").bind(answerId).run();
 
   return answerId;
 }
 
-export async function deleteAnswer(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): Promise<void> {
+export async function deleteAnswer(db: D1Database, responseId: number, questionId: number): Promise<void> {
   const answer = await db
-    .prepare(
-      "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(responseId, questionId)
     .first<{ id: number }>();
   if (!answer) {

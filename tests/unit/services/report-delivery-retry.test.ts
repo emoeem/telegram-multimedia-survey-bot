@@ -8,10 +8,7 @@ describe("report delivery retry driver", () => {
       bind: vi.fn(() => statement),
       run: vi.fn(async () => ({ success: true })),
       all: vi.fn(async () => ({
-        results: [
-          { deliveryId: "response_1_v1" },
-          { deliveryId: "response_2_v1" },
-        ],
+        results: [{ deliveryId: "response_1_v1" }, { deliveryId: "response_2_v1" }],
       })),
     };
     const db = { prepare: vi.fn(() => statement) } as unknown as D1Database;

@@ -16,30 +16,36 @@ export async function recoverStaleResultVisualJobs(
   now = Date.now(),
 ): Promise<{ requeued: number; failed: number }> {
   const cutoff = new Date(now - staleProcessingMs).toISOString();
-  const result = await db.prepare(
-    `SELECT id, chat_id, attempts FROM render_jobs
+  const result = await db
+    .prepare(
+      `SELECT id, chat_id, attempts FROM render_jobs
      WHERE status = 'processing' AND COALESCE(started_at, created_at) < ?
      ORDER BY id ASC LIMIT 20`,
-  ).bind(cutoff).all<StaleRenderJob>();
+    )
+    .bind(cutoff)
+    .all<StaleRenderJob>();
 
   let requeued = 0;
   let failed = 0;
   for (const job of result.results ?? []) {
     const terminal = job.attempts >= 3;
-    const update = await db.prepare(
-      `UPDATE render_jobs SET status = ?, error_code = ?, error_message = ?,
+    const update = await db
+      .prepare(
+        `UPDATE render_jobs SET status = ?, error_code = ?, error_message = ?,
          completed_at = ?
        WHERE id = ? AND status = 'processing'
          AND COALESCE(started_at, created_at) < ?`,
-    ).bind(
-      terminal ? "failed" : "queued",
-      terminal ? "render_timeout" : null,
-      terminal ? "结果报告生成超时" : null,
-      terminal ? new Date(now).toISOString() : null,
-      job.id,
-      cutoff,
-    ).run();
-    if (!(update.meta?.changes)) continue;
+      )
+      .bind(
+        terminal ? "failed" : "queued",
+        terminal ? "render_timeout" : null,
+        terminal ? "结果报告生成超时" : null,
+        terminal ? new Date(now).toISOString() : null,
+        job.id,
+        cutoff,
+      )
+      .run();
+    if (!update.meta?.changes) continue;
     if (terminal) {
       failed += 1;
       if (job.chat_id !== null) {

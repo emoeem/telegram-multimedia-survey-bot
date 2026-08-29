@@ -42,25 +42,11 @@ export async function verifyReportAccessToken(
   return diff === 0;
 }
 
-async function signReportToken(
-  secret: string,
-  responseId: number,
-  expiresAt: number,
-): Promise<string> {
+async function signReportToken(secret: string, responseId: number, expiresAt: number): Promise<string> {
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const digest = new Uint8Array(
-    await crypto.subtle.sign(
-      "HMAC",
-      key,
-      encoder.encode(`${responseId}:${expiresAt}`),
-    ),
-  );
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(`${responseId}:${expiresAt}`)));
   return hex(digest);
 }

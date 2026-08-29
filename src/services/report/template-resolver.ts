@@ -1,9 +1,5 @@
 import { getCustomReportTemplate } from "../../db/repositories/report-template.repository";
-import {
-  REPORT_TEMPLATES,
-  validateReportTemplateSpec,
-  type ReportTemplateSpec,
-} from "./template";
+import { REPORT_TEMPLATES, validateReportTemplateSpec, type ReportTemplateSpec } from "./template";
 
 /**
  * Resolves a template by id from the system registry first, then from

@@ -18,10 +18,7 @@ export function getEffectiveRole(
   survey: Pick<Survey, "ownerId">,
   adminIds: number[],
 ): EffectiveRole {
-  if (
-    user.systemRole === "admin" ||
-    isAdmin(user.telegramUserId, adminIds)
-  ) {
+  if (user.systemRole === "admin" || isAdmin(user.telegramUserId, adminIds)) {
     return "admin";
   }
 
@@ -38,9 +35,7 @@ export async function canCreateSurvey(
   adminIds: number[],
 ): Promise<boolean> {
   return (
-    user.systemRole === "admin" ||
-    isAdmin(user.telegramUserId, adminIds) ||
-    await hasActiveCreatorTrial(db, user.id)
+    user.systemRole === "admin" || isAdmin(user.telegramUserId, adminIds) || (await hasActiveCreatorTrial(db, user.id))
   );
 }
 
@@ -55,7 +50,7 @@ export async function canManageSurvey(
   }
 
   const survey = await getSurveyById(db, surveyId);
-  return survey?.ownerId === user.id && await hasActiveCreatorTrial(db, user.id);
+  return survey?.ownerId === user.id && (await hasActiveCreatorTrial(db, user.id));
 }
 
 export async function assertCanManageSurvey(
@@ -85,22 +80,11 @@ export async function canFillSurvey(
   }
 
   if (survey.allowMultipleResponses) {
-    const completedCount = await countCompletedResponsesBySurveyAndUser(
-      db,
-      surveyId,
-      user.id,
-    );
-    return (
-      survey.maxResponsesPerUser <= 0 ||
-      completedCount < survey.maxResponsesPerUser
-    );
+    const completedCount = await countCompletedResponsesBySurveyAndUser(db, surveyId, user.id);
+    return survey.maxResponsesPerUser <= 0 || completedCount < survey.maxResponsesPerUser;
   }
 
-  const existing = await getResponseBySurveyAndHash(
-    db,
-    surveyId,
-    `user_${user.id}`,
-  );
+  const existing = await getResponseBySurveyAndHash(db, surveyId, `user_${user.id}`);
   if (existing?.status === "completed") {
     return false;
   }
@@ -122,31 +106,16 @@ export async function assertCanFillSurvey(
   if (active) return;
 
   if (survey.allowMultipleResponses) {
-    const completedCount = await countCompletedResponsesBySurveyAndUser(
-      db,
-      surveyId,
-      user.id,
-    );
-    if (
-      survey.maxResponsesPerUser > 0 &&
-      completedCount >= survey.maxResponsesPerUser
-    ) {
-      throw new PermissionError(
-        "你已达到这份问卷的填写次数上限。问卷仍在发布中，其他用户可以继续填写。",
-      );
+    const completedCount = await countCompletedResponsesBySurveyAndUser(db, surveyId, user.id);
+    if (survey.maxResponsesPerUser > 0 && completedCount >= survey.maxResponsesPerUser) {
+      throw new PermissionError("你已达到这份问卷的填写次数上限。问卷仍在发布中，其他用户可以继续填写。");
     }
     return;
   }
 
-  const existing = await getResponseBySurveyAndHash(
-    db,
-    surveyId,
-    `user_${user.id}`,
-  );
+  const existing = await getResponseBySurveyAndHash(db, surveyId, `user_${user.id}`);
   if (existing?.status === "completed") {
-    throw new PermissionError(
-      "你已经完成过这份问卷，不能重复填写。问卷仍在发布中，其他用户可以继续填写。",
-    );
+    throw new PermissionError("你已经完成过这份问卷，不能重复填写。问卷仍在发布中，其他用户可以继续填写。");
   }
 
   return;

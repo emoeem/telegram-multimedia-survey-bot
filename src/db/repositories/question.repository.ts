@@ -1,9 +1,9 @@
-import type { QuestionOption, SurveyQuestion } from '../schema';
+import type { QuestionOption, SurveyQuestion } from "../schema";
 
 interface QuestionRow {
   id: number;
   survey_id: number;
-  type: SurveyQuestion['type'];
+  type: SurveyQuestion["type"];
   title: string;
   description: string | null;
   required: number;
@@ -84,7 +84,7 @@ export async function listOptionsForQuestions(db: D1Database, questionIds: numbe
   const options: QuestionOption[] = [];
   for (let start = 0; start < uniqueQuestionIds.length; start += QUESTION_ID_BATCH_SIZE) {
     const questionIdBatch = uniqueQuestionIds.slice(start, start + QUESTION_ID_BATCH_SIZE);
-    const placeholders = questionIdBatch.map(() => '?').join(',');
+    const placeholders = questionIdBatch.map(() => "?").join(",");
     const result = await db
       .prepare(
         `SELECT * FROM question_options
@@ -103,7 +103,7 @@ export async function createQuestion(
   db: D1Database,
   input: {
     surveyId: number;
-    type: SurveyQuestion['type'];
+    type: SurveyQuestion["type"];
     title: string;
     description?: string | null;
     required?: boolean;
@@ -142,8 +142,8 @@ export async function createQuestion(
     .run();
 
   const id = result.meta?.last_row_id;
-  if (typeof id !== 'number') {
-    throw new Error('Failed to create question');
+  if (typeof id !== "number") {
+    throw new Error("Failed to create question");
   }
 
   return id;
@@ -169,22 +169,22 @@ export async function createQuestionOption(
     .run();
 
   const id = result.meta?.last_row_id;
-  if (typeof id !== 'number') {
-    throw new Error('Failed to create question option');
+  if (typeof id !== "number") {
+    throw new Error("Failed to create question option");
   }
 
   return id;
 }
 
 export async function getQuestionById(db: D1Database, id: number): Promise<SurveyQuestion | null> {
-  const row = await db.prepare('SELECT * FROM survey_questions WHERE id = ? LIMIT 1').bind(id).first<QuestionRow>();
+  const row = await db.prepare("SELECT * FROM survey_questions WHERE id = ? LIMIT 1").bind(id).first<QuestionRow>();
 
   return row ? mapQuestion(row) : null;
 }
 
 export async function getQuestionOptionById(db: D1Database, id: number): Promise<QuestionOption | null> {
   const row = await db
-    .prepare('SELECT * FROM question_options WHERE id = ? LIMIT 1')
+    .prepare("SELECT * FROM question_options WHERE id = ? LIMIT 1")
     .bind(id)
     .first<QuestionOptionRow>();
 
@@ -193,21 +193,21 @@ export async function getQuestionOptionById(db: D1Database, id: number): Promise
 
 export async function updateQuestionTitle(db: D1Database, id: number, title: string): Promise<void> {
   await db
-    .prepare('UPDATE survey_questions SET title = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET title = ?, updated_at = ? WHERE id = ?")
     .bind(title, new Date().toISOString(), id)
     .run();
 }
 
 export async function updateQuestionDescription(db: D1Database, id: number, description: string | null): Promise<void> {
   await db
-    .prepare('UPDATE survey_questions SET description = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET description = ?, updated_at = ? WHERE id = ?")
     .bind(description, new Date().toISOString(), id)
     .run();
 }
 
 export async function updateQuestionSettings(db: D1Database, id: number, settingsJson: string | null): Promise<void> {
   await db
-    .prepare('UPDATE survey_questions SET settings_json = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET settings_json = ?, updated_at = ? WHERE id = ?")
     .bind(settingsJson, new Date().toISOString(), id)
     .run();
 }
@@ -218,27 +218,19 @@ export async function updateQuestionValidation(
   validationJson: string | null,
 ): Promise<void> {
   await db
-    .prepare('UPDATE survey_questions SET validation_json = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET validation_json = ?, updated_at = ? WHERE id = ?")
     .bind(validationJson, new Date().toISOString(), id)
     .run();
 }
 
-export async function updateQuestionType(
-  db: D1Database,
-  id: number,
-  type: SurveyQuestion["type"],
-): Promise<void> {
+export async function updateQuestionType(db: D1Database, id: number, type: SurveyQuestion["type"]): Promise<void> {
   await db
     .prepare("UPDATE survey_questions SET type = ?, updated_at = ? WHERE id = ?")
     .bind(type, new Date().toISOString(), id)
     .run();
 }
 
-export async function updateQuestionPage(
-  db: D1Database,
-  id: number,
-  pageId: number | null,
-): Promise<void> {
+export async function updateQuestionPage(db: D1Database, id: number, pageId: number | null): Promise<void> {
   await db
     .prepare("UPDATE survey_questions SET page_id = ?, updated_at = ? WHERE id = ?")
     .bind(pageId, new Date().toISOString(), id)
@@ -293,7 +285,7 @@ export async function deleteQuestionOption(db: D1Database, id: number): Promise<
 
   const timestamp = new Date().toISOString();
   await db.batch([
-    db.prepare('DELETE FROM question_options WHERE id = ?').bind(id),
+    db.prepare("DELETE FROM question_options WHERE id = ?").bind(id),
     db
       .prepare(
         `UPDATE question_options
@@ -306,7 +298,7 @@ export async function deleteQuestionOption(db: D1Database, id: number): Promise<
 
 export async function updateQuestionRequired(db: D1Database, id: number, required: boolean): Promise<void> {
   await db
-    .prepare('UPDATE survey_questions SET required = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET required = ?, updated_at = ? WHERE id = ?")
     .bind(required ? 1 : 0, new Date().toISOString(), id)
     .run();
 }
@@ -323,7 +315,7 @@ export async function setQuestionSkipRule(
       const parsed = JSON.parse(current.conditionJson) as { optionId?: unknown; rules?: unknown };
       if (Array.isArray(parsed.rules)) {
         for (const item of parsed.rules) {
-          if (item && typeof item === 'object') {
+          if (item && typeof item === "object") {
             const row = item as { optionId?: unknown; targetQuestionId?: unknown };
             const optionId = Number(row.optionId);
             const targetQuestionId = Number(row.targetQuestionId);
@@ -342,9 +334,9 @@ export async function setQuestionSkipRule(
   }
   const rules = rule ? [...legacyRules.filter((item) => item.optionId !== rule.optionId), rule] : [];
   await db
-    .prepare('UPDATE survey_questions SET condition_json = ?, skip_to_question_id = ?, updated_at = ? WHERE id = ?')
+    .prepare("UPDATE survey_questions SET condition_json = ?, skip_to_question_id = ?, updated_at = ? WHERE id = ?")
     .bind(
-      rules.length > 0 ? JSON.stringify({ kind: 'option_equals', rules }) : null,
+      rules.length > 0 ? JSON.stringify({ kind: "option_equals", rules }) : null,
       rules[0]?.targetQuestionId ?? null,
       new Date().toISOString(),
       questionId,
@@ -370,7 +362,7 @@ export async function deleteQuestion(db: D1Database, id: number): Promise<void> 
 
   const timestamp = new Date().toISOString();
   await db.batch([
-    db.prepare('DELETE FROM survey_questions WHERE id = ?').bind(id),
+    db.prepare("DELETE FROM survey_questions WHERE id = ?").bind(id),
     db
       .prepare(
         `UPDATE survey_questions
@@ -402,7 +394,7 @@ export async function swapQuestionOptionOrder(db: D1Database, firstId: number, s
 export async function duplicateQuestion(db: D1Database, questionId: number): Promise<number> {
   const question = await getQuestionById(db, questionId);
   if (!question) {
-    throw new Error('Question not found');
+    throw new Error("Question not found");
   }
 
   await db
@@ -436,8 +428,8 @@ export async function duplicateQuestion(db: D1Database, questionId: number): Pro
     .run();
 
   const id = result.meta?.last_row_id;
-  if (typeof id !== 'number') {
-    throw new Error('Failed to duplicate question');
+  if (typeof id !== "number") {
+    throw new Error("Failed to duplicate question");
   }
 
   await db
@@ -478,10 +470,7 @@ export async function duplicateQuestion(db: D1Database, questionId: number): Pro
   return id;
 }
 
-export async function duplicateQuestionOption(
-  db: D1Database,
-  optionId: number,
-): Promise<number> {
+export async function duplicateQuestionOption(db: D1Database, optionId: number): Promise<number> {
   const option = await getQuestionOptionById(db, optionId);
   if (!option) {
     throw new Error("Option not found");

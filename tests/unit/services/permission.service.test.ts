@@ -13,10 +13,8 @@ vi.mock("../../../src/db/repositories/survey.repository", () => ({
 }));
 
 vi.mock("../../../src/db/repositories/response.repository", () => ({
-  countCompletedResponsesBySurveyAndUser:
-    repositoryMocks.countCompletedResponsesBySurveyAndUser,
-  getActiveResponseBySurveyAndUser:
-    repositoryMocks.getActiveResponseBySurveyAndUser,
+  countCompletedResponsesBySurveyAndUser: repositoryMocks.countCompletedResponsesBySurveyAndUser,
+  getActiveResponseBySurveyAndUser: repositoryMocks.getActiveResponseBySurveyAndUser,
   getResponseBySurveyAndHash: repositoryMocks.getResponseBySurveyAndHash,
 }));
 

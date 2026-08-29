@@ -36,10 +36,7 @@ function telegramFileIdFromValue(value: unknown): string | null {
   return value || null;
 }
 
-async function resolveAssetDataUrl(
-  env: ReportImagesEnv,
-  asset: MediaAsset,
-): Promise<string | null> {
+async function resolveAssetDataUrl(env: ReportImagesEnv, asset: MediaAsset): Promise<string | null> {
   if (asset.storageKind === "temporary") {
     if (!env.MEDIA_KV) return null;
     const bytes = await new KVMediaStore(env.MEDIA_KV).get(asset.storageKey ?? "");
@@ -49,10 +46,7 @@ async function resolveAssetDataUrl(
   if (asset.telegramFileId) {
     try {
       const downloaded = await downloadTelegramFile(env.BOT_TOKEN, asset.telegramFileId);
-      return bytesToDataUrl(
-        downloaded.data,
-        asset.mimeType ?? downloaded.contentType ?? "image/jpeg",
-      );
+      return bytesToDataUrl(downloaded.data, asset.mimeType ?? downloaded.contentType ?? "image/jpeg");
     } catch {
       return null;
     }
@@ -76,10 +70,7 @@ async function resolveAssetDataUrl(
   return null;
 }
 
-async function resolveImageValue(
-  env: ReportImagesEnv,
-  value: unknown,
-): Promise<string | null> {
+async function resolveImageValue(env: ReportImagesEnv, value: unknown): Promise<string | null> {
   if (typeof value === "string" && value.startsWith("data:image/")) return value;
   const assetId = mediaAssetIdFromValue(value);
   if (assetId !== null) {
@@ -112,9 +103,7 @@ export async function resolveReportProfileImages(
     const resolved = await resolveImageValue(env, value);
     if (resolved) images[key] = resolved;
   }
-  const gallery = Array.isArray(profile.metadata.gallery)
-    ? profile.metadata.gallery
-    : [];
+  const gallery = Array.isArray(profile.metadata.gallery) ? profile.metadata.gallery : [];
   for (const item of gallery as ResultJsonValue[]) {
     const resolved = await resolveImageValue(env, item);
     if (resolved && !Object.values(images).includes(resolved)) {

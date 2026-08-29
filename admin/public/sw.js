@@ -2,11 +2,7 @@ const CACHE = "survey-platform-v1";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(["/", "/survey.html", "/manifest.webmanifest"])),
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/", "/survey.html", "/manifest.webmanifest"])));
 });
 
 self.addEventListener("activate", (event) => {

@@ -35,19 +35,10 @@ async function loadOrCreateToken(rotate) {
 
 function putSecret(token) {
   return new Promise((resolve, reject) => {
-    console.log(
-      "> npx wrangler secret put LICENSE_ADMIN_TOKEN --config wrangler.toml",
-    );
+    console.log("> npx wrangler secret put LICENSE_ADMIN_TOKEN --config wrangler.toml");
     const child = spawn(
       WRANGLER,
-      [
-        "wrangler",
-        "secret",
-        "put",
-        "LICENSE_ADMIN_TOKEN",
-        "--config",
-        path.join(ROOT_DIR, "wrangler.toml"),
-      ],
+      ["wrangler", "secret", "put", "LICENSE_ADMIN_TOKEN", "--config", path.join(ROOT_DIR, "wrangler.toml")],
       {
         cwd: ROOT_DIR,
         env: { ...process.env, WRANGLER_WRITE_LOGS: "false" },
@@ -75,8 +66,6 @@ try {
       : `授权中心管理令牌已写入 Cloudflare Secret。\n本地令牌文件：${TOKEN_FILE}`,
   );
 } catch (error) {
-  console.error(
-    `初始化失败：${error instanceof Error ? error.message : String(error)}`,
-  );
+  console.error(`初始化失败：${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 }

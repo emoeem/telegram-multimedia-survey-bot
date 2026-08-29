@@ -69,15 +69,10 @@ export function StructureTree({
         {pageGroups.length ? (
           pageGroups.map(({ page, items }) => {
             const isCollapsed = collapsed.has(page.id);
-            const active =
-              selection.kind === "question" &&
-              items.some((question) => question.id === selection.id);
+            const active = selection.kind === "question" && items.some((question) => question.id === selection.id);
             return (
               <div key={page.id}>
-                <div
-                  className={`tree-page-head ${active ? "active" : ""}`}
-                  onClick={() => togglePage(page.id)}
-                >
+                <div className={`tree-page-head ${active ? "active" : ""}`} onClick={() => togglePage(page.id)}>
                   <span className={`tree-chevron ${isCollapsed ? "" : "is-open"}`}>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </span>
@@ -194,7 +189,8 @@ export function StructureTree({
       </div>
       <div className="p-2 pt-0">
         <button className="btn btn-sm w-full" disabled={!editable} onClick={onAddPage}>
-          <FilePlus2 className="h-4 w-4" />新分页
+          <FilePlus2 className="h-4 w-4" />
+          新分页
         </button>
       </div>
     </div>

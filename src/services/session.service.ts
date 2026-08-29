@@ -1,7 +1,4 @@
-import type {
-  SurveySessionDO,
-  SurveySessionState,
-} from "../durable-objects/survey-session";
+import type { SurveySessionDO, SurveySessionState } from "../durable-objects/survey-session";
 
 export type SurveySessionNamespace = DurableObjectNamespace<SurveySessionDO>;
 
@@ -104,20 +101,28 @@ export async function clearSessionOptions(
 }
 
 export async function setSessionMatrixSelection(
-  namespace: SurveySessionNamespace, userId: number, surveyId: number, rowId: number, columnIndex: number,
+  namespace: SurveySessionNamespace,
+  userId: number,
+  surveyId: number,
+  rowId: number,
+  columnIndex: number,
 ): Promise<SurveySessionState> {
   return callSession(namespace, userId, surveyId, { action: "set_matrix_selection", rowId, columnIndex });
 }
 
 export async function getSessionMatrixSelections(
-  namespace: SurveySessionNamespace, userId: number, surveyId: number,
+  namespace: SurveySessionNamespace,
+  userId: number,
+  surveyId: number,
 ): Promise<Record<string, number>> {
   const state = await callSession(namespace, userId, surveyId, { action: "get_matrix_selections" });
   return state.matrixSelections ?? {};
 }
 
 export async function clearSessionMatrixSelections(
-  namespace: SurveySessionNamespace, userId: number, surveyId: number,
+  namespace: SurveySessionNamespace,
+  userId: number,
+  surveyId: number,
 ): Promise<SurveySessionState> {
   return callSession(namespace, userId, surveyId, { action: "clear_matrix_selections" });
 }

@@ -73,9 +73,10 @@ describe("normalizeSurveyTheme", () => {
 
   it("accepts only known DaisyUI presets", () => {
     expect(normalizeSurveyTheme({ preset: "night" })).toEqual({ preset: "night" });
-    expect(
-      normalizeSurveyTheme({ preset: "dark", primaryColor: "#ff0000" }),
-    ).toEqual({ preset: "dark", primaryColor: "#ff0000" });
+    expect(normalizeSurveyTheme({ preset: "dark", primaryColor: "#ff0000" })).toEqual({
+      preset: "dark",
+      primaryColor: "#ff0000",
+    });
     expect(normalizeSurveyTheme({ preset: "unknown-theme" })).toBeNull();
   });
 
@@ -90,8 +91,6 @@ describe("normalizeSurveyTheme", () => {
         audio: { url: "data:audio/mpeg;base64,YWFh" },
       }),
     ).toEqual({ audio: { url: "data:audio/mpeg;base64,YWFh" } });
-    expect(
-      normalizeSurveyTheme({ audio: { url: "javascript:alert(1)" } }),
-    ).toBeNull();
+    expect(normalizeSurveyTheme({ audio: { url: "javascript:alert(1)" } })).toBeNull();
   });
 });

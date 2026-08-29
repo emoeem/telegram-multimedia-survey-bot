@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseVisualTemplateDefinition, VisualTemplateValidationError } from "../../../src/services/visual-template-validator.service";
+import {
+  parseVisualTemplateDefinition,
+  VisualTemplateValidationError,
+} from "../../../src/services/visual-template-validator.service";
 import { visualReportExampleTemplate } from "../../../src/visual-template/examples";
 
 const validTemplate = {
@@ -16,9 +19,35 @@ const validTemplate = {
     { path: "result.stats", label: "属性", type: "stats" },
   ],
   elements: [
-    { id: "title", type: "text", value: "{{result.fields.name}}", x: 80, y: 90, width: 920, fontSize: 64, color: "#ffffff" },
-    { id: "avatar", type: "image", source: "{{result.fields.avatar}}", x: 180, y: 210, width: 720, height: 600, fit: "cover", shape: "rounded" },
-    { id: "rarity", type: "badge", value: "{{result.fields.rarity}}", x: 80, y: 40, visibleIf: { path: "result.fields.rarity", operator: "exists" } },
+    {
+      id: "title",
+      type: "text",
+      value: "{{result.fields.name}}",
+      x: 80,
+      y: 90,
+      width: 920,
+      fontSize: 64,
+      color: "#ffffff",
+    },
+    {
+      id: "avatar",
+      type: "image",
+      source: "{{result.fields.avatar}}",
+      x: 180,
+      y: 210,
+      width: 720,
+      height: 600,
+      fit: "cover",
+      shape: "rounded",
+    },
+    {
+      id: "rarity",
+      type: "badge",
+      value: "{{result.fields.rarity}}",
+      x: 80,
+      y: 40,
+      visibleIf: { path: "result.fields.rarity", operator: "exists" },
+    },
     { id: "stats", type: "stat_group", source: "{{result.stats}}", x: 80, y: 880, width: 920, height: 300 },
   ],
 };
@@ -35,10 +64,14 @@ describe("visual template validator", () => {
     const parsed = parseVisualTemplateDefinition(JSON.stringify(poster));
     expect(parsed.background).toMatchObject({ type: "telegram_asset", assetId: 123 });
 
-    expect(() => parseVisualTemplateDefinition(JSON.stringify({
-      ...validTemplate,
-      background: { type: "telegram_asset", assetId: 0 },
-    }))).toThrow("background.assetId");
+    expect(() =>
+      parseVisualTemplateDefinition(
+        JSON.stringify({
+          ...validTemplate,
+          background: { type: "telegram_asset", assetId: 0 },
+        }),
+      ),
+    ).toThrow("background.assetId");
   });
 
   it("rejects undeclared variables and arbitrary image URLs", () => {
@@ -69,7 +102,11 @@ describe("visual template validator", () => {
     const parsed = parseVisualTemplateDefinition(JSON.stringify(visualReportExampleTemplate));
     expect(parsed.height).toBe("auto");
     expect(parsed.sections?.map((section) => section.type)).toEqual([
-      "table", "gallery", "status_grid", "metrics", "summary",
+      "table",
+      "gallery",
+      "status_grid",
+      "metrics",
+      "summary",
     ]);
   });
 });

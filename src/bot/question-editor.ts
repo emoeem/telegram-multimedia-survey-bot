@@ -3,31 +3,20 @@ import {
   listOptionsForQuestions,
   listQuestionsBySurvey,
 } from "../db/repositories/question.repository";
-import {
-  getQuestionMediaByQuestionId,
-  listOptionMediaByOptionIds,
-} from "../db/repositories/media.repository";
+import { getQuestionMediaByQuestionId, listOptionMediaByOptionIds } from "../db/repositories/media.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
 import { assertCanManageSurvey } from "../services/permission.service";
 import { getResponseCount } from "../services/statistics.service";
-import {
-  sendLongMessage,
-  sendMessage,
-  type InlineKeyboardMarkup,
-} from "./telegram";
+import { sendLongMessage, sendMessage, type InlineKeyboardMarkup } from "./telegram";
 import type { BotContext } from "./types";
 import { renderUiScreen } from "./ui";
 
-const EDITABLE_OPTION_STRUCTURE_TYPES = new Set([
-  "single",
-  "multiple",
-  "matrix",
-]);
+const EDITABLE_OPTION_STRUCTURE_TYPES = new Set(["single", "multiple", "matrix"]);
 
 function matrixColumnsText(settingsJson: string | null): string {
   try {
-    const parsed = settingsJson ? JSON.parse(settingsJson) as { columns?: unknown } : null;
+    const parsed = settingsJson ? (JSON.parse(settingsJson) as { columns?: unknown }) : null;
     const columns = Array.isArray(parsed?.columns)
       ? parsed.columns.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
       : [];
@@ -40,9 +29,7 @@ const QUESTION_LIST_PAGE_SIZE = 8;
 
 function compactButtonText(value: string, maxLength = 28): string {
   const compact = value.replace(/\s+/g, " ").trim();
-  return compact.length <= maxLength
-    ? compact
-    : `${compact.slice(0, maxLength - 1)}…`;
+  return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength - 1)}…`;
 }
 
 export async function showQuestionList(
@@ -76,14 +63,10 @@ export async function showQuestionList(
   }
 
   const locked = responseCount > 0;
-  const lastPageOffset = questions.length === 0
-    ? 0
-    : Math.floor((questions.length - 1) / QUESTION_LIST_PAGE_SIZE) * QUESTION_LIST_PAGE_SIZE;
+  const lastPageOffset =
+    questions.length === 0 ? 0 : Math.floor((questions.length - 1) / QUESTION_LIST_PAGE_SIZE) * QUESTION_LIST_PAGE_SIZE;
   const safeOffset = Math.max(0, Math.min(offset, lastPageOffset));
-  const pageQuestions = questions.slice(
-    safeOffset,
-    safeOffset + QUESTION_LIST_PAGE_SIZE,
-  );
+  const pageQuestions = questions.slice(safeOffset, safeOffset + QUESTION_LIST_PAGE_SIZE);
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
   for (const question of pageQuestions) {
     rows.push([
@@ -142,7 +125,9 @@ export async function showQuestionList(
     locked
       ? `已有 ${responseCount} 份答卷，题目结构已锁定。复制问卷后可继续修改。`
       : "点击题目可编辑内容、选项和附件。",
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   await renderUiScreen(ctx, chatId, userId, {
     screen: "question_list",
@@ -218,10 +203,10 @@ export async function showQuestionEditor(
           .join("\n")}`
       : "",
     totalOptionMedia > 0 ? `选项附件合计：${totalOptionMedia} 个` : "",
-    locked
-      ? `该问卷已有 ${responseCount} 份答卷，当前题目已锁定。`
-      : "",
-  ].filter(Boolean).join("\n\n");
+    locked ? `该问卷已有 ${responseCount} 份答卷，当前题目已锁定。` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
   if (!locked) {
@@ -267,18 +252,13 @@ export async function showQuestionEditor(
         ]);
       }
 
-      for (
-        let mediaIndex = 0;
-        mediaIndex < (optionMedia.get(option.id)?.length ?? 0);
-        mediaIndex += 1
-      ) {
+      for (let mediaIndex = 0; mediaIndex < (optionMedia.get(option.id)?.length ?? 0); mediaIndex += 1) {
         const relation = optionMedia.get(option.id)?.[mediaIndex];
         if (!relation) continue;
         rows.push([
           {
             text: `🗑 删除选项 ${index + 1} 的附件 ${mediaIndex + 1}`,
-            callback_data:
-              `qedit:omedia_delete:${relation.id}:${question.id}`,
+            callback_data: `qedit:omedia_delete:${relation.id}:${question.id}`,
           },
         ]);
       }
@@ -297,8 +277,7 @@ export async function showQuestionEditor(
       rows.push([
         {
           text: `🗑 删除题目附件 ${index + 1}`,
-          callback_data:
-            `qedit:qmedia_delete:${relation.id}:${question.id}`,
+          callback_data: `qedit:qmedia_delete:${relation.id}:${question.id}`,
         },
       ]);
     });
@@ -330,7 +309,7 @@ export async function showQuestionEditor(
       },
     ]);
   }
-  const surveyQuestions = await listQuestionsBySurvey(ctx.db, question.surveyId) ?? [];
+  const surveyQuestions = (await listQuestionsBySurvey(ctx.db, question.surveyId)) ?? [];
   const previousQuestion = surveyQuestions[question.order - 1] ?? null;
   const nextQuestion = surveyQuestions[question.order + 1] ?? null;
   const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];

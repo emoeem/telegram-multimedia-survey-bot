@@ -4,7 +4,11 @@ import {
   renderResultVisualSvg,
   TEMPLATE_BACKGROUND_IMAGE_KEY,
 } from "../../../src/services/result-visual-renderer.service";
-import { RESULT_VISUAL_EMOJI_FONT, RESULT_VISUAL_FONT, RESULT_VISUAL_FONTS } from "../../../src/services/result-visual-font";
+import {
+  RESULT_VISUAL_EMOJI_FONT,
+  RESULT_VISUAL_FONT,
+  RESULT_VISUAL_FONTS,
+} from "../../../src/services/result-visual-font";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
 import type { VisualTemplateDefinition } from "../../../src/visual-template/schema";
 import { visualReportExampleTemplate } from "../../../src/visual-template/examples";
@@ -33,8 +37,30 @@ const template: VisualTemplateDefinition = {
   variables: [],
   elements: [
     { id: "late", type: "text", value: "后层", x: 1, y: 1, zIndex: 9 },
-    { id: "title", type: "text", value: "{{result.fields.name}}\n{{result.title}}", x: 80, y: 90, width: 600, fontSize: 48, maxLines: 2, overflow: "ellipsis", zIndex: 1 },
-    { id: "score", type: "progress_bar", value: "{{result.fields.score}}", max: 100, x: 80, y: 300, width: 500, height: 30, color: "#22c55e", zIndex: 2 },
+    {
+      id: "title",
+      type: "text",
+      value: "{{result.fields.name}}\n{{result.title}}",
+      x: 80,
+      y: 90,
+      width: 600,
+      fontSize: 48,
+      maxLines: 2,
+      overflow: "ellipsis",
+      zIndex: 1,
+    },
+    {
+      id: "score",
+      type: "progress_bar",
+      value: "{{result.fields.score}}",
+      max: 100,
+      x: 80,
+      y: 300,
+      width: 500,
+      height: 30,
+      color: "#22c55e",
+      zIndex: 2,
+    },
     { id: "stats", type: "stat_group", source: "{{result.stats}}", x: 80, y: 400, width: 700, height: 180, zIndex: 3 },
   ],
 };
@@ -51,7 +77,20 @@ describe("result visual SVG renderer", () => {
   });
 
   it("only embeds supplied image data URIs", () => {
-    const imageTemplate = { ...template, elements: [{ id: "avatar", type: "image" as const, source: "{{result.images.avatar}}", x: 0, y: 0, width: 100, height: 100 }] };
+    const imageTemplate = {
+      ...template,
+      elements: [
+        {
+          id: "avatar",
+          type: "image" as const,
+          source: "{{result.images.avatar}}",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+        },
+      ],
+    };
     const svg = renderResultVisualSvg(imageTemplate, profile, {
       "result.images.avatar": "data:image/png;base64,AAAA",
     });
@@ -94,11 +133,23 @@ describe("result visual SVG renderer", () => {
       fields: {
         name: { id: "name", type: "text", value: "测试角色" },
       },
-      stats: Array.from({ length: 30 }, (_, index) => ({ id: `metric-${index}`, label: `指标 ${index + 1}`, value: (index % 10) + 1, max: 10 })),
+      stats: Array.from({ length: 30 }, (_, index) => ({
+        id: `metric-${index}`,
+        label: `指标 ${index + 1}`,
+        value: (index % 10) + 1,
+        max: 10,
+      })),
       images: { photo1: "image-a", photo2: "image-b" },
       metadata: {
-        profile: [{ label: "姓名", value: "测试角色" }, { label: "城市", value: "上海" }],
-        status: [{ name: "沟通状态", passed: true }, { name: "活动记录", passed: false }, { name: "社交偏好", passed: true }],
+        profile: [
+          { label: "姓名", value: "测试角色" },
+          { label: "城市", value: "上海" },
+        ],
+        status: [
+          { name: "沟通状态", passed: true },
+          { name: "活动记录", passed: false },
+          { name: "社交偏好", passed: true },
+        ],
         summary: "这是根据结构化结果动态排版的总结。",
         gallery: ["image-a", "image-b"],
       },
@@ -119,7 +170,8 @@ describe("result visual SVG renderer", () => {
   });
 
   it("rejects oversized pixel canvases before the PNG renderer allocates memory", () => {
-    expect(() => renderResultVisualSvg({ ...template, width: 4096, height: 16_384 }, profile)).toThrow("结果报告尺寸过大");
+    expect(() => renderResultVisualSvg({ ...template, width: 4096, height: 16_384 }, profile)).toThrow(
+      "结果报告尺寸过大",
+    );
   });
-
 });

@@ -10,7 +10,9 @@ vi.mock("../../../src/services/result-visual-worker.service", () => ({
 
 import { handleExportQueue } from "../../../src/services/export-worker.service";
 
-function queueMessage(attempts: number): Message<unknown> & { retry: ReturnType<typeof vi.fn>; ack: ReturnType<typeof vi.fn> } {
+function queueMessage(
+  attempts: number,
+): Message<unknown> & { retry: ReturnType<typeof vi.fn>; ack: ReturnType<typeof vi.fn> } {
   return {
     id: "message-1",
     timestamp: new Date(),

@@ -56,9 +56,7 @@ export class SurveySessionDO extends DurableObject {
     await this.ctx.storage.put(STATE_KEY, state);
   }
 
-  private createInitialState(
-    action: Extract<SessionAction, { action: "init" }>,
-  ): SurveySessionState {
+  private createInitialState(action: Extract<SessionAction, { action: "init" }>): SurveySessionState {
     return {
       userId: action.userId,
       surveyId: action.surveyId,
@@ -82,8 +80,7 @@ export class SurveySessionDO extends DurableObject {
         state?.status === "active"
           ? {
               ...state,
-              currentQuestionId:
-                action.currentQuestionId ?? state.currentQuestionId,
+              currentQuestionId: action.currentQuestionId ?? state.currentQuestionId,
               lastActivityAt: new Date().toISOString(),
             }
           : this.createInitialState(action);
@@ -149,7 +146,12 @@ export class SurveySessionDO extends DurableObject {
     }
 
     if (action.action === "clear_matrix_selections") {
-      const nextState = { ...state, matrixSelections: {}, version: state.version + 1, lastActivityAt: new Date().toISOString() };
+      const nextState = {
+        ...state,
+        matrixSelections: {},
+        version: state.version + 1,
+        lastActivityAt: new Date().toISOString(),
+      };
       await this.putState(nextState);
       return Response.json(nextState);
     }
@@ -175,9 +177,7 @@ export class SurveySessionDO extends DurableObject {
         lastActivityAt: new Date().toISOString(),
       };
       await this.putState(nextState);
-      await this.ctx.storage.setAlarm(
-        Date.now() + COMPLETED_SESSION_RETENTION_MS,
-      );
+      await this.ctx.storage.setAlarm(Date.now() + COMPLETED_SESSION_RETENTION_MS);
       return Response.json(nextState);
     }
 

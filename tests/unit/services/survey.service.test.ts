@@ -55,13 +55,9 @@ describe("survey service", () => {
   });
 
   it("rejects publishing a choice question with fewer than two options", async () => {
-    repositoryMocks.listOptionsForQuestions.mockResolvedValue([
-      { id: 101, questionId: 10, label: "唯一选项" },
-    ]);
+    repositoryMocks.listOptionsForQuestions.mockResolvedValue([{ id: 101, questionId: 10, label: "唯一选项" }]);
 
-    await expect(
-      assertSurveyCanPublish({} as D1Database, 1),
-    ).rejects.toThrow("第 1 题至少需要两个选项");
+    await expect(assertSurveyCanPublish({} as D1Database, 1)).rejects.toThrow("第 1 题至少需要两个选项");
   });
 
   it("locks question edits after the first response starts", async () => {
@@ -74,9 +70,7 @@ describe("survey service", () => {
       prepare: vi.fn(() => statement),
     } as unknown as D1Database;
 
-    await expect(
-      assertSurveyQuestionsEditable(db, 1),
-    ).rejects.toThrow("题目和附件已锁定");
+    await expect(assertSurveyQuestionsEditable(db, 1)).rejects.toThrow("题目和附件已锁定");
   });
 
   it("preserves validation and remaps skip-rule ids when duplicating", async () => {
@@ -184,10 +178,6 @@ describe("survey service", () => {
 
     expect(published.status).toBe("published");
     expect(repositoryMocks.updateSurveyStatus).toHaveBeenCalledWith({} as D1Database, 1, "published");
-    expect(repositoryMocks.createSurveyVersionSnapshot).toHaveBeenCalledWith(
-      {} as D1Database,
-      1,
-      7,
-    );
+    expect(repositoryMocks.createSurveyVersionSnapshot).toHaveBeenCalledWith({} as D1Database, 1, 7);
   });
 });

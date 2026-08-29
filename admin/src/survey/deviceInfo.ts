@@ -49,12 +49,8 @@ export function getBrowserInfo(): string {
       if (!gl) return null;
       const debug = gl.getExtension("WEBGL_debug_renderer_info");
       return {
-        vendor: debug
-          ? String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL))
-          : String(gl.getParameter(gl.VENDOR)),
-        renderer: debug
-          ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL))
-          : String(gl.getParameter(gl.RENDERER)),
+        vendor: debug ? String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL)) : String(gl.getParameter(gl.VENDOR)),
+        renderer: debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER)),
         version: String(gl.getParameter(gl.VERSION)),
         extensions: (gl.getSupportedExtensions() ?? []).length,
       };
@@ -62,9 +58,7 @@ export function getBrowserInfo(): string {
       return null;
     }
   })();
-  const navigation = performance.getEntriesByType("navigation")[0] as
-    | { type?: string }
-    | undefined;
+  const navigation = performance.getEntriesByType("navigation")[0] as { type?: string } | undefined;
   return JSON.stringify({
     ua: navigator.userAgent,
     platform: nav.userAgentData?.platform ?? navigator.platform ?? "",

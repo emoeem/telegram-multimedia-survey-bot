@@ -46,9 +46,10 @@ export function buildSurveySummaryReportHtml(report: SurveySummaryReport): strin
     })
     .join("");
 
-  const numericSection = report.numericStatistics.length > 0
-    ? `<section class="question"><h2>评分与数字题</h2><table><thead><tr><th>题目</th><th>样本数</th><th>平均值</th><th>最小值</th><th>最大值</th></tr></thead><tbody>${report.numericStatistics.map((stat) => `<tr><td>${escapeHtml(stat.questionTitle)}</td><td>${stat.count}</td><td>${formatNumber(stat.average)}</td><td>${formatNumber(stat.min)}</td><td>${formatNumber(stat.max)}</td></tr>`).join("")}</tbody></table></section>`
-    : "";
+  const numericSection =
+    report.numericStatistics.length > 0
+      ? `<section class="question"><h2>评分与数字题</h2><table><thead><tr><th>题目</th><th>样本数</th><th>平均值</th><th>最小值</th><th>最大值</th></tr></thead><tbody>${report.numericStatistics.map((stat) => `<tr><td>${escapeHtml(stat.questionTitle)}</td><td>${stat.count}</td><td>${formatNumber(stat.average)}</td><td>${formatNumber(stat.min)}</td><td>${formatNumber(stat.max)}</td></tr>`).join("")}</tbody></table></section>`
+      : "";
 
   return `<!doctype html>
 <html lang="zh-CN">

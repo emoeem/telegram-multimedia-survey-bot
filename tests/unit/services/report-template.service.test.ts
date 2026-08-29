@@ -10,9 +10,7 @@ import type { ReportViewModel } from "../../../src/services/report/model";
 
 const view: ReportViewModel = {
   hero: { title: "结果报告", subtitle: "副标题", tags: ["标签"] },
-  scores: [
-    { key: "s1", label: "总分", value: 80, max: 100, percentage: 80, level: "HIGH" },
-  ],
+  scores: [{ key: "s1", label: "总分", value: 80, max: 100, percentage: 80, level: "HIGH" }],
   charts: { radar: [], bars: [] },
   tags: ["标签"],
   insights: [],
@@ -37,8 +35,12 @@ describe("report template system", () => {
     expect(ok.error).toBeUndefined();
     expect(ok.template?.sections).toHaveLength(2);
 
-    expect(validateReportTemplateSpec({ id: "x", name: "x", theme: "nope", sections: [{ kind: "hero" }] }).error).toBeDefined();
-    expect(validateReportTemplateSpec({ id: "x", name: "x", theme: "dracula", sections: [{ kind: "sparkles" }] }).error).toBeDefined();
+    expect(
+      validateReportTemplateSpec({ id: "x", name: "x", theme: "nope", sections: [{ kind: "hero" }] }).error,
+    ).toBeDefined();
+    expect(
+      validateReportTemplateSpec({ id: "x", name: "x", theme: "dracula", sections: [{ kind: "sparkles" }] }).error,
+    ).toBeDefined();
   });
 
   it("accepts DaisyUI report themes and the divider block", () => {
@@ -50,27 +52,24 @@ describe("report template system", () => {
       renderers: ["web", "pdf"],
     });
     expect(ok.error).toBeUndefined();
-    expect(ok.template?.sections.map((section) => section.kind)).toEqual([
-      "hero",
-      "divider",
-      "answers",
-    ]);
+    expect(ok.template?.sections.map((section) => section.kind)).toEqual(["hero", "divider", "answers"]);
     const html = buildResponsiveReportHtml(view, {}, ok.template!);
     expect(html).toContain("report-divider");
   });
 
   it("renders exactly the sections a template declares, in order", () => {
-    const html = buildResponsiveReportHtml(view, {}, {
-      id: "classic",
-      name: "经典报告",
-      version: 1,
-      theme: "catppuccin-latte",
-      renderers: ["web", "pdf"] as const,
-      sections: [
-        { kind: "summary", title: "我的总结" },
-        { kind: "answers" },
-      ],
-    });
+    const html = buildResponsiveReportHtml(
+      view,
+      {},
+      {
+        id: "classic",
+        name: "经典报告",
+        version: 1,
+        theme: "catppuccin-latte",
+        renderers: ["web", "pdf"] as const,
+        sections: [{ kind: "summary", title: "我的总结" }, { kind: "answers" }],
+      },
+    );
     expect(html).toContain("我的总结");
     expect(html).toContain("回答明细");
     expect(html).not.toContain("得分概览");
@@ -78,11 +77,15 @@ describe("report template system", () => {
   });
 
   it("applies the template theme and custom css", () => {
-    const html = buildResponsiveReportHtml(view, {}, {
-      ...DEFAULT_REPORT_TEMPLATE,
-      theme: "dracula",
-      css: ".report-cover{border:3px dashed red}",
-    });
+    const html = buildResponsiveReportHtml(
+      view,
+      {},
+      {
+        ...DEFAULT_REPORT_TEMPLATE,
+        theme: "dracula",
+        css: ".report-cover{border:3px dashed red}",
+      },
+    );
     expect(html).toContain("--report-bg:#282a36");
     expect(html).toContain(".report-cover{border:3px dashed red}");
   });
@@ -96,10 +99,14 @@ describe("report template system", () => {
   });
 
   it("uses the composition engine when a template declares a layout", () => {
-    const html = buildResponsiveReportHtml(view, {}, {
-      ...DEFAULT_REPORT_TEMPLATE,
-      layout: "bento",
-    });
+    const html = buildResponsiveReportHtml(
+      view,
+      {},
+      {
+        ...DEFAULT_REPORT_TEMPLATE,
+        layout: "bento",
+      },
+    );
     expect(html).toContain('data-report-layout="bento"');
     expect(html).toContain("bento-overview");
   });

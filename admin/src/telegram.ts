@@ -52,9 +52,7 @@ export function activateTelegramWebApp(): void {
   try {
     // Initialize the SDK for upcoming theme / back-button integration; safe
     // outside Telegram (guarded) and does not replace the initData path above.
-    import("@telegram-apps/sdk")
-      .then(({ init }) => init())
-      .catch(() => undefined);
+    import("@telegram-apps/sdk").then(({ init }) => init()).catch(() => undefined);
   } catch {
     /* SDK is optional */
   }

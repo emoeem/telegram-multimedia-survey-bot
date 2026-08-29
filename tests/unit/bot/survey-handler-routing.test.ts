@@ -13,16 +13,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/db/repositories/user.repository")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/db/repositories/user.repository")>()),
   getUserByTelegramId: mocks.getUserByTelegramId,
 }));
 
 vi.mock("../../../src/db/repositories/response.repository", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/db/repositories/response.repository")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/db/repositories/response.repository")>()),
   getActiveResponseByUser: mocks.getActiveResponseByUser,
   getResponseById: mocks.getResponseById,
 }));
@@ -37,16 +33,12 @@ vi.mock("../../../src/services/result-visual.service", async (importOriginal) =>
 }));
 
 vi.mock("../../../src/services/survey-builder.service", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/services/survey-builder.service")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/services/survey-builder.service")>()),
   getBuilderState: mocks.getBuilderState,
 }));
 
 vi.mock("../../../src/services/survey.service", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../../src/services/survey.service")
-  >()),
+  ...(await importOriginal<typeof import("../../../src/services/survey.service")>()),
   listMySurveys: mocks.listMySurveys,
 }));
 
@@ -59,10 +51,7 @@ vi.mock("../../../src/db/repositories/creator-trial.repository", () => ({
   hasActiveCreatorTrial: mocks.hasActiveCreatorTrial,
 }));
 
-import {
-  handleTelegramCallback,
-  handleTelegramMessage,
-} from "../../../src/bot/survey-handler";
+import { handleTelegramCallback, handleTelegramMessage } from "../../../src/bot/survey-handler";
 import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
@@ -180,9 +169,7 @@ describe("survey message routing", () => {
         accessCode: null,
       },
     ]);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await handleTelegramMessage(
@@ -206,9 +193,7 @@ describe("survey message routing", () => {
     const body = JSON.parse(String(request.body)) as {
       text: string;
       reply_markup: {
-        inline_keyboard: Array<
-          Array<{ text: string; callback_data: string }>
-        >;
+        inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
       };
     };
     const buttons = body.reply_markup.inline_keyboard.flat();
@@ -287,9 +272,7 @@ describe("survey message routing", () => {
       telegramUserId: 88,
       systemRole: "participant",
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await handleTelegramMessage(
@@ -321,9 +304,7 @@ describe("survey message routing", () => {
       telegramUserId: 88,
       systemRole: "participant",
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await handleTelegramMessage(
@@ -405,9 +386,7 @@ describe("survey message routing", () => {
         results: [{ id: 9, title: "第九份问卷", description: null, access_code: null, completed_count: 0 }],
       })),
     };
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"),
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
     vi.stubGlobal("fetch", fetchMock);
 
     await handleTelegramCallback(

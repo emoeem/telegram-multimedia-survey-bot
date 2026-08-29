@@ -10,17 +10,58 @@ import {
 } from "../visual-template/schema";
 
 const elementTypes = new Set<VisualElementType>([
-  "text", "image", "shape", "rectangle", "circle", "line", "badge", "tag",
-  "progress_bar", "stat", "stat_group", "rating", "divider", "icon", "qr_code", "radar_chart",
+  "text",
+  "image",
+  "shape",
+  "rectangle",
+  "circle",
+  "line",
+  "badge",
+  "tag",
+  "progress_bar",
+  "stat",
+  "stat_group",
+  "rating",
+  "divider",
+  "icon",
+  "qr_code",
+  "radar_chart",
 ]);
 const conditionOperators = new Set([
-  "equals", "not_equals", "exists", "not_exists", "greater_than", "less_than",
-  "greater_or_equal", "less_or_equal", "contains", "not_contains", "in", "not_in",
+  "equals",
+  "not_equals",
+  "exists",
+  "not_exists",
+  "greater_than",
+  "less_than",
+  "greater_or_equal",
+  "less_or_equal",
+  "contains",
+  "not_contains",
+  "in",
+  "not_in",
 ]);
 const variableTypes = new Set([
-  "text", "long_text", "number", "integer", "decimal", "percentage", "score", "rating",
-  "boolean", "enum", "tags", "image", "color", "date", "datetime", "url", "list", "object",
-  "stats", "image_map",
+  "text",
+  "long_text",
+  "number",
+  "integer",
+  "decimal",
+  "percentage",
+  "score",
+  "rating",
+  "boolean",
+  "enum",
+  "tags",
+  "image",
+  "color",
+  "date",
+  "datetime",
+  "url",
+  "list",
+  "object",
+  "stats",
+  "image_map",
 ]);
 const allowedRootPaths = new Set(["title", "subtitle", "resultType", "fields", "stats", "tags", "images", "metadata"]);
 const forbiddenSegments = new Set(["__proto__", "constructor", "prototype"]);
@@ -62,9 +103,12 @@ function expressionPath(value: string, label: string): string {
 
 function resultPath(path: string, label: string): string {
   const segments = path.split(".");
-  if (segments[0] !== "result" || segments.length < 2 ||
+  if (
+    segments[0] !== "result" ||
+    segments.length < 2 ||
     segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment) || forbiddenSegments.has(segment)) ||
-    !allowedRootPaths.has(segments[1] ?? "")) {
+    !allowedRootPaths.has(segments[1] ?? "")
+  ) {
     fail(`${label} 不是允许的 ResultProfile 路径`);
   }
   return path;
@@ -76,7 +120,8 @@ function color(value: unknown, label: string, variables: Set<string>): void {
     assertVariable(expressionPath(candidate, label), variables, label);
     return;
   }
-  const valid = /^#[0-9a-fA-F]{3,8}$/.test(candidate) ||
+  const valid =
+    /^#[0-9a-fA-F]{3,8}$/.test(candidate) ||
     /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/.test(candidate) ||
     staticColors.has(candidate.toLowerCase());
   if (!valid) fail(`${label} 不是合法颜色`);
@@ -102,10 +147,17 @@ function condition(value: unknown, variables: Set<string>, label: string): Templ
   assertVariable(path, variables, `${label}.path`);
   const operator = text(value.operator, `${label}.operator`);
   if (!conditionOperators.has(operator)) fail(`${label}.operator 不受支持`);
-  if ("value" in value && !(
-    typeof value.value === "string" || typeof value.value === "number" || typeof value.value === "boolean" ||
-    Array.isArray(value.value) && value.value.every((entry) => typeof entry === "string" || typeof entry === "number")
-  )) fail(`${label}.value 类型无效`);
+  if (
+    "value" in value &&
+    !(
+      typeof value.value === "string" ||
+      typeof value.value === "number" ||
+      typeof value.value === "boolean" ||
+      (Array.isArray(value.value) &&
+        value.value.every((entry) => typeof entry === "string" || typeof entry === "number"))
+    )
+  )
+    fail(`${label}.value 类型无效`);
   return value as unknown as TemplateCondition;
 }
 
@@ -121,13 +173,15 @@ function background(value: unknown, variables: Set<string>): TemplateBackground 
   } else if (type === "image") {
     const source = expressionPath(text(value.source, "background.source"), "background.source");
     assertVariable(source, variables, "background.source");
-    if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit))) fail("background.fit 不受支持");
+    if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit)))
+      fail("background.fit 不受支持");
     if (value.opacity !== undefined) finite(value.opacity, "background.opacity", 0, 1);
   } else if (type === "telegram_asset") {
     if (!Number.isInteger(value.assetId) || (value.assetId as number) <= 0) {
       fail("background.assetId 必须是有效媒体编号");
     }
-    if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit))) fail("background.fit 不受支持");
+    if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit)))
+      fail("background.fit 不受支持");
     if (value.opacity !== undefined) finite(value.opacity, "background.opacity", 0, 1);
   } else {
     fail("background.type 不受支持");
@@ -150,11 +204,20 @@ function element(value: unknown, variables: Set<string>, ids: Set<string>, index
   for (const key of ["width", "height", "fontSize"] as const) {
     if (value[key] !== undefined) finite(value[key], `${label}.${key}`, 0.01, 10_000);
   }
-  if (value.zIndex !== undefined &&
-    (typeof value.zIndex !== "number" || !Number.isInteger(value.zIndex) || Math.abs(value.zIndex) > 10_000)) fail(`${label}.zIndex 无效`);
+  if (
+    value.zIndex !== undefined &&
+    (typeof value.zIndex !== "number" || !Number.isInteger(value.zIndex) || Math.abs(value.zIndex) > 10_000)
+  )
+    fail(`${label}.zIndex 无效`);
   if (value.opacity !== undefined) finite(value.opacity, `${label}.opacity`, 0, 1);
-  if (value.maxLines !== undefined &&
-    (typeof value.maxLines !== "number" || !Number.isInteger(value.maxLines) || value.maxLines <= 0 || value.maxLines > 100)) fail(`${label}.maxLines 无效`);
+  if (
+    value.maxLines !== undefined &&
+    (typeof value.maxLines !== "number" ||
+      !Number.isInteger(value.maxLines) ||
+      value.maxLines <= 0 ||
+      value.maxLines > 100)
+  )
+    fail(`${label}.maxLines 无效`);
   if (value.color !== undefined) color(value.color, `${label}.color`, variables);
   if (value.fill !== undefined) color(value.fill, `${label}.fill`, variables);
   if (value.stroke !== undefined) color(value.stroke, `${label}.stroke`, variables);
@@ -170,10 +233,16 @@ function element(value: unknown, variables: Set<string>, ids: Set<string>, index
   }
   if (type === "text" && typeof value.value !== "string") fail(`${label}.value 是必填文字`);
   if (type === "image" && typeof value.source !== "string") fail(`${label}.source 是必填图片变量`);
-  if (["tag", "progress_bar", "stat", "stat_group", "rating", "qr_code", "radar_chart"].includes(type) &&
-    typeof value.source !== "string" && typeof value.value !== "string") fail(`${label} 缺少数据变量`);
-  if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit))) fail(`${label}.fit 不受支持`);
-  if (value.shape !== undefined && !["rectangle", "rounded", "circle", "hexagon"].includes(String(value.shape))) fail(`${label}.shape 不受支持`);
+  if (
+    ["tag", "progress_bar", "stat", "stat_group", "rating", "qr_code", "radar_chart"].includes(type) &&
+    typeof value.source !== "string" &&
+    typeof value.value !== "string"
+  )
+    fail(`${label} 缺少数据变量`);
+  if (value.fit !== undefined && !["cover", "contain", "stretch"].includes(String(value.fit)))
+    fail(`${label}.fit 不受支持`);
+  if (value.shape !== undefined && !["rectangle", "rounded", "circle", "hexagon"].includes(String(value.shape)))
+    fail(`${label}.shape 不受支持`);
   return value as unknown as VisualTemplateElement;
 }
 
@@ -223,11 +292,16 @@ function reportSection(value: unknown, variables: Set<string>, ids: Set<string>,
     const path = expressionPath(value.max, `${label}.max`);
     assertVariable(path, variables, `${label}.max`);
   }
-  if (value.columns !== undefined && (!Number.isInteger(value.columns) || (value.columns as number) < 1 || (value.columns as number) > 4)) fail(`${label}.columns 无效`);
+  if (
+    value.columns !== undefined &&
+    (!Number.isInteger(value.columns) || (value.columns as number) < 1 || (value.columns as number) > 4)
+  )
+    fail(`${label}.columns 无效`);
   for (const key of ["gap", "itemHeight", "imageHeight", "fontSize", "radius"] as const) {
     if (value[key] !== undefined) finite(value[key], `${label}.${key}`, 0, 10_000);
   }
-  for (const key of ["color", "fill", "background"] as const) if (value[key] !== undefined) color(value[key], `${label}.${key}`, variables);
+  for (const key of ["color", "fill", "background"] as const)
+    if (value[key] !== undefined) color(value[key], `${label}.${key}`, variables);
   if (value.visibleIf !== undefined) condition(value.visibleIf, variables, `${label}.visibleIf`);
   return value as unknown as VisualReportSection;
 }
@@ -270,7 +344,8 @@ export function parseVisualTemplateDefinition(input: string): VisualTemplateDefi
         if (!record(layer)) fail(`report.readability.${key} 必须是对象`);
         color(layer.color, `report.readability.${key}.color`, paths);
         finite(layer.opacity, `report.readability.${key}.opacity`, 0, 1);
-        if (key === "card" && layer.radius !== undefined) finite(layer.radius, "report.readability.card.radius", 0, 2_000);
+        if (key === "card" && layer.radius !== undefined)
+          finite(layer.radius, "report.readability.card.radius", 0, 2_000);
         if (key === "card" && layer.inset !== undefined) finite(layer.inset, "report.readability.card.inset", 0, 2_000);
       }
     }

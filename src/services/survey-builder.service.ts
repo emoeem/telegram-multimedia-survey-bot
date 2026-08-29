@@ -1,22 +1,22 @@
-import type { DraftQuestion, SurveyBuilderDO, SurveyBuilderState } from '../durable-objects/survey-builder';
+import type { DraftQuestion, SurveyBuilderDO, SurveyBuilderState } from "../durable-objects/survey-builder";
 import {
   createSurvey,
   getLatestDraftSurveyByOwner,
   getSurveyById,
   updateDraftSurvey,
-} from '../db/repositories/survey.repository';
+} from "../db/repositories/survey.repository";
 import {
   createQuestion,
   createQuestionOption,
   listOptionsForQuestions,
   listQuestionsBySurvey,
-} from '../db/repositories/question.repository';
+} from "../db/repositories/question.repository";
 import {
   createOptionMedia,
   createQuestionMedia,
   getOptionMediaByOptionId,
   getQuestionMediaByQuestionId,
-} from '../db/repositories/media.repository';
+} from "../db/repositories/media.repository";
 
 export type SurveyBuilderNamespace = DurableObjectNamespace<SurveyBuilderDO>;
 
@@ -31,10 +31,10 @@ async function callBuilder(
 ): Promise<SurveyBuilderState> {
   const id = namespace.idFromName(getBuilderId(userId));
   const stub = namespace.get(id);
-  const response = await stub.fetch('https://builder.internal/', {
-    method: 'POST',
+  const response = await stub.fetch("https://builder.internal/", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
   });
@@ -43,10 +43,10 @@ async function callBuilder(
     let reason = `Builder request failed: ${response.status}`;
     try {
       const body = (await response.json()) as { error?: string };
-      if (body.error === 'choice_options_incomplete') {
-        reason = '单选题或多选题至少需要两个选项';
-      } else if (body.error === 'question_incomplete') {
-        reason = '当前题目还没有填写完整';
+      if (body.error === "choice_options_incomplete") {
+        reason = "单选题或多选题至少需要两个选项";
+      } else if (body.error === "question_incomplete") {
+        reason = "当前题目还没有填写完整";
       } else if (body.error) {
         reason = body.error;
       }
@@ -61,7 +61,7 @@ async function callBuilder(
 
 export async function initBuilder(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'init',
+    action: "init",
     userId,
   });
 }
@@ -70,7 +70,7 @@ export async function startBuilderDraft(
   namespace: SurveyBuilderNamespace,
   userId: number,
 ): Promise<SurveyBuilderState> {
-  return callBuilder(namespace, userId, { action: 'start' });
+  return callBuilder(namespace, userId, { action: "start" });
 }
 
 export async function startAppendQuestions(
@@ -79,7 +79,7 @@ export async function startAppendQuestions(
   surveyId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_append_questions',
+    action: "start_append_questions",
     surveyId,
   });
 }
@@ -89,7 +89,7 @@ export async function getBuilderState(
   userId: number,
 ): Promise<SurveyBuilderState | null> {
   try {
-    return await callBuilder(namespace, userId, { action: 'get' });
+    return await callBuilder(namespace, userId, { action: "get" });
   } catch {
     return null;
   }
@@ -101,7 +101,7 @@ export async function setSurveyTitle(
   value: string,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_survey_title',
+    action: "set_survey_title",
     value,
   });
 }
@@ -112,7 +112,7 @@ export async function setSurveyDescription(
   value: string,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_survey_description',
+    action: "set_survey_description",
     value,
   });
 }
@@ -120,10 +120,10 @@ export async function setSurveyDescription(
 export async function setQuestionType(
   namespace: SurveyBuilderNamespace,
   userId: number,
-  value: SurveyBuilderState['currentQuestionType'],
+  value: SurveyBuilderState["currentQuestionType"],
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_question_type',
+    action: "set_question_type",
     value,
   });
 }
@@ -134,7 +134,7 @@ export async function setQuestionTitle(
   value: string,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_question_title',
+    action: "set_question_title",
     value,
   });
 }
@@ -145,7 +145,7 @@ export async function setQuestionRequired(
   value: boolean,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_question_required',
+    action: "set_question_required",
     value,
   });
 }
@@ -157,7 +157,7 @@ export async function addOption(
   mediaAssetId: number | null = null,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'add_option',
+    action: "add_option",
     value,
     mediaAssetId,
   });
@@ -168,7 +168,7 @@ export async function addMatrixColumn(
   userId: number,
   value: string,
 ): Promise<SurveyBuilderState> {
-  return callBuilder(namespace, userId, { action: 'add_matrix_column', value });
+  return callBuilder(namespace, userId, { action: "add_matrix_column", value });
 }
 
 export async function startQuestionOptions(
@@ -176,7 +176,7 @@ export async function startQuestionOptions(
   userId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_question_options',
+    action: "start_question_options",
   });
 }
 
@@ -186,20 +186,20 @@ export async function setQuestionMedia(
   mediaAssetId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_question_media',
+    action: "set_question_media",
     mediaAssetId,
   });
 }
 
 export async function finishOptions(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'finish_options',
+    action: "finish_options",
   });
 }
 
 export async function startImport(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_import',
+    action: "start_import",
   });
 }
 
@@ -209,7 +209,7 @@ export async function startAddQuestionOption(
   questionId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_add_question_option',
+    action: "start_add_question_option",
     questionId,
   });
 }
@@ -220,7 +220,7 @@ export async function startOptionMedia(
   optionId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_option_media',
+    action: "start_option_media",
     optionId,
   });
 }
@@ -231,7 +231,7 @@ export async function startQuestionMedia(
   questionId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_question_media',
+    action: "start_question_media",
     questionId,
   });
 }
@@ -242,7 +242,7 @@ export async function startEditOptionLabel(
   optionId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_edit_option_label',
+    action: "start_edit_option_label",
     optionId,
   });
 }
@@ -253,7 +253,7 @@ export async function startEditQuestionTitle(
   questionId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_edit_question_title',
+    action: "start_edit_question_title",
     questionId,
   });
 }
@@ -264,7 +264,7 @@ export async function startSurveyAccessCode(
   surveyId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_survey_access_code',
+    action: "start_survey_access_code",
     surveyId,
   });
 }
@@ -275,7 +275,7 @@ export async function startSetSurveyAccessCode(
   surveyId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'start_set_survey_access_code',
+    action: "start_set_survey_access_code",
     surveyId,
   });
 }
@@ -285,25 +285,25 @@ export async function resumeBuilderAfterAuxiliary(
   userId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'resume_auxiliary',
+    action: "resume_auxiliary",
   });
 }
 
 export async function builderBack(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'back',
+    action: "back",
   });
 }
 
 export async function finishQuestions(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'finish_questions',
+    action: "finish_questions",
   });
 }
 
 export async function resetBuilder(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'reset',
+    action: "reset",
   });
 }
 
@@ -313,7 +313,7 @@ async function setDraftSurveyId(
   surveyId: number,
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'set_draft_survey_id',
+    action: "set_draft_survey_id",
     surveyId,
   });
 }
@@ -329,25 +329,25 @@ async function restoreBuilder(
   },
 ): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
-    action: 'restore',
+    action: "restore",
     ...input,
   });
 }
 
 export async function saveDraftSurvey(db: D1Database, state: SurveyBuilderState, ownerId: number): Promise<number> {
   if (!state.surveyTitle.trim()) {
-    throw new Error('问卷标题不能为空');
+    throw new Error("问卷标题不能为空");
   }
 
   if (state.questions.length === 0) {
-    throw new Error('至少需要一道完整题目');
+    throw new Error("至少需要一道完整题目");
   }
 
   let surveyId = state.draftSurveyId;
   if (surveyId) {
     const existing = await getSurveyById(db, surveyId);
-    if (!existing || existing.ownerId !== ownerId || existing.status !== 'draft') {
-      throw new Error('原草稿不存在、已发布，或不属于当前用户');
+    if (!existing || existing.ownerId !== ownerId || existing.status !== "draft") {
+      throw new Error("原草稿不存在、已发布，或不属于当前用户");
     }
 
     await updateDraftSurvey(db, {
@@ -356,7 +356,7 @@ export async function saveDraftSurvey(db: D1Database, state: SurveyBuilderState,
       title: state.surveyTitle.trim(),
       description: state.surveyDescription.trim() || null,
     });
-    await db.prepare('DELETE FROM survey_questions WHERE survey_id = ?').bind(surveyId).run();
+    await db.prepare("DELETE FROM survey_questions WHERE survey_id = ?").bind(surveyId).run();
   } else {
     const survey = await createSurvey(db, {
       ownerId,
@@ -389,7 +389,7 @@ async function insertDraftQuestions(
       required: draftQuestion.required ?? true,
       order: startOrder + index,
       settingsJson:
-        draftQuestion.type === 'matrix' ? JSON.stringify({ columns: draftQuestion.matrixColumns ?? [] }) : null,
+        draftQuestion.type === "matrix" ? JSON.stringify({ columns: draftQuestion.matrixColumns ?? [] }) : null,
       conditionJson: draftQuestion.conditionJson ?? null,
       skipToQuestionId: draftQuestion.skipToQuestionId ?? null,
     });
@@ -430,7 +430,7 @@ export async function appendBuilderQuestions(
   questions: DraftQuestion[],
 ): Promise<void> {
   if (questions.length === 0) {
-    throw new Error('至少需要一道完整题目');
+    throw new Error("至少需要一道完整题目");
   }
   const existingQuestions = await listQuestionsBySurvey(db, surveyId);
   await insertDraftQuestions(db, surveyId, questions, existingQuestions.length);
@@ -496,7 +496,7 @@ export async function restoreLatestBuilderDraft(
   return restoreBuilder(namespace, userId, {
     surveyId: survey.id,
     surveyTitle: survey.title,
-    surveyDescription: survey.description ?? '',
+    surveyDescription: survey.description ?? "",
     questions: draftQuestions,
   });
 }
