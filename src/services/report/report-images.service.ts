@@ -88,6 +88,13 @@ async function resolveImageValue(env: ReportImagesEnv, value: unknown): Promise<
   }
 }
 
+/** Resolves a single media asset to an embeddable data URL (null if gone). */
+export async function resolveMediaAssetDataUrl(env: ReportImagesEnv, assetId: number): Promise<string | null> {
+  const asset = await getMediaAssetById(env.DB, assetId);
+  if (!asset) return null;
+  return resolveAssetDataUrl(env, asset);
+}
+
 /**
  * Resolves every image referenced by a ResultProfile into embeddable data
  * URLs for PDF/archive rendering, covering temporary KV, Telegram and future

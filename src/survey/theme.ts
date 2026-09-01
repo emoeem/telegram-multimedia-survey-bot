@@ -46,6 +46,15 @@ export interface SurveyTheme {
     /** px radius, 0..32 */
     radius?: number;
   };
+  /** Submitted screen customization shown by the Web Survey. */
+  completion?: {
+    /** Custom thank-you message (≤600 chars). */
+    message?: string;
+    /** https:// or site-relative redirect offered as a button. */
+    redirectUrl?: string;
+    /** Show a "fill again" button (only honoured when the survey allows multiple responses). */
+    showRestart?: boolean;
+  };
 }
 
 /**
@@ -202,6 +211,18 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
   if (isRecord(value.button)) {
     const radius = safeRadius(value.button.radius, 32);
     if (radius !== undefined) theme.button = { radius };
+  }
+
+  if (isRecord(value.completion)) {
+    const completion: NonNullable<SurveyTheme["completion"]> = {};
+    const message = safeString(value.completion.message, 600);
+    const redirectUrl = safeString(value.completion.redirectUrl, 500);
+    if (message) completion.message = message;
+    if (redirectUrl && (redirectUrl.startsWith("https://") || redirectUrl.startsWith("/"))) {
+      completion.redirectUrl = redirectUrl;
+    }
+    if (value.completion.showRestart === true) completion.showRestart = true;
+    if (Object.keys(completion).length) theme.completion = completion;
   }
 
   return Object.keys(theme).length ? theme : null;

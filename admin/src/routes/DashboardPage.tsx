@@ -17,11 +17,11 @@ import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../component
 import { formatDateTime } from "../format";
 
 const METRICS: Array<{ key: keyof DashboardData; label: string; icon: typeof Users; tint: string }> = [
-  { key: "users", label: "用户数量", icon: Users, tint: "bg-indigo-50 text-indigo-600" },
-  { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-sky-50 text-sky-600" },
-  { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-emerald-50 text-emerald-600" },
-  { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-violet-50 text-violet-600" },
-  { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-amber-50 text-amber-600" },
+  { key: "users", label: "用户数量", icon: Users, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
+  { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
+  { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
+  { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
+  { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]" },
 ];
 
 export function DashboardPage() {
@@ -39,10 +39,10 @@ export function DashboardPage() {
     icon: typeof Package;
     tint: string;
   }> = [
-    { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-slate-100 text-slate-500" },
-    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-blue-50 text-blue-600" },
-    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-green-50 text-green-600" },
-    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-red-50 text-red-600" },
+    { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]" },
+    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
+    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
+    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]" },
   ];
 
   const actionLabels: Record<string, string> = {
@@ -89,17 +89,17 @@ export function DashboardPage() {
               to={`/reports?status=${status}`}
               className={`rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
                 label === "失败" && value > 0
-                  ? "border-red-200 bg-red-50/60"
-                  : "border-edge bg-white"
+                  ? "border-[color-mix(in_srgb,var(--color-danger)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))]"
+                  : "border-edge bg-[var(--surface)]"
               }`}
             >
-              <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
                 <span className={`grid h-7 w-7 place-items-center rounded-lg ${tint}`}>
                   <Icon className="h-4 w-4" />
                 </span>
                 {label}
               </div>
-              <div className={`mt-2 text-2xl font-bold ${label === "失败" && value > 0 ? "text-red-600" : ""}`}>
+              <div className={`mt-2 text-2xl font-bold ${label === "失败" && value > 0 ? "text-[var(--color-danger)]" : ""}`}>
                 {value}
               </div>
             </Link>

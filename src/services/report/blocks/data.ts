@@ -4,7 +4,7 @@ import { renderBarChartSvg, type ChartColors } from "../charts";
 export interface DataBlockContext { accent: string; escape(value: string): string; }
 
 export function renderProgressBlock(score: ReportScore, context: DataBlockContext): string {
-  return `<article class="metric"><div class="metric-top"><div><span class="metric-label">${context.escape(score.label)}</span><strong>${context.escape(String(score.value))}</strong></div><div class="ring" style="background:conic-gradient(${context.accent} ${score.percentage}%, ${context.accent}22 0)"><div><strong>${context.escape(String(score.value))}</strong><small>${context.escape(score.level)}</small></div></div></div><div class="metric-level">${context.escape(score.level)} · ${context.escape(score.description ?? "")}</div><div class="meter"><i style="width:${score.percentage}%"></i></div></article>`;
+  return `<article class="metric"><div class="metric-top"><div><span class="metric-label">${context.escape(score.label)}</span><strong>${context.escape(String(score.value))}</strong></div><div class="ring" style="background:conic-gradient(${context.accent} ${score.percentage}%, color-mix(in srgb, ${context.accent} 13%, transparent) 0)"><div><strong>${context.escape(String(score.value))}</strong><small>${context.escape(score.level)}</small></div></div></div><div class="metric-level">${context.escape(score.level)} · ${context.escape(score.description ?? "")}</div><div class="meter"><i style="width:${score.percentage}%"></i></div></article>`;
 }
 
 export function renderMetricGridBlock(scores: ReportScore[], context: DataBlockContext): string {

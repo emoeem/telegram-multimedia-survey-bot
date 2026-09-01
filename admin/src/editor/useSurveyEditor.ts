@@ -442,6 +442,30 @@ export function useSurveyEditor(data: EditorData) {
     return String(value);
   }, []);
 
+  const remapConditionRefs = useCallback(
+    (condition: Record<string, unknown>, idMap: Map<number, number>): Record<string, unknown> => {
+      const walk = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(walk);
+        if (value && typeof value === "object") {
+          const source = value as Record<string, unknown>;
+          const next: Record<string, unknown> = { ...source };
+          for (const key of ["targetQuestionId", "skipToQuestionId"]) {
+            if (typeof next[key] === "number" && idMap.has(next[key] as number)) {
+              next[key] = idMap.get(next[key] as number);
+            }
+          }
+          for (const [key, child] of Object.entries(next)) {
+            if (child && typeof child === "object") next[key] = walk(child);
+          }
+          return next;
+        }
+        return value;
+      };
+      return walk(condition) as Record<string, unknown>;
+    },
+    [],
+  );
+
   const resolveOpReferences = useCallback((op: PendingOp, idMap: Map<number, number>): PendingOp => {
     const path = op.path.replace(/questions\/(-?\d+)/g, (match, id) => `questions/${resolveRef(id, idMap)}`)
       .replace(/options\/(-?\d+)/g, (match, id) => `options/${resolveRef(id, idMap)}`);
@@ -449,8 +473,13 @@ export function useSurveyEditor(data: EditorData) {
     if (body && Array.isArray(body.questionIds)) {
       body.questionIds = body.questionIds.map((id) => Number(resolveRef(id as number, idMap)));
     }
+    // Skip-rule conditions may reference questions created in the same batch;
+    // remap targetQuestionId/skipToQuestionId the same way paths are remapped.
+    if (body && body.condition && typeof body.condition === "object") {
+      body.condition = remapConditionRefs(body.condition as Record<string, unknown>, idMap);
+    }
     return { ...op, path, body };
-  }, [resolveRef]);
+  }, [remapConditionRefs, resolveRef]);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (saving) return false;
@@ -483,21 +512,20 @@ export function useSurveyEditor(data: EditorData) {
         break;
       }
     }
-    // 用映射后的真实 ID 刷新本地题目/选项
+    // 用映射后的真实 ID 刷新本地题目/选项，并以刷新后的状态作为新基线。
+    // stateRef 只在重渲染后同步：若在这里直接克隆 stateRef，基线会带上
+    // 仍处于临时 ID 的新题目，下一次 undo 会把它们当作"被删除"而重发
+    // 创建请求，导致服务端出现重复题目。
+    const remappedQuestions = stateRef.current.questions.map((question) => ({
+      ...question,
+      id: idMap.get(question.id) ?? question.id,
+      options: question.options.map((option) => ({
+        ...option,
+        id: idMap.get(option.id) ?? option.id,
+      })),
+    }));
     if (idMap.size) {
-      setQuestions((current) =>
-        current.map((question) => {
-          const questionId = idMap.get(question.id) ?? question.id;
-          return {
-            ...question,
-            id: questionId,
-            options: question.options.map((option) => ({
-              ...option,
-              id: idMap.get(option.id) ?? option.id,
-            })),
-          };
-        }),
-      );
+      setQuestions(remappedQuestions as EditableQuestion[]);
     }
     setSaving(false);
     if (failed) {
@@ -509,7 +537,13 @@ export function useSurveyEditor(data: EditorData) {
     }
     // A successful save makes the current state the new baseline; history
     // snapshots may still carry temporary ids, so reset them.
-    baselineRef.current = cloneSnapshot(stateRef.current);
+    baselineRef.current = {
+      surveyMeta: cloneSnapshot(stateRef.current).surveyMeta,
+      questions: cloneSnapshot({
+        surveyMeta: stateRef.current.surveyMeta,
+        questions: remappedQuestions,
+      }).questions,
+    };
     pastRef.current = [];
     futureRef.current = [];
     syncHistoryFlags();
@@ -550,6 +584,7 @@ export function useSurveyEditor(data: EditorData) {
       canRedo,
     }),
     [surveyMeta, updateSurveyMeta, baseUpdatedAt, questions, patchQuestionLocal, queueQuestionPatch, addQuestion,
-      deleteQuestion, addOption, deleteOption, renameOption, reorderQuestions, save, saveState, saveError, discardAndReload, dirty],
+      deleteQuestion, addOption, deleteOption, renameOption, reorderQuestions, save, saveState, saveError, discardAndReload, dirty,
+      undo, redo, canUndo, canRedo],
   );
 }

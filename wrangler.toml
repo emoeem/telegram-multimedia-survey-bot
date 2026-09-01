@@ -49,7 +49,7 @@ max_concurrency = 3
 binding = "BROWSER"
 
 [triggers]
-crons = ["*/10 * * * *", "15 1 * * *"]
+crons = ["*/10 * * * *", "15 1 * * *", "30 9 * * 1"]
 
 [[durable_objects.bindings]]
 name = "SESSION"

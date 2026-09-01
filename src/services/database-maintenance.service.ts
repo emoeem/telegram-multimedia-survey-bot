@@ -116,7 +116,9 @@ export async function runDatabaseMaintenance(
                           OR background_asset_id = media_assets.id)
        AND NOT EXISTS (SELECT 1 FROM image_generator_backgrounds WHERE asset_id = media_assets.id)
        AND NOT EXISTS (SELECT 1 FROM image_generators WHERE report_background_asset_id = media_assets.id)
-       AND NOT EXISTS (SELECT 1 FROM surveys WHERE cover_media_id = media_assets.id)`,
+       AND NOT EXISTS (SELECT 1 FROM surveys WHERE cover_media_id = media_assets.id)
+       AND NOT EXISTS (SELECT 1 FROM surveys
+                       WHERE settings_json LIKE '%"media/' || media_assets.id || '"%')`,
   ).bind(previewBefore));
 
   return {

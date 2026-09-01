@@ -57,6 +57,9 @@ export function SurveyDetailPage() {
   const [preset, setPreset] = useState("");
   const [customJson, setCustomJson] = useState("");
   const [bgmUrl, setBgmUrl] = useState("");
+  const [completionMessage, setCompletionMessage] = useState("");
+  const [completionRedirect, setCompletionRedirect] = useState("");
+  const [completionRestart, setCompletionRestart] = useState(false);
   const [themeBusy, setThemeBusy] = useState(false);
   const bgmFileRef = useRef<HTMLInputElement>(null);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
@@ -65,12 +68,20 @@ export function SurveyDetailPage() {
     if (!data) return;
     setPreset(data.theme?.preset ?? "");
     if (data.theme) {
-      const { preset: _preset, ...custom } = data.theme;
+      // preset/audio/completion get dedicated fields; the rest stays as raw
+      // custom tokens in the JSON area.
+      const { preset: _preset, audio, completion, ...custom } = data.theme;
       setCustomJson(Object.keys(custom).length ? JSON.stringify(custom, null, 2) : "");
-      setBgmUrl(data.theme.audio?.url ?? "");
+      setBgmUrl(audio?.url ?? "");
+      setCompletionMessage(completion?.message ?? "");
+      setCompletionRedirect(completion?.redirectUrl ?? "");
+      setCompletionRestart(completion?.showRestart === true);
     } else {
       setCustomJson("");
       setBgmUrl("");
+      setCompletionMessage("");
+      setCompletionRedirect("");
+      setCompletionRestart(false);
     }
   }, [data]);
 
@@ -113,6 +124,11 @@ export function SurveyDetailPage() {
       if (!clear) {
         if (preset) theme.preset = preset;
         if (bgmUrl.trim()) theme.audio = { url: bgmUrl.trim() };
+        const completion: Record<string, unknown> = {};
+        if (completionMessage.trim()) completion.message = completionMessage.trim();
+        if (completionRedirect.trim()) completion.redirectUrl = completionRedirect.trim();
+        if (completionRestart) completion.showRestart = true;
+        if (Object.keys(completion).length) theme.completion = completion;
         const customText = customJson.trim();
         if (customText) {
           try {
@@ -191,11 +207,11 @@ export function SurveyDetailPage() {
         <h2 className="text-lg font-semibold">{data.title || "未命名问卷"}</h2>
         <StatusBadge status={data.status} />
       </div>
-      {data.description ? <p className="mt-1 text-sm text-gray-500">{data.description}</p> : null}
+      {data.description ? <p className="mt-1 text-sm text-[var(--color-muted)]">{data.description}</p> : null}
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         {fields.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="text-sm text-gray-500">{label}</div>
+          <div key={label} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
+            <div className="text-sm text-[var(--color-muted)]">{label}</div>
             <div className="mt-1.5 font-semibold">
               {label === "状态" ? <StatusBadge status={data.status} /> : String(value ?? "-")}
             </div>
@@ -219,7 +235,7 @@ export function SurveyDetailPage() {
           <History className="h-4 w-4" />版本历史
         </Link>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-edge-soft)] pt-4">
         {data.status === "published" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("close", "确定关闭该问卷？填写中的答卷会被中止。")}>
             <Square className="h-4 w-4" />关闭
@@ -258,14 +274,14 @@ export function SurveyDetailPage() {
         </button>
       </div>
       {data.responseCount > 0 && !data.isAdmin ? (
-        <p className="mt-2 text-xs text-gray-400">已有答卷的问卷禁止删除（历史答卷保护）。</p>
+        <p className="mt-2 text-xs text-[var(--color-muted-soft)]">已有答卷的问卷禁止删除（历史答卷保护）。</p>
       ) : data.responseCount > 0 && data.isAdmin ? (
-        <p className="mt-2 text-xs text-amber-600">
+        <p className="mt-2 text-xs text-[var(--color-warning)]">
           管理员可强制删除该问卷，删除将同时移除 {data.responseCount} 份答卷。
         </p>
       ) : null}
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
-        <span className="text-sm text-gray-600">报告模板</span>
+      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--color-edge-soft)] pt-4">
+        <span className="text-sm text-[var(--text-soft)]">报告模板</span>
         {templates.data ? (
           <select
             className="select"
@@ -279,14 +295,14 @@ export function SurveyDetailPage() {
             ))}
           </select>
         ) : (
-          <span className="text-sm text-gray-400">加载中…</span>
+          <span className="text-sm text-[var(--color-muted-soft)]">加载中…</span>
         )}
-        <span className="text-xs text-gray-400">Web 报告与 PDF 归档共用该模板</span>
+        <span className="text-xs text-[var(--color-muted-soft)]">Web 报告与 PDF 归档共用该模板</span>
       </div>
 
-      <div className="mt-4 border-t border-gray-100 pt-4">
-        <div className="text-sm text-gray-600">问卷主题</div>
-        <p className="mt-1 text-xs text-gray-400">
+      <div className="mt-4 border-t border-[var(--color-edge-soft)] pt-4">
+        <div className="text-sm text-[var(--text-soft)]">问卷主题</div>
+        <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
           预设来自 DaisyUI 主题库，可直接选用；也可以叠加自定义令牌（JSON）。
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -294,13 +310,13 @@ export function SurveyDetailPage() {
             type="button"
             className={`rounded-xl border p-2 text-left transition ${
               preset === ""
-                ? "border-indigo-500 bg-indigo-50"
-                : "border-gray-200 bg-white"
+                ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+                : "border-[var(--color-edge)] bg-[var(--surface)]"
             }`}
             onClick={() => setPreset("")}
           >
-            <div className="h-10 w-full rounded-lg bg-gray-100" />
-            <div className="mt-1.5 text-sm font-medium text-gray-700">默认</div>
+            <div className="h-10 w-full rounded-lg bg-[var(--surface-muted)]" />
+            <div className="mt-1.5 text-sm font-medium text-[var(--text-soft)]">默认</div>
           </button>
           {data.themePresets.map((item) => (
             <button
@@ -308,18 +324,18 @@ export function SurveyDetailPage() {
               type="button"
               className={`rounded-xl border p-2 text-left transition ${
                 preset === item.id
-                  ? "border-indigo-500 bg-indigo-50"
-                  : "border-gray-200 bg-white"
+                  ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+                  : "border-[var(--color-edge)] bg-[var(--surface)]"
               }`}
               onClick={() => setPreset(item.id)}
             >
               <ThemeSwatch presetId={item.id} />
-              <div className="mt-1.5 text-sm font-medium text-gray-700">{item.name}</div>
+              <div className="mt-1.5 text-sm font-medium text-[var(--text-soft)]">{item.name}</div>
             </button>
           ))}
         </div>
         <div className="mt-3">
-          <div className="text-xs text-gray-400">自定义令牌（可选，覆盖预设）</div>
+          <div className="text-xs text-[var(--color-muted-soft)]">自定义令牌（可选，覆盖预设）</div>
           <textarea
             className="input mt-1 w-full min-h-24 font-mono text-xs"
             placeholder='{"background":{"color":"#1a1025"},"audio":{"url":"https://…/bgm.mp3"},"primaryColor":"#e54d9b"}'
@@ -327,9 +343,36 @@ export function SurveyDetailPage() {
             onChange={(event) => setCustomJson(event.target.value)}
           />
         </div>
-        <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <div className="text-sm font-medium text-gray-700">背景音乐（BGM）</div>
-          <p className="mt-1 text-xs text-gray-400">
+        <div className="mt-3 rounded-lg border border-[var(--color-edge)] bg-[var(--surface-muted)] p-3">
+          <div className="text-sm font-medium text-[var(--text-soft)]">提交完成页</div>
+          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
+            参与者提交成功后看到的致谢文案、跳转链接与"再填一次"按钮。
+          </p>
+          <textarea
+            className="input mt-2 w-full min-h-16 text-xs"
+            maxLength={600}
+            placeholder="感谢参与！关注我们的频道获取结果…"
+            value={completionMessage}
+            onChange={(event) => setCompletionMessage(event.target.value)}
+          />
+          <input
+            className="input mt-2 w-full text-xs"
+            placeholder="跳转链接（https://… 或站内 /…，可选）"
+            value={completionRedirect}
+            onChange={(event) => setCompletionRedirect(event.target.value.trim())}
+          />
+          <label className="mt-2 flex items-center gap-2 text-xs text-[var(--text-soft)]">
+            <input
+              type="checkbox"
+              checked={completionRestart}
+              onChange={(event) => setCompletionRestart(event.target.checked)}
+            />
+            显示"再填一次"按钮（仅允许重复填写的问卷生效）
+          </label>
+        </div>
+        <div className="mt-3 rounded-lg border border-[var(--color-edge)] bg-[var(--surface-muted)] p-3">
+          <div className="text-sm font-medium text-[var(--text-soft)]">背景音乐（BGM）</div>
+          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
             上传音频文件，或粘贴直链（mp3/m4a/ogg；网易云等平台的外链需真实可访问）。
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -350,7 +393,7 @@ export function SurveyDetailPage() {
               placeholder="https://…/bgm.mp3"
             />
             {bgmUrl ? (
-              <button className="btn btn-sm text-red-600" onClick={() => setBgmUrl("")}>
+              <button className="btn btn-sm text-[var(--color-danger)]" onClick={() => setBgmUrl("")}>
                 清除
               </button>
             ) : null}
@@ -377,7 +420,7 @@ export function SurveyDetailPage() {
         </div>
       </div>
 
-      {actionError ? <p className="mt-2 text-sm text-red-600">{actionError}</p> : null}
+      {actionError ? <p className="mt-2 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
     </section>
   );
 }

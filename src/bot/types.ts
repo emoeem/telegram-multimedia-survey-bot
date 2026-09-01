@@ -66,6 +66,8 @@ export interface BotContext {
   botToken: string;
   db: D1Database;
   cache?: KVNamespace;
+  /** Media KV store; used to serve stored identity card renders. */
+  mediaKv?: KVNamespace;
   session: SurveySessionNamespace;
   ui?: UiSessionNamespace;
   builder: SurveyBuilderNamespace;

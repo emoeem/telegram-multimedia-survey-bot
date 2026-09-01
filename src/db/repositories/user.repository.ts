@@ -162,7 +162,11 @@ export async function upsertUser(
           first_name = ?,
           last_name = ?,
           language_code = ?,
-          system_role = ?,
+          system_role = CASE
+            WHEN system_role IN ('admin', 'owner') AND ? = 'participant'
+              THEN system_role
+            ELSE ?
+          END,
           updated_at = ?
         WHERE id = ?`,
       )
@@ -171,6 +175,9 @@ export async function upsertUser(
         input.firstName ?? existing.firstName,
         input.lastName ?? existing.lastName,
         input.languageCode ?? existing.languageCode,
+        // Routine Telegram/web interactions report "participant"; never let
+        // them demote a role that was granted out-of-band.
+        input.systemRole ?? existing.systemRole,
         input.systemRole ?? existing.systemRole,
         timestamp,
         existing.id,

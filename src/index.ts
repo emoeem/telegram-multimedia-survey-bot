@@ -10,6 +10,7 @@ import { isWebhookSecretValid } from "./core/security";
 import { handleLicenseApiRequest } from "./http/license-api";
 import { handleAdminApi } from "./http/admin-api";
 import { handleSurveyApiRequest } from "./http/survey-api";
+import { handlePlazaApiRequest } from "./http/plaza-api";
 import { handleReportRequest } from "./http/report-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { handleExportQueue } from "./services/export-worker.service";
@@ -18,9 +19,13 @@ import { runDatabaseMaintenance } from "./services/database-maintenance.service"
 import { cleanupExpiredTemporaryMedia } from "./services/media/temporary-media.service";
 import { KVMediaStore } from "./services/media/temporary-media-store";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
+import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
 import { recoverStaleIdentityCardJobs } from "./services/identity-card-job-recovery.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
+import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-digest.service";
+import { loadSystemSettings } from "./services/system-settings.service";
+import { sendMessage } from "./bot/telegram";
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 
@@ -29,11 +34,7 @@ import type { BrowserWorker } from "@cloudflare/puppeteer";
  * cache to keep a stale copy: stale bundles have historically left Telegram
  * WebViews stuck on a blank page after a redeploy.
  */
-async function serveHtmlAsset(
-  env: Env,
-  request: Request,
-  assetPath: string,
-): Promise<Response> {
+async function serveHtmlAsset(env: Env, request: Request, assetPath: string, injectHead?: string): Promise<Response> {
   const assetUrl = new URL(assetPath, request.url);
   const response = await env.ASSETS.fetch(new Request(assetUrl, request));
   if (!response.headers.get("content-type")?.includes("text/html")) {
@@ -41,11 +42,46 @@ async function serveHtmlAsset(
   }
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  if (!injectHead) {
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  const html = (await response.text()).replace("</head>", `${injectHead}\n</head>`);
+  return new Response(html, { status: response.status, headers });
+}
+
+/**
+ * Injects Open Graph / Twitter meta tags into the public survey page so
+ * shares on Telegram and social platforms render a preview card. Failures
+ * are non-fatal: the stock page is served without meta tags.
+ */
+async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId: number): Promise<Response> {
+  let injectHead: string | undefined;
+  try {
+    const meta = await loadSurveyShareMeta(env.DB, surveyId);
+    if (meta) {
+      const origin = new URL(request.url).origin;
+      const ogImage = `${origin}/s/${surveyId}/og.png`;
+      const description = meta.description?.slice(0, 120) || `${meta.questionCount} 道题，点击立即填写`;
+      injectHead = [
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:title" content="${meta.title.replaceAll('"', "&quot;")}" />`,
+        `<meta property="og:description" content="${description.replaceAll('"', "&quot;")}" />`,
+        `<meta property="og:image" content="${ogImage}" />`,
+        `<meta property="og:url" content="${origin}/s/${surveyId}" />`,
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<meta name="twitter:title" content="${meta.title.replaceAll('"', "&quot;")}" />`,
+        `<meta name="twitter:description" content="${description.replaceAll('"', "&quot;")}" />`,
+        `<meta name="twitter:image" content="${ogImage}" />`,
+      ].join("\n    ");
+    }
+  } catch (error) {
+    console.warn("Survey share meta injection failed", error);
+  }
+  return serveHtmlAsset(env, request, "/survey.html", injectHead);
 }
 
 export interface Env {
@@ -58,7 +94,10 @@ export interface Env {
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
   ADMIN_IDS: string;
-  ENVIRONMENT: "development" | "production";
+  ENVIRONMENT: "development" | "staging" | "production";
+  /** Local-dev only: enables the x-telegram-user-id admin login shortcut when
+   *  ENVIRONMENT=development and the request presents this shared secret. */
+  ADMIN_DEV_AUTH_SECRET?: string;
   APP_VERSION?: string;
   LICENSE_ENFORCEMENT?: "disabled" | "required";
   LICENSE_SERVER_URL?: string;
@@ -72,6 +111,8 @@ export interface Env {
   MEDIA?: R2Bucket;
   MEDIA_KV: KVNamespace;
   REPORT_CHANNEL_ID?: string;
+  /** Telegram channel that mirrors published plaza cards and tree-hole posts. */
+  PLAZA_CHANNEL_ID?: string;
 }
 
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
@@ -134,8 +175,39 @@ export default {
 
     // Web survey entry: /s/:id renders the public survey page; the page
     // itself talks to /api/survey/* for the definition and answers.
+    const surveyPageMatch = url.pathname.match(/^\/s\/(\d+)$/);
+    const ogImageMatch = url.pathname.match(/^\/s\/(\d+)\/og\.png$/);
+    if (ogImageMatch) {
+      const surveyId = Number(ogImageMatch[1]);
+      try {
+        const meta = await loadSurveyShareMeta(env.DB, surveyId);
+        if (!meta) return new Response("Not Found", { status: 404 });
+        const bytes = await getSurveyOgImage(env, meta, url.origin);
+        if (!bytes) return new Response("Not Found", { status: 404 });
+        return new Response(bytes, {
+          headers: {
+            "Content-Type": "image/png",
+            "Cache-Control": "public, max-age=600",
+          },
+        });
+      } catch (error) {
+        console.error("OG image rendering failed", error);
+        return new Response("Rendering unavailable", { status: 503 });
+      }
+    }
+    if (surveyPageMatch) {
+      return serveSurveyPageWithShareMeta(env, request, Number(surveyPageMatch[1]));
+    }
     if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
       return serveHtmlAsset(env, request, "/survey.html");
+    }
+
+    if (url.pathname === "/plaza" || url.pathname.startsWith("/plaza/")) {
+      return serveHtmlAsset(env, request, "/survey.html");
+    }
+
+    if (url.pathname.startsWith("/api/plaza/")) {
+      return (await handlePlazaApiRequest(request, env, url)) ?? new Response("Not Found", { status: 404 });
     }
 
     if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
@@ -148,11 +220,7 @@ export default {
       return response ?? new Response("Not Found", { status: 404 });
     }
 
-    const licenseApiResponse = await handleLicenseApiRequest(
-      request,
-      env.DB,
-      env.LICENSE_ADMIN_TOKEN,
-    );
+    const licenseApiResponse = await handleLicenseApiRequest(request, env.DB, env.LICENSE_ADMIN_TOKEN);
     if (licenseApiResponse) {
       return licenseApiResponse;
     }
@@ -168,11 +236,7 @@ export default {
 
       const deploymentLicense = await checkDeploymentLicense(env);
       if (!deploymentLicense.allowed) {
-        console.error(
-          "Deployment license rejected",
-          deploymentLicense.code,
-          deploymentLicense.message,
-        );
+        console.error("Deployment license rejected", deploymentLicense.code, deploymentLicense.message);
         return Response.json(
           {
             ok: false,
@@ -221,6 +285,7 @@ export default {
             .map((value) => Number(value.trim()))
             .filter((value) => Number.isInteger(value) && value > 0),
           exportQueue: env.EXPORT_QUEUE,
+          mediaKv: env.MEDIA_KV,
           origin: url.origin,
           licenseServerUrl: url.origin,
           licenseAdminEnabled: Boolean(env.LICENSE_ADMIN_TOKEN),
@@ -247,6 +312,21 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    if (event.cron === "30 9 * * 1") {
+      // Weekly operations digest to the report archive channel.
+      try {
+        const settings = await loadSystemSettings(env.DB);
+        const channelRaw = (settings.reportChannelId || env.REPORT_CHANNEL_ID || "").trim();
+        const channelId = Number(channelRaw);
+        if (!Number.isInteger(channelId) || channelId === 0) return;
+        const digest = await loadWeeklyDigest(env.DB);
+        await sendMessage(env.BOT_TOKEN, channelId, renderWeeklyDigestMessage(digest));
+        console.info("Weekly digest sent", { started: digest.started, completed: digest.completed });
+      } catch (error) {
+        console.error("Weekly digest failed", error);
+      }
+      return;
+    }
     if (event.cron === "*/10 * * * *") {
       try {
         const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
@@ -285,10 +365,7 @@ export default {
       console.error("Database maintenance failed", error);
     }
     try {
-      const summary = await cleanupExpiredTemporaryMedia(
-        env.DB,
-        new KVMediaStore(env.MEDIA_KV),
-      );
+      const summary = await cleanupExpiredTemporaryMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
       if (summary.deleted > 0) {
         console.info("Expired temporary media cleaned", summary);
       }
@@ -296,8 +373,13 @@ export default {
       console.error("Temporary media cleanup failed", error);
     }
     if (!env.LICENSE_ADMIN_TOKEN) return;
-    const adminIds = env.ADMIN_IDS.split(",").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0);
-    await sendCreatorTrialExpiryReminders(env.DB, env.CACHE, env.BOT_TOKEN, adminIds);
+    const adminIds = env.ADMIN_IDS.split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    try {
+      await sendCreatorTrialExpiryReminders(env.DB, env.CACHE, env.BOT_TOKEN, adminIds);
+    } catch (error) {
+      console.error("Creator trial expiry reminders failed", error);
+    }
   },
-
 };

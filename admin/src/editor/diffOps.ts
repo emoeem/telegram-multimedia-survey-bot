@@ -82,6 +82,7 @@ function questionCreateBody(question: DiffQuestion): Record<string, unknown> {
     title: question.title,
     required: question.required,
     ...(question.description ? { description: question.description } : {}),
+    ...(question.pageId !== null ? { pageId: question.pageId } : {}),
     ...(question.options.length ? { options: question.options.map((option) => ({ label: option.label })) } : {}),
     ...(question.columns.length
       ? { settings: { columns: question.columns } }
@@ -137,14 +138,39 @@ export function buildOpsFromDiff(
   for (const question of target.questions) {
     const base = baseById.get(question.id);
     if (!base) {
+      const tempId = ids.temp();
       ops.push({
         key: ids.key(),
         method: "POST",
         path: `/api/admin/surveys/${surveyId}/questions`,
         body: questionCreateBody(question),
-        tempId: ids.temp(),
+        tempId,
         label: "新增题目",
       });
+      // The create endpoint does not accept validation/condition; replay them
+      // as follow-up patches. The paths embed the same temp id the POST will
+      // register in the id map, so save() rewrites them to the real id.
+      const patchPath = `/api/admin/surveys/${surveyId}/questions/${tempId}`;
+      if (question.validation && Object.keys(question.validation).length) {
+        ops.push({
+          key: ids.key(),
+          method: "PATCH",
+          path: patchPath,
+          body: { validation: question.validation },
+          tempId: null,
+          label: "题目校验",
+        });
+      }
+      if (question.condition) {
+        ops.push({
+          key: ids.key(),
+          method: "PATCH",
+          path: patchPath,
+          body: { condition: question.condition },
+          tempId: null,
+          label: "跳题规则",
+        });
+      }
       continue;
     }
     const patch = questionPatch(base, question);

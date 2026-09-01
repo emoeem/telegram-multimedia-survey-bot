@@ -1,31 +1,19 @@
-import {
-  getUserById,
-  getUserByTelegramId,
-} from '../db/repositories/user.repository';
-import { createAuditLog } from '../db/repositories/audit.repository';
-import { listAuditLogs } from '../db/repositories/audit.repository';
+import { getUserById, getUserByTelegramId } from "../db/repositories/user.repository";
+import { isWebhookSecretValid } from "../core/security";
+import { createAuditLog } from "../db/repositories/audit.repository";
+import { listAuditLogs } from "../db/repositories/audit.repository";
 import {
   addUserTag,
+  cancelActiveResponsesForUser,
   listUserDirectory,
   listUserResponses,
   listUserTags,
   removeUserTag,
-} from '../db/repositories/user.repository';
-import {
-  createSurvey,
-  deleteSurvey,
-  getSurveyById,
-  updateSurveyStatus,
-} from '../db/repositories/survey.repository';
-import {
-  getReportDeliveryById,
-  listReportDeliveries,
-} from '../db/repositories/report-delivery.repository';
-import {
-  archiveResponse,
-  deleteResponse,
-  getResponseById,
-} from '../db/repositories/response.repository';
+  setUserBan,
+} from "../db/repositories/user.repository";
+import { createSurvey, deleteSurvey, getSurveyById, updateSurveyStatus } from "../db/repositories/survey.repository";
+import { getReportDeliveryById, listReportDeliveries } from "../db/repositories/report-delivery.repository";
+import { archiveResponse, deleteResponse, getResponseById } from "../db/repositories/response.repository";
 import {
   createQuestion,
   createQuestionOption,
@@ -47,7 +35,7 @@ import {
   updateQuestionType,
   updateQuestionPage,
   updateQuestionCondition,
-} from '../db/repositories/question.repository';
+} from "../db/repositories/question.repository";
 import {
   createSurveyPage,
   deleteSurveyPage,
@@ -55,27 +43,34 @@ import {
   listSurveyPages,
   normalizePageOrder,
   updateSurveyPage,
-} from '../db/repositories/page.repository';
-import { hasActiveCreatorTrial } from '../db/repositories/creator-trial.repository';
+} from "../db/repositories/page.repository";
+import { hasActiveCreatorTrial } from "../db/repositories/creator-trial.repository";
 import {
   grantCreatorTrial,
   listActiveCreatorTrials,
   revokeCreatorTrial,
-} from '../db/repositories/creator-trial.repository';
-import { createMediaAsset } from '../db/repositories/media.repository';
+} from "../db/repositories/creator-trial.repository";
+import { createMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
+import {
+  getIdentityProfileById,
+  listIdentityProfiles,
+  setIdentityProfileGalleryPublished,
+} from "../db/repositories/identity-card.repository";
+import { buildMediaResponse } from "../services/media/media-serve.service";
+import { listPlazaPosts, setPlazaPostStatus } from "../db/repositories/plaza-post.repository";
 import {
   deleteCustomReportTemplate,
   getCustomReportTemplate,
   listCustomReportTemplates,
   upsertCustomReportTemplate,
-} from '../db/repositories/report-template.repository';
+} from "../db/repositories/report-template.repository";
 import {
   MATRIX_COLUMN_MIN,
   SURVEY_QUESTION_TYPES,
   isMatrixQuestionType,
   isSurveyQuestionType,
   minOptionCount,
-} from '../survey/question-rules';
+} from "../survey/question-rules";
 import {
   createSoftwareRelease,
   listLicenseActivations,
@@ -83,65 +78,57 @@ import {
   listSoftwareReleases,
   updateSoftwareLicenseDates,
   updateSoftwareLicenseStatus,
-} from '../db/repositories/license.repository';
-import { createLicense } from '../services/license.service';
+} from "../db/repositories/license.repository";
+import { createLicense } from "../services/license.service";
 import {
   FormsImportError,
   fetchMicrosoftFormsCover,
   fetchMicrosoftFormsSurveyJson,
   isFormsUrl,
-} from '../services/microsoft-forms.service';
-import { createImportMediaResolver } from '../services/import-media.service';
-import { buildCsv, getExportRows, serializeExport } from '../services/export.service';
-import { exportUnifiedSurveyJson } from '../services/survey-json.service';
+} from "../services/microsoft-forms.service";
+import { createImportMediaResolver } from "../services/import-media.service";
+import { buildCsv, getExportRows, serializeExport } from "../services/export.service";
+import { exportUnifiedSurveyJson } from "../services/survey-json.service";
+import { ImportValidationError, parseImportedSurvey, saveImportedSurvey } from "../services/import.service";
+import type { QuestionType } from "../db/schema";
+import type { Survey, SurveyQuestion } from "../db/schema";
+import type { Env } from "../index";
+import { KVMediaStore } from "../services/media/temporary-media-store";
+import { normalizeSurveyTheme, SURVEY_THEME_PRESETS } from "../survey/theme";
+import { duplicateSurvey, publishSurvey } from "../services/survey.service";
+import { diffSurveyVersions, getSurveyVersionSnapshot, listSurveyVersions } from "../services/survey-version.service";
+import { enqueueReportDelivery } from "../services/report-delivery.service";
+import { sendDocument } from "../bot/telegram";
+import { prepareResultProfileForResponse } from "../services/result-visual.service";
+import { deserializeResultProfile } from "../services/result-engine.service";
+import { renderReportPdf } from "../services/report/pdf";
 import {
-  ImportValidationError,
-  parseImportedSurvey,
-  saveImportedSurvey,
-} from '../services/import.service';
-import type { QuestionType } from '../db/schema';
-import type { Survey, SurveyQuestion } from '../db/schema';
-import type { Env } from '../index';
-import { KVMediaStore } from '../services/media/temporary-media-store';
-import {
-  normalizeSurveyTheme,
-  SURVEY_THEME_PRESETS,
-} from '../survey/theme';
-import { duplicateSurvey, publishSurvey } from '../services/survey.service';
-import {
-  diffSurveyVersions,
-  getSurveyVersionSnapshot,
-  listSurveyVersions,
-} from '../services/survey-version.service';
-import { enqueueReportDelivery } from '../services/report-delivery.service';
-import { prepareResultProfileForResponse } from '../services/result-visual.service';
-import { deserializeResultProfile } from '../services/result-engine.service';
-import { renderReportPdf } from '../services/report/pdf';
-import { resolveReportProfileImages } from '../services/report/report-images.service';
-import { REPORT_TEMPLATES, validateReportTemplateSpec } from '../services/report/template';
-import { resolveReportTemplate } from '../services/report/template-resolver';
-import { reportPreviewViewModel } from '../services/report/preview-view-model';
-import { buildResponsiveReportHtml } from '../services/report/web';
+  createCardTemplate,
+  deleteCardTemplate,
+  getCardTemplateById,
+  listCardTemplates,
+  updateCardTemplate,
+} from "../db/repositories/card-template.repository";
+import { normalizeCardTemplateDefinition, CARD_TEMPLATE_SAMPLE_VALUES } from "../card-template/model";
+import { renderCardTemplatePng } from "../services/card-template-render.service";
+import { TEMP_IMAGE_MIME_TYPES } from "../services/media/temporary-media.service";
+import { resolveReportProfileImages } from "../services/report/report-images.service";
+import { REPORT_TEMPLATES, validateReportTemplateSpec } from "../services/report/template";
+import { resolveReportTemplate } from "../services/report/template-resolver";
+import { reportPreviewViewModel } from "../services/report/preview-view-model";
+import { buildResponsiveReportHtml } from "../services/report/web";
 import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   createAdminSessionValue,
   verifyAdminSessionValue,
   verifyBrowserLoginToken,
-} from '../services/admin-session.service';
-import { createReportAccessToken } from '../services/report-access-token.service';
-import {
-  loadSystemSettings,
-  saveSystemSetting,
-  SYSTEM_SETTING_KEYS,
-} from '../services/system-settings.service';
-import type { ImportedSurvey } from '../services/import.service';
-import {
-  getNumericStatistics,
-  getOptionStatistics,
-  getSurveyStatistics,
-} from '../services/statistics.service';
-import { downloadTelegramFile } from '../bot/telegram';
+} from "../services/admin-session.service";
+import { createReportAccessToken } from "../services/report-access-token.service";
+import { loadSystemSettings, saveSystemSetting, SYSTEM_SETTING_KEYS } from "../services/system-settings.service";
+import type { ImportedSurvey } from "../services/import.service";
+import { getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
+import { downloadTelegramFile } from "../bot/telegram";
 
 // Telegram initData is signed when the Mini App session opens; treat anything
 // older than a day as stale.
@@ -152,14 +139,11 @@ function parseSettingsJson(value: string): Record<string, unknown> | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
 }
-
 
 function buildImportSummary(imported: ImportedSurvey) {
   const typeCounts: Record<string, number> = {};
@@ -170,10 +154,7 @@ function buildImportSummary(imported: ImportedSurvey) {
     typeCounts[question.type] = (typeCounts[question.type] ?? 0) + 1;
     optionCount += question.options?.length ?? 0;
     questionMediaCount += question.media?.length ?? 0;
-    optionMediaCount += (question.options ?? []).reduce(
-      (total, option) => total + option.media.length,
-      0,
-    );
+    optionMediaCount += (question.options ?? []).reduce((total, option) => total + option.media.length, 0);
   }
   const lowConfidence = imported.questions
     .map((question, index) => ({
@@ -197,9 +178,7 @@ function buildImportSummary(imported: ImportedSurvey) {
     cover: imported.cover?.url
       ? {
           url: imported.cover.url,
-          ...(imported.cover.mimeType
-            ? { mimeType: imported.cover.mimeType }
-            : {}),
+          ...(imported.cover.mimeType ? { mimeType: imported.cover.mimeType } : {}),
         }
       : null,
     questionCount: imported.questions.length,
@@ -234,11 +213,11 @@ interface QuestionPayload {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 function readString(value: unknown, field: string, max: number): string | null {
-  if (typeof value !== 'string') return `${field}必须是字符串`;
+  if (typeof value !== "string") return `${field}必须是字符串`;
   const trimmed = value.trim();
   if (!trimmed) return `${field}不能为空`;
   if (trimmed.length > max) return `${field}长度不能超过 ${max} 字符`;
@@ -252,16 +231,21 @@ function normalizeQuestionCondition(
     return { conditionJson: null, skipToQuestionId: null };
   }
   if (!isRecord(value)) {
-    return { error: 'condition 必须是对象或 null' };
+    return { error: "condition 必须是对象或 null" };
   }
   const rules: Array<{ optionId: number; targetQuestionId: number }> = [];
   if (Array.isArray(value.rules)) {
     for (const item of value.rules) {
-      if (!isRecord(item)) return { error: 'rules 必须是对象数组' };
+      if (!isRecord(item)) return { error: "rules 必须是对象数组" };
       const optionId = Number(item.optionId);
       const targetQuestionId = Number(item.targetQuestionId);
-      if (!Number.isInteger(optionId) || optionId <= 0 || !Number.isInteger(targetQuestionId) || targetQuestionId <= 0) {
-        return { error: 'rules 中的 optionId / targetQuestionId 必须是正整数' };
+      if (
+        !Number.isInteger(optionId) ||
+        optionId <= 0 ||
+        !Number.isInteger(targetQuestionId) ||
+        targetQuestionId <= 0
+      ) {
+        return { error: "rules 中的 optionId / targetQuestionId 必须是正整数" };
       }
       rules.push({ optionId, targetQuestionId });
     }
@@ -269,7 +253,7 @@ function normalizeQuestionCondition(
     const optionId = Number(value.optionId);
     const targetQuestionId = Number(value.targetQuestionId);
     if (!Number.isInteger(optionId) || optionId <= 0 || !Number.isInteger(targetQuestionId) || targetQuestionId <= 0) {
-      return { error: 'condition 需要 optionId 与 targetQuestionId' };
+      return { error: "condition 需要 optionId 与 targetQuestionId" };
     }
     rules.push({ optionId, targetQuestionId });
   }
@@ -277,7 +261,7 @@ function normalizeQuestionCondition(
     return { conditionJson: null, skipToQuestionId: null };
   }
   return {
-    conditionJson: JSON.stringify({ kind: 'option_equals', rules }),
+    conditionJson: JSON.stringify({ kind: "option_equals", rules }),
     skipToQuestionId: rules[0]!.targetQuestionId,
   };
 }
@@ -291,13 +275,13 @@ function validateQuestionPayload(
   const type = body.type;
   if (creating || type !== undefined) {
     if (!isSurveyQuestionType(type)) {
-      return { error: `题型必须是以下之一：${SURVEY_QUESTION_TYPES.join(', ')}` };
+      return { error: `题型必须是以下之一：${SURVEY_QUESTION_TYPES.join(", ")}` };
     }
   }
 
   let title: string | undefined;
   if (body.title !== undefined || creating) {
-    const error = readString(body.title, '标题', 200);
+    const error = readString(body.title, "标题", 200);
     if (error) return { error };
     title = String(body.title).trim();
   }
@@ -305,15 +289,15 @@ function validateQuestionPayload(
   let description: string | null | undefined;
   if (body.description !== undefined) {
     if (body.description === null) description = null;
-    else if (typeof body.description === 'string') {
-      if (body.description.length > 1000) return { error: '描述长度不能超过 1000 字符' };
+    else if (typeof body.description === "string") {
+      if (body.description.length > 1000) return { error: "描述长度不能超过 1000 字符" };
       description = body.description.trim() || null;
-    } else return { error: '描述必须是字符串' };
+    } else return { error: "描述必须是字符串" };
   }
 
   let required: boolean | undefined;
   if (body.required !== undefined) {
-    if (typeof body.required !== 'boolean') return { error: '必答必须是布尔值' };
+    if (typeof body.required !== "boolean") return { error: "必答必须是布尔值" };
     required = body.required;
   }
 
@@ -321,18 +305,18 @@ function validateQuestionPayload(
   if (body.pageId !== undefined) {
     if (body.pageId === null) pageId = null;
     else if (Number.isInteger(body.pageId) && Number(body.pageId) > 0) pageId = Number(body.pageId);
-    else return { error: 'pageId 必须是正整数或 null' };
+    else return { error: "pageId 必须是正整数或 null" };
   }
 
   const effectiveType = creating ? (type as QuestionType) : undefined;
   const optionsInput = creating ? body.options : body.appendOptions;
   let options: { label: string }[] | undefined;
   if (optionsInput !== undefined) {
-    if (!Array.isArray(optionsInput)) return { error: '选项必须是数组' };
+    if (!Array.isArray(optionsInput)) return { error: "选项必须是数组" };
     options = [];
     for (const item of optionsInput) {
-      if (!isRecord(item)) return { error: '选项必须是对象' };
-      const error = readString(item.label, '选项文本', 200);
+      if (!isRecord(item)) return { error: "选项必须是对象" };
+      const error = readString(item.label, "选项文本", 200);
       if (error) return { error };
       options.push({ label: String(item.label).trim() });
     }
@@ -346,12 +330,12 @@ function validateQuestionPayload(
 
   let settingsJson: string | null | undefined;
   if (body.settings !== undefined && body.settings !== null) {
-    if (!isRecord(body.settings)) return { error: 'settings 必须是对象' };
+    if (!isRecord(body.settings)) return { error: "settings 必须是对象" };
     const columns = body.settings.columns;
-    if (!Array.isArray(columns)) return { error: 'matrix 列必须是字符串数组' };
+    if (!Array.isArray(columns)) return { error: "matrix 列必须是字符串数组" };
     for (const column of columns) {
-      if (typeof column !== 'string' || !column.trim() || column.length > 100) {
-        return { error: 'matrix 列必须是非空字符串（≤100 字符）' };
+      if (typeof column !== "string" || !column.trim() || column.length > 100) {
+        return { error: "matrix 列必须是非空字符串（≤100 字符）" };
       }
     }
     if (columns.length < MATRIX_COLUMN_MIN) {
@@ -361,7 +345,7 @@ function validateQuestionPayload(
   } else if (body.settings === null) {
     settingsJson = null;
   }
-  if (creating && effectiveType === 'matrix' && !settingsJson) {
+  if (creating && effectiveType === "matrix" && !settingsJson) {
     return { error: `matrix 题需要提供 settings.columns（至少 ${MATRIX_COLUMN_MIN} 列）` };
   }
 
@@ -370,28 +354,28 @@ function validateQuestionPayload(
     if (body.validation === null) {
       validationJson = null;
     } else if (isRecord(body.validation)) {
-      const allowed = ['min_length', 'max_length', 'min', 'max', 'min_selections', 'max_selections'];
+      const allowed = ["min_length", "max_length", "min", "max", "min_selections", "max_selections"];
       const normalized: Record<string, number | boolean> = {};
       for (const [key, value] of Object.entries(body.validation)) {
         if (!allowed.includes(key)) return { error: `不支持的校验字段：${key}` };
-        if (key === 'decimal') {
-          if (typeof value !== 'boolean') return { error: 'decimal 必须是布尔值' };
+        if (key === "decimal") {
+          if (typeof value !== "boolean") return { error: "decimal 必须是布尔值" };
           normalized.decimal = value;
           continue;
         }
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
           return { error: `${key} 必须是非负数字` };
         }
         normalized[key] = value;
       }
       validationJson = Object.keys(normalized).length ? JSON.stringify(normalized) : null;
-    } else return { error: 'validation 必须是对象' };
+    } else return { error: "validation 必须是对象" };
   }
 
   return {
     payload: {
-      type: (effectiveType ?? 'single') as QuestionType,
-      title: title ?? '',
+      type: (effectiveType ?? "single") as QuestionType,
+      title: title ?? "",
       description: description ?? null,
       required: required ?? true,
       pageId: pageId ?? null,
@@ -404,7 +388,7 @@ function validateQuestionPayload(
 
 async function touchSurvey(db: D1Database, surveyId: number): Promise<string> {
   const timestamp = new Date().toISOString();
-  await db.prepare('UPDATE surveys SET updated_at = ? WHERE id = ?').bind(timestamp, surveyId).run();
+  await db.prepare("UPDATE surveys SET updated_at = ? WHERE id = ?").bind(timestamp, surveyId).run();
   return timestamp;
 }
 
@@ -416,73 +400,79 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
 
   // Browser login: a short-lived link minted by the Telegram bot exchanges
   // for a signed 7-day session cookie, then redirects into the admin app.
-  if (request.method === 'GET' && url.pathname === '/api/admin/auth/browser') {
-    const token = url.searchParams.get('t') ?? '';
+  if (request.method === "GET" && url.pathname === "/api/admin/auth/browser") {
+    const token = url.searchParams.get("t") ?? "";
     const userId = await verifyBrowserLoginToken(env.WEBHOOK_SECRET, token);
     if (!userId) {
-      return fail(401, 'invalid_login', '登录链接无效或已过期，请在 Telegram 重新发送 /admin_login');
+      return fail(401, "invalid_login", "登录链接无效或已过期，请在 Telegram 重新发送 /admin_login");
     }
     const target = await getUserByTelegramId(env.DB, userId);
-    if (!target) return fail(401, 'invalid_login', '用户不存在');
+    if (!target) return fail(401, "invalid_login", "用户不存在");
     const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id);
     return new Response(null, {
       status: 302,
       headers: {
-        Location: '/admin',
-        'Set-Cookie': `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
-        'Cache-Control': 'no-store',
+        Location: "/admin",
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+        "Cache-Control": "no-store",
       },
     });
   }
 
-  const telegramId =
-    (await verifyTelegramWebAppUser(request, env.BOT_TOKEN)) ||
-    (env.ENVIRONMENT === 'development' ? Number(request.headers.get('x-telegram-user-id')) : NaN);
+  // Local-development identity spoofing: only honored when the deployment is
+  // explicitly in development mode AND the request presents the shared
+  // ADMIN_DEV_AUTH_SECRET (constant-time compared). A public deployment must
+  // never authenticate on a client-controlled user id header alone.
+  const devSpoofedTelegramId =
+    env.ENVIRONMENT === "development" &&
+    isWebhookSecretValid(env.ADMIN_DEV_AUTH_SECRET, request.headers.get("x-dev-auth-secret"))
+      ? Number(request.headers.get("x-telegram-user-id"))
+      : NaN;
+  const telegramId = (await verifyTelegramWebAppUser(request, env.BOT_TOKEN)) || devSpoofedTelegramId;
   const sessionUserId = await (async () => {
     if (Number.isInteger(telegramId)) return null;
-    const cookieHeader = request.headers.get('cookie') ?? '';
+    const cookieHeader = request.headers.get("cookie") ?? "";
     const match = cookieHeader
-      .split(';')
+      .split(";")
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
     if (!match) return null;
     const value = match.slice(ADMIN_SESSION_COOKIE.length + 1);
     return verifyAdminSessionValue(env.WEBHOOK_SECRET, value);
   })();
-  const user =
-    Number.isInteger(telegramId)
-      ? await getUserByTelegramId(env.DB, telegramId)
-      : sessionUserId
-        ? await getUserById(env.DB, sessionUserId)
-        : null;
-  if (!user) return fail(401, 'unauthorized', '请通过 Telegram 登录管理后台。');
-  const adminIds = env.ADMIN_IDS.split(',').map(Number).filter(Number.isFinite);
-  const isAdmin = user.systemRole === 'admin' || adminIds.includes(user.telegramUserId);
-  const json = (body: unknown) => Response.json(body, { headers: { 'Cache-Control': 'no-store' } });
+  const user = Number.isInteger(telegramId)
+    ? await getUserByTelegramId(env.DB, telegramId)
+    : sessionUserId
+      ? await getUserById(env.DB, sessionUserId)
+      : null;
+  if (!user) return fail(401, "unauthorized", "请通过 Telegram 登录管理后台。");
+  const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
+  const isAdmin = user.systemRole === "admin" || adminIds.includes(user.telegramUserId);
+  const json = (body: unknown) => Response.json(body, { headers: { "Cache-Control": "no-store" } });
 
   // Upload a survey background-music audio file into the media system.
-  if (request.method === 'POST' && url.pathname === '/api/admin/media/audio') {
+  if (request.method === "POST" && url.pathname === "/api/admin/media/audio") {
     if (!isAdmin && !(await hasActiveCreatorTrial(env.DB, user.id))) {
-      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能上传背景音乐。');
+      return fail(403, "creator_trial_required", "需要有效的创作者权限才能上传背景音乐。");
     }
     const form = await request.formData().catch(() => null);
-    const file = form?.get('file');
+    const file = form?.get("file");
     if (!(file instanceof File)) {
-      return fail(400, 'invalid_upload', '请选择音频文件');
+      return fail(400, "invalid_upload", "请选择音频文件");
     }
-    if (!file.type.startsWith('audio/')) {
-      return fail(400, 'invalid_upload', '仅支持音频文件');
+    if (!file.type.startsWith("audio/")) {
+      return fail(400, "invalid_upload", "仅支持音频文件");
     }
     if (file.size > 20 * 1024 * 1024) {
-      return fail(413, 'upload_too_large', '背景音乐不能超过 20MB');
+      return fail(413, "upload_too_large", "背景音乐不能超过 20MB");
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const store = new KVMediaStore(env.MEDIA_KV);
     const storageKey = `media:survey-audio:${crypto.randomUUID()}`;
     await store.put({ storageKey, bytes, contentType: file.type });
     const asset = await createMediaAsset(env.DB, {
-      scope: 'survey',
-      mediaType: 'audio',
+      scope: "survey",
+      mediaType: "audio",
       storageKind: store.kind,
       storageKey,
       mimeType: file.type,
@@ -493,25 +483,57 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
     return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
   }
 
-  if (request.method === 'GET') {
+  // Upload a card face template background image into the media system.
+  if (request.method === "POST" && url.pathname === "/api/admin/card-templates/background") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可上传卡面背景");
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) {
+      return fail(400, "invalid_upload", "请选择图片文件");
+    }
+    const mimeType = file.type.toLowerCase();
+    if (!TEMP_IMAGE_MIME_TYPES.has(mimeType)) {
+      return fail(400, "invalid_image_type", "仅支持 JPEG / PNG / WebP 图片");
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      return fail(413, "upload_too_large", "卡面背景不能超过 15MB");
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const store = new KVMediaStore(env.MEDIA_KV);
+    const storageKey = `media:card-template:${crypto.randomUUID()}`;
+    await store.put({ storageKey, bytes, contentType: mimeType });
+    const asset = await createMediaAsset(env.DB, {
+      scope: "card_template",
+      mediaType: "photo",
+      storageKind: store.kind,
+      storageKey,
+      mimeType,
+      fileName: file.name,
+      fileSize: bytes.byteLength,
+      expiresAt: null,
+    });
+    return json({ mediaAssetId: asset.id });
+  }
+
+  if (request.method === "GET") {
     if (
-      url.pathname === '/api/admin/licenses' ||
-      url.pathname === '/api/admin/releases' ||
-      url.pathname === '/api/admin/trials'
+      url.pathname === "/api/admin/licenses" ||
+      url.pathname === "/api/admin/releases" ||
+      url.pathname === "/api/admin/trials"
     ) {
-      return handleAdminWrite(
-        request,
-        url,
-        env,
-        { user, isAdmin, requestId, fail, json },
-      );
+      return handleAdminWrite(request, url, env, { user, isAdmin, requestId, fail, json });
     }
     return handleAdminRead(url, env, { user, isAdmin, fail, json });
   }
-  if (request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE') {
+  if (
+    request.method === "POST" ||
+    request.method === "PUT" ||
+    request.method === "PATCH" ||
+    request.method === "DELETE"
+  ) {
     return handleAdminWrite(request, url, env, { user, isAdmin, requestId, fail, json });
   }
-  return fail(405, 'method_not_allowed', 'Method not allowed');
+  return fail(405, "method_not_allowed", "Method not allowed");
 }
 
 interface ReadContext {
@@ -521,36 +543,32 @@ interface ReadContext {
   json: (body: unknown) => Response;
 }
 
-const RESPONSE_STATUSES = ['in_progress', 'completed', 'abandoned', 'cancelled'] as const;
+const RESPONSE_STATUSES = ["in_progress", "completed", "abandoned", "cancelled", "archived"] as const;
 
 function positiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value ?? fallback);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-async function loadReadableSurvey(
-  env: Env,
-  ctx: ReadContext,
-  surveyId: number,
-): Promise<Survey | Response> {
+async function loadReadableSurvey(env: Env, ctx: ReadContext, surveyId: number): Promise<Survey | Response> {
   const survey = await getSurveyById(env.DB, surveyId);
-  if (!survey) return ctx.fail(404, 'not_found', '问卷不存在');
+  if (!survey) return ctx.fail(404, "not_found", "问卷不存在");
   if (!ctx.isAdmin && survey.ownerId !== ctx.user.id) {
-    return ctx.fail(403, 'forbidden', '无权访问此问卷');
+    return ctx.fail(403, "forbidden", "无权访问此问卷");
   }
   return survey;
 }
 
 function responseStatusLabel(status: string): string {
-  if (status === 'completed') return '已完成';
-  if (status === 'in_progress') return '填写中';
-  if (status === 'abandoned') return '已放弃';
-  if (status === 'cancelled') return '已取消';
+  if (status === "completed") return "已完成";
+  if (status === "in_progress") return "填写中";
+  if (status === "abandoned") return "已放弃";
+  if (status === "cancelled") return "已取消";
   return status;
 }
 
 function parseStoredJson(value: unknown): unknown {
-  if (typeof value !== 'string' || !value) return null;
+  if (typeof value !== "string" || !value) return null;
   try {
     return JSON.parse(value) as unknown;
   } catch {
@@ -564,24 +582,24 @@ function formatAdminAnswer(
   selectedLabels: string[],
   optionLabels: Map<number, string>,
 ): string {
-  if (selectedLabels.length) return selectedLabels.join('、');
+  if (selectedLabels.length) return selectedLabels.join("、");
   if (answer.text_value !== null && answer.text_value !== undefined) return String(answer.text_value);
   if (answer.number_value !== null && answer.number_value !== undefined) return String(answer.number_value);
   if (answer.rating_value !== null && answer.rating_value !== undefined) return String(answer.rating_value);
   if (answer.boolean_value !== null && answer.boolean_value !== undefined) {
-    return Number(answer.boolean_value) === 1 ? '是' : '否';
+    return Number(answer.boolean_value) === 1 ? "是" : "否";
   }
   if (answer.date_value !== null && answer.date_value !== undefined) return String(answer.date_value);
   if (answer.time_value !== null && answer.time_value !== undefined) return String(answer.time_value);
 
   const parsed = parseStoredJson(answer.json_value);
-  if (question.type === 'matrix' && isRecord(parsed)) {
+  if (question.type === "matrix" && isRecord(parsed)) {
     const selections = isRecord(parsed.selections) ? parsed.selections : null;
     let columns: string[] = [];
     try {
-      const settings = question.settingsJson ? JSON.parse(question.settingsJson) as { columns?: unknown } : null;
+      const settings = question.settingsJson ? (JSON.parse(question.settingsJson) as { columns?: unknown }) : null;
       columns = Array.isArray(settings?.columns)
-        ? settings.columns.filter((item): item is string => typeof item === 'string')
+        ? settings.columns.filter((item): item is string => typeof item === "string")
         : [];
     } catch {
       columns = [];
@@ -593,19 +611,19 @@ function formatAdminAnswer(
           const column = columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`;
           return `${row}：${column}`;
         })
-        .join('；');
+        .join("；");
     }
   }
   if (Array.isArray(parsed)) {
-    return parsed.map((value) => optionLabels.get(Number(value)) ?? String(value)).join('、');
+    return parsed.map((value) => optionLabels.get(Number(value)) ?? String(value)).join("、");
   }
-  if (isRecord(parsed) && typeof parsed.mediaAssetId === 'number') {
+  if (isRecord(parsed) && typeof parsed.mediaAssetId === "number") {
     return `媒体附件 #${parsed.mediaAssetId}`;
   }
   if (parsed !== null && parsed !== undefined) {
-    return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+    return typeof parsed === "string" ? parsed : JSON.stringify(parsed);
   }
-  return '';
+  return "";
 }
 
 /**
@@ -615,13 +633,13 @@ function formatAdminAnswer(
 function rawStoredAnswer(answer: Record<string, unknown>): Record<string, unknown> {
   const raw: Record<string, unknown> = {};
   for (const key of [
-    'text_value',
-    'number_value',
-    'boolean_value',
-    'rating_value',
-    'date_value',
-    'time_value',
-    'json_value',
+    "text_value",
+    "number_value",
+    "boolean_value",
+    "rating_value",
+    "date_value",
+    "time_value",
+    "json_value",
   ] as const) {
     const value = answer[key];
     if (value !== null && value !== undefined) raw[key] = value;
@@ -632,32 +650,32 @@ function rawStoredAnswer(answer: Record<string, unknown>): Record<string, unknow
 async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
 
-  if (url.pathname === '/api/admin/dashboard') {
+  if (url.pathname === "/api/admin/dashboard") {
     // Unqualified owner_id on purpose: the count subqueries select from a bare
     // "surveys" table (no alias), unlike the JOIN queries below.
-    const ownerClause = isAdmin ? '' : ' WHERE owner_id = ?';
+    const ownerClause = isAdmin ? "" : " WHERE owner_id = ?";
     const bind = isAdmin ? [] : [user.id];
     const [counts, recent, responses, deliveries, recentActions] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT (SELECT COUNT(*) FROM users) users,
                 (SELECT COUNT(*) FROM surveys${ownerClause}) surveys,
-                (SELECT COUNT(*) FROM surveys${ownerClause ? ownerClause + ' AND' : ' WHERE'} status='published') publishedSurveys,
-                (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? '' : ' WHERE s.owner_id = ?'}) responses,
+                (SELECT COUNT(*) FROM surveys${ownerClause ? ownerClause + " AND" : " WHERE"} status='published') publishedSurveys,
+                (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? "" : " WHERE s.owner_id = ?"}) responses,
                 (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id
-                 WHERE date(r.started_at) = date('now')${isAdmin ? '' : ' AND s.owner_id = ?'}) todayResponses`,
+                 WHERE date(r.started_at) = date('now')${isAdmin ? "" : " AND s.owner_id = ?"}) todayResponses`,
       ).bind(...bind, ...bind, ...bind, ...bind),
       env.DB.prepare(
         `SELECT s.id,s.title,s.status,s.updated_at updatedAt FROM surveys s${ownerClause} ORDER BY s.updated_at DESC LIMIT 5`,
       ).bind(...bind),
       env.DB.prepare(
-        `SELECT r.id,r.survey_id surveyId,r.status,r.updated_at updatedAt,s.title FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? '' : ' WHERE s.owner_id = ?'} ORDER BY r.updated_at DESC LIMIT 5`,
+        `SELECT r.id,r.survey_id surveyId,r.status,r.updated_at updatedAt,s.title FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? "" : " WHERE s.owner_id = ?"} ORDER BY r.updated_at DESC LIMIT 5`,
       ).bind(...(isAdmin ? [] : [user.id])),
       env.DB.prepare(
         `SELECT rd.status, COUNT(*) count
          FROM report_deliveries rd
          JOIN survey_responses r ON r.id = rd.response_id
          JOIN surveys s ON s.id = r.survey_id
-         ${isAdmin ? '' : 'WHERE s.owner_id = ?'}
+         ${isAdmin ? "" : "WHERE s.owner_id = ?"}
          GROUP BY rd.status`,
       ).bind(...(isAdmin ? [] : [user.id])),
       env.DB.prepare(
@@ -666,13 +684,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
          ORDER BY a.id DESC
          LIMIT 8`,
       ),
-    ])) as [
-      D1Result,
-      D1Result,
-      D1Result,
-      D1Result,
-      D1Result,
-    ];
+    ])) as [D1Result, D1Result, D1Result, D1Result, D1Result];
     const statusCounts: Record<string, number> = {};
     for (const row of (deliveries.results ?? []) as Array<{ status: string; count: number }>) {
       statusCounts[row.status] = Number(row.count ?? 0);
@@ -691,23 +703,23 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     });
   }
 
-  if (url.pathname === '/api/admin/surveys') {
-    const search = (url.searchParams.get('search') ?? '').trim();
-    const status = url.searchParams.get('status') ?? '';
-    const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
-    const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get('pageSize') ?? 20)));
+  if (url.pathname === "/api/admin/surveys") {
+    const search = (url.searchParams.get("search") ?? "").trim();
+    const status = url.searchParams.get("status") ?? "";
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+    const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
     const offset = (page - 1) * pageSize;
-    const conditions = [isAdmin ? '1=1' : 's.owner_id = ?'];
+    const conditions = [isAdmin ? "1=1" : "s.owner_id = ?"];
     const binds: unknown[] = isAdmin ? [] : [user.id];
     if (search) {
       conditions.push("(lower(s.title) LIKE ? OR lower(COALESCE(s.description,'')) LIKE ?)");
       binds.push(`%${search.toLowerCase()}%`, `%${search.toLowerCase()}%`);
     }
     if (status) {
-      conditions.push('s.status = ?');
+      conditions.push("s.status = ?");
       binds.push(status);
     }
-    const where = conditions.join(' AND ');
+    const where = conditions.join(" AND ");
     const [items, count] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT s.id,s.title,s.description,s.status,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
@@ -718,12 +730,12 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ items: items.results ?? [], page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
   }
 
-  if (url.pathname === '/api/admin/users') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看用户目录');
-    const search = url.searchParams.get('search') ?? '';
-    const tag = url.searchParams.get('tag') ?? '';
-    const page = positiveInteger(url.searchParams.get('page'), 1);
-    const pageSize = Math.min(50, positiveInteger(url.searchParams.get('pageSize'), 20));
+  if (url.pathname === "/api/admin/users") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看用户目录");
+    const search = url.searchParams.get("search") ?? "";
+    const tag = url.searchParams.get("tag") ?? "";
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
     const { items, total } = await listUserDirectory(env.DB, {
       search,
       tag,
@@ -733,10 +745,10 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
   }
 
-  if (url.pathname === '/api/admin/report-deliveries') {
-    const status = url.searchParams.get('status') ?? '';
-    const page = positiveInteger(url.searchParams.get('page'), 1);
-    const pageSize = Math.min(50, positiveInteger(url.searchParams.get('pageSize'), 20));
+  if (url.pathname === "/api/admin/report-deliveries") {
+    const status = url.searchParams.get("status") ?? "";
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
     const listInput: {
       status?: string;
       ownerId?: number | null;
@@ -748,8 +760,8 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
   }
 
-  if (url.pathname === '/api/admin/report-templates') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看报告模板');
+  if (url.pathname === "/api/admin/report-templates") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看报告模板");
     const custom = await listCustomReportTemplates(env.DB);
     return json({
       templates: [
@@ -773,12 +785,12 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     });
   }
 
-  if (url.pathname === '/api/admin/audit-logs') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看审计日志');
-    const page = positiveInteger(url.searchParams.get('page'), 1);
-    const pageSize = Math.min(100, positiveInteger(url.searchParams.get('pageSize'), 50));
-    const action = url.searchParams.get('action') ?? '';
-    const entityType = url.searchParams.get('entityType') ?? '';
+  if (url.pathname === "/api/admin/audit-logs") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看审计日志");
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(100, positiveInteger(url.searchParams.get("pageSize"), 50));
+    const action = url.searchParams.get("action") ?? "";
+    const entityType = url.searchParams.get("entityType") ?? "";
     const { items, total } = await listAuditLogs(env.DB, {
       limit: pageSize,
       offset: (page - 1) * pageSize,
@@ -788,32 +800,124 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
   }
 
+  const adminMediaImageMatch = url.pathname.match(/^\/api\/admin\/media\/(\d+)\/image$/);
+  if (adminMediaImageMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看媒体文件");
+    const asset = await getMediaAssetById(env.DB, Number(adminMediaImageMatch[1]));
+    if (!asset) return fail(404, "not_found", "媒体文件不存在");
+    const response = await buildMediaResponse(env, asset);
+    return response ?? fail(410, "gone", "媒体文件已被清理");
+  }
+
+  if (url.pathname === "/api/admin/card-templates") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看卡面模板");
+    const templates = await listCardTemplates(env.DB);
+    return json({ ok: true, templates });
+  }
+
+  const cardTemplateBackgroundMatch = url.pathname.match(/^\/api\/admin\/card-templates\/(\d+)\/background$/);
+  if (cardTemplateBackgroundMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看卡面模板");
+    const template = await getCardTemplateById(env.DB, Number(cardTemplateBackgroundMatch[1]));
+    if (!template?.backgroundAssetId) return fail(404, "not_found", "卡面背景不存在");
+    const asset = await getMediaAssetById(env.DB, template.backgroundAssetId);
+    if (!asset) return fail(404, "not_found", "卡面背景不存在");
+    const response = await buildMediaResponse(env, asset);
+    return response ?? fail(410, "gone", "卡面背景已被清理，请重新上传");
+  }
+
+  if (url.pathname === "/api/admin/identity-cards") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看资料卡");
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
+    const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+    const view = url.searchParams.get("view") === "published" ? "published" : "all";
+    const { items, total } = await listIdentityProfiles(env.DB, { limit, offset, view });
+    const userIds = [...new Set(items.map((item) => item.userId))];
+    const userRows = userIds.length
+      ? ((
+          await env.DB.prepare(
+            `SELECT id, telegram_user_id, username, first_name FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`,
+          )
+            .bind(...userIds)
+            .all<Record<string, unknown>>()
+        ).results ?? [])
+      : [];
+    const usersById = new Map(userRows.map((row) => [Number(row.id), row]));
+    return json({
+      items: items.map((item) => {
+        const owner = usersById.get(item.userId);
+        return {
+          id: item.id,
+          name: item.name,
+          nickname: item.nickname,
+          age: item.age,
+          identityLabel: item.identityLabel,
+          description: item.description,
+          templateStyle: item.templateStyle,
+          galleryPublished: item.galleryPublished,
+          galleryPublishedAt: item.galleryPublishedAt,
+          createdAt: item.createdAt,
+          hasCardImage: item.cardAssetId !== null,
+          cardImageUrl: item.cardAssetId !== null ? `/api/admin/identity-cards/${item.id}/image` : null,
+          owner: owner
+            ? {
+                id: Number(owner.id),
+                telegramUserId: Number(owner.telegram_user_id),
+                username: typeof owner.username === "string" ? owner.username : null,
+                firstName: typeof owner.first_name === "string" ? owner.first_name : null,
+              }
+            : null,
+        };
+      }),
+      total,
+      limit,
+      offset,
+    });
+  }
+
+  if (url.pathname === "/api/admin/plaza/posts") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理树洞内容");
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
+    const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+    const view = url.searchParams.get("view") === "published" ? "published" : "all";
+    const { items, total } = await listPlazaPosts(env.DB, { limit, offset, view });
+    return json({ items, total, limit, offset });
+  }
+
+  const identityCardImageMatch = url.pathname.match(/^\/api\/admin\/identity-cards\/(\d+)\/image$/);
+  if (identityCardImageMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看资料卡");
+    const identity = await getIdentityProfileById(env.DB, Number(identityCardImageMatch[1]));
+    if (!identity?.cardAssetId) return fail(404, "not_found", "卡片图片不存在");
+    const asset = await getMediaAssetById(env.DB, identity.cardAssetId);
+    if (!asset) return fail(404, "not_found", "卡片图片不存在");
+    const response = await buildMediaResponse(env, asset);
+    return response ?? fail(410, "gone", "卡片图片已被清理，请在机器人里重新生成");
+  }
+
   const templateDetailMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
   if (templateDetailMatch) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看报告模板');
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看报告模板");
     const id = decodeURIComponent(templateDetailMatch[1] ?? "");
     const system = REPORT_TEMPLATES[id];
     const custom = system ? null : await getCustomReportTemplate(env.DB, id);
     const spec = system ?? custom?.spec;
-    if (!spec) return fail(404, 'not_found', '模板不存在');
+    if (!spec) return fail(404, "not_found", "模板不存在");
     return json({ template: { ...spec, isCustom: !system } });
   }
 
-  if (url.pathname === '/api/admin/settings') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看系统设置');
+  if (url.pathname === "/api/admin/settings") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看系统设置");
     return json({ settings: await loadSystemSettings(env.DB) });
   }
 
   const userDetailMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   if (userDetailMatch) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可查看用户详情');
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看用户详情");
     const userId = Number(userDetailMatch[1]);
     const user = await getUserById(env.DB, userId);
-    if (!user) return fail(404, 'not_found', '用户不存在');
-    const [tags, responses] = await Promise.all([
-      listUserTags(env.DB, userId),
-      listUserResponses(env.DB, userId),
-    ]);
+    if (!user) return fail(404, "not_found", "用户不存在");
+    const [tags, responses] = await Promise.all([listUserTags(env.DB, userId), listUserResponses(env.DB, userId)]);
     return json({
       user: {
         id: user.id,
@@ -823,6 +927,8 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         lastName: user.lastName,
         systemRole: user.systemRole,
         bannedAt: user.bannedAt,
+        bannedBy: user.bannedBy,
+        banReason: user.banReason,
         createdAt: user.createdAt,
       },
       tags,
@@ -830,9 +936,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     });
   }
 
-  const responseMediaMatch = url.pathname.match(
-    /^\/api\/admin\/surveys\/(\d+)\/responses\/(\d+)\/media\/(\d+)$/,
-  );
+  const responseMediaMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)\/responses\/(\d+)\/media\/(\d+)$/);
   if (responseMediaMatch) {
     const surveyId = Number(responseMediaMatch[1]);
     const responseId = Number(responseMediaMatch[2]);
@@ -847,36 +951,40 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
        JOIN survey_responses r ON r.id=a.response_id
        WHERE m.id=? AND m.asset_scope='response' AND r.id=? AND r.survey_id=?
        LIMIT 1`,
-    ).bind(mediaAssetId, responseId, surveyId).first<{
-      telegramFileId: string | null;
-      mimeType: string | null;
-      fileName: string | null;
-      fileSize: number | null;
-    }>();
-    if (!media?.telegramFileId) return fail(404, 'not_found', '答卷媒体不存在或不可用');
+    )
+      .bind(mediaAssetId, responseId, surveyId)
+      .first<{
+        telegramFileId: string | null;
+        mimeType: string | null;
+        fileName: string | null;
+        fileSize: number | null;
+      }>();
+    if (!media?.telegramFileId) return fail(404, "not_found", "答卷媒体不存在或不可用");
     if (media.fileSize !== null && media.fileSize > 20 * 1024 * 1024) {
-      return fail(413, 'media_too_large', '媒体文件超过 20MB，无法在线预览');
+      return fail(413, "media_too_large", "媒体文件超过 20MB，无法在线预览");
     }
     try {
       const downloaded = await downloadTelegramFile(env.BOT_TOKEN, media.telegramFileId);
       if (downloaded.data.byteLength > 20 * 1024 * 1024) {
-        return fail(413, 'media_too_large', '媒体文件超过 20MB，无法在线预览');
+        return fail(413, "media_too_large", "媒体文件超过 20MB，无法在线预览");
       }
-      const contentType = media.mimeType || downloaded.contentType || 'application/octet-stream';
-      const safeName = (media.fileName || downloaded.filePath.split('/').pop() || `media-${mediaAssetId}`)
-        .replace(/[\r\n"\\]/g, '_');
+      const contentType = media.mimeType || downloaded.contentType || "application/octet-stream";
+      const safeName = (media.fileName || downloaded.filePath.split("/").pop() || `media-${mediaAssetId}`).replace(
+        /[\r\n"\\]/g,
+        "_",
+      );
       const responseBody = new Uint8Array(downloaded.data).buffer;
       return new Response(responseBody, {
         headers: {
-          'Cache-Control': 'private, max-age=300',
-          'Content-Type': contentType,
-          'Content-Disposition': `inline; filename="${safeName}"`,
-          'X-Content-Type-Options': 'nosniff',
+          "Cache-Control": "private, max-age=300",
+          "Content-Type": contentType,
+          "Content-Disposition": `inline; filename="${safeName}"`,
+          "X-Content-Type-Options": "nosniff",
         },
       });
     } catch (error) {
-      console.error('Admin response media download failed', { surveyId, responseId, mediaAssetId, error });
-      return fail(502, 'media_download_failed', '媒体暂时无法读取，请稍后重试');
+      console.error("Admin response media download failed", { surveyId, responseId, mediaAssetId, error });
+      return fail(502, "media_download_failed", "媒体暂时无法读取，请稍后重试");
     }
   }
 
@@ -885,38 +993,37 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const surveyId = Number(exportMatch[1]);
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
-    const format = url.searchParams.get('format') ?? 'csv';
-    if (!['csv', 'zip', 'json'].includes(format)) {
-      return fail(400, 'validation_failed', '导出格式无效');
+    const format = url.searchParams.get("format") ?? "csv";
+    if (!["csv", "zip", "json"].includes(format)) {
+      return fail(400, "validation_failed", "导出格式无效");
     }
     const fileName = `survey-${surveyId}.${format}`;
-    if (format === 'json') {
+    if (format === "json") {
       const exported = await exportUnifiedSurveyJson(env.DB, surveyId);
-      if (!exported) return fail(404, 'not_found', '问卷不存在');
+      if (!exported) return fail(404, "not_found", "问卷不存在");
       return new Response(JSON.stringify(exported, null, 2), {
         headers: {
-          'Cache-Control': 'no-store',
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${fileName}"`,
-          'X-Content-Type-Options': 'nosniff',
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "X-Content-Type-Options": "nosniff",
         },
       });
     }
     const { rows } = await getExportRows(env.DB, surveyId);
     const csv = buildCsv(rows);
-    const content = serializeExport(format as 'csv' | 'zip', csv, rows);
-    const contentType = format === 'zip'
-      ? 'application/zip'
-      : 'text/csv; charset=utf-8';
-    const body = typeof content === 'string'
-      ? new TextEncoder().encode(`\uFEFF${content}`).buffer
-      : new Uint8Array(content).buffer;
+    const content = serializeExport(format as "csv" | "zip", csv, rows);
+    const contentType = format === "zip" ? "application/zip" : "text/csv; charset=utf-8";
+    const body =
+      typeof content === "string"
+        ? new TextEncoder().encode(`\uFEFF${content}`).buffer
+        : new Uint8Array(content).buffer;
     return new Response(body, {
       headers: {
-        'Cache-Control': 'no-store',
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'X-Content-Type-Options': 'nosniff',
+        "Cache-Control": "no-store",
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   }
@@ -930,13 +1037,14 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       getSurveyStatistics(env.DB, surveyId),
       getOptionStatistics(env.DB, surveyId),
       getNumericStatistics(env.DB, surveyId),
-      env.DB.prepare(
-        'SELECT status, COUNT(*) count FROM survey_responses WHERE survey_id = ? GROUP BY status',
-      ).bind(surveyId).all<{ status: string; count: number }>(),
+      env.DB.prepare("SELECT status, COUNT(*) count FROM survey_responses WHERE survey_id = ? GROUP BY status")
+        .bind(surveyId)
+        .all<{ status: string; count: number }>(),
     ]);
-    const statusCounts = Object.fromEntries(
-      RESPONSE_STATUSES.map((status) => [status, 0]),
-    ) as Record<(typeof RESPONSE_STATUSES)[number], number>;
+    const statusCounts = Object.fromEntries(RESPONSE_STATUSES.map((status) => [status, 0])) as Record<
+      (typeof RESPONSE_STATUSES)[number],
+      number
+    >;
     for (const row of statusRows.results ?? []) {
       if (RESPONSE_STATUSES.includes(row.status as (typeof RESPONSE_STATUSES)[number])) {
         statusCounts[row.status as (typeof RESPONSE_STATUSES)[number]] = Number(row.count ?? 0);
@@ -964,13 +1072,18 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
        FROM survey_responses r
        LEFT JOIN users u ON u.id=r.user_id
        WHERE r.id=? AND r.survey_id=?`,
-    ).bind(responseId, surveyId).first<Record<string, unknown>>();
-    if (!response) return fail(404, 'not_found', '答卷不存在');
+    )
+      .bind(responseId, surveyId)
+      .first<Record<string, unknown>>();
+    if (!response) return fail(404, "not_found", "答卷不存在");
 
     const questions = await listQuestionsBySurvey(env.DB, surveyId);
-    const options = await listOptionsForQuestions(env.DB, questions.map((question) => question.id));
+    const options = await listOptionsForQuestions(
+      env.DB,
+      questions.map((question) => question.id),
+    );
     const [answerRows, selectedRows, mediaRows] = (await env.DB.batch([
-      env.DB.prepare('SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC').bind(responseId),
+      env.DB.prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC").bind(responseId),
       env.DB.prepare(
         `SELECT ao.answer_id answerId,qo.id optionId,qo.label
          FROM answer_options ao
@@ -990,7 +1103,13 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     ])) as [
       D1Result<Record<string, unknown>>,
       D1Result<{ answerId: number; optionId: number; label: string }>,
-      D1Result<{ answerId: number; mediaAssetId: number; mediaType: string; fileName: string | null; mimeType: string | null }>,
+      D1Result<{
+        answerId: number;
+        mediaAssetId: number;
+        mediaType: string;
+        fileName: string | null;
+        mimeType: string | null;
+      }>,
     ];
     const answersByQuestion = new Map<number, Record<string, unknown>>();
     for (const answer of answerRows.results ?? []) answersByQuestion.set(Number(answer.question_id), answer);
@@ -1019,17 +1138,21 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         completedAt: response.completed_at === null ? null : String(response.completed_at),
         submittedAt: response.submitted_at === null ? null : String(response.submitted_at),
         updatedAt: String(response.updated_at),
-        respondent: response.telegram_user_id === null
-          ? null
-          : {
-              telegramUserId: Number(response.telegram_user_id),
-              username: response.username === null ? null : String(response.username),
-              firstName: response.first_name === null ? null : String(response.first_name),
-              lastName: response.last_name === null ? null : String(response.last_name),
-            },
-        participantKey: response.telegram_user_id === null
-          ? (response.participant_hash === null ? null : String(response.participant_hash))
-          : null,
+        respondent:
+          response.telegram_user_id === null
+            ? null
+            : {
+                telegramUserId: Number(response.telegram_user_id),
+                username: response.username === null ? null : String(response.username),
+                firstName: response.first_name === null ? null : String(response.first_name),
+                lastName: response.last_name === null ? null : String(response.last_name),
+              },
+        participantKey:
+          response.telegram_user_id === null
+            ? response.participant_hash === null
+              ? null
+              : String(response.participant_hash)
+            : null,
         deviceFingerprint: response.deviceFingerprint === null ? null : String(response.deviceFingerprint),
         browserInfo: response.browserInfo === null ? null : String(response.browserInfo),
         ipAddress: response.ipAddress === null ? null : String(response.ipAddress),
@@ -1043,11 +1166,9 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
           questionType: question.type,
           order: question.order,
           answered: Boolean(answer),
-          value: answer
-            ? formatAdminAnswer(answer, question, selectedByAnswer.get(answerId!) ?? [], optionLabels)
-            : '',
+          value: answer ? formatAdminAnswer(answer, question, selectedByAnswer.get(answerId!) ?? [], optionLabels) : "",
           raw: answer ? rawStoredAnswer(answer) : null,
-          media: answerId === null ? [] : mediaByAnswer.get(answerId) ?? [],
+          media: answerId === null ? [] : (mediaByAnswer.get(answerId) ?? []),
         };
       }),
     });
@@ -1058,29 +1179,24 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const surveyId = Number(responsesMatch[1]);
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
-    const status = url.searchParams.get('status') ?? '';
+    const status = url.searchParams.get("status") ?? "";
     if (status && !RESPONSE_STATUSES.includes(status as (typeof RESPONSE_STATUSES)[number])) {
-      return fail(400, 'validation_failed', '答卷状态无效');
+      return fail(400, "validation_failed", "答卷状态无效");
     }
-    const page = positiveInteger(url.searchParams.get('page'), 1);
-    const pageSize = Math.min(50, positiveInteger(url.searchParams.get('pageSize'), 20));
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
     const offset = (page - 1) * pageSize;
-    const from = url.searchParams.get('from') ?? '';
-    const to = url.searchParams.get('to') ?? '';
+    const from = url.searchParams.get("from") ?? "";
+    const to = url.searchParams.get("to") ?? "";
     if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
-      return fail(400, 'validation_failed', 'from 必须是 YYYY-MM-DD');
+      return fail(400, "validation_failed", "from 必须是 YYYY-MM-DD");
     }
     if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      return fail(400, 'validation_failed', 'to 必须是 YYYY-MM-DD');
+      return fail(400, "validation_failed", "to 必须是 YYYY-MM-DD");
     }
-    const statusClause = status ? ' AND r.status=?' : '';
-    const dateClause = `${from ? ' AND date(r.started_at) >= ?' : ''}${to ? ' AND date(r.started_at) <= ?' : ''}`;
-    const binds: unknown[] = [
-      surveyId,
-      ...(status ? [status] : []),
-      ...(from ? [from] : []),
-      ...(to ? [to] : []),
-    ];
+    const statusClause = status ? " AND r.status=?" : "";
+    const dateClause = `${from ? " AND date(r.started_at) >= ?" : ""}${to ? " AND date(r.started_at) <= ?" : ""}`;
+    const binds: unknown[] = [surveyId, ...(status ? [status] : []), ...(from ? [from] : []), ...(to ? [to] : [])];
     const [items, count] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT r.id,r.status,r.started_at startedAt,r.completed_at completedAt,r.updated_at updatedAt,
@@ -1105,17 +1221,17 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         startedAt: String(item.startedAt),
         completedAt: item.completedAt === null ? null : String(item.completedAt),
         updatedAt: String(item.updatedAt),
-        respondent: item.telegramUserId === null
-          ? null
-          : {
-              telegramUserId: Number(item.telegramUserId),
-              username: item.username === null ? null : String(item.username),
-              firstName: item.firstName === null ? null : String(item.firstName),
-              lastName: item.lastName === null ? null : String(item.lastName),
-            },
-        participantKey: item.telegramUserId === null
-          ? (item.participantKey === null ? null : String(item.participantKey))
-          : null,
+        respondent:
+          item.telegramUserId === null
+            ? null
+            : {
+                telegramUserId: Number(item.telegramUserId),
+                username: item.username === null ? null : String(item.username),
+                firstName: item.firstName === null ? null : String(item.firstName),
+                lastName: item.lastName === null ? null : String(item.lastName),
+              },
+        participantKey:
+          item.telegramUserId === null ? (item.participantKey === null ? null : String(item.participantKey)) : null,
       })),
       page,
       pageSize,
@@ -1128,9 +1244,9 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
   if (editorMatch) {
     const id = Number(editorMatch[1]);
     const survey = await getSurveyById(env.DB, id);
-    if (!survey) return fail(404, 'not_found', '问卷不存在');
-    if (!isAdmin && survey.ownerId !== user.id) return fail(403, 'forbidden', '无权访问此问卷');
-    const responseCountRow = await env.DB.prepare('SELECT COUNT(*) count FROM survey_responses WHERE survey_id = ?')
+    if (!survey) return fail(404, "not_found", "问卷不存在");
+    if (!isAdmin && survey.ownerId !== user.id) return fail(403, "forbidden", "无权访问此问卷");
+    const responseCountRow = await env.DB.prepare("SELECT COUNT(*) count FROM survey_responses WHERE survey_id = ?")
       .bind(id)
       .first<{ count: number }>();
     const responseCount = Number(responseCountRow?.count ?? 0);
@@ -1141,10 +1257,10 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     );
     const [questionMedia, optionMedia] = (await env.DB.batch([
       env.DB.prepare(
-        'SELECT qm.question_id questionId, m.id mediaAssetId, m.media_type mediaType FROM question_media qm JOIN media_assets m ON m.id = qm.media_asset_id WHERE qm.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY qm.question_id, qm.sort_order, m.id',
+        "SELECT qm.question_id questionId, m.id mediaAssetId, m.media_type mediaType FROM question_media qm JOIN media_assets m ON m.id = qm.media_asset_id WHERE qm.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY qm.question_id, qm.sort_order, m.id",
       ).bind(id),
       env.DB.prepare(
-        'SELECT om.question_option_id optionId, m.id mediaAssetId, m.media_type mediaType FROM option_media om JOIN media_assets m ON m.id = om.media_asset_id JOIN question_options o ON o.id = om.question_option_id WHERE o.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY om.question_option_id, om.sort_order, m.id',
+        "SELECT om.question_option_id optionId, m.id mediaAssetId, m.media_type mediaType FROM option_media om JOIN media_assets m ON m.id = om.media_asset_id JOIN question_options o ON o.id = om.question_option_id WHERE o.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY om.question_option_id, om.sort_order, m.id",
       ).bind(id),
     ])) as [
       D1Result<{ questionId: number; mediaAssetId: number; mediaType: string }>,
@@ -1175,19 +1291,24 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         ...survey,
         responseCount,
         questionCount: questions.length,
-        editable: survey.status === 'draft' && responseCount === 0,
+        editable: survey.status === "draft" && responseCount === 0,
       },
-      pages: (await env.DB.prepare(
-        `SELECT id, title, description, "order"
+      pages:
+        (
+          await env.DB.prepare(
+            `SELECT id, title, description, "order"
          FROM survey_pages
          WHERE survey_id = ?
          ORDER BY "order" ASC, id ASC`,
-      ).bind(id).all<{
-        id: number;
-        title: string | null;
-        description: string | null;
-        order: number;
-      }>()).results ?? [],
+          )
+            .bind(id)
+            .all<{
+              id: number;
+              title: string | null;
+              description: string | null;
+              order: number;
+            }>()
+        ).results ?? [],
       questions: questions.map((question) => ({
         id: question.id,
         type: question.type,
@@ -1220,9 +1341,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ versions: await listSurveyVersions(env.DB, id) });
   }
 
-  const versionCompareMatch = url.pathname.match(
-    /^\/api\/admin\/surveys\/(\d+)\/versions\/(\d+)\/compare\/(\d+)$/,
-  );
+  const versionCompareMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)\/versions\/(\d+)\/compare\/(\d+)$/);
   if (versionCompareMatch) {
     const id = Number(versionCompareMatch[1]);
     const fromVersion = Number(versionCompareMatch[2]);
@@ -1233,20 +1352,18 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       getSurveyVersionSnapshot(env.DB, id, fromVersion),
       getSurveyVersionSnapshot(env.DB, id, toVersion),
     ]);
-    if (!from || !to) return fail(404, 'version_not_found', '版本不存在');
+    if (!from || !to) return fail(404, "version_not_found", "版本不存在");
     return json({ fromVersion, toVersion, diff: diffSurveyVersions(from, to) });
   }
 
-  const versionDetailMatch = url.pathname.match(
-    /^\/api\/admin\/surveys\/(\d+)\/versions\/(\d+)$/,
-  );
+  const versionDetailMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)\/versions\/(\d+)$/);
   if (versionDetailMatch) {
     const id = Number(versionDetailMatch[1]);
     const version = Number(versionDetailMatch[2]);
     const survey = await loadReadableSurvey(env, ctx, id);
     if (survey instanceof Response) return survey;
     const snapshot = await getSurveyVersionSnapshot(env.DB, id, version);
-    if (!snapshot) return fail(404, 'version_not_found', '版本不存在');
+    if (!snapshot) return fail(404, "version_not_found", "版本不存在");
     return json({ version, survey: snapshot.survey });
   }
 
@@ -1258,11 +1375,11 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     )
       .bind(id)
       .first<Record<string, unknown>>();
-    if (!survey) return fail(404, 'not_found', '问卷不存在');
-    if (!isAdmin && survey.owner_id !== user.id) return fail(403, 'forbidden', '无权访问此问卷');
+    if (!survey) return fail(404, "not_found", "问卷不存在");
+    if (!isAdmin && survey.owner_id !== user.id) return fail(403, "forbidden", "无权访问此问卷");
     let theme: ReturnType<typeof normalizeSurveyTheme> = null;
     try {
-      theme = normalizeSurveyTheme(parseSettingsJson(String(survey.settings_json ?? '')));
+      theme = normalizeSurveyTheme(parseSettingsJson(String(survey.settings_json ?? "")));
     } catch {
       theme = null;
     }
@@ -1275,7 +1392,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     });
   }
 
-  return fail(404, 'not_found', 'Not found');
+  return fail(404, "not_found", "Not found");
 }
 
 interface WriteContext extends ReadContext {
@@ -1313,21 +1430,21 @@ async function loadManageableSurvey(
 ): Promise<WritableSurvey | Response> {
   const { user, isAdmin, fail, requestId } = ctx;
   const survey = await getSurveyById(env.DB, surveyId);
-  if (!survey) return fail(404, 'not_found', '问卷不存在');
-  if (!isAdmin && survey.ownerId !== user.id) return fail(403, 'forbidden', '无权访问此问卷');
+  if (!survey) return fail(404, "not_found", "问卷不存在");
+  if (!isAdmin && survey.ownerId !== user.id) return fail(403, "forbidden", "无权访问此问卷");
   if (!isAdmin && !(await hasActiveCreatorTrial(env.DB, user.id))) {
-    return fail(403, 'creator_trial_required', '需要有效的创作者权限才能管理问卷。');
+    return fail(403, "creator_trial_required", "需要有效的创作者权限才能管理问卷。");
   }
-  const baseUpdatedAt = typeof body.baseUpdatedAt === 'string' ? body.baseUpdatedAt : null;
+  const baseUpdatedAt = typeof body.baseUpdatedAt === "string" ? body.baseUpdatedAt : null;
   if (baseUpdatedAt && baseUpdatedAt !== survey.updatedAt) {
     return Response.json(
       {
-        code: 'stale_write',
-        message: '问卷已在其他窗口被修改，请刷新后重试。',
+        code: "stale_write",
+        message: "问卷已在其他窗口被修改，请刷新后重试。",
         requestId,
         currentUpdatedAt: survey.updatedAt,
       },
-      { status: 409, headers: { 'Cache-Control': 'no-store' } },
+      { status: 409, headers: { "Cache-Control": "no-store" } },
     );
   }
   return { survey };
@@ -1343,14 +1460,14 @@ async function loadWritableSurvey(
   if (manageable instanceof Response) return manageable;
   const { survey } = manageable;
   const { fail } = ctx;
-  if (survey.status !== 'draft') {
-    return fail(403, 'survey_locked', '仅草稿状态可编辑；已发布的问卷请复制后再修改。');
+  if (survey.status !== "draft") {
+    return fail(403, "survey_locked", "仅草稿状态可编辑；已发布的问卷请复制后再修改。");
   }
-  const responseCountRow = await env.DB.prepare('SELECT COUNT(*) count FROM survey_responses WHERE survey_id = ?')
+  const responseCountRow = await env.DB.prepare("SELECT COUNT(*) count FROM survey_responses WHERE survey_id = ?")
     .bind(surveyId)
     .first<{ count: number }>();
   if (Number(responseCountRow?.count ?? 0) > 0) {
-    return fail(403, 'survey_locked', '该问卷已有答卷，题目和附件已锁定。');
+    return fail(403, "survey_locked", "该问卷已有答卷，题目和附件已锁定。");
   }
   return { survey };
 }
@@ -1373,17 +1490,17 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   const db = env.DB;
 
   const body = await readJsonBody(request);
-  if (body === null) return fail(400, 'invalid_body', '请求体必须是 JSON 对象');
+  if (body === null) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
 
   const retryDeliveryMatch = url.pathname.match(/^\/api\/admin\/report-deliveries\/(\d+)\/retry$/);
-  if (request.method === 'POST' && retryDeliveryMatch) {
+  if (request.method === "POST" && retryDeliveryMatch) {
     const delivery = await getReportDeliveryById(db, Number(retryDeliveryMatch[1]));
-    if (!delivery) return fail(404, 'delivery_not_found', '报告任务不存在');
+    if (!delivery) return fail(404, "delivery_not_found", "报告任务不存在");
     const response = await getResponseById(db, delivery.responseId);
-    if (!response) return fail(404, 'response_not_found', '答卷不存在');
+    if (!response) return fail(404, "response_not_found", "答卷不存在");
     const survey = await getSurveyById(db, response.surveyId);
     if (!isAdmin && (!survey || survey.ownerId !== user.id)) {
-      return fail(403, 'forbidden', '无权操作该报告任务');
+      return fail(403, "forbidden", "无权操作该报告任务");
     }
     await enqueueReportDelivery(db, env.EXPORT_QUEUE, {
       responseId: delivery.responseId,
@@ -1391,63 +1508,202 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     });
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'report.retry',
-      entityType: 'report_delivery',
+      action: "report.retry",
+      entityType: "report_delivery",
       entityId: String(delivery.id),
       after: { responseId: delivery.responseId },
     });
     return json({ ok: true });
   }
 
-  if (request.method === 'PUT' && url.pathname === '/api/admin/settings') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可修改系统设置');
+  if (request.method === "POST" && url.pathname === "/api/admin/identity-cards/publish") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理资料卡");
+    const cardId = Number(body.id);
+    const published = body.published === true;
+    if (!Number.isInteger(cardId) || cardId <= 0) return fail(400, "validation_failed", "无效的资料卡编号");
+    const updated = await setIdentityProfileGalleryPublished(env.DB, cardId, published);
+    if (!updated) return fail(404, "not_found", "资料卡不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: published ? "identity_card.publish" : "identity_card.unpublish",
+      entityType: "identity_profile",
+      entityId: String(cardId),
+      after: { galleryPublished: published },
+    });
+    return json({
+      ok: true,
+      card: {
+        id: updated.id,
+        galleryPublished: updated.galleryPublished,
+        galleryPublishedAt: updated.galleryPublishedAt,
+      },
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/admin/card-templates") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) return fail(400, "validation_failed", "模板名称不能为空");
+    const created = await createCardTemplate(db, {
+      name,
+      backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null,
+      ...(typeof body.backgroundColor === "string" ? { backgroundColor: body.backgroundColor } : {}),
+      slots: body.slots,
+      ...(typeof body.disclaimerText === "string" ? { disclaimerText: body.disclaimerText } : {}),
+      enabled: body.enabled !== false,
+      sortOrder: typeof body.sortOrder === "number" ? body.sortOrder : 0,
+    });
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "card_template.create",
+      entityType: "card_template",
+      entityId: String(created.id),
+      after: { name: created.name },
+    });
+    return json({ ok: true, template: created });
+  }
+
+  const cardTemplateMatch = url.pathname.match(/^\/api\/admin\/card-templates\/(\d+)$/);
+  if (request.method === "PUT" && cardTemplateMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
+    const templateId = Number(cardTemplateMatch[1]);
+    if (typeof body.name === "string" && !body.name.trim()) {
+      return fail(400, "validation_failed", "模板名称不能为空");
+    }
+    const updated = await updateCardTemplate(db, templateId, {
+      ...(typeof body.name === "string" ? { name: body.name.trim() } : {}),
+      ...(body.backgroundAssetId !== undefined
+        ? { backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null }
+        : {}),
+      ...(typeof body.backgroundColor === "string" ? { backgroundColor: body.backgroundColor } : {}),
+      ...(body.slots !== undefined ? { slots: body.slots } : {}),
+      ...(typeof body.disclaimerText === "string" ? { disclaimerText: body.disclaimerText } : {}),
+      ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+      ...(typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {}),
+    });
+    if (!updated) return fail(404, "not_found", "卡面模板不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "card_template.update",
+      entityType: "card_template",
+      entityId: String(templateId),
+      after: { name: updated.name },
+    });
+    return json({ ok: true, template: updated });
+  }
+
+  if (request.method === "DELETE" && cardTemplateMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
+    const templateId = Number(cardTemplateMatch[1]);
+    const deleted = await deleteCardTemplate(db, templateId);
+    if (!deleted) return fail(404, "not_found", "卡面模板不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "card_template.delete",
+      entityType: "card_template",
+      entityId: String(templateId),
+    });
+    return json({ ok: true });
+  }
+
+  // Render an unsaved template definition with sample values for the editor.
+  if (request.method === "POST" && url.pathname === "/api/admin/card-templates/preview") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可预览卡面模板");
+    if (!env.BROWSER) return fail(503, "browser_unavailable", "当前环境未配置浏览器渲染，无法预览");
+    const definition = normalizeCardTemplateDefinition({
+      backgroundColor: body.backgroundColor,
+      slots: body.slots,
+      disclaimerText: body.disclaimerText,
+    });
+    const png = await renderCardTemplatePng(
+      {
+        DB: env.DB,
+        BOT_TOKEN: env.BOT_TOKEN,
+        MEDIA_KV: env.MEDIA_KV,
+        ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}),
+        BROWSER: env.BROWSER,
+      },
+      {
+        backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null,
+        backgroundColor: definition.backgroundColor,
+        slots: definition.slots,
+        disclaimerText: definition.disclaimerText,
+        canvasWidth: 900,
+        canvasHeight: 1200,
+      },
+      { values: { ...CARD_TEMPLATE_SAMPLE_VALUES } },
+    );
+    return new Response(png, {
+      headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/admin/plaza/posts/status") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理树洞内容");
+    const postId = Number(body.id);
+    const status = body.status === "removed" ? "removed" : "published";
+    if (!Number.isInteger(postId) || postId <= 0) return fail(400, "validation_failed", "无效的树洞内容编号");
+    const updated = await setPlazaPostStatus(env.DB, postId, status);
+    if (!updated) return fail(404, "not_found", "树洞内容不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: status === "removed" ? "plaza_post.remove" : "plaza_post.restore",
+      entityType: "plaza_post",
+      entityId: String(postId),
+      after: { status },
+    });
+    return json({ ok: true, post: { id: updated.id, status: updated.status } });
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/admin/settings") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可修改系统设置");
     const updates: Record<string, string> = {};
     for (const key of SYSTEM_SETTING_KEYS) {
       if (body[key] === undefined) continue;
       const value = String(body[key]).trim();
-      if (key === 'default_report_template' && value && !REPORT_TEMPLATES[value]) {
-        return fail(400, 'validation_failed', '默认报告模板无效');
+      if (key === "default_report_template" && value && !REPORT_TEMPLATES[value]) {
+        return fail(400, "validation_failed", "默认报告模板无效");
       }
       if (
-        key === 'media_ttl_seconds' ||
-        key === 'max_upload_mb' ||
-        key === 'max_response_media_mb' ||
-        key === 'pdf_max_mb'
+        key === "media_ttl_seconds" ||
+        key === "max_upload_mb" ||
+        key === "max_response_media_mb" ||
+        key === "pdf_max_mb"
       ) {
         const numeric = Number(value);
         if (!Number.isFinite(numeric) || numeric <= 0) {
-          return fail(400, 'validation_failed', `${key} 必须是正数`);
+          return fail(400, "validation_failed", `${key} 必须是正数`);
         }
       }
       updates[key] = value;
     }
     if (!Object.keys(updates).length) {
-      return fail(400, 'validation_failed', '没有可更新的设置');
+      return fail(400, "validation_failed", "没有可更新的设置");
     }
     for (const [key, value] of Object.entries(updates)) {
       await saveSystemSetting(db, key, value, user.id);
     }
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'settings.update',
-      entityType: 'settings',
+      action: "settings.update",
+      entityType: "settings",
       after: Object.keys(updates),
     });
     return json({ ok: true, updated: Object.keys(updates) });
   }
 
   // POST /api/admin/report-templates — 创建/更新自定义报告模板
-  if (request.method === 'POST' && url.pathname === '/api/admin/report-templates') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理报告模板');
+  if (request.method === "POST" && url.pathname === "/api/admin/report-templates") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理报告模板");
     const { template, error } = validateReportTemplateSpec(body);
     if (error || !template) {
-      return fail(400, 'validation_failed', error ?? '模板无效');
+      return fail(400, "validation_failed", error ?? "模板无效");
     }
     if (REPORT_TEMPLATES[template.id]) {
-      return fail(400, 'validation_failed', '不能覆盖系统模板');
+      return fail(400, "validation_failed", "不能覆盖系统模板");
     }
     if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(template.id)) {
-      return fail(400, 'validation_failed', '模板 id 只能包含小写字母、数字与连字符');
+      return fail(400, "validation_failed", "模板 id 只能包含小写字母、数字与连字符");
     }
     await upsertCustomReportTemplate(env.DB, {
       id: template.id,
@@ -1457,8 +1713,8 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     });
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'template.save',
-      entityType: 'report_template',
+      action: "template.save",
+      entityType: "report_template",
       entityId: template.id,
       after: { name: template.name },
     });
@@ -1466,33 +1722,33 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   }
 
   // POST /api/admin/report-templates/preview — 实时渲染模板预览
-  if (request.method === 'POST' && url.pathname === '/api/admin/report-templates/preview') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可预览报告模板');
+  if (request.method === "POST" && url.pathname === "/api/admin/report-templates/preview") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可预览报告模板");
     const { template, error } = validateReportTemplateSpec(body);
     if (error || !template) {
-      return fail(400, 'validation_failed', error ?? '模板无效');
+      return fail(400, "validation_failed", error ?? "模板无效");
     }
     const html = buildResponsiveReportHtml(
       reportPreviewViewModel,
-      { surveyTitle: '模板预览', completedAt: '2026-08-23 14:00', reportId: '#preview' },
+      { surveyTitle: "模板预览", completedAt: "2026-08-23 14:00", reportId: "#preview" },
       template,
     );
     return json({ html });
   }
 
   const deleteTemplateMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
-  if (request.method === 'DELETE' && deleteTemplateMatch) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理报告模板');
+  if (request.method === "DELETE" && deleteTemplateMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理报告模板");
     const id = decodeURIComponent(deleteTemplateMatch[1] ?? "");
     if (REPORT_TEMPLATES[id]) {
-      return fail(400, 'validation_failed', '不能删除系统模板');
+      return fail(400, "validation_failed", "不能删除系统模板");
     }
     const removed = await deleteCustomReportTemplate(env.DB, id);
-    if (!removed) return fail(404, 'not_found', '模板不存在');
+    if (!removed) return fail(404, "not_found", "模板不存在");
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'template.delete',
-      entityType: 'report_template',
+      action: "template.delete",
+      entityType: "report_template",
       entityId: id,
     });
     return json({ ok: true });
@@ -1500,50 +1756,77 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
   const userTagRoute = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/tags(?:\/([^/]+))?$/);
   if (userTagRoute) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理用户标签');
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理用户标签");
     const userId = Number(userTagRoute[1]);
     const target = await getUserById(db, userId);
-    if (!target) return fail(404, 'not_found', '用户不存在');
+    if (!target) return fail(404, "not_found", "用户不存在");
     const tagValue = userTagRoute[2];
-    if (request.method === 'POST' && tagValue === undefined) {
-      const tag = typeof body.tag === 'string' ? body.tag.trim() : '';
+    if (request.method === "POST" && tagValue === undefined) {
+      const tag = typeof body.tag === "string" ? body.tag.trim() : "";
       if (!tag || tag.length > 30) {
-        return fail(400, 'validation_failed', '标签必须是 1-30 字符的非空字符串');
+        return fail(400, "validation_failed", "标签必须是 1-30 字符的非空字符串");
       }
       await addUserTag(db, { userId, tag, createdBy: user.id });
       return json({ ok: true });
     }
-    if (request.method === 'DELETE' && tagValue !== undefined) {
+    if (request.method === "DELETE" && tagValue !== undefined) {
       await removeUserTag(db, userId, decodeURIComponent(tagValue));
       return json({ ok: true });
     }
-    return fail(405, 'method_not_allowed', '仅支持 POST / DELETE');
+    return fail(405, "method_not_allowed", "仅支持 POST / DELETE");
+  }
+
+  const userBanRoute = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/ban$/);
+  if (userBanRoute) {
+    if (request.method !== "POST") return fail(405, "method_not_allowed", "仅支持 POST");
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可封禁用户");
+    const userId = Number(userBanRoute[1]);
+    const target = await getUserById(db, userId);
+    if (!target) return fail(404, "not_found", "用户不存在");
+    if (target.systemRole === "admin") return fail(400, "cannot_ban_admin", "不能封禁管理员");
+    const banned = body.banned === true;
+    const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 240) : "";
+    await setUserBan(db, userId, {
+      banned,
+      bannedBy: user.id,
+      reason: banned ? reason || "管理员操作" : null,
+    });
+    if (banned) await cancelActiveResponsesForUser(db, userId);
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: banned ? "user.ban" : "user.unban",
+      entityType: "user",
+      entityId: String(userId),
+      before: { banned: target.bannedAt !== null },
+      after: { banned, reason: reason || null },
+    });
+    return json({ ok: true, banned });
   }
 
   // POST /api/admin/imports/from-url — Microsoft Forms URL → survey JSON
   // (the Worker can fetch public Forms definitions; PDF / Office documents
   // must be imported through the local Python CLI importer).
-  if (request.method === 'POST' && url.pathname === '/api/admin/imports/from-url') {
+  if (request.method === "POST" && url.pathname === "/api/admin/imports/from-url") {
     if (!isAdmin && !(await hasActiveCreatorTrial(db, user.id))) {
-      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能导入问卷。');
+      return fail(403, "creator_trial_required", "需要有效的创作者权限才能导入问卷。");
     }
-    const rawUrl = typeof body.url === 'string' ? body.url.trim() : '';
+    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(rawUrl);
     } catch {
-      return fail(400, 'invalid_url', '请输入有效的 http/https URL');
+      return fail(400, "invalid_url", "请输入有效的 http/https URL");
     }
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return fail(400, 'invalid_url', '仅支持 http/https URL');
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      return fail(400, "invalid_url", "仅支持 http/https URL");
     }
     if (!isFormsUrl(rawUrl)) {
       return fail(
         400,
-        'unsupported_in_worker',
-        '当前仅支持 Microsoft Forms 链接在线导入。PDF / Word / Excel / PowerPoint 文档请在本地运行：\n' +
+        "unsupported_in_worker",
+        "当前仅支持 Microsoft Forms 链接在线导入。PDF / Word / Excel / PowerPoint 文档请在本地运行：\n" +
           'uv run python scripts/import_survey_from_url.py "<URL>"\n' +
-          '然后把生成的 survey.json 粘贴到下方文本框完成导入。',
+          "然后把生成的 survey.json 粘贴到下方文本框完成导入。",
       );
     }
     let content: string;
@@ -1552,17 +1835,17 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     } catch (error) {
       if (error instanceof FormsImportError) {
         const status =
-          error.code === 'DOCUMENT_REQUIRES_AUTH'
+          error.code === "DOCUMENT_REQUIRES_AUTH"
             ? 401
-            : error.code === 'HTTP_404'
+            : error.code === "HTTP_404"
               ? 404
-              : error.code === 'NETWORK_ERROR'
+              : error.code === "NETWORK_ERROR"
                 ? 502
                 : 422;
         return fail(status, error.code, error.message);
       }
-      console.error('Microsoft Forms URL import failed', { url: rawUrl, error });
-      return fail(502, 'network_error', '获取 Microsoft Forms 问卷失败，请稍后重试。');
+      console.error("Microsoft Forms URL import failed", { url: rawUrl, error });
+      return fail(502, "network_error", "获取 Microsoft Forms 问卷失败，请稍后重试。");
     }
     let imported: ReturnType<typeof parseImportedSurvey>;
     try {
@@ -1572,34 +1855,37 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         return Response.json(
           {
             ok: false,
-            code: 'invalid_import',
+            code: "invalid_import",
             message: error.message,
             issues: error.issues,
             requestId: ctx.requestId,
           },
-          { status: 400, headers: { 'Cache-Control': 'no-store' } },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
         );
       }
-      return fail(400, 'invalid_import', error instanceof Error ? error.message : '问卷 JSON 无效');
+      return fail(400, "invalid_import", error instanceof Error ? error.message : "问卷 JSON 无效");
     }
     const summary = buildImportSummary(imported);
     return json({
       ok: true,
       content,
-      source: 'microsoft_forms',
+      source: "microsoft_forms",
       ...summary,
     });
   }
 
-  if (request.method === 'POST' && (url.pathname === '/api/admin/imports/validate' || url.pathname === '/api/admin/imports')) {
+  if (
+    request.method === "POST" &&
+    (url.pathname === "/api/admin/imports/validate" || url.pathname === "/api/admin/imports")
+  ) {
     if (!isAdmin && !(await hasActiveCreatorTrial(db, user.id))) {
-      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能导入问卷。');
+      return fail(403, "creator_trial_required", "需要有效的创作者权限才能导入问卷。");
     }
-    if (typeof body.content !== 'string' || !body.content.trim()) {
-      return fail(400, 'validation_failed', '请选择 JSON 文件或粘贴 JSON 内容');
+    if (typeof body.content !== "string" || !body.content.trim()) {
+      return fail(400, "validation_failed", "请选择 JSON 文件或粘贴 JSON 内容");
     }
     if (new TextEncoder().encode(body.content).byteLength > IMPORT_MAX_BYTES) {
-      return fail(413, 'import_too_large', '导入文件不能超过 40MB');
+      return fail(413, "import_too_large", "导入文件不能超过 40MB");
     }
     let imported: ReturnType<typeof parseImportedSurvey>;
     try {
@@ -1609,87 +1895,72 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         return Response.json(
           {
             ok: false,
-            code: 'invalid_import',
+            code: "invalid_import",
             message: error.message,
             issues: error.issues,
             requestId: ctx.requestId,
           },
-          { status: 400, headers: { 'Cache-Control': 'no-store' } },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
         );
       }
-      return fail(400, 'invalid_import', error instanceof Error ? error.message : 'JSON 导入内容无效');
+      return fail(400, "invalid_import", error instanceof Error ? error.message : "JSON 导入内容无效");
     }
     if (body.reportTemplateId !== undefined && body.reportTemplateId !== null) {
-      if (
-        typeof body.reportTemplateId !== 'string' ||
-        !REPORT_TEMPLATES[body.reportTemplateId.trim()]
-      ) {
-        return fail(400, 'validation_failed', '报告模板不存在');
+      if (typeof body.reportTemplateId !== "string" || !REPORT_TEMPLATES[body.reportTemplateId.trim()]) {
+        return fail(400, "validation_failed", "报告模板不存在");
       }
       imported.settings = {
         anonymous: imported.settings?.anonymous ?? false,
         allowMultipleResponses: imported.settings?.allowMultipleResponses ?? false,
         maxResponsesPerUser: imported.settings?.maxResponsesPerUser ?? 1,
-        ...(imported.settings?.reportTemplateId
-          ? { reportTemplateId: imported.settings.reportTemplateId }
-          : {}),
-        ...(imported.settings?.theme !== undefined
-          ? { theme: imported.settings.theme }
-          : {}),
+        ...(imported.settings?.reportTemplateId ? { reportTemplateId: imported.settings.reportTemplateId } : {}),
+        ...(imported.settings?.theme !== undefined ? { theme: imported.settings.theme } : {}),
         reportTemplateId: body.reportTemplateId.trim(),
       };
     }
     const summary = buildImportSummary(imported);
-    if (url.pathname.endsWith('/validate')) return json(summary);
+    if (url.pathname.endsWith("/validate")) return json(summary);
     try {
-      const id = await saveImportedSurvey(
-        db,
-        user.id,
-        imported,
-        createImportMediaResolver(env),
-      );
+      const id = await saveImportedSurvey(db, user.id, imported, createImportMediaResolver(env));
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'survey.import',
-        entityType: 'survey',
+        action: "survey.import",
+        entityType: "survey",
         entityId: String(id),
         after: { title: imported.title, questionCount: imported.questions.length },
       });
-      return Response.json(
-        { id, ...summary },
-        { status: 201, headers: { 'Cache-Control': 'no-store' } },
-      );
+      return Response.json({ id, ...summary }, { status: 201, headers: { "Cache-Control": "no-store" } });
     } catch (error) {
-      console.error('Admin survey import failed', { userId: user.id, error });
-      return fail(500, 'import_failed', '导入保存失败，未完成的数据已回滚');
+      console.error("Admin survey import failed", { userId: user.id, error });
+      return fail(500, "import_failed", "导入保存失败，未完成的数据已回滚");
     }
   }
 
   // POST /api/admin/surveys — 创建草稿问卷（可带初始题目）
-  if (request.method === 'POST' && url.pathname === '/api/admin/surveys') {
+  if (request.method === "POST" && url.pathname === "/api/admin/surveys") {
     if (!isAdmin && !(await hasActiveCreatorTrial(db, user.id))) {
-      return fail(403, 'creator_trial_required', '需要有效的创作者权限才能创建问卷。');
+      return fail(403, "creator_trial_required", "需要有效的创作者权限才能创建问卷。");
     }
-    const titleError = readString(body.title, '标题', 200);
-    if (titleError) return fail(400, 'validation_failed', titleError);
+    const titleError = readString(body.title, "标题", 200);
+    if (titleError) return fail(400, "validation_failed", titleError);
     let description: string | null = null;
-    if (typeof body.description === 'string' && body.description.trim()) {
-      if (body.description.length > 1000) return fail(400, 'validation_failed', '描述长度不能超过 1000 字符');
+    if (typeof body.description === "string" && body.description.trim()) {
+      if (body.description.length > 1000) return fail(400, "validation_failed", "描述长度不能超过 1000 字符");
       description = body.description.trim();
     }
     const anonymous = body.anonymous === true;
     const allowMultipleResponses = body.allowMultipleResponses === true;
     const maxResponsesPerUser = body.maxResponsesPerUser === undefined ? 1 : Number(body.maxResponsesPerUser);
     if (!Number.isInteger(maxResponsesPerUser) || maxResponsesPerUser < 0 || maxResponsesPerUser > 999) {
-      return fail(400, 'validation_failed', '填写次数上限必须是 0-999 的整数');
+      return fail(400, "validation_failed", "填写次数上限必须是 0-999 的整数");
     }
     const questions: QuestionPayload[] = [];
     if (body.questions !== undefined) {
-      if (!Array.isArray(body.questions)) return fail(400, 'validation_failed', 'questions 必须是数组');
+      if (!Array.isArray(body.questions)) return fail(400, "validation_failed", "questions 必须是数组");
       for (const item of body.questions) {
-        if (!isRecord(item)) return fail(400, 'validation_failed', '题目必须是对象');
+        if (!isRecord(item)) return fail(400, "validation_failed", "题目必须是对象");
         const { payload, error } = validateQuestionPayload(item, true);
-        if (error) return fail(400, 'validation_failed', error);
+        if (error) return fail(400, "validation_failed", error);
         questions.push(payload!);
       }
     }
@@ -1707,17 +1978,17 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const updatedAt = await touchSurvey(db, survey.id);
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'survey.create',
-      entityType: 'survey',
+      action: "survey.create",
+      entityType: "survey",
       entityId: String(survey.id),
       after: { title: survey.title, questionCount: questions.length },
     });
-    return Response.json({ id: survey.id, updatedAt }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
+    return Response.json({ id: survey.id, updatedAt }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
   // ---- 授权管理（仅管理员） --------------------------------------------
-  if (url.pathname === '/api/admin/licenses' && request.method === 'GET') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理授权');
+  if (url.pathname === "/api/admin/licenses" && request.method === "GET") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理授权");
     const licenses = await listSoftwareLicenses(db, 100);
     const items = await Promise.all(
       licenses.map(async (license) => {
@@ -1750,30 +2021,28 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ items });
   }
 
-  if (url.pathname === '/api/admin/licenses' && request.method === 'POST') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理授权');
+  if (url.pathname === "/api/admin/licenses" && request.method === "POST") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理授权");
     const customerNameError =
       body.customerName === undefined || body.customerName === null
         ? null
-        : readString(body.customerName, '客户名称', 200);
-    if (customerNameError) return fail(400, 'validation_failed', customerNameError);
+        : readString(body.customerName, "客户名称", 200);
+    if (customerNameError) return fail(400, "validation_failed", customerNameError);
     const customerContactError =
       body.customerContact === undefined || body.customerContact === null
         ? null
-        : readString(body.customerContact, '客户联系方式', 200);
-    if (customerContactError) return fail(400, 'validation_failed', customerContactError);
+        : readString(body.customerContact, "客户联系方式", 200);
+    if (customerContactError) return fail(400, "validation_failed", customerContactError);
     const notesError =
-      body.notes === undefined || body.notes === null
-        ? null
-        : readString(body.notes, '授权备注', 1000);
-    if (notesError) return fail(400, 'validation_failed', notesError);
-    const licenseType = body.licenseType === 'perpetual' ? 'perpetual' : 'timed';
+      body.notes === undefined || body.notes === null ? null : readString(body.notes, "授权备注", 1000);
+    if (notesError) return fail(400, "validation_failed", notesError);
+    const licenseType = body.licenseType === "perpetual" ? "perpetual" : "timed";
     const maxActivations = Number(body.maxActivations ?? 1);
     if (!Number.isInteger(maxActivations) || maxActivations < 1 || maxActivations > 100) {
-      return fail(400, 'validation_failed', '激活数上限必须是 1-100 的整数');
+      return fail(400, "validation_failed", "激活数上限必须是 1-100 的整数");
     }
     const toDays = (value: unknown, label: string): number | undefined => {
-      if (value === undefined || value === null || value === '') return undefined;
+      if (value === undefined || value === null || value === "") return undefined;
       const days = Number(value);
       if (!Number.isInteger(days) || days < 1 || days > 36_500) {
         throw new Error(`${label}必须是 1-36500 的整数`);
@@ -1785,62 +2054,61 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         licenseType,
         maxActivations,
         customerName:
-          body.customerName === undefined || body.customerName === null
-            ? null
-            : String(body.customerName).trim(),
+          body.customerName === undefined || body.customerName === null ? null : String(body.customerName).trim(),
         customerContact:
           body.customerContact === undefined || body.customerContact === null
             ? null
             : String(body.customerContact).trim(),
-        notes:
-          body.notes === undefined || body.notes === null
-            ? null
-            : String(body.notes).trim(),
+        notes: body.notes === undefined || body.notes === null ? null : String(body.notes).trim(),
         actorUserId: user.id,
       };
-      if (licenseType === 'timed') {
-        licenseInput.usageDays = toDays(body.usageDays, '使用天数') ?? 365;
+      if (licenseType === "timed") {
+        licenseInput.usageDays = toDays(body.usageDays, "使用天数") ?? 365;
       } else {
-        licenseInput.updateDays = toDays(body.updateDays, '升级天数') ?? null;
+        licenseInput.updateDays = toDays(body.updateDays, "升级天数") ?? null;
       }
       const created = await createLicense(db, licenseInput);
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'license.create',
-        entityType: 'license',
+        action: "license.create",
+        entityType: "license",
         entityId: created.license.publicId,
         after: { customerName: created.license.customerName, licenseType },
       });
       return Response.json(
         { license: created.license, licenseKey: created.licenseKey },
-        { status: 201, headers: { 'Cache-Control': 'no-store' } },
+        { status: 201, headers: { "Cache-Control": "no-store" } },
       );
     } catch (error) {
-      return fail(400, 'validation_failed', error instanceof Error ? error.message : '签发授权失败');
+      return fail(400, "validation_failed", error instanceof Error ? error.message : "签发授权失败");
     }
   }
 
   const licenseDetailMatch = url.pathname.match(/^\/api\/admin\/licenses\/([A-Za-z0-9-]+)$/);
-  if (request.method === 'PATCH' && licenseDetailMatch) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理授权');
-    const publicId = licenseDetailMatch[1] ?? '';
+  if (request.method === "PATCH" && licenseDetailMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理授权");
+    const publicId = licenseDetailMatch[1] ?? "";
     const current = await listSoftwareLicenses(db, 100);
     const license = current.find((item) => item.publicId === publicId);
-    if (!license) return fail(404, 'not_found', '授权不存在');
+    if (!license) return fail(404, "not_found", "授权不存在");
     if (body.status !== undefined) {
-      if (!['active', 'suspended', 'revoked'].includes(String(body.status))) {
-        return fail(400, 'validation_failed', '授权状态无效');
+      if (!["active", "suspended", "revoked"].includes(String(body.status))) {
+        return fail(400, "validation_failed", "授权状态无效");
       }
-      await updateSoftwareLicenseStatus(db, publicId, String(body.status) as 'active' | 'suspended' | 'revoked');
+      await updateSoftwareLicenseStatus(db, publicId, String(body.status) as "active" | "suspended" | "revoked");
     }
     if (body.extendUsageDays !== undefined || body.extendUpdateDays !== undefined) {
       const extendUsage = body.extendUsageDays === undefined ? 0 : Number(body.extendUsageDays);
       const extendUpdates = body.extendUpdateDays === undefined ? 0 : Number(body.extendUpdateDays);
       if (
-        (!Number.isInteger(extendUsage) || extendUsage < 0 || extendUsage > 36_500) ||
-        (!Number.isInteger(extendUpdates) || extendUpdates < 0 || extendUpdates > 36_500)
+        !Number.isInteger(extendUsage) ||
+        extendUsage < 0 ||
+        extendUsage > 36_500 ||
+        !Number.isInteger(extendUpdates) ||
+        extendUpdates < 0 ||
+        extendUpdates > 36_500
       ) {
-        return fail(400, 'validation_failed', '延期天数必须是 0-36500 的整数');
+        return fail(400, "validation_failed", "延期天数必须是 0-36500 的整数");
       }
       const addDays = (value: string | null, days: number): string | null => {
         if (days <= 0) return value;
@@ -1854,48 +2122,45 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     }
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'license.update',
-      entityType: 'license',
+      action: "license.update",
+      entityType: "license",
       entityId: publicId,
       after: { status: body.status, extendUsageDays: body.extendUsageDays, extendUpdateDays: body.extendUpdateDays },
     });
     return json({ ok: true });
   }
 
-  if (url.pathname === '/api/admin/releases' && request.method === 'GET') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理版本');
+  if (url.pathname === "/api/admin/releases" && request.method === "GET") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理版本");
     return json({ items: await listSoftwareReleases(db, 50) });
   }
 
-  if (url.pathname === '/api/admin/releases' && request.method === 'POST') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理版本');
-    const version = body.version === undefined ? '' : String(body.version).trim();
+  if (url.pathname === "/api/admin/releases" && request.method === "POST") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理版本");
+    const version = body.version === undefined ? "" : String(body.version).trim();
     if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
-      return fail(400, 'validation_failed', '版本号格式无效（应为 x.y.z）');
+      return fail(400, "validation_failed", "版本号格式无效（应为 x.y.z）");
     }
     const notes = body.notes === undefined || body.notes === null ? null : String(body.notes).trim();
     const release = await createSoftwareRelease(db, {
       version,
       releasedAt: new Date().toISOString(),
-      channel: body.channel === undefined ? 'stable' : String(body.channel).trim(),
+      channel: body.channel === undefined ? "stable" : String(body.channel).trim(),
       ...(notes ? { notes } : {}),
     });
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'release.register',
-      entityType: 'release',
+      action: "release.register",
+      entityType: "release",
       entityId: release.version,
       after: { channel: release.channel },
     });
-    return Response.json(
-      { release },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
-    );
+    return Response.json({ release }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
   // ---- 体验创作者试用管理（仅管理员） ----------------------------------
-  if (url.pathname === '/api/admin/trials' && request.method === 'GET') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理试用');
+  if (url.pathname === "/api/admin/trials" && request.method === "GET") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理试用");
     const trials = await listActiveCreatorTrials(db, 100);
     return json({
       items: trials.map((trial) => ({
@@ -1912,15 +2177,15 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
   const trialMatch = url.pathname.match(/^\/api\/admin\/users\/(\d+)\/trial$/);
   if (trialMatch) {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可管理试用');
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理试用");
     const targetUserId = Number(trialMatch[1]);
     if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
-      return fail(400, 'validation_failed', '用户 ID 无效');
+      return fail(400, "validation_failed", "用户 ID 无效");
     }
-    if (request.method === 'POST') {
+    if (request.method === "POST") {
       const days = Number(body.days ?? 30);
       if (!Number.isInteger(days) || days < 1 || days > 36_500) {
-        return fail(400, 'validation_failed', '试用天数必须是 1-36500 的整数');
+        return fail(400, "validation_failed", "试用天数必须是 1-36500 的整数");
       }
       const grant = await grantCreatorTrial(db, {
         userId: targetUserId,
@@ -1929,19 +2194,19 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       });
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'trial.grant',
-        entityType: 'user',
+        action: "trial.grant",
+        entityType: "user",
         entityId: String(targetUserId),
         after: { expiresAt: grant.expiresAt },
       });
       return json({ expiresAt: grant.expiresAt });
     }
-    if (request.method === 'DELETE') {
+    if (request.method === "DELETE") {
       await revokeCreatorTrial(db, targetUserId);
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'trial.revoke',
-        entityType: 'user',
+        action: "trial.revoke",
+        entityType: "user",
         entityId: String(targetUserId),
       });
       return json({ ok: true });
@@ -1950,36 +2215,36 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
   // POST /api/admin/surveys/backfill-covers — 批量给已有问卷补封面
   // （只更新封面，不动题目和答卷）。
-  if (request.method === 'POST' && url.pathname === '/api/admin/surveys/backfill-covers') {
-    if (!isAdmin) return fail(403, 'forbidden', '仅管理员可批量补封面');
+  if (request.method === "POST" && url.pathname === "/api/admin/surveys/backfill-covers") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可批量补封面");
     const items = Array.isArray(body.items) ? body.items : [];
     if (!items.length || items.length > 50) {
-      return fail(400, 'validation_failed', 'items 必须是 1-50 项的数组');
+      return fail(400, "validation_failed", "items 必须是 1-50 项的数组");
     }
     const resolver = createImportMediaResolver(env);
     const results: Array<Record<string, unknown>> = [];
     for (const item of items) {
       const record = item as Record<string, unknown>;
       const surveyId = Number(record.surveyId);
-      const rawUrl = typeof record.url === 'string' ? record.url.trim() : '';
+      const rawUrl = typeof record.url === "string" ? record.url.trim() : "";
       if (!Number.isInteger(surveyId) || surveyId <= 0) {
-        results.push({ surveyId, ok: false, error: 'invalid_survey_id' });
+        results.push({ surveyId, ok: false, error: "invalid_survey_id" });
         continue;
       }
       const survey = await getSurveyById(db, surveyId);
       if (!survey) {
-        results.push({ surveyId, ok: false, error: 'not_found' });
+        results.push({ surveyId, ok: false, error: "not_found" });
         continue;
       }
       try {
         const cover = await fetchMicrosoftFormsCover(rawUrl);
         if (!cover) {
-          results.push({ surveyId, ok: false, error: 'no_cover' });
+          results.push({ surveyId, ok: false, error: "no_cover" });
           continue;
         }
         const resolved = await resolver({
-          type: 'photo',
-          source: 'url',
+          type: "photo",
+          source: "url",
           url: cover.url,
           ...(cover.mimeType ? { mimeType: cover.mimeType } : {}),
           ...(cover.fileName ? { fileName: cover.fileName } : {}),
@@ -1987,11 +2252,9 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
           ...(cover.height !== undefined ? { height: cover.height } : {}),
         });
         const asset = await createMediaAsset(db, {
-          scope: 'survey',
-          mediaType: 'photo',
-          storageKind: resolved?.storageKey
-            ? (resolved.storageKind ?? 'url')
-            : 'url',
+          scope: "survey",
+          mediaType: "photo",
+          storageKind: resolved?.storageKey ? (resolved.storageKind ?? "url") : "url",
           storageKey: resolved?.storageKey ?? null,
           url: resolved?.storageKey ? null : cover.url,
           mimeType: resolved?.mimeType ?? cover.mimeType ?? null,
@@ -2002,15 +2265,13 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         });
         const timestamp = new Date().toISOString();
         await db
-          .prepare(
-            'UPDATE surveys SET cover_media_id = ?, updated_at = ? WHERE id = ?',
-          )
+          .prepare("UPDATE surveys SET cover_media_id = ?, updated_at = ? WHERE id = ?")
           .bind(asset.id, timestamp, surveyId)
           .run();
         await writeAudit(db, {
           actorUserId: user.id,
-          action: 'survey.cover_backfill',
-          entityType: 'survey',
+          action: "survey.cover_backfill",
+          entityType: "survey",
           entityId: String(surveyId),
           after: { mediaAssetId: asset.id },
         });
@@ -2019,7 +2280,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         results.push({
           surveyId,
           ok: false,
-          error: error instanceof Error ? error.message : 'backfill_failed',
+          error: error instanceof Error ? error.message : "backfill_failed",
         });
       }
     }
@@ -2027,13 +2288,13 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   }
 
   const surveyMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)(\/.*)?$/);
-  if (!surveyMatch) return fail(404, 'not_found', 'Not found');
+  if (!surveyMatch) return fail(404, "not_found", "Not found");
   const surveyId = Number(surveyMatch[1]);
-  const rest = surveyMatch[2] ?? '';
+  const rest = surveyMatch[2] ?? "";
 
   // POST /api/admin/surveys/:id/responses/batch-export — 批量把已完成答卷的
   // 报告（PDF+图片打包）入队发送到私人频道
-  if (request.method === 'POST' && rest === '/responses/batch-export') {
+  if (request.method === "POST" && rest === "/responses/batch-export") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const responseIds = Array.isArray(body.responseIds)
@@ -2042,16 +2303,16 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
           .map(Number)
           .slice(0, 100)
       : [];
-    if (!responseIds.length) return fail(400, 'validation_failed', '请选择要导出的答卷');
+    if (!responseIds.length) return fail(400, "validation_failed", "请选择要导出的答卷");
     const rows = await env.DB.prepare(
       `SELECT id, status FROM survey_responses
-       WHERE survey_id = ? AND id IN (${responseIds.map(() => '?').join(',')})`,
+       WHERE survey_id = ? AND id IN (${responseIds.map(() => "?").join(",")})`,
     )
       .bind(surveyId, ...responseIds)
       .all<{ id: number; status: string }>();
-    const completed = (rows.results ?? []).filter((row) => row.status === 'completed');
+    const completed = (rows.results ?? []).filter((row) => row.status === "completed");
     if (!completed.length) {
-      return fail(400, 'validation_failed', '没有可导出的已完成答卷');
+      return fail(400, "validation_failed", "没有可导出的已完成答卷");
     }
     let queued = 0;
     for (const row of completed) {
@@ -2063,16 +2324,60 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     }
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'response.batch_export',
-      entityType: 'survey',
+      action: "response.batch_export",
+      entityType: "survey",
       entityId: String(surveyId),
       after: { count: queued },
     });
     return json({ ok: true, queued });
   }
 
+  // POST /api/admin/surveys/:id/responses/send-to-channel — 把答卷汇总表
+  // （CSV，Excel 可直接打开）作为文件发送到报告归档频道。
+  if (request.method === "POST" && rest === "/responses/send-to-channel") {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
+    const settings = await loadSystemSettings(env.DB);
+    const channelRaw = settings.reportChannelId || env.REPORT_CHANNEL_ID || "";
+    const channelId = Number(channelRaw.trim());
+    if (!Number.isInteger(channelId) || channelId === 0) {
+      return fail(400, "channel_not_configured", "未配置报告频道（系统设置 → 报告频道 ID）");
+    }
+    const format = body.format === "zip" ? "zip" : "csv";
+    const { rows } = await getExportRows(env.DB, surveyId);
+    if (!rows.length) {
+      return fail(400, "validation_failed", "该问卷还没有答卷可导出");
+    }
+    const csv = buildCsv(rows);
+    const content = serializeExport(format as "csv" | "zip", csv, rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fileName = `survey-${surveyId}-responses-${stamp}.${format}`;
+    const bodyBytes =
+      typeof content === "string" ? new TextEncoder().encode(`\uFEFF${content}`) : new Uint8Array(content);
+    try {
+      await sendDocument(
+        env.BOT_TOKEN,
+        channelId,
+        fileName,
+        bodyBytes,
+        format === "zip" ? "application/zip" : "text/csv",
+        `📄 《${manageable.survey.title}》答卷汇总 · 共 ${rows.length} 份 · ${stamp}`,
+      );
+    } catch (error) {
+      return fail(502, "channel_send_failed", `发送到频道失败：${error instanceof Error ? error.message : "未知错误"}`);
+    }
+    await writeAudit(env.DB, {
+      actorUserId: user.id,
+      action: "response.export_to_channel",
+      entityType: "survey",
+      entityId: String(surveyId),
+      after: { rows: rows.length, format },
+    });
+    return json({ ok: true, fileName, rows: rows.length });
+  }
+
   // POST /api/admin/surveys/:id/responses/export-status — 批量导出的实时进度
-  if (request.method === 'POST' && rest === '/responses/export-status') {
+  if (request.method === "POST" && rest === "/responses/export-status") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const ids = Array.isArray(body.ids)
@@ -2081,13 +2386,24 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
           .map(Number)
           .slice(0, 100)
       : [];
-    if (!ids.length) return fail(400, 'validation_failed', '缺少 ids');
+    if (!ids.length) return fail(400, "validation_failed", "缺少 ids");
+    // Ownership: only report deliveries whose response actually belongs to
+    // this survey may be counted, otherwise ids from a foreign survey leak
+    // aggregated delivery status.
+    const ownedRows = await env.DB.prepare(
+      `SELECT id FROM survey_responses WHERE survey_id = ? AND id IN (${ids.map(() => "?").join(",")})`,
+    )
+      .bind(surveyId, ...ids)
+      .all<{ id: number }>();
+    const ownedIds = new Set((ownedRows.results ?? []).map((row) => Number(row.id)));
+    const scopedIds = ids.filter((id) => ownedIds.has(id));
+    if (!scopedIds.length) return json({ counts: {}, total: ids.length, pending: ids.length });
     const rows = await env.DB.prepare(
       `SELECT rd.status, COUNT(*) count FROM report_deliveries rd
-       WHERE rd.response_id IN (${ids.map(() => '?').join(',')})
+       WHERE rd.response_id IN (${scopedIds.map(() => "?").join(",")})
        GROUP BY rd.status`,
     )
-      .bind(...ids)
+      .bind(...scopedIds)
       .all<{ status: string; count: number }>();
     const counts: Record<string, number> = {};
     for (const row of rows.results ?? []) {
@@ -2101,50 +2417,50 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     });
   }
 
-  if (request.method === 'POST' && rest === '/duplicate') {
+  if (request.method === "POST" && rest === "/duplicate") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const duplicate = await duplicateSurvey(db, surveyId, user.id);
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'survey.duplicate',
-      entityType: 'survey',
+      action: "survey.duplicate",
+      entityType: "survey",
       entityId: String(surveyId),
       after: { duplicateId: duplicate.id },
     });
     return Response.json(
       { id: duplicate.id, updatedAt: duplicate.updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   }
 
-  if (request.method === 'POST' && (rest === '/close' || rest === '/archive' || rest === '/reopen')) {
+  if (request.method === "POST" && (rest === "/close" || rest === "/archive" || rest === "/reopen")) {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const before = { status: manageable.survey.status };
     try {
       let updated;
-      if (rest === '/reopen') {
+      if (rest === "/reopen") {
         updated = await publishSurvey(db, surveyId, user.id);
       } else {
-        updated = await updateSurveyStatus(db, surveyId, rest === '/close' ? 'closed' : 'archived');
+        updated = await updateSurveyStatus(db, surveyId, rest === "/close" ? "closed" : "archived");
       }
-      if (!updated) return fail(404, 'not_found', '问卷不存在');
+      if (!updated) return fail(404, "not_found", "问卷不存在");
       await writeAudit(db, {
         actorUserId: user.id,
-        action: `survey.${rest === '/close' ? 'close' : rest === '/archive' ? 'archive' : 'reopen'}`,
-        entityType: 'survey',
+        action: `survey.${rest === "/close" ? "close" : rest === "/archive" ? "archive" : "reopen"}`,
+        entityType: "survey",
         entityId: String(surveyId),
         before,
         after: { status: updated.status },
       });
       return json({ status: updated.status, updatedAt: updated.updatedAt, version: updated.version });
     } catch (error) {
-      return fail(400, 'status_change_failed', error instanceof Error ? error.message : '状态变更失败');
+      return fail(400, "status_change_failed", error instanceof Error ? error.message : "状态变更失败");
     }
   }
 
-  if (request.method === 'DELETE' && rest === '') {
+  if (request.method === "DELETE" && rest === "") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     try {
@@ -2152,32 +2468,32 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       await deleteSurvey(db, surveyId, { force: isAdmin });
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'survey.delete',
-        entityType: 'survey',
+        action: "survey.delete",
+        entityType: "survey",
         entityId: String(surveyId),
         before: { status: manageable.survey.status, forced: isAdmin },
       });
       return json({ ok: true });
     } catch (error) {
-      return fail(400, 'delete_blocked', error instanceof Error ? error.message : '删除失败');
+      return fail(400, "delete_blocked", error instanceof Error ? error.message : "删除失败");
     }
   }
 
   const regenerateMatch = rest.match(/^\/responses\/(\d+)\/report$/);
-  if (request.method === 'POST' && regenerateMatch) {
+  if (request.method === "POST" && regenerateMatch) {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const responseId = Number(regenerateMatch[1]);
     const response = await getResponseById(db, responseId);
     if (!response || response.surveyId !== surveyId) {
-      return fail(404, 'response_not_found', '答卷不存在');
+      return fail(404, "response_not_found", "答卷不存在");
     }
     await prepareResultProfileForResponse(db, responseId, { forceRecalculate: true });
     await enqueueReportDelivery(db, env.EXPORT_QUEUE, { responseId, force: true });
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'report.regenerate',
-      entityType: 'response',
+      action: "report.regenerate",
+      entityType: "response",
       entityId: String(responseId),
       after: { surveyId },
     });
@@ -2185,62 +2501,62 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   }
 
   const responseActionMatch = rest.match(/^\/responses\/(\d+)\/(archive|delete|report-link|resend|pdf)$/);
-  if (request.method === 'POST' && responseActionMatch) {
+  if (request.method === "POST" && responseActionMatch) {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const responseId = Number(responseActionMatch[1]);
     const action = responseActionMatch[2];
     const response = await getResponseById(db, responseId);
     if (!response || response.surveyId !== surveyId) {
-      return fail(404, 'response_not_found', '答卷不存在');
+      return fail(404, "response_not_found", "答卷不存在");
     }
-    if (action === 'archive') {
+    if (action === "archive") {
       await archiveResponse(db, responseId);
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'response.archive',
-        entityType: 'response',
+        action: "response.archive",
+        entityType: "response",
         entityId: String(responseId),
       });
       return json({ ok: true });
     }
-    if (action === 'delete') {
+    if (action === "delete") {
       try {
         await deleteResponse(db, responseId);
         await writeAudit(db, {
           actorUserId: user.id,
-          action: 'response.delete',
-          entityType: 'response',
+          action: "response.delete",
+          entityType: "response",
           entityId: String(responseId),
         });
         return json({ ok: true });
       } catch (error) {
-        return fail(400, 'delete_blocked', error instanceof Error ? error.message : '删除失败');
+        return fail(400, "delete_blocked", error instanceof Error ? error.message : "删除失败");
       }
     }
-    if (action === 'resend') {
-      if (response.status !== 'completed') {
-        return fail(400, 'not_completed', '答卷尚未完成，无法发送报告');
+    if (action === "resend") {
+      if (response.status !== "completed") {
+        return fail(400, "not_completed", "答卷尚未完成，无法发送报告");
       }
       await enqueueReportDelivery(db, env.EXPORT_QUEUE, { responseId, force: true });
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'report.resend',
-        entityType: 'response',
+        action: "report.resend",
+        entityType: "response",
         entityId: String(responseId),
         after: { surveyId },
       });
       return json({ ok: true });
     }
-    if (action === 'pdf') {
-      if (response.status !== 'completed') {
-        return fail(400, 'not_completed', '答卷尚未完成，无法生成 PDF');
+    if (action === "pdf") {
+      if (response.status !== "completed") {
+        return fail(400, "not_completed", "答卷尚未完成，无法生成 PDF");
       }
       const surveyRow = manageable.survey;
       const template = await resolveReportTemplate(db, surveyRow.reportTemplateId);
       const prepared = await prepareResultProfileForResponse(db, responseId);
       if (!prepared) {
-        return fail(404, 'report_unavailable', '报告不存在或尚未生成');
+        return fail(404, "report_unavailable", "报告不存在或尚未生成");
       }
       const snapshot = deserializeResultProfile(prepared.profile);
       const images = await resolveReportProfileImages(env, snapshot);
@@ -2255,63 +2571,60 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       );
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'report.download',
-        entityType: 'response',
+        action: "report.download",
+        entityType: "response",
         entityId: String(responseId),
         after: { surveyId },
       });
-      return new Response(pdf.bytes.buffer.slice(
-        pdf.bytes.byteOffset,
-        pdf.bytes.byteOffset + pdf.bytes.byteLength,
-      ) as ArrayBuffer, {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="report-${responseId}.pdf"`,
-          'Cache-Control': 'no-store',
+      return new Response(
+        pdf.bytes.buffer.slice(pdf.bytes.byteOffset, pdf.bytes.byteOffset + pdf.bytes.byteLength) as ArrayBuffer,
+        {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="report-${responseId}.pdf"`,
+            "Cache-Control": "no-store",
+          },
         },
-      });
+      );
     }
     const token = await createReportAccessToken(env.WEBHOOK_SECRET, responseId);
     return json({ reportUrl: `/report/${responseId}?t=${token}` });
   }
 
   const restoreMatch = rest.match(/^\/versions\/(\d+)\/restore$/);
-  if (request.method === 'POST' && restoreMatch) {
+  if (request.method === "POST" && restoreMatch) {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const version = Number(restoreMatch[1]);
     const snapshot = await getSurveyVersionSnapshot(db, surveyId, version);
-    if (!snapshot) return fail(404, 'version_not_found', '版本不存在');
+    if (!snapshot) return fail(404, "version_not_found", "版本不存在");
     const imported = parseImportedSurvey(JSON.stringify(snapshot));
     const restoredId = await saveImportedSurvey(db, user.id, imported);
     await writeAudit(db, {
       actorUserId: user.id,
-      action: 'survey.restore',
-      entityType: 'survey',
+      action: "survey.restore",
+      entityType: "survey",
       entityId: String(surveyId),
       after: { version, restoredSurveyId: restoredId },
     });
-    return Response.json(
-      { id: restoredId, version },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
-    );
+    return Response.json({ id: restoredId, version }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
   // Metadata patches (title/description/policy/report template/theme) stay
   // editable on published surveys; structural question edits keep the lock.
-  const isMetadataPatch = request.method === 'PATCH' && rest === '';
+  const isMetadataPatch = request.method === "PATCH" && rest === "";
   if (!isMetadataPatch) {
     const writable = await loadWritableSurvey(env, ctx, surveyId, body);
     if (writable instanceof Response) return writable;
   }
 
-  if (request.method === 'POST' && rest === '/publish') {
+  if (request.method === "POST" && rest === "/publish") {
     try {
       const published = await publishSurvey(db, surveyId, user.id);
       await writeAudit(db, {
         actorUserId: user.id,
-        action: 'survey.publish',
-        entityType: 'survey',
+        action: "survey.publish",
+        entityType: "survey",
         entityId: String(surveyId),
         after: { version: published.version },
       });
@@ -2322,123 +2635,114 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         updatedAt: published.updatedAt,
       });
     } catch (error) {
-      return fail(400, 'publish_validation', error instanceof Error ? error.message : '问卷不满足发布条件');
+      return fail(400, "publish_validation", error instanceof Error ? error.message : "问卷不满足发布条件");
     }
   }
 
   // PATCH /api/admin/surveys/:id — 问卷基本信息
-  if (request.method === 'PATCH' && rest === '') {
+  if (request.method === "PATCH" && rest === "") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     const updates: string[] = [];
     const binds: unknown[] = [];
     if (body.title !== undefined) {
-      const error = readString(body.title, '标题', 200);
-      if (error) return fail(400, 'validation_failed', error);
-      updates.push('title = ?');
+      const error = readString(body.title, "标题", 200);
+      if (error) return fail(400, "validation_failed", error);
+      updates.push("title = ?");
       binds.push(String(body.title).trim());
     }
     if (body.description !== undefined) {
-      if (body.description === null || body.description === '') {
-        updates.push('description = ?');
+      if (body.description === null || body.description === "") {
+        updates.push("description = ?");
         binds.push(null);
-      } else if (typeof body.description === 'string') {
-        if (body.description.length > 1000) return fail(400, 'validation_failed', '描述长度不能超过 1000 字符');
-        updates.push('description = ?');
+      } else if (typeof body.description === "string") {
+        if (body.description.length > 1000) return fail(400, "validation_failed", "描述长度不能超过 1000 字符");
+        updates.push("description = ?");
         binds.push(body.description.trim());
-      } else return fail(400, 'validation_failed', '描述必须是字符串');
+      } else return fail(400, "validation_failed", "描述必须是字符串");
     }
     if (body.anonymous !== undefined) {
-      if (typeof body.anonymous !== 'boolean') return fail(400, 'validation_failed', 'anonymous 必须是布尔值');
-      updates.push('anonymous = ?');
+      if (typeof body.anonymous !== "boolean") return fail(400, "validation_failed", "anonymous 必须是布尔值");
+      updates.push("anonymous = ?");
       binds.push(body.anonymous ? 1 : 0);
     }
     if (body.allowMultipleResponses !== undefined) {
-      if (typeof body.allowMultipleResponses !== 'boolean')
-        return fail(400, 'validation_failed', 'allowMultipleResponses 必须是布尔值');
-      updates.push('allow_multiple_responses = ?');
+      if (typeof body.allowMultipleResponses !== "boolean")
+        return fail(400, "validation_failed", "allowMultipleResponses 必须是布尔值");
+      updates.push("allow_multiple_responses = ?");
       binds.push(body.allowMultipleResponses ? 1 : 0);
     }
     if (body.maxResponsesPerUser !== undefined) {
       const value = Number(body.maxResponsesPerUser);
       if (!Number.isInteger(value) || value < 0 || value > 999)
-        return fail(400, 'validation_failed', '填写次数上限必须是 0-999 的整数');
-      updates.push('max_responses_per_user = ?');
+        return fail(400, "validation_failed", "填写次数上限必须是 0-999 的整数");
+      updates.push("max_responses_per_user = ?");
       binds.push(value);
     }
     if (body.reportTemplateId !== undefined) {
       if (body.reportTemplateId === null) {
-        updates.push('report_template_id = ?');
+        updates.push("report_template_id = ?");
         binds.push(null);
-      } else if (typeof body.reportTemplateId === 'string') {
+      } else if (typeof body.reportTemplateId === "string") {
         const trimmed = body.reportTemplateId.trim();
-        const known =
-          REPORT_TEMPLATES[trimmed] ||
-          (await getCustomReportTemplate(db, trimmed)) !== null;
+        const known = REPORT_TEMPLATES[trimmed] || (await getCustomReportTemplate(db, trimmed)) !== null;
         if (!known) {
-          return fail(400, 'validation_failed', '报告模板无效');
+          return fail(400, "validation_failed", "报告模板无效");
         }
-        updates.push('report_template_id = ?');
+        updates.push("report_template_id = ?");
         binds.push(trimmed);
       } else {
-        return fail(400, 'validation_failed', 'reportTemplateId 必须是字符串或 null');
+        return fail(400, "validation_failed", "reportTemplateId 必须是字符串或 null");
       }
     }
     if (body.theme !== undefined) {
       const existingSurvey = await getSurveyById(db, surveyId);
-      const settings =
-        existingSurvey?.settingsJson
-          ? (parseSettingsJson(existingSurvey.settingsJson) ?? {})
-          : ({} as Record<string, unknown>);
+      const settings = existingSurvey?.settingsJson
+        ? (parseSettingsJson(existingSurvey.settingsJson) ?? {})
+        : ({} as Record<string, unknown>);
       if (body.theme === null) {
         delete settings.theme;
-      } else if (
-        body.theme &&
-        typeof body.theme === 'object' &&
-        !Array.isArray(body.theme)
-      ) {
+      } else if (body.theme && typeof body.theme === "object" && !Array.isArray(body.theme)) {
         const normalized = normalizeSurveyTheme(body.theme);
-        if (!normalized) return fail(400, 'validation_failed', '主题内容无效');
+        if (!normalized) return fail(400, "validation_failed", "主题内容无效");
         settings.theme = normalized;
       } else {
-        return fail(400, 'validation_failed', 'theme 必须是对象或 null');
+        return fail(400, "validation_failed", "theme 必须是对象或 null");
       }
-      const nextSettings = Object.keys(settings).length
-        ? JSON.stringify(settings)
-        : null;
-      updates.push('settings_json = ?');
+      const nextSettings = Object.keys(settings).length ? JSON.stringify(settings) : null;
+      updates.push("settings_json = ?");
       binds.push(nextSettings);
     }
-    if (!updates.length) return fail(400, 'validation_failed', '没有可更新的字段');
+    if (!updates.length) return fail(400, "validation_failed", "没有可更新的字段");
     const timestamp = new Date().toISOString();
-    updates.push('updated_at = ?');
+    updates.push("updated_at = ?");
     binds.push(timestamp, surveyId);
     await db
-      .prepare(`UPDATE surveys SET ${updates.join(', ')} WHERE id = ?`)
+      .prepare(`UPDATE surveys SET ${updates.join(", ")} WHERE id = ?`)
       .bind(...binds)
       .run();
     return json({ updatedAt: timestamp });
   }
 
   // POST /api/admin/surveys/:id/questions — 新增题目
-  if (request.method === 'POST' && rest === '/questions') {
+  if (request.method === "POST" && rest === "/questions") {
     const { payload, error } = validateQuestionPayload(body, true);
-    if (error) return fail(400, 'validation_failed', error);
+    if (error) return fail(400, "validation_failed", error);
     const existing = await listQuestionsBySurvey(db, surveyId);
-    if (existing.length >= 200) return fail(400, 'validation_failed', '题目数量不能超过 200');
+    if (existing.length >= 200) return fail(400, "validation_failed", "题目数量不能超过 200");
     const order = existing.length;
     const questionId = await insertQuestionWithOptions(db, surveyId, payload!, order);
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json(
       { id: questionId, order, updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   // POST /api/admin/surveys/:id/questions/reorder — 批量重排
-  if (request.method === 'POST' && rest === '/questions/reorder') {
+  if (request.method === "POST" && rest === "/questions/reorder") {
     if (!Array.isArray(body.questionIds) || body.questionIds.some((value) => !Number.isInteger(value))) {
-      return fail(400, 'validation_failed', 'questionIds 必须是整数数组');
+      return fail(400, "validation_failed", "questionIds 必须是整数数组");
     }
     const questions = await listQuestionsBySurvey(db, surveyId);
     const existingIds = new Set(questions.map((question: SurveyQuestion) => question.id));
@@ -2448,7 +2752,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       new Set(requestedIds).size !== existingIds.size ||
       requestedIds.some((id: number) => !existingIds.has(id))
     ) {
-      return fail(400, 'validation_failed', 'questionIds 必须与当前题目集合完全一致');
+      return fail(400, "validation_failed", "questionIds 必须与当前题目集合完全一致");
     }
     await normalizeQuestionOrder(db, surveyId, requestedIds);
     const updatedAt = await touchSurvey(db, surveyId);
@@ -2456,26 +2760,24 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   }
 
   // POST /api/admin/surveys/:id/pages — 新增分页
-  if (request.method === 'POST' && rest === '/pages') {
-    const title = body.title === undefined || body.title === null
-      ? null
-      : String(body.title).trim();
+  if (request.method === "POST" && rest === "/pages") {
+    const title = body.title === undefined || body.title === null ? null : String(body.title).trim();
     if (title !== null && title.length > 200) {
-      return fail(400, 'validation_failed', '分页标题长度不能超过 200 字符');
+      return fail(400, "validation_failed", "分页标题长度不能超过 200 字符");
     }
     let description: string | null = null;
     if (body.description !== undefined && body.description !== null) {
-      if (typeof body.description !== 'string') {
-        return fail(400, 'validation_failed', '分页描述必须是字符串');
+      if (typeof body.description !== "string") {
+        return fail(400, "validation_failed", "分页描述必须是字符串");
       }
       description = body.description.trim();
       if (description.length > 1000) {
-        return fail(400, 'validation_failed', '分页描述长度不能超过 1000 字符');
+        return fail(400, "validation_failed", "分页描述长度不能超过 1000 字符");
       }
     }
     const existing = await listSurveyPages(db, surveyId);
     if (existing.length >= 50) {
-      return fail(400, 'validation_failed', '分页数量不能超过 50');
+      return fail(400, "validation_failed", "分页数量不能超过 50");
     }
     const pageId = await createSurveyPage(db, {
       surveyId,
@@ -2486,14 +2788,14 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json(
       { id: pageId, order: existing.length, updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   // POST /api/admin/surveys/:id/pages/reorder — 批量重排分页
-  if (request.method === 'POST' && rest === '/pages/reorder') {
+  if (request.method === "POST" && rest === "/pages/reorder") {
     if (!Array.isArray(body.pageIds) || body.pageIds.some((value) => !Number.isInteger(value))) {
-      return fail(400, 'validation_failed', 'pageIds 必须是整数数组');
+      return fail(400, "validation_failed", "pageIds 必须是整数数组");
     }
     const existing = await listSurveyPages(db, surveyId);
     const existingIds = new Set(existing.map((page) => page.id));
@@ -2503,7 +2805,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       new Set(requestedIds).size !== existingIds.size ||
       requestedIds.some((value) => !existingIds.has(value))
     ) {
-      return fail(400, 'validation_failed', 'pageIds 必须与当前分页集合完全一致');
+      return fail(400, "validation_failed", "pageIds 必须与当前分页集合完全一致");
     }
     await normalizePageOrder(db, surveyId, requestedIds);
     const updatedAt = await touchSurvey(db, surveyId);
@@ -2515,33 +2817,28 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const pageId = Number(pageMatch[1]);
     const page = await getSurveyPageById(db, pageId);
     if (!page || page.surveyId !== surveyId) {
-      return fail(404, 'not_found', '分页不存在');
+      return fail(404, "not_found", "分页不存在");
     }
 
-    if (request.method === 'PATCH') {
-      const title =
-        body.title === undefined
-          ? undefined
-          : body.title === null
-            ? null
-            : String(body.title).trim();
+    if (request.method === "PATCH") {
+      const title = body.title === undefined ? undefined : body.title === null ? null : String(body.title).trim();
       if (title !== undefined && title !== null && title.length > 200) {
-        return fail(400, 'validation_failed', '分页标题长度不能超过 200 字符');
+        return fail(400, "validation_failed", "分页标题长度不能超过 200 字符");
       }
       let description: string | null | undefined;
       if (body.description !== undefined) {
         if (body.description === null) description = null;
-        else if (typeof body.description === 'string') {
+        else if (typeof body.description === "string") {
           description = body.description.trim();
           if (description.length > 1000) {
-            return fail(400, 'validation_failed', '分页描述长度不能超过 1000 字符');
+            return fail(400, "validation_failed", "分页描述长度不能超过 1000 字符");
           }
-        } else return fail(400, 'validation_failed', '分页描述必须是字符串');
+        } else return fail(400, "validation_failed", "分页描述必须是字符串");
       }
       let order: number | undefined;
       if (body.order !== undefined) {
         if (!Number.isInteger(body.order) || Number(body.order) < 0) {
-          return fail(400, 'validation_failed', 'order 必须是非负整数');
+          return fail(400, "validation_failed", "order 必须是非负整数");
         }
         order = Number(body.order);
       }
@@ -2558,7 +2855,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       return json({ updatedAt });
     }
 
-    if (request.method === 'DELETE') {
+    if (request.method === "DELETE") {
       await deleteSurveyPage(db, pageId);
       const updatedAt = await touchSurvey(db, surveyId);
       return json({ updatedAt });
@@ -2569,15 +2866,13 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   if (questionMatch) {
     const questionId = Number(questionMatch[1]);
     const question = await getQuestionById(db, questionId);
-    if (!question || question.surveyId !== surveyId) return fail(404, 'not_found', '题目不存在');
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "题目不存在");
 
     // PATCH — 更新题目字段（保 ID；不改题型）
-    if (request.method === 'PATCH') {
+    if (request.method === "PATCH") {
       const { payload, error } = validateQuestionPayload(body, false);
-      if (error) return fail(400, 'validation_failed', error);
-      const targetType = body.type !== undefined
-        ? (body.type as QuestionType)
-        : question.type;
+      if (error) return fail(400, "validation_failed", error);
+      const targetType = body.type !== undefined ? (body.type as QuestionType) : question.type;
       if (body.type !== undefined && body.type !== question.type) {
         await updateQuestionType(db, questionId, targetType);
         if (isMatrixQuestionType(question.type) && !isMatrixQuestionType(targetType)) {
@@ -2585,7 +2880,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         }
         if (isMatrixQuestionType(targetType)) {
           if (!payload!.settingsJson) {
-            return fail(400, 'validation_failed', 'matrix 题需要提供 settings.columns');
+            return fail(400, "validation_failed", "matrix 题需要提供 settings.columns");
           }
           await updateQuestionSettings(db, questionId, payload!.settingsJson);
         }
@@ -2599,7 +2894,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       }
       if (body.settings !== undefined) {
         if (!isMatrixQuestionType(targetType) && payload!.settingsJson) {
-          return fail(400, 'validation_failed', '仅 matrix 题支持 settings');
+          return fail(400, "validation_failed", "仅 matrix 题支持 settings");
         }
         await updateQuestionSettings(db, questionId, payload!.settingsJson);
       }
@@ -2611,7 +2906,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
           const pageId = Number(body.pageId);
           const page = await getSurveyPageById(db, pageId);
           if (!page || page.surveyId !== surveyId) {
-            return fail(400, 'validation_failed', 'pageId 无效');
+            return fail(400, "validation_failed", "pageId 无效");
           }
           await updateQuestionPage(db, questionId, pageId);
         } else {
@@ -2620,15 +2915,10 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       }
       if (body.condition !== undefined) {
         const condition = normalizeQuestionCondition(body.condition);
-        if ('error' in condition) {
-          return fail(400, 'validation_failed', condition.error);
+        if ("error" in condition) {
+          return fail(400, "validation_failed", condition.error);
         }
-        await updateQuestionCondition(
-          db,
-          questionId,
-          condition.conditionJson,
-          condition.skipToQuestionId,
-        );
+        await updateQuestionCondition(db, questionId, condition.conditionJson, condition.skipToQuestionId);
       }
       if (body.appendOptions !== undefined) {
         const existingOptions = await listOptionsForQuestions(db, [questionId]);
@@ -2644,7 +2934,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
     // DELETE — 删除题目（repository 内含 order 补位；跳题规则的悬挂引用与
     // bot 端 deleteQuestion 行为一致：引擎对失效目标回退线性顺序）
-    if (request.method === 'DELETE') {
+    if (request.method === "DELETE") {
       await deleteQuestion(db, questionId);
       const updatedAt = await touchSurvey(db, surveyId);
       return json({ updatedAt });
@@ -2654,14 +2944,14 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   // POST /api/admin/surveys/:id/questions/:qid/options — 追加单个选项
   // （独立端点返回新选项 ID，供编辑器的保存队列做临时 ID 映射）
   const questionOptionsMatch = rest.match(/^\/questions\/(\d+)\/options$/);
-  if (request.method === 'POST' && questionOptionsMatch) {
+  if (request.method === "POST" && questionOptionsMatch) {
     const questionId = Number(questionOptionsMatch[1]);
     const question = await getQuestionById(db, questionId);
-    if (!question || question.surveyId !== surveyId) return fail(404, 'not_found', '题目不存在');
-    const error = readString(body.label, '选项文本', 200);
-    if (error) return fail(400, 'validation_failed', error);
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "题目不存在");
+    const error = readString(body.label, "选项文本", 200);
+    if (error) return fail(400, "validation_failed", error);
     const existingOptions = await listOptionsForQuestions(db, [questionId]);
-    if (existingOptions.length >= 50) return fail(400, 'validation_failed', '选项数量不能超过 50');
+    if (existingOptions.length >= 50) return fail(400, "validation_failed", "选项数量不能超过 50");
     const optionId = await createQuestionOption(db, {
       questionId,
       label: String(body.label).trim(),
@@ -2671,41 +2961,38 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json(
       { id: optionId, order: existingOptions.length, updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   const duplicateQuestionMatch = rest.match(/^\/questions\/(\d+)\/duplicate$/);
-  if (request.method === 'POST' && duplicateQuestionMatch) {
+  if (request.method === "POST" && duplicateQuestionMatch) {
     const questionId = Number(duplicateQuestionMatch[1]);
     const question = await getQuestionById(db, questionId);
     if (!question || question.surveyId !== surveyId) {
-      return fail(404, 'not_found', '题目不存在');
+      return fail(404, "not_found", "题目不存在");
     }
     const newQuestionId = await duplicateQuestion(db, questionId);
     const updatedAt = await touchSurvey(db, surveyId);
-    return Response.json(
-      { id: newQuestionId, updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
-    );
+    return Response.json({ id: newQuestionId, updatedAt }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
   const optionMatch = rest.match(/^\/options\/(\d+)$/);
   if (optionMatch) {
     const optionId = Number(optionMatch[1]);
     const option = await getQuestionOptionById(db, optionId);
-    if (!option) return fail(404, 'not_found', '选项不存在');
+    if (!option) return fail(404, "not_found", "选项不存在");
     const question = await getQuestionById(db, option.questionId);
-    if (!question || question.surveyId !== surveyId) return fail(404, 'not_found', '选项不存在');
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "选项不存在");
 
-    if (request.method === 'PATCH') {
-      const error = readString(body.label, '选项文本', 200);
-      if (error) return fail(400, 'validation_failed', error);
+    if (request.method === "PATCH") {
+      const error = readString(body.label, "选项文本", 200);
+      if (error) return fail(400, "validation_failed", error);
       await updateQuestionOptionLabel(db, optionId, String(body.label).trim());
       const updatedAt = await touchSurvey(db, surveyId);
       return json({ updatedAt });
     }
-    if (request.method === 'DELETE') {
+    if (request.method === "DELETE") {
       await deleteQuestionOption(db, optionId);
       const updatedAt = await touchSurvey(db, surveyId);
       return json({ updatedAt });
@@ -2713,23 +3000,20 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   }
 
   const duplicateOptionMatch = rest.match(/^\/options\/(\d+)\/duplicate$/);
-  if (request.method === 'POST' && duplicateOptionMatch) {
+  if (request.method === "POST" && duplicateOptionMatch) {
     const optionId = Number(duplicateOptionMatch[1]);
     const option = await getQuestionOptionById(db, optionId);
-    if (!option) return fail(404, 'not_found', '选项不存在');
+    if (!option) return fail(404, "not_found", "选项不存在");
     const question = await getQuestionById(db, option.questionId);
     if (!question || question.surveyId !== surveyId) {
-      return fail(404, 'not_found', '选项不存在');
+      return fail(404, "not_found", "选项不存在");
     }
     const newOptionId = await duplicateQuestionOption(db, optionId);
     const updatedAt = await touchSurvey(db, surveyId);
-    return Response.json(
-      { id: newOptionId, updatedAt },
-      { status: 201, headers: { 'Cache-Control': 'no-store' } },
-    );
+    return Response.json({ id: newOptionId, updatedAt }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
-  return fail(404, 'not_found', 'Not found');
+  return fail(404, "not_found", "Not found");
 }
 
 async function insertQuestionWithOptions(
@@ -2773,7 +3057,7 @@ export async function verifyTelegramWebAppProfile(
   request: Request,
   botToken: string,
 ): Promise<TelegramWebAppProfile | null> {
-  const initDataHeader = request.headers.get('x-telegram-init-data');
+  const initDataHeader = request.headers.get("x-telegram-init-data");
   if (!initDataHeader || !botToken) return null;
   let initData: string;
   try {
@@ -2784,32 +3068,32 @@ export async function verifyTelegramWebAppProfile(
     return null;
   }
   const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  const userJson = params.get('user');
+  const hash = params.get("hash");
+  const userJson = params.get("user");
   if (!hash || !userJson) return null;
-  const authDate = Number(params.get('auth_date'));
+  const authDate = Number(params.get("auth_date"));
   if (!Number.isFinite(authDate) || authDate <= 0 || Date.now() / 1000 - authDate > INIT_DATA_MAX_AGE_SECONDS) {
     return null;
   }
-  params.delete('hash');
+  params.delete("hash");
   const dataCheckString = [...params.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
+    .join("\n");
   const encoder = new TextEncoder();
   const secretMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode('WebAppData'),
-    { name: 'HMAC', hash: 'SHA-256' },
+    "raw",
+    encoder.encode("WebAppData"),
+    { name: "HMAC", hash: "SHA-256" },
     false,
-    ['sign'],
+    ["sign"],
   );
-  const secret = await crypto.subtle.sign('HMAC', secretMaterial, encoder.encode(botToken));
-  const checkMaterial = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
+  const secret = await crypto.subtle.sign("HMAC", secretMaterial, encoder.encode(botToken));
+  const checkMaterial = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
   ]);
-  const digest = new Uint8Array(await crypto.subtle.sign('HMAC', checkMaterial, encoder.encode(dataCheckString)));
-  const expected = [...digest].map((value) => value.toString(16).padStart(2, '0')).join('');
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", checkMaterial, encoder.encode(dataCheckString)));
+  const expected = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
   if (expected !== hash) return null;
   try {
     const telegramUser = JSON.parse(userJson) as {
@@ -2819,7 +3103,7 @@ export async function verifyTelegramWebAppProfile(
       last_name?: string;
       language_code?: string;
     };
-    if (typeof telegramUser.id !== 'number') return null;
+    if (typeof telegramUser.id !== "number") return null;
     return {
       telegramUserId: telegramUser.id,
       username: telegramUser.username ?? null,

@@ -136,10 +136,10 @@ export function ImportPage() {
     <div className="space-y-4">
       <section className="card">
         <h2 className="text-lg font-semibold">从 Microsoft URL 导入</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
           输入公开的 Microsoft Forms 问卷链接（forms.office.com / forms.cloud.microsoft /
           forms.microsoft.com），自动转换为标准问卷 JSON。PDF 与 Office 文档请在本地运行
-          <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">
+          <code className="mx-1 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-xs">
             uv run python scripts/import_survey_from_url.py
           </code>
           后把生成的 survey.json 粘贴到下方。
@@ -147,7 +147,7 @@ export function ImportPage() {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <input
             type="url"
-            className="min-w-64 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm"
+            className="min-w-64 flex-1 rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
             placeholder="https://forms.office.com/r/…"
             value={urlInput}
             onChange={(event) => {
@@ -178,11 +178,11 @@ export function ImportPage() {
 
       <section className="card">
         <h2 className="text-lg font-semibold">导入问卷 JSON</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
           支持 PDF 转换器（scripts/forms_pdf_to_survey.py）输出的 survey.json，或任意符合统一结构的 JSON。
         </p>
         <textarea
-          className="mt-4 min-h-64 w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm leading-relaxed"
+          className="mt-4 min-h-64 w-full rounded-lg border border-[var(--control-border)] bg-[var(--surface)] p-3 font-mono text-sm leading-relaxed"
           placeholder='{"schema_version":1,"survey":{"title":"问卷标题","questions":[...]}}'
           value={content}
           onChange={(event) => {
@@ -206,7 +206,7 @@ export function ImportPage() {
             <FolderOpen className="h-4 w-4" />选择 JSON 文件
           </button>
           <select
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm sm:flex-none"
+            className="rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm sm:flex-none"
             value={templateId}
             onChange={(event) => setTemplateId(event.target.value)}
           >
@@ -218,9 +218,9 @@ export function ImportPage() {
             ))}
           </select>
         </div>
-        {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-red-600">{error}</div> : null}
+        {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-[var(--color-danger)]">{error}</div> : null}
         {issues.length ? (
-          <div className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
             <div className="font-medium">导入校验失败（{issues.length} 处）</div>
             <ul className="mt-1 max-h-72 list-inside list-disc space-y-1 overflow-auto">
               {issues.map((issue, index) => (
@@ -234,7 +234,7 @@ export function ImportPage() {
                     </>
                   ) : null}
                   {issue.message}
-                  <span className="ml-1 font-mono text-xs text-rose-500">{issue.path}</span>
+                  <span className="ml-1 font-mono text-xs text-[var(--color-danger)]">{issue.path}</span>
                 </li>
               ))}
             </ul>
@@ -247,7 +247,7 @@ export function ImportPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold">{summary.title || "未命名问卷"}</h3>
-          {summary.description ? <p className="mt-1 text-sm text-gray-500">{summary.description}</p> : null}
+          {summary.description ? <p className="mt-1 text-sm text-[var(--color-muted)]">{summary.description}</p> : null}
           {summary.cover ? (
             <img
               src={summary.cover.url}
@@ -256,25 +256,25 @@ export function ImportPage() {
             />
           ) : null}
           {summary.reportTemplateId ? (
-            <p className="mt-1 text-sm text-indigo-600">
+            <p className="mt-1 text-sm text-[var(--color-primary)]">
               报告模板：{summary.reportTemplateName ?? summary.reportTemplateId}
             </p>
           ) : null}
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
-              <span className="rounded-full bg-indigo-50 px-3 py-1 font-medium text-indigo-700">{summary.questionCount} 题</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{summary.optionCount} 选项</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{summary.pageCount} 页</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">{summary.media.total} 媒体</span>
+              <span className="rounded-full bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-3 py-1 font-medium text-[var(--color-primary)]">{summary.questionCount} 题</span>
+              <span className="rounded-full bg-[var(--surface-muted)] px-3 py-1 text-[var(--text-soft)]">{summary.optionCount} 选项</span>
+              <span className="rounded-full bg-[var(--surface-muted)] px-3 py-1 text-[var(--text-soft)]">{summary.pageCount} 页</span>
+              <span className="rounded-full bg-[var(--surface-muted)] px-3 py-1 text-[var(--text-soft)]">{summary.media.total} 媒体</span>
             </div>
           </div>
 
           {Object.keys(summary.typeCounts).length ? (
             <div className="mt-4">
-              <div className="text-sm font-medium text-gray-500">题型分布</div>
+              <div className="text-sm font-medium text-[var(--color-muted)]">题型分布</div>
               <div className="mt-2 flex flex-wrap gap-2 text-sm">
                 {Object.entries(summary.typeCounts).map(([type, count]) => (
-                  <span key={type} className="rounded-lg border border-gray-200 px-2.5 py-1">
+                  <span key={type} className="rounded-lg border border-[var(--color-edge)] px-2.5 py-1">
                     {TYPE_LABELS[type] ?? type} <span className="font-semibold">×{count}</span>
                   </span>
                 ))}
@@ -283,13 +283,13 @@ export function ImportPage() {
           ) : null}
 
           {summary.media.total > 0 ? (
-            <div className="mt-4 text-sm text-gray-500">
+            <div className="mt-4 text-sm text-[var(--color-muted)]">
               问题媒体 {summary.media.question} · 选项媒体 {summary.media.option}
             </div>
           ) : null}
 
           {summary.warnings.length ? (
-            <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] p-3 text-sm text-[var(--color-warning)]">
               <div className="flex items-center gap-1.5 font-medium"><AlertTriangle className="h-4 w-4" />自动修复警告</div>
               <ul className="mt-1 list-inside list-disc space-y-0.5">
                 {summary.warnings.map((warning, index) => (
@@ -300,19 +300,19 @@ export function ImportPage() {
           ) : null}
 
           {summary.lowConfidence.length ? (
-            <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
               <div className="flex items-center gap-1.5 font-medium"><AlertTriangle className="h-4 w-4" />建议重点检查 {summary.lowConfidence.length}+ 道题（低置信度或警告）</div>
               <ul className="mt-1 max-h-56 list-inside list-disc space-y-1 overflow-auto">
                 {summary.lowConfidence.map((question) => (
                   <li key={question.order}>
                     第 {question.order} 题 · {question.title || "（无标题）"}
-                    <span className="ml-1 text-rose-600">
+                    <span className="ml-1 text-[var(--color-danger)]">
                       （题型 {formatConfidence(question.confidence?.type)} · 必答 {formatConfidence(question.confidence?.required)}）
                     </span>
                     {question.warnings.length ? (
                       <ul className="ml-4 list-disc">
                         {question.warnings.map((warning, index) => (
-                          <li key={index} className="text-rose-700">{warning}</li>
+                          <li key={index} className="text-[var(--color-danger)]">{warning}</li>
                         ))}
                       </ul>
                     ) : null}

@@ -64,6 +64,11 @@ export interface SurveyThemeDto {
   button?: {
     radius?: number;
   };
+  completion?: {
+    message?: string;
+    redirectUrl?: string;
+    showRestart?: boolean;
+  };
 }
 
 export interface SurveyDto {

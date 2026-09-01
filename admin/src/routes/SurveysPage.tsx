@@ -37,9 +37,14 @@ export function SurveysPage() {
     setCreateError(null);
     try {
       const result = await apiSend<WriteResult>("POST", "/api/admin/surveys", { title: "未命名问卷" });
-      if (typeof result.id === "number") navigate(`/surveys/${result.id}/editor`);
+      if (typeof result.id === "number") {
+        navigate(`/surveys/${result.id}/editor`);
+        return;
+      }
+      setCreateError("创建结果异常，请重试");
     } catch (requestError) {
       setCreateError(requestError instanceof Error ? requestError.message : "创建失败");
+    } finally {
       setCreating(false);
     }
   };
@@ -48,7 +53,7 @@ export function SurveysPage() {
     <section className="card">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-0 flex-1 sm:min-w-52">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-soft)]" />
           <input
             type="text"
             className="input w-full pl-9"
@@ -69,7 +74,7 @@ export function SurveysPage() {
           {creating ? "创建中…" : <><Plus className="h-4 w-4" />新建问卷</>}
         </button>
       </div>
-      {createError ? <div className="mb-3 text-sm text-red-600">新建失败：{createError}</div> : null}
+      {createError ? <div className="mb-3 text-sm text-[var(--color-danger)]">新建失败：{createError}</div> : null}
 
       {error ? (
         <ErrorPanel error={error} onRetry={retry} />
@@ -81,16 +86,16 @@ export function SurveysPage() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th className="text-sm font-semibold text-gray-500">标题</th>
-                  <th className="text-sm font-semibold text-gray-500">状态</th>
-                  <th className="text-sm font-semibold text-gray-500">题目</th>
-                  <th className="text-sm font-semibold text-gray-500">答卷</th>
-                  <th className="text-sm font-semibold text-gray-500">更新时间</th>
+                  <th className="text-sm font-semibold text-[var(--color-muted)]">标题</th>
+                  <th className="text-sm font-semibold text-[var(--color-muted)]">状态</th>
+                  <th className="text-sm font-semibold text-[var(--color-muted)]">题目</th>
+                  <th className="text-sm font-semibold text-[var(--color-muted)]">答卷</th>
+                  <th className="text-sm font-semibold text-[var(--color-muted)]">更新时间</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((item) => (
-                  <tr key={item.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/surveys/${item.id}`)}>
+                  <tr key={item.id} className="cursor-pointer hover:bg-[var(--surface-hover)]" onClick={() => navigate(`/surveys/${item.id}`)}>
                     <td className="text-sm">
                       <Link to={`/surveys/${item.id}`} className="font-semibold text-inherit no-underline">
                         {item.title || "未命名问卷"}
@@ -112,13 +117,13 @@ export function SurveysPage() {
               <Link
                 key={item.id}
                 to={`/surveys/${item.id}`}
-                className="block rounded-lg border border-gray-200 bg-white p-4 no-underline active:bg-slate-50"
+                className="block rounded-lg border border-[var(--color-edge)] bg-[var(--surface)] p-4 no-underline active:bg-[var(--surface-muted)]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <strong>{item.title || "未命名问卷"}</strong>
                   <StatusBadge status={item.status} />
                 </div>
-                <div className="mt-2 text-sm text-gray-500">
+                <div className="mt-2 text-sm text-[var(--color-muted)]">
                   {item.questionCount} 题 · {item.responseCount} 答卷 · {formatDateTime(item.updatedAt)}
                 </div>
               </Link>

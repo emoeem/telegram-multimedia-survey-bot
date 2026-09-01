@@ -94,6 +94,8 @@ export function reportDeliveryStatusTimestamp(): string {
 /**
  * Cron driver for report delivery retries: re-enqueues pending deliveries
  * whose backoff window has elapsed. Attempts past the cap are marked failed.
+ * Deliveries stuck in "delivering" (worker died after claiming) are rolled
+ * back to pending so the next pass re-enqueues them.
  */
 export async function retryPendingReportDeliveries(
   db: D1Database,
@@ -113,14 +115,29 @@ export async function retryPendingReportDeliveries(
     .bind(timestamp, REPORT_DELIVERY_MAX_ATTEMPTS, timestamp)
     .run();
 
+  // A claim is only valid while the worker is alive; anything still
+  // "delivering" after 10 minutes died mid-flight and is reclaimable.
+  // Deliveries that already burned through the attempt cap are failed
+  // instead so a poison row cannot loop forever.
+  const staleDelivering = await db
+    .prepare(
+      `UPDATE report_deliveries
+       SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
+           updated_at = ?
+       WHERE status = 'delivering'
+         AND updated_at < ?`,
+    )
+    .bind(REPORT_DELIVERY_MAX_ATTEMPTS, timestamp, new Date(now.getTime() - 10 * 60 * 1000).toISOString())
+    .run();
+  const reclaimed = staleDelivering.meta?.changes ?? 0;
+
   const rows = await db
     .prepare(
       `SELECT delivery_id deliveryId
        FROM report_deliveries
        WHERE status = 'pending'
          AND attempts < ?
-         AND next_retry_at IS NOT NULL
-         AND next_retry_at <= ?
+         AND (next_retry_at IS NULL OR next_retry_at <= ?)
        ORDER BY next_retry_at ASC
        LIMIT 100`,
     )
@@ -130,5 +147,5 @@ export async function retryPendingReportDeliveries(
   for (const row of deliveries) {
     await queue.send({ kind: "report_delivery", deliveryId: row.deliveryId } satisfies ReportDeliveryMessage);
   }
-  return { requeued: deliveries.length };
+  return { requeued: deliveries.length + reclaimed };
 }

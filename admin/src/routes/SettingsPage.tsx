@@ -88,6 +88,7 @@ export function SettingsPage() {
     try {
       await apiSend("PUT", "/api/admin/settings", {
         report_channel_id: settings.reportChannelId,
+        plaza_channel_id: settings.plazaChannelId,
         default_report_template: settings.defaultReportTemplate,
         media_ttl_seconds: settings.mediaTtlSeconds,
         max_upload_mb: settings.maxUploadMb,
@@ -155,6 +156,15 @@ export function SettingsPage() {
               className="input w-full"
               value={settings.reportChannelId}
               onChange={(event) => update({ reportChannelId: event.target.value })}
+              placeholder="-100xxxxxxxxxx"
+            />
+          </Field>
+
+          <Field label="广场同步频道 ID" hint="资料卡发布到画廊、树洞新投稿会自动转发到该频道">
+            <input
+              className="input w-full"
+              value={settings.plazaChannelId}
+              onChange={(event) => update({ plazaChannelId: event.target.value })}
               placeholder="-100xxxxxxxxxx"
             />
           </Field>

@@ -454,7 +454,9 @@ function renderBackground(
         defs: "",
         markup: `<image href="${escapeAttribute(source)}" width="${width}" height="${height}" preserveAspectRatio="${background.fit === "contain" ? "xMidYMid meet" : background.fit === "stretch" ? "none" : "xMidYMid slice"}" opacity="${background.opacity ?? 1}"/>${overlay}${card}`,
       }
-    : { defs: "", markup: `${overlay}${card}` };
+    : // A missing background must still paint a base color: a fully
+      // transparent PNG is rendered as solid black by Telegram clients.
+      { defs: "", markup: `<rect width="${width}" height="${height}" fill="#0f172a"/>${overlay}${card}` };
 }
 
 export function renderResultVisualSvg(

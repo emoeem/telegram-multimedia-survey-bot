@@ -16,6 +16,9 @@ import { LoginPage } from "./routes/LoginPage";
 import { AuditPage } from "./routes/AuditPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { LicensesPage } from "./routes/LicensesPage";
+import { IdentityCardsPage } from "./routes/IdentityCardsPage";
+import { CardTemplatesPage } from "./routes/CardTemplatesPage";
+import { PlazaPostsPage } from "./routes/PlazaPostsPage";
 
 const router = createBrowserRouter(
   [
@@ -33,6 +36,9 @@ const router = createBrowserRouter(
         { path: "surveys/:id/versions", element: <VersionsPage /> },
         { path: "reports", element: <ReportsPage /> },
         { path: "templates", element: <TemplatesPage /> },
+        { path: "identity-cards", element: <IdentityCardsPage /> },
+        { path: "card-templates", element: <CardTemplatesPage /> },
+        { path: "plaza", element: <PlazaPostsPage /> },
         { path: "audit", element: <AuditPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "licenses", element: <LicensesPage /> },

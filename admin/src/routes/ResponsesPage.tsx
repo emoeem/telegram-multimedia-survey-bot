@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   FileText,
   Package,
+  Send,
   Share2,
   X,
 } from "lucide-react";
@@ -51,10 +52,12 @@ export function ResponsesPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<{ total: number; done: number; failed: number } | null>(null);
   const pollTimerRef = useRef<number | null>(null);
+  const pollCancelledRef = useRef(false);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
 
   useEffect(
     () => () => {
+      pollCancelledRef.current = true;
       if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     },
     [],
@@ -173,6 +176,7 @@ export function ResponsesPage() {
       setMessage(`已把 ${result.queued} 份答卷的报告加入导出队列，将按顺序发送到私人频道`);
       setSelected(new Set());
       setExportProgress({ total: result.queued, done: 0, failed: 0 });
+      pollCancelledRef.current = false;
       pollExportStatus([...selected]);
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "批量导出失败");
@@ -181,8 +185,28 @@ export function ResponsesPage() {
     }
   };
 
-  const pollExportStatus = async (ids: number[], attempt = 0) => {
+  const sendSummaryToChannel = async () => {
     if (!id) return;
+    if (!window.confirm("把该问卷全部答卷的汇总表（CSV）发送到报告归档频道？")) return;
+    setBusy(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const result = await apiSend<{ ok: true; rows: number; fileName: string }>(
+        "POST",
+        `/api/admin/surveys/${id}/responses/send-to-channel`,
+        {},
+      );
+      setMessage(`已把 ${result.rows} 份答卷的汇总表（${result.fileName}）发送到报告频道`);
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : "发送汇总表失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pollExportStatus = async (ids: number[], attempt = 0) => {
+    if (!id || pollCancelledRef.current) return;
     if (attempt >= 40) {
       setExportProgress(null);
       setMessage("导出进度查询超时，请到「报告归档」页查看最终状态");
@@ -194,6 +218,7 @@ export function ResponsesPage() {
         `/api/admin/surveys/${id}/responses/export-status`,
         { ids },
       );
+      if (pollCancelledRef.current) return;
       const failed = result.counts.failed ?? 0;
       const done = (result.counts.delivered ?? 0) + failed;
       setExportProgress({ total: result.total, done, failed });
@@ -208,6 +233,7 @@ export function ResponsesPage() {
       }
       pollTimerRef.current = window.setTimeout(() => void pollExportStatus(ids, attempt + 1), 3000);
     } catch {
+      if (pollCancelledRef.current) return;
       pollTimerRef.current = window.setTimeout(() => void pollExportStatus(ids, attempt + 1), 3000);
     }
   };
@@ -223,7 +249,7 @@ export function ResponsesPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">{data.survey.title}</h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
               共 {data.total} 份答卷{data.survey.anonymous ? " · 匿名问卷" : ""}
             </p>
           </div>
@@ -237,7 +263,7 @@ export function ResponsesPage() {
                 setPage(1);
               }}
             />
-            <span className="text-sm text-gray-400">至</span>
+            <span className="text-sm text-[var(--color-muted-soft)]">至</span>
             <input
               className="input"
               type="date"
@@ -262,21 +288,21 @@ export function ResponsesPage() {
           </div>
         </div>
 
-        {message ? <div className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">{message}</div> : null}
+        {message ? <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm text-[var(--color-success)]">{message}</div> : null}
         {exportProgress ? (
-          <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] p-3 text-sm text-[var(--color-info)]">
             导出中：{exportProgress.done}/{exportProgress.total} 份已发送
             {exportProgress.failed > 0 ? `（失败 ${exportProgress.failed}）` : ""}
           </div>
         ) : null}
-        {actionError ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{actionError}</div> : null}
+        {actionError ? <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">{actionError}</div> : null}
 
         {data.items.length ? (
           <div className="mt-5 overflow-x-auto">
             <table className="tbl">
               <thead>
                 <tr>
-                  <th className="text-sm text-gray-500">
+                  <th className="text-sm text-[var(--color-muted)]">
                     {completedItems.length ? (
                       <input
                         type="checkbox"
@@ -286,18 +312,18 @@ export function ResponsesPage() {
                       />
                     ) : null}
                   </th>
-                  <th className="text-sm text-gray-500">编号</th>
-                  <th className="text-sm text-gray-500">填写者</th>
-                  <th className="text-sm text-gray-500">状态</th>
-                  <th className="text-sm text-gray-500">完成时间</th>
-                  <th className="text-sm text-gray-500">操作</th>
+                  <th className="text-sm text-[var(--color-muted)]">编号</th>
+                  <th className="text-sm text-[var(--color-muted)]">填写者</th>
+                  <th className="text-sm text-[var(--color-muted)]">状态</th>
+                  <th className="text-sm text-[var(--color-muted)]">完成时间</th>
+                  <th className="text-sm text-[var(--color-muted)]">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((item) => {
                   const completed = item.status === "completed";
                   return (
-                    <tr key={item.id} className="hover:bg-slate-50">
+                    <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                       <td className="">
                         {completed ? (
                           <input
@@ -309,7 +335,7 @@ export function ResponsesPage() {
                         ) : null}
                       </td>
                       <td className="text-sm">
-                        <Link className="font-semibold text-blue-700" to={`/surveys/${data.survey.id}/responses/${item.id}`}>#{item.id}</Link>
+                        <Link className="font-semibold text-[var(--color-info)]" to={`/surveys/${data.survey.id}/responses/${item.id}`}>#{item.id}</Link>
                       </td>
                       <td className="text-sm">{respondentName(item)}</td>
                       <td className="text-sm">{item.statusLabel}</td>
@@ -364,8 +390,11 @@ export function ResponsesPage() {
             >
               {busy ? "处理中…" : <><Package className="h-4 w-4" />导出到私人频道（{selected.size}）</>}
             </button>
+            <button className="btn" disabled={busy} onClick={() => void sendSummaryToChannel()}>
+              <Send className="h-4 w-4" />汇总表发到频道
+            </button>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
             <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
             <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
             <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>
@@ -401,7 +430,7 @@ export function ResponsesPage() {
           </div>
           <iframe
             title="报告预览"
-            className="mt-3 h-[72vh] w-full rounded-lg border border-gray-200"
+            className="mt-3 h-[72vh] w-full rounded-lg border border-[var(--color-edge)]"
             src={previewUrl}
           />
         </section>

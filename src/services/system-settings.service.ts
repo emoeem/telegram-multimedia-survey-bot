@@ -2,6 +2,7 @@ import { getSystemSetting, listSystemSettings, setSystemSetting } from "../db/re
 
 export const SYSTEM_SETTING_KEYS = [
   "report_channel_id",
+  "plaza_channel_id",
   "default_report_template",
   "media_ttl_seconds",
   "max_upload_mb",
@@ -14,6 +15,7 @@ export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number];
 
 export interface SystemSettings {
   reportChannelId: string;
+  plazaChannelId: string;
   defaultReportTemplate: string;
   mediaTtlSeconds: number;
   maxUploadMb: number;
@@ -24,6 +26,7 @@ export interface SystemSettings {
 
 export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   reportChannelId: "",
+  plazaChannelId: "",
   defaultReportTemplate: "classic",
   mediaTtlSeconds: 7 * 24 * 60 * 60,
   maxUploadMb: 10,
@@ -40,6 +43,7 @@ export async function loadSystemSettings(db: D1Database): Promise<SystemSettings
   };
   return {
     reportChannelId: stored["report_channel_id"] ?? SYSTEM_SETTING_DEFAULTS.reportChannelId,
+    plazaChannelId: stored["plaza_channel_id"] ?? SYSTEM_SETTING_DEFAULTS.plazaChannelId,
     defaultReportTemplate: stored["default_report_template"] ?? SYSTEM_SETTING_DEFAULTS.defaultReportTemplate,
     mediaTtlSeconds: number("media_ttl_seconds", SYSTEM_SETTING_DEFAULTS.mediaTtlSeconds),
     maxUploadMb: number("max_upload_mb", SYSTEM_SETTING_DEFAULTS.maxUploadMb),

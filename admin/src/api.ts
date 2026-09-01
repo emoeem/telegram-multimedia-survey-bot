@@ -18,6 +18,10 @@ export function authHeaders(): Record<string, string> {
     // are not valid in header values, so it must be percent-encoded.
     "x-telegram-init-data": telegramInitData ? encodeURIComponent(telegramInitData) : "",
     "x-telegram-user-id": localStorage.getItem("telegramUserId") || "",
+    // Local development only: the worker accepts the x-telegram-user-id
+    // fallback solely when this matches ADMIN_DEV_AUTH_SECRET, so a public
+    // deployment can never be taken over by a spoofed user id header.
+    "x-dev-auth-secret": localStorage.getItem("adminDevAuthSecret") || "",
   };
 }
 
@@ -30,6 +34,11 @@ async function parseResponse(response: Response): Promise<Record<string, unknown
 }
 
 async function throwApiError(response: Response): Promise<never> {
+  // An expired 7-day session cookie used to surface as endless "请求失败"
+  // panels; route the user to the login page instead.
+  if (response.status === 401 && !window.location.pathname.startsWith("/admin/login")) {
+    window.location.assign("/admin/login");
+  }
   const data = await parseResponse(response);
   throw new ApiError(response.status, (data.message as string) || "请求失败", data);
 }
@@ -172,6 +181,7 @@ export interface SurveyDetailData {
     card?: { background?: string; border?: string; radius?: number; glass?: boolean };
     text?: { heading?: string; body?: string; muted?: string };
     button?: { radius?: number };
+    completion?: { message?: string; redirectUrl?: string; showRestart?: boolean };
   } | null;
   themePresets: Array<{ id: string; name: string }>;
 }
@@ -380,6 +390,8 @@ export interface UserDetailData {
     lastName: string | null;
     systemRole: string;
     bannedAt: string | null;
+    bannedBy: number | null;
+    banReason: string | null;
     createdAt: string;
   };
   tags: string[];
@@ -389,6 +401,18 @@ export interface UserDetailData {
 /** Opens the user's private chat in Telegram clients. */
 export function userChatLink(userId: number): string {
   return `tg://openmessage?user_id=${userId}`;
+}
+
+/** Bans or unbans a user from the admin user directory. */
+export async function setUserBan(
+  userId: number,
+  banned: boolean,
+  reason?: string,
+): Promise<{ ok: boolean; banned: boolean }> {
+  return apiSend("POST", `/api/admin/users/${userId}/ban`, {
+    banned,
+    ...(reason && reason.trim() ? { reason: reason.trim() } : {}),
+  });
 }
 
 export interface SurveyVersionSummary {
@@ -436,6 +460,7 @@ export interface ReportDeliveriesData {
 
 export interface SystemSettingsData {
   reportChannelId: string;
+  plazaChannelId: string;
   defaultReportTemplate: string;
   mediaTtlSeconds: number;
   maxUploadMb: number;
@@ -490,4 +515,77 @@ export interface CreatorTrialView {
   lastName: string | null;
   expiresAt: string;
   grantedAt: string;
+}
+
+export interface IdentityCardOwner {
+  id: number;
+  telegramUserId: number;
+  username: string | null;
+  firstName: string | null;
+}
+
+export interface IdentityCardSummary {
+  id: number;
+  name: string;
+  nickname: string | null;
+  age: number | null;
+  identityLabel: string | null;
+  description: string | null;
+  templateStyle: string;
+  galleryPublished: boolean;
+  galleryPublishedAt: string | null;
+  createdAt: string;
+  hasCardImage: boolean;
+  cardImageUrl: string | null;
+  owner: IdentityCardOwner | null;
+}
+
+export interface IdentityCardListData {
+  items: IdentityCardSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function fetchIdentityCards(
+  view: "all" | "published",
+  offset: number,
+  limit = 20,
+): Promise<IdentityCardListData> {
+  const query = new URLSearchParams({ view, offset: String(offset), limit: String(limit) });
+  return api<IdentityCardListData>(`/api/admin/identity-cards?${query}`);
+}
+
+export function setIdentityCardPublished(id: number, published: boolean): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/identity-cards/publish", { id, published });
+}
+
+export interface PlazaPostSummary {
+  id: number;
+  userId: number;
+  content: string;
+  anonymous: boolean;
+  status: "published" | "removed";
+  createdAt: string;
+  owner: {
+    telegramUserId: number;
+    username: string | null;
+    firstName: string | null;
+  } | null;
+}
+
+export interface PlazaPostListData {
+  items: PlazaPostSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function fetchPlazaPosts(view: "all" | "published", offset: number, limit = 20): Promise<PlazaPostListData> {
+  const query = new URLSearchParams({ view, offset: String(offset), limit: String(limit) });
+  return api<PlazaPostListData>(`/api/admin/plaza/posts?${query}`);
+}
+
+export function setPlazaPostStatus(id: number, status: "published" | "removed"): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/plaza/posts/status", { id, status });
 }

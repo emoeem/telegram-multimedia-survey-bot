@@ -46,6 +46,18 @@ const server = createServer(async (req, res) => {
     try {
       body = await readFile(safe);
     } catch {
+      // SPA fallback: extension-less app routes (/admin/*) must serve the
+      // admin entry, or the visual suite screenshots a bare 404 page.
+      if (!extname(pathname) && !pathname.startsWith("/fixtures/")) {
+        try {
+          body = await readFile(join(root, "index.html"));
+          res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
+          res.end(body);
+          return;
+        } catch {
+          // fall through to 404
+        }
+      }
       res.writeHead(404);
       res.end("not found");
       return;

@@ -202,17 +202,17 @@ export function ResponseDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">答卷 #{data.response.id}</h2>
-            <p className="mt-1 text-sm text-gray-500">{data.survey.title} · {respondentName(data)}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{data.survey.title} · {respondentName(data)}</p>
           </div>
           <span className="badge badge-gray">{data.response.statusLabel}</span>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div><span className="text-gray-500">开始：</span>{formatDateTime(data.response.startedAt)}</div>
-          <div><span className="text-gray-500">完成：</span>{data.response.completedAt ? formatDateTime(data.response.completedAt) : "—"}</div>
-          <div><span className="text-gray-500">更新：</span>{formatDateTime(data.response.updatedAt)}</div>
+          <div><span className="text-[var(--color-muted)]">开始：</span>{formatDateTime(data.response.startedAt)}</div>
+          <div><span className="text-[var(--color-muted)]">完成：</span>{data.response.completedAt ? formatDateTime(data.response.completedAt) : "—"}</div>
+          <div><span className="text-[var(--color-muted)]">更新：</span>{formatDateTime(data.response.updatedAt)}</div>
           <div>
-            <span className="text-gray-500">问卷版本：</span>
-            <Link className="text-indigo-600 hover:underline" to="../../versions">
+            <span className="text-[var(--color-muted)]">问卷版本：</span>
+            <Link className="text-[var(--color-primary)] hover:underline" to="../../versions">
               v{data.response.version}
             </Link>
           </div>
@@ -225,30 +225,30 @@ export function ResponseDetailPage() {
           {data.response.respondent ? (
             <>
               <div className="flex gap-2">
-                <dt className="shrink-0 text-gray-500">姓名</dt>
-                <dd className="min-w-0 break-all text-gray-800">
+                <dt className="shrink-0 text-[var(--color-muted)]">姓名</dt>
+                <dd className="min-w-0 break-all text-[var(--color-ink)]">
                   {[data.response.respondent.firstName, data.response.respondent.lastName].filter(Boolean).join(" ") || "—"}
                 </dd>
               </div>
               <div className="flex gap-2">
-                <dt className="shrink-0 text-gray-500">用户名</dt>
-                <dd className="min-w-0 break-all text-gray-800">
+                <dt className="shrink-0 text-[var(--color-muted)]">用户名</dt>
+                <dd className="min-w-0 break-all text-[var(--color-ink)]">
                   {data.response.respondent.username ? `@${data.response.respondent.username}` : "—"}
                 </dd>
               </div>
               <div className="flex gap-2">
-                <dt className="shrink-0 text-gray-500">Telegram ID</dt>
-                <dd className="min-w-0 break-all text-gray-800">{data.response.respondent.telegramUserId}</dd>
+                <dt className="shrink-0 text-[var(--color-muted)]">Telegram ID</dt>
+                <dd className="min-w-0 break-all text-[var(--color-ink)]">{data.response.respondent.telegramUserId}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="shrink-0 text-gray-500">来源</dt>
-                <dd className="min-w-0 break-all text-gray-800">Telegram</dd>
+                <dt className="shrink-0 text-[var(--color-muted)]">来源</dt>
+                <dd className="min-w-0 break-all text-[var(--color-ink)]">Telegram</dd>
               </div>
             </>
           ) : (
             <div className="flex gap-2">
-              <dt className="shrink-0 text-gray-500">参与方式</dt>
-              <dd className="min-w-0 break-all text-gray-800">
+              <dt className="shrink-0 text-[var(--color-muted)]">参与方式</dt>
+              <dd className="min-w-0 break-all text-[var(--color-ink)]">
                 {data.response.participantKey ? `网页参与 · ${data.response.participantKey}` : "网页参与（未登录）"}
               </dd>
             </div>
@@ -279,10 +279,10 @@ export function ResponseDetailPage() {
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
                     envRisk.score >= 80
-                      ? "bg-green-50 text-green-700"
+                      ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
                       : envRisk.score >= 50
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-rose-50 text-rose-700"
+                        ? "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
+                        : "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
                   }`}
                 >
                   环境一致性 {envRisk.score}%
@@ -296,8 +296,8 @@ export function ResponseDetailPage() {
                     key={signal}
                     className={`rounded-full px-2.5 py-1 ${
                       signal.includes("一致")
-                        ? "bg-green-50 text-green-700"
-                        : "bg-rose-50 text-rose-700"
+                        ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
+                        : "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
                     }`}
                   >
                     {signal}
@@ -308,13 +308,13 @@ export function ResponseDetailPage() {
             <div className="mt-3 space-y-4">
               {groups.map((group) => (
                 <div key={group.title}>
-                  <div className="text-xs font-semibold text-gray-400">{group.title}</div>
+                  <div className="text-xs font-semibold text-[var(--color-muted-soft)]">{group.title}</div>
                   <dl className="mt-1.5 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                     {group.rows.map((row) => (
                       <div key={row.label} className="flex gap-2">
-                        <dt className="shrink-0 text-gray-500">{row.label}</dt>
-                        <dd className="min-w-0 break-all text-gray-800">{row.value}</dd>
-                        <span className="ml-auto shrink-0 text-[11px] text-gray-400">
+                        <dt className="shrink-0 text-[var(--color-muted)]">{row.label}</dt>
+                        <dd className="min-w-0 break-all text-[var(--color-ink)]">{row.value}</dd>
+                        <span className="ml-auto shrink-0 text-[11px] text-[var(--color-muted-soft)]">
                           {row.source === "服务端推断" ? "服务端" : "无感"}
                         </span>
                       </div>
@@ -384,7 +384,7 @@ export function ResponseDetailPage() {
           </button>
         ) : null}
         <button
-          className="btn text-red-600"
+          className="btn text-[var(--color-danger)]"
           disabled={busy || data.response.status === "completed"}
           title={data.response.status === "completed" ? "已完成答卷是永久数据，禁止删除" : undefined}
           onClick={() => void runAction(
@@ -394,20 +394,20 @@ export function ResponseDetailPage() {
         >
           <Trash2 className="h-4 w-4" />删除
         </button>
-        {actionError ? <span className="text-sm text-red-600">{actionError}</span> : null}
+        {actionError ? <span className="text-sm text-[var(--color-danger)]">{actionError}</span> : null}
       </div>
 
       <section className="mt-5 space-y-3">
         {data.answers.map((answer) => (
           <article key={answer.questionId} className="card">
-            <div className="text-xs font-medium text-gray-400">第 {answer.order + 1} 题 · {answer.questionType}</div>
+            <div className="text-xs font-medium text-[var(--color-muted-soft)]">第 {answer.order + 1} 题 · {answer.questionType}</div>
             <h3 className="mt-1 font-semibold">{answer.questionTitle}</h3>
-            <div className={`mt-3 whitespace-pre-wrap text-sm ${answer.answered ? "text-gray-800" : "text-gray-400"}`}>
+            <div className={`mt-3 whitespace-pre-wrap text-sm ${answer.answered ? "text-[var(--color-ink)]" : "text-[var(--color-muted-soft)]"}`}>
               {answer.answered ? answer.value || "已作答" : "未作答"}
             </div>
             {answer.raw && answer.answered ? (
               <button
-                className="mt-2 text-xs text-indigo-600 hover:underline"
+                className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
                 onClick={() => setRawOpen(rawOpen === answer.questionId ? null : answer.questionId)}
               >
                 {rawOpen === answer.questionId ? "收起原始数据" : "查看原始数据"}

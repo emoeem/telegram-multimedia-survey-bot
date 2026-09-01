@@ -11,7 +11,7 @@ globs = ["**/*.ttf"]
 fallthrough = false
 
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "staging"
 APP_VERSION = "0.3.0-staging"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"

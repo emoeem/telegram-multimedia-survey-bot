@@ -261,12 +261,19 @@ export function QuestionCard({
                 onChange={(event) => {
                   const optionId = Number(event.target.value);
                   if (!optionId) return;
-                  const target = Number(window.prompt("输入目标题目编号（每张卡片标题旁的「第 N 题」即是编号）") ?? "");
-                  if (!allQuestions.some((item) => item.id === target)) {
+                  const targetNumber = Number(window.prompt("输入目标题目编号（每张卡片标题旁的「第 N 题」即是编号）") ?? "");
+                  // The prompt takes the displayed position (1-based), not the
+                  // database id; map it through the current question order.
+                  const targetQuestion = allQuestions[targetNumber - 1];
+                  if (!targetQuestion) {
                     window.alert("目标题目编号无效");
                     return;
                   }
-                  const condition = { kind: "option_equals", rules: [{ optionId, targetQuestionId: target }] };
+                  if (targetQuestion.id === question.id) {
+                    window.alert("跳题目标不能是当前题目");
+                    return;
+                  }
+                  const condition = { kind: "option_equals", rules: [{ optionId, targetQuestionId: targetQuestion.id }] };
                   onLocalChange(question.id, { condition });
                   onFieldCommit(question.id, { condition }, "跳题规则");
                 }}

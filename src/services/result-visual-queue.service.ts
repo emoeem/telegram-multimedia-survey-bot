@@ -45,10 +45,28 @@ export async function enqueueResultVisualJob(
       : { status: "queued", job: activeJob };
   }
 
-  const job = await createRenderJob(db, {
-    ...input,
-    forceRegenerate,
-  });
+  let job: RenderJob;
+  try {
+    job = await createRenderJob(db, {
+      ...input,
+      forceRegenerate,
+    });
+  } catch (error) {
+    // Two concurrent enqueues can both pass the check-then-insert window; the
+    // partial unique index (0035) rejects the loser, which then attaches to
+    // the winning job instead of rendering twice.
+    if (!String(error).includes("UNIQUE constraint failed")) throw error;
+    const winner = await findActiveRenderJob(
+      db,
+      input.resultProfileId,
+      input.templateId,
+      input.templateVersion,
+    );
+    if (!winner) throw error;
+    return winner.status === "processing"
+      ? { status: "processing", job: winner }
+      : { status: "queued", job: winner };
+  }
   try {
     await queue.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);
   } catch (error) {

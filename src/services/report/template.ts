@@ -25,12 +25,7 @@ export type ReportSectionKind =
   | "divider"
   | "verdict";
 
-export type ReportSectionPresentation =
-  | "cards"
-  | "list"
-  | "grid"
-  | "featured"
-  | "full";
+export type ReportSectionPresentation = "cards" | "list" | "grid" | "featured" | "full";
 
 export type ReportRendererId = "web" | "pdf" | "image";
 
@@ -76,13 +71,10 @@ const compositionBlockKinds = new Set<ReportCompositionBlockKind>([
 ]);
 
 export function isReportTheme(value: unknown): value is ReportTheme {
-  return typeof value === "string" &&
-    (reportThemeIds as readonly string[]).includes(value);
+  return typeof value === "string" && (reportThemeIds as readonly string[]).includes(value);
 }
 
-export function validateReportTemplateSpec(
-  value: unknown,
-): { template?: ReportTemplateSpec; error?: string } {
+export function validateReportTemplateSpec(value: unknown): { template?: ReportTemplateSpec; error?: string } {
   if (!value || typeof value !== "object") {
     return { error: "template 必须是对象" };
   }
@@ -105,15 +97,12 @@ export function validateReportTemplateSpec(
       return { error: "sections 元素必须是对象" };
     }
     const item = section as Record<string, unknown>;
-    if (typeof item.kind !== "string" ||
-        !sectionKinds.has(item.kind as ReportSectionKind)) {
+    if (typeof item.kind !== "string" || !sectionKinds.has(item.kind as ReportSectionKind)) {
       return { error: `不支持的 section.kind：${String(item.kind)}` };
     }
     sections.push({
       kind: item.kind as ReportSectionKind,
-      ...(typeof item.title === "string" && item.title.trim()
-        ? { title: item.title.trim() }
-        : {}),
+      ...(typeof item.title === "string" && item.title.trim() ? { title: item.title.trim() } : {}),
       ...(typeof item.presentation === "string" &&
       sectionPresentations.has(item.presentation as ReportSectionPresentation)
         ? { presentation: item.presentation as ReportSectionPresentation }
@@ -121,18 +110,14 @@ export function validateReportTemplateSpec(
     });
   }
   const renderers: ReportRendererId[] = Array.isArray(raw.renderers)
-    ? raw.renderers.filter((item): item is ReportRendererId =>
-        item === "web" || item === "pdf" || item === "image",
-      )
+    ? raw.renderers.filter((item): item is ReportRendererId => item === "web" || item === "pdf" || item === "image")
     : ["web", "pdf"];
   return {
     template: {
       id: String(raw.id).trim(),
       name: String(raw.name).trim(),
       version:
-        typeof raw.version === "number" && Number.isInteger(raw.version)
-          ? raw.version
-          : REPORT_TEMPLATE_SCHEMA_VERSION,
+        typeof raw.version === "number" && Number.isInteger(raw.version) ? raw.version : REPORT_TEMPLATE_SCHEMA_VERSION,
       theme: raw.theme as ReportTheme,
       ...(typeof raw.layout === "string" && reportLayoutIds.has(raw.layout as ReportLayout)
         ? { layout: raw.layout as ReportLayout }
@@ -141,8 +126,7 @@ export function validateReportTemplateSpec(
         ? {
             blocks: raw.blocks.filter(
               (item): item is ReportCompositionBlockKind =>
-                typeof item === "string" &&
-                compositionBlockKinds.has(item as ReportCompositionBlockKind),
+                typeof item === "string" && compositionBlockKinds.has(item as ReportCompositionBlockKind),
             ),
           }
         : {}),
@@ -167,22 +151,9 @@ const sectionKinds = new Set<ReportSectionKind>([
   "verdict",
 ]);
 
-const sectionPresentations = new Set<ReportSectionPresentation>([
-  "cards",
-  "list",
-  "grid",
-  "featured",
-  "full",
-]);
+const sectionPresentations = new Set<ReportSectionPresentation>(["cards", "list", "grid", "featured", "full"]);
 
-const reportLayoutIds = new Set<ReportLayout>([
-  "editorial",
-  "bento",
-  "magazine",
-  "data",
-  "gallery",
-  "profile",
-]);
+const reportLayoutIds = new Set<ReportLayout>(["editorial", "bento", "magazine", "data", "gallery", "profile"]);
 
 /**
  * Built-in templates. The classic template reproduces the default mobile
@@ -217,14 +188,9 @@ export const TRANSCRIPT_REPORT_TEMPLATE: ReportTemplateSpec = {
   theme: "daisy-light",
   layout: "editorial",
   blocks: ["hero", "transcript", "gallery", "verdict"],
-  sections: [
-    { kind: "hero" },
-    { kind: "answers" },
-    { kind: "gallery" },
-    { kind: "verdict" },
-  ],
+  sections: [{ kind: "hero" }, { kind: "answers" }, { kind: "gallery" }, { kind: "verdict" }],
   renderers: ["web", "pdf"],
-  css: `html .report-layout-editorial{--report-accent:#475569;--report-bg:#fbfbfc;--report-border:#e4e7ec}.report-layout-editorial .hero{min-height:0;padding:40px 0 44px}.report-layout-editorial .transcript-list{max-width:760px}.report-layout-editorial .transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .transcript-item:first-of-type{border-top:0}.report-layout-editorial .transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text)}.report-layout-editorial .transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap}.report-layout-editorial .answer-options{margin-top:10px;display:grid;gap:6px}.report-layout-editorial .answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.report-layout-editorial .answer-option.selected{color:var(--report-accent);font-weight:600}`,
+  css: `[data-report-mode="light"].report-layout-editorial{--report-accent:#475569;--report-bg:#fbfbfc;--report-border:#e4e7ec}[data-report-mode="dark"].report-layout-editorial{--report-accent:#94a3b8;--report-bg:#0e1013;--report-border:#262b33}.report-layout-editorial .hero{min-height:0;padding:40px 0 44px}.report-layout-editorial .transcript-list{max-width:760px}.report-layout-editorial .transcript-item{padding:26px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .transcript-item:first-of-type{border-top:0}.report-layout-editorial .transcript-item .question{font-size:16px;font-weight:650;color:var(--report-text)}.report-layout-editorial .transcript-item .answer{margin-top:8px;font-size:15px;color:var(--report-text);white-space:pre-wrap}.report-layout-editorial .answer-options{margin-top:10px;display:grid;gap:6px}.report-layout-editorial .answer-option{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--report-text-muted)}.report-layout-editorial .answer-option.selected{color:var(--report-accent);font-weight:600}`,
 };
 
 export const MAGAZINE_DARK_TEMPLATE: ReportTemplateSpec = {
@@ -290,13 +256,7 @@ export const MAGAZINE_REPORT_TEMPLATE: ReportTemplateSpec = {
   theme: "daisy-retro",
   layout: "magazine",
   blocks: ["cover", "featured", "gallery", "analysis", "verdict"],
-  sections: [
-    { kind: "cover" },
-    { kind: "quotes" },
-    { kind: "gallery" },
-    { kind: "insights" },
-    { kind: "verdict" },
-  ],
+  sections: [{ kind: "cover" }, { kind: "quotes" }, { kind: "gallery" }, { kind: "insights" }, { kind: "verdict" }],
   renderers: ["web", "pdf"],
   css: `.report-layout-magazine .hero{border-top:0;border-bottom:4px double var(--report-accent)}.report-layout-magazine .hero h1{font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.01em;line-height:1.05;text-transform:uppercase}.report-layout-magazine .hero-thesis{font-style:italic}.report-layout-magazine .featured-insight{margin:56px auto 20px;padding:64px 48px;border-top:4px double var(--report-accent);border-bottom:4px double var(--report-accent)}.report-layout-magazine .featured-insight blockquote{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:32px;line-height:1.4}.report-layout-magazine .gallery-composition{padding:56px 0}.report-layout-magazine .gallery-item img{border-radius:0;height:420px}.report-layout-magazine .editorial-section{padding:48px 0;border-top:1px solid var(--report-border)}.report-layout-magazine .editorial-index{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:44px}.report-layout-magazine .editorial-copy h3{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:28px}.report-layout-magazine .editorial-copy p{line-height:1.9}.report-layout-magazine .final-verdict{min-height:480px;padding:80px 0;border-top:2px solid var(--report-accent)}.report-layout-magazine .final-verdict h2{font-family:Georgia,"Noto Serif CJK SC",serif;font-size:44px}@media (min-width:961px){.report-layout-magazine .hero{min-height:420px;grid-template-columns:minmax(0,1fr) 260px;padding:64px 0}.report-layout-magazine .hero h1{font-size:60px}.report-layout-magazine .hero-thesis{font-size:22px}.report-layout-magazine .featured-insight blockquote{font-size:38px}.report-layout-magazine .gallery{grid-template-columns:1.4fr 1fr}.report-layout-magazine .gallery-item img{height:480px}.report-layout-magazine .editorial-section{grid-template-columns:110px minmax(0,1fr)}.report-layout-magazine .editorial-index{font-size:52px}.report-layout-magazine .editorial-copy h3{font-size:32px}.report-layout-magazine .editorial-copy p{font-size:17px}.report-layout-magazine .final-verdict h2{font-size:54px}}`,
 };
@@ -307,11 +267,7 @@ export const MINIMAL_REPORT_TEMPLATE: ReportTemplateSpec = {
   name: "极简",
   version: 1,
   theme: "daisy-light",
-  sections: [
-    { kind: "hero" },
-    { kind: "summary" },
-    { kind: "answers" },
-  ],
+  sections: [{ kind: "hero" }, { kind: "summary" }, { kind: "answers" }],
   renderers: ["web", "pdf"],
   css: `.wrap{max-width:620px}.report-section{background:transparent;border:0;border-bottom:1px solid var(--report-border);border-radius:0;padding:18px 2px;margin-top:8px}.report-section h2{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--report-text-muted)}.hero-title{font-size:30px}`,
 };
@@ -323,10 +279,13 @@ export const GALLERY_REPORT_TEMPLATE: ReportTemplateSpec = {
   version: 1,
   theme: "daisy-black",
   layout: "gallery",
-  blocks: ["cover", "gallery", "verdict"],
+  blocks: ["cover", "gallery", "featured", "analysis", "responses", "verdict"],
   sections: [
     { kind: "cover" },
     { kind: "gallery" },
+    { kind: "quotes" },
+    { kind: "insights" },
+    { kind: "answers" },
     { kind: "verdict" },
   ],
   renderers: ["web", "pdf"],

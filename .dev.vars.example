@@ -2,6 +2,10 @@ BOT_TOKEN = "replace-with-telegram-bot-token"
 WEBHOOK_SECRET = "replace-with-a-long-random-secret"
 ADMIN_IDS = "123456789,987654321"
 
+# 仅本地开发：设置后可用 x-telegram-user-id + x-dev-auth-secret 模拟登录管理后台。
+# staging / 生产环境不要配置（后端只在 ENVIRONMENT=development 时接受该旁路）。
+ADMIN_DEV_AUTH_SECRET = "replace-with-a-local-only-dev-secret"
+
 # 厂商授权中心保持 disabled；交付给客户时改为 required。
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_SERVER_URL = "https://your-license-server.workers.dev"
@@ -15,3 +19,7 @@ LICENSE_ADMIN_TOKEN = "replace-with-a-long-vendor-only-secret"
 # 报告归档私人频道（Phase 5 使用）：把 Bot 添加为频道管理员后填入频道 ID
 # （形如 -1001234567890）。
 REPORT_CHANNEL_ID = ""
+
+# 广场同步频道：发布到画廊的资料卡、树洞新投稿会自动转发到该频道。
+# 同样把 Bot 添加为频道管理员后填入频道 ID；也可以在后台「设置」里配置。
+PLAZA_CHANNEL_ID = ""

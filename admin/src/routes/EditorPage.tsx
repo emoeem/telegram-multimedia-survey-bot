@@ -151,7 +151,10 @@ function EditableEditor({ data }: { data: EditorData }) {
     setPickerOpen(false);
   };
 
+  // Structural actions hit the server directly and then reload, so any
+  // pending ops must be flushed first — silently reloading would drop them.
   const duplicateQuestion = async (questionId: number) => {
+    if (editor.dirty && !(await editor.save())) return;
     try {
       await apiSend("POST", `/api/admin/surveys/${survey.id}/questions/${questionId}/duplicate`, {});
       editor.discardAndReload();
@@ -161,6 +164,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   };
 
   const duplicateOption = async (questionId: number, optionId: number) => {
+    if (editor.dirty && !(await editor.save())) return;
     try {
       await apiSend("POST", `/api/admin/surveys/${survey.id}/options/${optionId}/duplicate`, {});
       editor.discardAndReload();
@@ -170,6 +174,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   };
 
   const addPage = async () => {
+    if (editor.dirty && !(await editor.save())) return;
     try {
       await apiSend("POST", `/api/admin/surveys/${survey.id}/pages`, {
         title: `第 ${data.pages.length + 1} 页`,
@@ -182,6 +187,7 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   const deletePage = async (pageId: number) => {
     if (!window.confirm("删除该分页？题目不会被删除，只会变为不分页。")) return;
+    if (editor.dirty && !(await editor.save())) return;
     try {
       await apiSend("DELETE", `/api/admin/surveys/${survey.id}/pages/${pageId}`);
       editor.discardAndReload();

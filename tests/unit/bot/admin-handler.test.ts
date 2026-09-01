@@ -107,7 +107,7 @@ describe("admin survey list", () => {
     };
     const buttonTexts = body.reply_markup.inline_keyboard.flat().map((button) => button.text);
 
-    expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作"]);
+    expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作", "🏛 广场"]);
     expect(buttonTexts).not.toContain("🎨 视觉模板");
     expect(buttonTexts).not.toContain("👥 Bot 用户");
     expect(buttonTexts).not.toContain("🔑 授权与部署");

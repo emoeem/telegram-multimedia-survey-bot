@@ -1,6 +1,8 @@
+import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { sendMessage, sendPhoto } from "../bot/telegram";
-import { renderIdentityCardPng } from "../bot/identity-card-handler";
-import { getIdentityProfileById } from "../db/repositories/identity-card.repository";
+import { renderIdentityCardReportPng, storeIdentityCardPng } from "./identity-card-report.service";
+import { getIdentityProfileById, setIdentityProfileCardAsset } from "../db/repositories/identity-card.repository";
+import { mirrorIdentityCardToChannel } from "./plaza-channel.service";
 
 export interface IdentityCardJobMessage {
   kind: "identity_card";
@@ -16,6 +18,10 @@ interface IdentityCardJobRow {
 export interface IdentityCardWorkerEnvironment {
   DB: D1Database;
   BOT_TOKEN: string;
+  BROWSER?: BrowserWorker;
+  MEDIA_KV?: KVNamespace;
+  MEDIA?: R2Bucket;
+  PLAZA_CHANNEL_ID?: string;
 }
 
 export function isIdentityCardJobMessage(value: unknown): value is IdentityCardJobMessage {
@@ -54,8 +60,19 @@ export async function processIdentityCardMessage(env: IdentityCardWorkerEnvironm
 
   const identity = await getIdentityProfileById(env.DB, job.identity_profile_id);
   if (!identity) throw new Error("identity profile not found");
-  const png = await renderIdentityCardPng(env.DB, env.BOT_TOKEN, identity);
-  await sendPhoto(env.BOT_TOKEN, job.chat_id, png, "🎨 你的自定义身份卡已生成");
+  if (!env.BROWSER) throw new Error("BROWSER 未配置，无法渲染资料卡");
+  const png = await renderIdentityCardReportPng({ ...env, BROWSER: env.BROWSER }, identity);
+  const assetId = await storeIdentityCardPng(env, identity.id, png);
+  if (assetId !== null) {
+    await setIdentityProfileCardAsset(env.DB, identity.id, assetId);
+  }
+  const caption = identity.galleryPublished
+    ? "🎨 你的资料卡已生成，并已发布到资料卡画廊。"
+    : "🎨 你的资料卡已生成（仅自己可见）。";
+  await sendPhoto(env.BOT_TOKEN, job.chat_id, png, caption);
+  if (identity.galleryPublished) {
+    await mirrorIdentityCardToChannel(env, identity, png);
+  }
   await env.DB.prepare("UPDATE identity_card_jobs SET status = 'completed', completed_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), job.id)
     .run();
@@ -83,7 +100,7 @@ export async function notifyIdentityCardFailure(env: IdentityCardWorkerEnvironme
     .first<{ chat_id: number }>();
   if (!job) return;
   try {
-    await sendMessage(env.BOT_TOKEN, job.chat_id, "❌ 身份卡生成失败，请稍后重新制作。");
+    await sendMessage(env.BOT_TOKEN, job.chat_id, "❌ 资料卡生成失败，请稍后重新制作。");
   } catch (error) {
     console.error("Failed to notify identity card requester", jobId, error);
   }

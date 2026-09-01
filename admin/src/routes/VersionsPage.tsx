@@ -62,7 +62,7 @@ export function VersionsPage() {
           <ArrowLeft className="h-4 w-4" />返回问卷
         </Link>
       </div>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-[var(--color-muted)]">
         每次发布都会生成一个版本快照；历史答卷始终关联提交时的版本。
       </p>
 
@@ -71,16 +71,16 @@ export function VersionsPage() {
           <table className="tbl">
             <thead>
               <tr>
-                <th className="text-sm text-gray-500">版本</th>
-                <th className="text-sm text-gray-500">标题</th>
-                <th className="text-sm text-gray-500">题目数</th>
-                <th className="text-sm text-gray-500">创建时间</th>
-                <th className="text-sm text-gray-500">操作</th>
+                <th className="text-sm text-[var(--color-muted)]">版本</th>
+                <th className="text-sm text-[var(--color-muted)]">标题</th>
+                <th className="text-sm text-[var(--color-muted)]">题目数</th>
+                <th className="text-sm text-[var(--color-muted)]">创建时间</th>
+                <th className="text-sm text-[var(--color-muted)]">操作</th>
               </tr>
             </thead>
             <tbody>
               {versions.map((version) => (
-                <tr key={version.version} className="hover:bg-slate-50">
+                <tr key={version.version} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm font-semibold">v{version.version}</td>
                   <td className="text-sm">{version.title || "未命名问卷"}</td>
                   <td className="text-sm">{version.questionCount}</td>
@@ -99,17 +99,17 @@ export function VersionsPage() {
         <EmptyPanel text="还没有版本记录（发布问卷后生成）" />
       )}
 
-      <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <h3 className="text-sm font-semibold text-gray-700">对比版本</h3>
+      <div className="mt-6 rounded-xl border border-[var(--color-edge)] bg-[var(--surface-muted)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--text-soft)]">对比版本</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
-          <label className="text-sm text-gray-600">
+          <label className="text-sm text-[var(--text-soft)]">
             从
             <select className="select mt-1 block" value={fromVersion} onChange={(event) => setFromVersion(event.target.value === "" ? "" : Number(event.target.value))}>
               <option value="">选择版本</option>
               {versions.map((version) => <option key={version.version} value={version.version}>v{version.version}</option>)}
             </select>
           </label>
-          <label className="text-sm text-gray-600">
+          <label className="text-sm text-[var(--text-soft)]">
             到
             <select className="select mt-1 block" value={toVersion} onChange={(event) => setToVersion(event.target.value === "" ? "" : Number(event.target.value))}>
               <option value="">选择版本</option>
@@ -123,23 +123,23 @@ export function VersionsPage() {
         {diff ? (
           <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div>
-              <p className="font-medium text-green-700">新增（{diff.diff.added.length}）</p>
-              <ul className="mt-1 list-inside list-disc text-gray-600">
+              <p className="font-medium text-[var(--color-success)]">新增（{diff.diff.added.length}）</p>
+              <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
                 {diff.diff.added.map((title) => <li key={title}>{title}</li>)}
               </ul>
             </div>
             <div>
-              <p className="font-medium text-red-700">删除（{diff.diff.removed.length}）</p>
-              <ul className="mt-1 list-inside list-disc text-gray-600">
+              <p className="font-medium text-[var(--color-danger)]">删除（{diff.diff.removed.length}）</p>
+              <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
                 {diff.diff.removed.map((title) => <li key={title}>{title}</li>)}
               </ul>
             </div>
             <div>
-              <p className="font-medium text-amber-700">修改（{diff.diff.changed.length}）</p>
-              <ul className="mt-1 space-y-1 text-gray-600">
+              <p className="font-medium text-[var(--color-warning)]">修改（{diff.diff.changed.length}）</p>
+              <ul className="mt-1 space-y-1 text-[var(--text-soft)]">
                 {diff.diff.changed.map((item) => (
                   <li key={item.id}>
-                    <span className="text-gray-400 line-through">{item.from}</span> → <span>{item.to}</span>
+                    <span className="text-[var(--color-muted-soft)] line-through">{item.from}</span> → <span>{item.to}</span>
                   </li>
                 ))}
               </ul>
@@ -148,7 +148,7 @@ export function VersionsPage() {
         ) : null}
       </div>
 
-      {actionError ? <p className="mt-3 text-sm text-red-600">{actionError}</p> : null}
+      {actionError ? <p className="mt-3 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
     </section>
   );
 }

@@ -50,7 +50,7 @@ export function AuditPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">审计日志</h2>
-          <p className="mt-1 text-sm text-gray-500">共 {data.total} 条操作记录</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 条操作记录</p>
         </div>
         <select
           className="select"
@@ -72,23 +72,23 @@ export function AuditPage() {
           <table className="tbl">
             <thead>
               <tr>
-                <th className="text-sm text-gray-500">时间</th>
-                <th className="text-sm text-gray-500">执行者</th>
-                <th className="text-sm text-gray-500">操作</th>
-                <th className="text-sm text-gray-500">对象</th>
-                <th className="text-sm text-gray-500">变更摘要</th>
+                <th className="text-sm text-[var(--color-muted)]">时间</th>
+                <th className="text-sm text-[var(--color-muted)]">执行者</th>
+                <th className="text-sm text-[var(--color-muted)]">操作</th>
+                <th className="text-sm text-[var(--color-muted)]">对象</th>
+                <th className="text-sm text-[var(--color-muted)]">变更摘要</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50">
+                <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm">{formatDateTime(item.createdAt)}</td>
                   <td className="text-sm">{item.actorName ?? "系统"}</td>
                   <td className="text-sm font-medium">{item.action}</td>
-                  <td className="text-sm text-gray-600">
+                  <td className="text-sm text-[var(--text-soft)]">
                     {item.entityType}{item.entityId ? ` #${item.entityId}` : ""}
                   </td>
-                  <td className="max-w-72 text-sm text-gray-500">
+                  <td className="max-w-72 text-sm text-[var(--color-muted)]">
                     {summarize(item.after) || "—"}
                   </td>
                 </tr>
@@ -100,7 +100,7 @@ export function AuditPage() {
         <EmptyPanel text="没有审计记录" />
       )}
 
-      <div className="mt-5 flex items-center justify-end gap-2 text-sm text-gray-500">
+      <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
         <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
         <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
         <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>

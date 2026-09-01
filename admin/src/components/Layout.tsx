@@ -3,7 +3,9 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import {
   ArrowLeft,
   ClipboardList,
+  Contact,
   FileUp,
+  IdCard,
   LayoutDashboard,
   ListChecks,
   Menu,
@@ -12,6 +14,7 @@ import {
   KeyRound,
   ScrollText,
   Settings,
+  Sprout,
   Users,
 } from "lucide-react";
 import { fetchEnvironment } from "../api";
@@ -25,6 +28,9 @@ const NAV_ITEMS = [
   { to: "/users", icon: Users, label: "用户" },
   { to: "/reports", icon: Package, label: "报告" },
   { to: "/templates", icon: Palette, label: "模板" },
+  { to: "/identity-cards", icon: Contact, label: "资料卡" },
+  { to: "/card-templates", icon: IdCard, label: "卡面模板" },
+  { to: "/plaza", icon: Sprout, label: "树洞" },
   { to: "/audit", icon: ScrollText, label: "审计" },
   { to: "/licenses", icon: KeyRound, label: "授权" },
   { to: "/settings", icon: Settings, label: "设置" },
@@ -77,6 +83,9 @@ export function Layout() {
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
+    if (path.startsWith("/identity-cards")) return "资料卡";
+    if (path.startsWith("/card-templates")) return "卡面模板";
+    if (path.startsWith("/plaza")) return "树洞";
     if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/licenses")) return "授权管理";
     if (path.startsWith("/login")) return "浏览器登录";
@@ -86,14 +95,6 @@ export function Layout() {
 
   const showTestBanner = environment === "development" && !getTelegramInitData();
   const browserMode = !getTelegramInitData() && !location.pathname.startsWith("/login");
-  const isSurveysActive = location.pathname.startsWith("/surveys");
-  const isImportsActive = location.pathname.startsWith("/imports");
-  const isUsersActive = location.pathname.startsWith("/users");
-  const isReportsActive = location.pathname.startsWith("/reports");
-  const isTemplatesActive = location.pathname.startsWith("/templates");
-  const isAuditActive = location.pathname.startsWith("/audit");
-  const isLicensesActive = location.pathname.startsWith("/licenses");
-  const isSettingsActive = location.pathname.startsWith("/settings");
   const goBack = () => {
     if (window.history.length > 1) window.history.back();
     else navigate("/");
@@ -103,9 +104,11 @@ export function Layout() {
     <div className="flex min-h-dvh flex-col bg-page">
       <TestBanner visible={showTestBanner} />
       {browserMode ? (
-        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-indigo-100 bg-indigo-50/80 px-4 py-2 text-center text-xs text-indigo-700">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-4 py-2 text-center text-xs text-[var(--color-primary)]">
           <span>浏览器访问模式：在 Telegram 发送 /admin_login 获取电脑登录链接</span>
-          <Link to="/login" className="link">去登录</Link>
+          <Link to="/login" className="link">
+            去登录
+          </Link>
         </div>
       ) : null}
       <div className="flex flex-1">
@@ -116,30 +119,14 @@ export function Layout() {
         >
           <div className="mb-7 flex items-center gap-2.5 whitespace-nowrap px-1.5">
             <BrandMark />
-            <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">
-              问卷管理后台
-            </span>
+            <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
           </div>
           <nav className="flex flex-1 flex-col gap-0.5">
             {NAV_ITEMS.map((item) => {
               const active =
                 item.to === "/"
                   ? location.pathname === "/"
-                  : item.to === "/users"
-                    ? isUsersActive
-                    : item.to === "/reports"
-                      ? isReportsActive
-                      : item.to === "/settings"
-                        ? isSettingsActive
-                        : item.to === "/imports"
-                          ? isImportsActive
-                          : item.to === "/templates"
-                            ? isTemplatesActive
-                            : item.to === "/audit"
-                              ? isAuditActive
-                              : item.to === "/licenses"
-                                ? isLicensesActive
-                                : isSurveysActive;
+                  : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
               return (
                 <Link
@@ -147,12 +134,12 @@ export function Layout() {
                   to={item.to}
                   className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
                     active
-                      ? "bg-indigo-500/15 text-white"
+                      ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
                       : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
                   }`}
                 >
                   {active ? (
-                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-indigo-400" />
+                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[var(--color-primary)]" />
                   ) : null}
                   <Icon className="h-[18px] w-[18px] shrink-0" />
                   <span className="sm:hidden lg:inline">{item.label}</span>
@@ -173,19 +160,10 @@ export function Layout() {
         ) : null}
         <main className="mx-auto w-full min-w-0 max-w-[1320px] flex-1 p-4 sm:p-8">
           <header className="mb-7 flex items-center gap-3">
-            <button
-              aria-label="返回上一页"
-              title="返回上一页"
-              onClick={goBack}
-              className="btn btn-icon"
-            >
+            <button aria-label="返回上一页" title="返回上一页" onClick={goBack} className="btn btn-icon">
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <button
-              aria-label="打开菜单"
-              className="btn btn-icon sm:hidden"
-              onClick={() => setDrawer(!drawer)}
-            >
+            <button aria-label="打开菜单" className="btn btn-icon sm:hidden" onClick={() => setDrawer(!drawer)}>
               <Menu className="h-5 w-5" />
             </button>
             <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px]">{title}</h1>

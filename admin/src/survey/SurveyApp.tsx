@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent } from "react";
+import type { FocusEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,6 +12,8 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { PlazaScreen } from "./PlazaScreen";
+import { PresetSwatch, SURVEY_THEME_PRESETS, themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
 import {
   type AnswerValue,
   fetchAnswers,
@@ -43,8 +45,14 @@ type Screen =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "access"; survey: SurveyDto }
-  | { kind: "filling"; survey: SurveyDto; responseId: number; currentQuestionId: number | null; answers: Record<number, AnswerValue> }
-  | { kind: "done" };
+  | {
+      kind: "filling";
+      survey: SurveyDto;
+      responseId: number;
+      currentQuestionId: number | null;
+      answers: Record<number, AnswerValue>;
+    }
+  | { kind: "done"; survey: SurveyDto };
 
 function surveyIdFromPath(): number {
   const match = window.location.pathname.match(/^\/s\/(\d+)/);
@@ -77,105 +85,46 @@ function backSurveyPage(): void {
   window.location.href = "/s";
 }
 
-const SURVEY_THEME_PRESETS = [
-  { id: "light", name: "明亮" },
-  { id: "dark", name: "暗色" },
-  { id: "night", name: "深蓝夜" },
-  { id: "luxury", name: "黑金奢华" },
-  { id: "retro", name: "复古纸张" },
-  { id: "cupcake", name: "粉彩" },
-  { id: "synthwave", name: "霓虹" },
-  { id: "black", name: "纯黑" },
-];
-
-function PresetSwatch({ presetId }: { presetId: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [colors, setColors] = useState<{ base: string; primary: string } | null>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const style = getComputedStyle(ref.current);
-    setColors({
-      base: style.getPropertyValue("--color-base-100").trim() || "#ffffff",
-      primary: style.getPropertyValue("--color-primary").trim() || "#4f46e5",
-    });
-  }, [presetId]);
-
-  return (
-    <div
-      ref={ref}
-      data-theme={presetId}
-      className="h-8 w-full overflow-hidden rounded-lg border border-black/10"
-      style={colors ? { backgroundColor: colors.base } : undefined}
-    >
-      {colors ? <span className="block h-full w-1/3" style={{ backgroundColor: colors.primary }} /> : null}
-    </div>
-  );
-}
-
-function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
-  if (!theme) return {};
-  const vars: Record<string, string> = {};
-  if (theme.preset) {
-    // Map the DaisyUI theme library tokens onto the survey surface.
-    vars["--survey-primary"] = "var(--color-primary)";
-    vars["--survey-secondary"] = "var(--color-secondary)";
-    vars["--survey-bg"] = "var(--color-base-100)";
-    vars["--survey-card-bg"] = "var(--color-base-100)";
-    vars["--survey-card-border"] = "var(--color-base-200)";
-    vars["--survey-heading"] = "var(--color-base-content)";
-    vars["--survey-body"] = "var(--color-base-content)";
-    vars["--survey-muted"] = "color-mix(in oklab, var(--color-base-content) 65%, transparent)";
-    vars["--survey-primary-soft"] = "color-mix(in srgb, var(--color-primary) 10%, var(--color-base-100))";
-    vars["--survey-radius"] = "var(--radius-box)";
-    vars["--survey-button-radius"] = "var(--radius-field)";
-  }
-  if (theme.primaryColor) {
-    vars["--survey-primary"] = theme.primaryColor;
-    vars["--survey-primary-soft"] = `color-mix(in srgb, ${theme.primaryColor} 10%, var(--survey-card-bg, #ffffff))`;
-  }
-  if (theme.secondaryColor) vars["--survey-secondary"] = theme.secondaryColor;
-  if (theme.card?.background) vars["--survey-card-bg"] = theme.card.background;
-  if (theme.card?.border) vars["--survey-card-border"] = theme.card.border;
-  if (theme.card?.radius !== undefined) vars["--survey-radius"] = `${theme.card.radius}px`;
-  if (theme.card?.glass) vars["--survey-header-bg"] = "rgba(255, 255, 255, 0.72)";
-  if (theme.text?.heading) vars["--survey-heading"] = theme.text.heading;
-  if (theme.text?.body) vars["--survey-body"] = theme.text.body;
-  if (theme.text?.muted) vars["--survey-muted"] = theme.text.muted;
-  if (theme.button?.radius !== undefined) {
-    vars["--survey-button-radius"] = `${theme.button.radius}px`;
-  }
-  return vars;
-}
-
-function themeBackgroundStyle(theme: SurveyThemeDto | null): CSSProperties {
-  const background = theme?.background;
-  if (!background?.color && !background?.image) {
-    return theme?.preset ? { backgroundColor: "var(--color-base-100)" } : {};
-  }
-  return {
-    backgroundColor: background.color,
-    backgroundImage: background.image ? `url("${background.image}")` : undefined,
-    backgroundPosition: background.position ?? "center",
-    backgroundSize: background.size ?? "cover",
-    backgroundAttachment: "fixed",
-  };
-}
-
 function SurveyListPage() {
   const [surveys, setSurveys] = useState<SurveyListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [themePreset, setThemePreset] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem("surveyHomeTheme");
+      return stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const selectHomeTheme = (id: string | null) => {
+    setThemePreset(id);
+    setThemePickerOpen(false);
+    try {
+      if (id) localStorage.setItem("surveyHomeTheme", id);
+      else localStorage.removeItem("surveyHomeTheme");
+    } catch {
+      // storage unavailable — session-only choice still applies
+    }
+  };
+
+  const homeTheme = themePreset ? ({ preset: themePreset } as Parameters<typeof themeCssVars>[0]) : null;
 
   useEffect(() => {
     let cancelled = false;
     fetchSurveyList(debouncedQuery)
       .then((data) => {
-        if (!cancelled) setSurveys(data.surveys);
+        if (cancelled) return;
+        setSurveys(data.surveys);
+        setError(null);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "问卷加载失败");
+        if (cancelled) return;
+        setSurveys(null);
+        setError(err instanceof Error ? err.message : "问卷加载失败");
       });
     return () => {
       cancelled = true;
@@ -188,21 +137,40 @@ function SurveyListPage() {
   }, [query]);
 
   if (error) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-red-600">{error}</div>;
+    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-danger)]">{error}</div>;
   }
   if (!surveys) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-gray-500">问卷加载中…</div>;
+    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>;
   }
   if (surveys.length === 0) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-gray-500">当前没有可填写的问卷</div>;
+    return (
+      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">当前没有可填写的问卷</div>
+    );
   }
 
   return (
-    <div className="survey-glow min-h-dvh pb-10">
-      <header className="border-b border-gray-200 bg-white/80 px-5 pb-4 pt-7 backdrop-blur-md">
+    <div
+      className="survey-glow min-h-dvh pb-10"
+      data-theme={themePreset ?? undefined}
+      style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
+    >
+      <header className="border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] px-5 pb-4 pt-7 backdrop-blur-md">
         <div className="mx-auto w-full max-w-6xl">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">可填写问卷</h1>
-          <p className="mt-1 text-sm text-gray-500">选择一份问卷，开始你的回答</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)]">可填写问卷</h1>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">选择一份问卷，开始你的回答</p>
+            </div>
+            <button
+              type="button"
+              aria-label="选择主题"
+              title="选择主题"
+              className="survey-icon-btn mt-1 shrink-0"
+              onClick={() => setThemePickerOpen(true)}
+            >
+              <Palette className="h-4 w-4" />
+            </button>
+          </div>
           <input
             type="search"
             className="input mt-4 w-full sm:max-w-md"
@@ -229,15 +197,16 @@ function SurveyListPage() {
                 />
               ) : null}
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-[17px] font-semibold leading-snug text-gray-900">{survey.title}</h2>
+                <h2 className="text-[17px] font-semibold leading-snug text-[var(--color-ink)]">{survey.title}</h2>
                 {survey.accessCodeRequired ? (
                   <span className="badge badge-amber shrink-0">
-                    <Lock className="h-3 w-3" />需密码
+                    <Lock className="h-3 w-3" />
+                    需密码
                   </span>
                 ) : null}
               </div>
               {survey.description ? (
-                <p className="mt-1 line-clamp-2 text-sm text-gray-500">{survey.description}</p>
+                <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
               ) : null}
               <div className="mt-3 flex items-center justify-between">
                 <span className="chip text-xs">{survey.questionCount} 道题</span>
@@ -250,6 +219,12 @@ function SurveyListPage() {
           ))}
         </div>
       </main>
+      <ThemePickerSheet
+        open={themePickerOpen}
+        onClose={() => setThemePickerOpen(false)}
+        selected={themePreset}
+        onSelect={selectHomeTheme}
+      />
     </div>
   );
 }
@@ -259,11 +234,7 @@ function selectedOptionId(question: SurveyQuestionDto, value: AnswerValue | unde
   return question.options.some((option) => option.id === value) ? value : null;
 }
 
-function nextIndex(
-  questions: SurveyQuestionDto[],
-  currentIndex: number,
-  answers: Record<number, AnswerValue>,
-): number {
+function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers: Record<number, AnswerValue>): number {
   if (currentIndex >= questions.length - 1) return questions.length;
   const current = questions[currentIndex];
   if (!current) return currentIndex + 1;
@@ -290,10 +261,13 @@ function nextIndex(
 
 function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | undefined): string | null {
   const validation = question.validation ?? {};
-  if (question.required && (value === undefined || value === null)) {
+  // Text inputs settle at "" while the participant types; a blank string must
+  // count as unanswered, otherwise required text questions can be skipped.
+  const isBlank = value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+  if (question.required && isBlank) {
     return "此题必答";
   }
-  if (value === undefined || value === null) return null;
+  if (isBlank) return null;
   if (question.type === "text" || question.type === "long_text") {
     if (typeof value !== "string") return "答案格式无效";
     const minLength = Number(validation.min_length ?? 0);
@@ -340,15 +314,7 @@ function MediaBlock({ urls, type, cover }: { urls: Array<{ url: string }>; type:
   );
 }
 
-function AuthenticatedMedia({
-  url,
-  kind,
-  cover,
-}: {
-  url: string;
-  kind: "image" | "video" | "audio";
-  cover?: boolean;
-}) {
+function AuthenticatedMedia({ url, kind, cover }: { url: string; kind: "image" | "video" | "audio"; cover?: boolean }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -373,13 +339,15 @@ function AuthenticatedMedia({
   }, [url]);
 
   if (failed) {
-    return <div className="rounded-lg bg-gray-100 p-4 text-center text-xs text-gray-400">媒体加载失败</div>;
+    return (
+      <div className="rounded-lg bg-[var(--surface-muted)] p-4 text-center text-xs text-[var(--color-muted-soft)]">
+        媒体加载失败
+      </div>
+    );
   }
   if (!objectUrl) {
     return (
-      <div
-        className={`animate-pulse bg-gray-100 ${cover ? "absolute inset-0" : "h-24 rounded-lg"}`}
-      />
+      <div className={`animate-pulse bg-[var(--surface-muted)] ${cover ? "absolute inset-0" : "h-24 rounded-lg"}`} />
     );
   }
   if (kind === "video") {
@@ -514,12 +482,10 @@ function OptionCard({
       ) : null}
       <div className="flex items-center gap-2 p-2.5">
         <span
-          className={`grid h-4.5 w-4.5 shrink-0 place-items-center border ${
-            multiple ? "rounded" : "rounded-full"
-          } ${
+          className={`grid h-4.5 w-4.5 shrink-0 place-items-center border ${multiple ? "rounded" : "rounded-full"} ${
             selected
               ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]"
-              : "border-gray-300 bg-white"
+              : "border-[var(--control-border)] bg-[var(--surface)]"
           }`}
         >
           {selected ? (
@@ -528,7 +494,7 @@ function OptionCard({
                 <path d="M2 6.5 4.5 9 10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             ) : (
-              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--surface)]" />
             )
           ) : null}
         </span>
@@ -576,18 +542,18 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
             >
               <span
                 className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${
-                  selected ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]" : "border-gray-300 bg-white"
+                  selected
+                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]"
+                    : "border-[var(--control-border)] bg-[var(--surface)]"
                 }`}
               >
-                {selected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                {selected ? <span className="h-2 w-2 rounded-full bg-[var(--surface)]" /> : null}
               </span>
               <span className="min-w-0">
                 <span className="block">{option.label}</span>
                 <MediaBlock urls={option.media} type="image" />
               </span>
-              {selected ? (
-                <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} />
-              ) : null}
+              {selected ? <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} /> : null}
             </button>
           );
         })}
@@ -610,9 +576,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 multiple
                 disabled={disabled}
                 onSelect={() =>
-                  onChange(
-                    checked ? selected.filter((id) => id !== option.id) : [...selected, option.id],
-                  )
+                  onChange(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])
                 }
               />
             );
@@ -629,9 +593,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               key={option.id}
               type="button"
               disabled={disabled}
-              onClick={() =>
-                onChange(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])
-              }
+              onClick={() => onChange(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])}
               className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[15px] transition active:scale-[0.99] ${
                 checked
                   ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)] shadow-sm"
@@ -640,7 +602,9 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
             >
               <span
                 className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border ${
-                  checked ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]" : "border-gray-300 bg-white"
+                  checked
+                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]"
+                    : "border-[var(--control-border)] bg-[var(--surface)]"
                 }`}
               >
                 {checked ? (
@@ -653,9 +617,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 <span className="block">{option.label}</span>
                 <MediaBlock urls={option.media} type="image" />
               </span>
-              {checked ? (
-                <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} />
-              ) : null}
+              {checked ? <Check className="ml-auto mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.5} /> : null}
             </button>
           );
         })}
@@ -667,14 +629,13 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
     const columns = Array.isArray(question.settings?.columns)
       ? (question.settings?.columns as string[]).filter((column) => typeof column === "string" && column.trim())
       : [];
-    const selections = value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, number>)
-      : {};
+    const selections =
+      value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, number>) : {};
     return (
       <div className="mt-4 overflow-x-auto rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]">
         <table className="w-full min-w-[420px] border-collapse text-sm">
           <thead>
-            <tr className="bg-gray-50 text-gray-500">
+            <tr className="bg-[var(--surface-muted)] text-[var(--color-muted)]">
               <th className="px-3 py-2 text-left font-medium">行</th>
               {columns.map((column, columnIndex) => (
                 <th key={`${column}-${columnIndex}`} className="px-3 py-2 text-center font-medium">
@@ -685,7 +646,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
           </thead>
           <tbody>
             {question.options.map((row) => (
-              <tr key={row.id} className="border-t border-gray-100">
+              <tr key={row.id} className="border-t border-[var(--color-edge-soft)]">
                 <td className="px-3 py-2">{row.label}</td>
                 {columns.map((_column, columnIndex) => {
                   const selected = selections[String(row.id)] === columnIndex;
@@ -697,18 +658,18 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                         onClick={() =>
                           onChange(
                             selected
-                              ? Object.fromEntries(
-                                  Object.entries(selections).filter(([key]) => key !== String(row.id)),
-                                )
+                              ? Object.fromEntries(Object.entries(selections).filter(([key]) => key !== String(row.id)))
                               : { ...selections, [String(row.id)]: columnIndex },
                           )
                         }
                         aria-label={`${row.label} - ${_column}`}
                         className={`grid h-7 w-7 place-items-center rounded-full border ${
-                          selected ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]" : "border-gray-300 bg-white"
+                          selected
+                            ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]"
+                            : "border-[var(--control-border)] bg-[var(--surface)]"
                         }`}
                       >
-                        {selected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                        {selected ? <span className="h-2 w-2 rounded-full bg-[var(--surface)]" /> : null}
                       </button>
                     </td>
                   );
@@ -770,17 +731,16 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   }
 
   if (question.type === "image" || question.type === "video" || question.type === "audio" || question.type === "file") {
-    const mediaAnswer = value && typeof value === "object" && !Array.isArray(value)
-      ? (value as { mediaAssetId: number })
-      : null;
+    const mediaAnswer =
+      value && typeof value === "object" && !Array.isArray(value) ? (value as { mediaAssetId: number }) : null;
     return (
       <div className="mt-4">
         {mediaAnswer ? (
-          <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <div className="flex items-center justify-between rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--color-success)]">
             <span>已上传附件 #{mediaAnswer.mediaAssetId}</span>
             <button
               type="button"
-              className="font-medium text-green-700 underline"
+              className="font-medium text-[var(--color-success)] underline"
               disabled={disabled}
               onClick={() => onChange(null)}
             >
@@ -855,8 +815,8 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
         <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
           <Lock className="h-7 w-7" />
         </span>
-        <h1 className="mt-4 text-xl font-bold tracking-tight text-gray-900">需要访问密码</h1>
-        <p className="mt-1.5 text-sm text-gray-500">请输入此问卷的访问密码后继续填写。</p>
+        <h1 className="mt-4 text-xl font-bold tracking-tight text-[var(--color-ink)]">需要访问密码</h1>
+        <p className="mt-1.5 text-sm text-[var(--color-muted)]">请输入此问卷的访问密码后继续填写。</p>
         <input
           value={code}
           onChange={(event) => setCode(event.target.value)}
@@ -867,16 +827,19 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
           className="input mt-5 w-full text-center"
           autoFocus
         />
-        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+        {error ? <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p> : null}
         <button
           type="button"
           disabled={busy}
           onClick={() => void submit()}
           className="btn btn-primary mt-4 w-full disabled:opacity-50"
         >
-          {busy ? "验证中…" : (
+          {busy ? (
+            "验证中…"
+          ) : (
             <>
-              继续<ArrowRight className="h-4 w-4" />
+              继续
+              <ArrowRight className="h-4 w-4" />
             </>
           )}
         </button>
@@ -886,6 +849,10 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
 }
 
 export function SurveyApp() {
+  // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
+  if (window.location.pathname === "/plaza") {
+    return <PlazaScreen />;
+  }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
   const [index, setIndex] = useState(0);
@@ -914,9 +881,7 @@ export function SurveyApp() {
   }, []);
 
   const isEditableTarget = (target: EventTarget | null): boolean =>
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement;
+    target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 
   const handleInputFocus = useCallback((event: FocusEvent) => {
     if (!isEditableTarget(event.target)) return;
@@ -940,24 +905,25 @@ export function SurveyApp() {
     if (!Number.isFinite(surveyId)) return;
     try {
       const stored = localStorage.getItem(`surveyTheme:${surveyId}`);
-      setUserThemePreset(
-        stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null,
-      );
+      setUserThemePreset(stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null);
     } catch {
       // storage unavailable — keep default
     }
   }, [surveyId]);
 
-  const selectTheme = useCallback((id: string | null) => {
-    setUserThemePreset(id);
-    setThemePickerOpen(false);
-    try {
-      if (id) localStorage.setItem(`surveyTheme:${surveyId}`, id);
-      else localStorage.removeItem(`surveyTheme:${surveyId}`);
-    } catch {
-      // storage unavailable — session-only choice still applies
-    }
-  }, [surveyId]);
+  const selectTheme = useCallback(
+    (id: string | null) => {
+      setUserThemePreset(id);
+      setThemePickerOpen(false);
+      try {
+        if (id) localStorage.setItem(`surveyTheme:${surveyId}`, id);
+        else localStorage.removeItem(`surveyTheme:${surveyId}`);
+      } catch {
+        // storage unavailable — session-only choice still applies
+      }
+    },
+    [surveyId],
+  );
 
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
@@ -969,7 +935,7 @@ export function SurveyApp() {
           setScreen({ kind: "access", survey });
         } else {
           setScreen({ kind: "filling", survey, responseId: 0, currentQuestionId: null, answers: {} });
-          void beginFilling(survey, undefined, cancelled);
+          void beginFilling(survey, undefined, () => cancelled);
         }
       })
       .catch((err) => {
@@ -981,30 +947,31 @@ export function SurveyApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 
-  const beginFilling = useCallback(async (survey: SurveyDto, accessCode: string | undefined, cancelled = false) => {
-    try {
-      const started = await startResponse(survey.id, accessCode);
-      if (cancelled) return;
-      const resumeAnswers = started.resumed
-        ? (await fetchAnswers(survey.id, started.responseId)).answers
-        : {};
-      setAnswers(resumeAnswers);
-      const startIndex = Math.max(
-        0,
-        survey.questions.findIndex((question) => question.id === started.currentQuestionId),
-      );
-      setIndex(startIndex >= 0 ? startIndex : 0);
-      setScreen({
-        kind: "filling",
-        survey,
-        responseId: started.responseId,
-        currentQuestionId: started.currentQuestionId,
-        answers: resumeAnswers,
-      });
-    } catch (err) {
-      if (!cancelled) setScreen({ kind: "error", message: err instanceof Error ? err.message : "无法开始问卷" });
-    }
-  }, []);
+  const beginFilling = useCallback(
+    async (survey: SurveyDto, accessCode: string | undefined, isCancelled: () => boolean = () => false) => {
+      try {
+        const started = await startResponse(survey.id, accessCode);
+        if (isCancelled()) return;
+        const resumeAnswers = started.resumed ? (await fetchAnswers(survey.id, started.responseId)).answers : {};
+        setAnswers(resumeAnswers);
+        const startIndex = Math.max(
+          0,
+          survey.questions.findIndex((question) => question.id === started.currentQuestionId),
+        );
+        setIndex(startIndex >= 0 ? startIndex : 0);
+        setScreen({
+          kind: "filling",
+          survey,
+          responseId: started.responseId,
+          currentQuestionId: started.currentQuestionId,
+          answers: resumeAnswers,
+        });
+      } catch (err) {
+        if (!isCancelled()) setScreen({ kind: "error", message: err instanceof Error ? err.message : "无法开始问卷" });
+      }
+    },
+    [],
+  );
 
   const onVerified = useCallback(
     (code: string) => {
@@ -1051,7 +1018,7 @@ export function SurveyApp() {
       if (!saved) return;
       const next = nextIndex(screen.survey.questions, index, answers);
       if (next >= screen.survey.questions.length) {
-        setScreen({ kind: "done" });
+        setScreen({ kind: "done", survey: screen.survey });
         return;
       }
       setIndex(next);
@@ -1074,16 +1041,19 @@ export function SurveyApp() {
       try {
         const result = await submitResponse(screen.survey.id, screen.responseId);
         if (result.completed) {
-          setScreen({ kind: "done" });
+          setScreen({ kind: "done", survey: screen.survey });
+        } else {
+          // Server accepted the request but refused completion (e.g. a
+          // required question is still missing); without feedback the
+          // responder is stuck on a re-enabled button.
+          setError("问卷尚未完成：还有必答题目未填写");
         }
       } catch (err) {
         const errorCode = (err as Error & { code?: string }).code;
         const message = err instanceof Error ? err.message : "提交失败";
         setError(message);
         if (errorCode === "required_missing") {
-          const missingIndex = screen.survey.questions.findIndex((question) =>
-            message.includes(question.title),
-          );
+          const missingIndex = screen.survey.questions.findIndex((question) => message.includes(question.title));
           if (missingIndex >= 0) setIndex(missingIndex);
         }
       }
@@ -1097,12 +1067,12 @@ export function SurveyApp() {
   }
 
   if (screen.kind === "loading") {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-gray-500">问卷加载中…</div>;
+    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>;
   }
   if (screen.kind === "error") {
     return (
       <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <p className="text-red-600">{screen.message}</p>
+        <p className="text-[var(--color-danger)]">{screen.message}</p>
       </div>
     );
   }
@@ -1110,16 +1080,51 @@ export function SurveyApp() {
     return <AccessScreen survey={screen.survey} onVerified={onVerified} />;
   }
   if (screen.kind === "done") {
+    const completion = screen.survey.theme?.completion;
+    const canRestart = completion?.showRestart === true && screen.survey.allowMultiple;
     return (
       <div className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center">
         <div className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-xl shadow-emerald-500/30">
           <CheckCircle2 className="h-10 w-10" strokeWidth={2.2} />
         </div>
-        <h1 className="mt-5 text-2xl font-bold tracking-tight text-gray-900">提交成功</h1>
-        <p className="mt-2 text-sm text-gray-500">感谢你的参与，你的回答已记录。</p>
-        <button type="button" className="btn btn-primary mt-7 px-8" onClick={closeSurveyPage}>
-          <Check className="h-4 w-4" />完成
-        </button>
+        <h1 className="mt-5 text-2xl font-bold tracking-tight text-[var(--color-ink)]">提交成功</h1>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--color-muted)]">
+          {completion?.message ?? "感谢你的参与，你的回答已记录。"}
+        </p>
+        {completion?.redirectUrl ? (
+          <a
+            className="btn btn-primary mt-7 px-8"
+            href={completion.redirectUrl}
+            target={completion.redirectUrl.startsWith("/") ? undefined : "_blank"}
+            rel="noreferrer"
+          >
+            <Check className="h-4 w-4" />
+            继续
+          </a>
+        ) : (
+          <button type="button" className="btn btn-primary mt-7 px-8" onClick={closeSurveyPage}>
+            <Check className="h-4 w-4" />
+            完成
+          </button>
+        )}
+        {canRestart ? (
+          <button
+            type="button"
+            className="btn mt-3"
+            onClick={() => {
+              setScreen({
+                kind: "filling",
+                survey: screen.survey,
+                responseId: 0,
+                currentQuestionId: null,
+                answers: {},
+              });
+              void beginFilling(screen.survey, undefined);
+            }}
+          >
+            再填一次
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -1127,7 +1132,7 @@ export function SurveyApp() {
   const { survey, responseId } = screen;
   const question = survey.questions[index];
   if (!question) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-gray-500">问卷为空</div>;
+    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷为空</div>;
   }
   const currentPage = survey.pages.find((page) => page.id === question.pageId);
   const value = answers[question.id];
@@ -1137,9 +1142,7 @@ export function SurveyApp() {
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
   // The participant can override the survey's default theme for this session;
   // the choice is remembered per survey in localStorage.
-  const theme: SurveyThemeDto | null = userThemePreset
-    ? { preset: userThemePreset }
-    : survey.theme;
+  const theme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : survey.theme;
   const vars = themeCssVars(theme);
   const backgroundStyle = themeBackgroundStyle(theme);
   const overlay = theme?.overlay;
@@ -1229,9 +1232,7 @@ export function SurveyApp() {
               <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
                 {question.title}
               </h1>
-              {question.required ? (
-                <span className="badge badge-red mt-1 shrink-0">必答</span>
-              ) : null}
+              {question.required ? <span className="badge badge-red mt-1 shrink-0">必答</span> : null}
             </div>
             {question.description ? (
               <ExpandableText
@@ -1251,7 +1252,7 @@ export function SurveyApp() {
                 disabled={busy}
               />
             </div>
-            {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+            {error ? <p className="mt-4 text-sm font-medium text-[var(--color-danger)]">{error}</p> : null}
           </div>
         </main>
 
@@ -1260,7 +1261,10 @@ export function SurveyApp() {
             navHidden ? "translate-y-full" : ""
           }`}
         >
-          <div className="mx-auto max-w-xl px-4 pt-1 lg:max-w-3xl" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
+          <div
+            className="mx-auto max-w-xl px-4 pt-1 lg:max-w-3xl"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+          >
             <div className="flex items-center gap-2 rounded-[20px] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]/90 p-2 shadow-[0_-6px_34px_-14px_rgba(15,23,42,.28)] backdrop-blur">
               {index > 0 ? (
                 <button
@@ -1273,7 +1277,8 @@ export function SurveyApp() {
                     borderColor: "var(--survey-card-border)",
                   }}
                 >
-                  <ArrowLeft className="h-4 w-4" />上一题
+                  <ArrowLeft className="h-4 w-4" />
+                  上一题
                 </button>
               ) : null}
               <button
@@ -1287,11 +1292,13 @@ export function SurveyApp() {
                   "保存中…"
                 ) : isLast ? (
                   <>
-                    <Check className="h-4 w-4" />提交问卷
+                    <Check className="h-4 w-4" />
+                    提交问卷
                   </>
                 ) : (
                   <>
-                    下一题<ArrowRight className="h-4 w-4" />
+                    下一题
+                    <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </button>
@@ -1299,59 +1306,12 @@ export function SurveyApp() {
           </div>
         </nav>
         {theme?.audio?.url ? <BgmPlayer url={theme.audio.url} /> : null}
-        {themePickerOpen ? (
-          <div className="fixed inset-0 z-30">
-            <button
-              aria-label="关闭主题选择"
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setThemePickerOpen(false)}
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] shadow-[0_-12px_40px_-16px_rgba(15,23,42,.3)]"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-semibold text-[var(--survey-heading)]">选择主题</span>
-                <button
-                  type="button"
-                  className="survey-icon-btn h-8 w-8"
-                  aria-label="关闭"
-                  onClick={() => setThemePickerOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="mt-4 grid grid-cols-4 gap-2.5">
-                <button
-                  type="button"
-                  className={`rounded-lg border p-1.5 text-left ${
-                    userThemePreset === null
-                      ? "border-[var(--survey-primary)]"
-                      : "border-[var(--survey-card-border)]"
-                  }`}
-                  onClick={() => selectTheme(null)}
-                >
-                  <div className="h-8 w-full rounded-lg bg-gray-200" />
-                  <span className="mt-1 block text-[11px] text-[var(--survey-muted)]">默认</span>
-                </button>
-                {SURVEY_THEME_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className={`rounded-lg border p-1.5 text-left ${
-                      userThemePreset === preset.id
-                        ? "border-[var(--survey-primary)]"
-                        : "border-[var(--survey-card-border)]"
-                    }`}
-                    onClick={() => selectTheme(preset.id)}
-                  >
-                    <PresetSwatch presetId={preset.id} />
-                    <span className="mt-1 block text-[11px] text-[var(--survey-body)]">{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <ThemePickerSheet
+          open={themePickerOpen}
+          onClose={() => setThemePickerOpen(false)}
+          selected={userThemePreset}
+          onSelect={selectTheme}
+        />
       </div>
     </div>
   );

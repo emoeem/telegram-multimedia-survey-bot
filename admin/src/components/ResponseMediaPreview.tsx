@@ -33,15 +33,15 @@ export function ResponseMediaPreview({
     };
   }, [media.mediaAssetId, responseId, surveyId]);
 
-  if (error) return <span className="text-xs text-red-600">{error}</span>;
-  if (!url) return <span className="text-xs text-gray-400">媒体加载中…</span>;
+  if (error) return <span className="text-xs text-[var(--color-danger)]">{error}</span>;
+  if (!url) return <span className="text-xs text-[var(--color-muted-soft)]">媒体加载中…</span>;
 
   const label = media.fileName || `${media.mediaType} #${media.mediaAssetId}`;
   if (media.mediaType === "photo" || media.mediaType === "gif" || media.mediaType === "sticker") {
-    return <img className="max-h-80 max-w-full rounded-lg border border-gray-200 object-contain" src={url} alt={label} />;
+    return <img className="max-h-80 max-w-full rounded-lg border border-[var(--color-edge)] object-contain" src={url} alt={label} />;
   }
   if (media.mediaType === "video" || media.mediaType === "animation") {
-    return <video className="max-h-80 max-w-full rounded-lg border border-gray-200" src={url} controls preload="metadata" />;
+    return <video className="max-h-80 max-w-full rounded-lg border border-[var(--color-edge)]" src={url} controls preload="metadata" />;
   }
   if (media.mediaType === "audio" || media.mediaType === "voice") {
     return <audio className="max-w-full" src={url} controls preload="metadata" />;

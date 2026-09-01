@@ -25,7 +25,12 @@ Telegram -> Cloudflare Worker -> Survey Engine
 - 上一题、中途恢复、修改答案
 - 权限：ADMIN / OWNER / PARTICIPANT
 - 结果查看、统计
-- CSV / XLSX / ZIP 导出
+- CSV / ZIP / JSON 导出，答卷汇总表一键发送到报告归档频道
+- Web 报告与 PDF 归档（多布局 × 多主题），批量导出报告到私人频道
+- 分享预览卡（Open Graph）：/s/:id 自动生成 1200×630 封面图并注入 meta
+- 自定义提交完成页（致谢文案 / 跳转链接 / 再填一次）
+- 公开填写接口按 IP 固定窗口限流（KV）
+- 每周答卷摘要自动推送到报告频道（周一 09:30 UTC）
 - 限时/永久商业授权、设备激活限制和独立升级权益
 
 ### 贡献者可以从哪里开始

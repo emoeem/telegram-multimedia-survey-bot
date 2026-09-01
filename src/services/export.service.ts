@@ -167,40 +167,47 @@ export async function getExportRows(
       completed_at: string | null;
     }>();
 
-  const answersResult = await db
-    .prepare(
-      `SELECT
-        response_id,
-        question_id,
-        text_value,
-        number_value,
-        boolean_value,
-        rating_value,
-        date_value,
-        time_value,
-        json_value,
-        (
-          SELECT GROUP_CONCAT(qo.label, ' | ')
-          FROM answer_options ao
-          JOIN question_options qo ON qo.id = ao.question_option_id
-          WHERE ao.answer_id = answers.id
-        ) AS selected_options
-       FROM answers
-       WHERE response_id IN (
-         SELECT id FROM survey_responses WHERE survey_id = ?
-       )`,
-    )
-    .bind(surveyId)
-    .all<Record<string, unknown>>();
-
   const answersByResponse = new Map<number, Map<number, Record<string, unknown>>>();
 
-  for (const answer of answersResult.results ?? []) {
-    const responseId = Number(answer["response_id"]);
-    const questionId = Number(answer["question_id"]);
-    const responseAnswers = answersByResponse.get(responseId) ?? new Map();
-    responseAnswers.set(questionId, answer);
-    answersByResponse.set(responseId, responseAnswers);
+  // D1 caps the number of rows a single statement may return; a large survey
+  // would silently truncate (or fail) here, so answers are paged in
+  // response-id batches.
+  const responseRows = responsesResult.results ?? [];
+  const ANSWER_BATCH = 400;
+  for (let offset = 0; offset < responseRows.length; offset += ANSWER_BATCH) {
+    const batch = responseRows
+      .slice(offset, offset + ANSWER_BATCH)
+      .map((row) => Number(row.response_id));
+    const answersResult = await db
+      .prepare(
+        `SELECT
+          response_id,
+          question_id,
+          text_value,
+          number_value,
+          boolean_value,
+          rating_value,
+          date_value,
+          time_value,
+          json_value,
+          (
+            SELECT GROUP_CONCAT(qo.label, ' | ')
+            FROM answer_options ao
+            JOIN question_options qo ON qo.id = ao.question_option_id
+            WHERE ao.answer_id = answers.id
+          ) AS selected_options
+         FROM answers
+         WHERE response_id IN (${batch.map(() => "?").join(",")})`,
+      )
+      .bind(...batch)
+      .all<Record<string, unknown>>();
+    for (const answer of answersResult.results ?? []) {
+      const responseId = Number(answer["response_id"]);
+      const questionId = Number(answer["question_id"]);
+      const responseAnswers = answersByResponse.get(responseId) ?? new Map();
+      responseAnswers.set(questionId, answer);
+      answersByResponse.set(responseId, responseAnswers);
+    }
   }
 
   const rows = (responsesResult.results ?? []).map((response) => {

@@ -194,6 +194,10 @@ function makeEnv(db: D1Database, extra: Partial<Env> = {}): Env {
       put: vi.fn(async () => {}),
       get: vi.fn(async () => null),
     } as unknown as KVNamespace,
+    CACHE: {
+      put: vi.fn(async () => {}),
+      get: vi.fn(async () => null),
+    } as unknown as KVNamespace,
     EXPORT_QUEUE: {
       send: vi.fn(async () => {}),
     } as unknown as Queue,

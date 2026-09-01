@@ -287,11 +287,18 @@ footer.meta{margin-top:36px;padding-top:20px;border-top:1px dashed var(--border)
 @media (max-width:639px){.answer-item,.checklist li{grid-template-columns:1fr;gap:3px;padding:11px 0}.answer-item dt,.checklist strong{margin-bottom:3px}.profile-hero{grid-template-columns:1fr;justify-items:start;gap:10px}.profile-hero .avatar{width:76px;height:76px}.hero-title{font-size:28px}.report-cover{min-height:38vh;padding:32px 22px}}
 @media (min-width:640px){.gallery{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}.score-grid{grid-template-columns:repeat(2,1fr)}.score-rings{grid-template-columns:repeat(2,1fr)}.wrap{padding:0 28px 64px}}
 @media (min-width:960px){.wrap{display:grid;grid-template-columns:repeat(12,1fr);gap:20px;max-width:1120px;padding:0 32px 64px}header.hero,.report-cover,.section-gallery,.report-divider{grid-column:1/-1}.report-section{margin-top:0}.section-summary{grid-column:span 5}.section-scores{grid-column:span 7}.section-radar{grid-column:span 6}.section-insights{grid-column:span 6}.section-quotes{grid-column:span 6}.section-answers{grid-column:span 6}.section-verdict{grid-column:span 12}.gallery{grid-template-columns:repeat(3,1fr)}.profile-hero .avatar{width:108px;height:108px}.hero-title{font-size:40px}header.hero{padding:52px 0 30px}.report-cover{min-height:50vh}}
-@media print{:root{--bg:#fff;--surface:#fff;--border:#dde3ea;--accent-soft:#f1f4f9}body{background:#fff}.wrap{display:block;max-width:none;padding:0}.anchor-nav{display:none}.report-cover,header.hero,.report-section,.report-divider{grid-column:auto}.report-section{break-inside:avoid;margin-top:14px;box-shadow:none}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:24px}.report-cover{min-height:28vh;page-break-inside:avoid}}`;
+@media print{.wrap{display:block;max-width:none;padding:0}.anchor-nav{display:none}.report-cover,header.hero,.report-section,.report-divider{grid-column:auto}.report-section{break-inside:avoid;margin-top:14px;box-shadow:none}.score-card,.ring-card,figure,blockquote{break-inside:avoid}.gallery{grid-template-columns:repeat(2,1fr)}.gallery figure img{aspect-ratio:auto;height:220px;object-fit:contain;background:#f4f6f9}header.hero{padding:12px 0 16px}.hero-title{font-size:24px}.report-cover{min-height:28vh;page-break-inside:avoid}}`;
 }
 
 function themeAliasCss(): string {
-  return `:root{--bg:var(--report-bg);--bg-secondary:var(--report-bg-secondary);--surface:var(--report-surface);--surface-elevated:var(--report-surface-elevated);--text:var(--report-text);--muted:var(--report-text-muted);--border:var(--report-border);--accent:var(--report-accent);--accent-soft:var(--report-surface-elevated);--radius:18px}`;
+  return `:root{--bg:var(--report-bg);--bg-secondary:var(--report-bg-secondary);--surface:var(--report-surface);--surface-elevated:var(--report-surface-elevated);--text:var(--report-text);--muted:var(--report-text-muted);--border:var(--report-border);--accent:var(--report-accent);--accent-soft:color-mix(in srgb,var(--report-accent) 12%,var(--report-bg));--radius:18px}`;
+}
+
+/** Declared after themeAliasCss so print tokens win the cascade; otherwise
+ *  the theme aliases (same specificity, earlier) would override them and
+ *  printing a dark theme would drain a ink cartridge. */
+function themePrintResetCss(): string {
+  return `@media print{:root{--bg:#fff;--bg-secondary:#fff;--surface:#fff;--surface-elevated:#fff;--border:#dde3ea;--accent-soft:#f1f4f9}body{background:#fff}}`;
 }
 
 export function buildResponsiveReportHtml(
@@ -331,11 +338,9 @@ export function buildResponsiveReportHtml(
   <meta name="theme-color" content="#0f172a" />
   <title>${escapeHtml(title)}</title>
   <style>
-    :root{--bg:#f4f6fa;--surface:#fff;--text:#172033;--muted:#64748b;--border:#e5e9f0;--accent:#4f46e5;--accent-soft:#eef2ff;--radius:18px}
-    @media (prefers-color-scheme: dark){:root{--bg:#0b1220;--surface:#131c2e;--text:#e2e8f0;--muted:#94a3b8;--border:#243349;--accent:#818cf8;--accent-soft:#1e2740;--radius:18px}}
     ${baseCss()}
   </style>
-  <style>${themeCss(theme)}${themeAliasCss()}${template.css ?? ""}</style>
+  <style>${themeCss(theme)}${themeAliasCss()}${themePrintResetCss()}${template.css ?? ""}</style>
 </head>
 <body>
   <main class="wrap">

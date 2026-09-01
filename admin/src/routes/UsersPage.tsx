@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { X } from "lucide-react";
-import { api, apiSend, userChatLink, type UserDetailData, type UserDirectoryData } from "../api";
+import { api, apiSend, setUserBan, userChatLink, type UserDetailData, type UserDirectoryData } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
 
-function displayName(item: UserDirectoryData["items"][number]): string {
+function displayName(item: {
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  telegramUserId: number;
+}): string {
   const name = [item.firstName, item.lastName].filter(Boolean).join(" ");
   return name || item.username || `用户 ${item.telegramUserId}`;
 }
@@ -19,6 +24,9 @@ export function UsersPage() {
   const [detail, setDetail] = useState<UserDetailData | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
+  const [banReason, setBanReason] = useState("");
+  const [banBusy, setBanBusy] = useState(false);
+  const detailRequestRef = useRef(0);
   const query = new URLSearchParams({
     page: String(page),
     pageSize: "20",
@@ -28,13 +36,19 @@ export function UsersPage() {
   const { data, error, retry } = useApi<UserDirectoryData>(`/api/admin/users?${query}`);
 
   const openDetail = async (userId: number) => {
+    const requestToken = ++detailRequestRef.current;
     setSelected(userId);
     setDetail(null);
     setDetailError(null);
     try {
-      setDetail(await api<UserDetailData>(`/api/admin/users/${userId}`));
+      const result = await api<UserDetailData>(`/api/admin/users/${userId}`);
+      // A slower response for an earlier click must not clobber the detail
+      // panel the user is now looking at.
+      if (requestToken === detailRequestRef.current) setDetail(result);
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "加载失败");
+      if (requestToken === detailRequestRef.current) {
+        setDetailError(err instanceof Error ? err.message : "加载失败");
+      }
     }
   };
 
@@ -61,6 +75,28 @@ export function UsersPage() {
     }
   };
 
+  const changeBan = async (banned: boolean) => {
+    if (!selected || !detail) return;
+    if (
+      banned &&
+      !window.confirm(`确定封禁 ${displayName(detail.user)}？封禁后该用户将无法使用机器人，且进行中的答卷会被取消。`)
+    ) {
+      return;
+    }
+    setBanBusy(true);
+    setDetailError(null);
+    try {
+      await setUserBan(selected, banned, banned ? banReason : undefined);
+      setBanReason("");
+      await openDetail(selected);
+      retry();
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : banned ? "封禁失败" : "解除封禁失败");
+    } finally {
+      setBanBusy(false);
+    }
+  };
+
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={7} />;
 
@@ -69,7 +105,7 @@ export function UsersPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">用户目录</h2>
-          <p className="mt-1 text-sm text-gray-500">共 {data.total} 位用户 · 标签与搜索由管理员维护</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 位用户 · 标签与搜索由管理员维护</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input
@@ -98,22 +134,28 @@ export function UsersPage() {
           <table className="tbl">
             <thead>
               <tr>
-                <th className="text-sm text-gray-500">用户</th>
-                <th className="text-sm text-gray-500">Telegram ID</th>
-                <th className="text-sm text-gray-500">完成答卷</th>
-                <th className="text-sm text-gray-500">标签</th>
-                <th className="text-sm text-gray-500">操作</th>
+                <th className="text-sm text-[var(--color-muted)]">用户</th>
+                <th className="text-sm text-[var(--color-muted)]">Telegram ID</th>
+                <th className="text-sm text-[var(--color-muted)]">完成答卷</th>
+                <th className="text-sm text-[var(--color-muted)]">标签</th>
+                <th className="text-sm text-[var(--color-muted)]">操作</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50">
+                <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm">
-                    <button className="text-left font-semibold text-blue-700" onClick={() => void openDetail(item.id)}>
+                    <button
+                      className="text-left font-semibold text-[var(--color-info)]"
+                      onClick={() => void openDetail(item.id)}
+                    >
                       {displayName(item)}
                     </button>
-                    {item.username ? (
-                      <span className="ml-1 text-gray-500">@{item.username}</span>
+                    {item.username ? <span className="ml-1 text-[var(--color-muted)]">@{item.username}</span> : null}
+                    {item.bannedAt ? (
+                      <span className="ml-1 rounded-full bg-[color-mix(in_srgb,var(--color-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                        已封禁
+                      </span>
                     ) : null}
                   </td>
                   <td className="text-sm">{item.telegramUserId}</td>
@@ -123,7 +165,7 @@ export function UsersPage() {
                       {item.tags.map((value) => (
                         <button
                           key={value}
-                          className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 hover:bg-red-50 hover:text-red-600"
+                          className="rounded-full bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] hover:text-[var(--color-danger)]"
                           title="点击移除标签"
                           onClick={() => void removeTag(item.id, value)}
                         >
@@ -134,9 +176,18 @@ export function UsersPage() {
                   </td>
                   <td className="text-sm">
                     <div className="flex gap-2">
-                      <a className="btn btn-sm" href={userChatLink(item.telegramUserId)}>私聊</a>
+                      <a className="btn btn-sm" href={userChatLink(item.telegramUserId)}>
+                        私聊
+                      </a>
                       {item.username ? (
-                        <a className="btn btn-sm" href={`https://t.me/${item.username}`} target="_blank" rel="noreferrer">@打开</a>
+                        <a
+                          className="btn btn-sm"
+                          href={`https://t.me/${item.username}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          @打开
+                        </a>
                       ) : null}
                     </div>
                   </td>
@@ -150,24 +201,33 @@ export function UsersPage() {
       )}
 
       {selected !== null ? (
-        <div className="mt-5 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+        <div className="mt-5 rounded-xl border border-[color-mix(in_srgb,var(--color-primary)_30%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">用户 #{selected} 详情</h3>
-            <button className="btn btn-sm" onClick={() => setSelected(null)}>收起</button>
+            <button className="btn btn-sm" onClick={() => setSelected(null)}>
+              收起
+            </button>
           </div>
-          {detailError ? <p className="mt-2 text-sm text-red-600">{detailError}</p> : null}
+          {detailError ? <p className="mt-2 text-sm text-[var(--color-danger)]">{detailError}</p> : null}
           {detail ? (
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-[var(--text-soft)]">
                   注册：{formatDateTime(detail.user.createdAt)}
-                  {detail.user.bannedAt ? ` · 已于 ${formatDateTime(detail.user.bannedAt)} 封禁` : ""}
+                  {detail.user.bannedAt ? (
+                    <span className="ml-2 rounded-full bg-[color-mix(in_srgb,var(--color-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                      已封禁（{formatDateTime(detail.user.bannedAt)}）
+                    </span>
+                  ) : null}
                 </p>
+                {detail.user.bannedAt && detail.user.banReason ? (
+                  <p className="mt-1 text-sm text-[var(--color-danger)]">封禁原因：{detail.user.banReason}</p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {detail.tags.map((value) => (
                     <button
                       key={value}
-                      className="inline-flex items-center gap-0.5 rounded-full bg-white px-2 py-0.5 text-xs text-indigo-700 hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] hover:text-[var(--color-danger)]"
                       onClick={() => void removeTag(selected, value)}
                     >
                       #{value} <X className="h-3 w-3" />
@@ -182,27 +242,54 @@ export function UsersPage() {
                       if (event.key === "Enter") void addTag(selected);
                     }}
                   />
-                  <button className="btn btn-sm" onClick={() => void addTag(selected)}>添加</button>
+                  <button className="btn btn-sm" onClick={() => void addTag(selected)}>
+                    添加
+                  </button>
+                </div>
+                <div className="mt-3 border-t border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] pt-3">
+                  {detail.user.bannedAt ? (
+                    <button className="btn btn-sm" disabled={banBusy} onClick={() => void changeBan(false)}>
+                      ✅ 解除封禁
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className="input btn-sm"
+                        placeholder="封禁原因（可选）"
+                        value={banReason}
+                        disabled={banBusy}
+                        onChange={(event) => setBanReason(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void changeBan(true);
+                        }}
+                      />
+                      <button className="btn btn-sm btn-danger" disabled={banBusy} onClick={() => void changeBan(true)}>
+                        ⛔ 封禁用户
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-600">最近答卷</p>
+                <p className="text-sm font-medium text-[var(--text-soft)]">最近答卷</p>
                 {detail.responses.length ? (
                   <ul className="mt-2 space-y-1 text-sm">
                     {detail.responses.map((response) => (
                       <li key={response.responseId} className="flex items-center justify-between gap-2">
                         <Link
-                          className="text-blue-700"
+                          className="text-[var(--color-info)]"
                           to={`/surveys/${response.surveyId}/responses/${response.responseId}`}
                         >
                           {response.surveyTitle} · #{response.responseId}
                         </Link>
-                        <span className="text-gray-400">{response.completedAt ? formatDateTime(response.completedAt) : response.status}</span>
+                        <span className="text-[var(--color-muted-soft)]">
+                          {response.completedAt ? formatDateTime(response.completedAt) : response.status}
+                        </span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-sm text-gray-400">暂无答卷</p>
+                  <p className="mt-2 text-sm text-[var(--color-muted-soft)]">暂无答卷</p>
                 )}
               </div>
             </div>
@@ -210,10 +297,16 @@ export function UsersPage() {
         </div>
       ) : null}
 
-      <div className="mt-5 flex items-center justify-end gap-2 text-sm text-gray-500">
-        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
-        <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
-        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+      <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
+        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+          上一页
+        </button>
+        <span>
+          第 {data.page}/{Math.max(1, data.totalPages)} 页
+        </span>
+        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>
+          下一页
+        </button>
       </div>
     </section>
   );

@@ -2,25 +2,27 @@ import { answerCallbackQuery, sendMessage, type InlineKeyboardMarkup } from "./t
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import { registerMediaAsset } from "../services/media.service";
-import { createIdentityProfile, type IdentityProfileRecord } from "../db/repositories/identity-card.repository";
+import { createIdentityProfile } from "../db/repositories/identity-card.repository";
 import { clearUiSession, getUiSession, replaceUiScreen, setUiMessage } from "../services/ui-session.service";
-import type { ResultProfileSnapshot } from "../result/schema";
-import type { VisualTemplateDefinition } from "../visual-template/schema";
 import {
   getIdentityCardAccessSetting,
   grantIdentityCardAccess,
   hasIdentityCardAccess,
 } from "../db/repositories/feature-access.repository";
 import { verifySurveyAccessCode } from "../core/security";
+import { IDENTITY_CARD_TEMPLATES, isIdentityCardTemplateId } from "../services/identity-card-report.service";
+import { getCardTemplateById, listCardTemplates } from "../db/repositories/card-template.repository";
 
-export type IdentityStyle = "simple" | "dark" | "classic";
-type IdentityStep = "front" | "back" | "name" | "nickname" | "age" | "label" | "description" | "background" | "confirm";
+type IdentityStep =
+  "front" | "back" | "name" | "nickname" | "age" | "label" | "description" | "background" | "gallery" | "confirm";
 interface IdentitySession {
   chatId: number;
   messageId?: number;
   uiStep?: IdentityStep | "style";
   step: IdentityStep;
-  style: IdentityStyle;
+  /** Selected card template id (see IDENTITY_CARD_TEMPLATES). */
+  style: string;
+  galleryPublished: boolean;
   frontAssetId: number | null;
   backAssetId: number | null;
   backgroundAssetId: number | null;
@@ -42,18 +44,21 @@ const stepNumber: Record<IdentityStep, number> = {
   label: 6,
   description: 7,
   background: 8,
-  confirm: 9,
+  gallery: 9,
+  confirm: 10,
 };
 
 function progress(step: IdentityStep): string {
-  return `步骤 ${stepNumber[step]}/9`;
+  return `步骤 ${stepNumber[step]}/${stepNumber.confirm}`;
 }
 
 function skipped(value: string): boolean {
   return ["-", "跳过", "- 跳过", "skip"].includes(value.trim().toLowerCase());
 }
 
-function optionalKeyboard(step: Exclude<IdentityStep, "front" | "back" | "name" | "confirm">): InlineKeyboardMarkup {
+function optionalKeyboard(
+  step: Exclude<IdentityStep, "front" | "back" | "name" | "gallery" | "confirm">,
+): InlineKeyboardMarkup {
   if (step === "background") {
     return {
       inline_keyboard: [
@@ -154,22 +159,27 @@ export async function startIdentityCard(
     chatId,
     ...(messageId === undefined ? {} : { messageId }),
     step: "front",
-    style: "simple",
+    style: "identity",
+    galleryPublished: false,
     frontAssetId: null,
     backAssetId: null,
     backgroundAssetId: null,
   };
   await putState(ctx, userId, state);
+  const customTemplates = await listCardTemplates(ctx.db, { enabledOnly: true }).catch(() => []);
   await screen(
     ctx,
     state,
     userId,
-    "🪪 自定义身份卡\n\n这是一张个人资料卡，不是官方身份证明。\n\n先选择视觉风格，之后会依次收集图片和资料：",
+    "🪪 自定义资料卡\n\n这是一张个人资料卡，不是官方身份证明。\n\n卡片使用网页报告渲染管线生成。先选择卡片版式，之后会依次收集图片和资料：",
     {
       inline_keyboard: [
-        [{ text: "☁️ 玻璃极简", callback_data: "identity:style:simple" }],
-        [{ text: "⚡ 霓虹赛博档案", callback_data: "identity:style:dark" }],
-        [{ text: "✦ Art Deco 复古", callback_data: "identity:style:classic" }],
+        ...IDENTITY_CARD_TEMPLATES.map((template) => [
+          { text: template.label, callback_data: `identity:style:${template.id}` },
+        ]),
+        ...customTemplates.map((template) => [
+          { text: `🃏 ${template.name}`, callback_data: `identity:style:custom:${template.id}` },
+        ]),
         [{ text: "取消", callback_data: "identity:cancel" }],
       ],
     },
@@ -177,699 +187,90 @@ export async function startIdentityCard(
   );
 }
 
-export function getIdentityCardTemplate(style: IdentityStyle): VisualTemplateDefinition {
-  const shared = {
-    schemaVersion: 1 as const,
-    width: 1080,
-    height: 1350 as const,
-    format: "png" as const,
-    variables: [],
-  };
-  if (style === "dark") {
-    return {
-      ...shared,
-      background: { type: "gradient", from: "#050816", to: "#18284e", angle: 135 },
-      elements: [
-        {
-          id: "glow-a",
-          type: "rectangle",
-          x: 52,
-          y: 58,
-          width: 976,
-          height: 1234,
-          radius: 38,
-          fill: "#071326",
-          stroke: "#00E5FF",
-          strokeWidth: 3,
-        },
-        {
-          id: "glow-b",
-          type: "rectangle",
-          x: 72,
-          y: 78,
-          width: 936,
-          height: 1194,
-          radius: 28,
-          fill: "#0B1022",
-          stroke: "#FF3CAC",
-          strokeWidth: 2,
-          opacity: 0.95,
-        },
-        { id: "topline", type: "rectangle", x: 112, y: 136, width: 620, height: 8, fill: "#00E5FF" },
-        {
-          id: "heading",
-          type: "text",
-          x: 112,
-          y: 170,
-          width: 820,
-          value: "IDENTITY // NEON ARCHIVE",
-          color: "#8BE9FD",
-          fontSize: 27,
-          fontWeight: "bold",
-          letterSpacing: 2,
-        },
-        {
-          id: "serial",
-          type: "text",
-          x: 822,
-          y: 170,
-          width: 130,
-          value: "# 01",
-          align: "right",
-          color: "#FF78C6",
-          fontSize: 27,
-          fontWeight: "bold",
-        },
-        {
-          id: "portrait-frame",
-          type: "rectangle",
-          x: 112,
-          y: 250,
-          width: 430,
-          height: 560,
-          radius: 24,
-          fill: "#00E5FF",
-          opacity: 0.8,
-        },
-        {
-          id: "front",
-          type: "image",
-          x: 126,
-          y: 264,
-          width: 402,
-          height: 532,
-          source: "{{result.images.front_image}}",
-          fit: "cover",
-          shape: "rounded",
-          radius: 18,
-        },
-        {
-          id: "portrait-chip",
-          type: "text",
-          x: 146,
-          y: 734,
-          width: 300,
-          value: "VISUAL SIGNATURE",
-          color: "#071326",
-          fontSize: 24,
-          fontWeight: "bold",
-        },
-        {
-          id: "name",
-          type: "text",
-          x: 598,
-          y: 274,
-          width: 340,
-          value: "{{result.fields.name}}",
-          color: "#FFFFFF",
-          fontSize: 62,
-          fontWeight: "bold",
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        {
-          id: "nickname",
-          type: "text",
-          x: 602,
-          y: 370,
-          width: 330,
-          value: "@ {{result.fields.nickname}}",
-          color: "#A8B7D1",
-          fontSize: 30,
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        { id: "label-bg", type: "rectangle", x: 598, y: 450, width: 340, height: 66, radius: 12, fill: "#FF3CAC" },
-        {
-          id: "label",
-          type: "text",
-          x: 622,
-          y: 462,
-          width: 292,
-          value: "{{result.fields.identity_label}}",
-          color: "#FFFFFF",
-          fontSize: 30,
-          fontWeight: "bold",
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        {
-          id: "age-label",
-          type: "text",
-          x: 602,
-          y: 562,
-          width: 300,
-          value: "AGE / {{result.fields.age}}",
-          color: "#00E5FF",
-          fontSize: 32,
-          fontWeight: "bold",
-        },
-        { id: "right-rule", type: "rectangle", x: 598, y: 640, width: 340, height: 2, fill: "#41628F" },
-        {
-          id: "classification",
-          type: "text",
-          x: 602,
-          y: 672,
-          width: 330,
-          value: "STATUS  •  SELF-DEFINED",
-          color: "#A8B7D1",
-          fontSize: 23,
-          letterSpacing: 1,
-        },
-        {
-          id: "bio-panel",
-          type: "rectangle",
-          x: 112,
-          y: 874,
-          width: 826,
-          height: 236,
-          radius: 20,
-          fill: "#111E38",
-          stroke: "#1B365B",
-          strokeWidth: 2,
-        },
-        {
-          id: "bio-heading",
-          type: "text",
-          x: 148,
-          y: 908,
-          width: 700,
-          value: "PERSONAL NOTES",
-          color: "#FF78C6",
-          fontSize: 23,
-          fontWeight: "bold",
-          letterSpacing: 2,
-        },
-        {
-          id: "description",
-          type: "text",
-          x: 148,
-          y: 950,
-          width: 742,
-          value: "{{result.fields.description}}",
-          color: "#EDF4FF",
-          fontSize: 31,
-          lineHeight: 1.42,
-          maxLines: 3,
-          overflow: "ellipsis",
-        },
-        {
-          id: "back",
-          type: "image",
-          x: 112,
-          y: 1160,
-          width: 154,
-          height: 88,
-          source: "{{result.images.back_image}}",
-          fit: "cover",
-          shape: "rounded",
-          radius: 12,
-        },
-        {
-          id: "footer",
-          type: "text",
-          x: 290,
-          y: 1188,
-          width: 648,
-          value: "ISSUED / {{result.metadata.created_at}}  ·  PERSONAL CARD",
-          color: "#7891B5",
-          fontSize: 22,
-        },
-      ],
-    };
-  }
-  if (style === "classic") {
-    return {
-      ...shared,
-      background: { type: "gradient", from: "#392318", to: "#A57434", angle: 45 },
-      elements: [
-        {
-          id: "outer",
-          type: "rectangle",
-          x: 46,
-          y: 46,
-          width: 988,
-          height: 1258,
-          radius: 18,
-          fill: "#EED8A7",
-          stroke: "#2D190F",
-          strokeWidth: 12,
-        },
-        {
-          id: "inner",
-          type: "rectangle",
-          x: 72,
-          y: 72,
-          width: 936,
-          height: 1206,
-          radius: 10,
-          fill: "#F8EBCB",
-          stroke: "#B7873D",
-          strokeWidth: 4,
-        },
-        {
-          id: "topornament",
-          type: "text",
-          x: 130,
-          y: 124,
-          width: 820,
-          value: "✦  PERSONAL DOSSIER  ✦",
-          align: "center",
-          color: "#7A4822",
-          fontSize: 30,
-          fontWeight: "bold",
-          letterSpacing: 3,
-        },
-        { id: "top-rule", type: "rectangle", x: 160, y: 184, width: 760, height: 4, fill: "#B7873D" },
-        { id: "front-shadow", type: "rectangle", x: 132, y: 262, width: 368, height: 482, radius: 4, fill: "#62351D" },
-        {
-          id: "front",
-          type: "image",
-          x: 146,
-          y: 248,
-          width: 368,
-          height: 482,
-          source: "{{result.images.front_image}}",
-          fit: "cover",
-          shape: "rectangle",
-        },
-        { id: "seal", type: "rectangle", x: 172, y: 670, width: 182, height: 48, radius: 24, fill: "#8B2020" },
-        {
-          id: "seal-text",
-          type: "text",
-          x: 172,
-          y: 677,
-          width: 182,
-          value: "SELF ISSUED",
-          align: "center",
-          color: "#FFF4D6",
-          fontSize: 18,
-          fontWeight: "bold",
-        },
-        {
-          id: "name",
-          type: "text",
-          x: 574,
-          y: 270,
-          width: 320,
-          value: "{{result.fields.name}}",
-          color: "#3A2116",
-          fontSize: 64,
-          fontWeight: "bold",
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        {
-          id: "nickname",
-          type: "text",
-          x: 580,
-          y: 370,
-          width: 310,
-          value: "{{result.fields.nickname}}",
-          color: "#8C5C35",
-          fontSize: 30,
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        {
-          id: "label-title",
-          type: "text",
-          x: 580,
-          y: 455,
-          width: 300,
-          value: "DISTINCTION",
-          color: "#A16B2C",
-          fontSize: 22,
-          fontWeight: "bold",
-          letterSpacing: 2,
-        },
-        {
-          id: "label",
-          type: "text",
-          x: 580,
-          y: 495,
-          width: 300,
-          value: "{{result.fields.identity_label}}",
-          color: "#3A2116",
-          fontSize: 37,
-          fontWeight: "bold",
-          maxLines: 1,
-          overflow: "ellipsis",
-        },
-        {
-          id: "age-title",
-          type: "text",
-          x: 580,
-          y: 588,
-          width: 300,
-          value: "AGE",
-          color: "#A16B2C",
-          fontSize: 22,
-          fontWeight: "bold",
-          letterSpacing: 2,
-        },
-        {
-          id: "age",
-          type: "text",
-          x: 580,
-          y: 628,
-          width: 300,
-          value: "{{result.fields.age}}",
-          color: "#3A2116",
-          fontSize: 42,
-          fontWeight: "bold",
-        },
-        { id: "name-rule", type: "rectangle", x: 574, y: 704, width: 320, height: 3, fill: "#B7873D" },
-        {
-          id: "chapter",
-          type: "text",
-          x: 146,
-          y: 826,
-          width: 788,
-          value: "A SHORT PORTRAIT",
-          align: "center",
-          color: "#7A4822",
-          fontSize: 25,
-          fontWeight: "bold",
-          letterSpacing: 3,
-        },
-        {
-          id: "description",
-          type: "text",
-          x: 164,
-          y: 882,
-          width: 752,
-          value: "{{result.fields.description}}",
-          align: "center",
-          color: "#4C2C1E",
-          fontSize: 32,
-          lineHeight: 1.48,
-          maxLines: 4,
-          overflow: "ellipsis",
-        },
-        { id: "bottom-rule", type: "rectangle", x: 160, y: 1120, width: 760, height: 4, fill: "#B7873D" },
-        {
-          id: "back",
-          type: "image",
-          x: 164,
-          y: 1160,
-          width: 122,
-          height: 76,
-          source: "{{result.images.back_image}}",
-          fit: "cover",
-          shape: "rounded",
-          radius: 8,
-        },
-        {
-          id: "footer",
-          type: "text",
-          x: 310,
-          y: 1180,
-          width: 604,
-          value: "ARCHIVED · {{result.metadata.created_at}}",
-          align: "center",
-          color: "#8C5C35",
-          fontSize: 24,
-          letterSpacing: 2,
-        },
-      ],
-    };
-  }
+function confirmSummary(state: IdentitySession): string {
+  const background =
+    state.backgroundAssetId === state.frontAssetId && state.frontAssetId !== null
+      ? "背景：使用正面图片"
+      : state.backgroundAssetId
+        ? "背景：已上传自定义图片"
+        : "背景：样式默认";
+  return [
+    "请确认资料卡内容：",
+    "",
+    `姓名：${state.name}`,
+    `昵称：${state.nickname ?? "未填写"}`,
+    `年龄：${state.age ?? "未填写"}`,
+    `标签：${state.label ?? "未填写"}`,
+    `简介：${state.description ?? "未填写"}`,
+    background,
+    `画廊：${state.galleryPublished ? "🌍 发布到资料卡画廊" : "🔒 仅自己可见"}`,
+  ].join("\n");
+}
+
+function confirmKeyboard(): InlineKeyboardMarkup {
   return {
-    ...shared,
-    background: { type: "gradient", from: "#DDEEFF", to: "#F5E7FF", angle: 135 },
-    elements: [
-      {
-        id: "shadow",
-        type: "rectangle",
-        x: 76,
-        y: 84,
-        width: 928,
-        height: 1180,
-        radius: 46,
-        fill: "#94A3B8",
-        opacity: 0.22,
-      },
-      {
-        id: "card",
-        type: "rectangle",
-        x: 60,
-        y: 60,
-        width: 928,
-        height: 1180,
-        radius: 46,
-        fill: "#FFFFFF",
-        stroke: "#FFFFFF",
-        strokeWidth: 3,
-        opacity: 0.94,
-      },
-      { id: "accent-a", type: "rectangle", x: 60, y: 60, width: 928, height: 18, radius: 9, fill: "#7C3AED" },
-      { id: "accent-b", type: "rectangle", x: 60, y: 78, width: 590, height: 8, fill: "#38BDF8" },
-      {
-        id: "eyebrow",
-        type: "text",
-        x: 116,
-        y: 138,
-        width: 780,
-        value: "PERSONAL PROFILE  /  SELF-DEFINED",
-        color: "#64748B",
-        fontSize: 23,
-        fontWeight: "bold",
-        letterSpacing: 2,
-      },
-      { id: "front-ring", type: "rectangle", x: 116, y: 218, width: 350, height: 350, radius: 175, fill: "#DDD6FE" },
-      {
-        id: "front",
-        type: "image",
-        x: 128,
-        y: 230,
-        width: 326,
-        height: 326,
-        source: "{{result.images.front_image}}",
-        fit: "cover",
-        shape: "circle",
-      },
-      {
-        id: "name",
-        type: "text",
-        x: 530,
-        y: 242,
-        width: 360,
-        value: "{{result.fields.name}}",
-        color: "#172554",
-        fontSize: 65,
-        fontWeight: "bold",
-        maxLines: 1,
-        overflow: "ellipsis",
-      },
-      {
-        id: "nickname",
-        type: "text",
-        x: 536,
-        y: 342,
-        width: 340,
-        value: "{{result.fields.nickname}}",
-        color: "#64748B",
-        fontSize: 30,
-        maxLines: 1,
-        overflow: "ellipsis",
-      },
-      { id: "label-bg", type: "rectangle", x: 530, y: 422, width: 342, height: 64, radius: 32, fill: "#EDE9FE" },
-      {
-        id: "label",
-        type: "text",
-        x: 558,
-        y: 435,
-        width: 292,
-        value: "{{result.fields.identity_label}}",
-        color: "#6D28D9",
-        fontSize: 29,
-        fontWeight: "bold",
-        maxLines: 1,
-        overflow: "ellipsis",
-      },
-      {
-        id: "age",
-        type: "text",
-        x: 536,
-        y: 526,
-        width: 300,
-        value: "AGE  {{result.fields.age}}",
-        color: "#0F766E",
-        fontSize: 29,
-        fontWeight: "bold",
-        letterSpacing: 2,
-      },
-      { id: "divider", type: "rectangle", x: 116, y: 652, width: 756, height: 2, fill: "#CBD5E1" },
-      {
-        id: "bio-title",
-        type: "text",
-        x: 116,
-        y: 704,
-        width: 700,
-        value: "ABOUT ME",
-        color: "#7C3AED",
-        fontSize: 24,
-        fontWeight: "bold",
-        letterSpacing: 2,
-      },
-      {
-        id: "description",
-        type: "text",
-        x: 116,
-        y: 750,
-        width: 756,
-        value: "{{result.fields.description}}",
-        color: "#334155",
-        fontSize: 35,
-        lineHeight: 1.45,
-        maxLines: 4,
-        overflow: "ellipsis",
-      },
-      { id: "quote-box", type: "rectangle", x: 116, y: 1014, width: 756, height: 122, radius: 22, fill: "#F1F5F9" },
-      {
-        id: "quote",
-        type: "text",
-        x: 150,
-        y: 1040,
-        width: 680,
-        value: "A card for the person I choose to be.",
-        align: "center",
-        color: "#64748B",
-        fontSize: 26,
-        fontWeight: "bold",
-      },
-      {
-        id: "back",
-        type: "image",
-        x: 116,
-        y: 1166,
-        width: 112,
-        height: 54,
-        source: "{{result.images.back_image}}",
-        fit: "cover",
-        shape: "rounded",
-        radius: 12,
-      },
-      {
-        id: "footer",
-        type: "text",
-        x: 250,
-        y: 1176,
-        width: 622,
-        value: "CREATED  {{result.metadata.created_at}}",
-        color: "#64748B",
-        fontSize: 23,
-        letterSpacing: 2,
-      },
+    inline_keyboard: [
+      [{ text: "✅ 生成资料卡", callback_data: "identity:confirm" }],
+      [{ text: "取消", callback_data: "identity:cancel" }],
     ],
   };
 }
 
-function profile(state: {
-  frontAssetId: number | null;
-  backAssetId: number | null;
-  name?: string | undefined;
-  nickname?: string | undefined;
-  age?: number | undefined;
-  label?: string | undefined;
-  description?: string | undefined;
-}): ResultProfileSnapshot {
-  const fields = {
-    name: { id: "name", type: "text" as const, value: state.name ?? "" },
-    nickname: { id: "nickname", type: "text" as const, value: state.nickname ?? "" },
-    age: { id: "age", type: "number" as const, value: state.age ?? "" },
-    identity_label: { id: "identity_label", type: "text" as const, value: state.label ?? "" },
-    description: { id: "description", type: "long_text" as const, value: state.description ?? "" },
-  };
-  const images: ResultProfileSnapshot["images"] = { front_image: { mediaAssetId: state.frontAssetId ?? 0 } };
-  if (state.backAssetId) images.back_image = { mediaAssetId: state.backAssetId };
-  return {
-    resultType: "identity_card",
-    title: state.name ?? null,
-    subtitle: state.label ?? null,
-    fields,
-    stats: [],
-    tags: [],
-    images,
-    metadata: { created_at: new Date().toLocaleDateString("zh-CN") },
-    schemaVersion: 1,
-  };
+function galleryPrompt(state: IdentitySession): string {
+  const backgroundNote = state.style.startsWith("custom:")
+    ? "已使用模板自带卡面"
+    : state.backgroundAssetId
+      ? "背景已设置"
+      : "已使用样式默认背景";
+  return prompt(
+    "gallery",
+    `✅ ${backgroundNote}。\n\n🌍 画廊发布\n是否把这张资料卡发布到资料卡画廊？发布后其他用户可以在机器人的「资料卡画廊」里浏览这张卡片。`,
+  );
 }
 
-export function applyIdentityBackground(
-  definition: VisualTemplateDefinition,
-  style: IdentityStyle,
-  assetId: number | null,
-): VisualTemplateDefinition {
-  if (!assetId) return definition;
-  const overlay = style === "dark" ? "#050816" : style === "classic" ? "#3b2115" : "#ffffff";
-  const panelOpacity = style === "dark" ? 0.68 : style === "classic" ? 0.7 : 0.64;
+function galleryKeyboard(): InlineKeyboardMarkup {
   return {
-    ...definition,
-    background: { type: "telegram_asset", assetId, fit: "cover" },
-    elements: [
-      {
-        id: "identity-background-overlay",
-        type: "rectangle",
-        x: 0,
-        y: 0,
-        width: definition.width,
-        height: 1350,
-        fill: overlay,
-        opacity: style === "dark" ? 0.25 : style === "classic" ? 0.22 : 0.16,
-        zIndex: -100,
-      },
-      ...definition.elements.map((element) =>
-        ["card", "glow-a", "glow-b", "outer", "inner"].includes(element.id)
-          ? { ...element, opacity: panelOpacity }
-          : element,
-      ),
+    inline_keyboard: [
+      [
+        { text: "🌍 发布到画廊", callback_data: "identity:gallery:yes" },
+        { text: "🔒 仅自己可见", callback_data: "identity:gallery:no" },
+      ],
     ],
   };
-}
-
-export async function renderIdentityCardPng(
-  db: D1Database,
-  botToken: string,
-  identity: IdentityProfileRecord,
-): Promise<Uint8Array> {
-  const style: IdentityStyle =
-    identity.templateStyle === "dark" || identity.templateStyle === "classic" ? identity.templateStyle : "simple";
-  const definition = applyIdentityBackground(getIdentityCardTemplate(style), style, identity.backgroundAssetId);
-  const resultProfile = profile({
-    frontAssetId: identity.frontAssetId,
-    backAssetId: identity.backAssetId,
-    name: identity.name,
-    nickname: identity.nickname ?? undefined,
-    age: identity.age ?? undefined,
-    label: identity.identityLabel ?? undefined,
-    description: identity.description ?? undefined,
-  });
-  const [
-    { renderResultVisualPng, TEMPLATE_BACKGROUND_IMAGE_KEY },
-    { RESULT_VISUAL_FONTS },
-    { RESULT_VISUAL_WASM },
-    { resolveResultVisualImages },
-  ] = await Promise.all([
-    import("../services/result-visual-renderer.service"),
-    import("../services/result-visual-font"),
-    import("../services/result-visual-wasm"),
-    import("../services/result-visual-image.service"),
-  ]);
-  const images = await resolveResultVisualImages(db, botToken, definition, resultProfile);
-  if (identity.backgroundAssetId && !images[TEMPLATE_BACKGROUND_IMAGE_KEY]) {
-    throw new Error("资料卡背景图片无法下载，请重新上传后再生成");
-  }
-  return renderResultVisualPng(definition, resultProfile, {
-    wasmModule: RESULT_VISUAL_WASM,
-    fontBuffers: RESULT_VISUAL_FONTS,
-    images,
-  });
 }
 
 function unlockKey(userId: number): string {
   return `identity-card-unlock:${userId}`;
+}
+
+// Custom card face templates carry their own background, so the separate
+// "upload a background" step would only confuse; skip straight to gallery.
+function usesBuiltInBackground(state: IdentitySession): boolean {
+  return state.style.startsWith("custom:");
+}
+
+async function advanceAfterDescription(
+  ctx: BotContext,
+  state: IdentitySession,
+  userId: number,
+  note: string,
+): Promise<void> {
+  if (usesBuiltInBackground(state)) {
+    state.step = "gallery";
+    await screen(ctx, state, userId, galleryPrompt(state), galleryKeyboard());
+    return;
+  }
+  state.step = "background";
+  await screen(
+    ctx,
+    state,
+    userId,
+    prompt(
+      "background",
+      `✅ ${note}\n\n卡片背景（可选）\n可以上传一张自己的图片作为整张资料卡背景，也可以使用样式默认背景：`,
+    ),
+    optionalKeyboard("background"),
+  );
 }
 
 async function promptIdentityCardUnlock(ctx: BotContext, chatId: number, userId: number): Promise<void> {
@@ -877,7 +278,7 @@ async function promptIdentityCardUnlock(ctx: BotContext, chatId: number, userId:
   await sendMessage(
     ctx.botToken,
     chatId,
-    "🔐 自定义身份卡需要使用密码解锁。\n\n请输入图片生成功能密码；发送 /cancel 取消。",
+    "🔐 自定义资料卡需要使用密码解锁。\n\n请输入图片生成功能密码；发送 /cancel 取消。",
     {
       inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]],
     },
@@ -897,17 +298,17 @@ async function enqueueGeneration(ctx: BotContext, userId: number, state: Identit
     backAssetId: state.backAssetId,
     backgroundAssetId: state.backgroundAssetId ?? null,
     templateStyle: state.style,
+    galleryPublished: state.galleryPublished,
+    galleryPublishedAt: null,
+    cardAssetId: null,
   });
   const createdAt = new Date().toISOString();
   const result = await ctx.db
-    .prepare(
-      `INSERT INTO identity_card_jobs (identity_profile_id, chat_id, user_id, created_at)
-     VALUES (?, ?, ?, ?)`,
-    )
+    .prepare(`INSERT INTO identity_card_jobs (identity_profile_id, chat_id, user_id, created_at) VALUES (?, ?, ?, ?)`)
     .bind(identity.id, state.chatId, userId, createdAt)
     .run();
   const jobId = result.meta?.last_row_id;
-  if (typeof jobId !== "number") throw new Error("身份卡生成任务创建失败");
+  if (typeof jobId !== "number") throw new Error("资料卡生成任务创建失败");
   await ctx.exportQueue.send({ kind: "identity_card", jobId });
 }
 
@@ -945,18 +346,22 @@ export async function handleIdentityCardCallback(
   if (!state) return false;
   if (data === "identity:cancel") {
     await clearIdentityCardInteractionState(ctx, userId, chatId);
-    await sendMessage(ctx.botToken, chatId, "已取消身份卡制作。\n\n你可以从主菜单重新开始。", {
+    await sendMessage(ctx.botToken, chatId, "已取消资料卡制作。\n\n你可以从主菜单重新开始。", {
       inline_keyboard: [[{ text: "返回主菜单", callback_data: "home:menu" }]],
     });
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
   if (data.startsWith("identity:style:")) {
-    const style = data.slice("identity:style:".length) as IdentityStyle;
-    if (!["simple", "dark", "classic"].includes(style)) return false;
+    const style = data.slice("identity:style:".length);
+    const customMatch = /^custom:(\d+)$/.exec(style);
+    if (customMatch) {
+      const cardTemplate = await getCardTemplateById(ctx.db, Number(customMatch[1]));
+      if (!cardTemplate?.enabled) return false;
+    } else if (!isIdentityCardTemplateId(style)) return false;
     state.style = style;
     state.step = "front";
-    await screen(ctx, state, userId, prompt("front", "✅ 已选择样式。\n\n正面图片（必填）\n请上传一张图片："), {
+    await screen(ctx, state, userId, prompt("front", "✅ 已选择卡片版式。\n\n正面图片（必填）\n请上传一张图片："), {
       inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]],
     });
     await answerCallbackQuery(ctx.botToken, callback.id);
@@ -969,31 +374,35 @@ export async function handleIdentityCardCallback(
       state,
       userId,
       prompt("name", "✅ 已跳过背面图片。\n\n姓名（必填）\n请输入卡片上的姓名或称呼："),
-      { inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]] },
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return true;
-  }
-  if (data === "identity:background_upload" && state.step === "background") {
-    await screen(
-      ctx,
-      state,
-      userId,
-      prompt("background", "📤 请上传一张作为资料卡背景的图片。\n\n图片会自动叠加可读性遮罩，避免文字与背景撞色。"),
       {
-        inline_keyboard: [
-          [
-            { text: "使用样式默认背景", callback_data: "identity:skip:background" },
-            { text: "取消", callback_data: "identity:cancel" },
-          ],
-        ],
+        inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]],
       },
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
+  if (data === "identity:background_upload" && state.step === "background") {
+    await screen(ctx, state, userId, prompt("background", "📤 请上传一张作为资料卡背景的图片。"), {
+      inline_keyboard: [
+        [
+          { text: "使用样式默认背景", callback_data: "identity:skip:background" },
+          { text: "取消", callback_data: "identity:cancel" },
+        ],
+      ],
+    });
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
   if (data === "identity:background_front" && state.step === "background" && state.frontAssetId) {
     state.backgroundAssetId = state.frontAssetId;
+    state.step = "gallery";
+    await screen(ctx, state, userId, galleryPrompt(state), galleryKeyboard());
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+  if (data === "identity:gallery:yes" || data === "identity:gallery:no") {
+    if (state.step !== "gallery") return false;
+    state.galleryPublished = data === "identity:gallery:yes";
     state.step = "confirm";
     await screen(
       ctx,
@@ -1001,14 +410,9 @@ export async function handleIdentityCardCallback(
       userId,
       prompt(
         "confirm",
-        `✅ 已使用正面图片作为背景。\n\n请确认身份卡资料：\n\n姓名：${state.name}\n昵称：${state.nickname ?? "未填写"}\n年龄：${state.age ?? "未填写"}\n标签：${state.label ?? "未填写"}\n简介：${state.description ?? "未填写"}\n背景：使用正面图片`,
+        `✅ 已选择${state.galleryPublished ? "发布到画廊" : "仅自己可见"}。\n\n${confirmSummary(state)}`,
       ),
-      {
-        inline_keyboard: [
-          [{ text: "✅ 生成身份卡", callback_data: "identity:confirm" }],
-          [{ text: "取消", callback_data: "identity:cancel" }],
-        ],
-      },
+      confirmKeyboard(),
     );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1044,34 +448,10 @@ export async function handleIdentityCardCallback(
         optionalKeyboard("description"),
       );
     } else if (step === "description") {
-      state.step = "background";
-      await screen(
-        ctx,
-        state,
-        userId,
-        prompt(
-          "background",
-          "✅ 已跳过简介。\n\n报告背景（可选）\n可以上传一张自己的图片作为整张资料卡背景，也可以使用样式默认背景：",
-        ),
-        optionalKeyboard("background"),
-      );
+      await advanceAfterDescription(ctx, state, userId, "已跳过简介。");
     } else if (step === "background") {
-      state.step = "confirm";
-      await screen(
-        ctx,
-        state,
-        userId,
-        prompt(
-          "confirm",
-          `✅ 已使用样式默认背景。\n\n请确认身份卡资料：\n\n姓名：${state.name}\n昵称：${state.nickname ?? "未填写"}\n年龄：${state.age ?? "未填写"}\n标签：${state.label ?? "未填写"}\n简介：${state.description ?? "未填写"}`,
-        ),
-        {
-          inline_keyboard: [
-            [{ text: "✅ 生成身份卡", callback_data: "identity:confirm" }],
-            [{ text: "取消", callback_data: "identity:cancel" }],
-          ],
-        },
-      );
+      state.step = "gallery";
+      await screen(ctx, state, userId, galleryPrompt(state), galleryKeyboard());
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1081,7 +461,7 @@ export async function handleIdentityCardCallback(
       const accessSetting = await getIdentityCardAccessSetting(ctx.db);
       if (!accessSetting || !(await hasIdentityCardAccess(ctx.db, userId))) {
         await clearIdentityCardInteractionState(ctx, userId, chatId);
-        await sendMessage(ctx.botToken, chatId, "🔐 图片生成功能密码已更换或已关闭。请重新解锁后再制作身份卡。", {
+        await sendMessage(ctx.botToken, chatId, "🔐 图片生成功能密码已更换或已关闭。请重新解锁后再制作资料卡。", {
           inline_keyboard: [[{ text: "重新解锁", callback_data: "identity:list" }]],
         });
         await answerCallbackQuery(ctx.botToken, callback.id);
@@ -1092,8 +472,10 @@ export async function handleIdentityCardCallback(
       ctx,
       state,
       userId,
-      "🎨 已提交身份卡生成任务。\n\n正在后台下载图片并生成 PNG，完成后会直接发送给你。你可以继续使用机器人。",
-      { inline_keyboard: [[{ text: "返回主菜单", callback_data: "home:menu" }]] },
+      "🎨 已提交资料卡生成任务。\n\n正在通过网页报告渲染管线生成 PNG，完成后会直接发送给你。你可以继续使用机器人。",
+      {
+        inline_keyboard: [[{ text: "返回主菜单", callback_data: "home:menu" }]],
+      },
     );
     try {
       await enqueueGeneration(ctx, userId, state);
@@ -1152,7 +534,9 @@ export async function handleIdentityCardMessage(
         state,
         userId,
         prompt("name", "✅ 已跳过背面图片。\n\n姓名（必填）\n请输入卡片上的姓名或称呼："),
-        { inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]] },
+        {
+          inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]],
+        },
       );
       return true;
     }
@@ -1220,7 +604,9 @@ export async function handleIdentityCardMessage(
         state,
         userId,
         prompt("name", "✅ 已收到背面图片。\n\n姓名（必填）\n请输入卡片上的姓名或称呼："),
-        { inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]] },
+        {
+          inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]],
+        },
       );
     }
     return true;
@@ -1248,29 +634,15 @@ export async function handleIdentityCardMessage(
       return true;
     }
     state.backgroundAssetId = assetId;
-    state.step = "confirm";
-    await screen(
-      ctx,
-      state,
-      userId,
-      prompt(
-        "confirm",
-        `✅ 已收到自定义背景。\n\n请确认身份卡资料：\n\n姓名：${state.name}\n昵称：${state.nickname ?? "未填写"}\n年龄：${state.age ?? "未填写"}\n标签：${state.label ?? "未填写"}\n简介：${state.description ?? "未填写"}\n背景：已上传自定义图片`,
-      ),
-      {
-        inline_keyboard: [
-          [{ text: "✅ 生成身份卡", callback_data: "identity:confirm" }],
-          [{ text: "取消", callback_data: "identity:cancel" }],
-        ],
-      },
-    );
+    state.step = "gallery";
+    await screen(ctx, state, userId, galleryPrompt(state), galleryKeyboard());
     return true;
   }
   if (!text) {
     const retryMarkup =
       state.step === "name"
         ? { inline_keyboard: [[{ text: "取消", callback_data: "identity:cancel" }]] }
-        : optionalKeyboard(state.step as Exclude<IdentityStep, "front" | "back" | "name" | "confirm">);
+        : optionalKeyboard(state.step as Exclude<IdentityStep, "front" | "back" | "name" | "gallery" | "confirm">);
     await screen(
       ctx,
       state,
@@ -1361,17 +733,7 @@ export async function handleIdentityCardMessage(
   }
   if (state.step === "description") {
     if (!skipped(text)) state.description = text.slice(0, 500);
-    state.step = "background";
-    await screen(
-      ctx,
-      state,
-      userId,
-      prompt(
-        "background",
-        `✅ ${skipped(text) ? "已跳过简介。" : "已收到简介。"}\n\n报告背景（可选）\n可以上传一张自己的图片作为整张资料卡背景，也可以使用样式默认背景：`,
-      ),
-      optionalKeyboard("background"),
-    );
+    await advanceAfterDescription(ctx, state, userId, skipped(text) ? "已跳过简介。" : "已收到简介。");
     return true;
   }
   return true;

@@ -160,7 +160,7 @@ export function LicensesPage() {
             </thead>
             <tbody>
               {licenses.data.items.length === 0 ? (
-                <tr><td colSpan={7} className="text-center text-gray-400">暂无授权</td></tr>
+                <tr><td colSpan={7} className="text-center text-[var(--color-muted-soft)]">暂无授权</td></tr>
               ) : null}
               {licenses.data.items.map((license) => (
                 <LicenseRow
@@ -179,11 +179,11 @@ export function LicensesPage() {
         <h2 className="text-lg font-semibold">签发授权</h2>
         <div className="mt-4 grid max-w-3xl gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">客户名称</span>
+            <span className="text-[var(--color-muted)]">客户名称</span>
             <input className="input" value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">授权类型</span>
+            <span className="text-[var(--color-muted)]">授权类型</span>
             <select className="select" value={licenseType} onChange={(event) => setLicenseType(event.target.value as "timed" | "perpetual")}>
               <option value="timed">限时（到期自动锁定）</option>
               <option value="perpetual">永久（只算升级有效期）</option>
@@ -191,21 +191,21 @@ export function LicensesPage() {
           </label>
           {licenseType === "timed" ? (
             <label className="grid gap-1 text-sm">
-              <span className="text-gray-500">使用天数</span>
+              <span className="text-[var(--color-muted)]">使用天数</span>
               <input className="input" type="number" min={1} value={usageDays} onChange={(event) => setUsageDays(event.target.value)} />
             </label>
           ) : (
             <label className="grid gap-1 text-sm">
-              <span className="text-gray-500">升级有效期（天，留空=永久更新）</span>
+              <span className="text-[var(--color-muted)]">升级有效期（天，留空=永久更新）</span>
               <input className="input" type="number" min={1} value={updateDays} onChange={(event) => setUpdateDays(event.target.value)} />
             </label>
           )}
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">激活数上限</span>
+            <span className="text-[var(--color-muted)]">激活数上限</span>
             <input className="input" type="number" min={1} max={100} value={maxActivations} onChange={(event) => setMaxActivations(event.target.value)} />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
-            <span className="text-gray-500">备注</span>
+            <span className="text-[var(--color-muted)]">备注</span>
             <input className="input" value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
         </div>
@@ -213,8 +213,8 @@ export function LicensesPage() {
           {busy ? "处理中…" : "签发授权"}
         </button>
         {createdKey ? (
-          <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm">
-            <p className="font-medium text-green-800">授权密钥（仅显示一次，请立即复制）：</p>
+          <div className="mt-3 rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm">
+            <p className="font-medium text-[var(--color-success)]">授权密钥（仅显示一次，请立即复制）：</p>
             <code className="code mt-1 block break-all">{createdKey}</code>
           </div>
         ) : null}
@@ -226,11 +226,11 @@ export function LicensesPage() {
         </div>
         <div className="mt-3 grid max-w-3xl gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">版本号（x.y.z）</span>
+            <span className="text-[var(--color-muted)]">版本号（x.y.z）</span>
             <input className="input" value={releaseVersion} onChange={(event) => setReleaseVersion(event.target.value)} placeholder="0.4.0" />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">更新说明</span>
+            <span className="text-[var(--color-muted)]">更新说明</span>
             <input className="input" value={releaseNotes} onChange={(event) => setReleaseNotes(event.target.value)} />
           </label>
         </div>
@@ -246,7 +246,7 @@ export function LicensesPage() {
                   <td className="font-mono text-sm">{release.version}</td>
                   <td>{release.channel}</td>
                   <td>{formatDateTime(release.releasedAt)}</td>
-                  <td className="text-gray-500">{release.notes ?? "—"}</td>
+                  <td className="text-[var(--color-muted)]">{release.notes ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -261,11 +261,11 @@ export function LicensesPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">用户 ID（问卷后台/用户目录可查）</span>
+            <span className="text-[var(--color-muted)]">用户 ID（问卷后台/用户目录可查）</span>
             <input className="input w-40" value={trialUserId} onChange={(event) => setTrialUserId(event.target.value)} />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-gray-500">试用天数</span>
+            <span className="text-[var(--color-muted)]">试用天数</span>
             <input className="input w-24" type="number" min={1} value={trialDays} onChange={(event) => setTrialDays(event.target.value)} />
           </label>
           <button className="btn btn-primary" disabled={busy} onClick={() => void grantTrial()}>开通试用</button>
@@ -310,8 +310,8 @@ function LicenseRow({
       <tr className="align-top">
         <td>
           <div className="font-medium">{name}</div>
-          {license.customerContact ? <div className="text-xs text-gray-400">{license.customerContact}</div> : null}
-          <div className="mt-0.5 font-mono text-xs text-gray-400">{license.publicId}</div>
+          {license.customerContact ? <div className="text-xs text-[var(--color-muted-soft)]">{license.customerContact}</div> : null}
+          <div className="mt-0.5 font-mono text-xs text-[var(--color-muted-soft)]">{license.publicId}</div>
         </td>
         <td>{LICENSE_TYPE_LABELS[license.licenseType] ?? license.licenseType}</td>
         <td>
@@ -323,7 +323,7 @@ function LicenseRow({
         <td>{license.updatesUntil ? formatDateTime(license.updatesUntil) : "永久"}</td>
         <td>
           {license.activationCount} / {license.maxActivations}
-          <button className="ml-2 text-xs text-indigo-600 hover:underline" onClick={() => setExpanded((value) => !value)}>
+          <button className="ml-2 text-xs text-[var(--color-primary)] hover:underline" onClick={() => setExpanded((value) => !value)}>
             {expanded ? "收起" : "详情"}
           </button>
         </td>
@@ -343,20 +343,20 @@ function LicenseRow({
       </tr>
       {expanded ? (
         <tr>
-          <td colSpan={7} className="bg-gray-50">
-            <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2">
+          <td colSpan={7} className="bg-[var(--surface-muted)]">
+            <div className="grid gap-1 text-xs text-[var(--color-muted)] sm:grid-cols-2">
               <div>签发时间：{formatDateTime(license.createdAt)}</div>
               <div>开始时间：{formatDateTime(license.startsAt)}</div>
               {license.notes ? <div className="sm:col-span-2">备注：{license.notes}</div> : null}
               {license.activations.length ? (
                 <div className="sm:col-span-2">
-                  <div className="mb-1 font-medium text-gray-600">激活记录：</div>
+                  <div className="mb-1 font-medium text-[var(--text-soft)]">激活记录：</div>
                   {license.activations.map((activation) => (
                     <div key={activation.installationId} className="flex flex-wrap gap-x-3">
                       <span className="font-mono">{activation.installationId}</span>
                       <span>版本 {activation.appVersion ?? "—"}</span>
                       <span>最近 {formatDateTime(activation.lastSeenAt)}</span>
-                      {activation.deactivatedAt ? <span className="text-gray-400">已解绑 {formatDateTime(activation.deactivatedAt)}</span> : null}
+                      {activation.deactivatedAt ? <span className="text-[var(--color-muted-soft)]">已解绑 {formatDateTime(activation.deactivatedAt)}</span> : null}
                     </div>
                   ))}
                 </div>

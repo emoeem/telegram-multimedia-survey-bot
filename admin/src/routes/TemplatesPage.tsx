@@ -22,9 +22,16 @@ import { api, apiSend, type ReportTemplateOption } from "../api";
 import { SkeletonPanel } from "../components/ui";
 
 interface SectionDraft {
+  /** Stable identity for dnd-kit sorting; stripped before saving. */
+  uid: string;
   kind: string;
   presentation?: string;
 }
+
+const newSectionUid = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 interface TemplateDraft {
   id: string;
@@ -101,11 +108,11 @@ function emptyDraft(): TemplateDraft {
     theme: "daisy-light",
     layout: "",
     sections: [
-      { kind: "hero" },
-      { kind: "summary" },
-      { kind: "scores", presentation: "grid" },
-      { kind: "answers" },
-      { kind: "verdict" },
+      { uid: newSectionUid(), kind: "hero" },
+      { uid: newSectionUid(), kind: "summary" },
+      { uid: newSectionUid(), kind: "scores", presentation: "grid" },
+      { uid: newSectionUid(), kind: "answers" },
+      { uid: newSectionUid(), kind: "verdict" },
     ],
     css: "",
     renderers: ["web", "pdf"],
@@ -135,17 +142,17 @@ function SortableSectionRow({
   onRemove: (index: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `section-${index}`,
+    id: section.uid,
   });
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 ${isDragging ? "opacity-50" : ""}`}
+      className={`flex items-center gap-2 rounded-lg border border-[var(--color-edge)] bg-[var(--surface-muted)] p-2 ${isDragging ? "opacity-50" : ""}`}
     >
       <button
         type="button"
-        className="cursor-grab touch-none px-1 text-gray-400"
+        className="cursor-grab touch-none px-1 text-[var(--color-muted-soft)]"
         aria-label="拖动排序"
         {...attributes}
         {...listeners}
@@ -155,7 +162,7 @@ function SortableSectionRow({
       <select
         className="select flex-1"
         value={section.kind}
-        onChange={(event) => onUpdate(index, { kind: event.target.value, presentation: section.presentation })}
+        onChange={(event) => onUpdate(index, { ...section, kind: event.target.value })}
       >
         {SECTION_OPTIONS.map((option) => (
           <option key={option.kind} value={option.kind}>{option.label}</option>
@@ -165,7 +172,7 @@ function SortableSectionRow({
         className="select w-28"
         value={section.presentation ?? ""}
         onChange={(event) =>
-          onUpdate(index, { kind: section.kind, presentation: event.target.value || undefined })
+          onUpdate(index, { ...section, presentation: event.target.value || undefined })
         }
       >
         <option value="">默认</option>
@@ -173,7 +180,7 @@ function SortableSectionRow({
           <option key={presentation} value={presentation}>{presentation}</option>
         ))}
       </select>
-      <button type="button" className="btn btn-sm text-red-600" onClick={() => onRemove(index)}>
+      <button type="button" className="btn btn-sm text-[var(--color-danger)]" onClick={() => onRemove(index)}>
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -219,6 +226,10 @@ export function TemplatesPage() {
         ...data.template,
         id: copy ? `${id}-copy` : data.template.id,
         css: data.template.css ?? "",
+        sections: (data.template.sections ?? []).map((section) => ({
+          ...section,
+          uid: newSectionUid(),
+        })),
       });
       setCssExtra(data.template.css ?? "");
     } catch (requestError) {
@@ -256,7 +267,14 @@ export function TemplatesPage() {
       await apiSend(
         "POST",
         "/api/admin/report-templates",
-        { ...draft, css: combinedCss } as unknown as Record<string, unknown>,
+        {
+          ...draft,
+          sections: draft.sections.map(({ uid: _uid, kind, presentation }) => ({
+            kind,
+            ...(presentation ? { presentation } : {}),
+          })),
+          css: combinedCss,
+        } as unknown as Record<string, unknown>,
       );
       setDraft(null);
       setPreviewHtml(null);
@@ -295,8 +313,8 @@ export function TemplatesPage() {
     if (!draft) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const from = draft.sections.findIndex((_, index) => active.id === `section-${index}`);
-    const to = draft.sections.findIndex((_, index) => over.id === `section-${index}`);
+    const from = draft.sections.findIndex((section) => section.uid === active.id);
+    const to = draft.sections.findIndex((section) => section.uid === over.id);
     if (from < 0 || to < 0) return;
     setDraft({ ...draft, sections: arrayMove(draft.sections, from, to) });
   };
@@ -304,7 +322,7 @@ export function TemplatesPage() {
   if (error && !draft) {
     return (
       <section className="card">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-[var(--color-danger)]">{error}</p>
         <button className="btn mt-3" onClick={() => { setError(null); void reload(); }}>
           重试
         </button>
@@ -328,31 +346,31 @@ export function TemplatesPage() {
             <Plus className="h-4 w-4" />新建模板
           </button>
         </div>
-        <p className="mt-1 text-sm text-gray-500">系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。</p>
         {templates ? (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
-                  <div key={template.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div key={template.id} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="truncate">{template.name}</strong>
                   <span className="flex shrink-0 items-center gap-1.5">
                     {template.layout ? (
-                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">
+                      <span className="rounded-full bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-primary)]">
                         {LAYOUT_OPTIONS.find((item) => item.id === template.layout)?.name ?? template.layout}
                       </span>
                     ) : null}
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" : "bg-[var(--surface-muted)] text-[var(--text-soft)]"}`}>
                       {template.isCustom ? "自定义" : "系统"}
                     </span>
                   </span>
                 </div>
-                <div className="mt-1 font-mono text-xs text-gray-400">{template.id}</div>
+                <div className="mt-1 font-mono text-xs text-[var(--color-muted-soft)]">{template.id}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button className="btn btn-sm" onClick={() => void openTemplate(template.id, Boolean(template.isCustom) ? false : true)}>
                     {template.isCustom ? "编辑" : "复制编辑"}
                   </button>
                   {template.isCustom ? (
-                    <button className="btn btn-sm text-red-600" onClick={() => void removeTemplate(template.id)}>
+                    <button className="btn btn-sm text-[var(--color-danger)]" onClick={() => void removeTemplate(template.id)}>
                       删除
                     </button>
                   ) : null}
@@ -378,12 +396,12 @@ export function TemplatesPage() {
               </button>
             </div>
           </div>
-          {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p> : null}
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="space-y-3">
               <div>
-                <label className="text-sm text-gray-600">模板 id（小写字母/数字/连字符）</label>
+                <label className="text-sm text-[var(--text-soft)]">模板 id（小写字母/数字/连字符）</label>
                 <input
                   className="input mt-1 w-full font-mono"
                   value={draft.id}
@@ -393,7 +411,7 @@ export function TemplatesPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-600">模板名称</label>
+                <label className="text-sm text-[var(--text-soft)]">模板名称</label>
                 <input
                   className="input mt-1 w-full"
                   value={draft.name}
@@ -402,7 +420,7 @@ export function TemplatesPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-600">主题</label>
+                <label className="text-sm text-[var(--text-soft)]">主题</label>
                 <select
                   className="select mt-1 w-full"
                   value={draft.theme}
@@ -414,7 +432,7 @@ export function TemplatesPage() {
                 </select>
               </div>
               <div>
-                <label className="text-sm text-gray-600">版式（启用后使用真版式引擎渲染）</label>
+                <label className="text-sm text-[var(--text-soft)]">版式（启用后使用真版式引擎渲染）</label>
                 <select
                   className="select mt-1 w-full"
                   value={draft.layout ?? ""}
@@ -424,21 +442,21 @@ export function TemplatesPage() {
                     <option key={layout.id} value={layout.id}>{layout.name}</option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
                   版式引擎提供编辑风 / 网格 / 杂志 / 数据 / 影集 / 档案六种真正的布局差异；不启用时使用经典分区渲染。
                 </p>
               </div>
               <div>
-                <label className="text-sm text-gray-600">内容块（自上而下渲染）</label>
+                <label className="text-sm text-[var(--text-soft)]">内容块（自上而下渲染）</label>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSectionsDragEnd}>
                   <SortableContext
-                    items={draft.sections.map((_, index) => `section-${index}`)}
+                    items={draft.sections.map((section) => section.uid)}
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="mt-1 space-y-2">
                       {draft.sections.map((section, index) => (
                         <SortableSectionRow
-                          key={`section-${index}`}
+                          key={section.uid}
                           section={section}
                           index={index}
                           onUpdate={updateSection}
@@ -450,15 +468,15 @@ export function TemplatesPage() {
                 </DndContext>
                 <button
                   className="btn btn-sm mt-2"
-                  onClick={() => setDraft({ ...draft, sections: [...draft.sections, { kind: "answers" }] })}
+                  onClick={() => setDraft({ ...draft, sections: [...draft.sections, { uid: newSectionUid(), kind: "answers" }] })}
                 >
                   <Plus className="h-4 w-4" />添加块
                 </button>
               </div>
               <div>
-                <label className="text-sm text-gray-600">字体与配色（可视化）</label>
+                <label className="text-sm text-[var(--text-soft)]">字体与配色（可视化）</label>
                 <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <label className="text-xs text-gray-500">
+                  <label className="text-xs text-[var(--color-muted)]">
                     字体
                     <select
                       className="select mt-1 w-full"
@@ -470,7 +488,7 @@ export function TemplatesPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="text-xs text-gray-500">
+                  <label className="text-xs text-[var(--color-muted)]">
                     主色
                     <input
                       type="color"
@@ -479,7 +497,7 @@ export function TemplatesPage() {
                       onChange={(event) => setVisual({ ...visual, primary: event.target.value })}
                     />
                   </label>
-                  <label className="text-xs text-gray-500">
+                  <label className="text-xs text-[var(--color-muted)]">
                     强调色
                     <input
                       type="color"
@@ -491,7 +509,7 @@ export function TemplatesPage() {
                 </div>
               </div>
               <div>
-                <label className="text-sm text-gray-600">额外 CSS（可选，追加到模板样式）</label>
+                <label className="text-sm text-[var(--text-soft)]">额外 CSS（可选，追加到模板样式）</label>
                 <textarea
                   className="input mt-1 min-h-24 w-full font-mono text-xs"
                   value={cssExtra}
@@ -503,7 +521,7 @@ export function TemplatesPage() {
 
             <div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">实时预览</span>
+                <span className="text-sm text-[var(--text-soft)]">实时预览</span>
                 <div className="flex gap-2">
                   <button
                     className={`btn btn-sm ${previewWidth === 390 ? "btn-primary" : ""}`}
@@ -522,16 +540,16 @@ export function TemplatesPage() {
                   </button>
                 </div>
               </div>
-              <div className="mt-2 flex justify-center overflow-x-auto rounded-xl border border-gray-200 bg-slate-100 p-3">
+              <div className="mt-2 flex justify-center overflow-x-auto rounded-xl border border-[var(--color-edge)] bg-[var(--surface-muted)] p-3">
                 {previewHtml ? (
                   <iframe
                     title="报告模板预览"
-                    className="h-[70vh] rounded-lg border border-gray-300 bg-white transition-all"
+                    className="h-[70vh] rounded-lg border border-[var(--control-border)] bg-[var(--surface)] transition-all"
                     style={{ width: previewWidth, maxWidth: "100%" }}
                     srcDoc={previewHtml}
                   />
                 ) : (
-                  <div className="py-16 text-center text-sm text-gray-400">
+                  <div className="py-16 text-center text-sm text-[var(--color-muted-soft)]">
                     点击「刷新预览」渲染当前模板
                   </div>
                 )}

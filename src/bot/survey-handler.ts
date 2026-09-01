@@ -110,6 +110,7 @@ import {
   handleIdentityCardCallback,
   handleIdentityCardMessage,
 } from "./identity-card-handler";
+import { clearPlazaInteractionState, handlePlazaCallback, handlePlazaMessage } from "./plaza-handler";
 import { listVisualTemplates } from "../db/repositories/visual-template.repository";
 
 const botUsernameCacheKey = "telegram-bot-username";
@@ -152,6 +153,9 @@ async function buildHomeKeyboard(
       ? [{ text: "浏览问卷", url: `${origin}/s?v=3${participantParam}` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
     [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
+    origin
+      ? [{ text: "🏛 广场", url: `${origin}/plaza` }]
+      : [{ text: "🏛 广场 · 树洞与资料卡", callback_data: "plaza:list" }],
   ];
   if (creator) {
     if (origin) {
@@ -1637,6 +1641,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       clearBuilderInteractionState(ctx, userId),
       clearAdminInteractionState(ctx, userId),
       clearIdentityCardInteractionState(ctx, userId),
+      clearPlazaInteractionState(ctx, userId, message.chat.id),
       ctx.ui ? clearUiSession(ctx.ui, userId, message.chat.id).catch(() => undefined) : Promise.resolve(undefined),
     ]);
     for (const result of resetResults) {
@@ -1710,6 +1715,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       clearBuilderInteractionState(ctx, userId),
       clearAdminInteractionState(ctx, userId),
       clearIdentityCardInteractionState(ctx, userId),
+      clearPlazaInteractionState(ctx, userId, message.chat.id),
     ]);
     const activeResponse = dbUserId ? await getActiveResponseByUser(ctx.db, dbUserId) : null;
     if (activeResponse) {
@@ -1916,6 +1922,10 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     return;
   }
 
+  if (dbUser && (await handlePlazaMessage(ctx, message, dbUser.id))) {
+    return;
+  }
+
   if (dbUser && (await handleIdentityCardMessage(ctx, message, dbUser.id))) {
     return;
   }
@@ -2053,6 +2063,10 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
   }
 
   if (await handleIdentityCardCallback(ctx, callback, dbUserId)) {
+    return;
+  }
+
+  if (await handlePlazaCallback(ctx, callback, dbUserId)) {
     return;
   }
 

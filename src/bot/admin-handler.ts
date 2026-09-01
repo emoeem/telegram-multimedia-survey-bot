@@ -145,6 +145,9 @@ async function showAdminHome(ctx: BotContext, chatId: number, userId: number, me
     inline_keyboard: [
       ...(ctx.origin ? [[{ text: "🌐 网页管理后台", url: `${ctx.origin}/admin` }]] : []),
       [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
+      ctx.origin
+        ? [{ text: "🏛 广场", url: `${ctx.origin}/plaza` }]
+        : [{ text: "🏛 广场 · 树洞与资料卡", callback_data: "plaza:list" }],
     ],
   };
   if (messageId !== undefined) {

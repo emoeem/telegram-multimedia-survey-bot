@@ -2,7 +2,7 @@
 
 复用现有 Cloudflare Worker、D1 `users/surveys/survey_questions/survey_responses` 表及权限角色。新增只读 API：`GET /api/admin/dashboard`、`GET /api/admin/surveys`、`GET /api/admin/surveys/:id`。
 
-认证采用 Telegram 身份：从 Telegram 打开页面时验证 `x-telegram-init-data`（HMAC-SHA256 签名校验 + 24 小时新鲜度，页面端 percent-encode 传输）；Staging/本地（`ENVIRONMENT=development`）可通过 `x-telegram-user-id` 旁路模拟身份。管理员复用 `ADMIN_IDS` 与 `users.system_role=admin`；通过身份认证且存在于 `users` 表的用户均可登录，非 admin 的问卷 owner 只能看到自己的问卷（列表/总览按 `owner_id` 过滤），访问他人问卷详情返回 403。未新增 Cloudflare 资源、迁移、R2 或 Queue。静态 SPA 位于 `admin/dist`（无构建步骤，直接入库），由同一 Worker Assets 提供。
+认证采用 Telegram 身份：从 Telegram 打开页面时验证 `x-telegram-init-data`（HMAC-SHA256 签名校验 + 24 小时新鲜度，页面端 percent-encode 传输）；仅本地开发（`ENVIRONMENT=development` 且配置 `ADMIN_DEV_AUTH_SECRET`）可通过 `x-telegram-user-id` + `x-dev-auth-secret` 旁路模拟身份；staging/生产不接受该旁路。管理员复用 `ADMIN_IDS` 与 `users.system_role=admin`；通过身份认证且存在于 `users` 表的用户均可登录，非 admin 的问卷 owner 只能看到自己的问卷（列表/总览按 `owner_id` 过滤），访问他人问卷详情返回 403。未新增 Cloudflare 资源、迁移、R2 或 Queue。静态 SPA 位于 `admin/dist`（无构建步骤，直接入库），由同一 Worker Assets 提供。
 
 本阶段暂不实现题目、答卷编辑、统计、Telegraph、模板与发布操作。
 

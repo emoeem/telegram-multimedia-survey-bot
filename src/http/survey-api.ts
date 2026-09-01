@@ -21,11 +21,7 @@ import {
   upsertTimeAnswer,
 } from "../db/repositories/response.repository";
 import { countCompletedResponsesBySurveyAndUser } from "../db/repositories/response.repository";
-import {
-  createAnswerMedia,
-  createMediaAsset,
-  getMediaAssetById,
-} from "../db/repositories/media.repository";
+import { createAnswerMedia, createMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
 import type { Answer, QuestionType, SurveyQuestion } from "../db/schema";
 import { getMatrixColumns } from "../survey/question-presentation";
 import { getFirstQuestion, getNextQuestionAfterOption } from "../survey/engine";
@@ -40,6 +36,7 @@ import { buildMediaResponse } from "../services/media/media-serve.service";
 import { createReportAccessToken } from "../services/report-access-token.service";
 import { normalizeSurveyTheme } from "../survey/theme";
 import { loadSystemSettings } from "../services/system-settings.service";
+import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
 
 const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -47,21 +44,24 @@ function temporaryStore(env: Env): KVMediaStore {
   return new KVMediaStore(env.MEDIA_KV);
 }
 
-function json(data: unknown, status = 200): Response {
+export function json(data: unknown, status = 200): Response {
   return Response.json(data, {
     status,
     headers: { "Cache-Control": "no-store" },
   });
 }
 
-function fail(status: number, code: string, message: string): Response {
+export function fail(status: number, code: string, message: string): Response {
   return json({ ok: false, code, message }, status);
 }
 
 async function loadPublishedSurvey(
   env: Env,
   surveyId: number,
-): Promise<{ survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>; flow: Awaited<ReturnType<typeof getSurveyFlow>> } | Response> {
+): Promise<
+  | { survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>; flow: Awaited<ReturnType<typeof getSurveyFlow>> }
+  | Response
+> {
   const survey = await getSurveyById(env.DB, surveyId);
   if (!survey || survey.status !== "published") {
     return fail(404, "survey_unavailable", "问卷不存在或未发布");
@@ -78,10 +78,7 @@ interface Participant {
   participantHash: string;
 }
 
-async function resolveParticipant(
-  request: Request,
-  env: Env,
-): Promise<Participant | Response> {
+export async function resolveParticipant(request: Request, env: Env): Promise<Participant | Response> {
   const initDataHeader = request.headers.get("x-telegram-init-data");
   if (initDataHeader) {
     const profile = await verifyTelegramWebAppProfile(request, env.BOT_TOKEN);
@@ -111,10 +108,7 @@ async function resolveParticipant(
 
   const participantToken = request.headers.get("x-participant-token");
   if (participantToken) {
-    const profile = await verifySurveyParticipantToken(
-      env.WEBHOOK_SECRET,
-      participantToken,
-    );
+    const profile = await verifySurveyParticipantToken(env.WEBHOOK_SECRET, participantToken);
     if (!profile || profile.telegramUserId <= 0) {
       return fail(401, "invalid_identity", "登录状态已失效，请重新从 Telegram 打开问卷。");
     }
@@ -160,9 +154,7 @@ function parseValidation(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -192,17 +184,7 @@ function enrichBrowserInfo(raw: string | null, request: Request): string {
   }
   const cf = (request as Request & { cf?: Record<string, unknown> }).cf ?? {};
   const geo: Record<string, string> = {};
-  for (const key of [
-    "country",
-    "region",
-    "regionCode",
-    "city",
-    "postalCode",
-    "metroCode",
-    "timezone",
-    "asn",
-    "colo",
-  ]) {
+  for (const key of ["country", "region", "regionCode", "city", "postalCode", "metroCode", "timezone", "asn", "colo"]) {
     const value = cf[key];
     if (value !== undefined && value !== null && value !== "") {
       geo[key] = String(value);
@@ -237,39 +219,97 @@ function enrichBrowserInfo(raw: string | null, request: Request): string {
 }
 
 const TZ_COUNTRY: Record<string, string> = {
-  "Asia/Shanghai": "CN", "Asia/Tokyo": "JP", "Asia/Seoul": "KR",
-  "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW", "Asia/Singapore": "SG",
-  "Europe/London": "GB", "Europe/Paris": "FR", "Europe/Berlin": "DE",
-  "Europe/Madrid": "ES", "Europe/Rome": "IT", "Europe/Amsterdam": "NL",
-  "Europe/Brussels": "BE", "Europe/Vienna": "AT", "Europe/Zurich": "CH",
-  "Europe/Stockholm": "SE", "Europe/Oslo": "NO", "Europe/Copenhagen": "DK",
-  "Europe/Helsinki": "FI", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
-  "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Athens": "GR",
-  "Europe/Lisbon": "PT", "Europe/Moscow": "RU", "Europe/Istanbul": "TR",
-  "America/New_York": "US", "America/Chicago": "US", "America/Los_Angeles": "US",
-  "America/Denver": "US", "America/Toronto": "CA", "America/Vancouver": "CA",
-  "America/Sao_Paulo": "BR", "America/Mexico_City": "MX",
-  "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Pacific/Auckland": "NZ",
-  "Asia/Kolkata": "IN", "Asia/Karachi": "PK", "Asia/Dhaka": "BD",
-  "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Kuala_Lumpur": "MY",
-  "Asia/Manila": "PH", "Asia/Ho_Chi_Minh": "VN", "Asia/Dubai": "AE",
-  "Asia/Tehran": "IR", "Asia/Jerusalem": "IL", "Asia/Colombo": "LK",
+  "Asia/Shanghai": "CN",
+  "Asia/Tokyo": "JP",
+  "Asia/Seoul": "KR",
+  "Asia/Hong_Kong": "HK",
+  "Asia/Taipei": "TW",
+  "Asia/Singapore": "SG",
+  "Europe/London": "GB",
+  "Europe/Paris": "FR",
+  "Europe/Berlin": "DE",
+  "Europe/Madrid": "ES",
+  "Europe/Rome": "IT",
+  "Europe/Amsterdam": "NL",
+  "Europe/Brussels": "BE",
+  "Europe/Vienna": "AT",
+  "Europe/Zurich": "CH",
+  "Europe/Stockholm": "SE",
+  "Europe/Oslo": "NO",
+  "Europe/Copenhagen": "DK",
+  "Europe/Helsinki": "FI",
+  "Europe/Warsaw": "PL",
+  "Europe/Prague": "CZ",
+  "Europe/Budapest": "HU",
+  "Europe/Bucharest": "RO",
+  "Europe/Athens": "GR",
+  "Europe/Lisbon": "PT",
+  "Europe/Moscow": "RU",
+  "Europe/Istanbul": "TR",
+  "America/New_York": "US",
+  "America/Chicago": "US",
+  "America/Los_Angeles": "US",
+  "America/Denver": "US",
+  "America/Toronto": "CA",
+  "America/Vancouver": "CA",
+  "America/Sao_Paulo": "BR",
+  "America/Mexico_City": "MX",
+  "Australia/Sydney": "AU",
+  "Australia/Melbourne": "AU",
+  "Pacific/Auckland": "NZ",
+  "Asia/Kolkata": "IN",
+  "Asia/Karachi": "PK",
+  "Asia/Dhaka": "BD",
+  "Asia/Bangkok": "TH",
+  "Asia/Jakarta": "ID",
+  "Asia/Kuala_Lumpur": "MY",
+  "Asia/Manila": "PH",
+  "Asia/Ho_Chi_Minh": "VN",
+  "Asia/Dubai": "AE",
+  "Asia/Tehran": "IR",
+  "Asia/Jerusalem": "IL",
+  "Asia/Colombo": "LK",
 };
 
 const LANG_COUNTRY: Record<string, string> = {
-  zh: "CN", "zh-tw": "TW", "zh-hk": "HK", ja: "JP", ko: "KR",
-  en: "US", de: "DE", fr: "FR", es: "ES", it: "IT", pt: "PT",
-  ru: "RU", th: "TH", vi: "VN", id: "ID", ms: "MY", ar: "AE",
-  tr: "TR", nl: "NL", pl: "PL", sv: "SE", cs: "CZ", hu: "HU",
-  ro: "RO", fi: "FI", da: "DK", no: "NO", el: "GR", he: "IL",
-  hi: "IN", ur: "PK", bn: "BD", ta: "IN", uk: "UA", fa: "IR",
+  zh: "CN",
+  "zh-tw": "TW",
+  "zh-hk": "HK",
+  ja: "JP",
+  ko: "KR",
+  en: "US",
+  de: "DE",
+  fr: "FR",
+  es: "ES",
+  it: "IT",
+  pt: "PT",
+  ru: "RU",
+  th: "TH",
+  vi: "VN",
+  id: "ID",
+  ms: "MY",
+  ar: "AE",
+  tr: "TR",
+  nl: "NL",
+  pl: "PL",
+  sv: "SE",
+  cs: "CZ",
+  hu: "HU",
+  ro: "RO",
+  fi: "FI",
+  da: "DK",
+  no: "NO",
+  el: "GR",
+  he: "IL",
+  hi: "IN",
+  ur: "PK",
+  bn: "BD",
+  ta: "IN",
+  uk: "UA",
+  fa: "IR",
 };
 
-function envConsistencySignals(
-  ipCountry: string | undefined,
-  timezone: string,
-  language: string,
-): string[] {
+function envConsistencySignals(ipCountry: string | undefined, timezone: string, language: string): string[] {
   const tzCountry = TZ_COUNTRY[timezone];
   const langCountry = LANG_COUNTRY[language.split("-")[0]?.toLowerCase() ?? ""];
   const signals: string[] = [];
@@ -319,13 +359,20 @@ function answerValue(answer: Answer): unknown {
   if (answer.jsonValue !== null) {
     try {
       const parsed = JSON.parse(answer.jsonValue) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
-          (parsed as { kind?: unknown }).kind === "matrix") {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        (parsed as { kind?: unknown }).kind === "matrix"
+      ) {
         return (parsed as { selections?: unknown }).selections ?? null;
       }
       if (Array.isArray(parsed)) return parsed;
-      if (parsed && typeof parsed === "object" &&
-          typeof (parsed as { mediaAssetId?: unknown }).mediaAssetId === "number") {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof (parsed as { mediaAssetId?: unknown }).mediaAssetId === "number"
+      ) {
         return { mediaAssetId: (parsed as { mediaAssetId: number }).mediaAssetId };
       }
     } catch {
@@ -341,11 +388,7 @@ function answerValue(answer: Answer): unknown {
   return null;
 }
 
-export async function handleSurveyApiRequest(
-  request: Request,
-  env: Env,
-  url: URL,
-): Promise<Response | null> {
+export async function handleSurveyApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/surveys") {
     const q = (url.searchParams.get("q") ?? "").trim();
     const conditions = ["s.status = 'published'"];
@@ -354,9 +397,8 @@ export async function handleSurveyApiRequest(
       conditions.push("(lower(s.title) LIKE ? OR lower(COALESCE(s.description,'')) LIKE ?)");
       binds.push(`%${q.toLowerCase()}%`, `%${q.toLowerCase()}%`);
     }
-    const rows = await env.DB
-      .prepare(
-        `SELECT s.id, s.title, s.description, s.access_code accessCode,
+    const rows = await env.DB.prepare(
+      `SELECT s.id, s.title, s.description, s.access_code accessCode,
                 s.published_at publishedAt, s.settings_json settingsJson,
                 m.id coverMediaId, m.url coverUrl,
                 (SELECT COUNT(*) FROM survey_questions q
@@ -364,8 +406,9 @@ export async function handleSurveyApiRequest(
          FROM surveys s
          LEFT JOIN media_assets m ON m.id = s.cover_media_id
          WHERE ${conditions.join(" AND ")}
-         ORDER BY s.published_at DESC, s.id DESC`,
-      )
+         ORDER BY s.published_at DESC, s.id DESC
+         LIMIT 200`,
+    )
       .bind(...binds)
       .all<{
         id: number;
@@ -388,9 +431,7 @@ export async function handleSurveyApiRequest(
         questionCount: Number(row.questionCount ?? 0),
         // Always serve the cover through the media endpoint so KV/R2/data-URL
         // covers share one path and the public list stays small.
-        ...(typeof row.coverMediaId === "number"
-          ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) }
-          : {}),
+        ...(typeof row.coverMediaId === "number" ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) } : {}),
         theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
       })),
     });
@@ -412,13 +453,12 @@ export async function handleSurveyApiRequest(
     if (loaded instanceof Response) return loaded;
     const { survey, flow } = loaded;
 
-    const pages = await env.DB
-      .prepare(
-        `SELECT id, title, description, "order"
+    const pages = await env.DB.prepare(
+      `SELECT id, title, description, "order"
          FROM survey_pages
          WHERE survey_id = ?
          ORDER BY "order" ASC, id ASC`,
-      )
+    )
       .bind(surveyId)
       .all<{ id: number; title: string | null; description: string | null; order: number }>();
 
@@ -508,6 +548,15 @@ export async function handleSurveyApiRequest(
   }
 
   if (request.method === "POST" && rest === "/responses") {
+    // Abuse damping on the public start endpoint (KV fixed window per IP).
+    const limiter = await checkRateLimit(
+      env.CACHE,
+      "start_response",
+      request.headers.get("cf-connecting-ip") ?? "unknown",
+      10,
+      60,
+    );
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const loaded = await loadPublishedSurvey(env, surveyId);
     if (loaded instanceof Response) return loaded;
     const { survey, flow } = loaded;
@@ -531,9 +580,10 @@ export async function handleSurveyApiRequest(
         .filter((value) => Number.isInteger(value))
         .includes(participant.telegramUserId);
 
-    const active = participant.kind === "telegram"
-      ? await getActiveResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId!)
-      : await getActiveResponse(env.DB, surveyId, participant.participantHash);
+    const active =
+      participant.kind === "telegram"
+        ? await getActiveResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId!)
+        : await getActiveResponse(env.DB, surveyId, participant.participantHash);
     if (active) {
       return json({
         responseId: active.id,
@@ -548,16 +598,8 @@ export async function handleSurveyApiRequest(
       if (existing?.status === "completed" && !isAdminParticipant) {
         return fail(409, "already_completed", "你已经完成过该问卷，不能重复提交");
       }
-    } else if (
-      participant.kind === "telegram" &&
-      participant.dbUserId !== null &&
-      !isAdminParticipant
-    ) {
-      const completedCount = await countCompletedResponsesBySurveyAndUser(
-        env.DB,
-        surveyId,
-        participant.dbUserId,
-      );
+    } else if (participant.kind === "telegram" && participant.dbUserId !== null && !isAdminParticipant) {
+      const completedCount = await countCompletedResponsesBySurveyAndUser(env.DB, surveyId, participant.dbUserId);
       if (survey.maxResponsesPerUser > 0 && completedCount >= survey.maxResponsesPerUser) {
         return fail(409, "response_limit_reached", "已达到填写次数上限");
       }
@@ -576,15 +618,26 @@ export async function handleSurveyApiRequest(
       browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request),
       ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
     });
-    return json({
-      responseId: response.id,
-      currentQuestionId: firstQuestion.id,
-      status: response.status,
-      resumed: false,
-    }, 201);
+    return json(
+      {
+        responseId: response.id,
+        currentQuestionId: firstQuestion.id,
+        status: response.status,
+        resumed: false,
+      },
+      201,
+    );
   }
 
   if (request.method === "POST" && rest === "/media") {
+    const limiter = await checkRateLimit(
+      env.CACHE,
+      "upload",
+      request.headers.get("cf-connecting-ip") ?? "unknown",
+      20,
+      60,
+    );
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     return handleSurveyMediaUpload(request, env, surveyId);
   }
 
@@ -598,34 +651,38 @@ export async function handleSurveyApiRequest(
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const row = await env.DB
-      .prepare(
-        `SELECT id FROM survey_responses
+    const row = await env.DB.prepare(
+      `SELECT id FROM survey_responses
          WHERE id = ? AND survey_id = ? AND participant_hash = ?
          LIMIT 1`,
-      )
+    )
       .bind(responseId, surveyId, participant.participantHash)
       .first<{ id: number }>();
     if (!row) return fail(404, "response_not_found", "答卷不存在");
     const answers = await listAnswersByResponseId(env.DB, responseId);
     return json({
-      answers: Object.fromEntries(
-        answers.map((answer) => [String(answer.questionId), answerValue(answer)]),
-      ),
+      answers: Object.fromEntries(answers.map((answer) => [String(answer.questionId), answerValue(answer)])),
     });
   }
 
   if (request.method === "POST" && responseRest === "/answers") {
+    const limiter = await checkRateLimit(
+      env.CACHE,
+      "answer",
+      request.headers.get("cf-connecting-ip") ?? "unknown",
+      120,
+      60,
+    );
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const loaded = await loadPublishedSurvey(env, surveyId);
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const response = await env.DB
-      .prepare(
-        `SELECT id, status FROM survey_responses
+    const response = await env.DB.prepare(
+      `SELECT id, status FROM survey_responses
          WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
          LIMIT 1`,
-      )
+    )
       .bind(responseId, surveyId, participant.participantHash)
       .first<{ id: number; status: string }>();
     if (!response) return fail(404, "response_not_found", "答卷不存在或已提交");
@@ -637,17 +694,12 @@ export async function handleSurveyApiRequest(
     if (!body || !Number.isInteger(body.questionId)) {
       return fail(400, "invalid_body", "questionId 必须是整数");
     }
-    const question = loaded.flow.questions.find(
-      (item) => item.id === Number(body.questionId),
-    );
+    const question = loaded.flow.questions.find((item) => item.id === Number(body.questionId));
     if (!question) return fail(404, "question_not_found", "题目不存在");
 
     const saveError = await saveWebAnswer(env, responseId, question, body.value);
     if (saveError) return saveError;
-    await env.DB
-      .prepare(
-        "UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?",
-      )
+    await env.DB.prepare("UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?")
       .bind(question.id, new Date().toISOString(), responseId)
       .run();
     return json({ ok: true });
@@ -658,12 +710,11 @@ export async function handleSurveyApiRequest(
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const response = await env.DB
-      .prepare(
-        `SELECT id, status FROM survey_responses
+    const response = await env.DB.prepare(
+      `SELECT id, status FROM survey_responses
          WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
          LIMIT 1`,
-      )
+    )
       .bind(responseId, surveyId, participant.participantHash)
       .first<{ id: number; status: string }>();
     if (!response) return fail(404, "response_not_found", "答卷不存在或已提交");
@@ -709,9 +760,7 @@ async function saveWebAnswer(
       responseId,
       questionId: question.id,
       selectedOptionIds: [optionId],
-      ...(type === "yes_no"
-        ? { booleanValue: question.options[0]?.id === optionId }
-        : {}),
+      ...(type === "yes_no" ? { booleanValue: question.options[0]?.id === optionId } : {}),
       ...(type === "rating" ? { ratingValue: ratingOptionValue(question, optionId) } : {}),
     });
     return null;
@@ -721,9 +770,9 @@ async function saveWebAnswer(
     if (!Array.isArray(value) || value.some((entry) => !Number.isInteger(Number(entry)))) {
       return fail(400, "invalid_answer", "多选答案必须是选项 ID 数组");
     }
-    const selectedOptionIds = value.map(Number).filter((optionId) =>
-      question.options.some((option) => option.id === optionId),
-    );
+    const selectedOptionIds = value
+      .map(Number)
+      .filter((optionId) => question.options.some((option) => option.id === optionId));
     if (selectedOptionIds.length === 0) {
       await deleteWebAnswer(env.DB, responseId, question.id);
     } else {
@@ -737,9 +786,8 @@ async function saveWebAnswer(
   }
 
   if (type === "matrix") {
-    const selections = value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+    const selections =
+      value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
     const columns = getMatrixColumns(question);
     const normalized: Record<string, number> = {};
     for (const row of question.options) {
@@ -795,15 +843,22 @@ async function saveWebAnswer(
   }
 
   if (type === "image" || type === "video" || type === "audio" || type === "file") {
-    const mediaAssetId = value && typeof value === "object" && !Array.isArray(value)
-      ? Number((value as { mediaAssetId?: unknown }).mediaAssetId)
-      : Number(value);
+    const mediaAssetId =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Number((value as { mediaAssetId?: unknown }).mediaAssetId)
+        : Number(value);
     if (!Number.isInteger(mediaAssetId) || mediaAssetId <= 0) {
       return fail(400, "invalid_answer", "媒体答案无效");
     }
     const asset = await getMediaAssetById(env.DB, mediaAssetId);
     if (!asset || asset.scope !== "response") {
       return fail(404, "media_not_found", "媒体不存在");
+    }
+    // Ownership: response media is stored under "media:temp:<responseId>:…";
+    // refuse assets uploaded for a different response so a participant cannot
+    // attach (and thereby read) someone else's upload by enumerating ids.
+    if (!asset.storageKey?.startsWith(`media:temp:${responseId}:`)) {
+      return fail(403, "media_forbidden", "媒体不属于当前答卷");
     }
     const answerId = await upsertMediaAnswer(env.DB, {
       responseId,
@@ -826,11 +881,7 @@ function ratingOptionValue(
   return Number.isFinite(candidate) ? candidate : null;
 }
 
-async function deleteWebAnswer(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): Promise<void> {
+async function deleteWebAnswer(db: D1Database, responseId: number, questionId: number): Promise<void> {
   const answer = await db
     .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(responseId, questionId)
@@ -856,11 +907,7 @@ function findMissingRequiredQuestion(
       return current;
     }
     const selectedOptionId = selectedWebOptionId(current, answer);
-    current = getNextQuestionAfterOption(
-      { questions: flowQuestions },
-      current.id,
-      selectedOptionId,
-    );
+    current = getNextQuestionAfterOption({ questions: flowQuestions }, current.id, selectedOptionId);
   }
   return null;
 }
@@ -871,8 +918,7 @@ function isWebAnswerPresent(answer: Answer | undefined): boolean {
     try {
       const parsed = JSON.parse(answer.jsonValue) as unknown;
       if (Array.isArray(parsed)) return parsed.length > 0;
-      if (parsed && typeof parsed === "object" &&
-          (parsed as { kind?: unknown }).kind === "matrix") {
+      if (parsed && typeof parsed === "object" && (parsed as { kind?: unknown }).kind === "matrix") {
         const selections = (parsed as { selections?: Record<string, unknown> }).selections ?? {};
         return Object.keys(selections).length > 0;
       }
@@ -881,8 +927,10 @@ function isWebAnswerPresent(answer: Answer | undefined): boolean {
     }
     return true;
   }
+  // A whitespace-only text answer counts as unanswered so required text
+  // questions cannot be satisfied by an empty string.
   return (
-    answer.textValue !== null ||
+    (answer.textValue !== null && answer.textValue.trim() !== "") ||
     answer.numberValue !== null ||
     answer.booleanValue !== null ||
     answer.ratingValue !== null ||
@@ -891,10 +939,7 @@ function isWebAnswerPresent(answer: Answer | undefined): boolean {
   );
 }
 
-function selectedWebOptionId(
-  question: SurveyQuestion,
-  answer: Answer | undefined,
-): number | null {
+function selectedWebOptionId(question: SurveyQuestion, answer: Answer | undefined): number | null {
   if (question.type !== "single" && question.type !== "yes_no" && question.type !== "rating") {
     return null;
   }
@@ -911,11 +956,7 @@ function selectedWebOptionId(
   return null;
 }
 
-async function serveSurveyMedia(
-  request: Request,
-  env: Env,
-  mediaId: number,
-): Promise<Response> {
+async function serveSurveyMedia(request: Request, env: Env, mediaId: number): Promise<Response> {
   const asset = await getMediaAssetById(env.DB, mediaId);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");
 
@@ -923,9 +964,8 @@ async function serveSurveyMedia(
     // Admin-uploaded temporary media (e.g. background music) is allowed
     // before it is attached to any published question/option.
     if (asset.storageKind !== "temporary") {
-      let linked = await env.DB
-        .prepare(
-          `SELECT s.id FROM surveys s
+      let linked = await env.DB.prepare(
+        `SELECT s.id FROM surveys s
            JOIN survey_questions q ON q.survey_id = s.id
            JOIN question_media qm ON qm.question_id = q.id
            WHERE s.status = 'published' AND qm.media_asset_id = ?
@@ -935,15 +975,14 @@ async function serveSurveyMedia(
            JOIN question_options o ON o.question_id = q.id
            JOIN option_media om ON om.question_option_id = o.id
            WHERE s.status = 'published' AND om.media_asset_id = ?`,
-        )
+      )
         .bind(mediaId, mediaId)
         .first<{ id: number }>();
       if (!linked) {
-        linked = await env.DB
-          .prepare(
-            `SELECT s.id FROM surveys s
+        linked = await env.DB.prepare(
+          `SELECT s.id FROM surveys s
              WHERE s.status = 'published' AND s.cover_media_id = ?`,
-          )
+        )
           .bind(mediaId)
           .first<{ id: number }>();
       }
@@ -952,14 +991,13 @@ async function serveSurveyMedia(
   } else if (asset.scope === "response") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const owned = await env.DB
-      .prepare(
-        `SELECT r.id FROM survey_responses r
+    const owned = await env.DB.prepare(
+      `SELECT r.id FROM survey_responses r
          JOIN answers a ON a.response_id = r.id
          JOIN answer_media am ON am.answer_id = a.id
          WHERE am.media_asset_id = ? AND r.participant_hash = ?
          LIMIT 1`,
-      )
+    )
       .bind(mediaId, participant.participantHash)
       .first<{ id: number }>();
     if (!owned) return fail(403, "media_forbidden", "无权访问该媒体");
@@ -974,21 +1012,16 @@ async function serveSurveyMedia(
   return mediaResponse;
 }
 
-export async function handleSurveyMediaUpload(
-  request: Request,
-  env: Env,
-  surveyId: number,
-): Promise<Response> {
+export async function handleSurveyMediaUpload(request: Request, env: Env, surveyId: number): Promise<Response> {
   const loaded = await loadPublishedSurvey(env, surveyId);
   if (loaded instanceof Response) return loaded;
   const participant = await resolveParticipant(request, env);
   if (participant instanceof Response) return participant;
-  const response = await env.DB
-    .prepare(
-      `SELECT id FROM survey_responses
+  const response = await env.DB.prepare(
+    `SELECT id FROM survey_responses
        WHERE survey_id = ? AND participant_hash = ? AND status = 'in_progress'
        ORDER BY id DESC LIMIT 1`,
-    )
+  )
     .bind(surveyId, participant.participantHash)
     .first<{ id: number }>();
   if (!response) return fail(404, "response_not_found", "请先开始填写问卷");
