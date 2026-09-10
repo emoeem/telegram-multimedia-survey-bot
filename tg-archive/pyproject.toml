@@ -1,0 +1,32 @@
+[project]
+name = "tg-archive"
+version = "0.1.0"
+description = "Mirror Telegram chats you can read into your own private channel (MVP)."
+requires-python = ">=3.10"
+dependencies = [
+    "telethon>=1.36",
+]
+
+[project.scripts]
+tg-archive = "tg_archive.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+qr = [
+    "qrcode>=8.0",
+    "pillow>=11.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
