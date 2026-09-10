@@ -1,0 +1,733 @@
+{
+  "schema_version": 1,
+  "survey": {
+    "title": "个人档案 · 基本信息与个人展示",
+    "description": "花几分钟完善你的个人档案：基本信息为必填，其余内容按心情选填。上传照片后提交，即可选择发布到个人画廊。",
+    "pages": [
+      {
+        "id": "p1",
+        "title": "基本信息",
+        "description": "以下信息会用于生成你的个人档案",
+        "order": 1
+      },
+      {
+        "id": "p2",
+        "title": "风格与状态",
+        "description": "关于你的日常风格和生活状态",
+        "order": 2
+      },
+      {
+        "id": "p3",
+        "title": "关于我",
+        "description": "选填，想多写一点会让档案更立体",
+        "order": 3
+      },
+      {
+        "id": "p4",
+        "title": "个人展示",
+        "description": "选填：上传照片、语音或作品文件，展示最真实的你",
+        "order": 4
+      }
+    ],
+    "questions": [
+      {
+        "id": "q1",
+        "type": "text",
+        "title": "姓名 / 昵称",
+        "placeholder": "想让大家怎么称呼你？",
+        "required": true,
+        "order": 1,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 40
+        }
+      },
+      {
+        "id": "q2",
+        "type": "number",
+        "title": "年龄",
+        "placeholder": "例如 25",
+        "required": true,
+        "order": 2,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "min": 10,
+          "max": 120,
+          "decimal": false
+        }
+      },
+      {
+        "id": "q3",
+        "type": "number",
+        "title": "身高（厘米）",
+        "placeholder": "例如 170",
+        "required": true,
+        "order": 3,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "min": 80,
+          "max": 250,
+          "decimal": false
+        }
+      },
+      {
+        "id": "q4",
+        "type": "number",
+        "title": "体重（公斤）",
+        "description": "写个大概范围也可以，不必精确到个位",
+        "placeholder": "例如 55",
+        "required": true,
+        "order": 4,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "min": 25,
+          "max": 400,
+          "decimal": false
+        }
+      },
+      {
+        "id": "q5",
+        "type": "text",
+        "title": "所在城市 / 坐标",
+        "description": "填城市（如 上海）或经纬度坐标（如 31.23, 121.47）均可",
+        "placeholder": "例如：上海，或 31.23, 121.47",
+        "required": true,
+        "order": 5,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 60
+        }
+      },
+      {
+        "id": "q6",
+        "type": "text",
+        "title": "职业 / 身份",
+        "placeholder": "例如：产品经理 / 设计师 / 学生 / 自由职业",
+        "required": true,
+        "order": 6,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 60
+        }
+      },
+      {
+        "id": "q7",
+        "type": "single",
+        "title": "平时的穿衣风格",
+        "required": true,
+        "order": 7,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q7_o1",
+            "label": "简约休闲",
+            "value": "简约休闲",
+            "order": 1
+          },
+          {
+            "id": "q7_o2",
+            "label": "街头潮流",
+            "value": "街头潮流",
+            "order": 2
+          },
+          {
+            "id": "q7_o3",
+            "label": "商务 / 通勤",
+            "value": "商务 / 通勤",
+            "order": 3
+          },
+          {
+            "id": "q7_o4",
+            "label": "运动户外",
+            "value": "运动户外",
+            "order": 4
+          },
+          {
+            "id": "q7_o5",
+            "label": "日系 / 韩系清新",
+            "value": "日系 / 韩系清新",
+            "order": 5
+          },
+          {
+            "id": "q7_o6",
+            "label": "复古文艺",
+            "value": "复古文艺",
+            "order": 6
+          },
+          {
+            "id": "q7_o7",
+            "label": "甜酷 / 辣妹",
+            "value": "甜酷 / 辣妹",
+            "order": 7
+          },
+          {
+            "id": "q7_o8",
+            "label": "成熟 / 御姐风",
+            "value": "成熟 / 御姐风",
+            "order": 8
+          },
+          {
+            "id": "q7_o9",
+            "label": "中性 / 无性别",
+            "value": "中性 / 无性别",
+            "order": 9
+          },
+          {
+            "id": "q7_o10",
+            "label": "百变，看心情",
+            "value": "百变，看心情",
+            "order": 10
+          },
+          {
+            "id": "q7_o11",
+            "label": "其他",
+            "value": "其他",
+            "order": 11
+          }
+        ],
+        "media": []
+      },
+      {
+        "id": "q8",
+        "type": "single",
+        "title": "情感状态",
+        "required": true,
+        "order": 8,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q8_o1",
+            "label": "单身",
+            "value": "单身",
+            "order": 1
+          },
+          {
+            "id": "q8_o2",
+            "label": "恋爱中",
+            "value": "恋爱中",
+            "order": 2
+          },
+          {
+            "id": "q8_o3",
+            "label": "已婚",
+            "value": "已婚",
+            "order": 3
+          },
+          {
+            "id": "q8_o4",
+            "label": "离异",
+            "value": "离异",
+            "order": 4
+          },
+          {
+            "id": "q8_o5",
+            "label": "分居中",
+            "value": "分居中",
+            "order": 5
+          },
+          {
+            "id": "q8_o6",
+            "label": "暂时不想公开",
+            "value": "暂时不想公开",
+            "order": 6
+          }
+        ],
+        "media": []
+      },
+      {
+        "id": "q9",
+        "type": "multiple",
+        "title": "性格标签（选填，最多 6 个）",
+        "required": false,
+        "order": 9,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q9_o1",
+            "label": "外向开朗",
+            "value": "外向开朗",
+            "order": 1
+          },
+          {
+            "id": "q9_o2",
+            "label": "安静内敛",
+            "value": "安静内敛",
+            "order": 2
+          },
+          {
+            "id": "q9_o3",
+            "label": "幽默风趣",
+            "value": "幽默风趣",
+            "order": 3
+          },
+          {
+            "id": "q9_o4",
+            "label": "温柔细腻",
+            "value": "温柔细腻",
+            "order": 4
+          },
+          {
+            "id": "q9_o5",
+            "label": "理性务实",
+            "value": "理性务实",
+            "order": 5
+          },
+          {
+            "id": "q9_o6",
+            "label": "感性浪漫",
+            "value": "感性浪漫",
+            "order": 6
+          },
+          {
+            "id": "q9_o7",
+            "label": "真诚直接",
+            "value": "真诚直接",
+            "order": 7
+          },
+          {
+            "id": "q9_o8",
+            "label": "慢热但专一",
+            "value": "慢热但专一",
+            "order": 8
+          },
+          {
+            "id": "q9_o9",
+            "label": "胆大爱冒险",
+            "value": "胆大爱冒险",
+            "order": 9
+          },
+          {
+            "id": "q9_o10",
+            "label": "宅家文艺",
+            "value": "宅家文艺",
+            "order": 10
+          },
+          {
+            "id": "q9_o11",
+            "label": "事业心强",
+            "value": "事业心强",
+            "order": 11
+          },
+          {
+            "id": "q9_o12",
+            "label": "孩子气",
+            "value": "孩子气",
+            "order": 12
+          }
+        ],
+        "media": [],
+        "validation": {
+          "max_selections": 6
+        }
+      },
+      {
+        "id": "q10",
+        "type": "multiple",
+        "title": "兴趣爱好（选填，最多 8 个）",
+        "required": false,
+        "order": 10,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q10_o1",
+            "label": "音乐",
+            "value": "音乐",
+            "order": 1
+          },
+          {
+            "id": "q10_o2",
+            "label": "电影",
+            "value": "电影",
+            "order": 2
+          },
+          {
+            "id": "q10_o3",
+            "label": "阅读",
+            "value": "阅读",
+            "order": 3
+          },
+          {
+            "id": "q10_o4",
+            "label": "运动健身",
+            "value": "运动健身",
+            "order": 4
+          },
+          {
+            "id": "q10_o5",
+            "label": "旅行",
+            "value": "旅行",
+            "order": 5
+          },
+          {
+            "id": "q10_o6",
+            "label": "美食",
+            "value": "美食",
+            "order": 6
+          },
+          {
+            "id": "q10_o7",
+            "label": "摄影",
+            "value": "摄影",
+            "order": 7
+          },
+          {
+            "id": "q10_o8",
+            "label": "游戏",
+            "value": "游戏",
+            "order": 8
+          },
+          {
+            "id": "q10_o9",
+            "label": "动漫",
+            "value": "动漫",
+            "order": 9
+          },
+          {
+            "id": "q10_o10",
+            "label": "宠物",
+            "value": "宠物",
+            "order": 10
+          },
+          {
+            "id": "q10_o11",
+            "label": "手工 DIY",
+            "value": "手工 DIY",
+            "order": 11
+          },
+          {
+            "id": "q10_o12",
+            "label": "桌游 / 剧本杀",
+            "value": "桌游 / 剧本杀",
+            "order": 12
+          },
+          {
+            "id": "q10_o13",
+            "label": "户外露营",
+            "value": "户外露营",
+            "order": 13
+          },
+          {
+            "id": "q10_o14",
+            "label": "追剧",
+            "value": "追剧",
+            "order": 14
+          },
+          {
+            "id": "q10_o15",
+            "label": "唱歌跳舞",
+            "value": "唱歌跳舞",
+            "order": 15
+          },
+          {
+            "id": "q10_o16",
+            "label": "其他",
+            "value": "其他",
+            "order": 16
+          }
+        ],
+        "media": [],
+        "validation": {
+          "max_selections": 8
+        }
+      },
+      {
+        "id": "q11",
+        "type": "single",
+        "title": "作息与生活节奏（选填）",
+        "required": false,
+        "order": 11,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q11_o1",
+            "label": "早睡早起型",
+            "value": "早睡早起型",
+            "order": 1
+          },
+          {
+            "id": "q11_o2",
+            "label": "夜猫子型",
+            "value": "夜猫子型",
+            "order": 2
+          },
+          {
+            "id": "q11_o3",
+            "label": "看心情",
+            "value": "看心情",
+            "order": 3
+          },
+          {
+            "id": "q11_o4",
+            "label": "工作所迫（加班多）",
+            "value": "工作所迫（加班多）",
+            "order": 4
+          }
+        ],
+        "media": []
+      },
+      {
+        "id": "q12",
+        "type": "single",
+        "title": "养宠物吗（选填）",
+        "required": false,
+        "order": 12,
+        "page_id": "p2",
+        "options": [
+          {
+            "id": "q12_o1",
+            "label": "没有，但想养",
+            "value": "没有，但想养",
+            "order": 1
+          },
+          {
+            "id": "q12_o2",
+            "label": "猫主子",
+            "value": "猫主子",
+            "order": 2
+          },
+          {
+            "id": "q12_o3",
+            "label": "狗子",
+            "value": "狗子",
+            "order": 3
+          },
+          {
+            "id": "q12_o4",
+            "label": "其他毛孩子",
+            "value": "其他毛孩子",
+            "order": 4
+          }
+        ],
+        "media": []
+      },
+      {
+        "id": "q13",
+        "type": "long_text",
+        "title": "最喜欢的事情",
+        "description": "写几件让你开心的小事，或者一直热爱的东西",
+        "placeholder": "例如：周五晚上的电影、雨天的咖啡店、凌晨的公路……",
+        "required": false,
+        "order": 13,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q14",
+        "type": "long_text",
+        "title": "最近记忆最深的一件事",
+        "description": "最近发生、最让你有感触或最难忘的一件事",
+        "placeholder": "可以是开心的、感动的，甚至只是很特别的一天",
+        "required": false,
+        "order": 14,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q15",
+        "type": "long_text",
+        "title": "最想尝试 / 正在期待的事",
+        "placeholder": "比如一场旅行、学一门新技能、见一个很久没见的人……",
+        "required": false,
+        "order": 15,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q16",
+        "type": "long_text",
+        "title": "最骄傲 / 最有成就感的时刻",
+        "placeholder": "可以是大事，也可以是某个坚持了很久的小事",
+        "required": false,
+        "order": 16,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q17",
+        "type": "long_text",
+        "title": "我眼中的自己",
+        "placeholder": "如果让你向陌生人介绍自己，你会先说什么？",
+        "required": false,
+        "order": 17,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q18",
+        "type": "long_text",
+        "title": "朋友眼中的我",
+        "description": "写写你觉得朋友会怎么形容你，反差感也是魅力的一部分",
+        "required": false,
+        "order": 18,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 1000
+        }
+      },
+      {
+        "id": "q19",
+        "type": "text",
+        "title": "想公开的联系方式（选填）",
+        "description": "注意隐私：只有你想公开时才填",
+        "placeholder": "例如 @xxx / 邮箱",
+        "required": false,
+        "order": 19,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 100
+        }
+      },
+      {
+        "id": "q20",
+        "type": "long_text",
+        "title": "一句话总结（个人签名）",
+        "placeholder": "用一句话介绍自己，会展示在档案上",
+        "required": false,
+        "order": 20,
+        "page_id": "p3",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_length": 200
+        }
+      },
+      {
+        "id": "q21",
+        "type": "image",
+        "title": "个人展示照片 1",
+        "description": "支持 JPG / PNG / WebP，单张 ≤10MB；照片会用于个人画廊与档案展示",
+        "required": false,
+        "order": 21,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q22",
+        "type": "image",
+        "title": "个人展示照片 2",
+        "description": "想展示多张照片时，按编号依次上传即可",
+        "required": false,
+        "order": 22,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q23",
+        "type": "image",
+        "title": "个人展示照片 3",
+        "required": false,
+        "order": 23,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q24",
+        "type": "image",
+        "title": "个人展示照片 4",
+        "required": false,
+        "order": 24,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q25",
+        "type": "image",
+        "title": "个人展示照片 5",
+        "required": false,
+        "order": 25,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q26",
+        "type": "image",
+        "title": "个人展示照片 6",
+        "required": false,
+        "order": 26,
+        "page_id": "p4",
+        "options": [],
+        "media": []
+      },
+      {
+        "id": "q27",
+        "type": "audio",
+        "title": "语音自我介绍（选填）",
+        "description": "录一段话介绍自己，让别人听到真实的声音（MP3 / M4A / WAV / OGG，≤20MB）",
+        "required": false,
+        "order": 27,
+        "page_id": "p4",
+        "options": [],
+        "media": [],
+        "validation": {
+          "allowed_mime_types": ["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/ogg"],
+          "max_size_mb": 20
+        }
+      },
+      {
+        "id": "q28",
+        "type": "file",
+        "title": "作品集 / 简历 / 其他文件（选填）",
+        "description": "单个文件 ≤20MB，支持常见文档、图片、压缩包等",
+        "required": false,
+        "order": 28,
+        "page_id": "p4",
+        "options": [],
+        "media": [],
+        "validation": {
+          "max_size_mb": 20
+        }
+      }
+    ],
+    "settings": {
+      "anonymous": false,
+      "allow_multiple": false,
+      "max_responses": 1,
+      "shuffle_questions": false,
+      "shuffle_options": false,
+      "show_progress": true,
+      "allow_back": true,
+      "allow_resume": true
+    }
+  }
+}
