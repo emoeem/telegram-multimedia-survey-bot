@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Home,
   Lock,
+  MailCheck,
   Palette,
   Paperclip,
   Users,
@@ -14,6 +15,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { EmailAuthScreen } from "./EmailAuthScreen";
 import { PlazaScreen } from "./PlazaScreen";
 import { TrialScreen } from "./TrialScreen";
 import { PresetSwatch, SURVEY_THEME_PRESETS, themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
@@ -171,15 +173,20 @@ function SurveyListPage() {
               <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)]">可填写问卷</h1>
               <p className="mt-1 text-sm text-[var(--color-muted)]">选择一份问卷，开始你的回答</p>
             </div>
-            <button
-              type="button"
-              aria-label="选择主题"
-              title="选择主题"
-              className="survey-icon-btn mt-1 shrink-0"
-              onClick={() => setThemePickerOpen(true)}
-            >
-              <Palette className="h-4 w-4" />
-            </button>
+            <div className="mt-1 flex shrink-0 items-center gap-1.5">
+              <a href="/auth" aria-label="邮箱登录" title="邮箱登录" className="survey-icon-btn">
+                <MailCheck className="h-4 w-4" />
+              </a>
+              <button
+                type="button"
+                aria-label="选择主题"
+                title="选择主题"
+                className="survey-icon-btn"
+                onClick={() => setThemePickerOpen(true)}
+              >
+                <Palette className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <input
             type="search"
@@ -958,6 +965,10 @@ export function SurveyApp() {
   // The web task system ("/trial") also shares the SPA bundle.
   if (window.location.pathname === "/trial" || window.location.pathname.startsWith("/trial/")) {
     return <TrialScreen />;
+  }
+  // Email account login/registration for visitors without Telegram.
+  if (window.location.pathname === "/auth" || window.location.pathname.startsWith("/auth/")) {
+    return <EmailAuthScreen />;
   }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });

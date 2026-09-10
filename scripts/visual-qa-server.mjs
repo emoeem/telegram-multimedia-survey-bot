@@ -29,7 +29,7 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const pathname = decodeURIComponent(url.pathname);
     const base = pathname.startsWith("/fixtures/") ? fixturesRoot : root;
-    const relative = pathname.startsWith("/s/")
+    const relative = pathname.startsWith("/s/") || pathname.startsWith("/trial")
       ? "/survey.html"
       : pathname === "/"
         ? "/index.html"

@@ -2,6 +2,8 @@ import type { Env } from "../index";
 import { verifyTelegramWebAppProfile } from "./admin-api";
 import { verifySurveyParticipantToken } from "../services/participant-session.service";
 import { getUserById, getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
+import { getEmailAccountById } from "../db/repositories/email-account.repository";
+import { verifyEmailSessionToken } from "../services/email-auth.service";
 import { getParticipantLink, participantHashForKey } from "../db/repositories/participant-link.repository";
 import { getBotUsername } from "../bot/telegram";
 import { getSurveyById } from "../db/repositories/survey.repository";
@@ -102,7 +104,7 @@ async function loadPublishedSurvey(
 }
 
 interface Participant {
-  kind: "telegram" | "anonymous";
+  kind: "telegram" | "anonymous" | "email";
   dbUserId: number | null;
   telegramUserId: number | null;
   participantKey: string | null;
@@ -161,6 +163,22 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
       telegramUserId: profile.telegramUserId,
       participantKey: null,
       participantHash: `user_${user.id}`,
+    };
+  }
+
+  const emailSession = request.headers.get("x-email-session");
+  if (emailSession) {
+    const parsed = await verifyEmailSessionToken(env.WEBHOOK_SECRET, emailSession);
+    const account = parsed ? await getEmailAccountById(env.DB, parsed.accountId) : null;
+    if (!account || !account.verifiedAt) {
+      return fail(401, "invalid_identity", "邮箱登录状态已失效，请重新登录。");
+    }
+    return {
+      kind: "email",
+      dbUserId: account.userId,
+      telegramUserId: null,
+      participantKey: null,
+      participantHash: `email_${account.id}`,
     };
   }
 

@@ -12,6 +12,7 @@ import { handleAdminApi } from "./http/admin-api";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
 import { handleTrialApiRequest } from "./http/trial-api";
+import { handleEmailAuthApiRequest } from "./http/email-auth-api";
 import { handleReportRequest } from "./http/report-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { handleExportQueue } from "./services/export-worker.service";
@@ -114,6 +115,9 @@ export interface Env {
   /** Telegram channel that mirrors published plaza cards and tree-hole posts. */
   PLAZA_CHANNEL_ID?: string;
   COMMUNITY_GROUP_URL?: string;
+  /** Transactional email (Resend) for email+password auth. */
+  RESEND_API_KEY?: string;
+  MAIL_FROM?: string;
 }
 
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
@@ -213,6 +217,11 @@ export default {
       return serveHtmlAsset(env, request, "/survey.html");
     }
 
+    // Email auth pages share the survey SPA bundle as well.
+    if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
+      return serveHtmlAsset(env, request, "/survey.html");
+    }
+
     if (url.pathname.startsWith("/api/plaza/")) {
       return (await handlePlazaApiRequest(request, env, url)) ?? new Response("Not Found", { status: 404 });
     }
@@ -224,6 +233,11 @@ export default {
 
     if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
       const response = await handleReportRequest(request, env, url);
+      return response ?? new Response("Not Found", { status: 404 });
+    }
+
+    if (url.pathname.startsWith("/api/auth/email/")) {
+      const response = await handleEmailAuthApiRequest(request, env, url);
       return response ?? new Response("Not Found", { status: 404 });
     }
 

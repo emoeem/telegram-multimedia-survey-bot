@@ -15,6 +15,7 @@ const PAGES = [
   "/admin/surveys/3/editor",
   "/admin/surveys/1/responses",
   "/admin/templates",
+  "/admin/task-packs",
 ];
 
 const TELEGRAM_STUB = `
@@ -173,6 +174,41 @@ const API_MOCKS: Record<string, unknown> = {
     pageSize: 20,
     total: 1,
     totalPages: 1,
+  },
+  "/api/admin/task-packs": {
+    packs: [
+      {
+        id: 1,
+        name: "示例 · 楼道挑战",
+        description: "虚构模拟：逐层上行，每层抽取一个任务。",
+        normalFloors: 10,
+        hellFloors: 12,
+        prepItems: ["手机（计时用）", "一杯水"],
+        prepText: "出发前按顺序确认清单。",
+        enabled: true,
+        sortOrder: 1,
+        createdAt: now,
+        updatedAt: now,
+        items: [
+          {
+            id: 1,
+            packId: 1,
+            title: "镜面摩擦",
+            description: "示例任务描述文案。",
+            warning: "",
+            score: 5,
+            persona: "any",
+            mode: "any",
+            minFloor: 1,
+            maxFloor: 10,
+            enabled: true,
+            sortOrder: 1,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      },
+    ],
   },
   "/api/admin/report-templates": {
     templates: [

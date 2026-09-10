@@ -166,7 +166,10 @@ export interface LeaderboardEntry {
   mine: boolean;
 }
 
-/** Public leaderboard: completed runs ranked by score (desc) then time (asc). */
+/** Public leaderboard: completed runs ranked by score (desc) then time (asc).
+ *  Anti-abuse: only Telegram-identified runs (user_id set) are ranked, and
+ *  each player contributes only their single best run. Anonymous runs stay
+ *  visible in personal history but never on the public board. */
 export async function listTaskRunLeaderboard(
   db: D1Database,
   options: { packId: number; mode: TrialMode; limit?: number; participantHash?: string },
@@ -178,7 +181,13 @@ export async function listTaskRunLeaderboard(
               r.max_floor, r.starting_floor,
               u.username, u.first_name
        FROM task_runs r LEFT JOIN users u ON u.id = r.user_id
-       WHERE r.pack_id = ? AND r.mode = ? AND r.status = 'completed'
+       WHERE r.pack_id = ? AND r.mode = ? AND r.status = 'completed' AND r.user_id IS NOT NULL
+         AND r.id = (
+           SELECT r2.id FROM task_runs r2
+           WHERE r2.user_id = r.user_id AND r2.pack_id = r.pack_id AND r2.mode = r.mode
+             AND r2.status = 'completed'
+           ORDER BY r2.score DESC, r2.finished_at ASC LIMIT 1
+         )
        ORDER BY r.score DESC, r.finished_at ASC
        LIMIT ?`,
     )

@@ -1022,6 +1022,7 @@ export function TrialScreen() {
           </div>
         </div>
 
+        <p className="mt-1 text-[11px] text-[var(--survey-muted)]">仅统计 Telegram 登录玩家的最好成绩，匿名挑战不上榜</p>
         {boardLoading && boardEntries === null ? (
           <p className="text-sm text-[var(--survey-muted)]">加载中…</p>
         ) : boardError ? (

@@ -137,6 +137,12 @@ export function identityHeaders(): Record<string, string> {
   if (storedToken) {
     return { "x-participant-token": storedToken };
   }
+  // Email accounts (registered at /auth) ride along on every survey/trial
+  // request so progress is attributed and resumable across devices.
+  const emailSession = safeGet("emailSessionToken");
+  if (emailSession) {
+    return { "x-email-session": emailSession };
+  }
   return { "x-participant-key": getParticipantKey() };
 }
 
