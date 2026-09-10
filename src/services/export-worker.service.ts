@@ -11,13 +11,6 @@ import {
   processImageGeneratorMessage,
   retryImageGeneratorJob,
 } from "./image-generator-worker.service";
-import {
-  isIdentityCardJobMessage,
-  notifyIdentityCardFailure,
-  processIdentityCardMessage,
-  retryIdentityCardJob,
-  type IdentityCardWorkerEnvironment,
-} from "./identity-card-worker.service";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { isReportDeliveryMessage, type ReportDeliveryMessage } from "./report-delivery.service";
 import { processReportDeliveryMessage, type ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
@@ -148,10 +141,7 @@ async function processExportMessage(env: ExportWorkerEnvironment, body: unknown)
 
 export async function handleExportQueue(
   batch: MessageBatch<unknown>,
-  env: ExportWorkerEnvironment &
-    ResultVisualWorkerEnvironment &
-    IdentityCardWorkerEnvironment &
-    ReportDeliveryWorkerEnvironment,
+  env: ExportWorkerEnvironment & ResultVisualWorkerEnvironment & ReportDeliveryWorkerEnvironment,
 ): Promise<void> {
   for (const message of batch.messages) {
     if (isReportDeliveryMessage(message.body)) {
@@ -206,27 +196,6 @@ export async function handleExportQueue(
           }
           message.ack();
         } else message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
-      }
-    } else if (isIdentityCardJobMessage(message.body)) {
-      try {
-        await processIdentityCardMessage(env, message.body);
-        message.ack();
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "Identity card rendering failed";
-        const terminal = message.attempts >= 3;
-        console.error("Identity card queue job failed", {
-          jobId: message.body.jobId,
-          attempts: message.attempts,
-          terminal,
-          error: detail,
-        });
-        await retryIdentityCardJob(env.DB, message.body.jobId, detail, terminal);
-        if (terminal) {
-          await notifyIdentityCardFailure(env, message.body.jobId);
-          message.ack();
-        } else {
-          message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
-        }
       }
     } else if (isResultVisualJobMessage(message.body)) {
       try {

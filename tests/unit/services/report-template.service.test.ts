@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_REPORT_TEMPLATE,
+  ART_ARCHIVE_REPORT_TEMPLATE,
   MAGAZINE_DARK_TEMPLATE,
   validateReportTemplateSpec,
 } from "../../../src/services/report/template";
@@ -96,6 +97,13 @@ describe("report template system", () => {
     expect(html).toContain("结果报告");
     expect(html).toContain("--report-bg:#282a36");
     expect(html).toContain("更多问卷 @hnhgggfj_bot");
+  });
+
+  it("renders the art archive template through the profile composition engine", () => {
+    const html = buildResponsiveReportHtml(view, {}, ART_ARCHIVE_REPORT_TEMPLATE);
+    expect(html).toContain('data-report-layout="profile"');
+    expect(html).toContain("report-cover");
+    expect(html).toContain("4px double var(--report-accent)");
   });
 
   it("uses the composition engine when a template declares a layout", () => {

@@ -1,22 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import {
-  ArrowLeft,
-  FileText,
-  Package,
-  Send,
-  Share2,
-  X,
-} from "lucide-react";
+import { ArrowLeft, FileText, Package, Send, Share2, X } from "lucide-react";
 import { useApi } from "../hooks";
-import {
-  apiSend,
-  type ReportTemplateOption,
-  type ResponseListData,
-  type ResponseStatus,
-} from "../api";
+import { apiSend, type ReportTemplateOption, type ResponseListData, type ResponseStatus } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
+import { safeCopy } from "../survey/clipboard";
 
 const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
   { value: "", label: "全部状态" },
@@ -29,9 +18,7 @@ const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
 
 function respondentName(item: ResponseListData["items"][number]): string {
   if (!item.respondent) {
-    return item.participantKey
-      ? `网页参与 · ${item.participantKey}`
-      : "网页参与（未登录）";
+    return item.participantKey ? `网页参与 · ${item.participantKey}` : "网页参与（未登录）";
   }
   const name = [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ");
   return name || (item.respondent.username ? `@${item.respondent.username}` : String(item.respondent.telegramUserId));
@@ -70,15 +57,11 @@ export function ResponsesPage() {
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   });
-  const { data, error, retry } = useApi<ResponseListData>(
-    id ? `/api/admin/surveys/${id}/responses?${query}` : null,
-  );
+  const { data, error, retry } = useApi<ResponseListData>(id ? `/api/admin/surveys/${id}/responses?${query}` : null);
 
   const reportUrlWithTemplate = (url: string): string => {
     const separator = url.includes("?") ? "&" : "?";
-    return templateId
-      ? `${url}${separator}template=${encodeURIComponent(templateId)}`
-      : url;
+    return templateId ? `${url}${separator}template=${encodeURIComponent(templateId)}` : url;
   };
 
   const loadReportUrl = async (responseId: number): Promise<string> => {
@@ -121,7 +104,11 @@ export function ResponsesPage() {
         `/api/admin/surveys/${id}/responses/${responseId}/report-link`,
         {},
       );
-      await navigator.clipboard.writeText(`${window.location.origin}${result.reportUrl}`);
+      const ok = await safeCopy(`${window.location.origin}${result.reportUrl}`);
+      if (!ok) {
+        setActionError("复制失败，请手动选择并复制链接");
+        return;
+      }
       setMessage(`已复制答卷 #${responseId} 的分享链接（30 天内有效）`);
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "复制链接失败");
@@ -130,13 +117,21 @@ export function ResponsesPage() {
 
   useEffect(() => {
     if (!previewResponseId || !id) return;
+    let cancelled = false;
     void (async () => {
       try {
-        setPreviewUrl(await loadReportUrl(previewResponseId));
+        const url = await loadReportUrl(previewResponseId);
+        if (!cancelled) setPreviewUrl(url);
       } catch {
         // keep the previous preview URL
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+    // This effect deliberately re-fires only when the user picks a different
+    // template. `previewResponseId` / `id` are captured from the closure so
+    // the current preview gets rebuilt against the latest template.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
 
@@ -150,11 +145,9 @@ export function ResponsesPage() {
   };
 
   const toggleSelectAllCompleted = () => {
-    const completedIds =
-      data?.items.filter((item) => item.status === "completed").map((item) => item.id) ?? [];
+    const completedIds = data?.items.filter((item) => item.status === "completed").map((item) => item.id) ?? [];
     setSelected((current) => {
-      const allSelected =
-        completedIds.length > 0 && completedIds.every((responseId) => current.has(responseId));
+      const allSelected = completedIds.length > 0 && completedIds.every((responseId) => current.has(responseId));
       const next = new Set(current);
       if (allSelected) completedIds.forEach((responseId) => next.delete(responseId));
       else completedIds.forEach((responseId) => next.add(responseId));
@@ -168,11 +161,9 @@ export function ResponsesPage() {
     setActionError(null);
     setMessage(null);
     try {
-      const result = await apiSend<{ queued: number }>(
-        "POST",
-        `/api/admin/surveys/${id}/responses/batch-export`,
-        { responseIds: [...selected] },
-      );
+      const result = await apiSend<{ queued: number }>("POST", `/api/admin/surveys/${id}/responses/batch-export`, {
+        responseIds: [...selected],
+      });
       setMessage(`已把 ${result.queued} 份答卷的报告加入导出队列，将按顺序发送到私人频道`);
       setSelected(new Set());
       setExportProgress({ total: result.queued, done: 0, failed: 0 });
@@ -282,20 +273,30 @@ export function ResponsesPage() {
               }}
             >
               {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>
         </div>
 
-        {message ? <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm text-[var(--color-success)]">{message}</div> : null}
+        {message ? (
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm text-[var(--color-success)]">
+            {message}
+          </div>
+        ) : null}
         {exportProgress ? (
           <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] p-3 text-sm text-[var(--color-info)]">
             导出中：{exportProgress.done}/{exportProgress.total} 份已发送
             {exportProgress.failed > 0 ? `（失败 ${exportProgress.failed}）` : ""}
           </div>
         ) : null}
-        {actionError ? <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">{actionError}</div> : null}
+        {actionError ? (
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
+            {actionError}
+          </div>
+        ) : null}
 
         {data.items.length ? (
           <div className="mt-5 overflow-x-auto">
@@ -335,9 +336,25 @@ export function ResponsesPage() {
                         ) : null}
                       </td>
                       <td className="text-sm">
-                        <Link className="font-semibold text-[var(--color-info)]" to={`/surveys/${data.survey.id}/responses/${item.id}`}>#{item.id}</Link>
+                        <Link
+                          className="font-semibold text-[var(--color-info)]"
+                          to={`/surveys/${data.survey.id}/responses/${item.id}`}
+                        >
+                          #{item.id}
+                        </Link>
                       </td>
-                      <td className="text-sm">{respondentName(item)}</td>
+                      <td className="text-sm">
+                        {item.respondent ? (
+                          <Link
+                            className="font-medium text-[var(--color-info)] hover:underline"
+                            to={`/users?user=${item.respondent.userId}`}
+                          >
+                            {respondentName(item)}
+                          </Link>
+                        ) : (
+                          respondentName(item)
+                        )}
+                      </td>
                       <td className="text-sm">{item.statusLabel}</td>
                       <td className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
                       <td className="">
@@ -349,17 +366,20 @@ export function ResponsesPage() {
                                 disabled={busy}
                                 onClick={() => void openReport(item.id)}
                               >
-                                <FileText className="h-4 w-4" />报告
+                                <FileText className="h-4 w-4" />
+                                报告
                               </button>
                               <button
                                 className="btn btn-sm lg:hidden"
                                 disabled={busy}
                                 onClick={() => void openReportMobile(item.id)}
                               >
-                                <FileText className="h-4 w-4" />报告
+                                <FileText className="h-4 w-4" />
+                                报告
                               </button>
                               <button className="btn btn-sm" onClick={() => void copyShare(item.id)}>
-                                <Share2 className="h-4 w-4" />分享
+                                <Share2 className="h-4 w-4" />
+                                分享
                               </button>
                             </>
                           ) : null}
@@ -381,23 +401,46 @@ export function ResponsesPage() {
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Link className="btn" to={`/surveys/${data.survey.id}`}>
-              <ArrowLeft className="h-4 w-4" />返回问卷
+              <ArrowLeft className="h-4 w-4" />
+              返回问卷
             </Link>
             <button
               className="btn btn-primary"
               disabled={busy || selected.size === 0}
               onClick={() => void batchExport()}
             >
-              {busy ? "处理中…" : <><Package className="h-4 w-4" />导出到私人频道（{selected.size}）</>}
+              {busy ? (
+                "处理中…"
+              ) : (
+                <>
+                  <Package className="h-4 w-4" />
+                  导出到私人频道（{selected.size}）
+                </>
+              )}
             </button>
             <button className="btn" disabled={busy} onClick={() => void sendSummaryToChannel()}>
-              <Send className="h-4 w-4" />汇总表发到频道
+              <Send className="h-4 w-4" />
+              汇总表发到频道
             </button>
           </div>
           <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
-            <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
-            <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
-            <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+            <button
+              className="btn btn-sm"
+              disabled={page <= 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              上一页
+            </button>
+            <span>
+              第 {data.page}/{Math.max(1, data.totalPages)} 页
+            </span>
+            <button
+              className="btn btn-sm"
+              disabled={page >= data.totalPages}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              下一页
+            </button>
           </div>
         </div>
       </section>
@@ -414,7 +457,9 @@ export function ResponsesPage() {
               >
                 <option value="">默认模板</option>
                 {templates.data?.templates.map((template) => (
-                  <option key={template.id} value={template.id}>{template.name}</option>
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
                 ))}
               </select>
               <button

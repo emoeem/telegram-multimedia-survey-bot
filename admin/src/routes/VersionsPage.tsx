@@ -9,9 +9,7 @@ import { formatDateTime } from "../format";
 export function VersionsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data, error, retry } = useApi<SurveyVersionListData>(
-    id ? `/api/admin/surveys/${id}/versions` : null,
-  );
+  const { data, error, retry } = useApi<SurveyVersionListData>(id ? `/api/admin/surveys/${id}/versions` : null);
   const [fromVersion, setFromVersion] = useState<number | "">("");
   const [toVersion, setToVersion] = useState<number | "">("");
   const [diff, setDiff] = useState<SurveyVersionDiffData | null>(null);
@@ -27,9 +25,9 @@ export function VersionsPage() {
     if (!id || fromVersion === "" || toVersion === "") return;
     setActionError(null);
     try {
-      setDiff(await api<SurveyVersionDiffData>(
-        `/api/admin/surveys/${id}/versions/${fromVersion}/compare/${toVersion}`,
-      ));
+      setDiff(
+        await api<SurveyVersionDiffData>(`/api/admin/surveys/${id}/versions/${fromVersion}/compare/${toVersion}`),
+      );
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "对比失败");
     }
@@ -41,11 +39,7 @@ export function VersionsPage() {
     setBusy(true);
     setActionError(null);
     try {
-      const result = await apiSend<{ id: number }>(
-        "POST",
-        `/api/admin/surveys/${id}/versions/${version}/restore`,
-        {},
-      );
+      const result = await apiSend<{ id: number }>("POST", `/api/admin/surveys/${id}/versions/${version}/restore`, {});
       navigate(`/surveys/${result.id}/editor`);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "恢复失败");
@@ -59,7 +53,8 @@ export function VersionsPage() {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">版本历史</h2>
         <Link className="btn btn-sm" to={`/surveys/${id}`}>
-          <ArrowLeft className="h-4 w-4" />返回问卷
+          <ArrowLeft className="h-4 w-4" />
+          返回问卷
         </Link>
       </div>
       <p className="mt-1 text-sm text-[var(--color-muted)]">
@@ -104,16 +99,32 @@ export function VersionsPage() {
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="text-sm text-[var(--text-soft)]">
             从
-            <select className="select mt-1 block" value={fromVersion} onChange={(event) => setFromVersion(event.target.value === "" ? "" : Number(event.target.value))}>
+            <select
+              className="select mt-1 block"
+              value={fromVersion}
+              onChange={(event) => setFromVersion(event.target.value === "" ? "" : Number(event.target.value))}
+            >
               <option value="">选择版本</option>
-              {versions.map((version) => <option key={version.version} value={version.version}>v{version.version}</option>)}
+              {versions.map((version) => (
+                <option key={version.version} value={version.version}>
+                  v{version.version}
+                </option>
+              ))}
             </select>
           </label>
           <label className="text-sm text-[var(--text-soft)]">
             到
-            <select className="select mt-1 block" value={toVersion} onChange={(event) => setToVersion(event.target.value === "" ? "" : Number(event.target.value))}>
+            <select
+              className="select mt-1 block"
+              value={toVersion}
+              onChange={(event) => setToVersion(event.target.value === "" ? "" : Number(event.target.value))}
+            >
               <option value="">选择版本</option>
-              {versions.map((version) => <option key={version.version} value={version.version}>v{version.version}</option>)}
+              {versions.map((version) => (
+                <option key={version.version} value={version.version}>
+                  v{version.version}
+                </option>
+              ))}
             </select>
           </label>
           <button className="btn" disabled={fromVersion === "" || toVersion === ""} onClick={() => void compare()}>
@@ -125,13 +136,17 @@ export function VersionsPage() {
             <div>
               <p className="font-medium text-[var(--color-success)]">新增（{diff.diff.added.length}）</p>
               <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
-                {diff.diff.added.map((title) => <li key={title}>{title}</li>)}
+                {diff.diff.added.map((title) => (
+                  <li key={title}>{title}</li>
+                ))}
               </ul>
             </div>
             <div>
               <p className="font-medium text-[var(--color-danger)]">删除（{diff.diff.removed.length}）</p>
               <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
-                {diff.diff.removed.map((title) => <li key={title}>{title}</li>)}
+                {diff.diff.removed.map((title) => (
+                  <li key={title}>{title}</li>
+                ))}
               </ul>
             </div>
             <div>
@@ -139,7 +154,8 @@ export function VersionsPage() {
               <ul className="mt-1 space-y-1 text-[var(--text-soft)]">
                 {diff.diff.changed.map((item) => (
                   <li key={item.id}>
-                    <span className="text-[var(--color-muted-soft)] line-through">{item.from}</span> → <span>{item.to}</span>
+                    <span className="text-[var(--color-muted-soft)] line-through">{item.from}</span> →{" "}
+                    <span>{item.to}</span>
                   </li>
                 ))}
               </ul>

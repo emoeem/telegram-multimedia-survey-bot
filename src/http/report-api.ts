@@ -37,6 +37,10 @@ function mediaAssetIdFromValue(value: unknown): number | null {
     if (typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0) {
       return candidate;
     }
+    if (typeof candidate === "string" && /^\d+$/.test(candidate)) {
+      const parsed = Number(candidate);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    }
   }
   if (typeof value === "string" && /^\d+$/.test(value)) {
     const parsed = Number(value);
@@ -63,7 +67,8 @@ async function serveReportPage(env: Env, url: URL, responseId: number): Promise<
   }
 
   const survey = await getSurveyById(env.DB, response.surveyId);
-  const prepared = await prepareResultProfileForResponse(env.DB, responseId);
+  // Rebuild on access so older snapshots also include uploaded media answers.
+  const prepared = await prepareResultProfileForResponse(env.DB, responseId, { forceRecalculate: true });
   if (!prepared) {
     return fail(404, "report_unavailable", "报告不存在或尚未生成");
   }
@@ -140,6 +145,13 @@ async function serveReportMedia(env: Env, url: URL, mediaId: number): Promise<Re
          LIMIT 1`,
     )
       .bind(mediaId, responseId, mediaId, responseId)
+      .first<{ found: number }>();
+    if (!linked) return fail(403, "media_forbidden", "无权访问该媒体");
+  } else if (asset.scope === "gallery_profile") {
+    const linked = await env.DB.prepare(
+      `SELECT 1 FROM gallery_profile_media WHERE media_asset_id = ? AND response_id = ? LIMIT 1`,
+    )
+      .bind(mediaId, responseId)
       .first<{ found: number }>();
     if (!linked) return fail(403, "media_forbidden", "无权访问该媒体");
   } else {

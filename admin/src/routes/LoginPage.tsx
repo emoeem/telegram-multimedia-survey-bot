@@ -37,7 +37,8 @@ export function LoginPage() {
           </span>
           <h1 className="mt-4 text-xl font-bold tracking-tight">浏览器登录管理后台</h1>
           <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">
-            在 Telegram 中向机器人发送 <code className="rounded bg-[var(--surface)]/20 px-1.5 py-0.5 font-mono text-xs">/admin_login</code>，
+            在 Telegram 中向机器人发送{" "}
+            <code className="rounded bg-[var(--surface)]/20 px-1.5 py-0.5 font-mono text-xs">/admin_login</code>，
             获取一次性登录链接（5 分钟有效），粘贴到下方即可。
           </p>
         </div>

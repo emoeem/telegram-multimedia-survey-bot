@@ -1,6 +1,6 @@
 # Telegram Multimedia Survey Bot
 
-> 需要问卷访问密码、软件授权或部署支持，请联系 [@meiebhiebot](https://t.me/meiebhiebot)。
+> 需要问卷访问密码、软件授权或部署支持，请联系 [@ehdhhsbot](https://t.me/ehdhhsbot)。
 
 基于 GitHub + Cloudflare Workers 的 Telegram 多媒体问卷平台。
 

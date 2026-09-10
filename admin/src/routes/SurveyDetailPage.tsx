@@ -48,9 +48,7 @@ function ThemeSwatch({ presetId }: { presetId: string }) {
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data, error, retry } = useApi<SurveyDetailData>(
-    id ? `/api/admin/surveys/${id}` : null,
-  );
+  const { data, error, retry } = useApi<SurveyDetailData>(id ? `/api/admin/surveys/${id}` : null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [templateBusy, setTemplateBusy] = useState(false);
@@ -91,7 +89,10 @@ export function SurveyDetailPage() {
     setBusy(true);
     setActionError(null);
     try {
-      await apiSend(action === "delete" ? "DELETE" : "POST", `/api/admin/surveys/${id}${action === "delete" ? "" : `/${action}`}`);
+      await apiSend(
+        action === "delete" ? "DELETE" : "POST",
+        `/api/admin/surveys/${id}${action === "delete" ? "" : `/${action}`}`,
+      );
       retry();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "操作失败");
@@ -220,35 +221,47 @@ export function SurveyDetailPage() {
       </div>
       <div className="mt-6 flex flex-wrap gap-3">
         <Link to="/surveys" className="btn">
-          <ArrowLeft className="h-4 w-4" />返回问卷
+          <ArrowLeft className="h-4 w-4" />
+          返回问卷
         </Link>
         <Link to={`/surveys/${data.id}/editor`} className="btn">
-          <FilePenLine className="h-4 w-4" />打开编辑器
+          <FilePenLine className="h-4 w-4" />
+          打开编辑器
         </Link>
         <Link to={`/surveys/${data.id}/responses`} className="btn">
-          <Inbox className="h-4 w-4" />查看答卷
+          <Inbox className="h-4 w-4" />
+          查看答卷
         </Link>
         <Link to={`/surveys/${data.id}/analytics`} className="btn">
-          <BarChart3 className="h-4 w-4" />查看统计
+          <BarChart3 className="h-4 w-4" />
+          查看统计
         </Link>
         <Link to={`/surveys/${data.id}/versions`} className="btn">
-          <History className="h-4 w-4" />版本历史
+          <History className="h-4 w-4" />
+          版本历史
         </Link>
       </div>
       <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-edge-soft)] pt-4">
         {data.status === "published" ? (
-          <button className="btn" disabled={busy} onClick={() => void runAction("close", "确定关闭该问卷？填写中的答卷会被中止。")}>
-            <Square className="h-4 w-4" />关闭
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void runAction("close", "确定关闭该问卷？填写中的答卷会被中止。")}
+          >
+            <Square className="h-4 w-4" />
+            关闭
           </button>
         ) : null}
         {data.status === "closed" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("reopen", "确定重新发布该问卷？")}>
-            <Rocket className="h-4 w-4" />重新发布
+            <Rocket className="h-4 w-4" />
+            重新发布
           </button>
         ) : null}
         {data.status !== "archived" ? (
           <button className="btn" disabled={busy} onClick={() => void runAction("archive", "确定归档该问卷？")}>
-            <Archive className="h-4 w-4" />归档
+            <Archive className="h-4 w-4" />
+            归档
           </button>
         ) : null}
         <button
@@ -270,7 +283,8 @@ export function SurveyDetailPage() {
             )
           }
         >
-          <Trash2 className="h-4 w-4" />删除
+          <Trash2 className="h-4 w-4" />
+          删除
         </button>
       </div>
       {data.responseCount > 0 && !data.isAdmin ? (
@@ -291,7 +305,9 @@ export function SurveyDetailPage() {
           >
             <option value="">默认（经典）</option>
             {templates.data.templates.map((template) => (
-              <option key={template.id} value={template.id}>{template.name}</option>
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
             ))}
           </select>
         ) : (
@@ -384,7 +400,14 @@ export function SurveyDetailPage() {
               onChange={(event) => void uploadBgm(event.target.files?.[0])}
             />
             <button className="btn btn-sm" disabled={themeBusy} onClick={() => bgmFileRef.current?.click()}>
-              {themeBusy ? "上传中…" : <><Upload className="h-4 w-4" />上传音频</>}
+              {themeBusy ? (
+                "上传中…"
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  上传音频
+                </>
+              )}
             </button>
             <input
               className="input min-w-0 flex-1 text-xs"
@@ -398,23 +421,13 @@ export function SurveyDetailPage() {
               </button>
             ) : null}
           </div>
-          {bgmUrl ? (
-            <audio className="mt-2 w-full" src={bgmUrl} controls preload="none" />
-          ) : null}
+          {bgmUrl ? <audio className="mt-2 w-full" src={bgmUrl} controls preload="none" /> : null}
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            className="btn btn-primary"
-            disabled={themeBusy}
-            onClick={() => void saveTheme(false)}
-          >
+          <button className="btn btn-primary" disabled={themeBusy} onClick={() => void saveTheme(false)}>
             {themeBusy ? "保存中…" : "保存主题"}
           </button>
-          <button
-            className="btn"
-            disabled={themeBusy}
-            onClick={() => void saveTheme(true)}
-          >
+          <button className="btn" disabled={themeBusy} onClick={() => void saveTheme(true)}>
             清除主题
           </button>
         </div>

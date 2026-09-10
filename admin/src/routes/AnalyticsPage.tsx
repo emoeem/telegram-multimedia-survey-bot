@@ -7,9 +7,7 @@ import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 
 export function AnalyticsPage() {
   const { id } = useParams<{ id: string }>();
-  const { data, error, retry } = useApi<SurveyAnalyticsData>(
-    id ? `/api/admin/surveys/${id}/analytics` : null,
-  );
+  const { data, error, retry } = useApi<SurveyAnalyticsData>(id ? `/api/admin/surveys/${id}/analytics` : null);
   const optionGroups = useMemo(() => {
     const groups = new Map<number, SurveyAnalyticsData["optionStats"]>();
     for (const item of data?.optionStats ?? []) {
@@ -29,6 +27,14 @@ export function AnalyticsPage() {
     ["完成率", `${data.overview.completionRate.toFixed(1)}%`],
     ["填写中", data.statusCounts.in_progress],
   ] as const;
+  const statusLabels: Record<string, string> = {
+    completed: "已完成",
+    in_progress: "填写中",
+    abandoned: "已放弃",
+    cancelled: "已取消",
+    archived: "已归档",
+  };
+  const statusTotal = Object.values(data.statusCounts).reduce((sum, count) => sum + count, 0);
 
   return (
     <div>
@@ -45,25 +51,60 @@ export function AnalyticsPage() {
       </section>
 
       <section className="mt-5 card">
-        <h2 className="text-lg font-semibold">选择题分布</h2>
-        {optionGroups.length ? optionGroups.map((group) => (
-          <div key={group[0]?.questionId} className="mt-5 border-t border-[var(--color-edge-soft)] pt-4 first:border-0 first:pt-0">
-            <h3 className="font-medium">{group[0]?.questionTitle}</h3>
-            <div className="mt-3 space-y-3">
-              {group.map((item) => (
-                <div key={item.optionId}>
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span>{item.optionLabel}</span>
-                    <span className="text-[var(--color-muted)]">{item.count} · {item.percentage.toFixed(1)}%</span>
-                  </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-                    <div className="h-full rounded-full bg-[var(--color-info)]" style={{ width: `${Math.min(100, item.percentage)}%` }} />
-                  </div>
-                </div>
-              ))}
+        <h2 className="text-lg font-semibold">答卷状态分布</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {Object.entries(data.statusCounts).map(([status, count]) => (
+            <div key={status} className="rounded-xl border border-[var(--color-edge)] p-3">
+              <div className="flex justify-between gap-2 text-sm">
+                <span>{statusLabels[status] ?? status}</span>
+                <strong>{count}</strong>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)]"
+                  style={{ width: `${statusTotal ? (count / statusTotal) * 100 : 0}%` }}
+                />
+              </div>
+              <div className="mt-1 text-xs text-[var(--color-muted)]">
+                {statusTotal ? ((count / statusTotal) * 100).toFixed(1) : "0.0"}%
+              </div>
             </div>
-          </div>
-        )) : <EmptyPanel text="暂无选择题统计" />}
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-5 card">
+        <h2 className="text-lg font-semibold">选择题分布</h2>
+        {optionGroups.length ? (
+          optionGroups.map((group) => (
+            <div
+              key={group[0]?.questionId}
+              className="mt-5 border-t border-[var(--color-edge-soft)] pt-4 first:border-0 first:pt-0"
+            >
+              <h3 className="font-medium">{group[0]?.questionTitle}</h3>
+              <div className="mt-3 space-y-3">
+                {group.map((item) => (
+                  <div key={item.optionId}>
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span>{item.optionLabel}</span>
+                      <span className="text-[var(--color-muted)]">
+                        {item.count} · {item.percentage.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--color-info)]"
+                        style={{ width: `${Math.min(100, item.percentage)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyPanel text="暂无选择题统计" />
+        )}
       </section>
 
       <section className="mt-5 card">
@@ -82,14 +123,19 @@ export function AnalyticsPage() {
               </article>
             ))}
           </div>
-        ) : <EmptyPanel text="暂无数字或评分题统计" />}
+        ) : (
+          <EmptyPanel text="暂无数字或评分题统计" />
+        )}
       </section>
 
       <div className="mt-5 flex flex-wrap gap-3">
         <Link className="btn" to={`/surveys/${data.survey.id}`}>
-          <ArrowLeft className="h-4 w-4" />返回问卷
+          <ArrowLeft className="h-4 w-4" />
+          返回问卷
         </Link>
-        <Link className="btn" to={`/surveys/${data.survey.id}/responses`}>查看答卷</Link>
+        <Link className="btn" to={`/surveys/${data.survey.id}/responses`}>
+          查看答卷
+        </Link>
       </div>
     </div>
   );

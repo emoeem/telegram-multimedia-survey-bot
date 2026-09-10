@@ -1,36 +1,67 @@
 export type ReportTheme =
-  | "catppuccin-latte" | "catppuccin-frappe" | "catppuccin-macchiato" | "catppuccin-mocha"
-  | "tokyo-night" | "dracula" | "one-dark" | "nord" | "night-owl" | "horizon"
-  | "cobalt2" | "palenight" | "solarized-dark" | "gruvbox-dark" | "monokai"
-  | "daisy-light" | "daisy-dark" | "daisy-night" | "daisy-luxury" | "daisy-retro"
-  | "daisy-cupcake" | "daisy-synthwave" | "daisy-black";
+  | "catppuccin-latte"
+  | "catppuccin-frappe"
+  | "catppuccin-macchiato"
+  | "catppuccin-mocha"
+  | "tokyo-night"
+  | "dracula"
+  | "one-dark"
+  | "nord"
+  | "night-owl"
+  | "horizon"
+  | "cobalt2"
+  | "palenight"
+  | "solarized-dark"
+  | "gruvbox-dark"
+  | "monokai"
+  | "daisy-light"
+  | "daisy-dark"
+  | "daisy-night"
+  | "daisy-luxury"
+  | "daisy-retro"
+  | "daisy-cupcake"
+  | "daisy-synthwave"
+  | "daisy-black";
 
 import daisyThemes from "daisyui/theme/object";
 
 export interface ReportThemeColors {
-  bg: string; bgSecondary: string; surface: string; elevated: string; overlay: string;
-  text: string; secondary: string; muted: string; border: string; primary: string;
-  accent: string; success: string; warning: string; danger: string; info: string;
+  bg: string;
+  bgSecondary: string;
+  surface: string;
+  elevated: string;
+  overlay: string;
+  text: string;
+  secondary: string;
+  muted: string;
+  border: string;
+  primary: string;
+  accent: string;
+  success: string;
+  warning: string;
+  danger: string;
+  info: string;
 }
 
-export interface ReportThemeDefinition { id: ReportTheme; colors: ReportThemeColors; chart: string[]; /** Brightness of the palette; layouts with a signature look use it to pick their light/dark variant. */ dark: boolean; }
+export interface ReportThemeDefinition {
+  id: ReportTheme;
+  colors: ReportThemeColors;
+  chart: string[];
+  /** Brightness of the palette; layouts with a signature look use it to pick their light/dark variant. */ dark: boolean;
+}
 
-const make = (id: ReportTheme, colors: ReportThemeColors, chart: string[], dark = false): ReportThemeDefinition => ({ id, colors, chart, dark });
+const make = (id: ReportTheme, colors: ReportThemeColors, chart: string[], dark = false): ReportThemeDefinition => ({
+  id,
+  colors,
+  chart,
+  dark,
+});
 
 /**
  * Report themes sourced from the DaisyUI theme library (the same presets the
  * Web Survey uses) so the whole product shares one visual language.
  */
-const DAISY_THEME_IDS = [
-  "light",
-  "dark",
-  "night",
-  "luxury",
-  "retro",
-  "cupcake",
-  "synthwave",
-  "black",
-] as const;
+const DAISY_THEME_IDS = ["light", "dark", "night", "luxury", "retro", "cupcake", "synthwave", "black"] as const;
 
 const DARK_DAISY_IDS = new Set(["dark", "night", "luxury", "synthwave", "black"]);
 
@@ -47,8 +78,7 @@ function makeDaisyTheme(id: (typeof DAISY_THEME_IDS)[number]): ReportThemeDefini
   const success = value("--color-success", "#22c55e");
   const warning = value("--color-warning", "#f59e0b");
   const danger = value("--color-error", "#ef4444");
-  const dim = (base: string, percent: number) =>
-    `color-mix(in oklab, ${base} ${percent}%, transparent)`;
+  const dim = (base: string, percent: number) => `color-mix(in oklab, ${base} ${percent}%, transparent)`;
   return {
     id: `daisy-${id}`,
     colors: {
@@ -74,21 +104,335 @@ function makeDaisyTheme(id: (typeof DAISY_THEME_IDS)[number]): ReportThemeDefini
 }
 
 export const reportThemes: Record<ReportTheme, ReportThemeDefinition> = {
-  "catppuccin-latte": make("catppuccin-latte", { bg: "#eff1f5", bgSecondary: "#e6e9ef", surface: "#dce0e8", elevated: "#ccd0da", overlay: "#9ca0b0", text: "#4c4f69", secondary: "#5c5f77", muted: "#7c7f93", border: "#bcc0cc", primary: "#8839ef", accent: "#1e66f5", success: "#40a02b", warning: "#df8e1d", danger: "#d20f39", info: "#04a5e5" }, ["#8839ef", "#1e66f5", "#04a5e5", "#179299", "#40a02b", "#df8e1d"]),
-  "catppuccin-frappe": make("catppuccin-frappe", { bg: "#303446", bgSecondary: "#292c3c", surface: "#414559", elevated: "#51576d", overlay: "#626880", text: "#c6d0f5", secondary: "#b5bfe2", muted: "#a5adce", border: "#626880", primary: "#ca9ee6", accent: "#8caaee", success: "#a6d189", warning: "#e5c890", danger: "#e78284", info: "#85c1dc" }, ["#ca9ee6", "#8caaee", "#85c1dc", "#81c8be", "#a6d189", "#e5c890"], true),
-  "catppuccin-mocha": make("catppuccin-mocha", { bg: "#1e1e2e", bgSecondary: "#181825", surface: "#313244", elevated: "#45475a", overlay: "#585b70", text: "#cdd6f4", secondary: "#bac2de", muted: "#a6adc8", border: "#585b70", primary: "#cba6f7", accent: "#89b4fa", success: "#a6e3a1", warning: "#f9e2af", danger: "#f38ba8", info: "#89dceb" }, ["#cba6f7", "#89b4fa", "#74c7ec", "#94e2d5", "#a6e3a1", "#f9e2af"], true),
-  "catppuccin-macchiato": make("catppuccin-macchiato", { bg: "#24273a", bgSecondary: "#1e2030", surface: "#363a4f", elevated: "#494d64", overlay: "#5b6078", text: "#cad3f5", secondary: "#b8c0e0", muted: "#a5adcb", border: "#5b6078", primary: "#c6a0f6", accent: "#8aadf4", success: "#a6da95", warning: "#eed49f", danger: "#ed8796", info: "#91d7e3" }, ["#c6a0f6", "#8aadf4", "#7dc4e4", "#8bd5ca", "#a6da95", "#eed49f"], true),
-  "tokyo-night": make("tokyo-night", { bg: "#1a1b26", bgSecondary: "#16161e", surface: "#24283b", elevated: "#414868", overlay: "#565f89", text: "#c0caf5", secondary: "#a9b1d6", muted: "#7982a9", border: "#414868", primary: "#bb9af7", accent: "#7aa2f7", success: "#9ece6a", warning: "#e0af68", danger: "#f7768e", info: "#7dcfff" }, ["#bb9af7", "#7aa2f7", "#7dcfff", "#73daca", "#9ece6a", "#e0af68"], true),
-  dracula: make("dracula", { bg: "#282a36", bgSecondary: "#21222c", surface: "#44475a", elevated: "#6272a4", overlay: "#6272a4", text: "#f8f8f2", secondary: "#d6d6d0", muted: "#a4a5ae", border: "#6272a4", primary: "#bd93f9", accent: "#8be9fd", success: "#50fa7b", warning: "#f1fa8c", danger: "#ff5555", info: "#8be9fd" }, ["#bd93f9", "#8be9fd", "#ff79c6", "#50fa7b", "#f1fa8c", "#ffb86c"], true),
-  "one-dark": make("one-dark", { bg: "#282c34", bgSecondary: "#21252b", surface: "#2c323c", elevated: "#3e4451", overlay: "#5c6370", text: "#abb2bf", secondary: "#c8ccd4", muted: "#7f848e", border: "#4b5263", primary: "#c678dd", accent: "#61afef", success: "#98c379", warning: "#e5c07b", danger: "#e06c75", info: "#56b6c2" }, ["#c678dd", "#61afef", "#56b6c2", "#98c379", "#e5c07b", "#e06c75"], true),
-  nord: make("nord", { bg: "#2e3440", bgSecondary: "#272c36", surface: "#3b4252", elevated: "#434c5e", overlay: "#4c566a", text: "#eceff4", secondary: "#d8dee9", muted: "#a5afbd", border: "#4c566a", primary: "#b48ead", accent: "#88c0d0", success: "#a3be8c", warning: "#ebcb8b", danger: "#bf616a", info: "#81a1c1" }, ["#b48ead", "#88c0d0", "#81a1c1", "#a3be8c", "#ebcb8b", "#bf616a"], true),
-  "night-owl": make("night-owl", { bg: "#011627", bgSecondary: "#001122", surface: "#0b2942", elevated: "#1d3b53", overlay: "#5f7e97", text: "#d6deeb", secondary: "#b8c4d2", muted: "#7fdbca", border: "#1d3b53", primary: "#c792ea", accent: "#82aaff", success: "#addb67", warning: "#ecc48d", danger: "#ef5350", info: "#7fdbca" }, ["#c792ea", "#82aaff", "#7fdbca", "#addb67", "#ecc48d", "#ef5350"], true),
-  horizon: make("horizon", { bg: "#1c1e26", bgSecondary: "#16171d", surface: "#2e303e", elevated: "#3b3d4d", overlay: "#6c6f93", text: "#d5d8da", secondary: "#a6a8b5", muted: "#848594", border: "#454756", primary: "#b877db", accent: "#25b0bc", success: "#a1c181", warning: "#e3c78f", danger: "#e95678", info: "#25b0bc" }, ["#b877db", "#25b0bc", "#6c6f93", "#a1c181", "#e3c78f", "#e95678"], true),
-  cobalt2: make("cobalt2", { bg: "#193549", bgSecondary: "#122738", surface: "#1f4662", elevated: "#245477", overlay: "#557f9d", text: "#ffffff", secondary: "#d6deeb", muted: "#9cc4df", border: "#245477", primary: "#ffc600", accent: "#0088ff", success: "#3ad900", warning: "#ffc600", danger: "#ff628c", info: "#80ffbb" }, ["#ffc600", "#0088ff", "#80ffbb", "#3ad900", "#ff9d00", "#ff628c"], true),
-  palenight: make("palenight", { bg: "#292d3e", bgSecondary: "#232635", surface: "#32364a", elevated: "#41465f", overlay: "#676e95", text: "#a6accd", secondary: "#c3c7de", muted: "#676e95", border: "#41465f", primary: "#c792ea", accent: "#82aaff", success: "#c3e88d", warning: "#ffcb6b", danger: "#f07178", info: "#89ddff" }, ["#c792ea", "#82aaff", "#89ddff", "#c3e88d", "#ffcb6b", "#f07178"], true),
-  "gruvbox-dark": make("gruvbox-dark", { bg: "#282828", bgSecondary: "#1d2021", surface: "#3c3836", elevated: "#504945", overlay: "#665c54", text: "#ebdbb2", secondary: "#d5c4a1", muted: "#a89984", border: "#665c54", primary: "#d3869b", accent: "#83a598", success: "#b8bb26", warning: "#fabd2f", danger: "#fb4934", info: "#83a598" }, ["#d3869b", "#83a598", "#8ec07c", "#b8bb26", "#fabd2f", "#fb4934"], true),
-  "solarized-dark": make("solarized-dark", { bg: "#002b36", bgSecondary: "#00212b", surface: "#073642", elevated: "#586e75", overlay: "#657b83", text: "#fdf6e3", secondary: "#eee8d5", muted: "#93a1a1", border: "#586e75", primary: "#6c71c4", accent: "#268bd2", success: "#859900", warning: "#b58900", danger: "#dc322f", info: "#2aa198" }, ["#6c71c4", "#268bd2", "#2aa198", "#859900", "#b58900", "#dc322f"], true),
-  monokai: make("monokai", { bg: "#272822", bgSecondary: "#1e1f1c", surface: "#34352f", elevated: "#49483e", overlay: "#75715e", text: "#f8f8f2", secondary: "#d6d6cf", muted: "#a59f85", border: "#49483e", primary: "#ae81ff", accent: "#66d9ef", success: "#a6e22e", warning: "#e6db74", danger: "#f92672", info: "#66d9ef" }, ["#ae81ff", "#66d9ef", "#a6e22e", "#e6db74", "#fd971f", "#f92672"], true),
+  "catppuccin-latte": make(
+    "catppuccin-latte",
+    {
+      bg: "#eff1f5",
+      bgSecondary: "#e6e9ef",
+      surface: "#dce0e8",
+      elevated: "#ccd0da",
+      overlay: "#9ca0b0",
+      text: "#4c4f69",
+      secondary: "#5c5f77",
+      muted: "#7c7f93",
+      border: "#bcc0cc",
+      primary: "#8839ef",
+      accent: "#1e66f5",
+      success: "#40a02b",
+      warning: "#df8e1d",
+      danger: "#d20f39",
+      info: "#04a5e5",
+    },
+    ["#8839ef", "#1e66f5", "#04a5e5", "#179299", "#40a02b", "#df8e1d"],
+  ),
+  "catppuccin-frappe": make(
+    "catppuccin-frappe",
+    {
+      bg: "#303446",
+      bgSecondary: "#292c3c",
+      surface: "#414559",
+      elevated: "#51576d",
+      overlay: "#626880",
+      text: "#c6d0f5",
+      secondary: "#b5bfe2",
+      muted: "#a5adce",
+      border: "#626880",
+      primary: "#ca9ee6",
+      accent: "#8caaee",
+      success: "#a6d189",
+      warning: "#e5c890",
+      danger: "#e78284",
+      info: "#85c1dc",
+    },
+    ["#ca9ee6", "#8caaee", "#85c1dc", "#81c8be", "#a6d189", "#e5c890"],
+    true,
+  ),
+  "catppuccin-mocha": make(
+    "catppuccin-mocha",
+    {
+      bg: "#1e1e2e",
+      bgSecondary: "#181825",
+      surface: "#313244",
+      elevated: "#45475a",
+      overlay: "#585b70",
+      text: "#cdd6f4",
+      secondary: "#bac2de",
+      muted: "#a6adc8",
+      border: "#585b70",
+      primary: "#cba6f7",
+      accent: "#89b4fa",
+      success: "#a6e3a1",
+      warning: "#f9e2af",
+      danger: "#f38ba8",
+      info: "#89dceb",
+    },
+    ["#cba6f7", "#89b4fa", "#74c7ec", "#94e2d5", "#a6e3a1", "#f9e2af"],
+    true,
+  ),
+  "catppuccin-macchiato": make(
+    "catppuccin-macchiato",
+    {
+      bg: "#24273a",
+      bgSecondary: "#1e2030",
+      surface: "#363a4f",
+      elevated: "#494d64",
+      overlay: "#5b6078",
+      text: "#cad3f5",
+      secondary: "#b8c0e0",
+      muted: "#a5adcb",
+      border: "#5b6078",
+      primary: "#c6a0f6",
+      accent: "#8aadf4",
+      success: "#a6da95",
+      warning: "#eed49f",
+      danger: "#ed8796",
+      info: "#91d7e3",
+    },
+    ["#c6a0f6", "#8aadf4", "#7dc4e4", "#8bd5ca", "#a6da95", "#eed49f"],
+    true,
+  ),
+  "tokyo-night": make(
+    "tokyo-night",
+    {
+      bg: "#1a1b26",
+      bgSecondary: "#16161e",
+      surface: "#24283b",
+      elevated: "#414868",
+      overlay: "#565f89",
+      text: "#c0caf5",
+      secondary: "#a9b1d6",
+      muted: "#7982a9",
+      border: "#414868",
+      primary: "#bb9af7",
+      accent: "#7aa2f7",
+      success: "#9ece6a",
+      warning: "#e0af68",
+      danger: "#f7768e",
+      info: "#7dcfff",
+    },
+    ["#bb9af7", "#7aa2f7", "#7dcfff", "#73daca", "#9ece6a", "#e0af68"],
+    true,
+  ),
+  dracula: make(
+    "dracula",
+    {
+      bg: "#282a36",
+      bgSecondary: "#21222c",
+      surface: "#44475a",
+      elevated: "#6272a4",
+      overlay: "#6272a4",
+      text: "#f8f8f2",
+      secondary: "#d6d6d0",
+      muted: "#a4a5ae",
+      border: "#6272a4",
+      primary: "#bd93f9",
+      accent: "#8be9fd",
+      success: "#50fa7b",
+      warning: "#f1fa8c",
+      danger: "#ff5555",
+      info: "#8be9fd",
+    },
+    ["#bd93f9", "#8be9fd", "#ff79c6", "#50fa7b", "#f1fa8c", "#ffb86c"],
+    true,
+  ),
+  "one-dark": make(
+    "one-dark",
+    {
+      bg: "#282c34",
+      bgSecondary: "#21252b",
+      surface: "#2c323c",
+      elevated: "#3e4451",
+      overlay: "#5c6370",
+      text: "#abb2bf",
+      secondary: "#c8ccd4",
+      muted: "#7f848e",
+      border: "#4b5263",
+      primary: "#c678dd",
+      accent: "#61afef",
+      success: "#98c379",
+      warning: "#e5c07b",
+      danger: "#e06c75",
+      info: "#56b6c2",
+    },
+    ["#c678dd", "#61afef", "#56b6c2", "#98c379", "#e5c07b", "#e06c75"],
+    true,
+  ),
+  nord: make(
+    "nord",
+    {
+      bg: "#2e3440",
+      bgSecondary: "#272c36",
+      surface: "#3b4252",
+      elevated: "#434c5e",
+      overlay: "#4c566a",
+      text: "#eceff4",
+      secondary: "#d8dee9",
+      muted: "#a5afbd",
+      border: "#4c566a",
+      primary: "#b48ead",
+      accent: "#88c0d0",
+      success: "#a3be8c",
+      warning: "#ebcb8b",
+      danger: "#bf616a",
+      info: "#81a1c1",
+    },
+    ["#b48ead", "#88c0d0", "#81a1c1", "#a3be8c", "#ebcb8b", "#bf616a"],
+    true,
+  ),
+  "night-owl": make(
+    "night-owl",
+    {
+      bg: "#011627",
+      bgSecondary: "#001122",
+      surface: "#0b2942",
+      elevated: "#1d3b53",
+      overlay: "#5f7e97",
+      text: "#d6deeb",
+      secondary: "#b8c4d2",
+      muted: "#7fdbca",
+      border: "#1d3b53",
+      primary: "#c792ea",
+      accent: "#82aaff",
+      success: "#addb67",
+      warning: "#ecc48d",
+      danger: "#ef5350",
+      info: "#7fdbca",
+    },
+    ["#c792ea", "#82aaff", "#7fdbca", "#addb67", "#ecc48d", "#ef5350"],
+    true,
+  ),
+  horizon: make(
+    "horizon",
+    {
+      bg: "#1c1e26",
+      bgSecondary: "#16171d",
+      surface: "#2e303e",
+      elevated: "#3b3d4d",
+      overlay: "#6c6f93",
+      text: "#d5d8da",
+      secondary: "#a6a8b5",
+      muted: "#848594",
+      border: "#454756",
+      primary: "#b877db",
+      accent: "#25b0bc",
+      success: "#a1c181",
+      warning: "#e3c78f",
+      danger: "#e95678",
+      info: "#25b0bc",
+    },
+    ["#b877db", "#25b0bc", "#6c6f93", "#a1c181", "#e3c78f", "#e95678"],
+    true,
+  ),
+  cobalt2: make(
+    "cobalt2",
+    {
+      bg: "#193549",
+      bgSecondary: "#122738",
+      surface: "#1f4662",
+      elevated: "#245477",
+      overlay: "#557f9d",
+      text: "#ffffff",
+      secondary: "#d6deeb",
+      muted: "#9cc4df",
+      border: "#245477",
+      primary: "#ffc600",
+      accent: "#0088ff",
+      success: "#3ad900",
+      warning: "#ffc600",
+      danger: "#ff628c",
+      info: "#80ffbb",
+    },
+    ["#ffc600", "#0088ff", "#80ffbb", "#3ad900", "#ff9d00", "#ff628c"],
+    true,
+  ),
+  palenight: make(
+    "palenight",
+    {
+      bg: "#292d3e",
+      bgSecondary: "#232635",
+      surface: "#32364a",
+      elevated: "#41465f",
+      overlay: "#676e95",
+      text: "#a6accd",
+      secondary: "#c3c7de",
+      muted: "#676e95",
+      border: "#41465f",
+      primary: "#c792ea",
+      accent: "#82aaff",
+      success: "#c3e88d",
+      warning: "#ffcb6b",
+      danger: "#f07178",
+      info: "#89ddff",
+    },
+    ["#c792ea", "#82aaff", "#89ddff", "#c3e88d", "#ffcb6b", "#f07178"],
+    true,
+  ),
+  "gruvbox-dark": make(
+    "gruvbox-dark",
+    {
+      bg: "#282828",
+      bgSecondary: "#1d2021",
+      surface: "#3c3836",
+      elevated: "#504945",
+      overlay: "#665c54",
+      text: "#ebdbb2",
+      secondary: "#d5c4a1",
+      muted: "#a89984",
+      border: "#665c54",
+      primary: "#d3869b",
+      accent: "#83a598",
+      success: "#b8bb26",
+      warning: "#fabd2f",
+      danger: "#fb4934",
+      info: "#83a598",
+    },
+    ["#d3869b", "#83a598", "#8ec07c", "#b8bb26", "#fabd2f", "#fb4934"],
+    true,
+  ),
+  "solarized-dark": make(
+    "solarized-dark",
+    {
+      bg: "#002b36",
+      bgSecondary: "#00212b",
+      surface: "#073642",
+      elevated: "#586e75",
+      overlay: "#657b83",
+      text: "#fdf6e3",
+      secondary: "#eee8d5",
+      muted: "#93a1a1",
+      border: "#586e75",
+      primary: "#6c71c4",
+      accent: "#268bd2",
+      success: "#859900",
+      warning: "#b58900",
+      danger: "#dc322f",
+      info: "#2aa198",
+    },
+    ["#6c71c4", "#268bd2", "#2aa198", "#859900", "#b58900", "#dc322f"],
+    true,
+  ),
+  monokai: make(
+    "monokai",
+    {
+      bg: "#272822",
+      bgSecondary: "#1e1f1c",
+      surface: "#34352f",
+      elevated: "#49483e",
+      overlay: "#75715e",
+      text: "#f8f8f2",
+      secondary: "#d6d6cf",
+      muted: "#a59f85",
+      border: "#49483e",
+      primary: "#ae81ff",
+      accent: "#66d9ef",
+      success: "#a6e22e",
+      warning: "#e6db74",
+      danger: "#f92672",
+      info: "#66d9ef",
+    },
+    ["#ae81ff", "#66d9ef", "#a6e22e", "#e6db74", "#fd971f", "#f92672"],
+    true,
+  ),
   "daisy-light": makeDaisyTheme("light"),
   "daisy-dark": makeDaisyTheme("dark"),
   "daisy-night": makeDaisyTheme("night"),

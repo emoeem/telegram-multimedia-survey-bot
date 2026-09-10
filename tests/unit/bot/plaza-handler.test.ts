@@ -1,22 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  listIdentityProfiles: vi.fn(),
-  getIdentityProfileOwners: vi.fn(),
   listPlazaPosts: vi.fn(),
   createPlazaPost: vi.fn(),
   checkRateLimit: vi.fn(),
-  renderIdentityCardReportPng: vi.fn(),
   renderScreen: vi.fn(),
   sendMessage: vi.fn(),
-  sendPhoto: vi.fn(),
   answerCallbackQuery: vi.fn(),
 }));
 
-vi.mock("../../../src/db/repositories/identity-card.repository", () => ({
-  listIdentityProfiles: mocks.listIdentityProfiles,
-  getIdentityProfileOwners: mocks.getIdentityProfileOwners,
-}));
 vi.mock("../../../src/db/repositories/plaza-post.repository", () => ({
   listPlazaPosts: mocks.listPlazaPosts,
   createPlazaPost: mocks.createPlazaPost,
@@ -24,15 +16,9 @@ vi.mock("../../../src/db/repositories/plaza-post.repository", () => ({
 vi.mock("../../../src/services/rate-limit.service", () => ({
   checkRateLimit: mocks.checkRateLimit,
 }));
-vi.mock("../../../src/services/identity-card-report.service", () => ({
-  renderIdentityCardReportPng: mocks.renderIdentityCardReportPng,
-  IDENTITY_CARD_TEMPLATES: [],
-  isIdentityCardTemplateId: () => false,
-}));
 vi.mock("../../../src/bot/ui-message-controller", () => ({ renderScreen: mocks.renderScreen }));
 vi.mock("../../../src/bot/telegram", () => ({
   sendMessage: mocks.sendMessage,
-  sendPhoto: mocks.sendPhoto,
   answerCallbackQuery: mocks.answerCallbackQuery,
 }));
 
@@ -84,13 +70,13 @@ function lastScreenText(): string {
 describe("plaza bot handler", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("shows an overview with both feed totals", async () => {
-    mocks.listIdentityProfiles.mockResolvedValue({ items: [], total: 3 });
+  it("shows an overview with the tree-hole total", async () => {
     mocks.listPlazaPosts.mockResolvedValue({ items: [], total: 5 });
 
     await expect(handlePlazaCallback(context(), callback("plaza:list"), 7)).resolves.toBe(true);
 
-    expect(lastScreenText()).toContain("资料卡 3 张 · 树洞 5 条");
+    expect(lastScreenText()).toContain("当前树洞 5 条");
+    expect(lastScreenText()).toContain("🧑 个人资料");
   });
 
   it("renders treehole posts with author attribution", async () => {
@@ -117,43 +103,18 @@ describe("plaza bot handler", () => {
     expect(text).toContain("@rose");
   });
 
-  it("routes legacy gallery callbacks to the card feed and shows the card owner", async () => {
-    mocks.listIdentityProfiles.mockResolvedValue({
-      items: [
-        {
-          id: 9,
-          userId: 7,
-          name: "暮色蔷薇",
-          identityLabel: "夜行者",
-          cardAssetId: null,
-          galleryPublished: true,
-        },
-      ],
-      total: 1,
-    });
-    mocks.getIdentityProfileOwners.mockResolvedValue(
-      new Map([[7, { telegramUserId: 777, username: "rose", firstName: "Rose" }]]),
-    );
-    mocks.renderIdentityCardReportPng.mockResolvedValue(new Uint8Array([1, 2, 3]));
-    mocks.sendPhoto.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
-    const ctx = {
-      ...context(),
-      browser: { fetch: vi.fn() } as unknown as import("@cloudflare/puppeteer").BrowserWorker,
-    };
-
+  it("points legacy identity-card gallery callbacks at the web plaza", async () => {
+    const ctx = { ...context(), origin: "https://example.test" };
     await expect(handlePlazaCallback(ctx, callback("gallery:list"), 7)).resolves.toBe(true);
-
-    expect(mocks.listIdentityProfiles).toHaveBeenCalledWith(expect.anything(), {
-      limit: 1,
-      offset: 0,
-      view: "published",
-    });
-    expect(mocks.sendPhoto).toHaveBeenCalledWith(
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
       "token",
       3,
-      expect.anything(),
-      expect.stringContaining("by @rose"),
-      expect.anything(),
+      expect.stringContaining("已搬到网页版"),
+      expect.objectContaining({
+        inline_keyboard: expect.arrayContaining([
+          expect.arrayContaining([expect.objectContaining({ url: "https://example.test/plaza" })]),
+        ]),
+      }),
     );
   });
 

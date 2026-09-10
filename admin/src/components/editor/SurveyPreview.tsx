@@ -1,4 +1,4 @@
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { Check, ChevronRight, Paperclip, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditorPreviewQuestion } from "../../editor/previewModel";
@@ -125,8 +125,79 @@ export function PreviewAnswer({ question }: { question: EditorPreviewQuestion })
   return <input className="phone-input" disabled placeholder="在 Telegram 中输入回答" />;
 }
 
+function InteractiveAnswer({
+  question,
+  value,
+  onChange,
+}: {
+  question: EditorPreviewQuestion;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (isSingleChoiceQuestion(question) || question.type === "multiple") {
+    const selected = value ? value.split(",").filter(Boolean) : [];
+    return (
+      <div className="grid gap-2">
+        {question.options.map((option) => {
+          const active = selected.includes(String(option.id));
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={`phone-choice text-left ${active ? "ring-2 ring-[var(--survey-primary)]" : ""}`}
+              onClick={() => {
+                const next =
+                  question.type === "multiple"
+                    ? active
+                      ? selected.filter((id) => id !== String(option.id))
+                      : [...selected, String(option.id)]
+                    : [String(option.id)];
+                onChange(next.join(","));
+              }}
+            >
+              <span className={`phone-choice-glyph ${question.type === "multiple" ? "square" : "round"}`}>
+                {active ? "✓" : ""}
+              </span>
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+  if (question.type === "long_text")
+    return (
+      <textarea
+        className="phone-input min-h-24"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="输入回答"
+      />
+    );
+  if (question.type === "number" || question.type === "date" || question.type === "time")
+    return (
+      <input
+        className="phone-input"
+        type={question.type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  return (
+    <input
+      className="phone-input"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="输入回答"
+    />
+  );
+}
+
 export function SurveyPreview({ title, description, questions, dirty, onClose, inline = false }: SurveyPreviewProps) {
   const titleId = useId();
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (inline) return;
@@ -141,6 +212,25 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [inline, onClose]);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setAnswers({});
+    setError(null);
+  }, [questions]);
+
+  const currentQuestion = questions[currentIndex];
+  const currentValue = currentQuestion ? (answers[currentQuestion.id] ?? "") : "";
+  const advance = () => {
+    if (!currentQuestion) return;
+    if (currentQuestion.required && !currentValue.trim()) {
+      setError("这道题为必答题，请先填写后继续");
+      return;
+    }
+    setError(null);
+    if (currentIndex < questions.length - 1) setCurrentIndex((index) => index + 1);
+    else setError("模拟提交成功（不会写入真实数据）");
+  };
 
   return (
     <div
@@ -203,70 +293,84 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
               </p>
             </div>
 
-            {questions.length ? (
-              <div className="mt-4 grid gap-4">
-                {questions.map((question, index) => (
-                  <article key={question.id} className="survey-card p-5">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-semibold" style={{ color: "var(--survey-primary)" }}>
-                        第 {index + 1} / {questions.length} 题
-                      </span>
-                      <span
-                        className="rounded px-2 py-0.5 font-semibold"
-                        style={{
-                          background: "var(--survey-primary-soft)",
-                          color: "var(--survey-primary)",
+            {currentQuestion ? (
+              <div className="mt-4">
+                <article className="survey-card p-5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-semibold" style={{ color: "var(--survey-primary)" }}>
+                      第 {currentIndex + 1} / {questions.length} 题
+                    </span>
+                    <span
+                      className="rounded px-2 py-0.5 font-semibold"
+                      style={{
+                        background: "var(--survey-primary-soft)",
+                        color: "var(--survey-primary)",
+                      }}
+                    >
+                      {QUESTION_TYPE_LABELS[currentQuestion.type] ?? currentQuestion.type}
+                    </span>
+                    <span style={{ color: currentQuestion.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
+                      {currentQuestion.required ? "必答" : "选答"}
+                    </span>
+                  </div>
+                  <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
+                    {currentQuestion.title || "未填写题目标题"}
+                  </h4>
+                  {currentQuestion.description ? (
+                    <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-muted)" }}>
+                      {currentQuestion.description}
+                    </p>
+                  ) : null}
+                  {currentQuestion.media.length ? (
+                    <div
+                      className="mt-3 rounded-lg p-3 text-xs"
+                      style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
+                    >
+                      题目媒体附件 ×{currentQuestion.media.length}（Web 预览仅展示引用状态）
+                    </div>
+                  ) : null}
+                  <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>
+                    {getQuestionInstruction(currentQuestion)}
+                  </p>
+                  <InteractiveAnswer
+                    question={currentQuestion}
+                    value={currentValue}
+                    onChange={(value) => setAnswers((current) => ({ ...current, [currentQuestion.id]: value }))}
+                  />
+                  {error ? (
+                    <p className="mt-3 text-sm" style={{ color: "var(--color-danger)" }}>
+                      {error}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex gap-2 border-t pt-3" style={{ borderColor: "var(--survey-card-border)" }}>
+                    {currentIndex > 0 ? (
+                      <button
+                        type="button"
+                        className="phone-btn secondary flex-1"
+                        onClick={() => {
+                          setError(null);
+                          setCurrentIndex((index) => index - 1);
                         }}
                       >
-                        {QUESTION_TYPE_LABELS[question.type] ?? question.type}
-                      </span>
-                      <span style={{ color: question.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
-                        {question.required ? "必答" : "选答"}
-                      </span>
-                    </div>
-                    <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
-                      {question.title || "未填写题目标题"}
-                    </h4>
-                    {question.description ? (
-                      <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-muted)" }}>
-                        {question.description}
-                      </p>
+                        <ChevronRight className="h-4 w-4 rotate-180" />
+                        上一题
+                      </button>
                     ) : null}
-                    {question.media.length ? (
-                      <div
-                        className="mt-3 rounded-lg p-3 text-xs"
-                        style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
-                      >
-                        题目媒体附件 ×{question.media.length}（Web 预览仅展示引用状态）
-                      </div>
-                    ) : null}
-                    <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>
-                      {getQuestionInstruction(question)}
-                    </p>
-                    <PreviewAnswer question={question} />
-                    <div className="mt-3 flex gap-2 border-t pt-3" style={{ borderColor: "var(--survey-card-border)" }}>
-                      {index > 0 ? (
-                        <span className="phone-btn secondary flex-1">
-                          <ChevronRight className="h-4 w-4 rotate-180" />
-                          上一题
-                        </span>
-                      ) : null}
-                      <span className="phone-btn flex-1">
-                        {index === questions.length - 1 ? (
-                          <>
-                            <Check className="h-4 w-4" />
-                            提交
-                          </>
-                        ) : (
-                          <>
-                            下一题
-                            <ChevronRight className="h-4 w-4" />
-                          </>
-                        )}
-                      </span>
-                    </div>
-                  </article>
-                ))}
+                    <button type="button" className="phone-btn flex-1" onClick={advance}>
+                      {currentIndex === questions.length - 1 ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          提交
+                        </>
+                      ) : (
+                        <>
+                          下一题
+                          <ChevronRight className="h-4 w-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </article>
               </div>
             ) : (
               <div className="survey-card mt-4 p-8 text-center text-sm" style={{ color: "var(--survey-muted)" }}>

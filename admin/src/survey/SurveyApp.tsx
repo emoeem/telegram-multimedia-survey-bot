@@ -5,20 +5,28 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Home,
   Lock,
   Palette,
   Paperclip,
+  Users,
   Volume2,
   VolumeX,
   X,
 } from "lucide-react";
 import { PlazaScreen } from "./PlazaScreen";
+import { TrialScreen } from "./TrialScreen";
 import { PresetSwatch, SURVEY_THEME_PRESETS, themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
 import {
   type AnswerValue,
   fetchAnswers,
   fetchSurvey,
   fetchSurveyList,
+  fetchParticipantLinkStartUrl,
+  fetchParticipantLinkStatus,
+  getParticipantKey,
+  hasTelegramIdentity,
+  type ParticipantLinkStatus,
   type SurveyListItem,
   type SurveyThemeDto,
   type SurveyDto,
@@ -87,6 +95,7 @@ function backSurveyPage(): void {
 
 function SurveyListPage() {
   const [surveys, setSurveys] = useState<SurveyListItem[] | null>(null);
+  const [communityGroupUrl, setCommunityGroupUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -119,6 +128,7 @@ function SurveyListPage() {
       .then((data) => {
         if (cancelled) return;
         setSurveys(data.surveys);
+        setCommunityGroupUrl(data.communityGroupUrl);
         setError(null);
       })
       .catch((err) => {
@@ -178,6 +188,17 @@ function SurveyListPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          {communityGroupUrl ? (
+            <a
+              href={communityGroupUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              加入 Telegram 群聊，和大家交流
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          ) : null}
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl px-5 pt-5">
@@ -225,6 +246,78 @@ function SurveyListPage() {
         selected={themePreset}
         onSelect={selectHomeTheme}
       />
+    </div>
+  );
+}
+
+function TelegramLinkCard() {
+  const [participantKey] = useState<string | null>(() => (hasTelegramIdentity() ? null : getParticipantKey()));
+  const [linked, setLinked] = useState<ParticipantLinkStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [checkToken, setCheckToken] = useState(0);
+
+  useEffect(() => {
+    if (!participantKey) return;
+    let cancelled = false;
+    fetchParticipantLinkStatus(participantKey)
+      .then((result) => {
+        if (!cancelled && result.linked) setLinked(result);
+      })
+      .catch(() => {
+        // A failed status check should never block the completion page.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [participantKey, checkToken]);
+
+  if (!participantKey) return null;
+
+  const openTelegram = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await fetchParticipantLinkStartUrl(participantKey);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "暂时无法生成绑定链接，请稍后重试");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const displayName = linked?.username
+    ? `@${linked.username}`
+    : linked?.firstName || (linked?.telegramUserId ? String(linked.telegramUserId) : "");
+
+  return (
+    <div className="mt-4 w-full max-w-sm rounded-2xl border border-dashed border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
+      <p className="text-sm font-semibold text-[var(--survey-heading)]">🔗 把答卷关联到 Telegram？</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--survey-muted)]">
+        绑定后，这个浏览器填写的答卷会归到你的 Telegram 账号下，方便你以后查看与找回。 不绑定也完全不影响本次填写。
+      </p>
+      {linked?.linked ? (
+        <p className="mt-3 rounded-xl bg-[var(--survey-primary-soft)] px-3 py-2 text-xs font-medium text-[var(--survey-primary)]">
+          ✅ 已绑定{displayName ? `：${displayName}` : ""}
+        </p>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" className="btn btn-primary px-5" disabled={busy} onClick={() => void openTelegram()}>
+              <Users className="h-4 w-4" />
+              {busy ? "生成链接中…" : "在 Telegram 中打开绑定"}
+            </button>
+            <button type="button" className="btn px-4" onClick={() => setCheckToken((value) => value + 1)}>
+              我已绑定，检查状态
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] leading-5 text-[var(--survey-muted)]">
+            打开 Telegram 后点击「开始」即完成绑定，再回到本页点「检查状态」。
+          </p>
+          {error ? <p className="mt-2 text-xs text-[var(--color-danger)]">{error}</p> : null}
+        </>
+      )}
     </div>
   );
 }
@@ -733,6 +826,14 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   if (question.type === "image" || question.type === "video" || question.type === "audio" || question.type === "file") {
     const mediaAnswer =
       value && typeof value === "object" && !Array.isArray(value) ? (value as { mediaAssetId: number }) : null;
+    const fileAccept =
+      question.type === "image"
+        ? "image/jpeg,image/png,image/webp"
+        : question.type === "video"
+          ? "video/mp4,video/webm,video/quicktime"
+          : question.type === "audio"
+            ? "audio/mpeg,audio/mp4,audio/wav,audio/ogg"
+            : undefined;
     return (
       <div className="mt-4">
         {mediaAnswer ? (
@@ -757,6 +858,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
             <input
               type="file"
               className="hidden"
+              accept={fileAccept}
               disabled={disabled || uploading}
               onChange={async (event) => {
                 const file = event.target.files?.[0];
@@ -764,7 +866,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 if (!file) return;
                 setUploading(true);
                 try {
-                  const result = await uploadAnswerMedia(surveyIdFromPath(), file);
+                  const result = await uploadAnswerMedia(surveyIdFromPath(), file, question.id);
                   onChange({ mediaAssetId: result.mediaAssetId });
                 } catch (error) {
                   window.alert(error instanceof Error ? error.message : "上传失败");
@@ -853,12 +955,19 @@ export function SurveyApp() {
   if (window.location.pathname === "/plaza") {
     return <PlazaScreen />;
   }
+  // The web task system ("/trial") also shares the SPA bundle.
+  if (window.location.pathname === "/trial" || window.location.pathname.startsWith("/trial/")) {
+    return <TrialScreen />;
+  }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [publishToGallery, setPublishToGallery] = useState(false);
+  const [galleryCoverMediaId, setGalleryCoverMediaId] = useState<number | null>(null);
+  const [galleryShowUsername, setGalleryShowUsername] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [viewportShrunk, setViewportShrunk] = useState(false);
   const [userThemePreset, setUserThemePreset] = useState<string | null>(null);
@@ -952,6 +1061,9 @@ export function SurveyApp() {
       try {
         const started = await startResponse(survey.id, accessCode);
         if (isCancelled()) return;
+        setPublishToGallery(false);
+        setGalleryCoverMediaId(null);
+        setGalleryShowUsername(false);
         const resumeAnswers = started.resumed ? (await fetchAnswers(survey.id, started.responseId)).answers : {};
         setAnswers(resumeAnswers);
         const startIndex = Math.max(
@@ -1039,7 +1151,11 @@ export function SurveyApp() {
       const saved = await persistCurrent(screen.survey, screen.responseId);
       if (!saved) return;
       try {
-        const result = await submitResponse(screen.survey.id, screen.responseId);
+        const result = await submitResponse(screen.survey.id, screen.responseId, {
+          publishToGallery,
+          galleryCoverMediaId,
+          galleryShowUsername,
+        });
         if (result.completed) {
           setScreen({ kind: "done", survey: screen.survey });
         } else {
@@ -1060,7 +1176,7 @@ export function SurveyApp() {
     } finally {
       setBusy(false);
     }
-  }, [persistCurrent, screen]);
+  }, [galleryCoverMediaId, galleryShowUsername, persistCurrent, publishToGallery, screen]);
 
   if (!Number.isFinite(surveyId)) {
     return <SurveyListPage />;
@@ -1082,15 +1198,68 @@ export function SurveyApp() {
   if (screen.kind === "done") {
     const completion = screen.survey.theme?.completion;
     const canRestart = completion?.showRestart === true && screen.survey.allowMultiple;
+    const communityGroupUrl = screen.survey.communityGroupUrl;
+    const theme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : screen.survey.theme;
+    const vars = themeCssVars(theme);
+    const backgroundStyle = themeBackgroundStyle(theme);
+    const galleryProfileEnabled = screen.survey.galleryProfile?.enabled === true;
+    const showProfileLink = galleryProfileEnabled && publishToGallery;
     return (
-      <div className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center">
+      <div
+        className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center"
+        data-theme={theme?.preset}
+        style={{ ...vars, ...backgroundStyle }}
+      >
         <div className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-xl shadow-emerald-500/30">
           <CheckCircle2 className="h-10 w-10" strokeWidth={2.2} />
         </div>
-        <h1 className="mt-5 text-2xl font-bold tracking-tight text-[var(--color-ink)]">提交成功</h1>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--color-muted)]">
+        <h1 className="mt-5 text-2xl font-bold tracking-tight text-[var(--survey-heading)]">提交成功</h1>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--survey-muted)]">
           {completion?.message ?? "感谢你的参与，你的回答已记录。"}
         </p>
+        {galleryProfileEnabled && !publishToGallery ? (
+          <p className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-2.5 text-xs text-[var(--survey-muted)]">
+            已提交完成（未公开）。再次填写并勾选「发布到个人画廊」即可公开展示。
+          </p>
+        ) : null}
+        <TelegramLinkCard />
+        {communityGroupUrl ? (
+          <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
+            <p className="text-sm font-semibold text-[var(--survey-heading)]">欢迎加入我们的 Telegram 群聊</p>
+            <p className="mt-1 text-xs text-[var(--survey-muted)]">和大家交流问卷内容、分享结果、参与讨论</p>
+            <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
+              {showProfileLink ? (
+                <a className="btn btn-primary px-6" href="/plaza?tab=profiles">
+                  <Check className="h-4 w-4" />
+                  查看我的个人资料
+                </a>
+              ) : null}
+              <a
+                className={`btn px-6 ${showProfileLink ? "" : "btn-primary"}`}
+                href={communityGroupUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={
+                  showProfileLink
+                    ? {
+                        backgroundColor: "var(--survey-card-bg)",
+                        borderColor: "var(--survey-card-border)",
+                        color: "var(--survey-primary)",
+                      }
+                    : undefined
+                }
+              >
+                <Users className="h-4 w-4" />
+                加入群聊
+              </a>
+            </div>
+          </div>
+        ) : showProfileLink ? (
+          <a className="btn btn-primary mt-7 px-8" href="/plaza?tab=profiles">
+            <Check className="h-4 w-4" />
+            查看我的个人资料
+          </a>
+        ) : null}
         {completion?.redirectUrl ? (
           <a
             className="btn btn-primary mt-7 px-8"
@@ -1107,11 +1276,16 @@ export function SurveyApp() {
             完成
           </button>
         )}
+        <a className="btn mt-3" href="/s">
+          <Home className="h-4 w-4" />
+          返回主页，填写其他问卷
+        </a>
         {canRestart ? (
           <button
             type="button"
             className="btn mt-3"
             onClick={() => {
+              setPublishToGallery(false);
               setScreen({
                 kind: "filling",
                 survey: screen.survey,
@@ -1206,6 +1380,17 @@ export function SurveyApp() {
                 </button>
               </div>
             </div>
+            {survey.communityGroupUrl ? (
+              <a
+                href={survey.communityGroupUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--survey-primary)] hover:underline"
+              >
+                加入 Telegram 群聊
+                <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+            ) : null}
             <div className="flex items-center gap-3 pb-3 pt-2.5">
               <div className="survey-progress-track flex-1">
                 <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
@@ -1254,6 +1439,76 @@ export function SurveyApp() {
             </div>
             {error ? <p className="mt-4 text-sm font-medium text-[var(--color-danger)]">{error}</p> : null}
           </div>
+          {isLast && survey.galleryProfile?.enabled ? (
+            survey.galleryProfile.canPublish ? (
+              <>
+                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-primary mt-0.5 shrink-0"
+                    checked={publishToGallery}
+                    disabled={busy}
+                    onChange={(event) => setPublishToGallery(event.target.checked)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-[var(--survey-heading)]">🌍 发布到个人画廊</span>
+                    <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                      默认不展示 Telegram 个人信息，你还可以选择画廊封面
+                    </span>
+                  </span>
+                </label>
+                {publishToGallery ? (
+                  <div className="mt-2 space-y-2">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-primary mt-0.5 shrink-0"
+                        checked={galleryShowUsername}
+                        disabled={busy}
+                        onChange={(event) => setGalleryShowUsername(event.target.checked)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
+                        <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                          勾选后，资料卡会显示你的 Telegram 用户名和姓名
+                        </span>
+                      </span>
+                    </label>
+                    <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                      <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
+                      <select
+                        className="select mt-2 w-full"
+                        value={galleryCoverMediaId ?? ""}
+                        onChange={(event) =>
+                          setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)
+                        }
+                      >
+                        <option value="">默认第一张图片</option>
+                        {survey.questions
+                          .filter((question) => ["image", "video", "audio", "file"].includes(question.type))
+                          .map((question) => {
+                            const answer = answers[question.id];
+                            const media =
+                              answer && typeof answer === "object" && !Array.isArray(answer) && "mediaAssetId" in answer
+                                ? answer.mediaAssetId
+                                : null;
+                            return typeof media === "number" ? (
+                              <option key={question.id} value={media}>
+                                {question.title}
+                              </option>
+                            ) : null;
+                          })}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-center text-xs leading-5 text-[var(--survey-muted)]">
+                发布到个人画廊需要 Telegram 身份：请从 Telegram 机器人打开本问卷后提交，即可勾选发布。
+              </p>
+            )
+          ) : null}
         </main>
 
         <nav

@@ -1,14 +1,18 @@
 import type { Env } from "../index";
 import { verifyTelegramWebAppProfile } from "./admin-api";
 import { verifySurveyParticipantToken } from "../services/participant-session.service";
-import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
+import { getUserById, getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
+import { getParticipantLink, participantHashForKey } from "../db/repositories/participant-link.repository";
+import { getBotUsername } from "../bot/telegram";
 import { getSurveyById } from "../db/repositories/survey.repository";
+import { getQuestionById } from "../db/repositories/question.repository";
 import { getSurveyFlow } from "../services/question.service";
 import { verifySurveyAccessCode } from "../core/security";
 import {
   createResponse,
   getActiveResponse,
   getActiveResponseBySurveyAndUser,
+  getCompletedResponseBySurveyAndUser,
   getResponseBySurveyAndHash,
   listAnswersByResponseId,
   completeResponse,
@@ -37,8 +41,19 @@ import { createReportAccessToken } from "../services/report-access-token.service
 import { normalizeSurveyTheme } from "../survey/theme";
 import { loadSystemSettings } from "../services/system-settings.service";
 import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
+import { publishProfileResponse } from "../services/profile-gallery.service";
 
 const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const PARTICIPANT_LINK_BOT_USERNAME_CACHE_KEY = "participant-link-bot-username";
+const TEMP_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const TEMP_AUDIO_MIME_TYPES = new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/ogg"]);
+const TEMP_MEDIA_TYPE_LABELS: Record<string, { label: string; mediaType: "photo" | "video" | "audio" | "document" }> = {
+  image: { label: "仅支持 JPEG / PNG / WebP 图片", mediaType: "photo" },
+  video: { label: "仅支持 MP4 / WebM / MOV 视频", mediaType: "video" },
+  audio: { label: "仅支持 MP3 / M4A / WAV / OGG 音频", mediaType: "audio" },
+  file: { label: "该文件类型不支持", mediaType: "document" },
+};
+const TEMP_FILE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 function temporaryStore(env: Env): KVMediaStore {
   return new KVMediaStore(env.MEDIA_KV);
@@ -53,6 +68,22 @@ export function json(data: unknown, status = 200): Response {
 
 export function fail(status: number, code: string, message: string): Response {
   return json({ ok: false, code, message }, status);
+}
+
+async function resolveParticipantLinkBotUsername(env: Env): Promise<string | null> {
+  try {
+    const cached = await env.CACHE.get(PARTICIPANT_LINK_BOT_USERNAME_CACHE_KEY);
+    if (cached) return cached;
+    const username = await getBotUsername(env.BOT_TOKEN);
+    if (!username) return null;
+    await env.CACHE.put(PARTICIPANT_LINK_BOT_USERNAME_CACHE_KEY, username, {
+      expirationTtl: 7 * 24 * 60 * 60,
+    });
+    return username;
+  } catch (error) {
+    console.warn("Resolve participant-link bot username failed", error);
+    return null;
+  }
 }
 
 async function loadPublishedSurvey(
@@ -137,12 +168,28 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
   if (!participantKey || !ANONYMOUS_KEY_PATTERN.test(participantKey)) {
     return fail(401, "identity_required", "缺少答卷者身份标识");
   }
+  // A participant who opted in from the completion page (link_<key> deep link)
+  // keeps their browser participant hash for resume/continuity, but every
+  // response is attached to the real Telegram user.
+  const linked = await getParticipantLink(env.DB, participantKey);
+  if (linked) {
+    const user = await getUserById(env.DB, linked.userId);
+    if (user) {
+      return {
+        kind: "telegram",
+        dbUserId: user.id,
+        telegramUserId: user.telegramUserId,
+        participantKey,
+        participantHash: participantHashForKey(participantKey),
+      };
+    }
+  }
   return {
     kind: "anonymous",
     dbUserId: null,
     telegramUserId: null,
     participantKey,
-    participantHash: `web_${participantKey}`,
+    participantHash: participantHashForKey(participantKey),
   };
 }
 
@@ -422,6 +469,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         coverUrl: string | null;
       }>();
     return json({
+      communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       surveys: (rows.results ?? []).map((row) => ({
         id: row.id,
         title: row.title,
@@ -434,6 +482,36 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         ...(typeof row.coverMediaId === "number" ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) } : {}),
         theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
       })),
+    });
+  }
+
+  const participantLinkStartMatch = url.pathname.match(/^\/api\/survey\/participant-link\/start$/);
+  if (participantLinkStartMatch && request.method === "GET") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!ANONYMOUS_KEY_PATTERN.test(key)) {
+      return fail(400, "validation_failed", "绑定参数无效");
+    }
+    const botUsername = await resolveParticipantLinkBotUsername(env);
+    if (!botUsername) {
+      return fail(503, "bot_unavailable", "暂时无法生成绑定链接，请稍后重试");
+    }
+    return json({ url: `https://t.me/${botUsername}?start=link_${key}` });
+  }
+
+  const participantLinkStatusMatch = url.pathname.match(/^\/api\/survey\/participant-link\/status$/);
+  if (participantLinkStatusMatch && request.method === "GET") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!ANONYMOUS_KEY_PATTERN.test(key)) {
+      return fail(400, "validation_failed", "绑定参数无效");
+    }
+    const link = await getParticipantLink(env.DB, key);
+    if (!link) return json({ linked: false });
+    const user = await getUserById(env.DB, link.userId);
+    return json({
+      linked: true,
+      username: user?.username ?? null,
+      firstName: user?.firstName ?? null,
+      telegramUserId: user?.telegramUserId ?? null,
     });
   }
 
@@ -452,6 +530,14 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const loaded = await loadPublishedSurvey(env, surveyId);
     if (loaded instanceof Response) return loaded;
     const { survey, flow } = loaded;
+    const system = await loadSystemSettings(env.DB);
+    const gallerySurveyId = Number(system.profileGallerySurveyId);
+    const isGallerySurvey = Number.isInteger(gallerySurveyId) && gallerySurveyId > 0 && gallerySurveyId === surveyId;
+    let canPublishProfile = false;
+    if (isGallerySurvey) {
+      const participant = await resolveParticipant(request, env);
+      canPublishProfile = !(participant instanceof Response) && participant.kind === "telegram";
+    }
 
     const pages = await env.DB.prepare(
       `SELECT id, title, description, "order"
@@ -524,6 +610,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
       theme: normalizeSurveyTheme(parseSettings(survey.settingsJson)),
+      communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       pages: (pages.results ?? []).map((page) => ({
         id: page.id,
         title: page.title,
@@ -531,6 +618,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         order: page.order,
       })),
       questions,
+      ...(isGallerySurvey ? { galleryProfile: { enabled: true, canPublish: canPublishProfile } } : {}),
     });
   }
 
@@ -594,8 +682,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     }
 
     if (!survey.allowMultipleResponses) {
-      const existing = await getResponseBySurveyAndHash(env.DB, surveyId, participant.participantHash);
-      if (existing?.status === "completed" && !isAdminParticipant) {
+      const existing =
+        participant.dbUserId !== null
+          ? await getCompletedResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId)
+          : await getResponseBySurveyAndHash(env.DB, surveyId, participant.participantHash);
+      if (existing && !isAdminParticipant) {
         return fail(409, "already_completed", "你已经完成过该问卷，不能重复提交");
       }
     } else if (participant.kind === "telegram" && participant.dbUserId !== null && !isAdminParticipant) {
@@ -710,6 +801,23 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    const body = (await request.json().catch(() => null)) as {
+      publishToGallery?: unknown;
+      galleryCoverMediaId?: unknown;
+      galleryVisibleQuestionIds?: unknown;
+      galleryShowUsername?: unknown;
+    } | null;
+    const publishToGallery = Boolean(body?.publishToGallery);
+    const galleryCoverMediaId =
+      typeof body?.galleryCoverMediaId === "number" && Number.isInteger(body.galleryCoverMediaId)
+        ? body.galleryCoverMediaId
+        : null;
+    const galleryVisibleQuestionIds = Array.isArray(body?.galleryVisibleQuestionIds)
+      ? body.galleryVisibleQuestionIds.filter(
+          (id): id is number => typeof id === "number" && Number.isInteger(id) && id > 0,
+        )
+      : undefined;
+    const galleryShowUsername = body?.galleryShowUsername === true;
     const response = await env.DB.prepare(
       `SELECT id, status FROM survey_responses
          WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
@@ -725,6 +833,29 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (missing) {
       return fail(400, "required_missing", `请完成必答题目：${missing.title}`);
     }
+    if (publishToGallery) {
+      const system = await loadSystemSettings(env.DB);
+      if (Number(system.profileGallerySurveyId) !== surveyId) {
+        return fail(400, "profile_gallery_not_configured", "该问卷未启用个人画廊");
+      }
+      if (participant.kind !== "telegram" || participant.dbUserId === null) {
+        return fail(
+          403,
+          "profile_publish_identity_required",
+          "发布到个人画廊需要 Telegram 身份，请从机器人打开问卷后再发布",
+        );
+      }
+      try {
+        await publishProfileResponse({ DB: env.DB, MEDIA_KV: env.MEDIA_KV }, responseId, {
+          coverMediaId: galleryCoverMediaId,
+          ...(galleryVisibleQuestionIds ? { visibleQuestionIds: galleryVisibleQuestionIds } : {}),
+          showUsername: galleryShowUsername,
+        });
+      } catch (error) {
+        console.error("Profile gallery publish failed", { responseId, error });
+        return fail(400, "profile_publish_failed", error instanceof Error ? error.message : "发布到个人画廊失败");
+      }
+    }
     await completeResponse(env.DB, responseId);
     try {
       await enqueueReportDelivery(env.DB, env.EXPORT_QUEUE, { responseId });
@@ -738,6 +869,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       ok: true,
       completed: true,
       reportUrl: `/report/${responseId}?t=${token}`,
+      galleryPublished: publishToGallery,
     });
   }
 
@@ -1036,19 +1168,77 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   if (!(file instanceof File)) {
     return fail(400, "invalid_upload", "缺少 file 字段");
   }
-  const mimeType = file.type.toLowerCase();
-  if (!TEMP_IMAGE_MIME_TYPES.has(mimeType)) {
-    return fail(400, "invalid_image_type", "仅支持 JPEG / PNG / WebP 图片");
+
+  // The upload endpoint is shared by all media question types; the current
+  // question decides which MIME kinds and size limits apply.
+  const questionIdRaw = form.get("questionId");
+  let questionType = "image" as QuestionType;
+  let allowedMimeTypes: Set<string> | null = null;
+  let maxSizeMb: number | null = null;
+  if (questionIdRaw !== null) {
+    const questionId = Number(String(questionIdRaw));
+    if (!Number.isInteger(questionId) || questionId <= 0) {
+      return fail(400, "invalid_question", "题目编号无效");
+    }
+    const question = await getQuestionById(env.DB, questionId);
+    if (!question || question.surveyId !== surveyId) {
+      return fail(400, "invalid_question", "题目不存在");
+    }
+    questionType = question.type;
+    if (question.validationJson) {
+      try {
+        const parsed = JSON.parse(question.validationJson) as {
+          allowed_mime_types?: unknown;
+          max_size_mb?: unknown;
+        };
+        if (
+          Array.isArray(parsed.allowed_mime_types) &&
+          parsed.allowed_mime_types.every((value) => typeof value === "string")
+        ) {
+          allowedMimeTypes = new Set(parsed.allowed_mime_types.map((value) => value.toLowerCase()));
+        }
+        if (typeof parsed.max_size_mb === "number" && Number.isFinite(parsed.max_size_mb) && parsed.max_size_mb > 0) {
+          maxSizeMb = parsed.max_size_mb;
+        }
+      } catch {
+        // Malformed validation is ignored; type-level defaults still apply.
+      }
+    }
   }
+  const policy = TEMP_MEDIA_TYPE_LABELS[questionType];
+  if (!policy) {
+    return fail(400, "invalid_question", "该题目不是媒体上传题");
+  }
+  const mimeType = (file.type || (questionType === "file" ? "application/octet-stream" : "")).toLowerCase();
+  const typeAllowlist =
+    questionType === "image"
+      ? TEMP_IMAGE_MIME_TYPES
+      : questionType === "video"
+        ? TEMP_VIDEO_MIME_TYPES
+        : questionType === "audio"
+          ? TEMP_AUDIO_MIME_TYPES
+          : null;
+  if (
+    !mimeType ||
+    (typeAllowlist && !typeAllowlist.has(mimeType)) ||
+    (allowedMimeTypes && !allowedMimeTypes.has(mimeType))
+  ) {
+    return fail(400, "invalid_media_type", allowedMimeTypes ? "该文件类型不符合本题要求" : policy.label);
+  }
+
   const settings = await loadSystemSettings(env.DB);
-  const maxUploadBytes = settings.maxUploadMb * 1024 * 1024;
+  const typeDefaultBytes = questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : TEMP_FILE_UPLOAD_MAX_BYTES;
+  const maxUploadBytes = Math.min(
+    maxSizeMb !== null ? maxSizeMb * 1024 * 1024 : typeDefaultBytes,
+    TEMP_FILE_UPLOAD_MAX_BYTES,
+  );
   if (file.size > maxUploadBytes) {
-    return fail(413, "upload_too_large", `单张图片不能超过 ${settings.maxUploadMb}MB`);
+    return fail(413, "upload_too_large", `单个文件不能超过 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB`);
   }
   const currentBytes = await countTemporaryMediaBytesForResponse(env.DB, response.id);
   const maxResponseBytes = settings.maxResponseMediaMb * 1024 * 1024;
   if (currentBytes + file.size > maxResponseBytes) {
-    return fail(413, "response_media_limit", `单份答卷图片总量不能超过 ${settings.maxResponseMediaMb}MB`);
+    return fail(413, "response_media_limit", `单份答卷媒体总量不能超过 ${settings.maxResponseMediaMb}MB`);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   const asset = await storeTemporaryMedia(env.DB, temporaryStore(env), {
@@ -1056,6 +1246,7 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     bytes,
     mimeType,
     fileName: file.name || null,
+    mediaType: policy.mediaType,
     ttlSeconds: settings.mediaTtlSeconds,
   });
   return json({ ok: true, mediaAssetId: asset.id, url: mediaPublicUrl(asset.id) }, 201);

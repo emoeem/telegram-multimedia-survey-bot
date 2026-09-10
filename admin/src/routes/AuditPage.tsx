@@ -27,7 +27,10 @@ function summarize(after: unknown): string {
   if (typeof after === "object") {
     const record = after as Record<string, unknown>;
     const entries = Object.entries(record).filter(([, value]) => value !== null && value !== undefined);
-    return entries.map(([key, value]) => `${key}: ${String(value)}`).join(" · ").slice(0, 80);
+    return entries
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ")
+      .slice(0, 80);
   }
   return String(after).slice(0, 80);
 }
@@ -62,7 +65,9 @@ export function AuditPage() {
         >
           <option value="">全部对象</option>
           {["survey", "response", "report_template", "report_delivery", "settings", "user", "media"].map((type) => (
-            <option key={type} value={type}>{type}</option>
+            <option key={type} value={type}>
+              {type}
+            </option>
           ))}
         </select>
       </div>
@@ -86,11 +91,10 @@ export function AuditPage() {
                   <td className="text-sm">{item.actorName ?? "系统"}</td>
                   <td className="text-sm font-medium">{item.action}</td>
                   <td className="text-sm text-[var(--text-soft)]">
-                    {item.entityType}{item.entityId ? ` #${item.entityId}` : ""}
+                    {item.entityType}
+                    {item.entityId ? ` #${item.entityId}` : ""}
                   </td>
-                  <td className="max-w-72 text-sm text-[var(--color-muted)]">
-                    {summarize(item.after) || "—"}
-                  </td>
+                  <td className="max-w-72 text-sm text-[var(--color-muted)]">{summarize(item.after) || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -101,9 +105,15 @@ export function AuditPage() {
       )}
 
       <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
-        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
-        <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
-        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+          上一页
+        </button>
+        <span>
+          第 {data.page}/{Math.max(1, data.totalPages)} 页
+        </span>
+        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>
+          下一页
+        </button>
       </div>
     </section>
   );

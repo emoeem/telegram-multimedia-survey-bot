@@ -12,6 +12,8 @@ interface SurveyResponseRow {
   submitted_at: string | null;
   current_question_id: number | null;
   version: number;
+  gallery_published?: number;
+  gallery_published_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,9 +45,23 @@ function mapResponse(row: SurveyResponseRow): SurveyResponse {
     submittedAt: row.submitted_at,
     currentQuestionId: row.current_question_id,
     version: row.version,
+    galleryPublished: Number(row.gallery_published ?? 0) === 1,
+    galleryPublishedAt: row.gallery_published_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+export async function setResponseGalleryPublished(db: D1Database, id: number, published: boolean): Promise<void> {
+  const timestamp = nowIso();
+  await db
+    .prepare(
+      `UPDATE survey_responses
+       SET gallery_published = ?, gallery_published_at = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(published ? 1 : 0, published ? timestamp : null, timestamp, id)
+    .run();
 }
 
 function mapAnswer(row: AnswerRow): Answer {
@@ -191,6 +207,23 @@ export async function countCompletedResponsesBySurveyAndUser(
     .first<{ count: number }>();
 
   return row?.count ?? 0;
+}
+
+export async function getCompletedResponseBySurveyAndUser(
+  db: D1Database,
+  surveyId: number,
+  userId: number,
+): Promise<SurveyResponse | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM survey_responses
+       WHERE survey_id = ? AND user_id = ? AND status = 'completed'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .bind(surveyId, userId)
+    .first<SurveyResponseRow>();
+
+  return row ? mapResponse(row) : null;
 }
 
 export async function getResponseBySurveyAndHash(

@@ -9,6 +9,7 @@ export const SYSTEM_SETTING_KEYS = [
   "max_response_media_mb",
   "pdf_max_mb",
   "report_watermark",
+  "profile_gallery_survey_id",
 ] as const;
 
 export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number];
@@ -22,6 +23,7 @@ export interface SystemSettings {
   maxResponseMediaMb: number;
   pdfMaxMb: number;
   reportWatermark: string;
+  profileGallerySurveyId: string;
 }
 
 export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
@@ -33,6 +35,7 @@ export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   maxResponseMediaMb: 50,
   pdfMaxMb: 15,
   reportWatermark: "更多问卷 @hnhgggfj_bot",
+  profileGallerySurveyId: "",
 };
 
 export async function loadSystemSettings(db: D1Database): Promise<SystemSettings> {
@@ -50,6 +53,7 @@ export async function loadSystemSettings(db: D1Database): Promise<SystemSettings
     maxResponseMediaMb: number("max_response_media_mb", SYSTEM_SETTING_DEFAULTS.maxResponseMediaMb),
     pdfMaxMb: number("pdf_max_mb", SYSTEM_SETTING_DEFAULTS.pdfMaxMb),
     reportWatermark: stored["report_watermark"] ?? SYSTEM_SETTING_DEFAULTS.reportWatermark,
+    profileGallerySurveyId: stored["profile_gallery_survey_id"] ?? SYSTEM_SETTING_DEFAULTS.profileGallerySurveyId,
   };
 }
 

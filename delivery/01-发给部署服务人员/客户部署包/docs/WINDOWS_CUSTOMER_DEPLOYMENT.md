@@ -1,6 +1,6 @@
 # Windows 客户部署、授权与升级手册
 
-> 需要问卷访问密码、软件授权或部署支持，请联系 [@meiebhiebot](https://t.me/meiebhiebot)。
+> 需要问卷访问密码、软件授权或部署支持，请联系 [@ehdhhsbot](https://t.me/ehdhhsbot)。
 
 ## 日常部署先看这里
 

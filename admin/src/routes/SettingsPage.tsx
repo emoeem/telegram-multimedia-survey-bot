@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { apiSend, type SystemSettingsData } from "../api";
+import { Link, useNavigate } from "react-router";
+import { api, apiSend, type SurveySummary, type SystemSettingsData, type WriteResult } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
 import { applyTheme, getStoredTheme, THEME_OPTIONS, type AdminThemeId } from "../theme";
@@ -66,12 +67,21 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 export function SettingsPage() {
+  const navigate = useNavigate();
   const { data, error, retry } = useApi<{ settings: SystemSettingsData }>("/api/admin/settings");
   const [theme, setTheme] = useState<AdminThemeId>(getStoredTheme());
   const [form, setForm] = useState<SystemSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [surveys, setSurveys] = useState<SurveySummary[]>([]);
+  const [creatingSurvey, setCreatingSurvey] = useState(false);
+
+  useEffect(() => {
+    void api<{ items: SurveySummary[] }>(`/api/admin/surveys?pageSize=50&status=published`)
+      .then((response) => setSurveys(response.items ?? []))
+      .catch(() => setSurveys([]));
+  }, []);
 
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={7} />;
@@ -95,6 +105,7 @@ export function SettingsPage() {
         max_response_media_mb: settings.maxResponseMediaMb,
         pdf_max_mb: settings.pdfMaxMb,
         report_watermark: settings.reportWatermark,
+        profile_gallery_survey_id: settings.profileGallerySurveyId,
       });
       setSaved(true);
       setForm(null);
@@ -118,6 +129,25 @@ export function SettingsPage() {
       />
     </Field>
   );
+
+  const createProfileSurvey = async () => {
+    if (creatingSurvey) return;
+    setCreatingSurvey(true);
+    try {
+      const result = await apiSend<WriteResult>("POST", "/api/admin/surveys", {
+        title: "个人资料问卷",
+      });
+      if (typeof result.id === "number") {
+        navigate(`/surveys/${result.id}/editor`);
+        return;
+      }
+      window.alert("创建失败，请重试");
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "创建失败");
+    } finally {
+      setCreatingSurvey(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -160,7 +190,7 @@ export function SettingsPage() {
             />
           </Field>
 
-          <Field label="广场同步频道 ID" hint="资料卡发布到画廊、树洞新投稿会自动转发到该频道">
+          <Field label="广场同步频道 ID" hint="树洞新投稿会自动转发到该频道">
             <input
               className="input w-full"
               value={settings.plazaChannelId}
@@ -177,7 +207,38 @@ export function SettingsPage() {
             >
               <option value="classic">经典报告</option>
               <option value="magazine-dark">杂志暗色</option>
+              <option value="art-archive">艺术档案</option>
+              <option value="identity">身份档案</option>
+              <option value="magazine">杂志</option>
+              <option value="gallery">影集</option>
+              <option value="data">数据分析</option>
             </select>
+          </Field>
+
+          <Field label="个人画廊问卷" hint="用户填完该问卷后可选择发布到「广场 · 个人资料」">
+            <select
+              className="select w-full"
+              value={settings.profileGallerySurveyId}
+              onChange={(event) => update({ profileGallerySurveyId: event.target.value })}
+            >
+              <option value="">未启用</option>
+              {surveys.map((survey) => (
+                <option key={survey.id} value={String(survey.id)}>
+                  {survey.title}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={creatingSurvey}
+              onClick={() => void createProfileSurvey()}
+              className="btn btn-sm mt-1.5 justify-self-start"
+            >
+              {creatingSurvey ? "创建中…" : "➕ 新建一份个人资料问卷"}
+            </button>
+            <Link to="/profile-gallery" className="text-xs text-[var(--color-primary)] hover:underline">
+              打开个人资料卡管理
+            </Link>
           </Field>
 
           <Field label="报告结尾水印" hint="显示在每份报告（网页 / PDF / 频道归档）的结尾">

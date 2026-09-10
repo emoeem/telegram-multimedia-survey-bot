@@ -15,9 +15,6 @@ const mocks = vi.hoisted(() => ({
   handleResultVisualAdminMessage: vi.fn(),
   handleResultVisualAdminCallback: vi.fn(),
   listAllSurveys: vi.fn(),
-  getIdentityCardAccessSetting: vi.fn(),
-  setIdentityCardAccessCode: vi.fn(),
-  clearIdentityCardAccessCode: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", () => ({
@@ -49,12 +46,6 @@ vi.mock("../../../src/bot/image-generator-handler", () => ({
 vi.mock("../../../src/bot/result-visual-admin-handler", () => ({
   handleResultVisualAdminMessage: mocks.handleResultVisualAdminMessage,
   handleResultVisualAdminCallback: mocks.handleResultVisualAdminCallback,
-}));
-
-vi.mock("../../../src/db/repositories/feature-access.repository", () => ({
-  getIdentityCardAccessSetting: mocks.getIdentityCardAccessSetting,
-  setIdentityCardAccessCode: mocks.setIdentityCardAccessCode,
-  clearIdentityCardAccessCode: mocks.clearIdentityCardAccessCode,
 }));
 
 import { handleAdminCallback, handleAdminMessage } from "../../../src/bot/admin-handler";
@@ -107,7 +98,7 @@ describe("admin survey list", () => {
     };
     const buttonTexts = body.reply_markup.inline_keyboard.flat().map((button) => button.text);
 
-    expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作", "🏛 广场"]);
+    expect(buttonTexts).toEqual(["🌐 网页管理后台", "📋 问卷快捷操作", "🏛 广场", "🎯 挑战任务", "⚙️ 任务包管理"]);
     expect(buttonTexts).not.toContain("🎨 视觉模板");
     expect(buttonTexts).not.toContain("👥 Bot 用户");
     expect(buttonTexts).not.toContain("🔑 授权与部署");
@@ -120,40 +111,6 @@ describe("admin survey list", () => {
       url?: string;
     }>;
     expect(buttons[0]?.url).toBe("https://example.com/admin");
-  });
-
-  it("lets an administrator configure the password that unlocks image generation", async () => {
-    mocks.getUserByTelegramId.mockResolvedValue({ id: 1, telegramUserId: 99, systemRole: "admin" });
-    mocks.getIdentityCardAccessSetting.mockResolvedValue(null);
-    const cache = { get: vi.fn(), put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
-    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const ctx: BotContext = {
-      botToken: "token",
-      db: {} as D1Database,
-      cache,
-      session: {} as SurveySessionNamespace,
-      builder: {} as SurveyBuilderNamespace,
-      adminIds: [99],
-      exportQueue: {} as Queue,
-    };
-
-    await handleAdminCallback(ctx, {
-      id: "set",
-      from: { id: 99 },
-      message: { message_id: 1, chat: { id: 2 } },
-      data: "admin:identity_password_set",
-    });
-    expect(cache.put).toHaveBeenCalledWith("admin-identity-card-password:99", "1", { expirationTtl: 15 * 60 });
-
-    (cache.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce("1");
-    await handleAdminMessage(ctx, {
-      message_id: 2,
-      chat: { id: 2 },
-      from: { id: 99 },
-      text: "safe-password",
-    });
-    expect(mocks.setIdentityCardAccessCode).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^sha256:/));
   });
 
   it("lists only users who started the bot with compact paginated details", async () => {

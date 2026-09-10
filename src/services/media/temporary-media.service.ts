@@ -1,4 +1,4 @@
-import type { MediaAsset } from "../../db/schema";
+import type { MediaAsset, MediaType } from "../../db/schema";
 import {
   createMediaAsset,
   expireMediaAsset,
@@ -33,6 +33,7 @@ export async function storeTemporaryMedia(
     bytes: Uint8Array;
     mimeType: string;
     fileName: string | null;
+    mediaType?: MediaType;
     ttlSeconds?: number;
   },
 ): Promise<MediaAsset> {
@@ -45,7 +46,7 @@ export async function storeTemporaryMedia(
   });
   return createMediaAsset(db, {
     scope: "response",
-    mediaType: "photo",
+    mediaType: input.mediaType ?? "photo",
     mimeType: input.mimeType,
     fileName: input.fileName,
     fileSize: input.bytes.byteLength,

@@ -152,7 +152,8 @@ export async function processResultVisualMessage(env: ResultVisualWorkerEnvironm
   const templateRecord = await getVisualTemplateById(env.DB, job.templateId);
   let png: Uint8Array | undefined;
   let artifact: ReportArtifact | undefined;
-  if (templateRecord?.type === "report" && env.BROWSER) {
+  const isVisualProfileCard = templateRecord?.name.startsWith("个人报告 ·") ?? false;
+  if (templateRecord?.type === "report" && !isVisualProfileCard && env.BROWSER) {
     try {
       artifact = await renderHtmlReportArtifact(env.BROWSER, profile, templateRecord.name, images);
     } catch (error) {

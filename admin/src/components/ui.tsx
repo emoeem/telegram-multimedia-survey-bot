@@ -15,7 +15,7 @@ export function StatusBadge({ status }: { status: SurveyStatus }) {
   const known = status in STATUS_LABELS;
   return (
     <span className={`badge ${known ? BADGE_CLASSES[status] : "badge-gray"}`}>
-      {known ? STATUS_LABELS[status] : (status || "-")}
+      {known ? STATUS_LABELS[status] : status || "-"}
     </span>
   );
 }

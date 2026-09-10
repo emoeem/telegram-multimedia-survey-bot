@@ -135,15 +135,15 @@ export function LicensesPage() {
   return (
     <div className="space-y-5">
       {message ? (
-        <div className={`alert ${message.kind === "ok" ? "alert-success" : "alert-error"}`}>
-          {message.text}
-        </div>
+        <div className={`alert ${message.kind === "ok" ? "alert-success" : "alert-error"}`}>{message.text}</div>
       ) : null}
 
       <section className="card">
         <div className="card-title">
           <h2>授权列表</h2>
-          <button className="btn btn-sm" disabled={busy} onClick={licenses.retry}>刷新</button>
+          <button className="btn btn-sm" disabled={busy} onClick={licenses.retry}>
+            刷新
+          </button>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="tbl">
@@ -160,15 +160,14 @@ export function LicensesPage() {
             </thead>
             <tbody>
               {licenses.data.items.length === 0 ? (
-                <tr><td colSpan={7} className="text-center text-[var(--color-muted-soft)]">暂无授权</td></tr>
+                <tr>
+                  <td colSpan={7} className="text-center text-[var(--color-muted-soft)]">
+                    暂无授权
+                  </td>
+                </tr>
               ) : null}
               {licenses.data.items.map((license) => (
-                <LicenseRow
-                  key={license.publicId}
-                  license={license}
-                  busy={busy}
-                  onAction={act}
-                />
+                <LicenseRow key={license.publicId} license={license} busy={busy} onAction={act} />
               ))}
             </tbody>
           </table>
@@ -184,7 +183,11 @@ export function LicensesPage() {
           </label>
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">授权类型</span>
-            <select className="select" value={licenseType} onChange={(event) => setLicenseType(event.target.value as "timed" | "perpetual")}>
+            <select
+              className="select"
+              value={licenseType}
+              onChange={(event) => setLicenseType(event.target.value as "timed" | "perpetual")}
+            >
               <option value="timed">限时（到期自动锁定）</option>
               <option value="perpetual">永久（只算升级有效期）</option>
             </select>
@@ -192,17 +195,36 @@ export function LicensesPage() {
           {licenseType === "timed" ? (
             <label className="grid gap-1 text-sm">
               <span className="text-[var(--color-muted)]">使用天数</span>
-              <input className="input" type="number" min={1} value={usageDays} onChange={(event) => setUsageDays(event.target.value)} />
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={usageDays}
+                onChange={(event) => setUsageDays(event.target.value)}
+              />
             </label>
           ) : (
             <label className="grid gap-1 text-sm">
               <span className="text-[var(--color-muted)]">升级有效期（天，留空=永久更新）</span>
-              <input className="input" type="number" min={1} value={updateDays} onChange={(event) => setUpdateDays(event.target.value)} />
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={updateDays}
+                onChange={(event) => setUpdateDays(event.target.value)}
+              />
             </label>
           )}
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">激活数上限</span>
-            <input className="input" type="number" min={1} max={100} value={maxActivations} onChange={(event) => setMaxActivations(event.target.value)} />
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={100}
+              value={maxActivations}
+              onChange={(event) => setMaxActivations(event.target.value)}
+            />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
             <span className="text-[var(--color-muted)]">备注</span>
@@ -227,18 +249,30 @@ export function LicensesPage() {
         <div className="mt-3 grid max-w-3xl gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">版本号（x.y.z）</span>
-            <input className="input" value={releaseVersion} onChange={(event) => setReleaseVersion(event.target.value)} placeholder="0.4.0" />
+            <input
+              className="input"
+              value={releaseVersion}
+              onChange={(event) => setReleaseVersion(event.target.value)}
+              placeholder="0.4.0"
+            />
           </label>
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">更新说明</span>
             <input className="input" value={releaseNotes} onChange={(event) => setReleaseNotes(event.target.value)} />
           </label>
         </div>
-        <button className="btn mt-3" disabled={busy} onClick={() => void registerRelease()}>注册版本</button>
+        <button className="btn mt-3" disabled={busy} onClick={() => void registerRelease()}>
+          注册版本
+        </button>
         <div className="mt-4 overflow-x-auto">
           <table className="tbl">
             <thead>
-              <tr><th>版本</th><th>渠道</th><th>发布时间</th><th>说明</th></tr>
+              <tr>
+                <th>版本</th>
+                <th>渠道</th>
+                <th>发布时间</th>
+                <th>说明</th>
+              </tr>
             </thead>
             <tbody>
               {(releases.data?.items ?? []).map((release) => (
@@ -257,32 +291,60 @@ export function LicensesPage() {
       <section className="card">
         <div className="card-title">
           <h2>体验创作者试用</h2>
-          <button className="btn btn-sm" disabled={busy} onClick={trials.retry}>刷新</button>
+          <button className="btn btn-sm" disabled={busy} onClick={trials.retry}>
+            刷新
+          </button>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">用户 ID（问卷后台/用户目录可查）</span>
-            <input className="input w-40" value={trialUserId} onChange={(event) => setTrialUserId(event.target.value)} />
+            <input
+              className="input w-40"
+              value={trialUserId}
+              onChange={(event) => setTrialUserId(event.target.value)}
+            />
           </label>
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">试用天数</span>
-            <input className="input w-24" type="number" min={1} value={trialDays} onChange={(event) => setTrialDays(event.target.value)} />
+            <input
+              className="input w-24"
+              type="number"
+              min={1}
+              value={trialDays}
+              onChange={(event) => setTrialDays(event.target.value)}
+            />
           </label>
-          <button className="btn btn-primary" disabled={busy} onClick={() => void grantTrial()}>开通试用</button>
+          <button className="btn btn-primary" disabled={busy} onClick={() => void grantTrial()}>
+            开通试用
+          </button>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="tbl">
             <thead>
-              <tr><th>用户</th><th>Telegram ID</th><th>到期</th><th>操作</th></tr>
+              <tr>
+                <th>用户</th>
+                <th>Telegram ID</th>
+                <th>到期</th>
+                <th>操作</th>
+              </tr>
             </thead>
             <tbody>
               {(trials.data?.items ?? []).map((trial) => (
                 <tr key={trial.userId}>
-                  <td>{[trial.firstName, trial.lastName].filter(Boolean).join(" ") || (trial.username ? `@${trial.username}` : `用户 ${trial.userId}`)}</td>
+                  <td>
+                    {[trial.firstName, trial.lastName].filter(Boolean).join(" ") ||
+                      (trial.username ? `@${trial.username}` : `用户 ${trial.userId}`)}
+                  </td>
                   <td>{trial.telegramUserId}</td>
                   <td>{formatDateTime(trial.expiresAt)}</td>
                   <td>
-                    <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => void revokeTrial(trial.userId)}>回收</button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      disabled={busy}
+                      onClick={() => void revokeTrial(trial.userId)}
+                    >
+                      回收
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -310,12 +372,16 @@ function LicenseRow({
       <tr className="align-top">
         <td>
           <div className="font-medium">{name}</div>
-          {license.customerContact ? <div className="text-xs text-[var(--color-muted-soft)]">{license.customerContact}</div> : null}
+          {license.customerContact ? (
+            <div className="text-xs text-[var(--color-muted-soft)]">{license.customerContact}</div>
+          ) : null}
           <div className="mt-0.5 font-mono text-xs text-[var(--color-muted-soft)]">{license.publicId}</div>
         </td>
         <td>{LICENSE_TYPE_LABELS[license.licenseType] ?? license.licenseType}</td>
         <td>
-          <span className={`badge ${license.status === "active" ? "badge-green" : license.status === "suspended" ? "badge-amber" : "badge-red"}`}>
+          <span
+            className={`badge ${license.status === "active" ? "badge-green" : license.status === "suspended" ? "badge-amber" : "badge-red"}`}
+          >
             {LICENSE_STATUS_LABELS[license.status] ?? license.status}
           </span>
         </td>
@@ -323,21 +389,58 @@ function LicenseRow({
         <td>{license.updatesUntil ? formatDateTime(license.updatesUntil) : "永久"}</td>
         <td>
           {license.activationCount} / {license.maxActivations}
-          <button className="ml-2 text-xs text-[var(--color-primary)] hover:underline" onClick={() => setExpanded((value) => !value)}>
+          <button
+            className="ml-2 text-xs text-[var(--color-primary)] hover:underline"
+            onClick={() => setExpanded((value) => !value)}
+          >
             {expanded ? "收起" : "详情"}
           </button>
         </td>
         <td>
           <div className="flex flex-wrap gap-1.5">
             {license.status === "active" ? (
-              <button className="btn btn-sm" disabled={busy} onClick={() => void onAction(`/api/admin/licenses/${license.publicId}`, { status: "suspended" }, "已暂停")}>暂停</button>
+              <button
+                className="btn btn-sm"
+                disabled={busy}
+                onClick={() =>
+                  void onAction(`/api/admin/licenses/${license.publicId}`, { status: "suspended" }, "已暂停")
+                }
+              >
+                暂停
+              </button>
             ) : license.status === "suspended" ? (
-              <button className="btn btn-sm" disabled={busy} onClick={() => void onAction(`/api/admin/licenses/${license.publicId}`, { status: "active" }, "已恢复")}>恢复</button>
+              <button
+                className="btn btn-sm"
+                disabled={busy}
+                onClick={() => void onAction(`/api/admin/licenses/${license.publicId}`, { status: "active" }, "已恢复")}
+              >
+                恢复
+              </button>
             ) : null}
             {license.status !== "revoked" ? (
-              <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => void onAction(`/api/admin/licenses/${license.publicId}`, { status: "revoked" }, "已吊销")}>吊销</button>
+              <button
+                className="btn btn-sm btn-danger"
+                disabled={busy}
+                onClick={() =>
+                  void onAction(`/api/admin/licenses/${license.publicId}`, { status: "revoked" }, "已吊销")
+                }
+              >
+                吊销
+              </button>
             ) : null}
-            <button className="btn btn-sm" disabled={busy} onClick={() => void onAction(`/api/admin/licenses/${license.publicId}`, { extendUsageDays: 30, extendUpdateDays: 30 }, "已延期 30 天")}>延期30天</button>
+            <button
+              className="btn btn-sm"
+              disabled={busy}
+              onClick={() =>
+                void onAction(
+                  `/api/admin/licenses/${license.publicId}`,
+                  { extendUsageDays: 30, extendUpdateDays: 30 },
+                  "已延期 30 天",
+                )
+              }
+            >
+              延期30天
+            </button>
           </div>
         </td>
       </tr>
@@ -356,7 +459,11 @@ function LicenseRow({
                       <span className="font-mono">{activation.installationId}</span>
                       <span>版本 {activation.appVersion ?? "—"}</span>
                       <span>最近 {formatDateTime(activation.lastSeenAt)}</span>
-                      {activation.deactivatedAt ? <span className="text-[var(--color-muted-soft)]">已解绑 {formatDateTime(activation.deactivatedAt)}</span> : null}
+                      {activation.deactivatedAt ? (
+                        <span className="text-[var(--color-muted-soft)]">
+                          已解绑 {formatDateTime(activation.deactivatedAt)}
+                        </span>
+                      ) : null}
                     </div>
                   ))}
                 </div>

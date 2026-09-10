@@ -79,6 +79,14 @@ export async function apiSend<T>(
   return (await parseResponse(response)) as T;
 }
 
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(path, { method: "POST", headers: authHeaders(), body: formData });
+  if (!response.ok) await throwApiError(response);
+  return (await parseResponse(response)) as T;
+}
+
 export interface WriteResult {
   id?: number;
   order?: number;
@@ -212,8 +220,12 @@ export interface DashboardData {
     id: number;
     surveyId: number;
     status: string;
+    statusLabel: string;
     updatedAt: string;
+    completedAt: string | null;
     title: string;
+    respondent: ResponseRespondent | null;
+    participantKey: string | null;
   }[];
   recentActions: Array<{
     id: number;
@@ -227,6 +239,7 @@ export interface DashboardData {
 export type ResponseStatus = "in_progress" | "completed" | "abandoned" | "cancelled" | "archived";
 
 export interface ResponseRespondent {
+  userId: number;
   telegramUserId: number;
   username: string | null;
   firstName: string | null;
@@ -257,6 +270,27 @@ export interface ResponseListData {
   totalPages: number;
 }
 
+export interface ResponseActivityItem {
+  id: number;
+  surveyId: number;
+  surveyTitle: string;
+  status: ResponseStatus;
+  statusLabel: string;
+  startedAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+  respondent: ResponseRespondent | null;
+  participantKey: string | null;
+}
+
+export interface ResponseActivityData {
+  items: ResponseActivityItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface ResponseAnswerView {
   questionId: number;
   questionTitle: string;
@@ -277,7 +311,11 @@ export interface ResponseAnswerView {
 
 export interface ResponseDetailData {
   survey: { id: number; title: string; anonymous: boolean };
-  response: ResponseListItem & { submittedAt: string | null };
+  response: ResponseListItem & {
+    submittedAt: string | null;
+    previousResponseId: number | null;
+    nextResponseId: number | null;
+  };
   answers: ResponseAnswerView[];
 }
 
@@ -307,6 +345,8 @@ export interface SurveyAnalyticsData {
 export interface EditorMediaRef {
   mediaAssetId: number;
   mediaType: string;
+  fileName?: string | null;
+  mimeType?: string | null;
 }
 
 export interface EditorOption {
@@ -396,6 +436,10 @@ export interface UserDetailData {
   };
   tags: string[];
   responses: UserContentResponse[];
+  responsePage: number;
+  responsePageSize: number;
+  responseTotal: number;
+  responseTotalPages: number;
 }
 
 /** Opens the user's private chat in Telegram clients. */
@@ -467,6 +511,7 @@ export interface SystemSettingsData {
   maxResponseMediaMb: number;
   pdfMaxMb: number;
   reportWatermark: string;
+  profileGallerySurveyId: string;
 }
 
 export type SoftwareLicenseType = "timed" | "perpetual";
@@ -517,56 +562,77 @@ export interface CreatorTrialView {
   grantedAt: string;
 }
 
-export interface IdentityCardOwner {
-  id: number;
-  telegramUserId: number;
-  username: string | null;
-  firstName: string | null;
+export interface ProfileGalleryField {
+  questionId: number;
+  title: string;
+  value: string;
 }
 
-export interface IdentityCardSummary {
+export interface ProfileGalleryImage {
+  mediaAssetId: number;
+  url: string;
+}
+
+export interface ProfileGallerySummary {
   id: number;
-  name: string;
-  nickname: string | null;
-  age: number | null;
-  identityLabel: string | null;
-  description: string | null;
-  templateStyle: string;
-  galleryPublished: boolean;
-  galleryPublishedAt: string | null;
+  surveyId: number;
+  owner: {
+    telegramUserId: number;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+  showUsername: boolean;
+  publishedAt: string | null;
   createdAt: string;
-  hasCardImage: boolean;
-  cardImageUrl: string | null;
-  owner: IdentityCardOwner | null;
+  images: ProfileGalleryImage[];
+  fields: ProfileGalleryField[];
 }
 
-export interface IdentityCardListData {
-  items: IdentityCardSummary[];
+export interface ProfileGalleryData {
+  items: ProfileGallerySummary[];
   total: number;
+  publishedTotal: number;
   limit: number;
   offset: number;
+  surveyId: number | null;
+  surveyTitle: string;
+  search?: string;
 }
 
-export function fetchIdentityCards(
+export function fetchProfileGallery(
   view: "all" | "published",
   offset: number,
   limit = 20,
-): Promise<IdentityCardListData> {
-  const query = new URLSearchParams({ view, offset: String(offset), limit: String(limit) });
-  return api<IdentityCardListData>(`/api/admin/identity-cards?${query}`);
+  search = "",
+): Promise<ProfileGalleryData> {
+  const query = new URLSearchParams({
+    view,
+    offset: String(offset),
+    limit: String(limit),
+    ...(search ? { search } : {}),
+  });
+  return api<ProfileGalleryData>(`/api/admin/profile-gallery?${query}`);
 }
 
-export function setIdentityCardPublished(id: number, published: boolean): Promise<{ ok: boolean }> {
-  return apiSend("POST", "/api/admin/identity-cards/publish", { id, published });
+export function setProfileGalleryPublished(
+  id: number,
+  published: boolean,
+  options: { coverMediaId?: number | null } = {},
+): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/profile-gallery/publish", { id, published, ...options });
 }
 
 export interface PlazaPostSummary {
   id: number;
   userId: number;
   content: string;
+  kind: "text" | "trial";
+  payload: Record<string, unknown> | null;
   anonymous: boolean;
   status: "published" | "removed";
   createdAt: string;
+  commentCount: number;
   owner: {
     telegramUserId: number;
     username: string | null;
@@ -588,4 +654,106 @@ export function fetchPlazaPosts(view: "all" | "published", offset: number, limit
 
 export function setPlazaPostStatus(id: number, status: "published" | "removed"): Promise<{ ok: boolean }> {
   return apiSend("POST", "/api/admin/plaza/posts/status", { id, status });
+}
+
+export interface PlazaCommentSummary {
+  id: number;
+  postId: number;
+  userId: number;
+  content: string;
+  status: "published" | "removed";
+  createdAt: string;
+  owner: {
+    telegramUserId: number;
+    username: string | null;
+    firstName: string | null;
+  } | null;
+}
+
+export function fetchAdminPlazaComments(
+  postId: number,
+  view: "all" | "published" = "all",
+): Promise<{ items: PlazaCommentSummary[]; total: number; postId: number }> {
+  return api<{ items: PlazaCommentSummary[]; total: number; postId: number }>(
+    `/api/admin/plaza/posts/${postId}/comments?view=${view}&limit=100&offset=0`,
+  );
+}
+
+export function setPlazaCommentStatus(id: number, status: "published" | "removed"): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/plaza/comments/status", { id, status });
+}
+
+export type AdminTaskPersona = "any" | "male" | "female";
+export type AdminTaskMode = "any" | "normal" | "hell";
+
+export interface AdminTaskItem {
+  id: number;
+  packId: number;
+  title: string;
+  description: string;
+  warning: string;
+  score: number;
+  persona: AdminTaskPersona;
+  mode: AdminTaskMode;
+  minFloor: number;
+  maxFloor: number;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTaskPack {
+  id: number;
+  name: string;
+  description: string | null;
+  normalFloors: number;
+  hellFloors: number;
+  prepItems: string[];
+  prepText: string | null;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  items: AdminTaskItem[];
+}
+
+export interface AdminTaskItemInput {
+  title: string;
+  description: string;
+  warning?: string;
+  score: number;
+  persona: AdminTaskPersona;
+  mode: AdminTaskMode;
+  minFloor: number;
+  maxFloor: number;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface AdminTaskPackInput {
+  name: string;
+  description: string | null;
+  normalFloors: number;
+  hellFloors: number;
+  prepItems: string[];
+  prepText: string | null;
+  enabled: boolean;
+  items: AdminTaskItemInput[];
+}
+
+export function fetchAdminTaskPacks(): Promise<{ packs: AdminTaskPack[] }> {
+  return api<{ packs: AdminTaskPack[] }>("/api/admin/task-packs");
+}
+
+export function createAdminTaskPack(input: AdminTaskPackInput): Promise<{ pack: AdminTaskPack }> {
+  return apiSend("POST", "/api/admin/task-packs", input as unknown as Record<string, unknown>);
+}
+
+export function updateAdminTaskPack(id: number, input: AdminTaskPackInput): Promise<{ pack: AdminTaskPack }> {
+  return apiSend("PUT", `/api/admin/task-packs/${id}`, input as unknown as Record<string, unknown>);
+}
+
+export function deleteAdminTaskPack(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", `/api/admin/task-packs/${id}`);
 }

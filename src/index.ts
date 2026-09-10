@@ -11,6 +11,7 @@ import { handleLicenseApiRequest } from "./http/license-api";
 import { handleAdminApi } from "./http/admin-api";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
+import { handleTrialApiRequest } from "./http/trial-api";
 import { handleReportRequest } from "./http/report-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { handleExportQueue } from "./services/export-worker.service";
@@ -20,7 +21,6 @@ import { cleanupExpiredTemporaryMedia } from "./services/media/temporary-media.s
 import { KVMediaStore } from "./services/media/temporary-media-store";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
-import { recoverStaleIdentityCardJobs } from "./services/identity-card-job-recovery.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
 import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-digest.service";
@@ -113,6 +113,7 @@ export interface Env {
   REPORT_CHANNEL_ID?: string;
   /** Telegram channel that mirrors published plaza cards and tree-hole posts. */
   PLAZA_CHANNEL_ID?: string;
+  COMMUNITY_GROUP_URL?: string;
 }
 
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
@@ -206,6 +207,12 @@ export default {
       return serveHtmlAsset(env, request, "/survey.html");
     }
 
+    // Web task system player page (/trial) shares the survey SPA bundle; the
+    // page itself decides between the survey list and the trial screen.
+    if (url.pathname === "/trial" || url.pathname.startsWith("/trial/")) {
+      return serveHtmlAsset(env, request, "/survey.html");
+    }
+
     if (url.pathname.startsWith("/api/plaza/")) {
       return (await handlePlazaApiRequest(request, env, url)) ?? new Response("Not Found", { status: 404 });
     }
@@ -217,6 +224,11 @@ export default {
 
     if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
       const response = await handleReportRequest(request, env, url);
+      return response ?? new Response("Not Found", { status: 404 });
+    }
+
+    if (url.pathname.startsWith("/api/trial/")) {
+      const response = await handleTrialApiRequest(request, env, url);
       return response ?? new Response("Not Found", { status: 404 });
     }
 
@@ -335,12 +347,6 @@ export default {
         }
       } catch (error) {
         console.error("Report delivery retry driver failed", error);
-      }
-      try {
-        const summary = await recoverStaleIdentityCardJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
-        if (summary.requeued || summary.failed) console.warn("Recovered stale identity card jobs", summary);
-      } catch (error) {
-        console.error("Identity card job recovery failed", error);
       }
       try {
         const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);

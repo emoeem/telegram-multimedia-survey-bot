@@ -35,14 +35,14 @@ const YES_NO_VALUES = new Set(["是", "否", "yes", "no", "可以", "不可以",
 const CONTACT_REPLACEMENTS: Array<[string, string]> = [
   [
     "其他更多类型问卷请联系 微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
-    "其他更多类型问卷请联系 x:@pd2335346 Tg：@meiebhiebot",
+    "其他更多类型问卷请联系 x:@pd2335346 Tg：@ehdhhsbot",
   ],
   [
     "主动求胁迫填完问卷联系&nbsp;微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
-    "其他更多类型问卷请联系 x:@pd2335346 Tg：@meiebhiebot",
+    "其他更多类型问卷请联系 x:@pd2335346 Tg：@ehdhhsbot",
   ],
-  ["@X_chunai07", "@meiebhiebot"],
-  ["@x_chunai07", "@meiebhiebot"],
+  ["@X_chunai07", "@ehdhhsbot"],
+  ["@x_chunai07", "@ehdhhsbot"],
   ["qq：2833505635", ""],
 ];
 

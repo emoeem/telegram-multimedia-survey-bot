@@ -89,24 +89,32 @@ function renderScores(view: ReportViewModel, section: ReportTemplateSection): st
   if (!view.scores.length) return "";
   if (section.presentation === "grid") {
     return `<div class="score-rings">
-      ${view.scores.map((score) => `
+      ${view.scores
+        .map(
+          (score) => `
         <article class="ring-card">
           <div class="ring" style="--pct:${Math.max(0, Math.min(100, score.percentage))}">
             <span class="ring-inner"><strong>${score.value}<small>/ ${score.max}</small></strong></span>
           </div>
           <span class="ring-label">${escapeHtml(score.label)}</span>
           <p>${escapeHtml(text(score.description))}</p>
-        </article>`).join("")}
+        </article>`,
+        )
+        .join("")}
     </div>`;
   }
   return `<section class="report-section"><h2>得分概览</h2>
     <div class="score-grid">
-      ${view.scores.map((score) => `
+      ${view.scores
+        .map(
+          (score) => `
         <article class="score-card">
           <div class="score-head"><span>${escapeHtml(score.label)}</span><strong>${score.value}<small>/ ${score.max}</small></strong></div>
           <div class="bar"><span style="width:${Math.max(0, Math.min(100, score.percentage))}%"></span></div>
           <p>${escapeHtml(text(score.description))}</p>
-        </article>`).join("")}
+        </article>`,
+        )
+        .join("")}
     </div>
   </section>`;
 }
@@ -120,14 +128,22 @@ function renderRadar(view: ReportViewModel, colors: ChartColors): string {
 
 function renderInsights(view: ReportViewModel): string {
   if (!view.insights.length && !view.quotes.length) return "";
-  const items = view.insights.map((item) => `
+  const items = view.insights
+    .map(
+      (item) => `
     <article class="insight">
       <h3>${escapeHtml(item.title)}</h3>
       ${item.tags?.length ? `<div class="tags">${item.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
       <p>${escapeHtml(item.text)}</p>
-    </article>`).join("");
-  const quotes = view.quotes.map((item) => `
-    <blockquote><p>${escapeHtml(item.text)}</p><footer>${escapeHtml(item.title)}</footer></blockquote>`).join("");
+    </article>`,
+    )
+    .join("");
+  const quotes = view.quotes
+    .map(
+      (item) => `
+    <blockquote><p>${escapeHtml(item.text)}</p><footer>${escapeHtml(item.title)}</footer></blockquote>`,
+    )
+    .join("");
   return `<section class="report-section"><h2>分析解读</h2>${items}${quotes}</section>`;
 }
 
@@ -151,14 +167,22 @@ function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): s
   };
   if (section.presentation === "list") {
     return `<ul class="checklist">
-      ${view.profile.map((item) => `
-        <li><strong>${escapeHtml(item.label)}</strong>${renderValue(item)}</li>`).join("")}
+      ${view.profile
+        .map(
+          (item) => `
+        <li><strong>${escapeHtml(item.label)}</strong>${renderValue(item)}</li>`,
+        )
+        .join("")}
     </ul>`;
   }
   return `<section class="report-section"><h2>回答明细</h2>
     <dl class="answer-list">
-      ${view.profile.map((item) => `
-        <div class="answer-item"><dt>${escapeHtml(item.label)}</dt><dd>${renderValue(item)}</dd></div>`).join("")}
+      ${view.profile
+        .map(
+          (item) => `
+        <div class="answer-item"><dt>${escapeHtml(item.label)}</dt><dd>${renderValue(item)}</dd></div>`,
+        )
+        .join("")}
     </dl>
   </section>`;
 }
@@ -168,11 +192,15 @@ function renderGallery(view: ReportViewModel): string {
   if (!items.length) return "";
   return `<section class="report-section"><h2>图片</h2>
     <div class="gallery">
-      ${items.map((item) => `
+      ${items
+        .map(
+          (item) => `
         <figure>
           <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.caption ?? item.questionTitle ?? "图片")}" loading="lazy" onerror="this.closest('figure')?.classList.add('missing')" />
           ${item.caption ? `<figcaption>${escapeHtml(item.caption)}</figcaption>` : ""}
-        </figure>`).join("")}
+        </figure>`,
+        )
+        .join("")}
     </div>
   </section>`;
 }
@@ -190,17 +218,28 @@ export function renderReportSection(
   colors: ChartColors,
 ): string {
   switch (kind) {
-    case "cover": return renderCover(view);
-    case "hero": return renderHero(view, section);
-    case "summary": return wrapSection("summary", sectionTitle("summary", section), renderSummary(view));
-    case "scores": return wrapSection("scores", sectionTitle("scores", section), renderScores(view, section));
-    case "radar": return wrapSection("radar", sectionTitle("radar", section), renderRadar(view, colors));
-    case "insights": return wrapSection("insights", sectionTitle("insights", section), renderInsights(view));
-    case "quotes": return wrapSection("quotes", sectionTitle("quotes", section), renderInsights(view));
-    case "answers": return wrapSection("answers", sectionTitle("answers", section), renderAnswers(view, section));
-    case "gallery": return wrapSection("gallery", sectionTitle("gallery", section), renderGallery(view));
-    case "divider": return `<hr class="report-divider" />`;
-    case "verdict": return wrapSection("verdict", sectionTitle("verdict", section), renderVerdict(view));
+    case "cover":
+      return renderCover(view);
+    case "hero":
+      return renderHero(view, section);
+    case "summary":
+      return wrapSection("summary", sectionTitle("summary", section), renderSummary(view));
+    case "scores":
+      return wrapSection("scores", sectionTitle("scores", section), renderScores(view, section));
+    case "radar":
+      return wrapSection("radar", sectionTitle("radar", section), renderRadar(view, colors));
+    case "insights":
+      return wrapSection("insights", sectionTitle("insights", section), renderInsights(view));
+    case "quotes":
+      return wrapSection("quotes", sectionTitle("quotes", section), renderInsights(view));
+    case "answers":
+      return wrapSection("answers", sectionTitle("answers", section), renderAnswers(view, section));
+    case "gallery":
+      return wrapSection("gallery", sectionTitle("gallery", section), renderGallery(view));
+    case "divider":
+      return `<hr class="report-divider" />`;
+    case "verdict":
+      return wrapSection("verdict", sectionTitle("verdict", section), renderVerdict(view));
   }
 }
 
@@ -317,12 +356,11 @@ export function buildResponsiveReportHtml(
     muted: theme.colors.muted,
     border: theme.colors.border,
   };
-  const hasHeroOrCover = template.sections.some(
-    (section) => section.kind === "hero" || section.kind === "cover",
-  );
-  const nav = view.profile.length > 12
-    ? `<nav class="anchor-nav"><a href="#answers">回答明细</a><a href="#gallery">图片</a></nav>`
-    : "";
+  const hasHeroOrCover = template.sections.some((section) => section.kind === "hero" || section.kind === "cover");
+  const nav =
+    view.profile.length > 12
+      ? `<nav class="anchor-nav"><a href="#answers">回答明细</a><a href="#gallery">图片</a></nav>`
+      : "";
   const sections = template.sections
     .map((section) => renderReportSection(section.kind, view, section, colors))
     .filter(Boolean)

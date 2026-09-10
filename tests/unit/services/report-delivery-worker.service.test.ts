@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   deserializeResultProfile: vi.fn(),
   renderReportPdf: vi.fn(),
   resolveReportProfileImages: vi.fn(),
-  deleteTemporaryMediaForResponse: vi.fn(),
   sendDocument: vi.fn(),
   sendPhoto: vi.fn(),
   sendMessage: vi.fn(),
@@ -36,10 +35,6 @@ vi.mock("../../../src/services/report/pdf", () => ({
 
 vi.mock("../../../src/services/report/report-images.service", () => ({
   resolveReportProfileImages: mocks.resolveReportProfileImages,
-}));
-
-vi.mock("../../../src/services/media/temporary-media.service", () => ({
-  deleteTemporaryMediaForResponse: mocks.deleteTemporaryMediaForResponse,
 }));
 
 vi.mock("../../../src/bot/telegram", () => ({
@@ -160,7 +155,6 @@ describe("report delivery worker", () => {
     mocks.resolveReportProfileImages.mockResolvedValue({});
     mocks.renderReportPdf.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), byteSize: 3 });
     mocks.sendDocument.mockResolvedValue(telegramResponse(55));
-    mocks.deleteTemporaryMediaForResponse.mockResolvedValue(0);
   });
 
   it("skips already delivered reports (idempotency)", async () => {
@@ -187,15 +181,16 @@ describe("report delivery worker", () => {
       "report-42.zip",
       expect.any(Uint8Array),
       "application/zip",
-      expect.stringContaining("#答卷42"),
+      expect.stringContaining('<a href="https://t.me/alice">@alice</a>'),
+      "HTML",
     );
+    expect(String(mocks.sendDocument.mock.calls[0]?.[5] ?? "")).toContain("#答卷42");
     expect(mocks.sendPhoto).not.toHaveBeenCalled();
     expect(mocks.completeReportDelivery).toHaveBeenCalledWith(env.DB, 1, {
       telegramChatId: -100123,
       pdfMessageId: 55,
       imageMessageIds: [],
     });
-    expect(mocks.deleteTemporaryMediaForResponse).toHaveBeenCalled();
     expect(mocks.renderReportPdf).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -224,6 +219,7 @@ describe("report delivery worker", () => {
       expect.any(Uint8Array),
       "application/pdf",
       expect.any(String),
+      "HTML",
     );
   });
 

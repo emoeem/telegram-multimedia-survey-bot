@@ -217,9 +217,7 @@ export function useSurveyEditor(data: EditorData) {
   const updateSurveyMeta = useCallback(
     (patch: Partial<typeof surveyMeta>) => {
       const existingIndex = opsRef.current.findIndex(
-        (op) =>
-          op.method === "PATCH" &&
-          op.path === `/api/admin/surveys/${surveyId}`,
+        (op) => op.method === "PATCH" && op.path === `/api/admin/surveys/${surveyId}`,
       );
       // Only the first meta change of an editing session becomes an undo
       // step; rapid typing merges into the same pending PATCH op.
@@ -229,9 +227,7 @@ export function useSurveyEditor(data: EditorData) {
       setSurveyMeta((current) => ({ ...current, ...patch }));
       setOps((current) => {
         const opIndex = current.findIndex(
-          (op) =>
-            op.method === "PATCH" &&
-            op.path === `/api/admin/surveys/${surveyId}`,
+          (op) => op.method === "PATCH" && op.path === `/api/admin/surveys/${surveyId}`,
         );
         const fields = { ...(current[opIndex]?.body ?? {}), ...patch };
         const op: PendingOp = {
@@ -305,9 +301,7 @@ export function useSurveyEditor(data: EditorData) {
           title: draft.title,
           required: true,
           ...(draft.options?.length ? { options: draft.options } : {}),
-          ...(draft.type === "matrix" && draft.columns?.length
-            ? { settings: { columns: draft.columns } }
-            : {}),
+          ...(draft.type === "matrix" && draft.columns?.length ? { settings: { columns: draft.columns } } : {}),
         },
         tempId,
         label: "新增题目",
@@ -370,9 +364,7 @@ export function useSurveyEditor(data: EditorData) {
   const deleteOption = useCallback(
     (questionId: number, optionId: number) => {
       setQuestions((current) =>
-        current.map((q) =>
-          q.id === questionId ? { ...q, options: q.options.filter((o) => o.id !== optionId) } : q,
-        ),
+        current.map((q) => (q.id === questionId ? { ...q, options: q.options.filter((o) => o.id !== optionId) } : q)),
       );
       if (optionId < 0) {
         setOps((current) => current.filter((op) => op.tempId !== optionId));
@@ -393,9 +385,7 @@ export function useSurveyEditor(data: EditorData) {
     (questionId: number, optionId: number, label: string) => {
       setQuestions((current) =>
         current.map((q) =>
-          q.id === questionId
-            ? { ...q, options: q.options.map((o) => (o.id === optionId ? { ...o, label } : o)) }
-            : q,
+          q.id === questionId ? { ...q, options: q.options.map((o) => (o.id === optionId ? { ...o, label } : o)) } : q,
         ),
       );
       pushOp({
@@ -466,20 +456,24 @@ export function useSurveyEditor(data: EditorData) {
     [],
   );
 
-  const resolveOpReferences = useCallback((op: PendingOp, idMap: Map<number, number>): PendingOp => {
-    const path = op.path.replace(/questions\/(-?\d+)/g, (match, id) => `questions/${resolveRef(id, idMap)}`)
-      .replace(/options\/(-?\d+)/g, (match, id) => `options/${resolveRef(id, idMap)}`);
-    const body = op.body ? { ...op.body } : undefined;
-    if (body && Array.isArray(body.questionIds)) {
-      body.questionIds = body.questionIds.map((id) => Number(resolveRef(id as number, idMap)));
-    }
-    // Skip-rule conditions may reference questions created in the same batch;
-    // remap targetQuestionId/skipToQuestionId the same way paths are remapped.
-    if (body && body.condition && typeof body.condition === "object") {
-      body.condition = remapConditionRefs(body.condition as Record<string, unknown>, idMap);
-    }
-    return { ...op, path, body };
-  }, [remapConditionRefs, resolveRef]);
+  const resolveOpReferences = useCallback(
+    (op: PendingOp, idMap: Map<number, number>): PendingOp => {
+      const path = op.path
+        .replace(/questions\/(-?\d+)/g, (match, id) => `questions/${resolveRef(id, idMap)}`)
+        .replace(/options\/(-?\d+)/g, (match, id) => `options/${resolveRef(id, idMap)}`);
+      const body = op.body ? { ...op.body } : undefined;
+      if (body && Array.isArray(body.questionIds)) {
+        body.questionIds = body.questionIds.map((id) => Number(resolveRef(id as number, idMap)));
+      }
+      // Skip-rule conditions may reference questions created in the same batch;
+      // remap targetQuestionId/skipToQuestionId the same way paths are remapped.
+      if (body && body.condition && typeof body.condition === "object") {
+        body.condition = remapConditionRefs(body.condition as Record<string, unknown>, idMap);
+      }
+      return { ...op, path, body };
+    },
+    [remapConditionRefs, resolveRef],
+  );
 
   const save = useCallback(async (): Promise<boolean> => {
     if (saving) return false;
@@ -583,8 +577,28 @@ export function useSurveyEditor(data: EditorData) {
       canUndo,
       canRedo,
     }),
-    [surveyMeta, updateSurveyMeta, baseUpdatedAt, questions, patchQuestionLocal, queueQuestionPatch, addQuestion,
-      deleteQuestion, addOption, deleteOption, renameOption, reorderQuestions, save, saveState, saveError, discardAndReload, dirty,
-      undo, redo, canUndo, canRedo],
+    [
+      surveyMeta,
+      updateSurveyMeta,
+      baseUpdatedAt,
+      questions,
+      patchQuestionLocal,
+      queueQuestionPatch,
+      addQuestion,
+      deleteQuestion,
+      addOption,
+      deleteOption,
+      renameOption,
+      reorderQuestions,
+      save,
+      saveState,
+      saveError,
+      discardAndReload,
+      dirty,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+    ],
   );
 }

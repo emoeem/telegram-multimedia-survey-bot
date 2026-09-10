@@ -2324,8 +2324,8 @@ export async function handleTelegramMessage(
       ctx.botToken,
       message.chat.id,
       creator
-        ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-        : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+        ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+        : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
       buildHomeKeyboard(creator, Boolean(dbUser && isAdmin(userId, ctx.adminIds)), Boolean(pausedResponse)),
     );
     return;
@@ -2344,8 +2344,8 @@ export async function handleTelegramMessage(
       ctx.botToken,
       message.chat.id,
       creator
-        ? "快捷入口在下方。\n\n继续草稿发送 /continue；导入 JSON 发送 /import。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+        ? "快捷入口在下方。\n\n继续草稿发送 /continue；导入 JSON 发送 /import。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
       buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),

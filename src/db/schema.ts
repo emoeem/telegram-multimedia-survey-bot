@@ -144,6 +144,8 @@ export interface SurveyResponse {
   submittedAt: string | null;
   currentQuestionId: number | null;
   version: number;
+  galleryPublished: boolean;
+  galleryPublishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -179,6 +181,7 @@ export type MediaAssetScope =
   | "template_preview"
   | "identity_card"
   | "card_template"
+  | "gallery_profile"
   | "legacy";
 
 export interface MediaAsset {

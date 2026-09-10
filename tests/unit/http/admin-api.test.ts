@@ -427,6 +427,47 @@ describe("handleAdminApi authentication and permissions", () => {
     });
   });
 
+  it("lists recent responses across surveys with respondent identity", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.setBatchResults([
+      [
+        {
+          id: 50,
+          surveyId: 5,
+          surveyTitle: "问卷标题",
+          status: "completed",
+          startedAt: "T1",
+          completedAt: "T2",
+          updatedAt: "T2",
+          userId: 7,
+          telegramUserId: 999,
+          username: "hidden",
+          firstName: "Hidden",
+          lastName: null,
+          participantKey: null,
+        },
+      ],
+      [{ count: 1 }],
+    ]);
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/responses?status=completed&page=1", { userId: "111" }),
+      makeEnv(harness.db),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      total: 1,
+      items: [
+        {
+          id: 50,
+          surveyTitle: "问卷标题",
+          statusLabel: "已完成",
+          respondent: { userId: 7, telegramUserId: 999, username: "hidden", firstName: "Hidden", lastName: null },
+        },
+      ],
+    });
+  });
+
   it("rejects invalid response status filters", async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const harness = makeDb();

@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { fetchPlazaPosts, setPlazaPostStatus, type PlazaPostSummary } from "../api";
+import {
+  fetchAdminPlazaComments,
+  fetchPlazaPosts,
+  setPlazaCommentStatus,
+  setPlazaPostStatus,
+  type PlazaCommentSummary,
+  type PlazaPostSummary,
+} from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, PageHeader, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
@@ -11,7 +18,51 @@ function authorLabel(post: PlazaPostSummary): string {
   return owner.username ? `@${owner.username}` : owner.firstName || `用户 ${owner.telegramUserId}`;
 }
 
+function commentAuthorLabel(comment: PlazaCommentSummary): string {
+  const owner = comment.owner;
+  if (!owner) return "未知用户";
+  return owner.username ? `@${owner.username}` : owner.firstName || `用户 ${owner.telegramUserId}`;
+}
+
 function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: PlazaPostSummary) => void }) {
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [comments, setComments] = useState<PlazaCommentSummary[] | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [busyComment, setBusyComment] = useState<number | null>(null);
+
+  const loadComments = async () => {
+    setCommentsError(null);
+    try {
+      const response = await fetchAdminPlazaComments(post.id, "all");
+      setComments(response.items);
+    } catch (error) {
+      setCommentsError(error instanceof Error ? error.message : "评论加载失败");
+    }
+  };
+
+  const toggleComments = () => {
+    const next = !commentsOpen;
+    setCommentsOpen(next);
+    if (next && comments === null) void loadComments();
+  };
+
+  const toggleComment = async (comment: PlazaCommentSummary) => {
+    setBusyComment(comment.id);
+    try {
+      const nextStatus = comment.status === "published" ? "removed" : "published";
+      await setPlazaCommentStatus(comment.id, nextStatus);
+      setComments((current) =>
+        current ? current.map((item) => (item.id === comment.id ? { ...item, status: nextStatus } : item)) : current,
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setBusyComment(null);
+    }
+  };
+
+  const publishedComments = comments?.filter((comment) => comment.status === "published").length ?? 0;
+
   return (
     <article
       className={
@@ -24,9 +75,15 @@ function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: 
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             #{post.id} · {authorLabel(post)}
+            {post.kind === "trial" ? (
+              <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                🎯 挑战晒卡
+              </span>
+            ) : null}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {formatDateTime(post.createdAt)} · {post.status === "published" ? "展示中" : "已下架"}
+            {formatDateTime(post.createdAt)} · {post.status === "published" ? "展示中" : "已下架"} · 💬{" "}
+            {post.commentCount}
           </p>
         </div>
         <button
@@ -44,6 +101,56 @@ function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: 
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-200">
         {post.content}
       </p>
+
+      <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={toggleComments}
+          className="text-xs font-semibold text-slate-500 dark:text-slate-400"
+        >
+          💬 评论（{publishedComments || post.commentCount}）
+          <span className="ml-1">{commentsOpen ? "收起" : "展开"}</span>
+        </button>
+        {commentsOpen ? (
+          <div className="mt-2 space-y-2">
+            {commentsError ? <p className="text-xs text-red-500">{commentsError}</p> : null}
+            {comments === null ? (
+              <p className="text-xs text-slate-400">加载中…</p>
+            ) : comments.length === 0 ? (
+              <p className="text-xs text-slate-400">暂无评论</p>
+            ) : (
+              comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      #{comment.id} · {commentAuthorLabel(comment)}
+                      <span className="ml-2 font-normal text-slate-400">{formatDateTime(comment.createdAt)}</span>
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-600 dark:text-slate-300">
+                      {comment.content}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busyComment === comment.id}
+                    onClick={() => void toggleComment(comment)}
+                    className={
+                      comment.status === "published"
+                        ? "shrink-0 rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                        : "shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white"
+                    }
+                  >
+                    {comment.status === "published" ? "下架" : "恢复"}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -102,7 +209,7 @@ export function PlazaPostsPage() {
       ) : !data ? (
         <SkeletonPanel lines={6} />
       ) : data.items.length === 0 ? (
-        <EmptyPanel text="还没有树洞内容。用户在机器人里投稿后会出现在这里。" />
+        <EmptyPanel text="还没有树洞内容。用户在机器人里投稿、晒挑战结局后会出现在这里。" />
       ) : (
         <>
           <div className="flex flex-col gap-3">

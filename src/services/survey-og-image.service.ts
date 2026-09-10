@@ -144,7 +144,11 @@ ${cover}
  * Returns null when Browser Rendering is unavailable (caller serves a 404
  * and social platforms fall back to plain-text previews).
  */
-export async function getSurveyOgImage(env: Env, meta: SurveyShareMeta, origin: string): Promise<Uint8Array | null> {
+export async function getSurveyOgImage(
+  env: Env,
+  meta: SurveyShareMeta,
+  origin: string,
+): Promise<Uint8Array<ArrayBuffer> | null> {
   if (!env.BROWSER) return null;
   const cacheKey = `${OG_CACHE_PREFIX}:${meta.id}:${fingerprint(
     `${meta.updatedAt}|${meta.questionCount}|${meta.title}|${meta.coverUrl ?? ""}|${meta.primaryColor ?? ""}`,
@@ -159,7 +163,7 @@ export async function getSurveyOgImage(env: Env, meta: SurveyShareMeta, origin: 
     await page.setContent(buildOgCardHtml(meta, origin), { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");
     const shot: unknown = await page.screenshot({ type: "png" });
-    const bytes = shot instanceof Uint8Array ? shot : new Uint8Array(shot as ArrayBuffer);
+    const bytes = new Uint8Array(shot instanceof Uint8Array ? shot : (shot as ArrayBuffer));
     // Cache for 7 days; the cache key embeds updatedAt so edits regenerate.
     await env.CACHE.put(cacheKey, bytes.slice().buffer as ArrayBuffer, {
       expirationTtl: 7 * 24 * 60 * 60,

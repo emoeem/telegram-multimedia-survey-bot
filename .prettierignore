@@ -9,6 +9,9 @@ package-lock.json
 # Local assistant/tooling state
 .zcode/
 
+# Standalone tg-archive MVP (Python, separate toolchain)
+tg-archive/
+
 # Deployment hand-off documents and customer bundles
 delivery/
 

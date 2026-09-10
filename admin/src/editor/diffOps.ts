@@ -84,9 +84,7 @@ function questionCreateBody(question: DiffQuestion): Record<string, unknown> {
     ...(question.description ? { description: question.description } : {}),
     ...(question.pageId !== null ? { pageId: question.pageId } : {}),
     ...(question.options.length ? { options: question.options.map((option) => ({ label: option.label })) } : {}),
-    ...(question.columns.length
-      ? { settings: { columns: question.columns } }
-      : {}),
+    ...(question.columns.length ? { settings: { columns: question.columns } } : {}),
   };
 }
 
@@ -235,7 +233,12 @@ export function buildOpsFromDiff(
   }
 
   const targetOrder = target.questions.map((question) => question.id);
-  if (!sameOrder(baseline.questions.map((question) => question.id), targetOrder)) {
+  if (
+    !sameOrder(
+      baseline.questions.map((question) => question.id),
+      targetOrder,
+    )
+  ) {
     ops.push({
       key: ids.key(),
       method: "POST",

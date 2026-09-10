@@ -28,6 +28,12 @@ import {
   setQuestionSkipRule,
 } from "../db/repositories/question.repository";
 import { getUserByTelegramId, markBotStarted } from "../db/repositories/user.repository";
+import {
+  countResponsesForParticipantKey,
+  getParticipantLink,
+  linkResponsesToUser,
+  upsertParticipantLink,
+} from "../db/repositories/participant-link.repository";
 import { assertCanManageSurvey, canCreateSurvey, isAdmin } from "../services/permission.service";
 import {
   assertSurveyQuestionsEditable,
@@ -46,6 +52,7 @@ import { getSurveyFlow } from "../services/question.service";
 import { completeSession } from "../services/session.service";
 import { ADMIN_LOGIN_TTL_SECONDS, createBrowserLoginToken } from "../services/admin-session.service";
 import { createSurveyParticipantToken, SURVEY_PARTICIPANT_TOKEN_PARAM } from "../services/participant-session.service";
+import { loadSystemSettings } from "../services/system-settings.service";
 import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
 import type { SurveyQuestionView } from "../survey/engine";
 import {
@@ -105,11 +112,6 @@ import {
 } from "./image-generator-handler";
 import { clearResultVisualInteractionState } from "./result-visual-admin-handler";
 import { clearUiSession } from "../services/ui-session.service";
-import {
-  clearIdentityCardInteractionState,
-  handleIdentityCardCallback,
-  handleIdentityCardMessage,
-} from "./identity-card-handler";
 import { clearPlazaInteractionState, handlePlazaCallback, handlePlazaMessage } from "./plaza-handler";
 import { listVisualTemplates } from "../db/repositories/visual-template.repository";
 
@@ -136,6 +138,76 @@ async function getSurveyShareUrl(ctx: BotContext, surveyId: number): Promise<str
   return `https://t.me/${username}?start=survey_${surveyId}`;
 }
 
+/** Resolves and sends the bot entry that opens the configured profile questionnaire. */
+async function promptProfileQuestionnaire(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  isAdminUser: boolean,
+  messageId?: number,
+): Promise<void> {
+  const system = await loadSystemSettings(ctx.db);
+  const surveyId = Number(system.profileGallerySurveyId);
+  const survey = Number.isInteger(surveyId) && surveyId > 0 ? await getSurveyById(ctx.db, surveyId) : null;
+  if (!survey || survey.status !== "published") {
+    const text = isAdminUser
+      ? "🪪 个人资料问卷还未启用。\n\n请先在网页后台「系统设置」→ 个人画廊问卷 中选择一份已发布的问卷，然后在机器人里重试。"
+      : "🪪 个人资料问卷暂时还未开放，请稍后再来。";
+    const markup: InlineKeyboardMarkup = {
+      inline_keyboard: [[{ text: "返回主菜单", callback_data: "home:menu" }]],
+    };
+    if (messageId !== undefined) {
+      await renderScreen({
+        botToken: ctx.botToken,
+        chatId,
+        userId,
+        messageId,
+        screen: "PROFILE_UNAVAILABLE",
+        text,
+        replyMarkup: markup,
+      });
+    } else {
+      await sendMessage(ctx.botToken, chatId, text, markup);
+    }
+    return;
+  }
+
+  const participantParam =
+    ctx.webhookSecret && userId
+      ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${encodeURIComponent(
+          await createSurveyParticipantToken(ctx.webhookSecret, userId),
+        )}`
+      : "";
+  const fillUrl = ctx.origin ? `${ctx.origin}/s/${survey.id}?v=3${participantParam}` : null;
+  const shareUrl = await getSurveyShareUrl(ctx, survey.id);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [
+    ...(fillUrl ? [[{ text: "📝 填写我的个人资料", url: fillUrl }]] : []),
+    [{ text: "📤 分享这份问卷给朋友", url: shareUrl }],
+    [{ text: "返回主菜单", callback_data: "home:menu" }],
+  ];
+  const text = [
+    `🪪 个人资料 · ${survey.title}`,
+    "",
+    "点下方按钮在网页上填写资料并上传照片。",
+    "提交时勾选「发布到个人画廊」，朋友就能在广场看到你的资料卡。",
+    "",
+    "也可以把这份问卷分享给朋友，让大家一起填写。",
+  ].join("\n");
+  if (messageId !== undefined) {
+    await renderScreen({
+      botToken: ctx.botToken,
+      chatId,
+      userId,
+      messageId,
+      screen: "PROFILE_START",
+      text,
+      replyMarkup: { inline_keyboard: rows },
+    });
+  } else {
+    await sendMessage(ctx.botToken, chatId, text, { inline_keyboard: rows });
+  }
+}
+
 async function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
@@ -148,14 +220,17 @@ async function buildHomeKeyboard(
     webhookSecret && userId
       ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(webhookSecret, userId, from ?? undefined)}`
       : "";
+  const trialUrl = origin ? `${origin}/trial${participantParam ? `?${participantParam.slice(1)}` : ""}` : null;
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     origin
       ? [{ text: "浏览问卷", url: `${origin}/s?v=3${participantParam}` }]
       : [{ text: "浏览问卷", callback_data: "home:surveys" }],
-    [{ text: "🪪 身份认证卡", callback_data: "identity:list" }],
+    [{ text: "🪪 我的个人资料", callback_data: "profile:start" }],
     origin
-      ? [{ text: "🏛 广场", url: `${origin}/plaza` }]
-      : [{ text: "🏛 广场 · 树洞与资料卡", callback_data: "plaza:list" }],
+      ? [{ text: "🌳 树洞", url: `${origin}/plaza?tab=treehole` }]
+      : [{ text: "🌳 树洞", callback_data: "plaza:treehole:0" }],
+    origin ? [{ text: "🏛 广场", url: `${origin}/plaza` }] : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
+    ...(trialUrl ? [[{ text: "🎯 挑战任务", url: trialUrl }]] : []),
   ];
   if (creator) {
     if (origin) {
@@ -179,8 +254,8 @@ async function showHomeMenu(
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
   const text = creator
-    ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-    : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。";
+    ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+    : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。";
   await renderScreen({
     botToken: ctx.botToken,
     chatId,
@@ -1640,7 +1715,6 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       clearResultVisualInteractionState(ctx, userId),
       clearBuilderInteractionState(ctx, userId),
       clearAdminInteractionState(ctx, userId),
-      clearIdentityCardInteractionState(ctx, userId),
       clearPlazaInteractionState(ctx, userId, message.chat.id),
       ctx.ui ? clearUiSession(ctx.ui, userId, message.chat.id).catch(() => undefined) : Promise.resolve(undefined),
     ]);
@@ -1648,6 +1722,38 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       if (result.status === "rejected") {
         console.warn("Start command interaction cleanup failed; continuing", result.reason);
       }
+    }
+    const linkKey = payload?.match(/^link_([A-Za-z0-9_-]{8,64})$/)?.[1];
+    if (linkKey) {
+      if (!dbUser) {
+        await sendMessage(ctx.botToken, message.chat.id, "请先发送 /start 完成初始化，再重新打开绑定链接。");
+        return;
+      }
+      const existing = await getParticipantLink(ctx.db, linkKey);
+      if (existing) {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          existing.userId === dbUser.id
+            ? "✅ 这个网页已经绑定到你的 Telegram 账号，无需重复操作。"
+            : "⚠️ 这个网页绑定码已经关联了其他 Telegram 账号，不能重复使用。如果这是你的网页，请先清空浏览器站点数据后重新填写。",
+        );
+        return;
+      }
+      await upsertParticipantLink(ctx.db, { participantKey: linkKey, userId: dbUser.id });
+      await linkResponsesToUser(ctx.db, { participantKey: linkKey, userId: dbUser.id });
+      const total = await countResponsesForParticipantKey(ctx.db, linkKey);
+      const displayName = message.from?.username
+        ? `@${message.from.username}`
+        : [message.from?.first_name, message.from?.last_name].filter(Boolean).join(" ") || `用户 ${userId}`;
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        `✅ 已关联 Telegram（${displayName}）\n\n` +
+          `这个网页留下的 ${total} 份答卷记录已并入你的账号，之后从这个网页填写也会自动计入。\n\n` +
+          "绑定链接相当于网页身份钥匙，请勿转发给他人。",
+      );
+      return;
     }
     if (Number.isSafeInteger(surveyId) && surveyId > 0) {
       if (ctx.origin) {
@@ -1671,8 +1777,8 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
       text: creator
-        ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-        : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+        ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+        : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
       replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
@@ -1714,7 +1820,6 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       clearResultVisualInteractionState(ctx, userId),
       clearBuilderInteractionState(ctx, userId),
       clearAdminInteractionState(ctx, userId),
-      clearIdentityCardInteractionState(ctx, userId),
       clearPlazaInteractionState(ctx, userId, message.chat.id),
     ]);
     const activeResponse = dbUserId ? await getActiveResponseByUser(ctx.db, dbUserId) : null;
@@ -1908,8 +2013,8 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
       text: creator
-        ? "快捷入口在下方。问卷创建和完整管理请进入网页后台。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+        ? "快捷入口在下方。问卷创建和完整管理请进入网页后台。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
       replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
@@ -1923,10 +2028,6 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
   }
 
   if (dbUser && (await handlePlazaMessage(ctx, message, dbUser.id))) {
-    return;
-  }
-
-  if (dbUser && (await handleIdentityCardMessage(ctx, message, dbUser.id))) {
     return;
   }
 
@@ -2032,8 +2133,8 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
   await renderUiScreen(ctx, message.chat.id, userId, {
     screen: "home",
     text: creator
-      ? "请在下方选择入口；问卷填写请在网页完成。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。"
-      : "请在下方选择“浏览问卷”开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @meiebhiebot。",
+      ? "请在下方选择入口；问卷填写请在网页完成。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
+      : "请在下方选择“浏览问卷”开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
     replyMarkup: await buildHomeKeyboard(
       creator,
       Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
@@ -2062,10 +2163,6 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
     return;
   }
 
-  if (await handleIdentityCardCallback(ctx, callback, dbUserId)) {
-    return;
-  }
-
   if (await handlePlazaCallback(ctx, callback, dbUserId)) {
     return;
   }
@@ -2077,6 +2174,18 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
   if (data === "home:menu") {
     await showHomeMenu(ctx, chatId, userId, dbUser, callback.message?.message_id, callback.from);
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data === "profile:start") {
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    await promptProfileQuestionnaire(
+      ctx,
+      chatId,
+      userId,
+      ctx.adminIds.includes(callback.from.id),
+      callback.message?.message_id,
+    );
     return;
   }
 

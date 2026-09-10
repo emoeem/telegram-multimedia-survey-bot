@@ -50,40 +50,37 @@ export async function setUserBan(
   userId: number,
   input: { banned: boolean; bannedBy: number | null; reason?: string | null },
 ): Promise<void> {
-  await db.prepare(
-    `UPDATE users SET banned_at = ?, banned_by = ?, ban_reason = ?, updated_at = ? WHERE id = ?`,
-  ).bind(
-    input.banned ? nowIso() : null,
-    input.banned ? input.bannedBy : null,
-    input.banned ? input.reason?.trim().slice(0, 240) || null : null,
-    nowIso(),
-    userId,
-  ).run();
+  await db
+    .prepare(`UPDATE users SET banned_at = ?, banned_by = ?, ban_reason = ?, updated_at = ? WHERE id = ?`)
+    .bind(
+      input.banned ? nowIso() : null,
+      input.banned ? input.bannedBy : null,
+      input.banned ? input.reason?.trim().slice(0, 240) || null : null,
+      nowIso(),
+      userId,
+    )
+    .run();
 }
 
 export async function cancelActiveResponsesForUser(db: D1Database, userId: number): Promise<void> {
-  await db.prepare(
-    `UPDATE survey_responses SET status = 'cancelled', updated_at = ?
+  await db
+    .prepare(
+      `UPDATE survey_responses SET status = 'cancelled', updated_at = ?
      WHERE user_id = ? AND status = 'in_progress'`,
-  ).bind(nowIso(), userId).run();
+    )
+    .bind(nowIso(), userId)
+    .run();
 }
 
-export async function markBotStarted(
-  db: D1Database,
-  telegramUserId: number,
-): Promise<void> {
+export async function markBotStarted(db: D1Database, telegramUserId: number): Promise<void> {
   const timestamp = nowIso();
-  await db.prepare(
-    "UPDATE users SET bot_started_at = COALESCE(bot_started_at, ?), updated_at = ? WHERE telegram_user_id = ?",
-  ).bind(timestamp, timestamp, telegramUserId).run();
+  await db
+    .prepare("UPDATE users SET bot_started_at = COALESCE(bot_started_at, ?), updated_at = ? WHERE telegram_user_id = ?")
+    .bind(timestamp, timestamp, telegramUserId)
+    .run();
 }
 
-export async function listBotUsers(
-  db: D1Database,
-  limit = 8,
-  offset = 0,
-  search = "",
-): Promise<BotUserDirectoryPage> {
+export async function listBotUsers(db: D1Database, limit = 8, offset = 0, search = ""): Promise<BotUserDirectoryPage> {
   const safeLimit = Math.min(Math.max(limit, 1), 30);
   const safeOffset = Math.max(offset, 0);
   const normalizedSearch = search.trim().slice(0, 80);
@@ -97,10 +94,12 @@ export async function listBotUsers(
     : "bot_started_at IS NOT NULL";
   const bindings = normalizedSearch ? [numericId ?? -1, normalizedSearch, like, like] : [];
   const [items, count] = await db.batch([
-    db.prepare(
-      `SELECT * FROM users WHERE ${where}
+    db
+      .prepare(
+        `SELECT * FROM users WHERE ${where}
        ORDER BY bot_started_at DESC, id DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, safeLimit, safeOffset),
+      )
+      .bind(...bindings, safeLimit, safeOffset),
     db.prepare(`SELECT COUNT(*) AS count FROM users WHERE ${where}`).bind(...bindings),
   ]);
   return {
@@ -109,10 +108,7 @@ export async function listBotUsers(
   };
 }
 
-export async function getUserByTelegramId(
-  db: D1Database,
-  telegramUserId: number,
-): Promise<User | null> {
+export async function getUserByTelegramId(db: D1Database, telegramUserId: number): Promise<User | null> {
   const row = await db
     .prepare("SELECT * FROM users WHERE telegram_user_id = ? LIMIT 1")
     .bind(telegramUserId)
@@ -194,9 +190,7 @@ export async function upsertUser(
 }
 
 export async function listUsers(db: D1Database): Promise<User[]> {
-  const result = await db
-    .prepare("SELECT * FROM users ORDER BY id ASC")
-    .all<UserRow>();
+  const result = await db.prepare("SELECT * FROM users ORDER BY id ASC").all<UserRow>();
 
   return (result.results ?? []).map(mapUser);
 }
@@ -297,27 +291,17 @@ export async function listUserDirectory(
          LIMIT ? OFFSET ?`,
       )
       .bind(...binds, limit, offset),
-    db
-      .prepare(`SELECT COUNT(*) AS count FROM users u ${whereSql}`)
-      .bind(...binds),
-  ])) as [
-    D1Result<UserDirectoryRow>,
-    D1Result<{ count: number }>,
-  ];
+    db.prepare(`SELECT COUNT(*) AS count FROM users u ${whereSql}`).bind(...binds),
+  ])) as [D1Result<UserDirectoryRow>, D1Result<{ count: number }>];
   return {
     items: (itemsResult.results ?? []).map(mapDirectoryRow),
     total: Number(countResult.results?.[0]?.count ?? 0),
   };
 }
 
-export async function listUserTags(
-  db: D1Database,
-  userId: number,
-): Promise<string[]> {
+export async function listUserTags(db: D1Database, userId: number): Promise<string[]> {
   const result = await db
-    .prepare(
-      `SELECT tag FROM user_tags WHERE user_id = ? ORDER BY id ASC`,
-    )
+    .prepare(`SELECT tag FROM user_tags WHERE user_id = ? ORDER BY id ASC`)
     .bind(userId)
     .all<{ tag: string }>();
   return (result.results ?? []).map((row) => row.tag);
@@ -341,15 +325,8 @@ export async function addUserTag(
     .run();
 }
 
-export async function removeUserTag(
-  db: D1Database,
-  userId: number,
-  tag: string,
-): Promise<void> {
-  await db
-    .prepare(`DELETE FROM user_tags WHERE user_id = ? AND tag = ?`)
-    .bind(userId, tag)
-    .run();
+export async function removeUserTag(db: D1Database, userId: number, tag: string): Promise<void> {
+  await db.prepare(`DELETE FROM user_tags WHERE user_id = ? AND tag = ?`).bind(userId, tag).run();
 }
 
 export interface UserContentSummary {
@@ -363,19 +340,32 @@ export interface UserContentSummary {
 export async function listUserResponses(
   db: D1Database,
   userId: number,
-  limit = 20,
-): Promise<UserContentSummary[]> {
-  const result = await db
-    .prepare(
-      `SELECT r.id AS responseId, r.survey_id AS surveyId, s.title AS surveyTitle,
-              r.status, r.completed_at AS completedAt
-       FROM survey_responses r
-       JOIN surveys s ON s.id = r.survey_id
-       WHERE r.user_id = ?
-       ORDER BY r.id DESC
-       LIMIT ?`,
-    )
-    .bind(userId, limit)
-    .all<UserContentSummary>();
-  return result.results ?? [];
+  input: { limit?: number; offset?: number } = {},
+): Promise<{ items: UserContentSummary[]; total: number }> {
+  const limit = Math.min(100, Math.max(1, input.limit ?? 20));
+  const offset = Math.max(0, input.offset ?? 0);
+  const [itemsResult, countResult] = (await db.batch([
+    db
+      .prepare(
+        `SELECT r.id AS responseId, r.survey_id AS surveyId, s.title AS surveyTitle,
+                r.status, r.completed_at AS completedAt
+         FROM survey_responses r
+         JOIN surveys s ON s.id = r.survey_id
+         WHERE r.user_id = ?
+         ORDER BY r.id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .bind(userId, limit, offset),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM survey_responses r
+         WHERE r.user_id = ?`,
+      )
+      .bind(userId),
+  ])) as [D1Result<UserContentSummary>, D1Result<{ count: number }>];
+  return {
+    items: itemsResult.results ?? [],
+    total: Number(countResult.results?.[0]?.count ?? 0),
+  };
 }

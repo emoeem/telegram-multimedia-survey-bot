@@ -160,6 +160,19 @@ export async function deleteQuestionMedia(db: D1Database, questionMediaId: numbe
   await db.prepare("DELETE FROM question_media WHERE id = ?").bind(questionMediaId).run();
 }
 
+/** Removes every question_media binding between one question and one asset. */
+export async function deleteQuestionMediaByAsset(
+  db: D1Database,
+  questionId: number,
+  mediaAssetId: number,
+): Promise<number> {
+  const result = await db
+    .prepare("DELETE FROM question_media WHERE question_id = ? AND media_asset_id = ?")
+    .bind(questionId, mediaAssetId)
+    .run();
+  return result.meta?.changes ?? 0;
+}
+
 export async function createAnswerMedia(
   db: D1Database,
   input: {
@@ -351,4 +364,17 @@ export async function listOptionMediaByOptionIds(
 
 export async function deleteOptionMedia(db: D1Database, optionMediaId: number): Promise<void> {
   await db.prepare("DELETE FROM option_media WHERE id = ?").bind(optionMediaId).run();
+}
+
+/** Removes every option_media binding between one option and one asset. */
+export async function deleteOptionMediaByAsset(
+  db: D1Database,
+  questionOptionId: number,
+  mediaAssetId: number,
+): Promise<number> {
+  const result = await db
+    .prepare("DELETE FROM option_media WHERE question_option_id = ? AND media_asset_id = ?")
+    .bind(questionOptionId, mediaAssetId)
+    .run();
+  return result.meta?.changes ?? 0;
 }

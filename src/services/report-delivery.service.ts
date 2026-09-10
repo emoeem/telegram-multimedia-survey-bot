@@ -58,16 +58,14 @@ export async function enqueueReportDelivery(
       });
     } catch {
       // Race: another submit created the row first.
-      delivery = (await getReportDeliveryByDeliveryId(db, deliveryId)) ??
+      delivery =
+        (await getReportDeliveryByDeliveryId(db, deliveryId)) ??
         (await getReportDeliveryByResponseId(db, input.responseId));
       if (!delivery) throw new Error("Failed to create report delivery");
     }
   }
 
-  const shouldQueue =
-    input.force === true ||
-    delivery.status === "pending" ||
-    delivery.status === "failed";
+  const shouldQueue = input.force === true || delivery.status === "pending" || delivery.status === "failed";
   if (!shouldQueue) {
     return { delivery, queued: false };
   }

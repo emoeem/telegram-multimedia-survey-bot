@@ -38,11 +38,6 @@ import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
 import { handleResultVisualAdminCallback, handleResultVisualAdminMessage } from "./result-visual-admin-handler";
 import { handleImageGeneratorAdminMessage, handleImageGeneratorCallback } from "./image-generator-handler";
-import {
-  clearIdentityCardAccessCode,
-  getIdentityCardAccessSetting,
-  setIdentityCardAccessCode,
-} from "../db/repositories/feature-access.repository";
 import { hashSurveyAccessCode } from "../core/security";
 
 const surveyStatusLabels = {
@@ -91,10 +86,6 @@ function adminUserSearchKey(userId: number): string {
 function adminUserSearchInputKey(userId: number): string {
   return `admin-user-search-input:${userId}`;
 }
-function identityCardPasswordInputKey(userId: number): string {
-  return `admin-identity-card-password:${userId}`;
-}
-
 export async function clearAdminInteractionState(ctx: BotContext, userId: number): Promise<void> {
   await Promise.all([
     ctx.cache?.delete(adminSurveySearchInputKey(userId)),
@@ -103,7 +94,6 @@ export async function clearAdminInteractionState(ctx: BotContext, userId: number
     ctx.cache?.delete(adminUserSearchInputKey(userId)),
     ctx.cache?.delete(licenseIssueStateKey(userId)),
     ctx.cache?.delete(creatorTrialIssueStateKey(userId)),
-    ctx.cache?.delete(identityCardPasswordInputKey(userId)),
   ]);
 }
 
@@ -147,7 +137,9 @@ async function showAdminHome(ctx: BotContext, chatId: number, userId: number, me
       [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
       ctx.origin
         ? [{ text: "🏛 广场", url: `${ctx.origin}/plaza` }]
-        : [{ text: "🏛 广场 · 树洞与资料卡", callback_data: "plaza:list" }],
+        : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
+      ...(ctx.origin ? [[{ text: "🎯 挑战任务", url: `${ctx.origin}/trial` }]] : []),
+      ...(ctx.origin ? [[{ text: "⚙️ 任务包管理", url: `${ctx.origin}/admin/task-packs` }]] : []),
     ],
   };
   if (messageId !== undefined) {
@@ -155,38 +147,6 @@ async function showAdminHome(ctx: BotContext, chatId: number, userId: number, me
     return;
   }
   await sendMessage(ctx.botToken, chatId, text, replyMarkup);
-}
-
-async function showIdentityCardPasswordSettings(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  messageId?: number,
-): Promise<void> {
-  const setting = await getIdentityCardAccessSetting(ctx.db);
-  const text = setting
-    ? `🔐 图片生成密码\n\n状态：已开启\n普通用户首次制作身份卡时必须输入密码；改密会让旧授权自动失效。\n最后更新：${formatDate(setting.updatedAt)}`
-    : "🔐 图片生成密码\n\n状态：未设置（普通用户无法使用身份卡图片生成功能）。\n管理员可直接测试制作，设置密码后才会开放给普通用户。";
-  const replyMarkup: InlineKeyboardMarkup = {
-    inline_keyboard: [
-      [{ text: setting ? "✏️ 更换密码" : "➕ 设置密码", callback_data: "admin:identity_password_set" }],
-      ...(setting ? [[{ text: "⛔ 停用普通用户使用", callback_data: "admin:identity_password_clear" }]] : []),
-      [{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }],
-    ],
-  };
-  if (messageId !== undefined) {
-    await renderScreen({
-      botToken: ctx.botToken,
-      chatId,
-      userId,
-      messageId,
-      screen: "ADMIN_IDENTITY_PASSWORD",
-      text,
-      replyMarkup,
-    });
-  } else {
-    await sendMessage(ctx.botToken, chatId, text, replyMarkup);
-  }
 }
 
 function userDisplayName(user: Awaited<ReturnType<typeof listBotUsers>>["users"][number]): string {
@@ -977,31 +937,6 @@ export async function handleAdminMessage(ctx: BotContext, message: TelegramMessa
   }
 
   if (text && userId && ctx.cache) {
-    const identityPasswordMode = await ctx.cache.get(identityCardPasswordInputKey(userId));
-    if (identityPasswordMode === "1") {
-      const user = await getUserByTelegramId(ctx.db, userId);
-      if (!user || !isAdmin(user.telegramUserId, ctx.adminIds)) return false;
-      if (text === "/cancel") {
-        await ctx.cache.delete(identityCardPasswordInputKey(userId));
-        await showIdentityCardPasswordSettings(ctx, message.chat.id, userId);
-        return true;
-      }
-      if (!text.startsWith("/")) {
-        if (text.length < 4 || text.length > 64) {
-          await sendMessage(ctx.botToken, message.chat.id, "密码长度需要为 4 到 64 个字符；发送 /cancel 取消。");
-          return true;
-        }
-        await setIdentityCardAccessCode(ctx.db, await hashSurveyAccessCode(text));
-        await ctx.cache.delete(identityCardPasswordInputKey(userId));
-        await sendMessage(
-          ctx.botToken,
-          message.chat.id,
-          "✅ 图片生成功能密码已保存。普通用户现在需要先输入该密码才能制作身份卡。",
-        );
-        await showIdentityCardPasswordSettings(ctx, message.chat.id, userId);
-        return true;
-      }
-    }
     const userSearchMode = await ctx.cache.get(adminUserSearchInputKey(userId));
     if (userSearchMode === "1") {
       const user = await getUserByTelegramId(ctx.db, userId);
@@ -1193,34 +1128,6 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
   if (data === "admin:home") {
     await showAdminHome(ctx, chatId, userId, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
-    return true;
-  }
-
-  if (data === "admin:identity_password") {
-    await showIdentityCardPasswordSettings(ctx, chatId, userId, callback.message?.message_id);
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return true;
-  }
-
-  if (data === "admin:identity_password_set") {
-    if (!ctx.cache) {
-      await answerCallbackQuery(ctx.botToken, callback.id, "当前部署未启用密码设置");
-      return true;
-    }
-    await ctx.cache.put(identityCardPasswordInputKey(userId), "1", { expirationTtl: 15 * 60 });
-    await sendMessage(
-      ctx.botToken,
-      chatId,
-      "请输入图片生成功能的新密码（4-64 个字符）；发送 /cancel 取消。\n\n密码只保存校验摘要，无法被机器人读取或显示。",
-    );
-    await answerCallbackQuery(ctx.botToken, callback.id);
-    return true;
-  }
-
-  if (data === "admin:identity_password_clear") {
-    await clearIdentityCardAccessCode(ctx.db);
-    await showIdentityCardPasswordSettings(ctx, chatId, userId, callback.message?.message_id);
-    await answerCallbackQuery(ctx.botToken, callback.id, "已停用普通用户图片生成");
     return true;
   }
 

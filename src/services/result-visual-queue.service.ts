@@ -1,8 +1,4 @@
-import {
-  createRenderJob,
-  failRenderJob,
-  findActiveRenderJob,
-} from "../db/repositories/result-visual.repository";
+import { createRenderJob, failRenderJob, findActiveRenderJob } from "../db/repositories/result-visual.repository";
 import type { RenderJob } from "../db/schema";
 
 export interface ResultVisualJobMessage {
@@ -10,9 +6,7 @@ export interface ResultVisualJobMessage {
   jobId: number;
 }
 
-export type ResultVisualEnqueueResult =
-  | { status: "queued"; job: RenderJob }
-  | { status: "processing"; job: RenderJob };
+export type ResultVisualEnqueueResult = { status: "queued"; job: RenderJob } | { status: "processing"; job: RenderJob };
 
 export function isResultVisualJobMessage(value: unknown): value is ResultVisualJobMessage {
   if (!value || typeof value !== "object") return false;
@@ -33,12 +27,7 @@ export async function enqueueResultVisualJob(
   },
 ): Promise<ResultVisualEnqueueResult> {
   const forceRegenerate = input.forceRegenerate === true;
-  const activeJob = await findActiveRenderJob(
-    db,
-    input.resultProfileId,
-    input.templateId,
-    input.templateVersion,
-  );
+  const activeJob = await findActiveRenderJob(db, input.resultProfileId, input.templateId, input.templateVersion);
   if (activeJob) {
     return activeJob.status === "processing"
       ? { status: "processing", job: activeJob }
@@ -56,16 +45,9 @@ export async function enqueueResultVisualJob(
     // partial unique index (0035) rejects the loser, which then attaches to
     // the winning job instead of rendering twice.
     if (!String(error).includes("UNIQUE constraint failed")) throw error;
-    const winner = await findActiveRenderJob(
-      db,
-      input.resultProfileId,
-      input.templateId,
-      input.templateVersion,
-    );
+    const winner = await findActiveRenderJob(db, input.resultProfileId, input.templateId, input.templateVersion);
     if (!winner) throw error;
-    return winner.status === "processing"
-      ? { status: "processing", job: winner }
-      : { status: "queued", job: winner };
+    return winner.status === "processing" ? { status: "processing", job: winner } : { status: "queued", job: winner };
   }
   try {
     await queue.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);

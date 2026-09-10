@@ -1,18 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Eye,
-  FilePlus2,
-  Pencil,
-  Redo2,
-  Rocket,
-  Save,
-  Undo2,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, FilePlus2, Pencil, Redo2, Rocket, Save, Undo2 } from "lucide-react";
 import { useApi } from "../hooks";
-import { ApiError, apiSend, type EditorData, type PublishResult, type WriteResult } from "../api";
+import { ApiError, apiSend, apiUpload, type EditorData, type PublishResult, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { QuestionCard, editableTypeList } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
@@ -27,9 +17,7 @@ import { formatDateTime, matrixColumns } from "../format";
 // Dirty state protects browser and SPA navigation; stale writes require reload.
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
-  const { data, error, retry } = useApi<EditorData>(
-    id ? `/api/admin/surveys/${id}/editor` : null,
-  );
+  const { data, error, retry } = useApi<EditorData>(id ? `/api/admin/surveys/${id}/editor` : null);
 
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={6} />;
@@ -41,9 +29,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   const editor = useSurveyEditor(data);
   const navigate = useNavigate();
   const [selection, setSelection] = useState<BuilderSelection>(() =>
-    data.questions.length
-      ? { kind: "question", id: data.questions[0]!.id }
-      : { kind: "settings" },
+    data.questions.length ? { kind: "question", id: data.questions[0]!.id } : { kind: "settings" },
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -82,11 +68,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   useEffect(() => {
     if (selection.kind !== "question") return;
     if (!editor.questions.some((question) => question.id === selection.id)) {
-      setSelection(
-        editor.questions.length
-          ? { kind: "question", id: editor.questions[0]!.id }
-          : { kind: "settings" },
-      );
+      setSelection(editor.questions.length ? { kind: "question", id: editor.questions[0]!.id } : { kind: "settings" });
     }
   }, [editor.questions, selection]);
 
@@ -96,8 +78,7 @@ function EditableEditor({ data }: { data: EditorData }) {
     [editor.questions, survey.id],
   );
   const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      editor.dirty && currentLocation.pathname !== nextLocation.pathname,
+    ({ currentLocation, nextLocation }) => editor.dirty && currentLocation.pathname !== nextLocation.pathname,
   );
 
   useEffect(() => {
@@ -107,9 +88,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   }, [blocker]);
 
   const selectedQuestion =
-    selection.kind === "question"
-      ? editor.questions.find((question) => question.id === selection.id) ?? null
-      : null;
+    selection.kind === "question" ? (editor.questions.find((question) => question.id === selection.id) ?? null) : null;
   const questionIndex = selectedQuestion
     ? editor.questions.findIndex((question) => question.id === selectedQuestion.id)
     : -1;
@@ -144,6 +123,10 @@ function EditableEditor({ data }: { data: EditorData }) {
       number: { title: "新的数字题" },
       date: { title: "新的日期题" },
       time: { title: "新的时间题" },
+      image: { title: "上传照片（资料卡图片题）" },
+      video: { title: "上传视频题" },
+      audio: { title: "上传音频题" },
+      file: { title: "上传文件题" },
     };
     const draft = defaults[type] ?? { title: "新题目" };
     const tempId = editor.addQuestion({ type, ...draft });
@@ -170,6 +153,63 @@ function EditableEditor({ data }: { data: EditorData }) {
       editor.discardAndReload();
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "复制选项失败");
+    }
+  };
+
+  const flushDraft = async (): Promise<boolean> => {
+    if (editor.dirty && !(await editor.save())) return false;
+    return true;
+  };
+
+  const attachQuestionMedia = async (questionId: number, file: File): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiUpload(`/api/admin/surveys/${survey.id}/questions/${questionId}/media`, file);
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "上传题面附件失败");
+      return false;
+    }
+  };
+
+  const removeQuestionMedia = async (questionId: number, mediaAssetId: number): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiSend("DELETE", `/api/admin/surveys/${survey.id}/questions/${questionId}/media/${mediaAssetId}`);
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "移除题面附件失败");
+      return false;
+    }
+  };
+
+  const attachOptionMedia = async (optionId: number, file: File): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiUpload(`/api/admin/surveys/${survey.id}/options/${optionId}/media`, file);
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "上传选项媒体失败");
+      return false;
+    }
+  };
+
+  const removeOptionMedia = async (optionId: number, mediaAssetId: number): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiSend("DELETE", `/api/admin/surveys/${survey.id}/options/${optionId}/media/${mediaAssetId}`);
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "移除选项媒体失败");
+      return false;
     }
   };
 
@@ -291,15 +331,13 @@ function EditableEditor({ data }: { data: EditorData }) {
           >
             <Redo2 className="h-4 w-4" />
           </button>
-          <button
-            className="btn btn-sm"
-            disabled={editor.saveState === "saving"}
-            onClick={() => editor.save()}
-          >
-            <Save className="h-4 w-4" />保存
+          <button className="btn btn-sm" disabled={editor.saveState === "saving"} onClick={() => editor.save()}>
+            <Save className="h-4 w-4" />
+            保存
           </button>
           <button className="btn btn-sm" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
-            <Eye className="h-4 w-4" />预览
+            <Eye className="h-4 w-4" />
+            预览
           </button>
           <button
             className="btn btn-sm btn-accent"
@@ -307,16 +345,19 @@ function EditableEditor({ data }: { data: EditorData }) {
             title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
             onClick={publish}
           >
-            {publishing ? "发布中…" : <><Rocket className="h-4 w-4" />发布</>}
+            {publishing ? (
+              "发布中…"
+            ) : (
+              <>
+                <Rocket className="h-4 w-4" />
+                发布
+              </>
+            )}
           </button>
         </div>
       </header>
 
-      {publishError ? (
-        <div className="alert alert-error">
-          操作失败：{publishError}
-        </div>
-      ) : null}
+      {publishError ? <div className="alert alert-error">操作失败：{publishError}</div> : null}
       {editor.saveError ? (
         <div className="alert alert-error">
           <span>
@@ -370,6 +411,10 @@ function EditableEditor({ data }: { data: EditorData }) {
                 onDelete={(questionId) => editor.deleteQuestion(questionId)}
                 onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
                 onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
+                onAttachQuestionMedia={(questionId, file) => attachQuestionMedia(questionId, file)}
+                onRemoveQuestionMedia={(questionId, mediaAssetId) => removeQuestionMedia(questionId, mediaAssetId)}
+                onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
+                onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
                 allQuestions={editor.questions}
                 pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
               />
@@ -379,7 +424,8 @@ function EditableEditor({ data }: { data: EditorData }) {
                   disabled={questionIndex <= 0}
                   onClick={() => questionIndex > 0 && selectQuestion(editor.questions[questionIndex - 1]!.id)}
                 >
-                  <ArrowLeft className="h-4 w-4" />上一题
+                  <ArrowLeft className="h-4 w-4" />
+                  上一题
                 </button>
                 <span className="q-nav-position">
                   第 {questionIndex + 1} / {editor.questions.length} 题
@@ -392,42 +438,40 @@ function EditableEditor({ data }: { data: EditorData }) {
                     selectQuestion(editor.questions[questionIndex + 1]!.id)
                   }
                 >
-                  下一题<ArrowRight className="h-4 w-4" />
+                  下一题
+                  <ArrowRight className="h-4 w-4" />
                 </button>
-              </div>
-              <div className="add-question-wrap mt-3">
-                <button
-                  className="btn w-full"
-                  disabled={editingDisabled}
-                  onClick={() => setPickerOpen((open) => !open)}
-                >
-                  <FilePlus2 className="h-4 w-4" />添加题目
-                </button>
-                {pickerOpen ? (
-                  <div className="add-question-menu is-inline">
-                    <div className="add-question-menu-title">选择题型</div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {editableTypeList().map(({ type, label }) => (
-                        <button
-                          key={type}
-                          className="add-question-item"
-                          disabled={editingDisabled}
-                          onClick={() => addDefaultQuestion(type)}
-                        >
-                          <span className="truncate">{label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="px-2 pb-1 pt-2 text-[11px]" style={{ color: "var(--color-muted-soft)" }}>
-                      图片 / 视频 / 音频 / 文件题请在 Bot 内创建后回到此处编辑文字部分。
-                    </p>
-                  </div>
-                ) : null}
               </div>
             </>
           ) : (
-            <EmptyPanel text="这份问卷还没有题目，点击「添加题目」开始" />
+            <EmptyPanel text="这份问卷还没有题目，点击下方「添加题目」开始" />
           )}
+          <div className="add-question-wrap mt-3">
+            <button className="btn w-full" disabled={editingDisabled} onClick={() => setPickerOpen((open) => !open)}>
+              <FilePlus2 className="h-4 w-4" />
+              添加题目
+            </button>
+            {pickerOpen ? (
+              <div className="add-question-menu is-inline">
+                <div className="add-question-menu-title">选择题型</div>
+                <div className="grid grid-cols-2 gap-1">
+                  {editableTypeList().map(({ type, label }) => (
+                    <button
+                      key={type}
+                      className="add-question-item"
+                      disabled={editingDisabled}
+                      onClick={() => addDefaultQuestion(type)}
+                    >
+                      <span className="truncate">{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="px-2 pb-1 pt-2 text-[11px]" style={{ color: "var(--color-muted-soft)" }}>
+                  图片 / 视频 / 音频 / 文件上传题由作答者上传对应媒体；题干与选项附件可在题卡内直接上传。
+                </p>
+              </div>
+            ) : null}
+          </div>
         </main>
 
         <aside className="editor-preview editor-col">
@@ -659,7 +703,8 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
         </div>
         <div className="editor-actions">
           <button className="btn btn-sm" onClick={() => setPreviewOpen(true)}>
-            <Eye className="h-4 w-4" />预览
+            <Eye className="h-4 w-4" />
+            预览
           </button>
           <button className="btn btn-sm btn-accent" disabled={duplicating} onClick={duplicateAsDraft}>
             {duplicating ? "复制中…" : "复制为新草稿"}
@@ -671,9 +716,7 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
         该问卷当前不可编辑（{survey.status !== "draft" ? "非草稿状态" : `已有 ${survey.responseCount} 份答卷`}）。
         复制为新草稿后编辑的入口将在后续批次提供；当前为只读视图。
       </div>
-      {duplicateError ? (
-        <div className="alert alert-error">复制失败：{duplicateError}</div>
-      ) : null}
+      {duplicateError ? <div className="alert alert-error">复制失败：{duplicateError}</div> : null}
 
       <div className="editor-body">
         <aside className="editor-structure editor-col">
@@ -729,19 +772,19 @@ function ReadOnlyTree({ questions }: { questions: EditorData["questions"] }) {
   );
 }
 
-function ReadOnlyQuestion({
-  question,
-  index,
-}: {
-  question: EditorData["questions"][number];
-  index: number;
-}) {
+function ReadOnlyQuestion({ question, index }: { question: EditorData["questions"][number]; index: number }) {
   return (
     <div className="q-editor">
       <div className="q-editor-head">
         <div className="q-badges">
           <span className="q-index">第 {index + 1} 题</span>
-          <span className="q-chip" style={{ background: "color-mix(in srgb, var(--color-primary) 13%, var(--surface))", color: "var(--color-primary)" }}>
+          <span
+            className="q-chip"
+            style={{
+              background: "color-mix(in srgb, var(--color-primary) 13%, var(--surface))",
+              color: "var(--color-primary)",
+            }}
+          >
             {question.type}
           </span>
           <span
@@ -761,9 +804,7 @@ function ReadOnlyQuestion({
         <div className="q-title-input" style={{ background: "var(--surface-input)", padding: "11px 13px" }}>
           {question.title || "未填写题目标题"}
         </div>
-        {question.description ? (
-          <div className="q-help">{question.description}</div>
-        ) : null}
+        {question.description ? <div className="q-help">{question.description}</div> : null}
         {question.options.length ? (
           <div className="grid gap-1.5">
             {question.options.map((option, optionIndex) => (
@@ -779,7 +820,9 @@ function ReadOnlyQuestion({
         {matrixColumns(question.settings).length ? (
           <div className="flex flex-wrap gap-1.5">
             {matrixColumns(question.settings).map((column) => (
-              <span key={column} className="q-column-chip">列：{column}</span>
+              <span key={column} className="q-column-chip">
+                列：{column}
+              </span>
             ))}
           </div>
         ) : null}

@@ -36,9 +36,7 @@ function resolveTheme(theme: AdminThemeId): ConcreteThemeId {
 export function getStoredTheme(): AdminThemeId {
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    return THEME_OPTIONS.some((option) => option.id === value)
-      ? (value as AdminThemeId)
-      : "system";
+    return THEME_OPTIONS.some((option) => option.id === value) ? (value as AdminThemeId) : "system";
   } catch {
     return "system";
   }

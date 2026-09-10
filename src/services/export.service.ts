@@ -20,22 +20,12 @@ export interface ResponseRow {
 
 const QUESTION_ID_BATCH_SIZE = 90;
 
-async function loadOptionLabels(
-  db: D1Database,
-  questionIds: number[],
-): Promise<Map<number, string>> {
+async function loadOptionLabels(db: D1Database, questionIds: number[]): Promise<Map<number, string>> {
   const optionLabels = new Map<number, string>();
   const uniqueQuestionIds = [...new Set(questionIds)];
 
-  for (
-    let start = 0;
-    start < uniqueQuestionIds.length;
-    start += QUESTION_ID_BATCH_SIZE
-  ) {
-    const questionIdBatch = uniqueQuestionIds.slice(
-      start,
-      start + QUESTION_ID_BATCH_SIZE,
-    );
+  for (let start = 0; start < uniqueQuestionIds.length; start += QUESTION_ID_BATCH_SIZE) {
+    const questionIdBatch = uniqueQuestionIds.slice(start, start + QUESTION_ID_BATCH_SIZE);
     const result = await db
       .prepare(
         `SELECT id, label
@@ -85,25 +75,32 @@ function answerValue(
       const parsed = JSON.parse(String(row["json_value"])) as unknown;
       if (
         column?.type === "matrix" &&
-        parsed && typeof parsed === "object" &&
-        "kind" in parsed && (parsed as { kind?: unknown }).kind === "matrix"
+        parsed &&
+        typeof parsed === "object" &&
+        "kind" in parsed &&
+        (parsed as { kind?: unknown }).kind === "matrix"
       ) {
         const selections = (parsed as { selections?: unknown }).selections;
         let columns: string[] = [];
         try {
-          const settings = column.settingsJson ? JSON.parse(column.settingsJson) as { columns?: unknown } : null;
-          columns = Array.isArray(settings?.columns) ? settings.columns.filter((item): item is string => typeof item === "string") : [];
-        } catch { /* keep raw column number below */ }
+          const settings = column.settingsJson ? (JSON.parse(column.settingsJson) as { columns?: unknown }) : null;
+          columns = Array.isArray(settings?.columns)
+            ? settings.columns.filter((item): item is string => typeof item === "string")
+            : [];
+        } catch {
+          /* keep raw column number below */
+        }
         if (selections && typeof selections === "object") {
           return Object.entries(selections as Record<string, unknown>)
-            .map(([rowId, columnIndex]) => `${optionLabels.get(Number(rowId)) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`)
+            .map(
+              ([rowId, columnIndex]) =>
+                `${optionLabels.get(Number(rowId)) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`,
+            )
             .join(" | ");
         }
       }
       if (Array.isArray(parsed)) {
-        return parsed
-          .map((optionId) => optionLabels.get(Number(optionId)) ?? String(optionId))
-          .join(" | ");
+        return parsed.map((optionId) => optionLabels.get(Number(optionId)) ?? String(optionId)).join(" | ");
       }
     } catch {
       // Fall through to the original JSON text.
@@ -132,20 +129,14 @@ export async function getExportRows(
 
   const titleCounts = new Map<string, number>();
   for (const question of questionsResult.results ?? []) {
-    titleCounts.set(
-      question.title,
-      (titleCounts.get(question.title) ?? 0) + 1,
-    );
+    titleCounts.set(question.title, (titleCounts.get(question.title) ?? 0) + 1);
   }
   const columns = (questionsResult.results ?? []).map((question) => ({
     id: question.id,
     title: question.title,
     type: question.type as QuestionType,
     settingsJson: question.settings_json,
-    key:
-      (titleCounts.get(question.title) ?? 0) > 1
-        ? `${question.title} (#${question.id})`
-        : question.title,
+    key: (titleCounts.get(question.title) ?? 0) > 1 ? `${question.title} (#${question.id})` : question.title,
   }));
   const optionLabels = await loadOptionLabels(
     db,
@@ -175,9 +166,7 @@ export async function getExportRows(
   const responseRows = responsesResult.results ?? [];
   const ANSWER_BATCH = 400;
   for (let offset = 0; offset < responseRows.length; offset += ANSWER_BATCH) {
-    const batch = responseRows
-      .slice(offset, offset + ANSWER_BATCH)
-      .map((row) => Number(row.response_id));
+    const batch = responseRows.slice(offset, offset + ANSWER_BATCH).map((row) => Number(row.response_id));
     const answersResult = await db
       .prepare(
         `SELECT
@@ -237,19 +226,13 @@ export function buildCsv(rows: ResponseRow[]): string {
 
   const csvCell = (value: unknown): string => {
     const rawText = value === null || value === undefined ? "" : String(value);
-    const text = /^[\t\r\n ]*[=+\-@]/.test(rawText)
-      ? `'${rawText}`
-      : rawText;
+    const text = /^[\t\r\n ]*[=+\-@]/.test(rawText) ? `'${rawText}` : rawText;
     return `"${text.replaceAll('"', '""')}"`;
   };
   const headers = Object.keys(rows[0] ?? {});
   const lines = [
     headers.map(csvCell).join(","),
-    ...rows.map((row) =>
-      headers
-        .map((header) => csvCell(row[header]))
-        .join(","),
-    ),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(",")),
   ];
 
   return lines.join("\n");

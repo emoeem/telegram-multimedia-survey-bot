@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   getUserByTelegramId: vi.fn(),
   getActiveResponseByUser: vi.fn(),
   getResponseById: vi.fn(),
+  getParticipantLink: vi.fn(),
+  upsertParticipantLink: vi.fn(),
+  linkResponsesToUser: vi.fn(),
+  countResponsesForParticipantKey: vi.fn(),
   getSurveyResultVisualSettings: vi.fn(),
   requestConfiguredResultVisual: vi.fn(),
   getBuilderState: vi.fn(),
@@ -21,6 +25,13 @@ vi.mock("../../../src/db/repositories/response.repository", async (importOrigina
   ...(await importOriginal<typeof import("../../../src/db/repositories/response.repository")>()),
   getActiveResponseByUser: mocks.getActiveResponseByUser,
   getResponseById: mocks.getResponseById,
+}));
+
+vi.mock("../../../src/db/repositories/participant-link.repository", () => ({
+  getParticipantLink: mocks.getParticipantLink,
+  upsertParticipantLink: mocks.upsertParticipantLink,
+  linkResponsesToUser: mocks.linkResponsesToUser,
+  countResponsesForParticipantKey: mocks.countResponsesForParticipantKey,
 }));
 
 vi.mock("../../../src/db/repositories/survey-result-visual-settings.repository", () => ({
@@ -145,6 +156,57 @@ describe("survey message routing", () => {
     const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"));
     expect(sendCall).toBeDefined();
     expect(JSON.parse(String((sendCall?.[1] as RequestInit).body)).text).toContain("欢迎使用问卷机器人");
+  });
+
+  it("links an anonymous participant key to the Telegram user via /start", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      username: "alice",
+      firstName: null,
+      lastName: null,
+      systemRole: "participant",
+    });
+    mocks.getParticipantLink.mockResolvedValue(null);
+    mocks.upsertParticipantLink.mockResolvedValue({ participantKey: "key", userId: 7, linkedAt: "" });
+    mocks.linkResponsesToUser.mockResolvedValue(2);
+    mocks.countResponsesForParticipantKey.mockResolvedValue(2);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx: BotContext = {
+      botToken: "token",
+      db: {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({ run: vi.fn(async () => ({ meta: { changes: 1 } })) })),
+        })),
+      } as unknown as D1Database,
+      session: {} as SurveySessionNamespace,
+      builder: {} as SurveyBuilderNamespace,
+      adminIds: [],
+      exportQueue: {} as Queue,
+    };
+    const participantKey = "a".repeat(32);
+
+    await handleTelegramMessage(ctx, {
+      message_id: 3,
+      chat: { id: 4 },
+      from: { id: 88, username: "alice" },
+      text: `/start link_${participantKey}`,
+    });
+
+    expect(mocks.getParticipantLink).toHaveBeenCalledWith(ctx.db, participantKey);
+    expect(mocks.upsertParticipantLink).toHaveBeenCalledWith(ctx.db, {
+      participantKey,
+      userId: 7,
+    });
+    expect(mocks.linkResponsesToUser).toHaveBeenCalledWith(ctx.db, {
+      participantKey,
+      userId: 7,
+    });
+    const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"));
+    expect(sendCall).toBeDefined();
+    expect(String((sendCall?.[1] as RequestInit).body)).toContain("已关联 Telegram");
   });
 
   it("shows a password management menu without requiring an internal id", async () => {
@@ -329,7 +391,7 @@ describe("survey message routing", () => {
     expect(body.text).toContain("浏览问卷");
     expect(body.text).not.toContain("/create");
     expect(body.text).not.toContain("/import");
-    expect(body.text).toContain("@meiebhiebot");
+    expect(body.text).toContain("@ehdhhsbot");
   });
 
   it("keeps creator shortcuts focused on my surveys and the web admin", async () => {

@@ -119,6 +119,8 @@ export async function getResponseDetail(
       submittedAt: response["submitted_at"] === null ? null : String(response["submitted_at"]),
       currentQuestionId: response["current_question_id"] === null ? null : Number(response["current_question_id"]),
       version: Number(response["version"]),
+      galleryPublished: Number(response["gallery_published"] ?? 0) === 1,
+      galleryPublishedAt: response["gallery_published_at"] === null ? null : String(response["gallery_published_at"]),
       createdAt: String(response["created_at"]),
       updatedAt: String(response["updated_at"]),
     },

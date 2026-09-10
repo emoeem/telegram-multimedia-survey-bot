@@ -1,4 +1,5 @@
 import { getTelegramInitData } from "../telegram";
+import { safeGet, safeSet } from "./storage";
 import { surveyDeviceHeaders } from "./deviceInfo";
 
 export interface SurveyMediaDto {
@@ -71,6 +72,11 @@ export interface SurveyThemeDto {
   };
 }
 
+export interface SurveyGalleryProfileDto {
+  enabled: true;
+  canPublish: boolean;
+}
+
 export interface SurveyDto {
   id: number;
   title: string;
@@ -80,8 +86,10 @@ export interface SurveyDto {
   allowMultiple: boolean;
   maxResponses: number;
   theme: SurveyThemeDto | null;
+  galleryProfile?: SurveyGalleryProfileDto;
   pages: SurveyPageDto[];
   questions: SurveyQuestionDto[];
+  communityGroupUrl: string | null;
 }
 
 export interface SurveyListItem {
@@ -95,25 +103,19 @@ export interface SurveyListItem {
   theme: SurveyThemeDto | null;
 }
 
-export type AnswerValue =
-  | number
-  | string
-  | number[]
-  | Record<string, number>
-  | { mediaAssetId: number }
-  | null;
+export type AnswerValue = number | string | number[] | Record<string, number> | { mediaAssetId: number } | null;
 
 let participantKey: string | null = null;
 
 export function getParticipantKey(): string {
   if (participantKey) return participantKey;
-  const stored = localStorage.getItem("webSurveyParticipantKey");
+  const stored = safeGet("webSurveyParticipantKey");
   if (stored) {
     participantKey = stored;
     return stored;
   }
   const generated = crypto.randomUUID().replaceAll("-", "");
-  localStorage.setItem("webSurveyParticipantKey", generated);
+  safeSet("webSurveyParticipantKey", generated);
   participantKey = generated;
   return generated;
 }
@@ -129,9 +131,9 @@ export function identityHeaders(): Record<string, string> {
   const params = new URLSearchParams(window.location.search);
   const token = params.get("pt");
   if (token) {
-    localStorage.setItem("webSurveyParticipantToken", token);
+    safeSet("webSurveyParticipantToken", token);
   }
-  const storedToken = localStorage.getItem("webSurveyParticipantToken");
+  const storedToken = safeGet("webSurveyParticipantToken");
   if (storedToken) {
     return { "x-participant-token": storedToken };
   }
@@ -146,10 +148,7 @@ async function parseJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const deviceHeaders = await surveyDeviceHeaders();
   const response = await fetch(path, {
     ...init,
@@ -175,8 +174,8 @@ export function fetchSurvey(surveyId: number): Promise<SurveyDto> {
   return request<SurveyDto>(`/api/survey/${surveyId}`);
 }
 
-export function fetchSurveyList(q = ""): Promise<{ surveys: SurveyListItem[] }> {
-  return request<{ surveys: SurveyListItem[] }>(
+export function fetchSurveyList(q = ""): Promise<{ surveys: SurveyListItem[]; communityGroupUrl: string | null }> {
+  return request<{ surveys: SurveyListItem[]; communityGroupUrl: string | null }>(
     `/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`,
   );
 }
@@ -195,23 +194,15 @@ export interface StartResponseDto {
   resumed: boolean;
 }
 
-export function startResponse(
-  surveyId: number,
-  accessCode?: string,
-): Promise<StartResponseDto> {
+export function startResponse(surveyId: number, accessCode?: string): Promise<StartResponseDto> {
   return request<StartResponseDto>(`/api/survey/${surveyId}/responses`, {
     method: "POST",
     body: JSON.stringify(accessCode ? { accessCode } : {}),
   });
 }
 
-export function fetchAnswers(
-  surveyId: number,
-  responseId: number,
-): Promise<{ answers: Record<string, AnswerValue> }> {
-  return request<{ answers: Record<string, AnswerValue> }>(
-    `/api/survey/${surveyId}/responses/${responseId}`,
-  );
+export function fetchAnswers(surveyId: number, responseId: number): Promise<{ answers: Record<string, AnswerValue> }> {
+  return request<{ answers: Record<string, AnswerValue> }>(`/api/survey/${surveyId}/responses/${responseId}`);
 }
 
 export function saveAnswer(
@@ -220,33 +211,67 @@ export function saveAnswer(
   questionId: number,
   value: AnswerValue,
 ): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(
-    `/api/survey/${surveyId}/responses/${responseId}/answers`,
-    {
-      method: "POST",
-      body: JSON.stringify({ questionId, value }),
-    },
-  );
+  return request<{ ok: boolean }>(`/api/survey/${surveyId}/responses/${responseId}/answers`, {
+    method: "POST",
+    body: JSON.stringify({ questionId, value }),
+  });
 }
 
 export function submitResponse(
   surveyId: number,
   responseId: number,
-): Promise<{ ok: boolean; completed: boolean }> {
-  return request<{ ok: boolean; completed: boolean }>(
+  options: {
+    publishToGallery?: boolean;
+    galleryCoverMediaId?: number | null;
+    galleryVisibleQuestionIds?: number[];
+    galleryShowUsername?: boolean;
+  } = {},
+): Promise<{ ok: boolean; completed: boolean; galleryPublished?: boolean }> {
+  return request<{ ok: boolean; completed: boolean; galleryPublished?: boolean }>(
     `/api/survey/${surveyId}/responses/${responseId}/submit`,
-    { method: "POST", body: JSON.stringify({}) },
+    { method: "POST", body: JSON.stringify(options) },
   );
 }
 
 export function uploadAnswerMedia(
   surveyId: number,
   file: File,
+  questionId: number,
 ): Promise<{ ok: boolean; mediaAssetId: number; url: string }> {
   const form = new FormData();
   form.append("file", file);
-  return request<{ ok: boolean; mediaAssetId: number; url: string }>(
-    `/api/survey/${surveyId}/media`,
-    { method: "POST", body: form },
+  form.append("questionId", String(questionId));
+  return request<{ ok: boolean; mediaAssetId: number; url: string }>(`/api/survey/${surveyId}/media`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+/**
+ * True when the current browser already carries a Telegram identity (Mini App
+ * initData or a bot-minted participant token), so the opt-in bind card on the
+ * completion page is unnecessary.
+ */
+export function hasTelegramIdentity(): boolean {
+  if (getTelegramInitData()) return true;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("pt")) return true;
+  return Boolean(safeGet("webSurveyParticipantToken"));
+}
+
+export interface ParticipantLinkStatus {
+  linked: boolean;
+  username?: string | null;
+  firstName?: string | null;
+  telegramUserId?: number | null;
+}
+
+export function fetchParticipantLinkStartUrl(participantKey: string): Promise<{ url: string }> {
+  return request<{ url: string }>(`/api/survey/participant-link/start?key=${encodeURIComponent(participantKey)}`);
+}
+
+export function fetchParticipantLinkStatus(participantKey: string): Promise<ParticipantLinkStatus> {
+  return request<ParticipantLinkStatus>(
+    `/api/survey/participant-link/status?key=${encodeURIComponent(participantKey)}`,
   );
 }

@@ -124,6 +124,22 @@ describe("report API", () => {
     expect(html).toContain("--report-bg:#282a36");
   });
 
+  it("renders report image URLs when mediaAssetId is serialized as a string", async () => {
+    mocks.deserializeResultProfile.mockReturnValue({
+      ...snapshot,
+      images: { profilePhoto: { mediaAssetId: "77" } },
+    });
+    const db = makeDb();
+    const token = await createReportAccessToken("secret", 42);
+    const response = await handleReportRequest(
+      new Request(`https://worker.test/report/42?t=${token}`),
+      makeEnv(db),
+      new URL(`https://worker.test/report/42?t=${token}`),
+    );
+    const html = await response?.text();
+    expect(html).toContain(`/api/report/media/77?t=${token}&rid=42`);
+  });
+
   it("rejects pages without a valid token", async () => {
     const response = await handleReportRequest(
       new Request("https://worker.test/report/42?t=bad"),

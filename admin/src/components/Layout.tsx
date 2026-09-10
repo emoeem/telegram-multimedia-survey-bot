@@ -5,12 +5,12 @@ import {
   ClipboardList,
   Contact,
   FileUp,
-  IdCard,
   LayoutDashboard,
   ListChecks,
   Menu,
   Package,
   Palette,
+  Target,
   KeyRound,
   ScrollText,
   Settings,
@@ -24,13 +24,14 @@ import { TestBanner } from "./TestBanner";
 const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "总览" },
   { to: "/surveys", icon: ClipboardList, label: "问卷" },
+  { to: "/responses", icon: ListChecks, label: "答卷动态" },
   { to: "/imports", icon: FileUp, label: "导入" },
   { to: "/users", icon: Users, label: "用户" },
   { to: "/reports", icon: Package, label: "报告" },
   { to: "/templates", icon: Palette, label: "模板" },
-  { to: "/identity-cards", icon: Contact, label: "资料卡" },
-  { to: "/card-templates", icon: IdCard, label: "卡面模板" },
   { to: "/plaza", icon: Sprout, label: "树洞" },
+  { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
+  { to: "/task-packs", icon: Target, label: "挑战任务" },
   { to: "/audit", icon: ScrollText, label: "审计" },
   { to: "/licenses", icon: KeyRound, label: "授权" },
   { to: "/settings", icon: Settings, label: "设置" },
@@ -79,13 +80,14 @@ export function Layout() {
     if (/^\/surveys\/\d+\/editor$/.test(path)) return "问卷编辑器";
     if (/^\/surveys\/\d+/.test(path)) return "问卷详情";
     if (path.startsWith("/surveys")) return "问卷";
+    if (path.startsWith("/responses")) return "答卷动态";
     if (path.startsWith("/imports")) return "导入问卷";
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
-    if (path.startsWith("/identity-cards")) return "资料卡";
-    if (path.startsWith("/card-templates")) return "卡面模板";
     if (path.startsWith("/plaza")) return "树洞";
+    if (path.startsWith("/profile-gallery")) return "个人画廊";
+    if (path.startsWith("/task-packs")) return "挑战任务包";
     if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/licenses")) return "授权管理";
     if (path.startsWith("/login")) return "浏览器登录";
@@ -96,8 +98,28 @@ export function Layout() {
   const showTestBanner = environment === "development" && !getTelegramInitData();
   const browserMode = !getTelegramInitData() && !location.pathname.startsWith("/login");
   const goBack = () => {
-    if (window.history.length > 1) window.history.back();
-    else navigate("/");
+    const path = location.pathname;
+    if (/^\/surveys\/\d+\/responses\/\d+$/.test(path)) {
+      navigate(path.replace(/\/responses\/\d+$/, "/responses"));
+      return;
+    }
+    if (/^\/surveys\/\d+\/(editor|analytics|responses)$/.test(path)) {
+      navigate(path.replace(/\/(editor|analytics|responses)$/, ""));
+      return;
+    }
+    if (/^\/surveys\/\d+\//.test(path)) {
+      navigate("/surveys");
+      return;
+    }
+    if (path.startsWith("/profile-gallery") || path.startsWith("/plaza")) {
+      navigate("/");
+      return;
+    }
+    if (path.startsWith("/task-packs")) {
+      navigate("/");
+      return;
+    }
+    if (path !== "/") navigate("/");
   };
 
   return (

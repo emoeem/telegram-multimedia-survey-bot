@@ -71,7 +71,14 @@ export function SurveysPage() {
           ))}
         </select>
         <button className="btn btn-primary" disabled={creating} onClick={createSurvey}>
-          {creating ? "创建中…" : <><Plus className="h-4 w-4" />新建问卷</>}
+          {creating ? (
+            "创建中…"
+          ) : (
+            <>
+              <Plus className="h-4 w-4" />
+              新建问卷
+            </>
+          )}
         </button>
       </div>
       {createError ? <div className="mb-3 text-sm text-[var(--color-danger)]">新建失败：{createError}</div> : null}
@@ -95,7 +102,11 @@ export function SurveysPage() {
               </thead>
               <tbody>
                 {data.items.map((item) => (
-                  <tr key={item.id} className="cursor-pointer hover:bg-[var(--surface-hover)]" onClick={() => navigate(`/surveys/${item.id}`)}>
+                  <tr
+                    key={item.id}
+                    className="cursor-pointer hover:bg-[var(--surface-hover)]"
+                    onClick={() => navigate(`/surveys/${item.id}`)}
+                  >
                     <td className="text-sm">
                       <Link to={`/surveys/${item.id}`} className="font-semibold text-inherit no-underline">
                         {item.title || "未命名问卷"}

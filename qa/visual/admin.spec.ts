@@ -12,6 +12,7 @@ const PAGES = [
   "/admin/surveys",
   "/admin/surveys/1",
   "/admin/surveys/1/editor",
+  "/admin/surveys/3/editor",
   "/admin/surveys/1/responses",
   "/admin/templates",
 ];
@@ -135,6 +136,25 @@ const API_MOCKS: Record<string, unknown> = {
     ],
     pages: [],
   },
+  "/api/admin/surveys/3/editor": {
+    survey: {
+      id: 3,
+      title: "未命名问卷",
+      description: null,
+      status: "draft",
+      anonymous: false,
+      allowMultipleResponses: false,
+      maxResponsesPerUser: 1,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      responseCount: 0,
+      questionCount: 0,
+      editable: true,
+    },
+    questions: [],
+    pages: [],
+  },
   "/api/admin/surveys/1/responses": {
     survey: { id: 1, title: "示例问卷", anonymous: false },
     items: [
@@ -214,6 +234,13 @@ for (const viewport of VIEWPORTS) {
 
       await page.goto(path, { waitUntil: "domcontentloaded" });
       await expect(page.locator("h1").first()).toBeVisible();
+      if (path === "/admin/surveys/3/editor") {
+        await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
+      }
+      if (path === "/admin/surveys/1/editor") {
+        await expect(page.getByText("上传题面附件")).toBeVisible();
+        await expect(page.getByText("选项媒体").first()).toBeVisible();
+      }
 
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);

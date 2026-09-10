@@ -14,6 +14,8 @@ import {
 import { createSurvey, deleteSurvey, getSurveyById, updateSurveyStatus } from "../db/repositories/survey.repository";
 import { getReportDeliveryById, listReportDeliveries } from "../db/repositories/report-delivery.repository";
 import { archiveResponse, deleteResponse, getResponseById } from "../db/repositories/response.repository";
+import { listPlazaComments, setPlazaCommentStatus } from "../db/repositories/plaza-comment.repository";
+import { createTaskPack, deleteTaskPack, listTaskPacks, updateTaskPack } from "../db/repositories/task-pack.repository";
 import {
   createQuestion,
   createQuestionOption,
@@ -50,12 +52,16 @@ import {
   listActiveCreatorTrials,
   revokeCreatorTrial,
 } from "../db/repositories/creator-trial.repository";
-import { createMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
 import {
-  getIdentityProfileById,
-  listIdentityProfiles,
-  setIdentityProfileGalleryPublished,
-} from "../db/repositories/identity-card.repository";
+  createMediaAsset,
+  createOptionMedia,
+  createQuestionMedia,
+  deleteOptionMediaByAsset,
+  deleteQuestionMediaByAsset,
+  getMediaAssetById,
+  getOptionMediaByOptionId,
+  getQuestionMediaByQuestionId,
+} from "../db/repositories/media.repository";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { listPlazaPosts, setPlazaPostStatus } from "../db/repositories/plaza-post.repository";
 import {
@@ -86,11 +92,12 @@ import {
   fetchMicrosoftFormsSurveyJson,
   isFormsUrl,
 } from "../services/microsoft-forms.service";
+import { fetchZohoFormsSurveyJson, isZohoUrl, ZohoImportError } from "../services/zoho-forms.service";
 import { createImportMediaResolver } from "../services/import-media.service";
 import { buildCsv, getExportRows, serializeExport } from "../services/export.service";
 import { exportUnifiedSurveyJson } from "../services/survey-json.service";
 import { ImportValidationError, parseImportedSurvey, saveImportedSurvey } from "../services/import.service";
-import type { QuestionType } from "../db/schema";
+import type { MediaAsset, MediaType, QuestionType } from "../db/schema";
 import type { Survey, SurveyQuestion } from "../db/schema";
 import type { Env } from "../index";
 import { KVMediaStore } from "../services/media/temporary-media-store";
@@ -102,17 +109,7 @@ import { sendDocument } from "../bot/telegram";
 import { prepareResultProfileForResponse } from "../services/result-visual.service";
 import { deserializeResultProfile } from "../services/result-engine.service";
 import { renderReportPdf } from "../services/report/pdf";
-import {
-  createCardTemplate,
-  deleteCardTemplate,
-  getCardTemplateById,
-  listCardTemplates,
-  updateCardTemplate,
-} from "../db/repositories/card-template.repository";
-import { normalizeCardTemplateDefinition, CARD_TEMPLATE_SAMPLE_VALUES } from "../card-template/model";
-import { renderCardTemplatePng } from "../services/card-template-render.service";
-import { TEMP_IMAGE_MIME_TYPES } from "../services/media/temporary-media.service";
-import { resolveReportProfileImages } from "../services/report/report-images.service";
+import { resolveMediaAssetDataUrl, resolveReportProfileImages } from "../services/report/report-images.service";
 import { REPORT_TEMPLATES, validateReportTemplateSpec } from "../services/report/template";
 import { resolveReportTemplate } from "../services/report/template-resolver";
 import { reportPreviewViewModel } from "../services/report/preview-view-model";
@@ -126,6 +123,12 @@ import {
 } from "../services/admin-session.service";
 import { createReportAccessToken } from "../services/report-access-token.service";
 import { loadSystemSettings, saveSystemSetting, SYSTEM_SETTING_KEYS } from "../services/system-settings.service";
+import {
+  listProfileGalleryItems,
+  publishProfileResponse,
+  unpublishProfileResponse,
+  type ProfileGalleryItem,
+} from "../services/profile-gallery.service";
 import type { ImportedSurvey } from "../services/import.service";
 import { getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
 import { downloadTelegramFile } from "../bot/telegram";
@@ -134,6 +137,117 @@ import { downloadTelegramFile } from "../bot/telegram";
 // older than a day as stale.
 const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
+const SURVEY_MEDIA_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+
+// Uploads are stored in MEDIA_KV through the same pipeline as imports and
+// background music (scope "survey", KV-backed, no expiry). Keeping a distinct
+// storage-key prefix makes these blobs easy to recognise when debugging.
+const SURVEY_MEDIA_STORAGE_PREFIX = "media:survey:";
+const SURVEY_MEDIA_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/ogg",
+  "application/pdf",
+  "application/zip",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/rtf",
+  "application/octet-stream",
+  "text/plain",
+  "text/csv",
+]);
+
+const SURVEY_MEDIA_EXTENSION_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  avif: "image/avif",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  rtf: "application/rtf",
+  txt: "text/plain",
+  csv: "text/csv",
+};
+
+function surveyMediaMimeForFile(file: File): string | null {
+  const explicit = file.type.toLowerCase();
+  if (explicit && SURVEY_MEDIA_MIME_TYPES.has(explicit)) return explicit;
+  if (!explicit) {
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const inferred = SURVEY_MEDIA_EXTENSION_MIME[extension];
+    if (inferred) return inferred;
+  }
+  if (explicit === "application/octet-stream") return explicit;
+  return null;
+}
+
+function surveyMediaTypeForMime(mimeType: string): MediaType {
+  if (mimeType.startsWith("image/")) return "photo";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+/**
+ * Stores an admin-uploaded survey attachment (question/option media) into
+ * MEDIA_KV and records the asset row. Throws with a user-facing message when
+ * the file is rejected so callers can translate it into a 400 response.
+ */
+async function storeSurveyAdminMedia(db: D1Database, kv: KVNamespace, file: File): Promise<MediaAsset> {
+  const mimeType = surveyMediaMimeForFile(file);
+  if (!mimeType) {
+    throw new Error("不支持该文件类型，请上传图片、视频、音频或常见文档");
+  }
+  if (file.size <= 0) {
+    throw new Error("文件为空，请重新选择");
+  }
+  if (file.size > SURVEY_MEDIA_UPLOAD_MAX_BYTES) {
+    throw new Error(`单个附件不能超过 ${SURVEY_MEDIA_UPLOAD_MAX_BYTES / 1024 / 1024}MB`);
+  }
+  const store = new KVMediaStore(kv);
+  const storageKey = `${SURVEY_MEDIA_STORAGE_PREFIX}${crypto.randomUUID()}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  await store.put({ storageKey, bytes, contentType: mimeType });
+  return createMediaAsset(db, {
+    scope: "survey",
+    mediaType: surveyMediaTypeForMime(mimeType),
+    storageKind: store.kind,
+    storageKey,
+    expiresAt: null,
+    mimeType,
+    fileName: file.name || null,
+    fileSize: bytes.byteLength,
+  });
+}
 
 function parseSettingsJson(value: string): Record<string, unknown> | null {
   if (!value) return null;
@@ -143,6 +257,29 @@ function parseSettingsJson(value: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function adminProfileItem(item: ProfileGalleryItem) {
+  return {
+    id: item.responseId,
+    surveyId: item.surveyId,
+    owner: item.owner
+      ? {
+          telegramUserId: item.owner.telegramUserId,
+          username: item.owner.username,
+          firstName: item.owner.firstName,
+          lastName: item.owner.lastName,
+        }
+      : null,
+    showUsername: item.showUsername,
+    publishedAt: item.publishedAt,
+    createdAt: item.createdAt,
+    images: item.images.map((image) => ({
+      mediaAssetId: image.mediaAssetId,
+      url: `/api/admin/profile-gallery/${item.responseId}/media/${image.mediaAssetId}`,
+    })),
+    fields: item.fields,
+  };
 }
 
 function buildImportSummary(imported: ImportedSurvey) {
@@ -483,38 +620,6 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
     return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
   }
 
-  // Upload a card face template background image into the media system.
-  if (request.method === "POST" && url.pathname === "/api/admin/card-templates/background") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可上传卡面背景");
-    const form = await request.formData().catch(() => null);
-    const file = form?.get("file");
-    if (!(file instanceof File)) {
-      return fail(400, "invalid_upload", "请选择图片文件");
-    }
-    const mimeType = file.type.toLowerCase();
-    if (!TEMP_IMAGE_MIME_TYPES.has(mimeType)) {
-      return fail(400, "invalid_image_type", "仅支持 JPEG / PNG / WebP 图片");
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      return fail(413, "upload_too_large", "卡面背景不能超过 15MB");
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const store = new KVMediaStore(env.MEDIA_KV);
-    const storageKey = `media:card-template:${crypto.randomUUID()}`;
-    await store.put({ storageKey, bytes, contentType: mimeType });
-    const asset = await createMediaAsset(env.DB, {
-      scope: "card_template",
-      mediaType: "photo",
-      storageKind: store.kind,
-      storageKey,
-      mimeType,
-      fileName: file.name,
-      fileSize: bytes.byteLength,
-      expiresAt: null,
-    });
-    return json({ mediaAssetId: asset.id });
-  }
-
   if (request.method === "GET") {
     if (
       url.pathname === "/api/admin/licenses" ||
@@ -565,6 +670,46 @@ function responseStatusLabel(status: string): string {
   if (status === "abandoned") return "已放弃";
   if (status === "cancelled") return "已取消";
   return status;
+}
+
+interface ResponseParticipantRow {
+  userId?: unknown;
+  telegramUserId?: unknown;
+  username?: unknown;
+  firstName?: unknown;
+  lastName?: unknown;
+  participantKey?: unknown;
+}
+
+function mapResponseParticipant(row: ResponseParticipantRow): {
+  respondent: {
+    userId: number;
+    telegramUserId: number;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+  participantKey: string | null;
+} {
+  if (row.telegramUserId === null || row.telegramUserId === undefined) {
+    return {
+      respondent: null,
+      participantKey:
+        row.participantKey === null || row.participantKey === undefined ? null : String(row.participantKey),
+    };
+  }
+  const stringOrNull = (value: unknown): string | null =>
+    value === null || value === undefined ? null : String(value);
+  return {
+    respondent: {
+      userId: Number(row.userId ?? 0),
+      telegramUserId: Number(row.telegramUserId),
+      username: stringOrNull(row.username),
+      firstName: stringOrNull(row.firstName),
+      lastName: stringOrNull(row.lastName),
+    },
+    participantKey: null,
+  };
 }
 
 function parseStoredJson(value: unknown): unknown {
@@ -668,7 +813,14 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         `SELECT s.id,s.title,s.status,s.updated_at updatedAt FROM surveys s${ownerClause} ORDER BY s.updated_at DESC LIMIT 5`,
       ).bind(...bind),
       env.DB.prepare(
-        `SELECT r.id,r.survey_id surveyId,r.status,r.updated_at updatedAt,s.title FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? "" : " WHERE s.owner_id = ?"} ORDER BY r.updated_at DESC LIMIT 5`,
+        `SELECT r.id,r.survey_id surveyId,r.status,r.completed_at completedAt,r.updated_at updatedAt,
+                r.participant_hash participantKey,s.title,
+                u.id userId,u.telegram_user_id telegramUserId,u.username,u.first_name firstName,u.last_name lastName
+         FROM survey_responses r
+         JOIN surveys s ON s.id=r.survey_id
+         LEFT JOIN users u ON u.id=r.user_id
+         ${isAdmin ? "" : "WHERE s.owner_id = ?"}
+         ORDER BY r.updated_at DESC LIMIT 5`,
       ).bind(...(isAdmin ? [] : [user.id])),
       env.DB.prepare(
         `SELECT rd.status, COUNT(*) count
@@ -689,10 +841,23 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     for (const row of (deliveries.results ?? []) as Array<{ status: string; count: number }>) {
       statusCounts[row.status] = Number(row.count ?? 0);
     }
+    const recentResponseRows = (responses.results ?? []) as Array<Record<string, unknown>>;
     return json({
       ...((counts.results?.[0] ?? {}) as object),
       recentSurveys: recent.results ?? [],
-      recentResponses: responses.results ?? [],
+      recentResponses: recentResponseRows.map((row) => {
+        const participant = mapResponseParticipant(row as ResponseParticipantRow);
+        return {
+          id: Number(row.id),
+          surveyId: Number(row.surveyId),
+          status: String(row.status),
+          statusLabel: responseStatusLabel(String(row.status)),
+          updatedAt: String(row.updatedAt),
+          completedAt: row.completedAt === null || row.completedAt === undefined ? null : String(row.completedAt),
+          title: String(row.title ?? ""),
+          ...participant,
+        };
+      }),
       reportDeliveries: {
         pending: statusCounts["pending"] ?? 0,
         delivering: statusCounts["delivering"] ?? 0,
@@ -700,6 +865,101 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         failed: statusCounts["failed"] ?? 0,
       },
       recentActions: isAdmin ? (recentActions.results ?? []) : [],
+    });
+  }
+
+  if (url.pathname === "/api/admin/responses") {
+    const status = url.searchParams.get("status") ?? "";
+    if (status && !RESPONSE_STATUSES.includes(status as (typeof RESPONSE_STATUSES)[number])) {
+      return fail(400, "validation_failed", "答卷状态无效");
+    }
+    const from = url.searchParams.get("from") ?? "";
+    const to = url.searchParams.get("to") ?? "";
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      return fail(400, "validation_failed", "from 必须是 YYYY-MM-DD");
+    }
+    if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return fail(400, "validation_failed", "to 必须是 YYYY-MM-DD");
+    }
+    const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+    const surveyFilter = Number(url.searchParams.get("survey") ?? "");
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
+    const offset = (page - 1) * pageSize;
+
+    const conditions: string[] = [isAdmin ? "1=1" : "s.owner_id = ?"];
+    const binds: unknown[] = [];
+    if (!isAdmin) binds.push(user.id);
+    if (status) {
+      conditions.push("r.status = ?");
+      binds.push(status);
+    }
+    if (from) {
+      conditions.push("date(r.started_at) >= ?");
+      binds.push(from);
+    }
+    if (to) {
+      conditions.push("date(r.started_at) <= ?");
+      binds.push(to);
+    }
+    if (Number.isInteger(surveyFilter) && surveyFilter > 0) {
+      conditions.push("r.survey_id = ?");
+      binds.push(surveyFilter);
+    }
+    if (search) {
+      const pattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+      conditions.push(
+        `(lower(COALESCE(s.title,'')) LIKE ? ESCAPE '\\'
+          OR lower(COALESCE(u.username,'')) LIKE ? ESCAPE '\\'
+          OR lower(COALESCE(u.first_name,'')) LIKE ? ESCAPE '\\'
+          OR lower(COALESCE(u.last_name,'')) LIKE ? ESCAPE '\\'
+          OR CAST(r.id AS TEXT) LIKE ? ESCAPE '\\'
+          OR CAST(COALESCE(u.telegram_user_id, 0) AS TEXT) LIKE ? ESCAPE '\\')`,
+      );
+      binds.push(pattern, pattern, pattern, pattern, pattern, pattern);
+    }
+    const where = conditions.join(" AND ");
+    const [items, count] = (await env.DB.batch([
+      env.DB.prepare(
+        `SELECT r.id,r.survey_id surveyId,s.title surveyTitle,r.status,r.started_at startedAt,
+                r.completed_at completedAt,r.updated_at updatedAt,r.participant_hash participantKey,
+                u.id userId,u.telegram_user_id telegramUserId,u.username,u.first_name firstName,u.last_name lastName
+         FROM survey_responses r
+         JOIN surveys s ON s.id=r.survey_id
+         LEFT JOIN users u ON u.id=r.user_id
+         WHERE ${where}
+         ORDER BY COALESCE(r.completed_at, r.updated_at) DESC, r.id DESC
+         LIMIT ? OFFSET ?`,
+      ).bind(...binds, pageSize, offset),
+      env.DB.prepare(
+        `SELECT COUNT(*) count
+         FROM survey_responses r
+         JOIN surveys s ON s.id=r.survey_id
+         LEFT JOIN users u ON u.id=r.user_id
+         WHERE ${where}`,
+      ).bind(...binds),
+    ])) as [D1Result, D1Result];
+    const rows = (items.results ?? []) as Array<Record<string, unknown>>;
+    const total = Number((count.results?.[0] as { count?: number })?.count ?? 0);
+    return json({
+      items: rows.map((row) => {
+        const participant = mapResponseParticipant(row as ResponseParticipantRow);
+        return {
+          id: Number(row.id),
+          surveyId: Number(row.surveyId),
+          surveyTitle: String(row.surveyTitle ?? ""),
+          status: String(row.status),
+          statusLabel: responseStatusLabel(String(row.status)),
+          startedAt: String(row.startedAt),
+          completedAt: row.completedAt === null || row.completedAt === undefined ? null : String(row.completedAt),
+          updatedAt: String(row.updatedAt),
+          ...participant,
+        };
+      }),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
     });
   }
 
@@ -809,69 +1069,36 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return response ?? fail(410, "gone", "媒体文件已被清理");
   }
 
-  if (url.pathname === "/api/admin/card-templates") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看卡面模板");
-    const templates = await listCardTemplates(env.DB);
-    return json({ ok: true, templates });
-  }
-
-  const cardTemplateBackgroundMatch = url.pathname.match(/^\/api\/admin\/card-templates\/(\d+)\/background$/);
-  if (cardTemplateBackgroundMatch) {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看卡面模板");
-    const template = await getCardTemplateById(env.DB, Number(cardTemplateBackgroundMatch[1]));
-    if (!template?.backgroundAssetId) return fail(404, "not_found", "卡面背景不存在");
-    const asset = await getMediaAssetById(env.DB, template.backgroundAssetId);
-    if (!asset) return fail(404, "not_found", "卡面背景不存在");
-    const response = await buildMediaResponse(env, asset);
-    return response ?? fail(410, "gone", "卡面背景已被清理，请重新上传");
-  }
-
-  if (url.pathname === "/api/admin/identity-cards") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看资料卡");
+  if (url.pathname === "/api/admin/profile-gallery") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看个人画廊");
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
     const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
     const view = url.searchParams.get("view") === "published" ? "published" : "all";
-    const { items, total } = await listIdentityProfiles(env.DB, { limit, offset, view });
-    const userIds = [...new Set(items.map((item) => item.userId))];
-    const userRows = userIds.length
-      ? ((
-          await env.DB.prepare(
-            `SELECT id, telegram_user_id, username, first_name FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`,
-          )
-            .bind(...userIds)
-            .all<Record<string, unknown>>()
-        ).results ?? [])
-      : [];
-    const usersById = new Map(userRows.map((row) => [Number(row.id), row]));
-    return json({
-      items: items.map((item) => {
-        const owner = usersById.get(item.userId);
-        return {
-          id: item.id,
-          name: item.name,
-          nickname: item.nickname,
-          age: item.age,
-          identityLabel: item.identityLabel,
-          description: item.description,
-          templateStyle: item.templateStyle,
-          galleryPublished: item.galleryPublished,
-          galleryPublishedAt: item.galleryPublishedAt,
-          createdAt: item.createdAt,
-          hasCardImage: item.cardAssetId !== null,
-          cardImageUrl: item.cardAssetId !== null ? `/api/admin/identity-cards/${item.id}/image` : null,
-          owner: owner
-            ? {
-                id: Number(owner.id),
-                telegramUserId: Number(owner.telegram_user_id),
-                username: typeof owner.username === "string" ? owner.username : null,
-                firstName: typeof owner.first_name === "string" ? owner.first_name : null,
-              }
-            : null,
-        };
-      }),
-      total,
+    const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+    const system = await loadSystemSettings(env.DB);
+    const surveyId = Number(system.profileGallerySurveyId);
+    if (!Number.isInteger(surveyId) || surveyId <= 0) {
+      return json({ items: [], total: 0, limit, offset, surveyId: null });
+    }
+    const { items, total, publishedTotal } = await listProfileGalleryItems(env.DB, {
+      surveyId,
+      publishedOnly: view === "published",
       limit,
       offset,
+      search,
+    });
+    const survey = await env.DB.prepare("SELECT title FROM surveys WHERE id = ? LIMIT 1")
+      .bind(surveyId)
+      .first<{ title: string }>();
+    return json({
+      items: items.map((item) => adminProfileItem(item)),
+      total,
+      publishedTotal,
+      limit,
+      offset,
+      surveyId,
+      surveyTitle: survey?.title ?? "",
+      search,
     });
   }
 
@@ -884,15 +1111,38 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     return json({ items, total, limit, offset });
   }
 
-  const identityCardImageMatch = url.pathname.match(/^\/api\/admin\/identity-cards\/(\d+)\/image$/);
-  if (identityCardImageMatch) {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看资料卡");
-    const identity = await getIdentityProfileById(env.DB, Number(identityCardImageMatch[1]));
-    if (!identity?.cardAssetId) return fail(404, "not_found", "卡片图片不存在");
-    const asset = await getMediaAssetById(env.DB, identity.cardAssetId);
-    if (!asset) return fail(404, "not_found", "卡片图片不存在");
+  const adminPostCommentsMatch = url.pathname.match(/^\/api\/admin\/plaza\/posts\/(\d+)\/comments$/);
+  if (adminPostCommentsMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理树洞评论");
+    const postId = Number(adminPostCommentsMatch[1]);
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
+    const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+    const view = url.searchParams.get("view") === "published" ? "published" : "all";
+    const { items, total } = await listPlazaComments(env.DB, postId, { limit, offset, view });
+    return json({ items, total, limit, offset, postId });
+  }
+
+  if (url.pathname === "/api/admin/task-packs") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
+    const packs = await listTaskPacks(env.DB, { withItems: true });
+    return json({ packs });
+  }
+
+  const profileGalleryMediaMatch = url.pathname.match(/^\/api\/admin\/profile-gallery\/(\d+)\/media\/(\d+)$/);
+  if (profileGalleryMediaMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看个人画廊");
+    const responseId = Number(profileGalleryMediaMatch[1]);
+    const mediaAssetId = Number(profileGalleryMediaMatch[2]);
+    const visible = await env.DB.prepare(
+      `SELECT 1 FROM gallery_profile_media WHERE response_id = ? AND media_asset_id = ? LIMIT 1`,
+    )
+      .bind(responseId, mediaAssetId)
+      .first();
+    if (!visible) return fail(404, "not_found", "个人资料图片不存在");
+    const asset = await getMediaAssetById(env.DB, mediaAssetId);
+    if (!asset) return fail(404, "not_found", "个人资料图片不存在");
     const response = await buildMediaResponse(env, asset);
-    return response ?? fail(410, "gone", "卡片图片已被清理，请在机器人里重新生成");
+    return response ?? fail(410, "gone", "个人资料图片已被清理");
   }
 
   const templateDetailMatch = url.pathname.match(/^\/api\/admin\/report-templates\/([^/]+)$/);
@@ -917,7 +1167,16 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const userId = Number(userDetailMatch[1]);
     const user = await getUserById(env.DB, userId);
     if (!user) return fail(404, "not_found", "用户不存在");
-    const [tags, responses] = await Promise.all([listUserTags(env.DB, userId), listUserResponses(env.DB, userId)]);
+    const page = positiveInteger(url.searchParams.get("page"), 1);
+    const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
+    const [tags, responsePage] = await Promise.all([
+      listUserTags(env.DB, userId),
+      listUserResponses(env.DB, userId, {
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      }),
+    ]);
+    const { items: responses, total: responseTotal } = responsePage;
     return json({
       user: {
         id: user.id,
@@ -933,6 +1192,10 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       },
       tags,
       responses,
+      responsePage: page,
+      responsePageSize: pageSize,
+      responseTotal,
+      responseTotalPages: Math.ceil(responseTotal / pageSize),
     });
   }
 
@@ -1076,6 +1339,13 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       .bind(responseId, surveyId)
       .first<Record<string, unknown>>();
     if (!response) return fail(404, "not_found", "答卷不存在");
+    const adjacent = await env.DB.prepare(
+      `SELECT
+         (SELECT id FROM survey_responses WHERE survey_id = ? AND id < ? ORDER BY id DESC LIMIT 1) previousResponseId,
+         (SELECT id FROM survey_responses WHERE survey_id = ? AND id > ? ORDER BY id ASC LIMIT 1) nextResponseId`,
+    )
+      .bind(surveyId, responseId, surveyId, responseId)
+      .first<{ previousResponseId: number | null; nextResponseId: number | null }>();
 
     const questions = await listQuestionsBySurvey(env.DB, surveyId);
     const options = await listOptionsForQuestions(
@@ -1142,6 +1412,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
           response.telegram_user_id === null
             ? null
             : {
+                userId: Number(response.user_id ?? 0),
                 telegramUserId: Number(response.telegram_user_id),
                 username: response.username === null ? null : String(response.username),
                 firstName: response.first_name === null ? null : String(response.first_name),
@@ -1156,6 +1427,8 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
         deviceFingerprint: response.deviceFingerprint === null ? null : String(response.deviceFingerprint),
         browserInfo: response.browserInfo === null ? null : String(response.browserInfo),
         ipAddress: response.ipAddress === null ? null : String(response.ipAddress),
+        previousResponseId: adjacent?.previousResponseId == null ? null : Number(adjacent.previousResponseId),
+        nextResponseId: adjacent?.nextResponseId == null ? null : Number(adjacent.nextResponseId),
       },
       answers: questions.map((question) => {
         const answer = answersByQuestion.get(question.id);
@@ -1201,7 +1474,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       env.DB.prepare(
         `SELECT r.id,r.status,r.started_at startedAt,r.completed_at completedAt,r.updated_at updatedAt,
                 r.participant_hash participantKey,
-                u.telegram_user_id telegramUserId,u.username,u.first_name firstName,u.last_name lastName
+                u.id userId,u.telegram_user_id telegramUserId,u.username,u.first_name firstName,u.last_name lastName
          FROM survey_responses r
          LEFT JOIN users u ON u.id=r.user_id
          WHERE r.survey_id=?${statusClause}${dateClause}
@@ -1225,6 +1498,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
           item.telegramUserId === null
             ? null
             : {
+                userId: Number(item.userId ?? 0),
                 telegramUserId: Number(item.telegramUserId),
                 username: item.username === null ? null : String(item.username),
                 firstName: item.firstName === null ? null : String(item.firstName),
@@ -1257,25 +1531,53 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     );
     const [questionMedia, optionMedia] = (await env.DB.batch([
       env.DB.prepare(
-        "SELECT qm.question_id questionId, m.id mediaAssetId, m.media_type mediaType FROM question_media qm JOIN media_assets m ON m.id = qm.media_asset_id WHERE qm.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY qm.question_id, qm.sort_order, m.id",
+        "SELECT qm.question_id questionId, m.id mediaAssetId, m.media_type mediaType, m.file_name fileName, m.mime_type mimeType FROM question_media qm JOIN media_assets m ON m.id = qm.media_asset_id WHERE qm.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY qm.question_id, qm.sort_order, m.id",
       ).bind(id),
       env.DB.prepare(
-        "SELECT om.question_option_id optionId, m.id mediaAssetId, m.media_type mediaType FROM option_media om JOIN media_assets m ON m.id = om.media_asset_id JOIN question_options o ON o.id = om.question_option_id WHERE o.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY om.question_option_id, om.sort_order, m.id",
+        "SELECT om.question_option_id optionId, m.id mediaAssetId, m.media_type mediaType, m.file_name fileName, m.mime_type mimeType FROM option_media om JOIN media_assets m ON m.id = om.media_asset_id JOIN question_options o ON o.id = om.question_option_id WHERE o.question_id IN (SELECT id FROM survey_questions WHERE survey_id = ?) ORDER BY om.question_option_id, om.sort_order, m.id",
       ).bind(id),
     ])) as [
-      D1Result<{ questionId: number; mediaAssetId: number; mediaType: string }>,
-      D1Result<{ optionId: number; mediaAssetId: number; mediaType: string }>,
+      D1Result<{
+        questionId: number;
+        mediaAssetId: number;
+        mediaType: string;
+        fileName: string | null;
+        mimeType: string | null;
+      }>,
+      D1Result<{
+        optionId: number;
+        mediaAssetId: number;
+        mediaType: string;
+        fileName: string | null;
+        mimeType: string | null;
+      }>,
     ];
-    const questionMediaByQuestion = new Map<number, { mediaAssetId: number; mediaType: string }[]>();
+    const questionMediaByQuestion = new Map<
+      number,
+      { mediaAssetId: number; mediaType: string; fileName: string | null; mimeType: string | null }[]
+    >();
     for (const row of questionMedia.results ?? []) {
       const list = questionMediaByQuestion.get(row.questionId) ?? [];
-      list.push({ mediaAssetId: row.mediaAssetId, mediaType: row.mediaType });
+      list.push({
+        mediaAssetId: row.mediaAssetId,
+        mediaType: row.mediaType,
+        fileName: row.fileName,
+        mimeType: row.mimeType,
+      });
       questionMediaByQuestion.set(row.questionId, list);
     }
-    const optionMediaByOption = new Map<number, { mediaAssetId: number; mediaType: string }[]>();
+    const optionMediaByOption = new Map<
+      number,
+      { mediaAssetId: number; mediaType: string; fileName: string | null; mimeType: string | null }[]
+    >();
     for (const row of optionMedia.results ?? []) {
       const list = optionMediaByOption.get(row.optionId) ?? [];
-      list.push({ mediaAssetId: row.mediaAssetId, mediaType: row.mediaType });
+      list.push({
+        mediaAssetId: row.mediaAssetId,
+        mediaType: row.mediaType,
+        fileName: row.fileName,
+        mimeType: row.mimeType,
+      });
       optionMediaByOption.set(row.optionId, list);
     }
     const parseJson = (value: string | null): Record<string, unknown> | null => {
@@ -1489,8 +1791,15 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
   const { user, isAdmin, fail, json } = ctx;
   const db = env.DB;
 
-  const body = await readJsonBody(request);
-  if (body === null) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
+  // Media upload endpoints send multipart/form-data; the file is parsed at the
+  // endpoint itself, so skip the JSON body reader for those requests.
+  const contentTypeHeader = request.headers.get("content-type") ?? "";
+  const isMultipart = contentTypeHeader.toLowerCase().includes("multipart/form-data");
+  let body: Record<string, unknown> | null = {};
+  if (!isMultipart) {
+    body = await readJsonBody(request);
+    if (body === null) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
+  }
 
   const retryDeliveryMatch = url.pathname.match(/^\/api\/admin\/report-deliveries\/(\d+)\/retry$/);
   if (request.method === "POST" && retryDeliveryMatch) {
@@ -1516,126 +1825,45 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ ok: true });
   }
 
-  if (request.method === "POST" && url.pathname === "/api/admin/identity-cards/publish") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理资料卡");
-    const cardId = Number(body.id);
+  if (request.method === "POST" && url.pathname === "/api/admin/profile-gallery/publish") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理个人画廊");
+    const responseId = Number(body.id);
     const published = body.published === true;
-    if (!Number.isInteger(cardId) || cardId <= 0) return fail(400, "validation_failed", "无效的资料卡编号");
-    const updated = await setIdentityProfileGalleryPublished(env.DB, cardId, published);
-    if (!updated) return fail(404, "not_found", "资料卡不存在");
-    await writeAudit(db, {
-      actorUserId: user.id,
-      action: published ? "identity_card.publish" : "identity_card.unpublish",
-      entityType: "identity_profile",
-      entityId: String(cardId),
-      after: { galleryPublished: published },
-    });
-    return json({
-      ok: true,
-      card: {
-        id: updated.id,
-        galleryPublished: updated.galleryPublished,
-        galleryPublishedAt: updated.galleryPublishedAt,
-      },
-    });
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/admin/card-templates") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) return fail(400, "validation_failed", "模板名称不能为空");
-    const created = await createCardTemplate(db, {
-      name,
-      backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null,
-      ...(typeof body.backgroundColor === "string" ? { backgroundColor: body.backgroundColor } : {}),
-      slots: body.slots,
-      ...(typeof body.disclaimerText === "string" ? { disclaimerText: body.disclaimerText } : {}),
-      enabled: body.enabled !== false,
-      sortOrder: typeof body.sortOrder === "number" ? body.sortOrder : 0,
-    });
-    await writeAudit(db, {
-      actorUserId: user.id,
-      action: "card_template.create",
-      entityType: "card_template",
-      entityId: String(created.id),
-      after: { name: created.name },
-    });
-    return json({ ok: true, template: created });
-  }
-
-  const cardTemplateMatch = url.pathname.match(/^\/api\/admin\/card-templates\/(\d+)$/);
-  if (request.method === "PUT" && cardTemplateMatch) {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
-    const templateId = Number(cardTemplateMatch[1]);
-    if (typeof body.name === "string" && !body.name.trim()) {
-      return fail(400, "validation_failed", "模板名称不能为空");
+    const coverMediaId = typeof body.coverMediaId === "number" ? body.coverMediaId : undefined;
+    const visibleQuestionIds = Array.isArray(body.visibleQuestionIds)
+      ? body.visibleQuestionIds.filter((id): id is number => typeof id === "number" && Number.isInteger(id) && id > 0)
+      : undefined;
+    if (!Number.isInteger(responseId) || responseId <= 0) {
+      return fail(400, "validation_failed", "无效的答卷编号");
     }
-    const updated = await updateCardTemplate(db, templateId, {
-      ...(typeof body.name === "string" ? { name: body.name.trim() } : {}),
-      ...(body.backgroundAssetId !== undefined
-        ? { backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null }
-        : {}),
-      ...(typeof body.backgroundColor === "string" ? { backgroundColor: body.backgroundColor } : {}),
-      ...(body.slots !== undefined ? { slots: body.slots } : {}),
-      ...(typeof body.disclaimerText === "string" ? { disclaimerText: body.disclaimerText } : {}),
-      ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
-      ...(typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {}),
-    });
-    if (!updated) return fail(404, "not_found", "卡面模板不存在");
+    const responseRow = await db
+      .prepare("SELECT id, survey_id surveyId, status FROM survey_responses WHERE id = ? LIMIT 1")
+      .bind(responseId)
+      .first<{ id: number; surveyId: number; status: string }>();
+    if (!responseRow) return fail(404, "not_found", "答卷不存在");
+    if (responseRow.status !== "completed") {
+      return fail(409, "response_not_completed", "只有已提交的答卷可以进入个人画廊");
+    }
+    const system = await loadSystemSettings(db);
+    if (Number(system.profileGallerySurveyId) !== responseRow.surveyId) {
+      return fail(400, "profile_gallery_not_configured", "该问卷未启用个人画廊");
+    }
+    if (published) {
+      await publishProfileResponse({ DB: db, MEDIA_KV: env.MEDIA_KV }, responseId, {
+        ...(coverMediaId !== undefined ? { coverMediaId } : {}),
+        ...(visibleQuestionIds ? { visibleQuestionIds } : {}),
+      });
+    } else {
+      await unpublishProfileResponse(db, responseId);
+    }
     await writeAudit(db, {
       actorUserId: user.id,
-      action: "card_template.update",
-      entityType: "card_template",
-      entityId: String(templateId),
-      after: { name: updated.name },
+      action: published ? "profile_gallery.publish" : "profile_gallery.unpublish",
+      entityType: "survey_response",
+      entityId: String(responseId),
+      after: { published },
     });
-    return json({ ok: true, template: updated });
-  }
-
-  if (request.method === "DELETE" && cardTemplateMatch) {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理卡面模板");
-    const templateId = Number(cardTemplateMatch[1]);
-    const deleted = await deleteCardTemplate(db, templateId);
-    if (!deleted) return fail(404, "not_found", "卡面模板不存在");
-    await writeAudit(db, {
-      actorUserId: user.id,
-      action: "card_template.delete",
-      entityType: "card_template",
-      entityId: String(templateId),
-    });
-    return json({ ok: true });
-  }
-
-  // Render an unsaved template definition with sample values for the editor.
-  if (request.method === "POST" && url.pathname === "/api/admin/card-templates/preview") {
-    if (!isAdmin) return fail(403, "forbidden", "仅管理员可预览卡面模板");
-    if (!env.BROWSER) return fail(503, "browser_unavailable", "当前环境未配置浏览器渲染，无法预览");
-    const definition = normalizeCardTemplateDefinition({
-      backgroundColor: body.backgroundColor,
-      slots: body.slots,
-      disclaimerText: body.disclaimerText,
-    });
-    const png = await renderCardTemplatePng(
-      {
-        DB: env.DB,
-        BOT_TOKEN: env.BOT_TOKEN,
-        MEDIA_KV: env.MEDIA_KV,
-        ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}),
-        BROWSER: env.BROWSER,
-      },
-      {
-        backgroundAssetId: typeof body.backgroundAssetId === "number" ? body.backgroundAssetId : null,
-        backgroundColor: definition.backgroundColor,
-        slots: definition.slots,
-        disclaimerText: definition.disclaimerText,
-        canvasWidth: 900,
-        canvasHeight: 1200,
-      },
-      { values: { ...CARD_TEMPLATE_SAMPLE_VALUES } },
-    );
-    return new Response(png, {
-      headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
-    });
+    return json({ ok: true, id: responseId, published });
   }
 
   if (request.method === "POST" && url.pathname === "/api/admin/plaza/posts/status") {
@@ -1655,6 +1883,23 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ ok: true, post: { id: updated.id, status: updated.status } });
   }
 
+  if (request.method === "POST" && url.pathname === "/api/admin/plaza/comments/status") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理树洞评论");
+    const commentId = Number(body.id);
+    const status = body.status === "removed" ? "removed" : "published";
+    if (!Number.isInteger(commentId) || commentId <= 0) return fail(400, "validation_failed", "无效的评论编号");
+    const updated = await setPlazaCommentStatus(db, commentId, status);
+    if (!updated) return fail(404, "not_found", "评论不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: status === "removed" ? "plaza_comment.remove" : "plaza_comment.restore",
+      entityType: "plaza_comment",
+      entityId: String(commentId),
+      after: { status },
+    });
+    return json({ ok: true, comment: { id: updated.id, postId: updated.postId, status: updated.status } });
+  }
+
   if (request.method === "PUT" && url.pathname === "/api/admin/settings") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可修改系统设置");
     const updates: Record<string, string> = {};
@@ -1663,6 +1908,12 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       const value = String(body[key]).trim();
       if (key === "default_report_template" && value && !REPORT_TEMPLATES[value]) {
         return fail(400, "validation_failed", "默认报告模板无效");
+      }
+      if (key === "profile_gallery_survey_id" && value) {
+        const surveyId = Number(value);
+        if (!Number.isInteger(surveyId) || surveyId <= 0) {
+          return fail(400, "validation_failed", "个人画廊问卷必须是有效的问卷编号");
+        }
       }
       if (
         key === "media_ttl_seconds" ||
@@ -1803,9 +2054,8 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ ok: true, banned });
   }
 
-  // POST /api/admin/imports/from-url — Microsoft Forms URL → survey JSON
-  // (the Worker can fetch public Forms definitions; PDF / Office documents
-  // must be imported through the local Python CLI importer).
+  // POST /api/admin/imports/from-url — public Microsoft/Zoho Forms URL → survey JSON
+  // (PDF / Office documents must be imported through the local Python CLI importer).
   if (request.method === "POST" && url.pathname === "/api/admin/imports/from-url") {
     if (!isAdmin && !(await hasActiveCreatorTrial(db, user.id))) {
       return fail(403, "creator_trial_required", "需要有效的创作者权限才能导入问卷。");
@@ -1820,28 +2070,34 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       return fail(400, "invalid_url", "仅支持 http/https URL");
     }
-    if (!isFormsUrl(rawUrl)) {
+    const source = isFormsUrl(rawUrl) ? "microsoft_forms" : isZohoUrl(rawUrl) ? "zoho_forms" : null;
+    if (!source) {
       return fail(
         400,
         "unsupported_in_worker",
-        "当前仅支持 Microsoft Forms 链接在线导入。PDF / Word / Excel / PowerPoint 文档请在本地运行：\n" +
+        "当前支持 Microsoft Forms 和 Zoho Forms 链接在线导入。PDF / Word / Excel / PowerPoint 文档请在本地运行：\n" +
           'uv run python scripts/import_survey_from_url.py "<URL>"\n' +
           "然后把生成的 survey.json 粘贴到下方文本框完成导入。",
       );
     }
     let content: string;
     try {
-      content = await fetchMicrosoftFormsSurveyJson(rawUrl);
+      content =
+        source === "microsoft_forms"
+          ? await fetchMicrosoftFormsSurveyJson(rawUrl)
+          : await fetchZohoFormsSurveyJson(rawUrl);
     } catch (error) {
-      if (error instanceof FormsImportError) {
+      if (error instanceof FormsImportError || error instanceof ZohoImportError) {
         const status =
           error.code === "DOCUMENT_REQUIRES_AUTH"
             ? 401
             : error.code === "HTTP_404"
               ? 404
-              : error.code === "NETWORK_ERROR"
-                ? 502
-                : 422;
+              : error.code === "DOCUMENT_TOO_LARGE"
+                ? 413
+                : error.code === "NETWORK_ERROR"
+                  ? 502
+                  : 422;
         return fail(status, error.code, error.message);
       }
       console.error("Microsoft Forms URL import failed", { url: rawUrl, error });
@@ -1869,7 +2125,7 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({
       ok: true,
       content,
-      source: "microsoft_forms",
+      source,
       ...summary,
     });
   }
@@ -2287,6 +2543,112 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return json({ results });
   }
 
+  // ---- 挑战任务包（trial task packs）管理 ----
+  const taskPackMatch = url.pathname.match(/^\/api\/admin\/task-packs\/(\d+)$/);
+
+  if (request.method === "POST" && url.pathname === "/api/admin/task-packs") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 60) : "";
+    if (!name) return fail(400, "validation_failed", "任务包名称不能为空");
+    const createInput: {
+      name: string;
+      description?: string | null;
+      normalFloors?: number;
+      hellFloors?: number;
+      prepItems?: string[];
+      prepText?: string | null;
+      items?: unknown[];
+    } = {
+      name,
+      description: typeof body.description === "string" ? body.description.slice(0, 300) : null,
+      items: Array.isArray(body.items) ? body.items : [],
+    };
+    if (typeof body.normalFloors === "number") createInput.normalFloors = body.normalFloors;
+    if (typeof body.hellFloors === "number") createInput.hellFloors = body.hellFloors;
+    if (Array.isArray(body.prepItems)) {
+      createInput.prepItems = body.prepItems
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim().slice(0, 60))
+        .slice(0, 12);
+    }
+    if (typeof body.prepText === "string") createInput.prepText = body.prepText.slice(0, 300);
+    else if (body.prepText === null) createInput.prepText = null;
+    const pack = await createTaskPack(db, createInput);
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "task_pack.create",
+      entityType: "task_pack",
+      entityId: String(pack.id),
+      after: { name: pack.name, normalFloors: pack.normalFloors, hellFloors: pack.hellFloors },
+    });
+    return json({ pack });
+  }
+
+  if ((request.method === "PUT" || request.method === "PATCH") && taskPackMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
+    const packId = Number(taskPackMatch[1]);
+    const existing = await listTaskPacks(db, { withItems: true }).then((packs) =>
+      packs.find((pack) => pack.id === packId),
+    );
+    if (!existing) return fail(404, "not_found", "任务包不存在");
+    const updateInput: {
+      name?: string;
+      description?: string | null;
+      normalFloors?: number;
+      hellFloors?: number;
+      prepItems?: string[];
+      prepText?: string | null;
+      enabled?: boolean;
+      sortOrder?: number;
+      items?: unknown[];
+    } = {};
+    if (typeof body.name === "string") updateInput.name = body.name;
+    if (typeof body.description === "string") updateInput.description = body.description;
+    if (body.description === null) updateInput.description = null;
+    if (typeof body.normalFloors === "number") updateInput.normalFloors = body.normalFloors;
+    if (typeof body.hellFloors === "number") updateInput.hellFloors = body.hellFloors;
+    if (Array.isArray(body.prepItems)) {
+      updateInput.prepItems = body.prepItems
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim().slice(0, 60))
+        .slice(0, 12);
+    }
+    if (typeof body.prepText === "string") updateInput.prepText = body.prepText.slice(0, 300);
+    else if (body.prepText === null) updateInput.prepText = null;
+    if (typeof body.enabled === "boolean") updateInput.enabled = body.enabled;
+    if (typeof body.sortOrder === "number") updateInput.sortOrder = body.sortOrder;
+    if (Array.isArray(body.items)) updateInput.items = body.items;
+    const updated = await updateTaskPack(db, packId, updateInput);
+    if (!updated) return fail(404, "not_found", "任务包不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "task_pack.update",
+      entityType: "task_pack",
+      entityId: String(packId),
+      before: { name: existing.name, enabled: existing.enabled, itemCount: existing.items?.length ?? 0 },
+      after: {
+        name: updated.name,
+        enabled: updated.enabled,
+        itemCount: updated.items?.length ?? 0,
+      },
+    });
+    return json({ pack: updated });
+  }
+
+  if (request.method === "DELETE" && taskPackMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
+    const packId = Number(taskPackMatch[1]);
+    const removed = await deleteTaskPack(db, packId);
+    if (!removed) return fail(404, "not_found", "任务包不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "task_pack.delete",
+      entityType: "task_pack",
+      entityId: String(packId),
+    });
+    return json({ ok: true, id: packId });
+  }
+
   const surveyMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)(\/.*)?$/);
   if (!surveyMatch) return fail(404, "not_found", "Not found");
   const surveyId = Number(surveyMatch[1]);
@@ -2553,14 +2915,14 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
         return fail(400, "not_completed", "答卷尚未完成，无法生成 PDF");
       }
       const surveyRow = manageable.survey;
-      const template = await resolveReportTemplate(db, surveyRow.reportTemplateId);
+      const settings = await loadSystemSettings(db);
+      const template = await resolveReportTemplate(db, surveyRow.reportTemplateId ?? settings.defaultReportTemplate);
       const prepared = await prepareResultProfileForResponse(db, responseId);
       if (!prepared) {
         return fail(404, "report_unavailable", "报告不存在或尚未生成");
       }
       const snapshot = deserializeResultProfile(prepared.profile);
       const images = await resolveReportProfileImages(env, snapshot);
-      const settings = await loadSystemSettings(db);
       const pdf = await renderReportPdf(
         env.BROWSER,
         snapshot,
@@ -2875,6 +3237,9 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
       const targetType = body.type !== undefined ? (body.type as QuestionType) : question.type;
       if (body.type !== undefined && body.type !== question.type) {
         await updateQuestionType(db, questionId, targetType);
+        if (!["single", "multiple", "yes_no", "rating"].includes(targetType) && !isMatrixQuestionType(targetType)) {
+          await db.prepare("DELETE FROM question_options WHERE question_id = ?").bind(questionId).run();
+        }
         if (isMatrixQuestionType(question.type) && !isMatrixQuestionType(targetType)) {
           await updateQuestionSettings(db, questionId, null);
         }
@@ -3011,6 +3376,101 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     const newOptionId = await duplicateQuestionOption(db, optionId);
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json({ id: newOptionId, updatedAt }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
+  // ---- 题目 / 选项媒体附件（网页编辑器上传与移除） ----
+  // 上传即绑定：文件写入 MEDIA_KV，绑定到题目/选项，随后前端刷新编辑器。
+  const readUploadedFile = async (): Promise<File | Response> => {
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) {
+      return fail(400, "invalid_upload", "请选择要上传的文件");
+    }
+    return file;
+  };
+
+  const questionMediaUploadMatch = rest.match(/^\/questions\/(\d+)\/media$/);
+  if (request.method === "POST" && questionMediaUploadMatch) {
+    const questionId = Number(questionMediaUploadMatch[1]);
+    const question = await getQuestionById(db, questionId);
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "题目不存在");
+    const fileOrError = await readUploadedFile();
+    if (fileOrError instanceof Response) return fileOrError;
+    let asset: MediaAsset;
+    try {
+      asset = await storeSurveyAdminMedia(db, env.MEDIA_KV, fileOrError);
+    } catch (error) {
+      return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+    }
+    const existing = await getQuestionMediaByQuestionId(db, questionId);
+    await createQuestionMedia(db, { questionId, mediaAssetId: asset.id, sortOrder: existing.length });
+    const updatedAt = await touchSurvey(db, surveyId);
+    return Response.json(
+      {
+        mediaAssetId: asset.id,
+        mediaType: asset.mediaType,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        updatedAt,
+      },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const questionMediaDeleteMatch = rest.match(/^\/questions\/(\d+)\/media\/(\d+)$/);
+  if (request.method === "DELETE" && questionMediaDeleteMatch) {
+    const questionId = Number(questionMediaDeleteMatch[1]);
+    const mediaAssetId = Number(questionMediaDeleteMatch[2]);
+    const question = await getQuestionById(db, questionId);
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "题目不存在");
+    const removed = await deleteQuestionMediaByAsset(db, questionId, mediaAssetId);
+    if (removed === 0) return fail(404, "media_not_found", "该题目没有此附件");
+    const updatedAt = await touchSurvey(db, surveyId);
+    return json({ ok: true, updatedAt });
+  }
+
+  const optionMediaUploadMatch = rest.match(/^\/options\/(\d+)\/media$/);
+  if (request.method === "POST" && optionMediaUploadMatch) {
+    const optionId = Number(optionMediaUploadMatch[1]);
+    const option = await getQuestionOptionById(db, optionId);
+    if (!option) return fail(404, "not_found", "选项不存在");
+    const question = await getQuestionById(db, option.questionId);
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "选项不存在");
+    const fileOrError = await readUploadedFile();
+    if (fileOrError instanceof Response) return fileOrError;
+    let asset: MediaAsset;
+    try {
+      asset = await storeSurveyAdminMedia(db, env.MEDIA_KV, fileOrError);
+    } catch (error) {
+      return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+    }
+    const existing = await getOptionMediaByOptionId(db, optionId);
+    await createOptionMedia(db, { questionOptionId: optionId, mediaAssetId: asset.id, sortOrder: existing.length });
+    const updatedAt = await touchSurvey(db, surveyId);
+    return Response.json(
+      {
+        mediaAssetId: asset.id,
+        mediaType: asset.mediaType,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        updatedAt,
+      },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const optionMediaDeleteMatch = rest.match(/^\/options\/(\d+)\/media\/(\d+)$/);
+  if (request.method === "DELETE" && optionMediaDeleteMatch) {
+    const optionId = Number(optionMediaDeleteMatch[1]);
+    const mediaAssetId = Number(optionMediaDeleteMatch[2]);
+    const option = await getQuestionOptionById(db, optionId);
+    if (!option) return fail(404, "not_found", "选项不存在");
+    const question = await getQuestionById(db, option.questionId);
+    if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "选项不存在");
+    const removed = await deleteOptionMediaByAsset(db, optionId, mediaAssetId);
+    if (removed === 0) return fail(404, "media_not_found", "该选项没有此附件");
+    const updatedAt = await touchSurvey(db, surveyId);
+    return json({ ok: true, updatedAt });
   }
 
   return fail(404, "not_found", "Not found");

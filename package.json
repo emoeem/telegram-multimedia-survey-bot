@@ -41,6 +41,7 @@
     "daisyui": "^5.7.20",
     "echarts": "^6.1.0",
     "fflate": "^0.8.3",
+    "parse5": "^8.0.1",
     "playwright": "^1.62.1"
   }
 }

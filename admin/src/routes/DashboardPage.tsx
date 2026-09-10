@@ -17,11 +17,36 @@ import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../component
 import { formatDateTime } from "../format";
 
 const METRICS: Array<{ key: keyof DashboardData; label: string; icon: typeof Users; tint: string }> = [
-  { key: "users", label: "用户数量", icon: Users, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-  { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
-  { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
-  { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-  { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]" },
+  {
+    key: "users",
+    label: "用户数量",
+    icon: Users,
+    tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]",
+  },
+  {
+    key: "surveys",
+    label: "问卷数量",
+    icon: ClipboardList,
+    tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]",
+  },
+  {
+    key: "publishedSurveys",
+    label: "已发布问卷",
+    icon: FileText,
+    tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]",
+  },
+  {
+    key: "responses",
+    label: "答卷数量",
+    icon: Archive,
+    tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]",
+  },
+  {
+    key: "todayResponses",
+    label: "今日答卷",
+    icon: Activity,
+    tint: "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]",
+  },
 ];
 
 export function DashboardPage() {
@@ -39,10 +64,34 @@ export function DashboardPage() {
     icon: typeof Package;
     tint: string;
   }> = [
-    { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]" },
-    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
-    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
-    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]" },
+    {
+      label: "待处理",
+      value: deliveries.pending,
+      status: "pending",
+      icon: Clock,
+      tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]",
+    },
+    {
+      label: "生成中",
+      value: deliveries.delivering,
+      status: "delivering",
+      icon: Loader,
+      tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]",
+    },
+    {
+      label: "已归档",
+      value: deliveries.delivered,
+      status: "delivered",
+      icon: CheckCircle2,
+      tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]",
+    },
+    {
+      label: "失败",
+      value: deliveries.failed,
+      status: "failed",
+      icon: XCircle,
+      tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]",
+    },
   ];
 
   const actionLabels: Record<string, string> = {
@@ -99,7 +148,9 @@ export function DashboardPage() {
                 </span>
                 {label}
               </div>
-              <div className={`mt-2 text-2xl font-bold ${label === "失败" && value > 0 ? "text-[var(--color-danger)]" : ""}`}>
+              <div
+                className={`mt-2 text-2xl font-bold ${label === "失败" && value > 0 ? "text-[var(--color-danger)]" : ""}`}
+              >
                 {value}
               </div>
             </Link>
@@ -115,7 +166,10 @@ export function DashboardPage() {
               <li key={action.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <span>
                   {actionLabels[action.action] ?? action.action}
-                  <span className="muted"> · {action.entityType} #{action.entityId ?? "-"}</span>
+                  <span className="muted">
+                    {" "}
+                    · {action.entityType} #{action.entityId ?? "-"}
+                  </span>
                 </span>
                 <span className="muted">{formatDateTime(action.createdAt)}</span>
               </li>
@@ -131,11 +185,7 @@ export function DashboardPage() {
             <table className="tbl">
               <tbody>
                 {data.recentSurveys.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/surveys/${item.id}`)}
-                  >
+                  <tr key={item.id} className="cursor-pointer" onClick={() => navigate(`/surveys/${item.id}`)}>
                     <td>
                       <strong>{item.title || "未命名问卷"}</strong>
                     </td>
@@ -155,23 +205,51 @@ export function DashboardPage() {
 
       {data.recentResponses?.length ? (
         <section className="card mt-6">
-          <h2 className="text-base font-semibold">最近答卷</h2>
-          <ul className="mt-3 divide-y divide-edge-soft">
-            {data.recentResponses.map((item) => (
-              <li key={item.id}>
-                <Link
-                  to={`/surveys/${item.surveyId}/responses/${item.id}`}
-                  className="flex items-center justify-between gap-3 py-2.5 text-sm"
-                >
-                  <span>
-                    <span className="font-medium">{item.title || `问卷 ${item.surveyId}`}</span>
-                    <span className="muted"> · #{item.id}</span>
-                  </span>
-                  <span className="muted">{formatDateTime(item.updatedAt)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">最近答卷</h2>
+            <Link className="btn btn-sm" to="/responses">
+              查看全部
+            </Link>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th className="text-sm text-[var(--color-muted)]">问卷 / 答卷</th>
+                  <th className="text-sm text-[var(--color-muted)]">填写者</th>
+                  <th className="text-sm text-[var(--color-muted)]">状态</th>
+                  <th className="text-sm text-[var(--color-muted)]">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recentResponses.map((item) => {
+                  const respondentText = item.respondent
+                    ? [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ") ||
+                      (item.respondent.username
+                        ? `@${item.respondent.username}`
+                        : String(item.respondent.telegramUserId))
+                    : item.participantKey
+                      ? `网页参与 · ${item.participantKey}`
+                      : "匿名 / 网页参与";
+                  return (
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
+                    >
+                      <td>
+                        <strong>{item.title || `问卷 ${item.surveyId}`}</strong>
+                        <span className="muted"> · #{item.id}</span>
+                      </td>
+                      <td className="text-sm">{respondentText}</td>
+                      <td className="text-sm">{item.statusLabel}</td>
+                      <td className="muted">{formatDateTime(item.updatedAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
     </div>

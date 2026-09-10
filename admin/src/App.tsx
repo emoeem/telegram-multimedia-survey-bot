@@ -6,6 +6,7 @@ import { SurveyDetailPage } from "./routes/SurveyDetailPage";
 import { EditorPage } from "./routes/EditorPage";
 import { ResponsesPage } from "./routes/ResponsesPage";
 import { ResponseDetailPage } from "./routes/ResponseDetailPage";
+import { ResponseActivityPage } from "./routes/ResponseActivityPage";
 import { ImportPage } from "./routes/ImportPage";
 import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { UsersPage } from "./routes/UsersPage";
@@ -16,9 +17,9 @@ import { LoginPage } from "./routes/LoginPage";
 import { AuditPage } from "./routes/AuditPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { LicensesPage } from "./routes/LicensesPage";
-import { IdentityCardsPage } from "./routes/IdentityCardsPage";
-import { CardTemplatesPage } from "./routes/CardTemplatesPage";
 import { PlazaPostsPage } from "./routes/PlazaPostsPage";
+import { ProfileGalleryPage } from "./routes/ProfileGalleryPage";
+import { TaskPacksPage } from "./routes/TaskPacksPage";
 
 const router = createBrowserRouter(
   [
@@ -27,6 +28,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <DashboardPage /> },
         { path: "surveys", element: <SurveysPage /> },
+        { path: "responses", element: <ResponseActivityPage /> },
         { path: "imports", element: <ImportPage /> },
         { path: "surveys/:id", element: <SurveyDetailPage /> },
         { path: "surveys/:id/editor", element: <EditorPage /> },
@@ -36,9 +38,9 @@ const router = createBrowserRouter(
         { path: "surveys/:id/versions", element: <VersionsPage /> },
         { path: "reports", element: <ReportsPage /> },
         { path: "templates", element: <TemplatesPage /> },
-        { path: "identity-cards", element: <IdentityCardsPage /> },
-        { path: "card-templates", element: <CardTemplatesPage /> },
         { path: "plaza", element: <PlazaPostsPage /> },
+        { path: "profile-gallery", element: <ProfileGalleryPage /> },
+        { path: "task-packs", element: <TaskPacksPage /> },
         { path: "audit", element: <AuditPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "licenses", element: <LicensesPage /> },

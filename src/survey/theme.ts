@@ -74,8 +74,7 @@ export const SURVEY_THEME_PRESETS = [
 
 const PRESET_IDS = new Set<string>(SURVEY_THEME_PRESETS.map((preset) => preset.id));
 
-const COLOR_RE =
-  /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\)|transparent)$/;
+const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\)|transparent)$/;
 
 const BACKGROUND_POSITIONS = new Set([
   "left top",
@@ -111,21 +110,13 @@ function safeString(value: unknown, maxLength: number): string | undefined {
 function safeImage(value: unknown): string | undefined {
   const image = safeString(value, 4000);
   if (!image) return undefined;
-  return image.startsWith("data:image/") ||
-    image.startsWith("https://") ||
-    image.startsWith("/")
-    ? image
-    : undefined;
+  return image.startsWith("data:image/") || image.startsWith("https://") || image.startsWith("/") ? image : undefined;
 }
 
 function safeAudioUrl(value: unknown): string | undefined {
   const url = safeString(value, 4000);
   if (!url) return undefined;
-  return url.startsWith("data:audio/") ||
-    url.startsWith("https://") ||
-    url.startsWith("/")
-    ? url
-    : undefined;
+  return url.startsWith("data:audio/") || url.startsWith("https://") || url.startsWith("/") ? url : undefined;
 }
 
 function safePercent(value: unknown): number | undefined {

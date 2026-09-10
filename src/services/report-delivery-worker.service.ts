@@ -18,8 +18,6 @@ import {
   REPORT_DELIVERY_MAX_ATTEMPTS,
   REPORT_CHANNEL_CACHE_KEY,
 } from "./report-delivery.service";
-import { deleteTemporaryMediaForResponse } from "./media/temporary-media.service";
-import { KVMediaStore } from "./media/temporary-media-store";
 import { resolveReportTemplate } from "./report/template-resolver";
 import { getSystemSettingValue, loadSystemSettings } from "./system-settings.service";
 import { sendDocument, sendMessage, sendPhoto } from "../bot/telegram";
@@ -39,6 +37,17 @@ interface DeliveryResult {
   telegramChatId: number;
   pdfMessageId: number;
   imageMessageIds: number[];
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function respondentHtml(info: { username: string | null; firstName: string | null; telegramUserId: number }): string {
+  if (info.username) {
+    return `<a href="https://t.me/${escapeHtml(info.username)}">@${escapeHtml(info.username)}</a>`;
+  }
+  return `<a href="tg://openmessage?user_id=${info.telegramUserId}">用户 ${info.telegramUserId}</a>`;
 }
 
 function messageIdFromResponse(response: Response): Promise<number> {
@@ -70,16 +79,6 @@ export async function processReportDeliveryMessage(env: ReportDeliveryWorkerEnvi
   try {
     const result = await deliverReportToChannel(env, delivery.responseId);
     await completeReportDelivery(env.DB, delivery.id, result);
-    if (env.MEDIA_KV) {
-      try {
-        await deleteTemporaryMediaForResponse(env.DB, new KVMediaStore(env.MEDIA_KV), delivery.responseId);
-      } catch (cleanupError) {
-        console.warn("Temporary media cleanup after delivery failed", {
-          responseId: delivery.responseId,
-          error: cleanupError,
-        });
-      }
-    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const retryable = isRetryableDeliveryError(error);
@@ -106,11 +105,12 @@ async function deliverReportToChannel(
   env: ReportDeliveryWorkerEnvironment,
   responseId: number,
 ): Promise<DeliveryResult> {
-  const configuredChannel = env.REPORT_CHANNEL_ID?.trim() || undefined;
-  const cachedChannel = env.CACHE ? await env.CACHE.get(REPORT_CHANNEL_CACHE_KEY) : undefined;
   const settingsChannel = await getSystemSettingValue(env.DB, "report_channel_id");
-  const chatIdRaw = configuredChannel ?? cachedChannel ?? settingsChannel ?? undefined;
-  const chatId = chatIdRaw === undefined ? NaN : Number(chatIdRaw);
+  const cachedChannel = env.CACHE ? await env.CACHE.get(REPORT_CHANNEL_CACHE_KEY) : undefined;
+  const chatId =
+    [settingsChannel, cachedChannel, env.REPORT_CHANNEL_ID]
+      .map((value) => Number(value?.trim()))
+      .find((value) => Number.isInteger(value) && value !== 0) ?? NaN;
   if (!Number.isInteger(chatId) || chatId === 0) {
     throw new Error("REPORT_CHANNEL_ID 未配置或无效");
   }
@@ -123,7 +123,8 @@ async function deliverReportToChannel(
     throw new Error("答卷不存在或尚未完成");
   }
   const survey = await getSurveyById(env.DB, response.surveyId);
-  const template = await resolveReportTemplate(env.DB, survey?.reportTemplateId);
+  const settings = await loadSystemSettings(env.DB);
+  const template = await resolveReportTemplate(env.DB, survey?.reportTemplateId ?? settings.defaultReportTemplate);
   const prepared = await prepareResultProfileForResponse(env.DB, responseId);
   if (!prepared) {
     throw new Error("无法生成答卷结果");
@@ -131,9 +132,6 @@ async function deliverReportToChannel(
   const snapshot = deserializeResultProfile(prepared.profile);
   const images = await resolveReportProfileImages(env, snapshot);
   const respondentInfo = response.userId === null ? null : await getUserById(env.DB, response.userId);
-  const respondent = respondentInfo
-    ? (respondentInfo.username ?? respondentInfo.firstName ?? `用户 ${respondentInfo.telegramUserId}`)
-    : "匿名";
   const completedAt = formatChinaDateTime(response.completedAt);
 
   const pdfMeta: {
@@ -143,7 +141,6 @@ async function deliverReportToChannel(
     watermark?: string;
   } = { completedAt, reportId: `#${responseId}` };
   if (survey?.title) pdfMeta.surveyTitle = survey.title;
-  const settings = await loadSystemSettings(env.DB);
   pdfMeta.watermark = settings.reportWatermark;
   const pdf = await renderReportPdf(env.BROWSER, snapshot, images, pdfMeta, {}, template);
   const pdfMaxBytes = settings.pdfMaxMb * 1024 * 1024;
@@ -165,9 +162,9 @@ async function deliverReportToChannel(
   const caption = [
     "📋 新答卷",
     "",
-    `问卷：${survey?.title ?? "未知问卷"}`,
+    `问卷：${escapeHtml(survey?.title ?? "未知问卷")}`,
     `答卷：#${responseId}`,
-    `用户：${respondent}`,
+    `用户：${respondentInfo ? respondentHtml(respondentInfo) : "匿名"}`,
     `完成时间：${completedAt}`,
     "",
     sendZip ? `📦 报告+用户图片：report-${responseId}.zip` : `📄 报告：report-${responseId}.pdf`,
@@ -183,6 +180,7 @@ async function deliverReportToChannel(
     archiveBytes,
     archiveType,
     captionWithTags,
+    "HTML",
   );
   const pdfMessageId = await messageIdFromResponse(pdfResponse);
 

@@ -48,7 +48,7 @@
 
 - Dashboard：计数/今日答卷/报告交付状态/最近操作
 - 问卷：列表/搜索/筛选/详情/关闭/重新发布/归档/删除（带答卷保护）/复制/导入导出/预览
-- 编辑器：题目与选项 CRUD、拖拽排序、改题型、校验、跳题规则、分页管理、题目/选项复制、保存队列、409 并发、发布、版本恢复
+- 编辑器：题目与选项 CRUD、拖拽排序、改题型、校验、跳题规则、分页管理、题目/选项复制、题面/选项媒体上传（KV）、保存队列、409 并发、发布、版本恢复
 - 版本管理：列表/对比（增删改 diff）/恢复为新草稿
 - 答卷：列表（状态+日期筛选）/详情/媒体预览/归档/删除（已完成禁止）/打开 Web 报告/重新生成报告
 - 报告管理：deliveries 状态/错误/重试
@@ -84,7 +84,7 @@
 
 ## 4. 已知限制与决策（接手前必读）
 
-1. **R2 未启用** → 临时媒体走 KV；问卷静态媒体仍是 Telegram file_id（Web 编辑器暂不能上传静态媒体，只能 Bot/导入）
+1. **R2 未启用** → 媒体走 KV（`MEDIA_KV`）；Web 编辑器已支持上传题面/选项附件（图片/视频/音频/文件，单文件 ≤20MB，`media:survey:*` 键），旧 Bot/导入路径仍保留
 2. **无规则集的 fallback 报告**：~~单选显示原始选项 ID（如"10"而非"蓝色"）~~ 已修复——`result-visual.service.ts` 的 fallback 展示会把单选/多选选项 ID 映射为标签（未知 ID 回退原始值）；标签来自当前 `question_options`，历史答卷按 DB 选项 ID 尽力映射（快照中选项为位置 ID，无可靠对应关系）。配置 ResultRule 后按规则显示文案
 3. **Bot 旧答题 UI 第一块已下线**：内联答题/消息路由/q:* 回调/继续填写入口/`renderer.ts` 已删；Builder、QuestionEditor、owner:* 管理流程仍在代码中（P10 后续块，等 Web 流程人工确认后继续删）
 4. **`assets` 配置三件套（2026-08-23）**：`run_worker_first=true` + `html_handling="none"` + `not_found_handling="none"`。Worker 先于静态资产执行，`/s`、`/admin`、`/api/*` 由 Worker 显式路由，JS/CSS 由 ASSETS 兜底，未知路径返回真 404。**不要把 `not_found_handling` 改回 `single-page-application`**：那会让带 `Sec-Fetch-Dest: document` 的真实浏览器导航请求被 SPA fallback 拦截并直接返回 admin index.html（Worker 不执行），导致 `/s`、`/s/:id` 黑屏——这是此前 curl 正常但浏览器黑屏的根因。`/admin` 入口在 Worker 里显式取 `/index.html`（`html_handling="none"` 下无目录索引）；`/s` 显式取 `/survey.html`，勿改回默认否则路径被重定向丢失
@@ -98,6 +98,10 @@
 
 ### 近期（建议优先级）
 
+- [~] **网页任务系统（挑战/trial，2026-09-09 已开发、待上线部署）**：内容与机制分离——机制引擎 `src/trial/engine.ts`（楼层/身份/模式/积分/评级；P2 商店：随机开局金币 + 跳过券/加倍券/护盾 + 放弃护盾结算），公开 API `src/http/trial-api.ts`（任务包、开局进入商店、购买出发、完成/加倍/跳过/放弃/护盾结算、云端续玩、战绩、排行榜，`/api/trial/*`），迁移 0045（任务包/任务条目/游玩局三张表 + 两套示例任务包文案）；玩家端 `/trial` 网页（18+ 声明确认 → 开局设置 → 开局商店 → 逐层道具任务 → 结算评级，见 `admin/src/survey/TrialScreen.tsx`）；管理端「挑战任务」页 `/admin/task-packs`（任务包/任务条目全量编辑与上下架，实时生效，见 `admin/src/routes/TaskPacksPage.tsx`）；Bot 主菜单与管理员中心已加「🎯 挑战任务」按钮（`${origin}/trial`）。
+- [~] **P3 社区联动（2026-09-09 已开发、待上线部署）**：结算页「匿名晒进度」→ 树洞生成 🎯 挑战晒卡帖（`plaza_posts.kind='trial'` + 结构化 `payload_json`，匿名、限频 3 次/时、自动镜像广场频道）；树洞帖子支持评论（迁移 0046 `plaza_post_comments` + 公开读写接口，限频 20 次/时，需 Telegram 身份）；帖子作者被评论时收到 Bot 私信通知（`src/services/plaza-notify.service.ts`）；管理端「树洞」页可展开下架/恢复评论；结算页一键直达对应任务包排行榜。公开帖/评论 DTO 增加 `kind/payload/commentCount`。**待办：应用迁移 0046、生产部署；旧主菜单需重新 /start 出现「挑战任务」按钮。**
+- [~] **挑战任务体验补强 + 内容扩充（2026-09-09 已开发、待上线部署）**：玩家端 `/trial` 补齐主题切换（与广场共用 DaisyUI 预设与 `plazaTheme` 记忆）与可靠退出（Telegram WebView 直接关闭，普通浏览器回退到问卷首页）；管理员在挑战页首页可见「打开任务编辑器」直达卡（`GET /api/trial/me` 下发 `isAdmin`），Bot 管理员中心新增「⚙️ 任务包管理」直达 `/admin/task-packs`；内容迁移 0047 新增「示例 · 浴室晨课」「示例 · 宅邸夜巡」两个任务包，并为前两个包补充任务（共 4 包 / 62 条任务文案，全部可在后台改）。
+- [x] **K9 原典 200 题导入 + 任务风险弹窗（2026-09-09 已上线）**：`task_items` 新增 `warning` 列（迁移 0048），管理端每条任务可填「风险弹窗提醒」；玩家抽到带 warning 的任务时先弹出确认遮罩，知晓后才能继续。K9 原典全部 200 题完整保留，导入为新任务包「K9 犬训 · 原典 200 题」（普通 20 层 / 地狱 25 层），其中 35 题按原典自动附加危险动作/公共场合提醒（编号见 `scripts/data/k9-task200.json`）。导入管线：`pdftotext → scripts/parse_k9_pdf.mjs → scripts/import_k9_tasks.mjs → 0048 迁移`，便于以后换源重导。
 - [x] **广场（树洞 + 资料卡）（2026-08-29）**：机器人主菜单「🏛 广场」按钮直接打开网页版（`${origin}/plaza`，与问卷同一 SPA，复用 DaisyUI 主题/主题切换/身份头；无 origin 时回退 bot 内浏览）= 🖼 资料卡流（显示作者 @用户）+ 🌳 树洞流；网页投稿弹层（匿名/署名，KV 限流 5 条/小时，Telegram 身份校验），bot 内旧流程保留为回退，表 `plaza_posts`（迁移 0037）；后台新增「树洞」页（`/admin/plaza`）下架/恢复内容（审计日志）。资料卡接入 web 报告管线：4 种卡片版式（内置报告模板 + 卡片区块调优，900×1200 PNG），生成时选「发布到画廊」，成品存 MEDIA_KV（迁移 0036 `gallery_published`/`card_asset_id`）；后台「资料卡」页全量查看/上架下架。旧 `gallery:` 回调兼容路由到新广场。
 - [x] **提升批 1-7 + GitHub CI（2026-08-23）**：系统设置生效、问卷列表搜索/封面、审计日志页、编辑器撤销重做+自动保存、PWA、模板编辑器拖拽+字体配色可视化、批量导出进度；GitHub Actions CI（typecheck/单测/lint/构建/PDF 回归/视觉回归）。详见 `docs/PHASE2_PLAN.md` §14
 - [x] **答卷批量导出/内嵌预览/分享链接（2026-08-23）**：答卷列表勾选批量导出到私人频道、桌面双栏内嵌报告预览（可切模板）、一键复制分享链接（30 天 token）。详见 `docs/PHASE2_PLAN.md` §14
@@ -185,3 +189,5 @@ npx wrangler deploy                 # 生产部署（当前 OAuth 指向生产�
 3. 打开生产 `/admin`（Telegram 内）核对 Dashboard/报告/设置
 4. 在频道发一条消息看 Bot 是否正常回（新代码应回复"✅ 已自动识别报告归档频道"只触发一次；已配置则无回复）
 5. 按 §5 待办继续
+6. 旧 PNG 资料卡、卡面模板、Satori 渲染队列与机器人旧资料卡向导已移除（相关数据表保留不动）；新的个人资料卡由「个人画廊」问卷流程提供
+7. 新增「个人画廊」（迁移 0040 + `src/services/profile-gallery.service.ts`）：在后台系统设置选择一份问卷作为个人画廊问卷；用户填完提交时可选「发布到个人画廊」（需 Telegram 身份），广场 `/plaza?tab=profiles` 展示照片 + 按题文本，后台「个人画廊」页可上下架

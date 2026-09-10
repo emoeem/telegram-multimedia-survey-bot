@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { X } from "lucide-react";
 import { api, apiSend, setUserBan, userChatLink, type UserDetailData, type UserDirectoryData } from "../api";
 import { useApi } from "../hooks";
@@ -16,7 +16,16 @@ function displayName(item: {
   return name || item.username || `用户 ${item.telegramUserId}`;
 }
 
+const RESPONSE_STATUS_TEXT: Record<string, string> = {
+  completed: "已完成",
+  in_progress: "填写中",
+  abandoned: "已放弃",
+  cancelled: "已取消",
+  archived: "已归档",
+};
+
 export function UsersPage() {
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
@@ -35,13 +44,13 @@ export function UsersPage() {
   });
   const { data, error, retry } = useApi<UserDirectoryData>(`/api/admin/users?${query}`);
 
-  const openDetail = async (userId: number) => {
+  const openDetail = async (userId: number, responsePage = 1) => {
     const requestToken = ++detailRequestRef.current;
     setSelected(userId);
     setDetail(null);
     setDetailError(null);
     try {
-      const result = await api<UserDetailData>(`/api/admin/users/${userId}`);
+      const result = await api<UserDetailData>(`/api/admin/users/${userId}?page=${responsePage}&pageSize=20`);
       // A slower response for an earlier click must not clobber the detail
       // panel the user is now looking at.
       if (requestToken === detailRequestRef.current) setDetail(result);
@@ -51,6 +60,19 @@ export function UsersPage() {
       }
     }
   };
+
+  const requestedUser = searchParams.get("user");
+  useEffect(() => {
+    const userId = Number(requestedUser);
+    if (Number.isInteger(userId) && userId > 0) {
+      void openDetail(userId, 1);
+    } else {
+      setSelected(null);
+      setDetail(null);
+    }
+    // The helper deliberately reads the latest state on each navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedUser]);
 
   const addTag = async (userId: number) => {
     const value = newTag.trim();
@@ -271,23 +293,48 @@ export function UsersPage() {
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium text-[var(--text-soft)]">最近答卷</p>
+                <p className="text-sm font-medium text-[var(--text-soft)]">答卷（共 {detail.responseTotal} 份）</p>
                 {detail.responses.length ? (
-                  <ul className="mt-2 space-y-1 text-sm">
-                    {detail.responses.map((response) => (
-                      <li key={response.responseId} className="flex items-center justify-between gap-2">
-                        <Link
-                          className="text-[var(--color-info)]"
-                          to={`/surveys/${response.surveyId}/responses/${response.responseId}`}
+                  <>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {detail.responses.map((response) => (
+                        <li key={response.responseId} className="flex items-center justify-between gap-2">
+                          <Link
+                            className="text-[var(--color-info)]"
+                            to={`/surveys/${response.surveyId}/responses/${response.responseId}`}
+                          >
+                            {response.surveyTitle} · #{response.responseId}
+                          </Link>
+                          <span className="text-[var(--color-muted-soft)]">
+                            {response.completedAt
+                              ? formatDateTime(response.completedAt)
+                              : (RESPONSE_STATUS_TEXT[response.status] ?? response.status)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {detail.responseTotalPages > 1 ? (
+                      <div className="mt-2 flex items-center justify-end gap-2 text-xs text-[var(--color-muted)]">
+                        <button
+                          className="btn btn-sm"
+                          disabled={detail.responsePage <= 1}
+                          onClick={() => void openDetail(selected, detail.responsePage - 1)}
                         >
-                          {response.surveyTitle} · #{response.responseId}
-                        </Link>
-                        <span className="text-[var(--color-muted-soft)]">
-                          {response.completedAt ? formatDateTime(response.completedAt) : response.status}
+                          上一页
+                        </button>
+                        <span>
+                          第 {detail.responsePage}/{detail.responseTotalPages} 页
                         </span>
-                      </li>
-                    ))}
-                  </ul>
+                        <button
+                          className="btn btn-sm"
+                          disabled={detail.responsePage >= detail.responseTotalPages}
+                          onClick={() => void openDetail(selected, detail.responsePage + 1)}
+                        >
+                          下一页
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="mt-2 text-sm text-[var(--color-muted-soft)]">暂无答卷</p>
                 )}

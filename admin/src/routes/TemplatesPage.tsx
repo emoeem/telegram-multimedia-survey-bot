@@ -78,28 +78,28 @@ const THEME_OPTIONS: Array<{ id: string; name: string }> = [
   { id: "daisy-cupcake", name: "粉彩（DaisyUI）" },
   { id: "daisy-synthwave", name: "霓虹（DaisyUI）" },
   { id: "daisy-black", name: "纯黑（DaisyUI）" },
-  ...([
-    "catppuccin-latte",
-    "catppuccin-frappe",
-    "catppuccin-macchiato",
-    "catppuccin-mocha",
-    "tokyo-night",
-    "dracula",
-    "one-dark",
-    "nord",
-    "night-owl",
-    "horizon",
-    "cobalt2",
-    "palenight",
-    "solarized-dark",
-    "gruvbox-dark",
-    "monokai",
-  ] as const).map((id) => ({ id, name: id })),
+  ...(
+    [
+      "catppuccin-latte",
+      "catppuccin-frappe",
+      "catppuccin-macchiato",
+      "catppuccin-mocha",
+      "tokyo-night",
+      "dracula",
+      "one-dark",
+      "nord",
+      "night-owl",
+      "horizon",
+      "cobalt2",
+      "palenight",
+      "solarized-dark",
+      "gruvbox-dark",
+      "monokai",
+    ] as const
+  ).map((id) => ({ id, name: id })),
 ];
 
-const KIND_LABELS: Record<string, string> = Object.fromEntries(
-  SECTION_OPTIONS.map((item) => [item.kind, item.label]),
-);
+const KIND_LABELS: Record<string, string> = Object.fromEntries(SECTION_OPTIONS.map((item) => [item.kind, item.label]));
 
 function emptyDraft(): TemplateDraft {
   return {
@@ -120,7 +120,7 @@ function emptyDraft(): TemplateDraft {
 }
 
 const FONT_OPTIONS = [
-  { id: "default", label: "系统默认", css: 'var(--font-sans)' },
+  { id: "default", label: "系统默认", css: "var(--font-sans)" },
   { id: "serif", label: "衬线（杂志感）", css: 'Georgia, "Noto Serif CJK SC", serif' },
   { id: "mono", label: "等宽（数据感）", css: 'ui-monospace, "SF Mono", Menlo, monospace' },
 ];
@@ -165,19 +165,21 @@ function SortableSectionRow({
         onChange={(event) => onUpdate(index, { ...section, kind: event.target.value })}
       >
         {SECTION_OPTIONS.map((option) => (
-          <option key={option.kind} value={option.kind}>{option.label}</option>
+          <option key={option.kind} value={option.kind}>
+            {option.label}
+          </option>
         ))}
       </select>
       <select
         className="select w-28"
         value={section.presentation ?? ""}
-        onChange={(event) =>
-          onUpdate(index, { ...section, presentation: event.target.value || undefined })
-        }
+        onChange={(event) => onUpdate(index, { ...section, presentation: event.target.value || undefined })}
       >
         <option value="">默认</option>
         {PRESENTATIONS.map((presentation) => (
-          <option key={presentation} value={presentation}>{presentation}</option>
+          <option key={presentation} value={presentation}>
+            {presentation}
+          </option>
         ))}
       </select>
       <button type="button" className="btn btn-sm text-[var(--color-danger)]" onClick={() => onRemove(index)}>
@@ -242,11 +244,10 @@ export function TemplatesPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await apiSend<{ html: string }>(
-        "POST",
-        "/api/admin/report-templates/preview",
-        { ...draft, css: combinedCss } as unknown as Record<string, unknown>,
-      );
+      const result = await apiSend<{ html: string }>("POST", "/api/admin/report-templates/preview", {
+        ...draft,
+        css: combinedCss,
+      } as unknown as Record<string, unknown>);
       setPreviewHtml(result.html);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "预览失败");
@@ -264,18 +265,14 @@ export function TemplatesPage() {
     setBusy(true);
     setError(null);
     try {
-      await apiSend(
-        "POST",
-        "/api/admin/report-templates",
-        {
-          ...draft,
-          sections: draft.sections.map(({ uid: _uid, kind, presentation }) => ({
-            kind,
-            ...(presentation ? { presentation } : {}),
-          })),
-          css: combinedCss,
-        } as unknown as Record<string, unknown>,
-      );
+      await apiSend("POST", "/api/admin/report-templates", {
+        ...draft,
+        sections: draft.sections.map(({ uid: _uid, kind, presentation }) => ({
+          kind,
+          ...(presentation ? { presentation } : {}),
+        })),
+        css: combinedCss,
+      } as unknown as Record<string, unknown>);
       setDraft(null);
       setPreviewHtml(null);
       await reload();
@@ -323,7 +320,13 @@ export function TemplatesPage() {
     return (
       <section className="card">
         <p className="text-sm text-[var(--color-danger)]">{error}</p>
-        <button className="btn mt-3" onClick={() => { setError(null); void reload(); }}>
+        <button
+          className="btn mt-3"
+          onClick={() => {
+            setError(null);
+            void reload();
+          }}
+        >
           重试
         </button>
       </section>
@@ -343,14 +346,17 @@ export function TemplatesPage() {
               setDraft(emptyDraft());
             }}
           >
-            <Plus className="h-4 w-4" />新建模板
+            <Plus className="h-4 w-4" />
+            新建模板
           </button>
         </div>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
+          系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。
+        </p>
         {templates ? (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
-                  <div key={template.id} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
+              <div key={template.id} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <strong className="truncate">{template.name}</strong>
                   <span className="flex shrink-0 items-center gap-1.5">
@@ -359,18 +365,26 @@ export function TemplatesPage() {
                         {LAYOUT_OPTIONS.find((item) => item.id === template.layout)?.name ?? template.layout}
                       </span>
                     ) : null}
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" : "bg-[var(--surface-muted)] text-[var(--text-soft)]"}`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${template.isCustom ? "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" : "bg-[var(--surface-muted)] text-[var(--text-soft)]"}`}
+                    >
                       {template.isCustom ? "自定义" : "系统"}
                     </span>
                   </span>
                 </div>
                 <div className="mt-1 font-mono text-xs text-[var(--color-muted-soft)]">{template.id}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button className="btn btn-sm" onClick={() => void openTemplate(template.id, Boolean(template.isCustom) ? false : true)}>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => void openTemplate(template.id, Boolean(template.isCustom) ? false : true)}
+                  >
                     {template.isCustom ? "编辑" : "复制编辑"}
                   </button>
                   {template.isCustom ? (
-                    <button className="btn btn-sm text-[var(--color-danger)]" onClick={() => void removeTemplate(template.id)}>
+                    <button
+                      className="btn btn-sm text-[var(--color-danger)]"
+                      onClick={() => void removeTemplate(template.id)}
+                    >
                       删除
                     </button>
                   ) : null}
@@ -388,7 +402,14 @@ export function TemplatesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-semibold">{draft.id ? `编辑模板：${draft.id}` : "新建模板"}</h3>
             <div className="flex gap-2">
-              <button className="btn" onClick={() => { setDraft(null); setPreviewHtml(null); setError(null); }}>
+              <button
+                className="btn"
+                onClick={() => {
+                  setDraft(null);
+                  setPreviewHtml(null);
+                  setError(null);
+                }}
+              >
                 返回列表
               </button>
               <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
@@ -427,7 +448,9 @@ export function TemplatesPage() {
                   onChange={(event) => setDraft({ ...draft, theme: event.target.value })}
                 >
                   {THEME_OPTIONS.map((theme) => (
-                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                    <option key={theme.id} value={theme.id}>
+                      {theme.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -439,7 +462,9 @@ export function TemplatesPage() {
                   onChange={(event) => setDraft({ ...draft, layout: event.target.value || undefined })}
                 >
                   {LAYOUT_OPTIONS.map((layout) => (
-                    <option key={layout.id} value={layout.id}>{layout.name}</option>
+                    <option key={layout.id} value={layout.id}>
+                      {layout.name}
+                    </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
@@ -468,9 +493,12 @@ export function TemplatesPage() {
                 </DndContext>
                 <button
                   className="btn btn-sm mt-2"
-                  onClick={() => setDraft({ ...draft, sections: [...draft.sections, { uid: newSectionUid(), kind: "answers" }] })}
+                  onClick={() =>
+                    setDraft({ ...draft, sections: [...draft.sections, { uid: newSectionUid(), kind: "answers" }] })
+                  }
                 >
-                  <Plus className="h-4 w-4" />添加块
+                  <Plus className="h-4 w-4" />
+                  添加块
                 </button>
               </div>
               <div>
@@ -484,7 +512,9 @@ export function TemplatesPage() {
                       onChange={(event) => setVisual({ ...visual, font: event.target.value })}
                     >
                       {FONT_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
                       ))}
                     </select>
                   </label>

@@ -49,7 +49,9 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">报告归档</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 个归档任务 · Telegram 私人频道交付状态</p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            共 {data.total} 个归档任务 · Telegram 私人频道交付状态
+          </p>
         </div>
         <select
           className="select"
@@ -59,7 +61,11 @@ export function ReportsPage() {
             setPage(1);
           }}
         >
-          {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -80,31 +86,50 @@ export function ReportsPage() {
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm">
-                    <Link className="text-[var(--color-info)]" to={`/surveys/${item.surveyId}`}>{item.surveyTitle || `问卷 ${item.surveyId}`}</Link>
+                    <Link className="text-[var(--color-info)]" to={`/surveys/${item.surveyId}`}>
+                      {item.surveyTitle || `问卷 ${item.surveyId}`}
+                    </Link>
                   </td>
                   <td className="text-sm">
-                    <Link className="text-[var(--color-info)]" to={`/surveys/${item.surveyId}/responses/${item.responseId}`}>#{item.responseId}</Link>
+                    <Link
+                      className="text-[var(--color-info)]"
+                      to={`/surveys/${item.surveyId}/responses/${item.responseId}`}
+                    >
+                      #{item.responseId}
+                    </Link>
                   </td>
                   <td className="text-sm">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${
-                      item.status === "delivered"
-                        ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
-                        : item.status === "failed"
-                          ? "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
-                          : "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
-                    }`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        item.status === "delivered"
+                          ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
+                          : item.status === "failed"
+                            ? "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
+                            : "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
+                      }`}
+                    >
                       {STATUS_LABEL[item.status] ?? item.status}
                     </span>
                   </td>
                   <td className="text-sm">{item.attempts}</td>
                   <td className="text-sm">
-                    {item.status === "failed"
-                      ? <span className="text-[var(--color-danger)]" title={item.lastError ?? ""}>{item.lastError?.slice(0, 80) ?? "未知错误"}</span>
-                      : item.deliveredAt ? formatDateTime(item.deliveredAt) : "—"}
+                    {item.status === "failed" ? (
+                      <span className="text-[var(--color-danger)]" title={item.lastError ?? ""}>
+                        {item.lastError?.slice(0, 80) ?? "未知错误"}
+                      </span>
+                    ) : item.deliveredAt ? (
+                      formatDateTime(item.deliveredAt)
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="text-sm">
                     {item.status === "failed" || item.status === "pending" ? (
-                      <button className="btn btn-sm" disabled={busyId === item.id} onClick={() => void retryDelivery(item.id)}>
+                      <button
+                        className="btn btn-sm"
+                        disabled={busyId === item.id}
+                        onClick={() => void retryDelivery(item.id)}
+                      >
                         {busyId === item.id ? "重试中…" : "重试"}
                       </button>
                     ) : (
@@ -123,9 +148,15 @@ export function ReportsPage() {
       {actionError ? <p className="mt-3 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
 
       <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
-        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button>
-        <span>第 {data.page}/{Math.max(1, data.totalPages)} 页</span>
-        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+          上一页
+        </button>
+        <span>
+          第 {data.page}/{Math.max(1, data.totalPages)} 页
+        </span>
+        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>
+          下一页
+        </button>
       </div>
     </section>
   );

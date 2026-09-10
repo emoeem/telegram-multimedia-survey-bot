@@ -132,16 +132,16 @@ function makeDb(overrides: Record<string, unknown> = {}) {
           overrides.mediaAsset ?? {
             id: 77,
             asset_scope: "response",
-          media_type: "photo",
-          telegram_file_id: null,
-          telegram_file_unique_id: null,
-          url: null,
-          storage_kind: "temporary",
-          storage_key: "media:temp:42:key",
-          expires_at: null,
-          mime_type: "image/png",
-          file_name: "photo.png",
-          file_size: 3,
+            media_type: "photo",
+            telegram_file_id: null,
+            telegram_file_unique_id: null,
+            url: null,
+            storage_kind: "temporary",
+            storage_key: "media:temp:42:key",
+            expires_at: null,
+            mime_type: "image/png",
+            file_name: "photo.png",
+            file_size: 3,
             width: null,
             height: null,
             duration: null,
@@ -319,9 +319,7 @@ describe("web survey API", () => {
 
     expect(response?.status).toBe(200);
     const prepareMock = db.prepare as unknown as ReturnType<typeof vi.fn>;
-    const insert = prepareMock.mock.calls.find((call: unknown[]) =>
-      String(call[0]).includes("INSERT INTO answers"),
-    );
+    const insert = prepareMock.mock.calls.find((call: unknown[]) => String(call[0]).includes("INSERT INTO answers"));
     expect(insert).toBeDefined();
   });
 
@@ -343,22 +341,24 @@ describe("web survey API", () => {
   });
 
   it("submits a completed response and enqueues report delivery", async () => {
-    const db = makeDb({ answers: [
-      {
-        id: 1,
-        response_id: 42,
-        question_id: 10,
-        text_value: null,
-        number_value: null,
-        boolean_value: null,
-        rating_value: null,
-        date_value: null,
-        time_value: null,
-        json_value: "[101,102]",
-        created_at: "",
-        updated_at: "",
-      },
-    ] });
+    const db = makeDb({
+      answers: [
+        {
+          id: 1,
+          response_id: 42,
+          question_id: 10,
+          text_value: null,
+          number_value: null,
+          boolean_value: null,
+          rating_value: null,
+          date_value: null,
+          time_value: null,
+          json_value: "[101,102]",
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+    });
     const send = vi.fn(async () => {});
     const env = makeEnv(db, {
       EXPORT_QUEUE: { send } as unknown as Queue,
@@ -391,7 +391,11 @@ describe("web survey API", () => {
     const form = new FormData();
     form.append("file", new File(["abc"], "photo.png", { type: "image/png" }));
     const response = await handleSurveyApiRequest(
-      request("/api/survey/1/media", { method: "POST", body: form, headers: { "x-participant-key": "participant-abc-123" } }),
+      request("/api/survey/1/media", {
+        method: "POST",
+        body: form,
+        headers: { "x-participant-key": "participant-abc-123" },
+      }),
       env,
       new URL("https://worker.test/api/survey/1/media"),
     );
@@ -413,7 +417,11 @@ describe("web survey API", () => {
     const form = new FormData();
     form.append("file", new File(["abc"], "anim.gif", { type: "image/gif" }));
     const response = await handleSurveyApiRequest(
-      request("/api/survey/1/media", { method: "POST", body: form, headers: { "x-participant-key": "participant-abc-123" } }),
+      request("/api/survey/1/media", {
+        method: "POST",
+        body: form,
+        headers: { "x-participant-key": "participant-abc-123" },
+      }),
       env,
       new URL("https://worker.test/api/survey/1/media"),
     );

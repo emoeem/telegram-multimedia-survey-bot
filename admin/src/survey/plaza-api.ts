@@ -1,22 +1,59 @@
 import { identityHeaders } from "./api";
 
-export interface PlazaCardItem {
+export interface PlazaProfileField {
+  questionId: number;
+  title: string;
+  value: string;
+}
+
+export interface PlazaProfileImage {
+  mediaAssetId: number;
+  url: string;
+}
+
+export interface PlazaProfileItem {
   id: number;
-  name: string;
-  identityLabel: string | null;
-  nickname: string | null;
-  imageUrl: string;
-  publishedAt: string;
+  surveyId: number;
   owner: { username: string | null; firstName: string | null } | null;
+  publishedAt: string | null;
+  createdAt: string;
+  images: PlazaProfileImage[];
+  fields: PlazaProfileField[];
 }
 
 export interface PlazaPostItem {
   id: number;
   content: string;
+  kind: "text" | "trial";
+  payload: TrialSharePayload | null;
   anonymous: boolean;
   status: "published" | "removed";
   createdAt: string;
+  commentCount: number;
   owner: { username: string | null; firstName: string; telegramUserId: number } | null;
+}
+
+export interface TrialSharePayload {
+  runId: number;
+  packId: number;
+  packName: string;
+  persona: "male" | "female";
+  mode: "normal" | "hell";
+  grade: "S" | "A" | "B" | "C";
+  gradeTitle: string;
+  gradeText: string;
+  score: number;
+  completedTasks: number;
+  skippedTasks: number;
+  floors: number;
+}
+
+export interface PlazaCommentItem {
+  id: number;
+  postId: number;
+  content: string;
+  createdAt: string;
+  owner: { username: string | null; firstName: string | null; telegramUserId: number } | null;
 }
 
 interface FeedResponse<T> {
@@ -24,6 +61,11 @@ interface FeedResponse<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface PlazaProfilesData extends FeedResponse<PlazaProfileItem> {
+  surveyId: number | null;
+  communityGroupUrl: string | null;
 }
 
 async function plazaRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -42,8 +84,8 @@ async function plazaRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function fetchPlazaCards(offset: number, limit = 10): Promise<FeedResponse<PlazaCardItem>> {
-  return plazaRequest(`/api/plaza/cards?offset=${offset}&limit=${limit}`);
+export function fetchPlazaProfiles(offset: number, limit = 10): Promise<PlazaProfilesData> {
+  return plazaRequest(`/api/plaza/profiles?offset=${offset}&limit=${limit}`);
 }
 
 export function fetchPlazaPosts(offset: number, limit = 10): Promise<FeedResponse<PlazaPostItem>> {
@@ -54,6 +96,24 @@ export function createPlazaPost(content: string, anonymous: boolean): Promise<{ 
   return plazaRequest("/api/plaza/posts", {
     method: "POST",
     body: JSON.stringify({ content, anonymous }),
+  });
+}
+
+export function fetchPlazaComments(postId: number): Promise<{ items: PlazaCommentItem[]; total: number }> {
+  return plazaRequest(`/api/plaza/posts/${postId}/comments?limit=50&offset=0`);
+}
+
+export function createPlazaComment(postId: number, content: string): Promise<{ comment: PlazaCommentItem }> {
+  return plazaRequest(`/api/plaza/posts/${postId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function createTrialShare(runId: number): Promise<{ post: { id: number; kind: string; createdAt: string } }> {
+  return plazaRequest("/api/plaza/trial-shares", {
+    method: "POST",
+    body: JSON.stringify({ runId, anonymous: true }),
   });
 }
 
