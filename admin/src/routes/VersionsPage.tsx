@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import { api, apiSend, type SurveyVersionDiffData, type SurveyVersionListData } from "../api";
+import { useDialogs } from "../components/Dialogs";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
 
 export function VersionsPage() {
   const { id } = useParams<{ id: string }>();
+  const { confirm } = useDialogs();
+
   const navigate = useNavigate();
   const { data, error, retry } = useApi<SurveyVersionListData>(id ? `/api/admin/surveys/${id}/versions` : null);
   const [fromVersion, setFromVersion] = useState<number | "">("");
@@ -35,7 +38,7 @@ export function VersionsPage() {
 
   const restore = async (version: number) => {
     if (!id) return;
-    if (!window.confirm(`确定从版本 ${version} 恢复为新草稿？原问卷不会被修改。`)) return;
+    if (!await confirm({ message: `确定从版本 ${version} 恢复为新草稿？原问卷不会被修改。` })) return;
     setBusy(true);
     setActionError(null);
     try {

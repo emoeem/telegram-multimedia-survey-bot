@@ -11,6 +11,7 @@ import {
   type AdminTaskPersona,
 } from "../api";
 import { useApi } from "../hooks";
+import { useDialogs } from "../components/Dialogs";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 
 const PERSONA_LABELS: Record<AdminTaskPersona, string> = {
@@ -131,6 +132,8 @@ function SelectField({
 
 export function TaskPacksPage() {
   const { data, error, retry } = useApi<{ packs: AdminTaskPack[] }>("/api/admin/task-packs");
+  const { confirm, toast } = useDialogs();
+
   const [editing, setEditing] = useState<EditablePack | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -255,12 +258,12 @@ export function TaskPacksPage() {
   };
 
   const remove = async (pack: AdminTaskPack) => {
-    if (!window.confirm(`确定删除任务包「${pack.name}」吗？历史挑战记录不受影响。`)) return;
+    if (!await confirm({ message: `确定删除任务包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })) return;
     try {
       await deleteAdminTaskPack(pack.id);
       retry();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "删除失败");
+      toast({ message: err instanceof Error ? err.message : "删除失败", variant: "error" });
     }
   };
 
@@ -289,7 +292,7 @@ export function TaskPacksPage() {
       });
       retry();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "操作失败");
+      toast({ message: err instanceof Error ? err.message : "操作失败", variant: "error" });
     }
   };
 

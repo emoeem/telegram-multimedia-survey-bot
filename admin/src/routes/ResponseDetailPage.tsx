@@ -16,6 +16,7 @@ import { apiPostBlob, apiSend, type ReportTemplateOption } from "../api";
 import { useApi } from "../hooks";
 import type { ResponseDetailData } from "../api";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 import { ResponseMediaPreview } from "../components/ResponseMediaPreview";
 
@@ -150,6 +151,8 @@ function envGroups(response: ResponseDetailData["response"]): EnvGroup[] {
 
 export function ResponseDetailPage() {
   const { id, responseId } = useParams<{ id: string; responseId: string }>();
+  const { confirm } = useDialogs();
+
   const { data, error, retry } = useApi<ResponseDetailData>(
     id && responseId ? `/api/admin/surveys/${id}/responses/${responseId}` : null,
   );
@@ -161,7 +164,7 @@ export function ResponseDetailPage() {
 
   const runAction = async (path: string, confirmText?: string) => {
     if (!id || !responseId) return;
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirmText && !await confirm({ message: confirmText, variant: "danger" })) return;
     setBusy(true);
     setActionError(null);
     try {

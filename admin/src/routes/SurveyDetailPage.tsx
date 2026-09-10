@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import {
   Archive,
   ArrowLeft,
+  ArrowUpRight,
   BarChart3,
   FilePenLine,
   History,
@@ -15,6 +16,7 @@ import {
 import { apiSend, authHeaders, type ReportTemplateOption, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 
 function ThemeSwatch({ presetId }: { presetId: string }) {
@@ -48,6 +50,8 @@ function ThemeSwatch({ presetId }: { presetId: string }) {
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { confirm } = useDialogs();
+
   const { data, error, retry } = useApi<SurveyDetailData>(id ? `/api/admin/surveys/${id}` : null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -85,7 +89,7 @@ export function SurveyDetailPage() {
 
   const runAction = async (action: string, confirmText?: string) => {
     if (!id) return;
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirmText && !await confirm({ message: confirmText, variant: "danger" })) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -240,6 +244,16 @@ export function SurveyDetailPage() {
           <History className="h-4 w-4" />
           版本历史
         </Link>
+        <a
+          href={`/s/${data.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-outline"
+          title="在新标签页打开线上问卷"
+        >
+          <ArrowUpRight className="h-4 w-4" />
+          预览线上
+        </a>
       </div>
       <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-edge-soft)] pt-4">
         {data.status === "published" ? (

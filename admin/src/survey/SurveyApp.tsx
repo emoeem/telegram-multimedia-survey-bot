@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDialogs } from "../components/Dialogs";
 import type { FocusEvent } from "react";
 import {
   ArrowLeft,
@@ -18,6 +19,7 @@ import {
 import { EmailAuthScreen } from "./EmailAuthScreen";
 import { PlazaScreen } from "./PlazaScreen";
 import { TrialScreen } from "./TrialScreen";
+import { BottomNav } from "./BottomNav";
 import { PresetSwatch, SURVEY_THEME_PRESETS, themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
 import {
   type AnswerValue,
@@ -162,7 +164,7 @@ function SurveyListPage() {
 
   return (
     <div
-      className="survey-glow min-h-dvh pb-10"
+      className="survey-glow min-h-dvh pb-24"
       data-theme={themePreset ?? undefined}
       style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
     >
@@ -253,6 +255,7 @@ function SurveyListPage() {
         selected={themePreset}
         onSelect={selectHomeTheme}
       />
+      <BottomNav />
     </div>
   );
 }
@@ -574,7 +577,7 @@ function OptionCard({
         <div className="relative aspect-[4/3] w-full overflow-hidden">
           <MediaBlock urls={option.media} type="image" cover />
           {selected ? (
-            <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--survey-primary)] text-white shadow">
+            <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--survey-primary)] text-[var(--survey-primary-content)] shadow">
               <Check className="h-4 w-4" strokeWidth={3} />
             </span>
           ) : null}
@@ -590,7 +593,7 @@ function OptionCard({
         >
           {selected ? (
             multiple ? (
-              <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+              <svg className="h-3 w-3 text-[var(--survey-primary-content)]" viewBox="0 0 12 12" fill="none">
                 <path d="M2 6.5 4.5 9 10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             ) : (
@@ -605,6 +608,7 @@ function OptionCard({
 }
 
 function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerProps) {
+  const { toast } = useDialogs();
   const [uploading, setUploading] = useState(false);
 
   if (question.type === "single" || question.type === "yes_no" || question.type === "rating") {
@@ -708,7 +712,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 }`}
               >
                 {checked ? (
-                  <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+                  <svg className="h-3 w-3 text-[var(--survey-primary-content)]" viewBox="0 0 12 12" fill="none">
                     <path d="M2 6.5 4.5 9 10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 ) : null}
@@ -876,7 +880,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                   const result = await uploadAnswerMedia(surveyIdFromPath(), file, question.id);
                   onChange({ mediaAssetId: result.mediaAssetId });
                 } catch (error) {
-                  window.alert(error instanceof Error ? error.message : "上传失败");
+                  toast({ message: error instanceof Error ? error.message : "上传失败", variant: "error" });
                 } finally {
                   setUploading(false);
                 }
@@ -971,6 +975,8 @@ export function SurveyApp() {
     return <EmailAuthScreen />;
   }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
+  const { toast } = useDialogs();
+
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
@@ -1064,6 +1070,8 @@ export function SurveyApp() {
     return () => {
       cancelled = true;
     };
+    // Only surveyId should trigger a reload; survey/theme options are resolved
+    // inside fetchSurvey and do not need to re-fire the fetch effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 
@@ -1217,7 +1225,7 @@ export function SurveyApp() {
     const showProfileLink = galleryProfileEnabled && publishToGallery;
     return (
       <div
-        className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 text-center"
+        className="survey-glow mx-auto flex min-h-dvh w-full max-w-xl flex-col items-center justify-center px-5 pb-24 text-center"
         data-theme={theme?.preset}
         style={{ ...vars, ...backgroundStyle }}
       >
@@ -1310,6 +1318,7 @@ export function SurveyApp() {
             再填一次
           </button>
         ) : null}
+        <BottomNav />
       </div>
     );
   }

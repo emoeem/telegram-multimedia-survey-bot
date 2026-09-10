@@ -10,6 +10,7 @@ import { LivePreview } from "../components/editor/LivePreview";
 import { SurveyPreview } from "../components/editor/SurveyPreview";
 import { useSurveyEditor, type SurveyMetaState } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime, matrixColumns } from "../format";
 
 // Phase 2.4: field edits commit on blur into a pending-op
@@ -36,6 +37,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const { survey } = data;
+  const { confirm } = useDialogs();
 
   useEffect(() => {
     // Autosave: flush pending edits after 2s of inactivity (unless saving or
@@ -83,9 +85,12 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   useEffect(() => {
     if (blocker.state !== "blocked") return;
-    if (window.confirm("有未保存的修改，确定离开？")) blocker.proceed();
-    else blocker.reset();
-  }, [blocker]);
+    void (async () => {
+      const ok = await confirm({ message: "有未保存的修改，确定离开？" });
+      if (ok) blocker.proceed();
+      else blocker.reset();
+    })();
+  }, [blocker, confirm]);
 
   const selectedQuestion =
     selection.kind === "question" ? (editor.questions.find((question) => question.id === selection.id) ?? null) : null;
@@ -226,7 +231,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   };
 
   const deletePage = async (pageId: number) => {
-    if (!window.confirm("删除该分页？题目不会被删除，只会变为不分页。")) return;
+    if (!(await confirm({ message: "删除该分页？题目不会被删除，只会变为不分页。" }))) return;
     if (editor.dirty && !(await editor.save())) return;
     try {
       await apiSend("DELETE", `/api/admin/surveys/${survey.id}/pages/${pageId}`);
@@ -251,7 +256,7 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   const publish = async () => {
     if (editor.dirty || publishing) return;
-    if (!window.confirm(`确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。`)) return;
+    if (!(await confirm({ message: `确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` }))) return;
     setPublishing(true);
     setPublishError(null);
     try {

@@ -112,7 +112,9 @@ export function EmailAuthScreen() {
                 setCodeSent(false);
               }}
               className={`rounded-lg py-2 transition-colors ${
-                mode === value ? "bg-[var(--survey-primary)] text-white" : "text-[var(--survey-muted)]"
+                mode === value
+                  ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                  : "text-[var(--survey-muted)]"
               }`}
             >
               {label}
@@ -176,7 +178,7 @@ export function EmailAuthScreen() {
           type="button"
           disabled={busy || !email.includes("@") || password.length < 8 || (needsCode && code.length !== 6)}
           onClick={() => void submit()}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
         >
           {mode === "login" ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
           {busy ? "处理中…" : mode === "login" ? "登录" : mode === "register" ? "注册并登录" : "重置密码并登录"}

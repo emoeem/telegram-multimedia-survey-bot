@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { setProfileGalleryPublished, type ProfileGalleryData, type ProfileGallerySummary } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, PageHeader, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 
 function ownerLabel(profile: ProfileGallerySummary): string {
@@ -124,6 +125,7 @@ export function ProfileGalleryPage() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const pageSize = 20;
+  const { toast } = useDialogs();
   const { data, error, retry } = useApi<ProfileGalleryData>(
     `/api/admin/profile-gallery?view=${view}&offset=${page * pageSize}&limit=${pageSize}${appliedSearch ? `&search=${encodeURIComponent(appliedSearch)}` : ""}`,
   );
@@ -134,7 +136,7 @@ export function ProfileGalleryPage() {
       await setProfileGalleryPublished(profile.id, !profile.publishedAt);
       retry();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "操作失败");
+      toast({ message: err instanceof Error ? err.message : "操作失败", variant: "error" });
       retry();
     } finally {
       setBusyId(null);
@@ -147,7 +149,7 @@ export function ProfileGalleryPage() {
       await setProfileGalleryPublished(profile.id, Boolean(profile.publishedAt), { coverMediaId });
       retry();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "封面设置失败");
+      toast({ message: err instanceof Error ? err.message : "封面设置失败", variant: "error" });
     } finally {
       setBusyId(null);
     }

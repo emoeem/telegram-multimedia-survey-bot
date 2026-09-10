@@ -3,8 +3,10 @@ import { ArrowLeft, Palette, X } from "lucide-react";
 import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
+import { useDialogs } from "../components/Dialogs";
 import { themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
 import { createTrialShare } from "./plaza-api";
+import { BottomNav } from "./BottomNav";
 import {
   fetchTrialActiveRun,
   fetchTrialHistory,
@@ -152,6 +154,8 @@ export function TrialScreen() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [me, setMe] = useState<{ telegram: boolean; isAdmin: boolean } | null>(null);
   const [warningAckId, setWarningAckId] = useState<number | null>(null);
+
+  const { confirm, toast } = useDialogs();
 
   const themeVars = useMemo(() => {
     const theme = themePreset ? { preset: themePreset } : null;
@@ -317,7 +321,7 @@ export function TrialScreen() {
 
   const abandonFromHome = async () => {
     if (!activeRun) return;
-    if (!window.confirm("确定要放弃这一局吗？进度会保留在历史记录里。")) return;
+    if (!(await confirm({ message: "确定要放弃这一局吗？进度会保留在历史记录里。", variant: "danger" }))) return;
     setBusyActive(true);
     try {
       await sendTrialAction(activeRun.id, "abandon");
@@ -332,8 +336,13 @@ export function TrialScreen() {
 
   const act = async (action: "complete" | "skip" | "abandon" | "boost" | "shield_exit") => {
     if (!run || acting) return;
-    if (action === "abandon" && !window.confirm("确定要放弃这一局吗？进度会保留在历史记录里。")) return;
-    if (action === "shield_exit" && !window.confirm("使用 1 个护盾提前结算本局？将以当前成绩记为通关。")) return;
+    if (
+      action === "abandon" &&
+      !(await confirm({ message: "确定要放弃这一局吗？进度会保留在历史记录里。", variant: "danger" }))
+    )
+      return;
+    if (action === "shield_exit" && !(await confirm({ message: "使用 1 个护盾提前结算本局？将以当前成绩记为通关。" })))
+      return;
     setActing(true);
     setNotice(null);
     setEarnedFlash(null);
@@ -593,7 +602,7 @@ export function TrialScreen() {
             onClick={() => changeTab(tab.id)}
             className={`rounded-full px-4 py-1.5 text-[13px] font-semibold transition-colors ${
               activeTab === tab.id
-                ? "bg-[var(--survey-primary)] text-white"
+                ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
                 : "text-[var(--survey-muted)] hover:bg-[var(--survey-primary-soft)]"
             }`}
           >
@@ -606,30 +615,34 @@ export function TrialScreen() {
 
   const renderGate = () => (
     <div className="grid min-h-dvh place-items-center px-5 py-10">
-      <div className="w-full max-w-md rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-6 shadow-sm">
-        <p className="text-center text-4xl">🏮</p>
-        <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)]">挑战任务</h1>
-        <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">文字扮演 · 逐层上行 · 每层一个任务</p>
-        <div className="mt-5 space-y-2 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
-          <p>
-            ⚠️ 本页面为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
-          </p>
-          <p>全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
+      <div className="w-full max-w-md overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] shadow-xl">
+        <div className="bg-gradient-to-br from-[color-mix(in_srgb,var(--survey-primary)_25%,transparent)] to-[var(--survey-bg)] px-6 py-8 text-center">
+          <p className="text-5xl">🏮</p>
+          <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)]">挑战任务</h1>
+          <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">文字扮演 · 逐层上行 · 每层一个任务</p>
         </div>
-        <button
-          type="button"
-          onClick={agree}
-          className="mt-6 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)]"
-        >
-          我已年满 18 周岁，同意进入
-        </button>
-        <button
-          type="button"
-          onClick={closeTrialPage}
-          className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-medium text-[var(--survey-muted)]"
-        >
-          离开
-        </button>
+        <div className="p-6">
+          <div className="rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
+            <p>
+              ⚠️ 本页面为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
+            </p>
+            <p className="mt-1">全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
+          </div>
+          <button
+            type="button"
+            onClick={agree}
+            className="mt-6 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            我已年满 18 周岁，同意进入
+          </button>
+          <button
+            type="button"
+            onClick={closeTrialPage}
+            className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-medium text-[var(--survey-muted)]"
+          >
+            离开
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -647,7 +660,7 @@ export function TrialScreen() {
             </div>
             <a
               href="/admin/task-packs"
-              className="shrink-0 rounded-full bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-white"
+              className="shrink-0 rounded-full bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-[var(--survey-primary-content)]"
             >
               打开任务编辑器
             </a>
@@ -684,7 +697,7 @@ export function TrialScreen() {
               type="button"
               disabled={busyActive}
               onClick={() => void resumeRun()}
-              className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
             >
               {activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
             </button>
@@ -746,7 +759,17 @@ export function TrialScreen() {
         <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
         {packsError ? <p className="mt-2 text-xs text-red-500">{packsError}</p> : null}
         {packs === null ? (
-          <p className="mt-2 text-sm text-[var(--survey-muted)]">任务包加载中…</p>
+          <div className="mt-2 space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3"
+              >
+                <div className="h-4 w-28 rounded bg-[var(--survey-card-border)]" />
+                <div className="mt-2 h-3 w-2/3 rounded bg-[var(--survey-card-border)]" />
+              </div>
+            ))}
+          </div>
         ) : packs.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--survey-muted)]">暂无可用任务包，请联系管理员。</p>
         ) : (
@@ -756,15 +779,20 @@ export function TrialScreen() {
                 key={pack.id}
                 type="button"
                 onClick={() => choosePack(pack.id)}
-                className={`block w-full rounded-xl border p-3 text-left transition-colors ${
+                className={`block w-full rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
                   packId === pack.id
-                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
-                    : "border-[var(--survey-card-border)]"
+                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] shadow-sm"
+                    : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
                 }`}
               >
-                <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
+                  <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
+                    {pack.normalFloors}/{pack.hellFloors} 层
+                  </span>
+                </div>
                 <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
-                  {pack.description ?? "（暂无描述）"} · 普通 {pack.normalFloors} 层 / 地狱 {pack.hellFloors} 层
+                  {pack.description ?? "（暂无描述）"}
                 </span>
               </button>
             ))}
@@ -810,7 +838,7 @@ export function TrialScreen() {
           type="button"
           disabled={starting || packs === null || packs.length === 0 || !persona}
           onClick={() => void startGame()}
-          className="mt-5 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
+          className="mt-5 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
         >
           {starting ? "正在开局…" : persona ? `以「${personaLabel(persona)} · ${modeLabel(mode)}」开始` : "先选择身份"}
         </button>
@@ -896,7 +924,7 @@ export function TrialScreen() {
                         aria-label="增加"
                         disabled={shopBusy || !canAdd}
                         onClick={() => adjustShopQty(qtyKey, 1)}
-                        className="h-8 w-8 rounded-full bg-[var(--survey-primary)] text-base font-bold text-white disabled:opacity-40"
+                        className="h-8 w-8 rounded-full bg-[var(--survey-primary)] text-base font-bold text-[var(--survey-primary-content)] disabled:opacity-40"
                       >
                         +
                       </button>
@@ -920,7 +948,7 @@ export function TrialScreen() {
               type="button"
               disabled={shopBusy}
               onClick={() => void confirmShop()}
-              className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white disabled:opacity-50"
+              className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-50"
             >
               {shopBusy ? "出发中…" : total === 0 ? "不买东西，直接出发" : "购买并出发"}
             </button>
@@ -1022,7 +1050,9 @@ export function TrialScreen() {
           </div>
         </div>
 
-        <p className="mt-1 text-[11px] text-[var(--survey-muted)]">仅统计 Telegram 登录玩家的最好成绩，匿名挑战不上榜</p>
+        <p className="mt-1 text-[11px] text-[var(--survey-muted)]">
+          仅统计 Telegram 登录玩家的最好成绩，匿名挑战不上榜
+        </p>
         {boardLoading && boardEntries === null ? (
           <p className="text-sm text-[var(--survey-muted)]">加载中…</p>
         ) : boardError ? (
@@ -1105,7 +1135,7 @@ export function TrialScreen() {
               <button
                 type="button"
                 onClick={() => setWarningAckId(task.id)}
-                className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white"
+                className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)]"
               >
                 我已阅读并知晓（虚构扮演，注意安全）
               </button>
@@ -1179,7 +1209,7 @@ export function TrialScreen() {
                 type="button"
                 disabled={acting || !task}
                 onClick={() => void act("complete")}
-                className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3.5 text-sm font-bold text-white shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-50"
+                className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3.5 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-50"
               >
                 {acting ? "处理中…" : task ? `完成 · +${run.boosted ? task.score * 2 : task.score} 分` : "完成"}
               </button>
@@ -1272,7 +1302,7 @@ export function TrialScreen() {
               className={
                 sharedPostId
                   ? "rounded-[var(--survey-button-radius)] border border-emerald-200 bg-emerald-50 py-2.5 text-sm font-semibold text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400"
-                  : "rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                  : "rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-60"
               }
             >
               {shareBusy
@@ -1317,7 +1347,7 @@ export function TrialScreen() {
               onClick={() => {
                 if (lastConfigRef.current) void startGame(lastConfigRef.current);
               }}
-              className="rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-white disabled:opacity-60"
+              className="rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-60"
             >
               {starting ? "正在开局…" : "再来一局"}
             </button>
@@ -1404,7 +1434,7 @@ export function TrialScreen() {
 
   return (
     <div
-      className="min-h-dvh"
+      className="min-h-dvh pb-24"
       data-theme={themePreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
@@ -1412,6 +1442,7 @@ export function TrialScreen() {
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
       {renderThemePicker()}
+      <BottomNav />
     </div>
   );
 }

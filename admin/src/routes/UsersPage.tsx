@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { api, apiSend, setUserBan, userChatLink, type UserDetailData, type UserDirectoryData } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 
 function displayName(item: {
@@ -30,6 +31,8 @@ export function UsersPage() {
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
+  const { confirm } = useDialogs();
+
   const [detail, setDetail] = useState<UserDetailData | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
@@ -101,7 +104,7 @@ export function UsersPage() {
     if (!selected || !detail) return;
     if (
       banned &&
-      !window.confirm(`确定封禁 ${displayName(detail.user)}？封禁后该用户将无法使用机器人，且进行中的答卷会被取消。`)
+      !(await confirm({ message: `确定封禁 ${displayName(detail.user)}？封禁后该用户将无法使用机器人，且进行中的答卷会被取消。`, variant: "danger" }))
     ) {
       return;
     }

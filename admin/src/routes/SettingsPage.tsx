@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { api, apiSend, type SurveySummary, type SystemSettingsData, type WriteResult } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { applyTheme, getStoredTheme, THEME_OPTIONS, type AdminThemeId } from "../theme";
 
 function ThemeSwatch({
@@ -69,6 +70,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 export function SettingsPage() {
   const navigate = useNavigate();
   const { data, error, retry } = useApi<{ settings: SystemSettingsData }>("/api/admin/settings");
+  const { toast } = useDialogs();
+
   const [theme, setTheme] = useState<AdminThemeId>(getStoredTheme());
   const [form, setForm] = useState<SystemSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -141,9 +144,9 @@ export function SettingsPage() {
         navigate(`/surveys/${result.id}/editor`);
         return;
       }
-      window.alert("创建失败，请重试");
+      toast({ message: "创建失败，请重试", variant: "error" });
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "创建失败");
+      toast({ message: err instanceof Error ? err.message : "创建失败", variant: "error" });
     } finally {
       setCreatingSurvey(false);
     }

@@ -4,6 +4,7 @@ import { ArrowLeft, FileText, Package, Send, Share2, X } from "lucide-react";
 import { useApi } from "../hooks";
 import { apiSend, type ReportTemplateOption, type ResponseListData, type ResponseStatus } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 import { safeCopy } from "../survey/clipboard";
 
@@ -26,6 +27,8 @@ function respondentName(item: ResponseListData["items"][number]): string {
 
 export function ResponsesPage() {
   const { id } = useParams<{ id: string }>();
+  const { confirm } = useDialogs();
+
   const [status, setStatus] = useState<"" | ResponseStatus>("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -178,7 +181,7 @@ export function ResponsesPage() {
 
   const sendSummaryToChannel = async () => {
     if (!id) return;
-    if (!window.confirm("把该问卷全部答卷的汇总表（CSV）发送到报告归档频道？")) return;
+    if (!(await confirm({ message: "把该问卷全部答卷的汇总表（CSV）发送到报告归档频道？" }))) return;
     setBusy(true);
     setActionError(null);
     setMessage(null);

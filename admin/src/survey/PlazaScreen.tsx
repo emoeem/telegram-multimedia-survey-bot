@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, ChevronDown, Palette, Pencil, Users, X } from "lucide-react";
 import { safeGet, safeSet, safeRemove } from "./storage";
 import { ThemePickerSheet, themeBackgroundStyle, themeCssVars } from "./theme-ui";
+import { BottomNav } from "./BottomNav";
 import {
   createPlazaPost,
   createPlazaComment,
@@ -153,7 +154,7 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
               type="button"
               disabled={busy || content.trim().length === 0}
               onClick={() => void submitComment()}
-              className="shrink-0 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+              className="shrink-0 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-[var(--survey-primary-content)] disabled:opacity-50"
             >
               {busy ? "发送中…" : "发送"}
             </button>
@@ -363,7 +364,7 @@ export function PlazaScreen() {
   const activeFeed = tab === "treehole" ? posts : profiles;
 
   return (
-    <div className="min-h-dvh" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
+    <div className="min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
       <div className="relative">
         <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
           <div className="mx-auto max-w-xl px-5 py-3 lg:max-w-3xl">
@@ -400,7 +401,7 @@ export function PlazaScreen() {
                   onClick={() => setTab(item.id)}
                   className={`flex-1 rounded-[var(--survey-button-radius)] border px-3 py-2 text-[13px] font-medium transition-colors ${
                     tab === item.id
-                      ? "border-transparent bg-[var(--survey-primary)] text-white"
+                      ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
                       : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
                   }`}
                 >
@@ -434,7 +435,7 @@ export function PlazaScreen() {
           {tab === "profiles" && profiles.surveyId !== null ? (
             <a
               href={`/s/${profiles.surveyId}`}
-              className="mb-4 flex items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-3 text-sm font-semibold text-white shadow-md"
+              className="mb-4 flex items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-3 text-sm font-semibold text-[var(--survey-primary-content)] shadow-md"
             >
               ✍️ 填写我的个人资料
             </a>
@@ -487,7 +488,7 @@ export function PlazaScreen() {
             type="button"
             aria-label="投稿树洞"
             onClick={openComposer}
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+18px)] right-5 z-20 flex items-center justify-center rounded-full bg-[var(--survey-primary)] p-4 text-white shadow-lg"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+18px)] right-5 z-20 flex items-center justify-center rounded-full bg-[var(--survey-primary)] p-4 text-[var(--survey-primary-content)] shadow-lg"
           >
             <Pencil className="h-5 w-5" />
           </button>
@@ -548,7 +549,7 @@ export function PlazaScreen() {
                 type="button"
                 disabled={submitting || content.trim().length < 5}
                 onClick={() => void submitPost()}
-                className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
               >
                 {submitting ? "发布中…" : "发布到树洞广场"}
               </button>
@@ -563,6 +564,7 @@ export function PlazaScreen() {
           onSelect={selectTheme}
         />
       </div>
+      <BottomNav />
     </div>
   );
 }

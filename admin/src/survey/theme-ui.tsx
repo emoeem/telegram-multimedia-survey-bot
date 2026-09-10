@@ -45,6 +45,7 @@ export function themeCssVars(theme: SurveyThemeDto | null): Record<string, strin
   if (theme.preset) {
     // Map the DaisyUI theme library tokens onto the survey surface.
     vars["--survey-primary"] = "var(--color-primary)";
+    vars["--survey-primary-content"] = "var(--color-primary-content)";
     vars["--survey-secondary"] = "var(--color-secondary)";
     vars["--survey-bg"] = "var(--color-base-100)";
     vars["--survey-card-bg"] = "var(--color-base-100)";

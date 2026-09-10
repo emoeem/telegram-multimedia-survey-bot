@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDialogs } from "../components/Dialogs";
 import { Plus, X } from "lucide-react";
 import {
   DndContext,
@@ -191,6 +192,7 @@ function SortableSectionRow({
 
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<ReportTemplateOption[] | null>(null);
+  const { confirm } = useDialogs();
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -284,7 +286,7 @@ export function TemplatesPage() {
   };
 
   const removeTemplate = async (id: string) => {
-    if (!window.confirm(`确定删除自定义模板「${id}」？`)) return;
+    if (!(await confirm({ message: `确定删除自定义模板「${id}」？`, variant: "danger" }))) return;
     try {
       await apiSend("DELETE", `/api/admin/report-templates/${encodeURIComponent(id)}`);
       await reload();

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import {
   ArrowLeft,
+  ArrowUpRight,
   ClipboardList,
   Contact,
   FileUp,
@@ -169,7 +170,44 @@ export function Layout() {
               );
             })}
           </nav>
-          <div className="mt-6 px-1.5 text-[11px] text-slate-500 sm:hidden lg:block">
+          <div className="mt-4 border-t border-white/5 pt-3">
+            <p className="mb-2 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 sm:hidden lg:block">
+              线上体验
+            </p>
+            <div className="flex flex-col gap-0.5">
+              <a
+                href="/plaza"
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+              >
+                <Sprout className="h-[18px] w-[18px] shrink-0" />
+                <span className="sm:hidden lg:inline">打开树洞</span>
+                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+              </a>
+              <a
+                href="/trial"
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+              >
+                <Target className="h-[18px] w-[18px] shrink-0" />
+                <span className="sm:hidden lg:inline">挑战任务</span>
+                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+              </a>
+              <a
+                href="/s"
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+              >
+                <ClipboardList className="h-[18px] w-[18px] shrink-0" />
+                <span className="sm:hidden lg:inline">问卷列表</span>
+                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+              </a>
+            </div>
+          </div>
+          <div className="mt-4 px-1.5 text-[11px] text-slate-500 sm:hidden lg:block">
             {environment === "production" ? "生产环境" : environment ? "开发 / 预发布环境" : "…"}
           </div>
         </aside>

@@ -8,6 +8,7 @@ import {
   type PlazaPostSummary,
 } from "../api";
 import { useApi } from "../hooks";
+import { useDialogs } from "../components/Dialogs";
 import { EmptyPanel, ErrorPanel, PageHeader, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
 
@@ -25,6 +26,7 @@ function commentAuthorLabel(comment: PlazaCommentSummary): string {
 }
 
 function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: PlazaPostSummary) => void }) {
+  const { toast } = useDialogs();
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<PlazaCommentSummary[] | null>(null);
   const [commentsError, setCommentsError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: 
         current ? current.map((item) => (item.id === comment.id ? { ...item, status: nextStatus } : item)) : current,
       );
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "操作失败");
+      toast({ message: error instanceof Error ? error.message : "操作失败", variant: "error" });
     } finally {
       setBusyComment(null);
     }
@@ -159,6 +161,7 @@ export function PlazaPostsPage() {
   const [view, setView] = useState<"all" | "published">("all");
   const [page, setPage] = useState(0);
   const pageSize = 20;
+  const { toast } = useDialogs();
   const { data, error, retry } = useApi<{
     items: PlazaPostSummary[];
     total: number;
