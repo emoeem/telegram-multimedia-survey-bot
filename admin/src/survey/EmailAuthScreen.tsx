@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MailCheck, LogIn, UserPlus } from "lucide-react";
+import { loadGlobalPreset, themeBackgroundStyle, themeCssVars, useResolvedPreset } from "./theme-ui";
 
 /**
  * Email + password auth screen (/auth) for visitors without Telegram:
@@ -33,6 +34,12 @@ export function EmailAuthScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const rawGlobalPreset = loadGlobalPreset();
+  const globalPreset = useResolvedPreset(rawGlobalPreset);
+  const theme = globalPreset ? ({ preset: globalPreset } as Parameters<typeof themeCssVars>[0]) : null;
+  const themeVars = themeCssVars(theme);
+  const themeStyle = themeBackgroundStyle(theme);
 
   const needsCode = mode !== "login";
 
@@ -82,7 +89,11 @@ export function EmailAuthScreen() {
     "mt-1 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]";
 
   return (
-    <div className="survey-glow flex min-h-dvh flex-col items-center px-5 pt-14">
+    <div
+      className="survey-glow flex min-h-dvh flex-col items-center px-5 pt-14"
+      data-theme={globalPreset ?? undefined}
+      style={{ ...themeVars, ...themeStyle }}
+    >
       <div className="w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-6 shadow-xl">
         <div className="flex items-center gap-2">
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">

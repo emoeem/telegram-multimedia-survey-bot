@@ -3,6 +3,7 @@ import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditorPreviewQuestion } from "../../editor/previewModel";
 import { getQuestionInstruction } from "../../../../src/survey/question-presentation";
 import { PreviewAnswer } from "./SurveyPreview";
+import { themeBackgroundStyle, themeCssVars } from "../../survey/theme-ui";
 
 interface LivePreviewProps {
   title: string;
@@ -12,6 +13,7 @@ interface LivePreviewProps {
   dirty: boolean;
   onNavigate: (index: number) => void;
   onOpenFull: () => void;
+  preset?: string | null;
 }
 
 export function LivePreview({
@@ -22,10 +24,15 @@ export function LivePreview({
   dirty,
   onNavigate,
   onOpenFull,
+  preset,
 }: LivePreviewProps) {
   const question = questions[currentIndex] ?? null;
   const total = questions.length;
   const progress = total ? ((currentIndex + 1) / total) * 100 : 0;
+
+  const theme = preset ? ({ preset } as Parameters<typeof themeCssVars>[0]) : null;
+  const themeVars = themeCssVars(theme);
+  const themeStyle = themeBackgroundStyle(theme);
 
   return (
     <div className="preview-panel">
@@ -34,6 +41,11 @@ export function LivePreview({
           <div className="preview-title">
             <Smartphone className="h-4 w-4" />
             实时预览
+            {preset ? (
+              <span className="ml-2 rounded-full bg-[var(--survey-primary-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-primary)]">
+                {preset}
+              </span>
+            ) : null}
           </div>
           <div className="preview-hint">{dirty ? "包含尚未保存的修改" : "当前已保存版本"} · Telegram 每屏一题</div>
         </div>
@@ -44,7 +56,7 @@ export function LivePreview({
       </div>
 
       <div className="preview-stage">
-        <div className="phone-frame">
+        <div className="phone-frame" data-theme={preset ?? undefined} style={{ ...themeVars, ...themeStyle }}>
           <div className="phone-notch">
             <span className="phone-notch-dot" />
           </div>

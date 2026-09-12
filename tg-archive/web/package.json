@@ -1,0 +1,17 @@
+{
+  "name": "tg-archive-web-css",
+  "version": "1.0.0",
+  "description": "在官方 web.telegram.org 页面内运行的用户脚本，把当前聊天归档到你自己的私有频道， **不需要 api_id/api_hash**。设计见 `docs/WEB_VIEW_ARCHIVE_MVP.md`。",
+  "main": "tg-web-archive.user.js",
+  "scripts": {
+    "build": "tailwindcss -i app.css -o ../src/tg_archive/static/vendor/app.css --minify"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "daisyui": "^5.7.36",
+    "tailwindcss": "^4.3.3"
+  },
+  "private": true
+}

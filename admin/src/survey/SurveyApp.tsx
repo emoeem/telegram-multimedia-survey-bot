@@ -20,7 +20,18 @@ import { EmailAuthScreen } from "./EmailAuthScreen";
 import { PlazaScreen } from "./PlazaScreen";
 import { TrialScreen } from "./TrialScreen";
 import { BottomNav } from "./BottomNav";
-import { PresetSwatch, SURVEY_THEME_PRESETS, themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
+import {
+  isValidPresetId,
+  loadGlobalPreset,
+  PresetSwatch,
+  resolvePresetId,
+  saveGlobalPreset,
+  SURVEY_THEME_PRESETS,
+  themeBackgroundStyle,
+  themeCssVars,
+  ThemePickerSheet,
+  useResolvedPreset,
+} from "./theme-ui";
 import {
   type AnswerValue,
   fetchAnswers,
@@ -104,27 +115,16 @@ function SurveyListPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const [themePreset, setThemePreset] = useState<string | null>(() => {
-    try {
-      const stored = localStorage.getItem("surveyHomeTheme");
-      return stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null;
-    } catch {
-      return null;
-    }
-  });
+  const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
+  const resolvedPreset = useResolvedPreset(themePreset);
 
   const selectHomeTheme = (id: string | null) => {
     setThemePreset(id);
     setThemePickerOpen(false);
-    try {
-      if (id) localStorage.setItem("surveyHomeTheme", id);
-      else localStorage.removeItem("surveyHomeTheme");
-    } catch {
-      // storage unavailable — session-only choice still applies
-    }
+    saveGlobalPreset(id);
   };
 
-  const homeTheme = themePreset ? ({ preset: themePreset } as Parameters<typeof themeCssVars>[0]) : null;
+  const homeTheme = resolvedPreset ? ({ preset: resolvedPreset } as Parameters<typeof themeCssVars>[0]) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -151,21 +151,45 @@ function SurveyListPage() {
   }, [query]);
 
   if (error) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-danger)]">{error}</div>;
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={resolvedPreset ?? undefined}
+        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-danger)]">{error}</div>
+      </div>
+    );
   }
   if (!surveys) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>;
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={resolvedPreset ?? undefined}
+        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>
+      </div>
+    );
   }
   if (surveys.length === 0) {
     return (
-      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">当前没有可填写的问卷</div>
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={resolvedPreset ?? undefined}
+        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">
+          当前没有可填写的问卷
+        </div>
+      </div>
     );
   }
 
   return (
     <div
       className="survey-glow min-h-dvh pb-24"
-      data-theme={themePreset ?? undefined}
+      data-theme={resolvedPreset ?? undefined}
       style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
     >
       <header className="border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] px-5 pb-4 pt-7 backdrop-blur-md">
@@ -1031,11 +1055,13 @@ export function SurveyApp() {
     if (!Number.isFinite(surveyId)) return;
     try {
       const stored = localStorage.getItem(`surveyTheme:${surveyId}`);
-      setUserThemePreset(stored && SURVEY_THEME_PRESETS.some((preset) => preset.id === stored) ? stored : null);
+      setUserThemePreset(stored && isValidPresetId(stored) ? stored : null);
     } catch {
       // storage unavailable — keep default
     }
   }, [surveyId]);
+
+  const resolvedUserPreset = useResolvedPreset(userThemePreset);
 
   const selectTheme = useCallback(
     (id: string | null) => {
@@ -1201,24 +1227,57 @@ export function SurveyApp() {
     return <SurveyListPage />;
   }
 
+  const earlyTheme: SurveyThemeDto | null = userThemePreset
+    ? { preset: userThemePreset }
+    : screen.kind !== "loading" && screen.kind !== "error"
+      ? screen.survey.theme
+      : null;
+  const earlyVars = themeCssVars(earlyTheme);
+  const earlyBackground = themeBackgroundStyle(earlyTheme);
+
   if (screen.kind === "loading") {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>;
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={earlyTheme?.preset}
+        style={{ ...earlyVars, ...earlyBackground }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>
+      </div>
+    );
   }
   if (screen.kind === "error") {
     return (
-      <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <p className="text-[var(--color-danger)]">{screen.message}</p>
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={earlyTheme?.preset}
+        style={{ ...earlyVars, ...earlyBackground }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center">
+          <p className="text-[var(--color-danger)]">{screen.message}</p>
+        </div>
       </div>
     );
   }
   if (screen.kind === "access") {
-    return <AccessScreen survey={screen.survey} onVerified={onVerified} />;
+    const accessTheme: SurveyThemeDto | null = userThemePreset
+      ? { preset: userThemePreset }
+      : screen.survey.theme;
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={accessTheme?.preset}
+        style={{ ...themeCssVars(accessTheme), ...themeBackgroundStyle(accessTheme) }}
+      >
+        <AccessScreen survey={screen.survey} onVerified={onVerified} />
+      </div>
+    );
   }
   if (screen.kind === "done") {
     const completion = screen.survey.theme?.completion;
     const canRestart = completion?.showRestart === true && screen.survey.allowMultiple;
     const communityGroupUrl = screen.survey.communityGroupUrl;
-    const theme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : screen.survey.theme;
+    const theme: SurveyThemeDto | null = resolvedUserPreset ? { preset: resolvedUserPreset } : screen.survey.theme;
     const vars = themeCssVars(theme);
     const backgroundStyle = themeBackgroundStyle(theme);
     const galleryProfileEnabled = screen.survey.galleryProfile?.enabled === true;
@@ -1326,7 +1385,18 @@ export function SurveyApp() {
   const { survey, responseId } = screen;
   const question = survey.questions[index];
   if (!question) {
-    return <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷为空</div>;
+    const emptyTheme: SurveyThemeDto | null = userThemePreset
+      ? { preset: userThemePreset }
+      : survey.theme;
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={emptyTheme?.preset}
+        style={{ ...themeCssVars(emptyTheme), ...themeBackgroundStyle(emptyTheme) }}
+      >
+        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷为空</div>
+      </div>
+    );
   }
   const currentPage = survey.pages.find((page) => page.id === question.pageId);
   const value = answers[question.id];
@@ -1336,7 +1406,7 @@ export function SurveyApp() {
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
   // The participant can override the survey's default theme for this session;
   // the choice is remembered per survey in localStorage.
-  const theme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : survey.theme;
+  const theme: SurveyThemeDto | null = resolvedUserPreset ? { preset: resolvedUserPreset } : survey.theme;
   const vars = themeCssVars(theme);
   const backgroundStyle = themeBackgroundStyle(theme);
   const overlay = theme?.overlay;

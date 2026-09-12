@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { Check, ChevronRight, Paperclip, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditorPreviewQuestion } from "../../editor/previewModel";
+import { themeBackgroundStyle, themeCssVars } from "../../survey/theme-ui";
 import {
   getMatrixColumns,
   getQuestionInstruction,
@@ -16,6 +17,7 @@ interface SurveyPreviewProps {
   onClose: () => void;
   /** Renders as a static embedded pane instead of a modal overlay. */
   inline?: boolean;
+  preset?: string | null;
 }
 
 export function PreviewChoice({
@@ -193,11 +195,15 @@ function InteractiveAnswer({
   );
 }
 
-export function SurveyPreview({ title, description, questions, dirty, onClose, inline = false }: SurveyPreviewProps) {
+export function SurveyPreview({ title, description, questions, dirty, onClose, inline = false, preset }: SurveyPreviewProps) {
   const titleId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  const theme = preset ? ({ preset } as Parameters<typeof themeCssVars>[0]) : null;
+  const themeVars = themeCssVars(theme);
+  const themeStyle = themeBackgroundStyle(theme);
 
   useEffect(() => {
     if (inline) return;
@@ -239,7 +245,11 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
           ? "h-full overflow-hidden rounded-xl border"
           : "fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 sm:items-center sm:p-6"
       }
-      style={inline ? { borderColor: "var(--color-edge)", background: "var(--survey-bg)" } : undefined}
+      data-theme={preset ?? undefined}
+      style={{
+        ...themeVars,
+        ...(inline ? { borderColor: "var(--color-edge)", background: "var(--survey-bg)" } : themeStyle),
+      }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

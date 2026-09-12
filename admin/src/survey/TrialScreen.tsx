@@ -4,7 +4,7 @@ import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
 import { useDialogs } from "../components/Dialogs";
-import { themeBackgroundStyle, themeCssVars, ThemePickerSheet } from "./theme-ui";
+import { loadGlobalPreset, saveGlobalPreset, themeBackgroundStyle, themeCssVars, ThemePickerSheet, useResolvedPreset } from "./theme-ui";
 import { createTrialShare } from "./plaza-api";
 import { BottomNav } from "./BottomNav";
 import {
@@ -150,22 +150,18 @@ export function TrialScreen() {
   const [copied, setCopied] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [sharedPostId, setSharedPostId] = useState<number | null>(null);
-  const [themePreset, setThemePreset] = useState<string | null>(null);
+  const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [me, setMe] = useState<{ telegram: boolean; isAdmin: boolean } | null>(null);
   const [warningAckId, setWarningAckId] = useState<number | null>(null);
 
   const { confirm, toast } = useDialogs();
 
+  const resolvedPreset = useResolvedPreset(themePreset);
   const themeVars = useMemo(() => {
-    const theme = themePreset ? { preset: themePreset } : null;
+    const theme = resolvedPreset ? { preset: resolvedPreset } : null;
     return { vars: themeCssVars(theme), background: themeBackgroundStyle(theme) };
-  }, [themePreset]);
-
-  useEffect(() => {
-    const stored = safeGet("plazaTheme");
-    if (stored && stored.length > 0) setThemePreset(stored);
-  }, []);
+  }, [resolvedPreset]);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,8 +183,7 @@ export function TrialScreen() {
 
   const selectTheme = (preset: string | null) => {
     setThemePreset(preset);
-    if (preset) safeSet("plazaTheme", preset);
-    else safeRemove("plazaTheme");
+    saveGlobalPreset(preset);
   };
 
   const refreshHome = useCallback(async () => {
@@ -1384,7 +1379,7 @@ export function TrialScreen() {
     return (
       <div
         className="min-h-dvh"
-        data-theme={themePreset ?? undefined}
+        data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
         {renderGate()}
@@ -1397,7 +1392,7 @@ export function TrialScreen() {
     return (
       <div
         className="min-h-dvh"
-        data-theme={themePreset ?? undefined}
+        data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
         {renderRun()}
@@ -1410,7 +1405,7 @@ export function TrialScreen() {
     return (
       <div
         className="min-h-dvh"
-        data-theme={themePreset ?? undefined}
+        data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
         {renderShop()}
@@ -1423,7 +1418,7 @@ export function TrialScreen() {
     return (
       <div
         className="min-h-dvh"
-        data-theme={themePreset ?? undefined}
+        data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
         {renderDone()}
@@ -1435,7 +1430,7 @@ export function TrialScreen() {
   return (
     <div
       className="min-h-dvh pb-24"
-      data-theme={themePreset ?? undefined}
+      data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
       {renderHeader("🌆 挑战任务", "选一个任务包，从第一层开始往上爬", false)}

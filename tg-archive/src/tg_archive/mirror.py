@@ -54,6 +54,10 @@ class MirrorEngine:
         yes: bool = False,
         listen: bool = False,
         progress: Callable[[str], None] = print,
+        account_id: int = 1,
+        topic_id: Optional[int] = None,
+        include_topics: Optional[list[int]] = None,
+        exclude_topics: Optional[list[int]] = None,
     ):
         self.client = client
         self.cfg = cfg
@@ -62,6 +66,10 @@ class MirrorEngine:
         self.yes = yes
         self.listen = listen
         self.progress = progress
+        self.account_id = account_id
+        self.topic_id = topic_id
+        self.include_topics = set(include_topics) if include_topics else None
+        self.exclude_topics = set(exclude_topics) if exclude_topics else None
         self.stats = MirrorStats()
         self.collector = Collector(client, cfg, progress=self.progress)
         self.writer = ChannelWriter(client, cfg)
@@ -69,7 +77,8 @@ class MirrorEngine:
     # ------------------------------------------------------------------ run
 
     async def run(self, chat_input: str, channel_input: Optional[str] = None) -> int:
-        entity, chat = await self.collector.resolve_chat(chat_input)
+        chat_db_row = self._find_cached_chat(chat_input)
+        entity, chat = await self.collector.resolve_chat(chat_input, db_row=chat_db_row)
         channel_target = channel_input or self.cfg.channel
 
         if chat.type in {"private", "group"} and not self.dry_run:
@@ -103,7 +112,12 @@ class MirrorEngine:
             chat,
             after_id=cursor if incremental else None,
         ):
-            inserted, updated = self.db.upsert_messages(chat_local_id, page)
+            page = [m for m in page if self._topic_match(m)]
+            if not page:
+                continue
+            inserted, updated = self.db.upsert_messages(
+                chat_local_id, page, account_id=self.account_id,
+            )
             self.stats.fetched += len(page)
             self.stats.inserted += inserted
             self.stats.updated += updated
@@ -220,7 +234,46 @@ class MirrorEngine:
             await self._listen_loop(entity, chat, chat_local_id, channel_entity)
         return 0
 
+    # ------------------------------------------------------------- helpers
+
+    def _topic_match(self, msg: NormalizedMessage) -> bool:
+        """Return True if the message should be included given topic filters."""
+        if self.topic_id is not None:
+            return msg.topic_id == self.topic_id
+        if self.include_topics is not None:
+            if not self.include_topics:
+                return True
+            return msg.topic_id in self.include_topics
+        if self.exclude_topics is not None and msg.topic_id in self.exclude_topics:
+            return False
+        return True
+
     # ------------------------------------------------------------- decisions
+
+    def _find_cached_chat(self, chat_input: Any) -> Optional[dict[str, Any]]:
+        """Look up a previously seen chat in the local index.
+
+        Returns a db row dict if found (with tg_chat_id, access_hash, etc.),
+        which resolve_chat can use to build an InputPeer as fallback.
+        """
+
+        assert self.db is not None
+        try:
+            as_int = int(chat_input)
+        except (TypeError, ValueError):
+            as_int = None
+
+        rows = self.db.conn.execute(
+            "SELECT * FROM chats WHERE account_id = ?", (self.account_id,)
+        ).fetchall()
+        for row in rows:
+            d = dict(row)
+            tg_id = d.get("tg_chat_id")
+            if str(tg_id) == str(chat_input) or (as_int is not None and tg_id == as_int):
+                return d
+            if d.get("username") and d["username"] == str(chat_input).lstrip("@"):
+                return d
+        return None
 
     def _decision(
         self,
@@ -270,6 +323,7 @@ class MirrorEngine:
         pending: list[dict[str, Any]],
     ) -> None:
         protected = bool(chat.has_protected_content)
+        decided: list[dict[str, Any]] = []
         for row in pending:
             should, reason = self._decision(row, chat, protected)
             if not should:
@@ -281,12 +335,23 @@ class MirrorEngine:
                 )
                 self.stats.skipped += 1
                 continue
+            decided.append(row)
 
-            raw_message = await self.collector.get_message(entity, row["tg_message_id"])
+        BATCH = 100
+        raw_by_id: dict[int, Any] = {}
+        for i in range(0, len(decided), BATCH):
+            batch_ids = [r["tg_message_id"] for r in decided[i : i + BATCH]]
+            raw_by_id.update(
+                await self.collector.get_messages_batch(entity, batch_ids)
+            )
+
+        for row in decided:
+            mid = row["tg_message_id"]
+            raw_message = raw_by_id.get(mid)
             if raw_message is None:
                 self.db.mark_skipped(
                     chat_local_id,
-                    row["tg_message_id"],
+                    mid,
                     self.cfg.writer_mode,
                     "message gone from source since sync",
                 )
@@ -436,7 +501,9 @@ class MirrorEngine:
             nm = normalize_message(event.message, chat)
             if nm.is_service:
                 return
-            self.db.upsert_messages(chat_local_id, [nm])
+            if not self._topic_match(nm):
+                return
+            self.db.upsert_messages(chat_local_id, [nm], account_id=self.account_id)
             self.db.set_sync_cursor(
                 chat_local_id,
                 max(nm.tg_message_id, self.db.get_last_sync_id(chat_local_id) or 0),
@@ -448,7 +515,7 @@ class MirrorEngine:
         @self.client.on(events.MessageEdited(chats=entity))
         async def on_edit(event: Any) -> None:
             nm = normalize_message(event.message, chat)
-            self.db.upsert_messages(chat_local_id, [nm])
+            self.db.upsert_messages(chat_local_id, [nm], account_id=self.account_id)
             self.db.log_event(
                 chat_local_id,
                 nm.tg_message_id,

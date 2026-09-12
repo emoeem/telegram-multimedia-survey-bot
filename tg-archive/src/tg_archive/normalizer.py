@@ -9,7 +9,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .model import ChatInfo, NormalizedMessage
+from .model import (
+    CT_ANIMATION, CT_AUDIO, CT_CONTACT, CT_DICE, CT_DOCUMENT, CT_GAME,
+    CT_GEO, CT_INVOICE, CT_OTHER, CT_PHOTO, CT_POLL, CT_SERVICE, CT_STICKER,
+    CT_TEXT, CT_VENUE, CT_VIDEO, CT_VIDEO_NOTE, CT_VOICE, CT_WEBPAGE,
+    ChatInfo, NormalizedMessage,
+)
 
 
 def utc_now_iso() -> str:
@@ -170,38 +175,45 @@ def normalize_message(message: Any, chat: Optional[ChatInfo] = None) -> Normaliz
     if not isinstance(text, str):
         text = ""
 
+    media_to_ct = {
+        "Sticker": CT_STICKER,
+        "Video": CT_VIDEO,
+        "Audio": CT_AUDIO,
+        "Voice": CT_VOICE,
+        "Animation": CT_ANIMATION,
+        "VideoNote": CT_VIDEO_NOTE,
+        "Contact": CT_CONTACT,
+        "Poll": CT_POLL,
+        "Game": CT_GAME,
+        "Dice": CT_DICE,
+        "GeoPoint": CT_GEO,
+        "Venue": CT_VENUE,
+        "Invoice": CT_INVOICE,
+        "WebPage": CT_WEBPAGE,
+    }
+
     if is_service:
-        content_type = "service"
+        content_type = CT_SERVICE
     elif media_kind == "Photo":
-        content_type = "photo"
+        content_type = CT_PHOTO
     elif media_kind == "Document":
-        content_type = "document"
+        content_type = CT_DOCUMENT
         mime = _media_mime(raw)
         attrs = _document_attrs(raw)
         if "DocumentAttributeVideo" in attrs or "DocumentAttributeVideoName" in attrs:
-            content_type = "video"
+            content_type = CT_VIDEO
         elif "DocumentAttributeAudio" in attrs:
-            content_type = "audio"
+            content_type = CT_AUDIO
         elif "DocumentAttributeAnimated" in attrs or "video" in mime:
-            content_type = "animation"
+            content_type = CT_ANIMATION
         elif "audio" in mime:
-            content_type = "audio"
-    elif media_kind in {
-        "Sticker",
-        "Video",
-        "Audio",
-        "Voice",
-        "Animation",
-        "VideoNote",
-        "Contact",
-    }:
-        content_type = media_kind.lower()
-    elif media_kind in {"Poll", "Game", "Dice", "GeoPoint", "Venue", "Invoice", "WebPage"}:
-        content_type = media_kind.lower()
+            content_type = CT_AUDIO
+    elif media_kind in media_to_ct:
+        content_type = media_to_ct[media_kind]
     elif media_kind == "Empty" or media_kind is None:
-        content_type = "text"
+        content_type = CT_TEXT
     else:
-        content_type = "other"
+        content_type = CT_OTHER
 
     from_peer = raw.get("from_id") or raw.get("from")
     sender_id = peer_to_chat_id(from_peer)
@@ -209,11 +221,14 @@ def normalize_message(message: Any, chat: Optional[ChatInfo] = None) -> Normaliz
     reply = raw.get("reply_to") or {}
     reply_to = None
     reply_chat = None
+    topic_id = None
     if isinstance(reply, dict):
         reply_to = reply.get("reply_to_msg_id") or reply.get("reply_to_random_id")
         reply_peer = reply.get("reply_to_peer_id")
         if reply_peer is not None:
             reply_chat = peer_to_chat_id(reply_peer)
+        if reply.get("forum_topic") or reply.get("topic_id"):
+            topic_id = reply_to or reply.get("topic_id")
 
     fwd = raw.get("fwd_from") or {}
     fwd_chat = None
@@ -241,6 +256,7 @@ def normalize_message(message: Any, chat: Optional[ChatInfo] = None) -> Normaliz
         grouped_id=raw.get("grouped_id"),
         reply_to_msg_id=reply_to,
         reply_to_chat_id=reply_chat,
+        topic_id=topic_id,
         forward_from_chat_id=fwd_chat,
         forward_from_msg_id=fwd_msg,
         is_outgoing=bool(raw.get("out")),

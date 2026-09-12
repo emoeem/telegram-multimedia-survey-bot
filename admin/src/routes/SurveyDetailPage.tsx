@@ -18,35 +18,7 @@ import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
-
-function ThemeSwatch({ presetId }: { presetId: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [colors, setColors] = useState<{ base: string; primary: string; content: string } | null>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const style = getComputedStyle(ref.current);
-    setColors({
-      base: style.getPropertyValue("--color-base-100").trim() || "#ffffff",
-      primary: style.getPropertyValue("--color-primary").trim() || "#4f46e5",
-      content: style.getPropertyValue("--color-base-content").trim() || "#111827",
-    });
-  }, [presetId]);
-
-  return (
-    <div ref={ref} data-theme={presetId} className="h-10 w-full overflow-hidden rounded-lg border border-black/10">
-      {colors ? (
-        <div
-          className="flex h-full items-center gap-1.5 px-2"
-          style={{ backgroundColor: colors.base, color: colors.content }}
-        >
-          <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: colors.primary }} />
-          <span className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: colors.content, opacity: 0.45 }} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
+import { PresetSwatch } from "../survey/theme-ui";
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -359,7 +331,7 @@ export function SurveyDetailPage() {
               }`}
               onClick={() => setPreset(item.id)}
             >
-              <ThemeSwatch presetId={item.id} />
+              <PresetSwatch presetId={item.id} size="md" />
               <div className="mt-1.5 text-sm font-medium text-[var(--text-soft)]">{item.name}</div>
             </button>
           ))}

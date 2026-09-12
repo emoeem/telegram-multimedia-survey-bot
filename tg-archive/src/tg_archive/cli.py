@@ -85,13 +85,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="检查连接与归档频道")
     p_verify.add_argument("--channel", default=None)
+
+    p_web = sub.add_parser("web", help="启动本地 Web 界面（浏览器打开 http://localhost:8765）")
+    p_web.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1，外网访问改 0.0.0.0）")
+    p_web.add_argument("--port", type=int, default=8765, help="监听端口（默认 8765）")
     return parser
 
 
 def main() -> None:
     args = _build_parser().parse_args()
     try:
-        needs_api = args.command != "status"
+        needs_api = args.command not in ("status", "web")
         cfg = load_config(
             env_file=args.env_file,
             require_credentials=needs_api,
@@ -125,6 +129,7 @@ def main() -> None:
         "mirror": lambda: asyncio.run(_cmd_mirror(cfg, args)),
         "status": lambda: _cmd_status(cfg),
         "verify": lambda: asyncio.run(_cmd_verify(cfg, args)),
+        "web": lambda: _cmd_web(args),
     }
     sys.exit(commands[args.command]())
 
@@ -327,4 +332,16 @@ async def _cmd_verify(cfg: ArchiveConfig, args: argparse.Namespace) -> int:
     else:
         print("ℹ️  未配置频道（--channel 或 TG_ARCHIVE_CHANNEL）。")
     await client.disconnect()
+    return 0
+
+
+def _cmd_web(args: argparse.Namespace) -> int:
+    print(f"🌐 tg-archive Web 界面启动中…")
+    print(f"   浏览器打开 http://{args.host}:{args.port}")
+    try:
+        from .server import run_server
+        run_server(host=args.host, port=args.port)
+    except KeyboardInterrupt:
+        print("\n已停止。")
+        return 130
     return 0

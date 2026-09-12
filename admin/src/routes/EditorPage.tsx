@@ -488,6 +488,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             dirty={editor.dirty}
             onNavigate={navigatePreview}
             onOpenFull={() => setPreviewOpen(true)}
+            preset={data.survey.theme?.preset ?? null}
           />
         </aside>
       </div>
@@ -499,6 +500,7 @@ function EditableEditor({ data }: { data: EditorData }) {
           questions={previewQuestions}
           dirty={editor.dirty}
           onClose={() => setPreviewOpen(false)}
+          preset={data.survey.theme?.preset ?? null}
         />
       ) : null}
     </div>
@@ -753,6 +755,7 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
           questions={previewQuestions}
           dirty={false}
           onClose={() => setPreviewOpen(false)}
+          preset={data.survey.theme?.preset ?? null}
         />
       ) : null}
     </div>

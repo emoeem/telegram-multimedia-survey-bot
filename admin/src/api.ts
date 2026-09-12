@@ -386,6 +386,7 @@ export interface EditorData {
     responseCount: number;
     questionCount: number;
     editable: boolean;
+    theme?: { preset?: string } | null;
   };
   questions: EditorQuestion[];
   pages: Array<{ id: number; title: string | null; description: string | null; order: number }>;

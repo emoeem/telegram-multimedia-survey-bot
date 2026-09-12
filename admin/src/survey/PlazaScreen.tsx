@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, ChevronDown, Palette, Pencil, Users, X } from "lucide-react";
-import { safeGet, safeSet, safeRemove } from "./storage";
-import { ThemePickerSheet, themeBackgroundStyle, themeCssVars } from "./theme-ui";
+import {
+  loadGlobalPreset,
+  saveGlobalPreset,
+  ThemePickerSheet,
+  themeBackgroundStyle,
+  themeCssVars,
+  useResolvedPreset,
+} from "./theme-ui";
 import { BottomNav } from "./BottomNav";
 import {
   createPlazaPost,
@@ -313,7 +319,7 @@ export function PlazaScreen() {
     new URLSearchParams(window.location.search).get("tab") === "treehole" ? "treehole" : "profiles",
   );
   const [reloadKey, setReloadKey] = useState(0);
-  const [userThemePreset, setUserThemePreset] = useState<string | null>(null);
+  const [userThemePreset, setUserThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [content, setContent] = useState("");
@@ -324,18 +330,13 @@ export function PlazaScreen() {
   const posts = usePlazaFeed(reloadKey);
   const profiles = useProfileFeed(reloadKey);
 
-  useEffect(() => {
-    const stored = safeGet("plazaTheme");
-    setUserThemePreset(stored && stored.length > 0 ? stored : null);
-  }, []);
-
   const selectTheme = (presetId: string | null) => {
     setUserThemePreset(presetId);
-    if (presetId) safeSet("plazaTheme", presetId);
-    else safeRemove("plazaTheme");
+    saveGlobalPreset(presetId);
   };
 
-  const theme = userThemePreset ? { preset: userThemePreset } : null;
+  const resolvedPreset = useResolvedPreset(userThemePreset);
+  const theme = resolvedPreset ? { preset: resolvedPreset } : null;
   const vars = themeCssVars(theme);
   const backgroundStyle = themeBackgroundStyle(theme);
 

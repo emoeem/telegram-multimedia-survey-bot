@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="night">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>tg-archive · Telegram 镜像工具</title>
+<link href="/assets/vendor/app.css" rel="stylesheet" />
+<script src="/assets/vendor/lucide.min.js"></script>
+<script src="/assets/vendor/qrcode.min.js"></script>
+<script>
+  (function(){
+    var t = localStorage.getItem('tg_archive_theme') || 'night';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter",
+         "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  .scroll-area { scrollbar-width: thin; }
+  .scroll-area::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scroll-area::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--color-base-content) 30%, transparent); border-radius: 3px; }
+  .log-line { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; padding: 2px 6px; }
+  .log-line.ok { color: #86efac; }
+  .log-line.err { color: #fca5a5; }
+  .log-line.info { color: #93c5fd; }
+  .log-line.warn { color: #fde047; }
+  .log-line span.ts { color: color-mix(in oklch, var(--color-base-content) 40%, transparent); margin-right: 6px; }
+  .fade-in { animation: fadeIn 0.15s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .stat-card { border-radius: var(--radius-box, 0.5rem); background-color: var(--color-base-100); border: 1px solid var(--color-base-200); padding: 1rem; }
+  .stat-num { font-size: 2rem; font-weight: 700; line-height: 1; }
+  table { font-size: 13px; }
+  th { font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; font-size: 11px; }
+</style>
+</head>
+<body class="bg-base-200 min-h-screen">
+
+<!-- Toast container -->
+<div id="toast-container" class="toast toast-top toast-end z-50"></div>
+
+<!-- Header -->
+<header class="navbar bg-base-100 border-b border-base-200 px-4 sticky top-0 z-20">
+  <div class="flex-1 flex items-center gap-3">
+    <div class="btn btn-ghost btn-circle text-primary">
+      <i data-lucide="archive" class="w-6 h-6"></i>
+    </div>
+    <div>
+      <h1 class="font-bold text-lg">tg-archive</h1>
+      <p class="text-xs text-base-content/60 hidden sm:block">Telegram 聊天 → 私人频道</p>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <!-- Account selector -->
+    <div class="dropdown dropdown-end">
+      <button id="account-selector" class="btn btn-ghost btn-sm gap-2">
+        <i data-lucide="user" class="w-4 h-4"></i>
+        <span id="account-label">加载中…</span>
+        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+      </button>
+      <div id="account-menu" class="dropdown-content z-40 menu p-2 shadow bg-base-100 rounded-box w-80 hidden"></div>
+    </div>
+    <!-- Theme switch -->
+    <div class="dropdown dropdown-end">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('theme-menu').classList.toggle('hidden')">
+        <i data-lucide="palette" class="w-4 h-4"></i>
+      </button>
+      <div id="theme-menu" class="dropdown-content z-40 menu p-2 shadow bg-base-100 rounded-box w-48 hidden">
+        <div class="menu-title text-xs">主题</div>
+        <li><a onclick="setTheme('light'); document.getElementById('theme-menu').classList.add('hidden')">☀️ 明亮</a></li>
+        <li><a onclick="setTheme('dark'); document.getElementById('theme-menu').classList.add('hidden')">🌙 暗色</a></li>
+        <li><a onclick="setTheme('night'); document.getElementById('theme-menu').classList.add('hidden')">🌌 深蓝夜</a></li>
+        <li><a onclick="setTheme('cupcake'); document.getElementById('theme-menu').classList.add('hidden')">🧁 粉彩</a></li>
+        <li><a onclick="setTheme('synthwave'); document.getElementById('theme-menu').classList.add('hidden')">🌈 霓虹</a></li>
+        <li><a onclick="setTheme('luxury'); document.getElementById('theme-menu').classList.add('hidden')">👑 黑金</a></li>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Tabs -->
+<nav class="tabs tabs-box bg-base-100 border-b border-base-200 px-4 py-2 gap-1">
+  <button class="tab tab-sm btn btn-sm btn-primary" data-view="login"><i data-lucide="log-in" class="w-4 h-4"></i> 登录</button>
+  <button class="tab tab-sm btn btn-sm btn-ghost" data-view="chats"><i data-lucide="messages-square" class="w-4 h-4"></i> 聊天列表</button>
+  <button class="tab tab-sm btn btn-sm btn-ghost" data-view="mirror"><i data-lucide="rocket" class="w-4 h-4"></i> 镜像</button>
+  <button class="tab tab-sm btn btn-sm btn-ghost" data-view="messages"><i data-lucide="book-open" class="w-4 h-4"></i> 消息浏览</button>
+  <button class="tab tab-sm btn btn-sm btn-ghost" data-view="stats"><i data-lucide="bar-chart-3" class="w-4 h-4"></i> 统计</button>
+</nav>
+
+<main class="max-w-7xl mx-auto p-4 space-y-4">
+
+<!-- LOGIN -->
+<section data-view="login" class="view hidden space-y-4">
+  <div class="grid md:grid-cols-2 gap-4">
+    <!-- QR Login -->
+    <div class="card bg-base-100 rounded-box border border-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-lg"><i data-lucide="qr-code" class="w-5 h-5 text-primary"></i> 扫码登录（推荐）</h2>
+        <p class="text-sm text-base-content/70">用手机 Telegram → 设置 → 设备 → 扫码登录，无需验证码。二维码过期后会自动刷新。</p>
+        <div id="qr-area" class="text-center py-4">
+          <button id="btn-gen-qr" class="btn btn-primary"><i data-lucide="plus" class="w-4 h-4"></i> 生成二维码</button>
+          <div id="qr-display" class="hidden mt-4">
+            <div class="inline-block bg-white p-4 rounded-lg">
+              <div id="qr-img"></div>
+            </div>
+            <p id="qr-url" class="text-xs text-info mt-2 break-all hidden"></p>
+            <p id="qr-status" class="text-sm mt-3"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Phone Login -->
+    <div class="card bg-base-100 rounded-box border border-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-lg"><i data-lucide="smartphone" class="w-5 h-5 text-primary"></i> 手机号登录</h2>
+        <div class="form-control gap-3">
+          <div>
+            <label class="label"><span class="label-text">手机号（E.164，如 +8613800138000）</span></label>
+            <input id="phone" class="input w-full" placeholder="+86..." />
+          </div>
+          <button id="btn-send-code" class="btn btn-primary"><i data-lucide="send" class="w-4 h-4"></i> 发送验证码</button>
+          <div id="code-area" class="hidden space-y-3">
+            <div>
+              <label class="label"><span class="label-text">验证码</span></label>
+              <input id="code" class="input w-full" placeholder="6 位数字" />
+            </div>
+            <div>
+              <label class="label"><span class="label-text">两步验证密码（如有）</span></label>
+              <input id="password" class="input w-full" type="password" placeholder="可选" />
+            </div>
+            <button id="btn-signin" class="btn btn-primary w-full"><i data-lucide="check" class="w-4 h-4"></i> 登录</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHATS -->
+<section data-view="chats" class="view hidden space-y-4">
+  <div class="flex items-center justify-between">
+    <h2 class="text-xl font-bold flex items-center gap-2"><i data-lucide="messages-square" class="w-5 h-5"></i> 可见会话</h2>
+    <button id="btn-refresh-chats" class="btn btn-sm btn-outline"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 刷新</button>
+  </div>
+  <div class="card bg-base-100 rounded-box border border-base-200 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead class="bg-base-200">
+          <tr>
+            <th>TG ID</th><th>类型</th><th>标题</th><th>用户名</th><th>保护</th><th>话题</th>
+          </tr>
+        </thead>
+        <tbody id="chats-tbody"></tbody>
+      </table>
+    </div>
+    <div id="chats-empty" class="p-8 text-center text-base-content/60 hidden">
+      <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+      没数据，先去登录并刷新
+    </div>
+  </div>
+</section>
+
+<!-- MIRROR -->
+<section data-view="mirror" class="view hidden space-y-4">
+  <div class="grid lg:grid-cols-5 gap-4">
+    <!-- Config -->
+    <div class="lg:col-span-2">
+      <div class="card bg-base-100 rounded-box border border-base-200">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-lg"><i data-lucide="settings-2" class="w-5 h-5 text-primary"></i> 镜像配置</h2>
+          <div class="form-control gap-3">
+            <div>
+              <label class="label"><span class="label-text">源聊天</span></label>
+              <select id="mirror-chat" class="select w-full"></select>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">归档频道（@用户名、数字 ID 或频道标题）</span></label>
+              <input id="mirror-channel" class="input w-full" placeholder="@频道名 / -1001234567890 / 频道标题" />
+            </div>
+            <div>
+              <label class="label"><span class="label-text">写入模式</span></label>
+              <select id="mirror-mode" class="select w-full">
+                <option value="copy">copy（下载重发 + #标签）</option>
+                <option value="forward">forward（原样转发）</option>
+              </select>
+            </div>
+            <div>
+              <label class="label"><span class="label-text">受保护内容策略</span></label>
+              <select id="mirror-protected" class="select w-full">
+                <option value="skip">skip（默认，不写入）</option>
+                <option value="text_only">text_only（仅文字）</option>
+                <option value="allow_media">allow_media（含媒体 ⚠️）</option>
+              </select>
+            </div>
+            <details class="collapse bg-base-200 border border-base-200">
+              <summary class="collapse-title text-sm font-medium">话题/Topics 过滤</summary>
+              <div class="collapse-content space-y-3 pt-3">
+                <div class="flex gap-2 items-center">
+                  <label class="label-text text-sm">指定话题 ID（单个）</label>
+                  <input id="mirror-topic" class="input input-sm flex-1" type="number" placeholder="如 12345" />
+                </div>
+                <div class="flex gap-2 items-center">
+                  <label class="label-text text-sm">只包含话题（逗号分隔）</label>
+                  <input id="mirror-include" class="input input-sm flex-1" placeholder="123,456,789" />
+                </div>
+                <div class="flex gap-2 items-center">
+                  <label class="label-text text-sm">排除话题（逗号分隔）</label>
+                  <input id="mirror-exclude" class="input input-sm flex-1" placeholder="0" />
+                </div>
+              </div>
+            </details>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="label"><span class="label-text text-sm">最多写入</span></label>
+                <input id="mirror-max" class="input w-full" type="number" value="500" />
+              </div>
+              <div>
+                <label class="label"><span class="label-text text-sm">采集上限</span></label>
+                <input id="mirror-fetch-limit" class="input w-full" type="number" placeholder="不限" />
+              </div>
+              <div>
+                <label class="label"><span class="label-text text-sm">间隔(秒)</span></label>
+                <input id="mirror-delay" class="input w-full" type="number" step="0.1" value="0.8" />
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <label class="flex items-center gap-2 text-sm"><input id="mirror-listen" type="checkbox" class="checkbox checkbox-sm" /> 同步后保持监听</label>
+              <label class="flex items-center gap-2 text-sm"><input id="mirror-dry" type="checkbox" class="checkbox checkbox-sm" /> 干跑（只索引）</label>
+            </div>
+            <div class="flex gap-2 pt-1">
+              <button id="btn-mirror-start" class="btn btn-primary flex-1"><i data-lucide="play" class="w-4 h-4"></i> 开始镜像</button>
+              <button id="btn-mirror-stop" class="btn btn-error" disabled><i data-lucide="square" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Progress -->
+    <div class="lg:col-span-3 space-y-4">
+      <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
+        <div class="stat-card"><div class="text-xs text-base-content/60">已同步</div><div class="stat-num text-primary" id="stat-fetched">0</div></div>
+        <div class="stat-card"><div class="text-xs text-base-content/60">已镜像</div><div class="stat-num text-success" id="stat-posted">0</div></div>
+        <div class="stat-card"><div class="text-xs text-base-content/60">跳过</div><div class="stat-num text-warning" id="stat-skipped">0</div></div>
+        <div class="stat-card"><div class="text-xs text-base-content/60">失败</div><div class="stat-num text-error" id="stat-failed">0</div></div>
+        <div class="stat-card"><div class="text-xs text-base-content/60">更新</div><div class="stat-num text-base-content" id="stat-updated">0</div></div>
+        <div class="stat-card"><div class="text-xs text-base-content/60">监听</div><div class="stat-num" id="stat-listen" style="font-size:1.25rem">—</div></div>
+      </div>
+      <div class="card bg-base-100 rounded-box border border-base-200">
+        <div class="card-body">
+          <h3 class="font-bold text-sm flex items-center gap-2"><i data-lucide="terminal" class="w-4 h-4"></i> 运行日志</h3>
+          <div id="log-area" class="bg-neutral text-neutral-content rounded-lg h-80 overflow-auto scroll-area p-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MESSAGES -->
+<section data-view="messages" class="view hidden space-y-4">
+  <div class="card bg-base-100 rounded-box border border-base-200">
+    <div class="card-body flex flex-wrap gap-2">
+      <input id="msg-search" class="input flex-1 min-w-48" placeholder="🔍 搜索消息内容…" />
+      <select id="msg-chat-filter" class="select min-w-40"><option value="">全部聊天</option></select>
+      <select id="msg-status-filter" class="select min-w-36">
+        <option value="">全部状态</option>
+        <option value="pending">待处理</option>
+        <option value="done">已镜像</option>
+        <option value="skipped">跳过</option>
+        <option value="failed">失败</option>
+      </select>
+      <button id="btn-msg-search" class="btn btn-primary"><i data-lucide="search" class="w-4 h-4"></i> 搜索</button>
+    </div>
+  </div>
+  <div class="card bg-base-100 rounded-box border border-base-200 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead class="bg-base-200">
+          <tr><th>时间</th><th>聊天</th><th>内容</th><th>类型</th><th>话题</th><th>状态</th></tr>
+        </thead>
+        <tbody id="msgs-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="msgs-pagination" class="flex justify-between items-center text-sm"></div>
+</section>
+
+<!-- STATS -->
+<section data-view="stats" class="view hidden space-y-4">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="stat-card text-center"><div class="stat-num text-primary" id="s-accounts">-</div><div class="text-sm">账号</div></div>
+    <div class="stat-card text-center"><div class="stat-num text-base-content" id="s-chats">-</div><div class="text-sm">聊天</div></div>
+    <div class="stat-card text-center"><div class="stat-num text-success" id="s-mirrored">-</div><div class="text-sm">已镜像</div></div>
+    <div class="stat-card text-center"><div class="stat-num text-warning" id="s-pending">-</div><div class="text-sm">待处理</div></div>
+  </div>
+  <div class="card bg-base-100 rounded-box border border-base-200 overflow-hidden">
+    <div class="card-body pb-0">
+      <h3 class="font-bold text-sm">各聊天详情</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead class="bg-base-200">
+          <tr><th>聊天</th><th>类型</th><th>消息数</th><th>同步位置</th><th>保护</th></tr>
+        </thead>
+        <tbody id="stats-chat-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- Topics dialog -->
+<dialog id="topics-dialog" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg flex items-center gap-2"><i data-lucide="tag" class="w-5 h-5 text-primary"></i> 话题列表</h3>
+    <p class="text-xs text-base-content/60 mt-1">点击「复制」把话题 ID 粘贴到镜像配置的话题过滤里。</p>
+    <div id="topics-list" class="py-2 space-y-1 max-h-80 overflow-auto scroll-area"></div>
+    <div class="modal-action">
+      <button class="btn" onclick="document.getElementById('topics-dialog').close()">关闭</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<script>
+const API = '';
+let currentAccountId = 1;
+let msgOffset = 0, msgTotal = 0;
+let qrPollTimer = null, mirrorPollTimer = null;
+
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('tg_archive_theme', t);
+}
+
+async function api(path, opts = {}) {
+  const token = document.querySelector('meta[name="tg-archive-token"]')?.content
+    || new URLSearchParams(location.search).get('token') || '';
+  const url = path.startsWith('http') ? path : (API + path);
+  const sep = url.includes('?') ? '&' : '?';
+  const fullUrl = token ? `${url}${sep}token=${encodeURIComponent(token)}` : url;
+  const headers = { 'Content-Type': 'application/json' };
+  const res = await fetch(fullUrl, { ...opts, headers: { ...headers, ...(opts.headers || {}) } });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText} ${txt}`);
+  }
+  return res.json();
+}
+
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `alert alert-${type} shadow-lg fade-in`;
+  el.innerHTML = `<span>${escapeHTML(msg)}</span>`;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
+    btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    document.querySelector(`.view[data-view="${btn.dataset.view}"]`).classList.remove('hidden');
+    onViewChange(btn.dataset.view);
+  });
+});
+
+function onViewChange(name) {
+  if (name === 'login') refreshAccount(true);
+  if (name === 'chats') loadChats();
+  if (name === 'mirror') loadChatOptions();
+  if (name === 'messages') { loadChatOptions(); loadMessages(); }
+  if (name === 'stats') loadStats();
+}
+
+// --- Account switcher ---
+async function refreshAccount(force = false) {
+  const menu = document.getElementById('account-menu');
+  if (!force && !menu.classList.contains('hidden')) return; // don't rebuild while menu is open
+  try {
+    const data = await api('/api/accounts');
+    menu.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'menu-title text-xs';
+    header.textContent = '账号管理';
+    menu.appendChild(header);
+    data.accounts.forEach(a => {
+      const name = a.username || a.first_name || `账号 #${a.id}`;
+      const item = document.createElement('li');
+      item.innerHTML = `<a class="flex items-center gap-2">
+        <i data-lucide="circle" class="w-3 h-3 ${a.authorized ? 'text-success' : 'text-error'}"></i>
+        <span class="flex-1">${escapeHTML(name)}</span>
+        <span class="text-xs text-base-content/60">${a.chat_count || 0} 聊</span>
+        <button class="btn btn-ghost btn-xs" data-act="logout" title="登出此账号"><i data-lucide="log-out" class="w-3.5 h-3.5"></i></button>
+        <button class="btn btn-ghost btn-xs text-error" data-act="delete" title="删除此账号"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+      </a>`;
+      item.querySelector('a').onclick = (ev) => {
+        if (ev.target.closest('button')) return; // logout/delete handle their own clicks
+        currentAccountId = a.id;
+        document.getElementById('account-label').textContent = name;
+        menu.classList.add('hidden');
+        toast(`已切换到账号 #${a.id}`, 'success');
+        onViewChange(document.querySelector('.tab.btn-primary')?.dataset.view || 'login');
+      };
+      item.querySelector('[data-act="logout"]').onclick = (ev) => { ev.stopPropagation(); logoutAccount(a.id, name); };
+      item.querySelector('[data-act="delete"]').onclick = (ev) => { ev.stopPropagation(); deleteAccount(a.id, name); };
+      menu.appendChild(item);
+    });
+    lucide.createIcons();
+    if (data.accounts.length === 0) {
+      document.getElementById('account-label').textContent = '未登录';
+    } else if (!data.accounts.find(a => a.id === currentAccountId)) {
+      currentAccountId = data.default_account_id || data.accounts[0].id;
+    }
+    const cur = data.accounts.find(a => a.id === currentAccountId);
+    if (cur) document.getElementById('account-label').textContent = cur.username || cur.first_name || `#${cur.id}`;
+  } catch (e) {
+    document.getElementById('account-label').textContent = '服务未启动';
+  }
+}
+document.getElementById('account-selector').addEventListener('click', () => {
+  document.getElementById('account-menu').classList.toggle('hidden');
+});
+
+async function logoutAccount(id, name) {
+  if (!confirm(`登出账号「${name}」？本地登录记录将被删除。`)) return;
+  try {
+    await api(`/api/auth/logout?account_id=${id}`, { method: 'POST' });
+    toast(`已登出「${name}」`, 'success');
+    refreshAccount(true);
+  } catch (e) { toast('登出失败：' + e.message, 'error'); }
+}
+
+async function deleteAccount(id, name) {
+  if (!confirm(`⚠️ 删除账号「${name}」？\n\n将删除该账号的 session、聊天、消息和镜像记录，不可恢复！`)) return;
+  try {
+    await api(`/api/accounts/${id}`, { method: 'DELETE' });
+    toast(`已删除「${name}」`, 'success');
+    refreshAccount(true);
+  } catch (e) { toast('删除失败：' + e.message, 'error'); }
+}
+
+// --- Auth ---
+async function refreshAuth() {
+  await refreshAccount(true);
+}
+
+// --- QR ---
+function renderQR(url) {
+  const qrBox = document.getElementById('qr-img');
+  qrBox.innerHTML = '';
+  new QRCode(qrBox, { text: url, width: 192, height: 192, correctLevel: QRCode.CorrectLevel.M });
+}
+
+function stopQRPoll() {
+  if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+}
+
+document.getElementById('btn-gen-qr').addEventListener('click', async () => {
+  stopQRPoll();
+  const btn = document.getElementById('btn-gen-qr');
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 生成中…';
+  lucide.createIcons();
+  try {
+    const data = await api(`/api/auth/login-qr?account_id=${currentAccountId}`, { method: 'POST' });
+    if (data.authorized) {
+      document.getElementById('qr-display').classList.remove('hidden');
+      document.getElementById('qr-img').innerHTML = '';
+      document.getElementById('qr-status').innerHTML = '<span class="text-success">✅ 此账号已登录，无需扫码</span>';
+      refreshAuth();
+      return;
+    }
+    if (!data.qr_url) throw new Error('响应中无 qr_url');
+    document.getElementById('qr-display').classList.remove('hidden');
+    renderQR(data.qr_url);
+    document.getElementById('qr-status').textContent = '用手机 Telegram 扫描二维码…';
+    pollQR(data.qr_url);
+  } catch (e) {
+    toast('生成二维码失败：' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新生成';
+    lucide.createIcons();
+  }
+});
+
+function pollQR(lastUrl) {
+  const statusEl = document.getElementById('qr-status');
+  let count = 0;
+  qrPollTimer = setInterval(async () => {
+    count++;
+    try {
+      const data = await api(`/api/auth/login-qr/status?account_id=${currentAccountId}`);
+      if (data.authorized) {
+        statusEl.innerHTML = '<span class="text-success">✅ 登录成功！</span>';
+        stopQRPoll(); refreshAuth(); toast('登录成功', 'success');
+      } else if (data.pending && data.qr_url && data.qr_url !== lastUrl) {
+        // 服务端自动换新二维码（旧码已过期）
+        lastUrl = data.qr_url;
+        renderQR(data.qr_url);
+        statusEl.innerHTML = '<span class="text-warning">🔄 二维码已自动刷新，请重新扫描</span>';
+      } else if (data.error) {
+        statusEl.innerHTML = data.error === 'timeout'
+          ? '<span class="text-warning">⏰ 等待超时，请重新生成</span>'
+          : data.error === 'needs_password'
+            ? '<span class="text-info">🔐 需要两步验证密码，改用手机号登录</span>'
+            : `<span class="text-error">❌ ${escapeHTML(data.error)}</span>`;
+        stopQRPoll();
+      } else if (count > 200) {
+        stopQRPoll(); statusEl.innerHTML = '<span class="text-warning">⏰ 等待超时</span>';
+      }
+    } catch (e) {}
+  }, 2000);
+}
+
+document.getElementById('btn-send-code').addEventListener('click', async () => {
+  const phone = document.getElementById('phone').value.trim();
+  if (!phone) return toast('请输入手机号', 'error');
+  try {
+    await api('/api/auth/login-push', { method: 'POST', body: JSON.stringify({ phone, account_id: currentAccountId }) });
+    document.getElementById('code-area').classList.remove('hidden');
+    toast('验证码已发送', 'success');
+  } catch (e) { toast('发送失败：' + e.message, 'error'); }
+});
+
+document.getElementById('btn-signin').addEventListener('click', async () => {
+  const phone = document.getElementById('phone').value.trim();
+  const code = document.getElementById('code').value.trim();
+  const password = document.getElementById('password').value.trim();
+  if (!code) return toast('请输入验证码', 'error');
+  try {
+    const data = await api('/api/auth/login-code', {
+      method: 'POST', body: JSON.stringify({ phone, code, password, account_id: currentAccountId })
+    });
+    if (data.authorized) { toast('✅ 登录成功！', 'success'); refreshAuth(); }
+    else if (data.needs_password) toast('需要两步验证密码，请在上方填入', 'warning');
+  } catch (e) { toast('登录失败：' + e.message, 'error'); }
+});
+
+// --- Chats ---
+async function loadChats() {
+  const tbody = document.getElementById('chats-tbody');
+  const empty = document.getElementById('chats-empty');
+  tbody.innerHTML = '';
+  try {
+    const data = await api(`/api/chats?account_id=${currentAccountId}`);
+    data.chats.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover';
+      tr.innerHTML = `
+        <td class="font-mono text-xs">${escapeHTML(String(c.tg_chat_id))}</td>
+        <td><span class="badge badge-sm badge-primary">${escapeHTML(c.type)}</span></td>
+        <td class="font-medium">${escapeHTML(c.title || '(无标题)')}</td>
+        <td class="text-xs text-base-content/70">${c.username ? '@' + escapeHTML(c.username) : '—'}</td>
+        <td class="text-center">${c.protected ? '🛡️' : '—'}</td>
+        <td class="text-center">
+          <button class="btn btn-xs btn-ghost chat-topics" data-local="${Number(c.local_id)}" ${c.type !== 'supergroup' ? 'disabled' : ''}>
+            <i data-lucide="tag" class="w-3 h-3"></i>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    empty.classList.toggle('hidden', data.chats.length > 0);
+    lucide.createIcons();
+    tbody.querySelectorAll('.chat-topics').forEach(btn => {
+      btn.onclick = () => showTopics(Number(btn.dataset.local));
+    });
+  } catch (e) {
+    empty.textContent = String(e.message).includes('401')
+      ? '账号未登录或 session 已失效，请到「登录」页重新登录'
+      : '加载失败：' + e.message;
+    empty.classList.remove('hidden');
+  }
+}
+document.getElementById('btn-refresh-chats').onclick = loadChats;
+
+async function showTopics(localId) {
+  const list = document.getElementById('topics-list');
+  list.innerHTML = '<div class="p-4 text-center text-base-content/60">加载中…</div>';
+  document.getElementById('topics-dialog').showModal();
+  try {
+    const data = await api(`/api/chats/${localId}/topics?account_id=${currentAccountId}`);
+    if (!data.topics.length) {
+      list.innerHTML = '<div class="p-4 text-center text-base-content/60">没有话题</div>';
+      return;
+    }
+    list.innerHTML = '';
+    data.topics.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2 p-2 rounded-lg hover:bg-base-200';
+      row.innerHTML = `
+        <span class="flex-1 truncate">${escapeHTML(t.title || '(无标题)')}</span>
+        <span class="text-xs text-base-content/50">${t.count ?? 0} 条</span>
+        <code class="text-xs font-mono text-info">#${Number(t.topic_id)}</code>
+        <button class="btn btn-xs btn-ghost">复制</button>
+      `;
+      row.querySelector('button').onclick = () => {
+        navigator.clipboard?.writeText(String(t.topic_id));
+        toast(`已复制话题 ID ${t.topic_id}`, 'success');
+      };
+      list.appendChild(row);
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="p-4 text-center text-error">${escapeHTML('加载失败：' + e.message)}</div>`;
+  }
+}
+
+// --- Chat options (mirror 源聊天 + 消息浏览筛选共用) ---
+async function loadChatOptions() {
+  const sel = document.getElementById('mirror-chat');
+  const msgSel = document.getElementById('msg-chat-filter');
+  const prevChat = sel.value, prevMsg = msgSel.value;
+  try {
+    const data = await api(`/api/chats?account_id=${currentAccountId}`);
+    sel.innerHTML = '';
+    msgSel.innerHTML = '<option value="">全部聊天</option>';
+    data.chats.forEach(c => {
+      const label = `${c.title} (${c.tg_chat_id})${c.protected ? ' 🛡️' : ''}`;
+      const opt = document.createElement('option');
+      opt.value = String(c.tg_chat_id);
+      opt.textContent = label;
+      sel.appendChild(opt);
+      const opt2 = document.createElement('option');
+      opt2.value = String(c.local_id);
+      opt2.textContent = label;
+      msgSel.appendChild(opt2);
+    });
+    if (prevChat) sel.value = prevChat;
+    if (prevMsg) msgSel.value = prevMsg;
+  } catch (e) {
+    sel.innerHTML = '<option value="">先登录并刷新聊天</option>';
+  }
+}
+
+// --- Mirror ---
+document.getElementById('btn-mirror-start').onclick = async () => {
+  const chatSel = document.getElementById('mirror-chat');
+  const chat = chatSel.value || chatSel.options[0]?.value;
+  if (!chat) return toast('请先选择源聊天', 'error');
+  const inc = document.getElementById('mirror-include').value.trim();
+  const exc = document.getElementById('mirror-exclude').value.trim();
+  const fetchLimitRaw = document.getElementById('mirror-fetch-limit').value.trim();
+  const req = {
+    chat,
+    channel: document.getElementById('mirror-channel').value.trim() || null,
+    mode: document.getElementById('mirror-mode').value,
+    protected_policy: document.getElementById('mirror-protected').value,
+    max_posts: parseInt(document.getElementById('mirror-max').value) || 500,
+    fetch_limit: fetchLimitRaw ? (parseInt(fetchLimitRaw) || null) : null,
+    post_delay: parseFloat(document.getElementById('mirror-delay').value) || 0.8,
+    listen: document.getElementById('mirror-listen').checked,
+    dry_run: document.getElementById('mirror-dry').checked,
+    yes: true,
+    account_id: currentAccountId,
+    topic_id: document.getElementById('mirror-topic').value ? parseInt(document.getElementById('mirror-topic').value) : null,
+    include_topics: inc ? inc.split(',').map(Number).filter(Boolean) : null,
+    exclude_topics: exc ? exc.split(',').map(Number).filter(Boolean) : null,
+  };
+  if (req.protected_policy === 'allow_media' && !confirm('⚠️ allow_media 会绕过群的保存限制下载并重发媒体，高风险！继续？')) return;
+  try {
+    await api('/api/mirror/start', { method: 'POST', body: JSON.stringify(req) });
+    document.getElementById('btn-mirror-start').disabled = true;
+    document.getElementById('btn-mirror-stop').disabled = false;
+    document.getElementById('log-area').innerHTML = '';
+    toast('镜像已启动', 'success');
+    pollMirrorStatus();
+  } catch (e) {
+    toast(String(e.message).includes('401')
+      ? '账号未登录或 session 已失效，请到「登录」页重新登录'
+      : '启动失败：' + e.message, 'error');
+  }
+};
+
+document.getElementById('btn-mirror-stop').onclick = async () => {
+  await api('/api/mirror/stop', { method: 'POST' });
+  document.getElementById('btn-mirror-start').disabled = false;
+  document.getElementById('btn-mirror-stop').disabled = true;
+  toast('已停止', 'info');
+};
+
+function pollMirrorStatus() {
+  if (mirrorPollTimer) clearInterval(mirrorPollTimer);
+  mirrorPollTimer = setInterval(async () => {
+    try {
+      const data = await api('/api/mirror/status');
+      updateMirrorUI(data);
+      if (!data.running) {
+        clearInterval(mirrorPollTimer); mirrorPollTimer = null;
+        document.getElementById('btn-mirror-start').disabled = false;
+        document.getElementById('btn-mirror-stop').disabled = true;
+        toast(data.done ? '✅ 任务完成' : '⏹ 已停止', data.done ? 'success' : 'warning');
+      }
+    } catch (e) {}
+  }, 1500);
+}
+
+function updateMirrorUI(data) {
+  const s = data.stats;
+  document.getElementById('stat-fetched').textContent = s.fetched;
+  document.getElementById('stat-posted').textContent = s.posted;
+  document.getElementById('stat-skipped').textContent = s.skipped;
+  document.getElementById('stat-failed').textContent = s.failed;
+  document.getElementById('stat-updated').textContent = s.updated;
+  const listenEl = document.getElementById('stat-listen');
+  listenEl.textContent = data.listen_active ? '🟢' : data.running ? '⏳' : '—';
+  const log = document.getElementById('log-area');
+  data.progress.forEach(p => addLog(p.text, log));
+}
+
+function addLog(text, logEl) {
+  const el = logEl || document.getElementById('log-area');
+  const lastText = el.lastElementChild?.dataset?.text;
+  if (lastText === text) return;
+  const div = document.createElement('div');
+  div.className = 'log-line ' + (text.includes('❌') || text.includes('error') ? 'err' : text.includes('✅') || text.includes('done') ? 'ok' : text.includes('⏹') ? 'warn' : 'info');
+  div.dataset.text = text;
+  const now = new Date().toLocaleTimeString();
+  div.innerHTML = `<span class="ts">${now}</span>${escapeHTML(text)}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  while (el.children.length > 800) el.removeChild(el.firstChild);
+}
+
+// --- Messages ---
+function fmtDate(s) {
+  if (!s) return '-';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s.replace('T', ' ').slice(0, 16);
+  return d.toLocaleString('zh-CN', { hour12: false }).slice(0, 19).replace(/\//g, '-');
+}
+
+async function loadMessages(resetOffset = true) {
+  if (resetOffset) msgOffset = 0;
+  const tbody = document.getElementById('msgs-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center">加载中…</td></tr>';
+  const params = new URLSearchParams();
+  params.set('account_id', currentAccountId);
+  const chatFilter = document.getElementById('msg-chat-filter').value;
+  const statusFilter = document.getElementById('msg-status-filter').value;
+  const search = document.getElementById('msg-search').value.trim();
+  if (chatFilter) params.set('chat_id', chatFilter);
+  if (statusFilter) params.set('status', statusFilter);
+  if (search) params.set('text', search);
+  params.set('offset', String(msgOffset));
+  params.set('limit', '50');
+  try {
+    const data = await api('/api/messages?' + params.toString());
+    msgTotal = data.total;
+    tbody.innerHTML = '';
+    const statusMap = { done: {cls: 'badge-success', txt: '已镜像'}, skipped: {cls: 'badge-warning', txt: '跳过'}, failed: {cls: 'badge-error', txt: '失败'} };
+    data.items.forEach(m => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover';
+      const badge = statusMap[m.mirror_status] || (m.mirror_status ? {cls: 'badge-outline', txt: escapeHTML(String(m.mirror_status))} : {cls: 'badge-outline', txt: '待处理'});
+      tr.innerHTML = `
+        <td class="text-xs text-base-content/70">${escapeHTML(fmtDate(m.date))}</td>
+        <td class="text-xs max-w-[140px] truncate" title="${escapeHTML(m.chat_title)}">${escapeHTML(m.chat_title)}</td>
+        <td class="max-w-xs">
+          <div class="truncate">${escapeHTML(m.text_preview || '(空)')}</div>
+          <div class="text-xs text-base-content/50 font-mono">#${Number(m.tg_message_id)}</div>
+        </td>
+        <td><span class="badge badge-sm badge-primary">${escapeHTML(m.content_type)}</span></td>
+        <td class="text-center text-xs">${m.topic_id ? '#' + Number(m.topic_id) : '—'}</td>
+        <td class="text-center"><span class="badge badge-sm ${badge.cls}">${badge.txt}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    renderPagination();
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-error">${escapeHTML('加载失败：' + e.message)}</td></tr>`;
+  }
+}
+
+function renderPagination() {
+  const perPage = 50;
+  const cur = Math.floor(msgOffset / perPage) + 1;
+  const totalPages = Math.max(1, Math.ceil(msgTotal / perPage));
+  document.getElementById('msgs-pagination').innerHTML = `
+    <span class="text-base-content/70">共 ${Number(msgTotal)} 条，第 ${cur}/${totalPages} 页</span>
+    <div class="flex gap-2">
+      <button onclick="msgOffset -= ${perPage}; loadMessages(false)" ${msgOffset === 0 ? 'disabled' : ''} class="btn btn-sm btn-ghost">← 上一页</button>
+      <button onclick="msgOffset += ${perPage}; loadMessages(false)" ${msgOffset + perPage >= msgTotal ? 'disabled' : ''} class="btn btn-sm btn-ghost">下一页 →</button>
+    </div>
+  `;
+}
+document.getElementById('btn-msg-search').onclick = () => loadMessages(true);
+document.getElementById('msg-search').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loadMessages(true);
+});
+
+// --- Stats ---
+async function loadStats() {
+  try {
+    const data = await api(`/api/stats?account_id=${currentAccountId}`);
+    document.getElementById('s-accounts').textContent = data.stats.accounts;
+    document.getElementById('s-chats').textContent = data.stats.chats;
+    document.getElementById('s-mirrored').textContent = data.stats.mirrored;
+    document.getElementById('s-pending').textContent = data.stats.pending;
+    const tbody = document.getElementById('stats-chat-tbody');
+    tbody.innerHTML = '';
+    data.chats.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover';
+      tr.innerHTML = `
+        <td class="font-medium">${escapeHTML(c.title || String(c.tg_chat_id))}</td>
+        <td><span class="badge badge-sm badge-primary">${escapeHTML(c.type)}</span></td>
+        <td class="text-center">${c.msg_count ?? 0}</td>
+        <td class="text-center text-xs text-base-content/70">${c.last_sync_message_id ? '#' + Number(c.last_sync_message_id) : '—'}</td>
+        <td class="text-center">${c.has_protected_content ? '🛡️' : '—'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {}
+}
+
+function escapeHTML(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s ?? '');
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Init
+lucide.createIcons();
+document.querySelector('.tab[data-view="login"]')?.click();
+refreshAccount(true);
+setInterval(() => refreshAccount(false), 15000);
+</script>
+</body>
+</html>

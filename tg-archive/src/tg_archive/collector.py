@@ -29,9 +29,63 @@ class Collector:
         self.cfg = cfg
         self.progress = progress or (lambda _text: None)
 
-    async def resolve_chat(self, chat_input: str) -> tuple[Any, ChatInfo]:
-        entity = await self.client.get_entity(chat_input)
+    async def resolve_chat(self, chat_input: Any, *, db_row: Optional[dict[str, Any]] = None) -> tuple[Any, ChatInfo]:
+        """Resolve a chat from a string id, username, or entity.
+
+        Tries get_entity first, then falls back to building an InputPeer
+        from a previously cached db row (has access_hash) when the entity
+        can no longer be fetched from Telegram directly.
+        """
+
+        entity = None
+        errors: list[str] = []
+
+        # 1. Direct try with the original input
+        try:
+            entity = await self.client.get_entity(chat_input)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"direct({chat_input!r}): {exc}")
+
+        # 2. If it was a numeric string, also try as int
+        if entity is None and isinstance(chat_input, str):
+            try:
+                as_int = int(chat_input)
+                entity = await self.client.get_entity(as_int)
+            except (ValueError, Exception) as exc:
+                errors.append(f"int({chat_input}): {exc}")
+
+        # 3. Fallback: build InputPeer from cached db row
+        if entity is None and db_row is not None and db_row.get("access_hash"):
+            from telethon.tl.types import InputPeerChannel, InputPeerChat, InputPeerUser
+
+            tg_id = int(db_row["tg_chat_id"])
+            ah = int(db_row["access_hash"]) if db_row["access_hash"] else 0
+            if tg_id < -1000000000000:
+                inner_id = -(10**12) - tg_id
+                entity = InputPeerChannel(channel_id=inner_id, access_hash=ah)
+            elif tg_id < 0:
+                entity = InputPeerChat(chat_id=-tg_id)
+            else:
+                entity = InputPeerUser(user_id=tg_id, access_hash=ah)
+
+        if entity is None:
+            raise ValueError(
+                f"cannot resolve chat {chat_input!r}. "
+                f"Tried: {'; '.join(errors)}. "
+                f"Maybe the channel is no longer accessible or session expired."
+            )
+
         chat = build_chat_info(entity)
+        if chat.tg_chat_id == 0 and db_row:
+            chat = ChatInfo(
+                tg_chat_id=int(db_row["tg_chat_id"]),
+                type=db_row.get("type", "other"),
+                title=db_row.get("title", ""),
+                username=db_row.get("username"),
+                access_hash=int(db_row["access_hash"]) if db_row.get("access_hash") else None,
+                has_protected_content=bool(db_row.get("has_protected_content")),
+                raw={},
+            )
         if chat.tg_chat_id == 0:
             raise ValueError(f"cannot resolve chat id for {chat_input!r}")
         return entity, chat
@@ -122,6 +176,17 @@ class Collector:
         if isinstance(result, (list, tuple)):
             return result[0] if result else None
         return result
+
+    async def get_messages_batch(self, entity: Any, msg_ids: list[int]) -> dict[int, Any]:
+        if not msg_ids:
+            return {}
+        result = await self.client.get_messages(entity, ids=msg_ids)
+        by_id: dict[int, Any] = {}
+        for msg in (result if isinstance(result, (list, tuple)) else [result]):
+            mid = getattr(msg, "id", None)
+            if mid is not None:
+                by_id[int(mid)] = msg
+        return by_id
 
     async def me_id(self) -> int:
         me = await self.client.get_me()

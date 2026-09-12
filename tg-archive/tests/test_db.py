@@ -102,3 +102,67 @@ def test_clear_skipped_protected_reopens_only_protection_rows(tmp_path):
     db.mark_skipped(chat_id, 2, "copy", "user chose to skip")
     assert db.clear_skipped_protected(chat_id, "copy") == 1
     assert [p["tg_message_id"] for p in db.pending_mirror(chat_id, "copy", 10)] == [1]
+
+
+def test_migration_old_schema_no_account_id_topic_id(tmp_path):
+    import sqlite3
+
+    old_path = tmp_path / "old.sqlite3"
+    raw = sqlite3.connect(str(old_path))
+    raw.executescript(
+        """
+        CREATE TABLE chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_chat_id INTEGER NOT NULL UNIQUE,
+            type TEXT NOT NULL,
+            title TEXT,
+            username TEXT,
+            access_hash INTEGER,
+            has_protected_content INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            tg_message_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            text TEXT NOT NULL DEFAULT '',
+            has_media INTEGER NOT NULL DEFAULT 0,
+            media_json TEXT NOT NULL DEFAULT '[]',
+            sender_id INTEGER,
+            edit_date TEXT,
+            grouped_id INTEGER,
+            reply_to_msg_id INTEGER,
+            reply_to_chat_id INTEGER,
+            forward_from_chat_id INTEGER,
+            forward_from_message_id INTEGER,
+            raw_json TEXT NOT NULL DEFAULT '{}',
+            deleted INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (chat_id, tg_message_id)
+        );
+        INSERT INTO chats (tg_chat_id, type, title, has_protected_content)
+        VALUES (-10042, 'channel', '老频道', 0);
+        INSERT INTO messages (chat_id, tg_message_id, date, content_type, text)
+        VALUES (1, 7, '2026-08-01T00:00:00+00:00', 'text', 'hello');
+        """
+    )
+    raw.commit()
+    raw.close()
+
+    db = ArchiveDB(old_path)
+    cols = {
+        "chats": [r[1] for r in db.conn.execute("PRAGMA table_info(chats)")],
+        "messages": [r[1] for r in db.conn.execute("PRAGMA table_info(messages)")],
+    }
+    assert "account_id" in cols["chats"]
+    assert "account_id" in cols["messages"]
+    assert "topic_id" in cols["messages"]
+
+    stats = db.stats()
+    assert stats["chats"] == 1
+    assert stats["messages"] == 1
+
+    rows = db.conn.execute("SELECT account_id FROM chats").fetchall()
+    assert [r[0] for r in rows] == [1]
+
+    db.close()
