@@ -130,8 +130,9 @@ import {
   type ProfileGalleryItem,
 } from "../services/profile-gallery.service";
 import type { ImportedSurvey } from "../services/import.service";
-import { getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
+import { getCompletionTimeBuckets, getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
 import { downloadTelegramFile } from "../bot/telegram";
+import { cleanImportText, dedupeStrings } from "../services/text-cleaner";
 
 // Telegram initData is signed when the Mini App session opens; treat anything
 // older than a day as stale.
@@ -919,7 +920,11 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       binds.push(pattern, pattern, pattern, pattern, pattern, pattern);
     }
     const where = conditions.join(" AND ");
-    const [items, count] = (await env.DB.batch([
+    const ownerJoin = isAdmin
+      ? "FROM survey_responses r"
+      : "FROM survey_responses r JOIN surveys s ON s.id=r.survey_id AND s.owner_id = ?";
+    const summaryBinds = isAdmin ? [] : [user.id];
+    const [items, count, summaryRows] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT r.id,r.survey_id surveyId,s.title surveyTitle,r.status,r.started_at startedAt,
                 r.completed_at completedAt,r.updated_at updatedAt,r.participant_hash participantKey,
@@ -938,9 +943,17 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
          LEFT JOIN users u ON u.id=r.user_id
          WHERE ${where}`,
       ).bind(...binds),
-    ])) as [D1Result, D1Result];
+      env.DB.prepare(
+        `SELECT r.status, COUNT(*) count ${ownerJoin} GROUP BY r.status`,
+      ).bind(...summaryBinds),
+    ])) as [D1Result, D1Result, D1Result];
     const rows = (items.results ?? []) as Array<Record<string, unknown>>;
     const total = Number((count.results?.[0] as { count?: number })?.count ?? 0);
+    const statusSummary: Record<string, number> = {};
+    for (const row of summaryRows.results ?? []) {
+      const r = row as { status: string; count: number | null };
+      statusSummary[r.status] = Number(r.count ?? 0);
+    }
     return json({
       items: rows.map((row) => {
         const participant = mapResponseParticipant(row as ResponseParticipantRow);
@@ -960,6 +973,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize),
+      statusSummary,
     });
   }
 
@@ -980,14 +994,26 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       binds.push(status);
     }
     const where = conditions.join(" AND ");
-    const [items, count] = (await env.DB.batch([
+    const ownerClause = isAdmin ? "" : " WHERE owner_id = ?";
+    const summaryBinds = isAdmin ? [] : [user.id];
+    const [items, count, summaryRows] = (await env.DB.batch([
       env.DB.prepare(
-        `SELECT s.id,s.title,s.description,s.status,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
+        `SELECT s.id,s.title,s.description,s.status,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
       ).bind(...binds, pageSize, offset),
       env.DB.prepare(`SELECT COUNT(*) count FROM surveys s WHERE ${where}`).bind(...binds),
-    ])) as [D1Result, D1Result];
+      env.DB.prepare(
+        `SELECT status, COUNT(*) count FROM surveys${ownerClause} GROUP BY status`,
+      ).bind(...summaryBinds),
+    ])) as [D1Result, D1Result, D1Result];
     const total = Number((count.results?.[0] as { count?: number })?.count ?? 0);
-    return json({ items: items.results ?? [], page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
+    const statusSummary = { draft: 0, published: 0, closed: 0, archived: 0 };
+    for (const row of summaryRows.results ?? []) {
+      const r = row as { status: string; count: number | null };
+      if (r.status in statusSummary) {
+        statusSummary[r.status as keyof typeof statusSummary] = Number(r.count ?? 0);
+      }
+    }
+    return json({ items: items.results ?? [], page, pageSize, total, totalPages: Math.ceil(total / pageSize), statusSummary });
   }
 
   if (url.pathname === "/api/admin/users") {
@@ -1017,7 +1043,22 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     } = { ownerId: isAdmin ? null : user.id, limit: pageSize, offset: (page - 1) * pageSize };
     if (status) listInput.status = status;
     const { items, total } = await listReportDeliveries(env.DB, listInput);
-    return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
+    const ownerJoin = isAdmin
+      ? ""
+      : " JOIN survey_responses r ON r.id = rd.response_id JOIN surveys s ON s.id = r.survey_id AND s.owner_id = ?";
+    const summaryRows = await env.DB
+      .prepare(
+        `SELECT rd.status, COUNT(*) count FROM report_deliveries rd${ownerJoin} GROUP BY rd.status`,
+      )
+      .bind(...(isAdmin ? [] : [user.id]))
+      .all<{ status: string; count: number | null }>();
+    const statusSummary = { pending: 0, delivering: 0, delivered: 0, failed: 0 };
+    for (const row of summaryRows.results ?? []) {
+      if (row.status in statusSummary) {
+        statusSummary[row.status as keyof typeof statusSummary] = Number(row.count ?? 0);
+      }
+    }
+    return json({ items, page, pageSize, total, totalPages: Math.ceil(total / pageSize), statusSummary });
   }
 
   if (url.pathname === "/api/admin/report-templates") {
@@ -1296,10 +1337,11 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
     const surveyId = Number(analyticsMatch[1]);
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
-    const [overview, optionStats, numericStats, statusRows] = await Promise.all([
+    const [overview, optionStats, numericStats, completionTimeBuckets, statusRows] = await Promise.all([
       getSurveyStatistics(env.DB, surveyId),
       getOptionStatistics(env.DB, surveyId),
       getNumericStatistics(env.DB, surveyId),
+      getCompletionTimeBuckets(env.DB, surveyId, 14),
       env.DB.prepare("SELECT status, COUNT(*) count FROM survey_responses WHERE survey_id = ? GROUP BY status")
         .bind(surveyId)
         .all<{ status: string; count: number }>(),
@@ -1319,6 +1361,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
       statusCounts,
       optionStats,
       numericStats,
+      completionTimeBuckets,
     });
   }
 
@@ -1673,7 +1716,7 @@ async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Re
   if (match) {
     const id = Number(match[1]);
     const survey = await env.DB.prepare(
-      "SELECT s.*, u.username, u.first_name firstName, (SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id AND r.status='completed') completedCount FROM surveys s JOIN users u ON u.id=s.owner_id WHERE s.id=?",
+      "SELECT s.*, u.username, u.first_name firstName, COALESCE(m.url, NULL) coverUrl, (SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id AND r.status='completed') completedCount FROM surveys s JOIN users u ON u.id=s.owner_id LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE s.id=?",
     )
       .bind(id)
       .first<Record<string, unknown>>();
@@ -2471,6 +2514,159 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
 
   // POST /api/admin/surveys/backfill-covers — 批量给已有问卷补封面
   // （只更新封面，不动题目和答卷）。
+  if (request.method === "POST" && url.pathname === "/api/admin/system/repair-text") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可修复问卷文本");
+    const dryRun = body.dryRun === true;
+    const since = typeof body.since === "string" && body.since.length ? body.since : null;
+
+    const timestamp = new Date().toISOString();
+    const stats = {
+      surveys: { scanned: 0, fixed: 0 },
+      pages: { scanned: 0, fixed: 0 },
+      questions: { scanned: 0, fixed: 0 },
+      options: { scanned: 0, fixed: 0 },
+      optionDuplicates: 0,
+    };
+    const changes: string[] = [];
+
+    const surveysSql = `SELECT id, title, description FROM surveys ${since ? "WHERE updated_at >= ?" : ""}`;
+    const surveysRows = (
+      await db
+        .prepare(surveysSql)
+        .bind(...(since ? [since] : []))
+        .all<{ id: number; title: string; description: string | null }>()
+    ).results ?? [];
+    for (const row of surveysRows) {
+      stats.surveys.scanned++;
+      let dirty = false;
+      const newTitle = cleanImportText(row.title);
+      const newDesc = row.description !== null ? cleanImportText(row.description) : null;
+      if (newTitle !== row.title) {
+        dirty = true;
+        changes.push(`surveys#${row.id}.title: [${row.title.slice(0, 40)}] → [${newTitle.slice(0, 40)}]`);
+      }
+      if ((newDesc ?? null) !== (row.description ?? null)) {
+        dirty = true;
+        changes.push(`surveys#${row.id}.description changed`);
+      }
+      if (dirty && !dryRun) {
+        await db
+          .prepare("UPDATE surveys SET title = ?, description = ?, updated_at = ? WHERE id = ?")
+          .bind(newTitle, newDesc, timestamp, row.id)
+          .run();
+        stats.surveys.fixed++;
+      } else if (dirty) {
+        stats.surveys.fixed++;
+      }
+    }
+
+    const pagesSql = `SELECT id, title, description FROM survey_pages ${since ? "WHERE updated_at >= ?" : ""}`;
+    const pagesRows = (
+      await db
+        .prepare(pagesSql)
+        .bind(...(since ? [since] : []))
+        .all<{ id: number; title: string | null; description: string | null }>()
+    ).results ?? [];
+    for (const row of pagesRows) {
+      stats.pages.scanned++;
+      let dirty = false;
+      const newTitle = row.title !== null ? cleanImportText(row.title) : null;
+      const newDesc = row.description !== null ? cleanImportText(row.description) : null;
+      if ((newTitle ?? null) !== (row.title ?? null)) {
+        dirty = true;
+        changes.push(`survey_pages#${row.id}.title changed`);
+      }
+      if ((newDesc ?? null) !== (row.description ?? null)) {
+        dirty = true;
+        changes.push(`survey_pages#${row.id}.description changed`);
+      }
+      if (dirty && !dryRun) {
+        await db
+          .prepare("UPDATE survey_pages SET title = ?, description = ?, updated_at = ? WHERE id = ?")
+          .bind(newTitle, newDesc, timestamp, row.id)
+          .run();
+        stats.pages.fixed++;
+      } else if (dirty) {
+        stats.pages.fixed++;
+      }
+    }
+
+    const questionsSql = `SELECT id, title, description FROM survey_questions ${since ? "WHERE updated_at >= ?" : ""}`;
+    const questionsRows = (
+      await db
+        .prepare(questionsSql)
+        .bind(...(since ? [since] : []))
+        .all<{ id: number; title: string; description: string | null }>()
+    ).results ?? [];
+    for (const row of questionsRows) {
+      stats.questions.scanned++;
+      let dirty = false;
+      const newTitle = cleanImportText(row.title);
+      const newDesc = row.description !== null ? cleanImportText(row.description) : null;
+      if (newTitle !== row.title) {
+        dirty = true;
+        changes.push(`survey_questions#${row.id}.title: [${row.title.slice(0, 40)}] → [${newTitle.slice(0, 40)}]`);
+      }
+      if ((newDesc ?? null) !== (row.description ?? null)) {
+        dirty = true;
+        changes.push(`survey_questions#${row.id}.description changed`);
+      }
+      if (dirty && !dryRun) {
+        await db
+          .prepare("UPDATE survey_questions SET title = ?, description = ?, updated_at = ? WHERE id = ?")
+          .bind(newTitle, newDesc, timestamp, row.id)
+          .run();
+        stats.questions.fixed++;
+      } else if (dirty) {
+        stats.questions.fixed++;
+      }
+    }
+
+    const optionsSql = `SELECT id, question_id, label, value FROM question_options ${since ? "WHERE updated_at >= ?" : ""}`;
+    const optionsRows = (
+      await db
+        .prepare(optionsSql)
+        .bind(...(since ? [since] : []))
+        .all<{ id: number; question_id: number; label: string; value: string }>()
+    ).results ?? [];
+    for (const row of optionsRows) {
+      stats.options.scanned++;
+      let dirty = false;
+      const newLabel = cleanImportText(row.label);
+      const newValue = cleanImportText(row.value);
+      if (newLabel !== row.label) {
+        dirty = true;
+        changes.push(`question_options#${row.id}.label: [${row.label.slice(0, 40)}] → [${newLabel.slice(0, 40)}]`);
+      }
+      if (newValue !== row.value) {
+        dirty = true;
+        changes.push(`question_options#${row.id}.value: [${row.value.slice(0, 40)}] → [${newValue.slice(0, 40)}]`);
+      }
+      if (dirty && !dryRun) {
+        await db
+          .prepare("UPDATE question_options SET label = ?, value = ?, updated_at = ? WHERE id = ?")
+          .bind(newLabel, newValue, timestamp, row.id)
+          .run();
+        stats.options.fixed++;
+      } else if (dirty) {
+        stats.options.fixed++;
+      }
+    }
+
+    if (!dryRun) {
+      await writeAudit(db, {
+        actorUserId: user.id,
+        action: "system.repair_text",
+        entityType: "system",
+        entityId: "text",
+        before: { dryRun, since },
+        after: stats,
+      });
+    }
+
+    return json({ dryRun, stats, sampleChanges: changes.slice(0, 30) });
+  }
+
   if (request.method === "POST" && url.pathname === "/api/admin/surveys/backfill-covers") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可批量补封面");
     const items = Array.isArray(body.items) ? body.items : [];
@@ -2972,15 +3168,9 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     return Response.json({ id: restoredId, version }, { status: 201, headers: { "Cache-Control": "no-store" } });
   }
 
-  // Metadata patches (title/description/policy/report template/theme) stay
-  // editable on published surveys; structural question edits keep the lock.
-  const isMetadataPatch = request.method === "PATCH" && rest === "";
-  if (!isMetadataPatch) {
-    const writable = await loadWritableSurvey(env, ctx, surveyId, body);
-    if (writable instanceof Response) return writable;
-  }
-
   if (request.method === "POST" && rest === "/publish") {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
     try {
       const published = await publishSurvey(db, surveyId, user.id);
       await writeAudit(db, {
@@ -2999,6 +3189,14 @@ async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: Write
     } catch (error) {
       return fail(400, "publish_validation", error instanceof Error ? error.message : "问卷不满足发布条件");
     }
+  }
+
+  // Metadata patches (title/description/policy/report template/theme) stay
+  // editable on published surveys; structural question edits keep the lock.
+  const isMetadataPatch = request.method === "PATCH" && rest === "";
+  if (!isMetadataPatch) {
+    const writable = await loadWritableSurvey(env, ctx, surveyId, body);
+    if (writable instanceof Response) return writable;
   }
 
   // PATCH /api/admin/surveys/:id — 问卷基本信息

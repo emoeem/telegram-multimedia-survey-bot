@@ -326,10 +326,40 @@ export default {
       }
     }
 
-    // Serve any remaining static asset (JS/CSS/images and direct .html files).
-    // With run_worker_first=true every request reaches the Worker first, so
-    // asset serving is explicit here; not_found_handling="none" keeps unknown
-    // paths as a plain 404 instead of falling back to the admin index.html.
+    // Admin SPA fallback: any path that isn't a known static asset extension
+    // and wasn't matched by a business route above should render the admin
+    // index.html so React Router handles client-side routing for /surveys,
+    // /reports, /settings and friends.
+    const ext = url.pathname.split(".").pop()?.toLowerCase();
+    const isStaticAsset = Boolean(
+      ext &&
+        [
+          "html",
+          "js",
+          "mjs",
+          "css",
+          "map",
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "svg",
+          "ico",
+          "webp",
+          "avif",
+          "woff",
+          "woff2",
+          "ttf",
+          "eot",
+          "otf",
+          "txt",
+          "webmanifest",
+          "json",
+        ].includes(ext),
+    );
+    if (!isStaticAsset) {
+      return serveHtmlAsset(env, request, "/index.html");
+    }
     return env.ASSETS.fetch(request);
   },
 

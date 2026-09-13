@@ -39,7 +39,15 @@ export function useResolvedPreset(presetId: string | null | undefined): string |
   const [resolved, setResolved] = useState<string | null>(() => resolvePresetId(presetId));
 
   useEffect(() => {
-    setResolved(resolvePresetId(presetId));
+    const resolvedNow = resolvePresetId(presetId);
+    setResolved(resolvedNow);
+    if (resolvedNow) {
+      try {
+        document.documentElement.setAttribute("data-theme", resolvedNow);
+      } catch {
+        // SSR guard
+      }
+    }
     if (presetId !== SYSTEM_PRESET_ID) return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = () => setResolved(systemPrefersDark() ? "dark" : "light");

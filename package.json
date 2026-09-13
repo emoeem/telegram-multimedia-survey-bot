@@ -28,6 +28,7 @@
     "@cloudflare/puppeteer": "^1.1.0",
     "@cloudflare/workers-types": "^5.20260814.1",
     "@playwright/test": "^1.62.1",
+    "@types/he": "^1.2.3",
     "@typescript-eslint/parser": "^8.67.0",
     "eslint": "^10.8.1",
     "prettier": "^3.9.6",
@@ -41,6 +42,7 @@
     "daisyui": "^5.7.20",
     "echarts": "^6.1.0",
     "fflate": "^0.8.3",
+    "he": "^1.2.0",
     "parse5": "^8.0.1",
     "playwright": "^1.62.1"
   }

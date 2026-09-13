@@ -36,7 +36,7 @@ function ThemeSwatch({
       data-theme={themeId === "system" ? "light" : themeId}
       onClick={onSelect}
       aria-pressed={selected}
-      className={`flex w-36 flex-col gap-1.5 rounded-xl border p-2 text-left transition ${
+      className={`flex w-full sm:w-36 flex-col gap-1.5 rounded-xl border p-2 text-left transition ${
         selected
           ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/25"
           : "border-[var(--color-edge)] hover:border-[var(--color-primary)]/50"

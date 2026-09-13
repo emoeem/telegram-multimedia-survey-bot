@@ -1,10 +1,14 @@
 import { useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { Link } from "react-router";
 import { Search } from "lucide-react";
+import { donutOption } from "../charts";
 import { useApi } from "../hooks";
 import type { ResponseActivityData, ResponseStatus } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
+
+const STATUS_ORDER: ResponseStatus[] = ["completed", "in_progress", "abandoned", "cancelled", "archived"];
 
 const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
   { value: "", label: "全部状态" },
@@ -14,6 +18,14 @@ const STATUS_OPTIONS: Array<{ value: "" | ResponseStatus; label: string }> = [
   { value: "cancelled", label: "已取消" },
   { value: "archived", label: "已归档" },
 ];
+
+const STATUS_META: Record<ResponseStatus, { label: string; color: string }> = {
+  completed: { label: "已完成", color: "#16a34a" },
+  in_progress: { label: "填写中", color: "#0284c7" },
+  abandoned: { label: "已放弃", color: "#d97706" },
+  cancelled: { label: "已取消", color: "#dc2626" },
+  archived: { label: "已归档", color: "#64748b" },
+};
 
 function displayRespondent(item: ResponseActivityData["items"][number]): string {
   if (!item.respondent) {
@@ -45,8 +57,53 @@ export function ResponseActivityPage() {
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={7} />;
 
+  const summary = data.statusSummary ?? {};
+  const summaryTotal = STATUS_ORDER.reduce((s, k) => s + (summary[k] ?? 0), 0);
+  const summaryDonut = summaryTotal > 0 ? donutOption(
+    STATUS_ORDER.filter((k) => (summary[k] ?? 0) > 0).map((k) => ({
+      name: STATUS_META[k].label,
+      value: summary[k] ?? 0,
+      color: STATUS_META[k].color,
+    })),
+    { radius: ["48%", "72%"], center: ["35%", "50%"] },
+  ) : null;
+
   return (
     <section className="card">
+      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_220px] items-start">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {STATUS_ORDER.map((k) => {
+            const count = summary[k] ?? 0;
+            const meta = STATUS_META[k];
+            const active = status === k;
+            return (
+              <button
+                key={k}
+                className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                  active
+                    ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--surface))]"
+                    : "border-[var(--color-edge)] bg-[var(--surface)]"
+                }`}
+                onClick={() => setStatus(active ? "" : k)}
+              >
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                  <span className="text-[var(--color-muted)]">{meta.label}</span>
+                </div>
+                <div className="mt-1 text-2xl font-bold font-tabular-nums">{count}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="rounded-xl border border-[var(--color-edge)] p-2">
+          {summaryDonut ? (
+            <ReactECharts option={summaryDonut} style={{ height: 150 }} opts={{ renderer: "svg" }} />
+          ) : (
+            <div className="grid h-[150px] place-items-center text-sm text-[var(--color-muted)]">暂无数据</div>
+          )}
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">答卷动态</h2>
@@ -70,7 +127,7 @@ export function ResponseActivityPage() {
           <label className="text-xs text-[var(--color-muted-soft)]">
             开始
             <input
-              className="input mt-1 block w-36"
+              className="input mt-1 block w-full sm:w-36"
               type="date"
               value={from}
               onChange={(event) => {
@@ -82,7 +139,7 @@ export function ResponseActivityPage() {
           <label className="text-xs text-[var(--color-muted-soft)]">
             结束
             <input
-              className="input mt-1 block w-36"
+              className="input mt-1 block w-full sm:w-36"
               type="date"
               value={to}
               onChange={(event) => {
@@ -93,7 +150,7 @@ export function ResponseActivityPage() {
           </label>
           <div className="flex gap-2">
             <input
-              className="input w-52"
+              className="input w-full sm:w-auto sm:flex-1 min-w-0"
               placeholder="问卷 / 用户 / ID / 答卷编号"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -141,34 +198,33 @@ export function ResponseActivityPage() {
                       #{item.id}
                     </Link>
                   </td>
+                  <td className="text-sm">{item.surveyTitle || `问卷 ${item.surveyId}`}</td>
+                  <td className="text-sm">{displayRespondent(item)}</td>
                   <td className="text-sm">
-                    <Link className="hover:underline" to={`/surveys/${item.surveyId}`}>
-                      {item.surveyTitle || `问卷 ${item.surveyId}`}
-                    </Link>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        item.status === "completed"
+                          ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
+                          : item.status === "in_progress"
+                            ? "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]"
+                            : item.status === "abandoned"
+                              ? "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
+                              : item.status === "cancelled"
+                                ? "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
+                                : "bg-[var(--surface-muted)] text-[var(--color-muted)]"
+                      }`}
+                    >
+                      {item.statusLabel}
+                    </span>
                   </td>
-                  <td className="text-sm">
-                    {item.respondent ? (
-                      <Link
-                        className="font-medium text-[var(--color-info)] hover:underline"
-                        to={`/users?user=${item.respondent.userId}`}
-                      >
-                        {displayRespondent(item)}
-                      </Link>
-                    ) : (
-                      displayRespondent(item)
-                    )}
-                  </td>
-                  <td className="text-sm">{item.statusLabel}</td>
-                  <td className="text-sm">
-                    {item.status === "completed" ? formatDateTime(item.completedAt) : formatDateTime(item.updatedAt)}
-                  </td>
+                  <td className="text-sm">{formatDateTime(item.completedAt ?? item.updatedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <EmptyPanel text="没有匹配的答卷" />
+        <EmptyPanel text="没有符合条件的答卷" />
       )}
 
       <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">

@@ -1,4 +1,5 @@
 import type { UnifiedSurveyImport } from "../survey/schema";
+import { cleanImportText, decodeHtmlEntities, dedupeStrings } from "./text-cleaner";
 
 /**
  * Microsoft Forms import for the admin web app.
@@ -32,20 +33,6 @@ const USER_AGENT =
 
 const YES_NO_VALUES = new Set(["是", "否", "yes", "no", "可以", "不可以", "有", "没有"]);
 
-const CONTACT_REPLACEMENTS: Array<[string, string]> = [
-  [
-    "其他更多类型问卷请联系 微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
-    "其他更多类型问卷请联系 x:@pd2335346 Tg：@ehdhhsbot",
-  ],
-  [
-    "主动求胁迫填完问卷联系&nbsp;微信：l-330645 / Tg：@X_chunai07 / QQ：462638758",
-    "其他更多类型问卷请联系 x:@pd2335346 Tg：@ehdhhsbot",
-  ],
-  ["@X_chunai07", "@ehdhhsbot"],
-  ["@x_chunai07", "@ehdhhsbot"],
-  ["qq：2833505635", ""],
-];
-
 export class FormsImportError extends Error {
   readonly code: string;
 
@@ -66,14 +53,7 @@ export function isFormsUrl(url: string): boolean {
 }
 
 function cleanText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  let text = String(value)
-    .replace(/<[^>]+>/g, "")
-    .trim();
-  for (const [oldText, newText] of CONTACT_REPLACEMENTS) {
-    text = text.replaceAll(oldText, newText);
-  }
-  return text.trim();
+  return cleanImportText(value);
 }
 
 function parseQuestionInfo(raw: unknown): Record<string, unknown> {
@@ -133,7 +113,7 @@ function extractOfficeFormServerInfo(html: string): Record<string, unknown> {
     throw new FormsImportError("FORMS_PARSE_FAILED", "Microsoft Forms 页面中的问卷信息不完整。");
   }
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(decodeHtmlEntities(raw)) as unknown;
     if (!parsed || typeof parsed !== "object") {
       throw new Error("not an object");
     }
@@ -236,15 +216,24 @@ function convertQuestion(
       ? (questionInfo.Choices as Array<Record<string, unknown> | string>)
       : [];
     let choices: string[] = [];
+    const seenChoiceKeys = new Set<string>();
     for (const choice of rawChoices) {
+      let candidate: string | null = null;
       if (typeof choice === "string") {
-        if (choice.trim()) choices.push(choice.trim());
+        candidate = cleanText(choice);
       } else if (choice && typeof choice === "object") {
-        const description = cleanText(choice.Description ?? choice.FormsProDisplayRTText);
-        if (description) choices.push(description);
+        candidate = cleanText(choice.Description ?? choice.FormsProDisplayRTText);
       }
+      if (!candidate) continue;
+      const key = candidate.trim().toLowerCase();
+      if (seenChoiceKeys.has(key)) continue;
+      seenChoiceKeys.add(key);
+      choices.push(candidate);
     }
-    if (questionInfo.AllowOtherAnswer === true) choices.push("其他");
+    if (questionInfo.AllowOtherAnswer === true) {
+      const otherKey = "其他";
+      if (!seenChoiceKeys.has(otherKey)) choices.push("其他");
+    }
 
     const choiceType = questionInfo.ChoiceType;
     const multi = question.allowMultipleValues === true || choiceType === 3;

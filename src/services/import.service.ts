@@ -3,6 +3,7 @@ import { createSurvey, deleteSurvey } from "../db/repositories/survey.repository
 import { legacyToUnified } from "../survey/converters/legacy-to-unified";
 import { validateUnifiedSurvey } from "../survey/validator";
 import { surveyPageId } from "../survey/id-mapping";
+import { cleanImportText } from "./text-cleaner";
 
 export interface ImportedMedia {
   id?: string;
@@ -232,24 +233,35 @@ function normalizeOptions(value: unknown): ImportedOption[] {
     return [];
   }
 
+  const seen = new Set<string>();
   return value.flatMap((option) => {
     if (typeof option === "string") {
-      const label = option.trim();
-      return label ? [{ label, value: label, media: [] }] : [];
+      const label = cleanImportText(option);
+      if (!label) return [];
+      const key = label.toLowerCase();
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ label, value: label, media: [] }];
     }
     if (!option || typeof option !== "object") {
       return [];
     }
 
     const raw = option as Record<string, unknown>;
-    const label = nonEmptyString(raw["text"], raw["label"], raw["value"]);
-    if (!label) {
+    const rawLabel = nonEmptyString(raw["text"], raw["label"], raw["value"]);
+    if (!rawLabel) {
       return [];
     }
+    const label = cleanImportText(rawLabel);
+    if (!label) return [];
+    const key = label.toLowerCase();
+    if (seen.has(key)) return [];
+    seen.add(key);
+    const rawValue = nonEmptyString(raw["value"], raw["text"], raw["label"]) ?? label;
     return [
       {
         label,
-        value: nonEmptyString(raw["value"], raw["text"], raw["label"]) ?? label,
+        value: cleanImportText(rawValue) || label,
         media: normalizeMediaList(raw["media"]),
       },
     ];
@@ -266,7 +278,7 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
     const required = raw["required"];
     const importedQuestion: ImportedQuestion = {
       type: normalizeQuestionType(raw["type"]),
-      title: nonEmptyString(raw["title"]) ?? "",
+      title: cleanImportText(nonEmptyString(raw["title"]) ?? "") || "",
       required: typeof required === "boolean" || required === null ? required : true,
       options: normalizeOptions(raw["options"]),
       media: normalizeMediaList(raw["media"]),
@@ -284,7 +296,8 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
     if (Object.keys(confidence).length) importedQuestion.confidence = confidence;
     const description = nonEmptyString(raw["description"]);
     if (description) {
-      importedQuestion.description = description;
+      const cleaned = cleanImportText(description);
+      if (cleaned) importedQuestion.description = cleaned;
     }
     if (raw["settings"] && typeof raw["settings"] === "object" && !Array.isArray(raw["settings"])) {
       importedQuestion.settings = raw["settings"] as Record<string, unknown>;

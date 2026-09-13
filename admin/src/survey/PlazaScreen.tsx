@@ -365,7 +365,7 @@ export function PlazaScreen() {
   const activeFeed = tab === "treehole" ? posts : profiles;
 
   return (
-    <div className="min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
+    <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
       <div className="relative">
         <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
           <div className="mx-auto max-w-xl px-5 py-3 lg:max-w-3xl">

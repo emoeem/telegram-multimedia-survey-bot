@@ -301,7 +301,7 @@ export function UsersPage() {
                   <>
                     <ul className="mt-2 space-y-1 text-sm">
                       {detail.responses.map((response) => (
-                        <li key={response.responseId} className="flex items-center justify-between gap-2">
+                        <li key={response.responseId} className="flex items-center justify-between flex-wrap gap-2">
                           <Link
                             className="text-[var(--color-info)]"
                             to={`/surveys/${response.surveyId}/responses/${response.responseId}`}

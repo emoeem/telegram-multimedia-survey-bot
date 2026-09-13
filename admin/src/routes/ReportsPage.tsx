@@ -1,11 +1,16 @@
 import { useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { Link } from "react-router";
+import { RefreshCw } from "lucide-react";
+import { donutOption } from "../charts";
 import { apiSend, type ReportDeliveriesData } from "../api";
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
 
-const STATUS_OPTIONS: Array<{ value: "" | "pending" | "delivering" | "delivered" | "failed"; label: string }> = [
+type DeliveryStatus = "pending" | "delivering" | "delivered" | "failed";
+
+const STATUS_OPTIONS: Array<{ value: "" | DeliveryStatus; label: string }> = [
   { value: "", label: "全部状态" },
   { value: "pending", label: "待处理" },
   { value: "delivering", label: "生成中" },
@@ -13,15 +18,24 @@ const STATUS_OPTIONS: Array<{ value: "" | "pending" | "delivering" | "delivered"
   { value: "failed", label: "失败" },
 ];
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<DeliveryStatus, string> = {
   pending: "待处理",
   delivering: "生成中",
   delivered: "已归档",
   failed: "失败",
 };
 
+const STATUS_META: Record<DeliveryStatus, { color: string; tint: string; icon: string }> = {
+  pending: { color: "#94a3b8", tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]", icon: "⏳" },
+  delivering: { color: "#0284c7", tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]", icon: "⚙️" },
+  delivered: { color: "#16a34a", tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]", icon: "✅" },
+  failed: { color: "#dc2626", tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]", icon: "⚠️" },
+};
+
+const ORDER: DeliveryStatus[] = ["pending", "delivering", "delivered", "failed"];
+
 export function ReportsPage() {
-  const [status, setStatus] = useState<"" | "pending" | "delivering" | "delivered" | "failed">("");
+  const [status, setStatus] = useState<"" | DeliveryStatus>("");
   const [page, setPage] = useState(1);
   const query = new URLSearchParams({ page: String(page), pageSize: "20", ...(status ? { status } : {}) });
   const { data, error, retry } = useApi<ReportDeliveriesData>(`/api/admin/report-deliveries?${query}`);
@@ -44,8 +58,58 @@ export function ReportsPage() {
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={7} />;
 
+  const summary = data.statusSummary;
+  const summaryTotal = ORDER.reduce((s, k) => s + summary[k], 0);
+  const summaryDonut = summaryTotal > 0 ? donutOption(
+    ORDER.filter((k) => summary[k] > 0).map((k) => ({
+      name: STATUS_LABEL[k],
+      value: summary[k],
+      color: STATUS_META[k].color,
+    })),
+    { radius: ["50%", "75%"], center: ["35%", "50%"] },
+  ) : null;
+
   return (
     <section className="card">
+      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_260px] items-start">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {ORDER.map((k) => {
+            const count = summary[k];
+            const meta = STATUS_META[k];
+            const active = status === k;
+            const danger = k === "failed" && count > 0;
+            return (
+              <button
+                key={k}
+                className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                  active
+                    ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--surface))]"
+                    : danger
+                      ? "border-[color-mix(in_srgb,var(--color-danger)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))]"
+                      : "border-[var(--color-edge)] bg-[var(--surface)]"
+                }`}
+                onClick={() => setStatus(active ? "" : k)}
+              >
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`grid h-6 w-6 place-items-center rounded-md ${meta.tint}`}>{meta.icon}</span>
+                  <span className="text-[var(--color-muted)]">{STATUS_LABEL[k]}</span>
+                </div>
+                <div className={`mt-1 text-2xl font-bold font-tabular-nums ${danger ? "text-[var(--color-danger)]" : ""}`}>
+                  {count}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="rounded-xl border border-[var(--color-edge)] p-2">
+          {summaryDonut ? (
+            <ReactECharts option={summaryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
+          ) : (
+            <div className="grid h-[180px] place-items-center text-sm text-[var(--color-muted)]">暂无报告</div>
+          )}
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">报告归档</h2>
@@ -53,20 +117,25 @@ export function ReportsPage() {
             共 {data.total} 个归档任务 · Telegram 私人频道交付状态
           </p>
         </div>
-        <select
-          className="select"
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value as typeof status);
-            setPage(1);
-          }}
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            className="select"
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as typeof status);
+              setPage(1);
+            }}
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-sm" onClick={retry} title="刷新">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {data.items.length ? (
@@ -108,7 +177,7 @@ export function ReportsPage() {
                             : "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
                       }`}
                     >
-                      {STATUS_LABEL[item.status] ?? item.status}
+                      {STATUS_LABEL[item.status as DeliveryStatus] ?? item.status}
                     </span>
                   </td>
                   <td className="text-sm">{item.attempts}</td>

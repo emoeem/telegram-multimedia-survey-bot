@@ -301,3 +301,39 @@ export async function getResponseCount(db: D1Database, surveyId: number): Promis
 
   return row?.count ?? 0;
 }
+
+export interface CompletionTimeBucket {
+  label: string;
+  dayKey: string;
+  count: number;
+}
+
+export async function getCompletionTimeBuckets(
+  db: D1Database,
+  surveyId: number,
+  days = 14,
+): Promise<CompletionTimeBucket[]> {
+  const rows = await db
+    .prepare(
+      `SELECT
+         strftime('%Y-%m-%d', completed_at) AS day_key,
+         COUNT(*) AS count
+       FROM survey_responses
+       WHERE survey_id = ?
+         AND status = 'completed'
+         AND completed_at IS NOT NULL
+       GROUP BY day_key
+       ORDER BY day_key DESC
+       LIMIT ?`,
+    )
+    .bind(surveyId, days)
+    .all<{ day_key: string; count: number | null }>();
+
+  return (rows.results ?? [])
+    .map((row) => ({
+      dayKey: row.day_key,
+      label: row.day_key.slice(5),
+      count: row.count ?? 0,
+    }))
+    .reverse();
+}

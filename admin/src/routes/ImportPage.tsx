@@ -137,7 +137,7 @@ export function ImportPage() {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <input
             type="url"
-            className="min-w-64 flex-1 rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
+            className="min-w-0 sm:min-w-64 flex-1 rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
             placeholder="https://forms.office.com/r/… 或 forms.zohopublic.com/…"
             value={urlInput}
             onChange={(event) => {

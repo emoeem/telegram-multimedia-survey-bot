@@ -7,6 +7,18 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="data:," />
     <title>问卷</title>
+    <script>
+      (function () {
+        var known = ["light", "dark", "night", "luxury", "retro", "cupcake", "synthwave", "black"];
+        var preset = "light";
+        try {
+          var stored = localStorage.getItem("surveyPreset");
+          if (stored && known.indexOf(stored) !== -1) preset = stored;
+          else if (stored === "system") preset = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        } catch (error) {}
+        document.documentElement.setAttribute("data-theme", preset);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -299,7 +299,7 @@ export function TaskPacksPage() {
   if (editing) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <button type="button" className="btn btn-sm gap-1.5" onClick={() => setEditing(null)} disabled={saving}>
             <ArrowLeft className="h-4 w-4" />
             返回列表
@@ -397,7 +397,7 @@ export function TaskPacksPage() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">任务列表（{editing.items.length}）</h2>
             <button type="button" className="btn btn-sm gap-1.5" onClick={addItem}>
               <Plus className="h-4 w-4" />
@@ -414,7 +414,7 @@ export function TaskPacksPage() {
             <div className="mt-4 space-y-3">
               {editing.items.map((item, index) => (
                 <article key={item.key} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <span className="text-xs font-bold text-slate-400">#{index + 1}</span>
                     <div className="flex items-center gap-1">
                       <label className="flex items-center gap-1 pr-1 text-[11px] text-slate-400">
@@ -599,7 +599,7 @@ export function TaskPacksPage() {
                   {pack.items.filter((item) => item.enabled).length} 个任务
                 </span>
               </div>
-              <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <div className="mt-4 flex items-center justify-between flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 flex-wrap">
                 <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                   <input
                     type="checkbox"

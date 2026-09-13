@@ -1378,7 +1378,7 @@ export function TrialScreen() {
   if (screen === "gate") {
     return (
       <div
-        className="min-h-dvh"
+        className="survey-glow min-h-dvh"
         data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
@@ -1391,7 +1391,7 @@ export function TrialScreen() {
   if (screen === "run") {
     return (
       <div
-        className="min-h-dvh"
+        className="survey-glow min-h-dvh"
         data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
@@ -1404,7 +1404,7 @@ export function TrialScreen() {
   if (screen === "shop") {
     return (
       <div
-        className="min-h-dvh"
+        className="survey-glow min-h-dvh"
         data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
@@ -1417,7 +1417,7 @@ export function TrialScreen() {
   if (screen === "done") {
     return (
       <div
-        className="min-h-dvh"
+        className="survey-glow min-h-dvh"
         data-theme={resolvedPreset ?? undefined}
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
@@ -1429,7 +1429,7 @@ export function TrialScreen() {
 
   return (
     <div
-      className="min-h-dvh pb-24"
+      className="survey-glow min-h-dvh pb-24"
       data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >

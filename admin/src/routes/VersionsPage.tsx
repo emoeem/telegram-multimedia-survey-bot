@@ -53,7 +53,7 @@ export function VersionsPage() {
 
   return (
     <section className="card">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-lg font-semibold">版本历史</h2>
         <Link className="btn btn-sm" to={`/surveys/${id}`}>
           <ArrowLeft className="h-4 w-4" />

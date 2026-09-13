@@ -89,7 +89,7 @@ function ProfileTile({
 
       <dl className="space-y-1.5 text-sm">
         {profile.fields.map((field) => (
-          <div key={field.questionId} className="grid grid-cols-[100px_minmax(0,1fr)] gap-x-2">
+          <div key={field.questionId} className="grid grid-cols-1 sm:grid-cols-[100px_minmax(0,1fr)] gap-x-2">
             <dt className="text-slate-500 dark:text-slate-400">{field.title}</dt>
             <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{field.value}</dd>
           </div>
@@ -244,7 +244,7 @@ export function ProfileGalleryPage() {
               />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span>
               第 {page + 1}/{totalPages} 页
             </span>

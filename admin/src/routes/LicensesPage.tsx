@@ -299,7 +299,7 @@ export function LicensesPage() {
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">用户 ID（问卷后台/用户目录可查）</span>
             <input
-              className="input w-40"
+              className="input w-full sm:w-40"
               value={trialUserId}
               onChange={(event) => setTrialUserId(event.target.value)}
             />
@@ -307,7 +307,7 @@ export function LicensesPage() {
           <label className="grid gap-1 text-sm">
             <span className="text-[var(--color-muted)]">试用天数</span>
             <input
-              className="input w-24"
+              className="input w-full sm:w-24"
               type="number"
               min={1}
               value={trialDays}

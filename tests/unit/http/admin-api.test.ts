@@ -449,6 +449,7 @@ describe("handleAdminApi authentication and permissions", () => {
         },
       ],
       [{ count: 1 }],
+      [{ status: "completed", count: 1 }],
     ]);
     const response = await handleAdminApi(
       apiRequest("/api/admin/responses?status=completed&page=1", { userId: "111" }),

@@ -41,7 +41,7 @@ import {
   listMySurveys as listOwnedSurveys,
   publishSurvey,
 } from "../services/survey.service";
-import { getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
+import { getCompletionTimeBuckets, getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
 import { getResponseDetail, listResponses } from "../services/result.service";
 import { enqueueExportJob, type SurveyExportFormat } from "../services/export-queue.service";
 import { requestConfiguredResultVisual } from "../services/result-visual.service";
@@ -208,6 +208,38 @@ async function promptProfileQuestionnaire(
   }
 }
 
+const COMMUNITY_GROUP_URL = "https://t.me/+Zh5pq2dxN5xkYTcx";
+
+function buildWelcomeText(
+  creator: boolean,
+  first_name?: string,
+  opts?: { returning?: boolean; reset?: boolean },
+): string {
+  const greet = first_name ? `${first_name}` : "朋友";
+  const header = opts?.returning
+    ? opts?.reset
+      ? `👋 欢迎回来，${greet}！已清理未完成操作，从问卷机器人重新开始～`
+      : `👋 欢迎回来，${greet}！欢迎回到问卷机器人～`
+    : `👋 你好，${greet}！欢迎来到问卷机器人～`;
+  const creatorExtra = creator
+    ? "\n✨ 作为创作者，你还可以发布自己的问卷、查看填写报告、管理权限。"
+    : "";
+  return `${header}
+
+这里不只是填问卷 —— 还有很多有意思的事可以做：
+
+📝 浏览问卷 —— 参与社区问卷，分享你的想法
+🪪 我的资料 —— 设置头像、简介、隐私
+🌳 树洞 —— 匿名倾诉心事，温柔接住情绪
+🏛 广场 —— 分享故事、点赞互动，遇见同频的人
+🎯 挑战任务 —— 趣味打卡，解锁成就${creatorExtra}
+
+💬 欢迎加入社群一起交流：
+${COMMUNITY_GROUP_URL}
+
+🔑 问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。`;
+}
+
 async function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
@@ -253,9 +285,7 @@ async function showHomeMenu(
   from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
-  const text = creator
-    ? "欢迎回来。选择一个入口开始操作。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
-    : "欢迎使用问卷机器人。选择问卷后即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。";
+  const text = buildWelcomeText(creator, from?.first_name, { returning: creator });
   await renderScreen({
     botToken: ctx.botToken,
     chatId,
@@ -1141,11 +1171,12 @@ async function sendSurveySummaryPdf(ctx: BotContext, chatId: number, userId: num
   if (!ctx.browser) {
     throw new Error("当前部署未启用 PDF 导出服务");
   }
-  const [survey, statistics, optionStatistics, numericStatistics] = await Promise.all([
+  const [survey, statistics, optionStatistics, numericStatistics, completionTimeBuckets] = await Promise.all([
     getSurveyById(ctx.db, surveyId),
     getSurveyStatistics(ctx.db, surveyId),
     getOptionStatistics(ctx.db, surveyId),
     getNumericStatistics(ctx.db, surveyId),
+    getCompletionTimeBuckets(ctx.db, surveyId, 14),
   ]);
   if (!survey) throw new Error("问卷不存在");
   const content = await renderSurveySummaryReport(ctx.browser, {
@@ -1155,6 +1186,7 @@ async function sendSurveySummaryPdf(ctx: BotContext, chatId: number, userId: num
     statistics,
     optionStatistics,
     numericStatistics,
+    completionTimeBuckets,
   });
   await sendDocument(ctx.botToken, chatId, `survey-${surveyId}-statistics.pdf`, content, "application/pdf");
 }
@@ -1776,9 +1808,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     const creator = await canCreateFromCache();
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
-      text: creator
-        ? "欢迎回来。已清理未完成操作；选择一个入口开始。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
-        : "欢迎使用问卷机器人。已清理未完成操作；请选择问卷开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
+      text: buildWelcomeText(creator, message.from?.first_name, { returning: true, reset: true }),
       replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),

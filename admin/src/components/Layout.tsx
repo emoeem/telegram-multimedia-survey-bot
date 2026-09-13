@@ -220,13 +220,13 @@ export function Layout() {
         ) : null}
         <main className="mx-auto w-full min-w-0 max-w-[1320px] flex-1 p-4 sm:p-8">
           <header className="mb-7 flex items-center gap-3">
-            <button aria-label="返回上一页" title="返回上一页" onClick={goBack} className="btn btn-icon">
+            <button aria-label="返回上一页" title="返回上一页" onClick={goBack} className="btn btn-icon shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <button aria-label="打开菜单" className="btn btn-icon sm:hidden" onClick={() => setDrawer(!drawer)}>
+            <button aria-label="打开菜单" className="btn btn-icon sm:hidden shrink-0" onClick={() => setDrawer(!drawer)}>
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px]">{title}</h1>
+            <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px] min-w-0 flex-1 truncate">{title}</h1>
           </header>
           <Outlet />
         </main>

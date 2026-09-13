@@ -155,7 +155,10 @@ describe("survey message routing", () => {
 
     const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"));
     expect(sendCall).toBeDefined();
-    expect(JSON.parse(String((sendCall?.[1] as RequestInit).body)).text).toContain("欢迎使用问卷机器人");
+    const body = JSON.parse(String((sendCall?.[1] as RequestInit).body));
+    expect(body.text).toContain("欢迎");
+    expect(body.text).toContain("问卷机器人");
+    expect(body.text).toContain("t.me/+Zh5pq2dxN5xkYTcx");
   });
 
   it("links an anonymous participant key to the Telegram user via /start", async () => {

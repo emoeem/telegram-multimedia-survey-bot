@@ -172,7 +172,7 @@ function SortableSectionRow({
         ))}
       </select>
       <select
-        className="select w-28"
+        className="select w-full sm:w-auto"
         value={section.presentation ?? ""}
         onChange={(event) => onUpdate(index, { ...section, presentation: event.target.value || undefined })}
       >
@@ -359,7 +359,7 @@ export function TemplatesPage() {
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
               <div key={template.id} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <strong className="truncate">{template.name}</strong>
                   <span className="flex shrink-0 items-center gap-1.5">
                     {template.layout ? (
@@ -552,7 +552,7 @@ export function TemplatesPage() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-sm text-[var(--text-soft)]">实时预览</span>
                 <div className="flex gap-2">
                   <button

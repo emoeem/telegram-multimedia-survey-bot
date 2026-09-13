@@ -260,9 +260,7 @@ function EditableEditor({ data }: { data: EditorData }) {
     setPublishing(true);
     setPublishError(null);
     try {
-      await apiSend<PublishResult>("POST", `/api/admin/surveys/${survey.id}/publish`, {
-        baseUpdatedAt: editor.baseUpdatedAt,
-      });
+      await apiSend<PublishResult>("POST", `/api/admin/surveys/${survey.id}/publish`, {});
       window.location.reload();
     } catch (error) {
       setPublishError((error as ApiError).message);

@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { Link, useParams } from "react-router";
 import {
   Archive,
   ArrowLeft,
   ArrowUpRight,
   BarChart3,
+  Copy,
   FilePenLine,
   History,
   Inbox,
   Rocket,
+  Send,
+  Share2,
   Square,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
-import { apiSend, authHeaders, type ReportTemplateOption, type SurveyDetailData } from "../api";
+import { QRCodeSVG } from "qrcode.react";
+import { histogramOption, useChartColors } from "../charts";
+import { apiSend, authHeaders, type ReportTemplateOption, type SurveyAnalyticsData, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
@@ -23,6 +30,8 @@ import { PresetSwatch } from "../survey/theme-ui";
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { confirm } = useDialogs();
+  const colors = useChartColors();
+  const analytics = useApi<SurveyAnalyticsData>(id ? `/api/admin/surveys/${id}/analytics` : null);
 
   const { data, error, retry } = useApi<SurveyDetailData>(id ? `/api/admin/surveys/${id}` : null);
   const [busy, setBusy] = useState(false);
@@ -34,6 +43,8 @@ export function SurveyDetailPage() {
   const [completionMessage, setCompletionMessage] = useState("");
   const [completionRedirect, setCompletionRedirect] = useState("");
   const [completionRestart, setCompletionRestart] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [themeBusy, setThemeBusy] = useState(false);
   const bgmFileRef = useRef<HTMLInputElement>(null);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
@@ -179,6 +190,7 @@ export function SurveyDetailPage() {
   ];
 
   return (
+    <>
     <section className="card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{data.title || "未命名问卷"}</h2>
@@ -195,6 +207,23 @@ export function SurveyDetailPage() {
           </div>
         ))}
       </div>
+
+      {analytics.data?.completionTimeBuckets && analytics.data.completionTimeBuckets.length >= 2 ? (
+        <div className="mt-5 rounded-xl border border-[var(--color-edge)] p-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm font-medium text-[var(--color-muted)] min-w-0 flex-1 truncate">近 {analytics.data.completionTimeBuckets.length} 天完成趋势</div>
+            <Link to={`/surveys/${data.id}/analytics`} className="text-xs text-[var(--color-info)] hover:underline">
+              查看详情 →
+            </Link>
+          </div>
+          <ReactECharts
+            option={histogramOption(analytics.data.completionTimeBuckets, colors.primary, colors.muted) ?? {}}
+            style={{ height: 140, width: "100%" }}
+            opts={{ renderer: "svg" }}
+          />
+        </div>
+      ) : null}
+
       <div className="mt-6 flex flex-wrap gap-3">
         <Link to="/surveys" className="btn">
           <ArrowLeft className="h-4 w-4" />
@@ -226,6 +255,10 @@ export function SurveyDetailPage() {
           <ArrowUpRight className="h-4 w-4" />
           预览线上
         </a>
+        <button className="btn btn-primary" onClick={() => setShareOpen(true)}>
+          <Share2 className="h-4 w-4" />
+          分享
+        </button>
       </div>
       <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-edge-soft)] pt-4">
         {data.status === "published" ? (
@@ -421,5 +454,122 @@ export function SurveyDetailPage() {
 
       {actionError ? <p className="mt-2 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
     </section>
+
+    {shareOpen ? <ShareSurveyDialog survey={data} onClose={() => setShareOpen(false)} /> : null}
+    </>
+  );
+}
+
+function ShareSurveyDialog({ survey, onClose }: { survey: SurveyDetailData; onClose: () => void }) {
+  const shareUrl = `${window.location.origin}/s/${survey.id}`;
+  const ogImageUrl = `${window.location.origin}/s/${survey.id}/og.png`;
+  const coverUrl = survey.coverUrl ? (survey.coverUrl.startsWith("http") ? survey.coverUrl : `${window.location.origin}${survey.coverUrl}`) : null;
+  const displayImage = coverUrl ?? ogImageUrl;
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = shareUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  const telegramShare = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(survey.title)}`;
+
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 px-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-title"
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-edge)] bg-[var(--surface)] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[var(--color-edge-soft)] px-5 py-3">
+          <h3 id="share-title" className="text-base font-bold tracking-tight">分享问卷</h3>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--color-muted)] hover:bg-black/5">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div className="overflow-hidden rounded-xl border border-[var(--color-edge)]">
+            {displayImage ? (
+              <img src={displayImage} alt="问卷封面" className="aspect-[16/7] w-full object-cover" />
+            ) : (
+              <div className="grid aspect-[16/7] w-full place-items-center bg-gradient-to-br from-indigo-100 to-purple-100 text-4xl font-bold text-indigo-300 dark:from-indigo-900/40 dark:to-purple-900/40 dark:text-indigo-600">
+                {survey.title.slice(0, 1)}
+              </div>
+            )}
+            <div className="px-3 py-2">
+              <div className="truncate text-sm font-semibold">{survey.title}</div>
+              {survey.description ? (
+                <p className="mt-0.5 line-clamp-2 text-xs text-[var(--color-muted)]">{survey.description}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface-muted)]/50 p-3">
+            <div className="mb-1 text-xs font-medium text-[var(--color-muted)]">公开链接</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-lg bg-[var(--surface)] px-3 py-2 text-xs font-mono">
+                {shareUrl}
+              </code>
+              <button
+                onClick={copyLink}
+                className={`btn ${copied ? "btn-success" : ""} px-3 py-2 text-xs`}
+                title="复制链接"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? "已复制" : "复制"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4 rounded-xl border border-[var(--color-edge)] p-4">
+            <div className="shrink-0 rounded-lg bg-white p-2">
+              <QRCodeSVG value={shareUrl} size={120} level="M" includeMargin={false} />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="text-xs text-[var(--color-muted)]">用手机扫描即可填写</div>
+              <a
+                href={telegramShare}
+                target="_blank"
+                rel="noreferrer"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#2AABEE] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1e95d4]"
+              >
+                <Send className="h-4 w-4" />
+                分享到 Telegram
+              </a>
+              {typeof navigator.share === "function" ? (
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.share({ title: survey.title, text: survey.description ?? undefined, url: shareUrl });
+                    } catch {
+                      /* user cancelled */
+                    }
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-sm font-semibold transition-colors hover:bg-black/5"
+                >
+                  <Share2 className="h-4 w-4" />
+                  其他方式分享
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

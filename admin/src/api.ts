@@ -116,6 +116,7 @@ export interface SurveySummary {
   id: number;
   title: string;
   description: string | null;
+  coverUrl: string | null;
   status: SurveyStatus;
   ownerId: number;
   createdAt: string;
@@ -130,6 +131,7 @@ export interface SurveyListData {
   pageSize: number;
   total: number;
   totalPages: number;
+  statusSummary: { draft: number; published: number; closed: number; archived: number };
 }
 
 export interface ImportQuestionWarning {
@@ -167,6 +169,7 @@ export interface SurveyDetailData {
   id: number;
   title: string;
   description: string | null;
+  coverUrl: string | null;
   status: SurveyStatus;
   owner_id: number;
   created_at: string;
@@ -289,6 +292,7 @@ export interface ResponseActivityData {
   pageSize: number;
   total: number;
   totalPages: number;
+  statusSummary: Record<string, number>;
 }
 
 export interface ResponseAnswerView {
@@ -338,6 +342,11 @@ export interface SurveyAnalyticsData {
     average: number | null;
     min: number | null;
     max: number | null;
+    count: number;
+  }>;
+  completionTimeBuckets: Array<{
+    label: string;
+    dayKey: string;
     count: number;
   }>;
 }
@@ -501,6 +510,7 @@ export interface ReportDeliveriesData {
   pageSize: number;
   total: number;
   totalPages: number;
+  statusSummary: { pending: number; delivering: number; delivered: number; failed: number };
 }
 
 export interface SystemSettingsData {

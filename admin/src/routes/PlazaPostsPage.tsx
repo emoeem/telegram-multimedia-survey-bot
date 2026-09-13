@@ -220,7 +220,7 @@ export function PlazaPostsPage() {
               <PostRow key={post.id} post={post} onToggle={toggle} />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span>
               共 {total} 条 · 第 {page + 1}/{totalPages} 页
             </span>

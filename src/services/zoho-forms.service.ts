@@ -1,5 +1,6 @@
 import { parse, type DefaultTreeAdapterTypes } from "parse5";
 import type { ImportedQuestion, ImportedSurvey } from "./import.service";
+import { cleanImportText, decodeHtmlEntities, dedupeStrings, stripInvisible } from "./text-cleaner";
 
 type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
@@ -52,16 +53,21 @@ function elements(node: Node, tagName?: string): Element[] {
 }
 
 function textContent(node: Node): string {
-  return descendants(node)
-    .filter((child) => child.nodeName === "#text" && "value" in child)
-    .map((child) => String(child.value))
-    .join(" ")
+  const allNodes = descendants(node).filter((child) => {
+    if (child.nodeName === "#text" && "value" in child) {
+      const raw = String(child.value);
+      return raw.trim().length > 0;
+    }
+    return false;
+  });
+  return decodeHtmlEntities(stripInvisible(allNodes.map((child) => String((child as { value: unknown }).value)).join(" ")))
+    .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function cleanText(value: string): string {
-  return value.replace(/\*+/g, "").replace(/\s+/g, " ").trim();
+  return cleanImportText(value).replace(/\*+/g, "").trim();
 }
 
 function attribute(element: Element, name: string): string {
@@ -89,11 +95,13 @@ function option(label: string, id: string, order: number) {
 }
 
 function choiceOptions(field: Element, id: string): string[] {
-  const selectOptions = elements(field, "option")
-    .map((item) => cleanText(textContent(item)))
-    .filter(Boolean);
-  if (selectOptions.length) return [...new Set(selectOptions)];
-  return elements(field, "input")
+  const selectOptions = dedupeStrings(
+    elements(field, "option")
+      .map((item) => cleanText(textContent(item)))
+      .filter(Boolean),
+  );
+  if (selectOptions.length) return selectOptions;
+  const rawValues = elements(field, "input")
     .filter((input) => ["radio", "checkbox"].includes(attribute(input, "type")))
     .map((input) => {
       const value = cleanText(attribute(input, "value"));
@@ -102,6 +110,7 @@ function choiceOptions(field: Element, id: string): string[] {
     })
     .filter(Boolean)
     .map((value) => (value.toLowerCase() === "zfs-others-zfs" ? "其他" : value));
+  return dedupeStrings(rawValues);
 }
 
 function imageMedia(field: Element) {
