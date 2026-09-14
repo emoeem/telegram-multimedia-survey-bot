@@ -23,6 +23,7 @@ export function SurveysPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -31,7 +32,11 @@ export function SurveysPage() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const query = new URLSearchParams({ search, status });
+  useEffect(() => {
+    setPage(1);
+  }, [search, status]);
+
+  const query = new URLSearchParams({ search, status, page: String(page), pageSize: "20" });
   const { data, error, retry } = useApi<SurveyListData>(`/api/admin/surveys?${query}`);
 
   const hasFilters = searchInput.trim() !== "" || status !== "";
@@ -211,6 +216,29 @@ export function SurveysPage() {
       ) : (
         <EmptyPanel text="还没有问卷" />
       )}
+
+      {data && data.totalPages > 1 ? (
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm">
+          <button
+            className="btn btn-sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            上一页
+          </button>
+          <span className="text-[var(--color-muted)]">
+            第 <span className="font-semibold text-[var(--color-foreground)]">{data.page}</span> / {data.totalPages} 页
+            （共 {data.total} 份）
+          </span>
+          <button
+            className="btn btn-sm"
+            disabled={page >= data.totalPages}
+            onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+          >
+            下一页
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
