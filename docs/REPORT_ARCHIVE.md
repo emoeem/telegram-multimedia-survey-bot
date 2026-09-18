@@ -50,7 +50,7 @@ ReportDeliveryWorker
 ## 验证
 
 ```bash
-npm run typecheck && npm test && npm run lint
+pnpm typecheck && pnpm test && pnpm lint
 ```
 
 > 相关结构重构（admin API 与 bot survey handler 拆分）见

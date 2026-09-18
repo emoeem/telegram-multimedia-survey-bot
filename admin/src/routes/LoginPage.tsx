@@ -1,71 +1,94 @@
-import { useState } from "react";
-import { ArrowRight, KeyRound, ListChecks, MessageCircle } from "lucide-react";
+import { ExternalLink, LoaderCircle, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export function LoginPage() {
-  const [input, setInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = () => {
-    const value = input.trim();
-    if (!value) {
-      setError("请输入登录链接或登录凭证");
-      return;
-    }
-    let token = value;
-    if (value.startsWith("http")) {
-      try {
-        const parsed = new URL(value);
-        token = parsed.searchParams.get("t") ?? "";
-      } catch {
-        setError("链接格式不正确");
-        return;
-      }
-    }
-    if (!token) {
-      setError("链接中没有登录凭证");
-      return;
-    }
-    window.location.href = `/api/admin/auth/browser?t=${encodeURIComponent(token)}`;
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "starting" | "waiting" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const polling = useRef<number | null>(null);
+  const finishing = useRef(false);
+  const stopPolling = () => {
+    if (polling.current !== null) window.clearInterval(polling.current);
+    polling.current = null;
   };
-
+  const startLogin = async () => {
+    stopPolling();
+    setStatus("starting");
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/auth/telegram/start", { method: "POST", credentials: "same-origin", cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok || typeof body.loginUrl !== "string") throw new Error(body.message || "无法创建登录请求");
+      setLoginUrl(body.loginUrl);
+      setStatus("waiting");
+      window.open(body.loginUrl, "_blank", "noopener,noreferrer");
+      const poll = async () => {
+        try {
+          const result = await fetch("/api/admin/auth/telegram/status", {
+            credentials: "same-origin",
+            cache: "no-store",
+          });
+          const state = (await result.json()) as { status?: string; message?: string; redirect?: string };
+          if (state.status === "approved" && !finishing.current) {
+            finishing.current = true;
+            stopPolling();
+            setMessage("已确认，正在进入管理后台…");
+            window.location.replace(state.redirect || "/admin/");
+          } else if (state.status === "cancelled" || result.status === 410) {
+            stopPolling();
+            setStatus("error");
+            setMessage(state.message || "登录请求已取消或过期，请重新开始。");
+          } else if (!result.ok) {
+            stopPolling();
+            setStatus("error");
+            setMessage(state.message || `登录状态检查失败（HTTP ${result.status}）`);
+          }
+        } catch {
+          /* transient polling errors retry automatically */
+        }
+      };
+      void poll();
+      polling.current = window.setInterval(() => void poll(), 1500);
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "无法开始登录");
+    }
+  };
+  useEffect(() => stopPolling, []);
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5">
       <div className="card overflow-hidden p-0">
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 px-7 py-8 text-white">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--surface)]/15 backdrop-blur">
-            <ListChecks className="h-6 w-6" />
+            <ShieldCheck className="h-6 w-6" />
           </span>
-          <h1 className="mt-4 text-xl font-bold tracking-tight">浏览器登录管理后台</h1>
+          <h1 className="mt-4 text-xl font-bold tracking-tight">登录管理后台</h1>
           <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">
-            在 Telegram 中向机器人发送{" "}
-            <code className="rounded bg-[var(--surface)]/20 px-1.5 py-0.5 font-mono text-xs">/admin_login</code>，
-            获取一次性登录链接（5 分钟有效），粘贴到下方即可。
+            使用 Telegram 确认登录，不需要验证码、复制登录链接，也不需要配置 OAuth。
           </p>
         </div>
         <div className="p-6">
-          <label className="text-sm font-medium text-[var(--text-soft)]">登录链接 / 凭证</label>
-          <div className="relative mt-2">
-            <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-soft)]" />
-            <input
-              className="input w-full pl-9 font-mono text-xs"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submit();
-              }}
-              placeholder="https://…/login?t=…"
-              autoFocus
-            />
-          </div>
-          {error ? <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p> : null}
-          <button type="button" className="btn btn-primary mt-4 w-full" onClick={submit}>
-            登录
-            <ArrowRight className="h-4 w-4" />
+          <button
+            type="button"
+            className="btn btn-primary w-full"
+            onClick={startLogin}
+            disabled={status === "starting" || status === "waiting"}
+          >
+            {status === "starting" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {status === "waiting" ? "等待 Telegram 确认…" : "使用 Telegram 登录"}
           </button>
-          <p className="mt-4 flex items-center gap-1.5 text-xs text-[var(--color-muted-soft)]">
-            <MessageCircle className="h-3.5 w-3.5" />
-            也可以直接点击 Telegram 中的链接在浏览器打开
-          </p>
+          {loginUrl && status === "waiting" ? (
+            <a className="btn btn-ghost mt-2 w-full" href={loginUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              如果没有自动打开，点击这里
+            </a>
+          ) : null}
+          {status === "waiting" ? (
+            <p className="mt-4 text-center text-xs text-[var(--color-muted-soft)]">
+              请在 Telegram 中点击「确认登录」。确认后本页面会自动进入管理后台，无需刷新。
+            </p>
+          ) : null}
+          {message ? <p className="mt-4 text-sm text-[var(--color-danger)]">{message}</p> : null}
         </div>
       </div>
     </div>

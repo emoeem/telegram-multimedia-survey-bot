@@ -6,16 +6,25 @@ import type { Env } from "../../index";
 import { KVMediaStore } from "../../services/media/temporary-media-store";
 import { handleAdminRead } from "./read";
 import { handleAdminWrite } from "./write";
-import { INIT_DATA_MAX_AGE_SECONDS, hexToBytes, sha256Hex } from "./helpers";
+import { INIT_DATA_MAX_AGE_SECONDS, hexToBytes } from "./helpers";
 import {
-  ADMIN_LOGIN_TTL_SECONDS,
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   createAdminSessionValue,
   verifyAdminSessionValue,
-  verifyBrowserLoginToken,
 } from "../../services/admin-session.service";
 import { createMediaAsset } from "../../db/repositories/media.repository";
+import {
+  ADMIN_LOGIN_COOKIE,
+  approveAdminLoginRequest,
+  consumeAdminLoginRequest,
+  createAdminLoginRequest,
+  getAdminLoginRequest,
+  verifyAdminLoginCookie,
+} from "../../services/admin-login.service";
+import { getBotUsername } from "../../bot/telegram";
+import { checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
+import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
 
 export async function handleAdminApi(request: Request, env: Env): Promise<Response> {
   try {
@@ -44,39 +53,60 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   const fail = (status: number, code: string, message: string) =>
     Response.json({ code, message, requestId }, { status });
 
-  // Browser login: a short-lived link minted by the Telegram bot exchanges
-  // for a signed 7-day session cookie, then redirects into the admin app.
-  if (request.method === "GET" && url.pathname === "/api/admin/auth/browser") {
-    const token = url.searchParams.get("t") ?? "";
-    const userId = await verifyBrowserLoginToken(env.WEBHOOK_SECRET, token);
-    if (!userId) {
-      return fail(401, "invalid_login", "登录链接无效或已过期，请在 Telegram 重新发送 /admin_login");
-    }
-    // The login link is a bearer credential: whoever reads it before it expires
-    // can mint a 7-day session. Burn it on first use so a link that leaked
-    // (chat history, screenshot, forwarded message) is worthless afterwards.
-    // KV is only eventually consistent, so this closes the realistic case
-    // (reuse minutes later) rather than a same-second race.
-    if (env.CACHE) {
-      const usedKey = `admin-login-used:${await sha256Hex(token)}`;
-      if (await env.CACHE.get(usedKey)) {
-        return fail(401, "login_already_used", "该登录链接已被使用，请在 Telegram 重新发送 /admin_login");
-      }
-      await env.CACHE.put(usedKey, "1", { expirationTtl: ADMIN_LOGIN_TTL_SECONDS * 2 });
-    }
-    const target = await getUserByTelegramId(env.DB, userId);
-    if (!target) return fail(401, "invalid_login", "用户不存在");
+  // Simple Telegram deep-link login. The browser creates a short-lived request;
+  // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
+  if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/telegram/start") {
+    const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
+    const limiter = await checkRateLimit(env.CACHE, "admin-login-start", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const login = await createAdminLoginRequest(env.CACHE, env.WEBHOOK_SECRET);
+    const username = await getBotUsername(env.BOT_TOKEN);
+    return Response.json(
+      { loginUrl: `https://t.me/${username}?start=admin_login_${login.id}`, expiresIn: 300 },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+          "Set-Cookie": login.cookie.replace("; Secure", url.protocol === "https:" ? "; Secure" : ""),
+        },
+      },
+    );
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/auth/telegram/status") {
+    const cookie = request.headers
+      .get("cookie")
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${ADMIN_LOGIN_COOKIE}=`));
+    const id = cookie
+      ? await verifyAdminLoginCookie(env.WEBHOOK_SECRET, cookie.slice(ADMIN_LOGIN_COOKIE.length + 1))
+      : null;
+    if (!id) return fail(401, "invalid_login_request", "登录请求已失效，请重新开始登录。");
+    const state = await getAdminLoginRequest(env.CACHE, id);
+    if (!state) return fail(410, "login_request_expired", "登录请求已过期，请重新开始登录。");
+    if (state.status === "cancelled")
+      return Response.json({ status: "cancelled" }, { headers: { "Cache-Control": "no-store" } });
+    if (state.status !== "approved")
+      return Response.json({ status: "pending" }, { headers: { "Cache-Control": "no-store" } });
+    if (!state.userId) return fail(401, "invalid_login_request", "登录状态无效，请重新开始登录。");
+    const target = await getUserByTelegramId(env.DB, state.userId);
+    const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
+    if (!target || (target.systemRole !== "admin" && !adminIds.includes(target.telegramUserId)))
+      return fail(403, "admin_access_denied", "该 Telegram 账号没有管理后台权限。");
+    const consumed = await consumeAdminLoginRequest(env.DB, env.CACHE, id, state.userId);
+    if (!consumed) return fail(409, "login_already_used", "这个登录请求已经完成，请重新开始登录。");
     const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id);
-    return new Response(null, {
-      status: 302,
+    return new Response(JSON.stringify({ status: "approved", redirect: "/admin" }), {
       headers: {
-        Location: "/admin",
-        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${
-          url.protocol === "https:" ? "; Secure" : ""
-        }; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+        "Content-Type": "application/json",
         "Cache-Control": "no-store",
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
       },
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/auth/browser") {
+    return new Response(null, { status: 302, headers: { Location: "/admin/login", "Cache-Control": "no-store" } });
   }
 
   // Local-development identity spoofing: only honored when the deployment is

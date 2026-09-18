@@ -76,10 +76,10 @@
 
 ### 质量门禁（全部通过）
 
-- `npm run typecheck`：通过
-- `npm test`：**374 个单元测试全部通过**（79 个测试文件）
-- `npm run lint`：通过
-- `npm --prefix admin run build`：通过（vite 生产构建）
+- `pnpm typecheck`：通过
+- `pnpm test`：**374 个单元测试全部通过**（79 个测试文件）
+- `pnpm lint`：通过
+- `pnpm --dir admin build`：通过（vite 生产构建）
 
 ### 真实浏览器验证（Playwright + Chromium，模拟 Telegram Android）
 

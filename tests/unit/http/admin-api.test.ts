@@ -15,13 +15,14 @@ const repositoryMocks = vi.hoisted(() => ({
 
 const telegramMocks = vi.hoisted(() => ({
   downloadTelegramFile: vi.fn(),
+  getBotUsername: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", () => repositoryMocks);
 vi.mock("../../../src/bot/telegram", () => telegramMocks);
 
 import { handleAdminApi, verifyTelegramWebAppUser } from "../../../src/http/admin-api";
-import { createBrowserLoginToken, verifyAdminSessionValue } from "../../../src/services/admin-session.service";
+import { verifyAdminSessionValue } from "../../../src/services/admin-session.service";
 import type { Env } from "../../../src/index";
 
 const BOT_TOKEN = "test-bot-token";
@@ -202,40 +203,19 @@ describe("handleAdminApi authentication and permissions", () => {
     vi.clearAllMocks();
   });
 
-  it("mints a session for the user found by telegram id on browser login", async () => {
-    // The login token carries the Telegram user id, while sessions are keyed
-    // by the internal database id — the two must not be conflated.
-    repositoryMocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 42, systemRole: "admin" });
-    const token = await createBrowserLoginToken("test-secret", 42);
+  it("redirects legacy browser login links to the new Telegram login page", async () => {
     const { db } = makeDb();
     const response = await handleAdminApi(
-      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
-      makeEnv(db, { WEBHOOK_SECRET: "test-secret" }),
+      new Request("https://example.test/api/admin/auth/browser?t=legacy"),
+      makeEnv(db),
     );
     expect(response.status).toBe(302);
-    expect(repositoryMocks.getUserByTelegramId).toHaveBeenCalledWith(db, 42);
-    const setCookie = response.headers.get("set-cookie") ?? "";
-    const session = setCookie.match(/admin_session=([^;]+)/)?.[1] ?? "";
-    expect(await verifyAdminSessionValue("test-secret", session)).toBe(7);
+    expect(response.headers.get("location")).toBe("/admin/login");
+    expect(repositoryMocks.getUserByTelegramId).not.toHaveBeenCalled();
   });
 
-  it("rejects a browser login for a telegram id without a user row", async () => {
-    repositoryMocks.getUserByTelegramId.mockResolvedValue(null);
-    const token = await createBrowserLoginToken("test-secret", 999);
-    const { db } = makeDb();
-    const response = await handleAdminApi(
-      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
-      makeEnv(db, { WEBHOOK_SECRET: "test-secret" }),
-    );
-    expect(response.status).toBe(401);
-    expect(await response.json()).toMatchObject({ code: "invalid_login", message: "用户不存在" });
-  });
-
-  // A login link is a bearer credential. If it leaks (chat history, screenshot,
-  // forwarding) the first reader could otherwise mint a 7-day admin session.
-  it("burns a browser login token after its first use", async () => {
-    repositoryMocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 42, systemRole: "admin" });
-    const token = await createBrowserLoginToken("test-secret", 42);
+  it("creates a Telegram deep-link login request without touching D1", async () => {
+    telegramMocks.getBotUsername.mockResolvedValue("example_bot");
     const { db } = makeDb();
     const store = new Map<string, string>();
     const cache = {
@@ -244,20 +224,37 @@ describe("handleAdminApi authentication and permissions", () => {
         store.set(key, value);
       }),
     } as unknown as KVNamespace;
-    const env = makeEnv(db, { WEBHOOK_SECRET: "test-secret", CACHE: cache });
-
-    const first = await handleAdminApi(
-      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
-      env,
+    const response = await handleAdminApi(
+      new Request("https://example.test/api/admin/auth/telegram/start"),
+      makeEnv(db, { CACHE: cache, WEBHOOK_SECRET: "test-secret" }),
     );
-    expect(first.status).toBe(302);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { loginUrl: string; expiresIn: number };
+    expect(body.loginUrl).toMatch(/^https:\/\/t.me\/example_bot\?start=admin_login_[A-Za-z0-9_-]{32}$/);
+    expect(body.expiresIn).toBe(300);
+    expect(cache.put).toHaveBeenCalledTimes(2);
+    expect(db.prepare).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toContain("admin_login_request=");
+  });
 
-    const second = await handleAdminApi(
-      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
-      env,
-    );
-    expect(second.status).toBe(401);
-    expect(await second.json()).toMatchObject({ code: "login_already_used" });
+  it("rate-limits repeated Telegram login starts per client IP", async () => {
+    telegramMocks.getBotUsername.mockResolvedValue("example_bot");
+    const { db } = makeDb();
+    const store = new Map<string, string>();
+    const cache = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        const current = Number(store.get(key) ?? "0");
+        store.set(key, key.startsWith("rl:v1:admin-login-start:") ? String(Math.max(current, Number(value))) : value);
+      }),
+    } as unknown as KVNamespace;
+    for (let i = 0; i < 5; i++) {
+      const response = await handleAdminApi(new Request("https://example.test/api/admin/auth/telegram/start", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), makeEnv(db, { CACHE: cache, WEBHOOK_SECRET: "test-secret" }));
+      expect(response.status).toBe(200);
+    }
+    const blocked = await handleAdminApi(new Request("https://example.test/api/admin/auth/telegram/start", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), makeEnv(db, { CACHE: cache }));
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBeTruthy();
   });
 
   it("rejects requests without any identity with 401", async () => {

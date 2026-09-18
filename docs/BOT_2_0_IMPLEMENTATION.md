@@ -99,7 +99,7 @@ POST /telegram/webhook
 - 回归测试：`tests/unit/admin/lazy-routes.test.ts` 断言所有路由都走 `lazy(`、
   ECharts 只在动态 import 中出现。
 
-构建产物（`npm run build:admin`，vite 8）：
+构建产物（`pnpm build:admin`，vite 8）：
 
 | chunk | raw | gzip | 说明 |
 | --- | --- | --- | --- |
@@ -130,10 +130,10 @@ POST /telegram/webhook
 ## 6. 验证
 
 ```bash
-npm run typecheck   # 通过
-npm test            # 最终 97 个文件 / 548+ 个测试全部通过
-npm run lint        # 通过
-npm run build:admin # 通过（体积见上表）
+pnpm typecheck   # 通过
+pnpm test            # 最终 97 个文件 / 548+ 个测试全部通过
+pnpm lint        # 通过
+pnpm build:admin # 通过（体积见上表）
 ```
 
 ## 未完成 / 推迟

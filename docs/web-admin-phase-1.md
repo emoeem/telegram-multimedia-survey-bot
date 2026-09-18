@@ -30,15 +30,15 @@ Staging 配置见 `wrangler.staging.toml`（独立 D1/KV/Queue，`ENVIRONMENT=de
 
 ```sh
 # 1. secrets（BOT_TOKEN 可复用生产 bot token：initData 签名验证与 webhook 接收方无关）
-npx wrangler secret put BOT_TOKEN -c wrangler.staging.toml
-npx wrangler secret put WEBHOOK_SECRET -c wrangler.staging.toml
-npx wrangler secret put ADMIN_IDS -c wrangler.staging.toml   # 逗号分隔的测试管理员 Telegram ID
+pnpm exec wrangler secret put BOT_TOKEN -c wrangler.staging.toml
+pnpm exec wrangler secret put WEBHOOK_SECRET -c wrangler.staging.toml
+pnpm exec wrangler secret put ADMIN_IDS -c wrangler.staging.toml   # 逗号分隔的测试管理员 Telegram ID
 
 # 2. staging D1 建表（新库）
-npx wrangler d1 migrations apply telegram-survey-staging-db --remote
+pnpm exec wrangler d1 migrations apply telegram-survey-staging-db --remote
 
 # 3. 部署
-npx wrangler deploy -c wrangler.staging.toml
+pnpm exec wrangler deploy -c wrangler.staging.toml
 ```
 
 浏览器验证（不需要 Telegram）：
@@ -60,7 +60,7 @@ curl "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
 
 在 Telegram 中发送 `/admin` → 点击「🌐 网页管理后台」按钮 → 页面以真实 initData 打开并自动通过身份验证（测试条应消失）。
 
-验收要点：Test Header 不出现在生产；staging 与生产 D1/KV/Queue 绑定 ID 不同，验证过程不执行 `npm run deploy`、不读写生产绑定。
+验收要点：Test Header 不出现在生产；staging 与生产 D1/KV/Queue 绑定 ID 不同，验证过程不执行 `pnpm deploy`、不读写生产绑定。
 
 ## Staging 验证记录（2026-08-22）
 

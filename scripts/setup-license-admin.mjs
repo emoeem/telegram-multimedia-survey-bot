@@ -35,7 +35,7 @@ async function loadOrCreateToken(rotate) {
 
 function putSecret(token) {
   return new Promise((resolve, reject) => {
-    console.log("> npx wrangler secret put LICENSE_ADMIN_TOKEN --config wrangler.toml");
+    console.log("> pnpm exec wrangler secret put LICENSE_ADMIN_TOKEN --config wrangler.toml");
     const child = spawn(
       WRANGLER,
       ["wrangler", "secret", "put", "LICENSE_ADMIN_TOKEN", "--config", path.join(ROOT_DIR, "wrangler.toml")],

@@ -7,7 +7,6 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export const ADMIN_LOGIN_TTL_SECONDS = 300;
 export const ADMIN_SESSION_TTL_SECONDS = 7 * 24 * 3600;
 export const ADMIN_SESSION_COOKIE = "admin_session";
 
@@ -74,6 +73,12 @@ async function issueToken(
         u: userId,
         exp: Math.floor(Date.now() / 1000) + ttlSeconds,
         p: purpose,
+        // Keep independently issued login links unique even when Telegram
+        // generates two links for the same user within the same second.
+        // Without a nonce the signed payload was deterministic, so the
+        // one-time-use KV guard treated a freshly generated link as the old
+        // link that had already been consumed.
+        jti: crypto.randomUUID(),
       }),
     ),
   );
@@ -99,14 +104,6 @@ async function verifyToken(secret: string, token: string, purpose: SessionPayloa
   } catch {
     return null;
   }
-}
-
-export async function createBrowserLoginToken(secret: string, userId: number): Promise<string> {
-  return issueToken(secret, userId, ADMIN_LOGIN_TTL_SECONDS, "login");
-}
-
-export async function verifyBrowserLoginToken(secret: string, token: string): Promise<number | null> {
-  return verifyToken(secret, token, "login");
 }
 
 export async function createAdminSessionValue(secret: string, userId: number): Promise<string> {

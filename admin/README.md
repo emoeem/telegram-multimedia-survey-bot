@@ -26,11 +26,11 @@ renders in production.
 Staging (isolated bindings, see `wrangler.staging.toml`):
 
 ```sh
-npx wrangler deploy -c wrangler.staging.toml
+pnpm exec wrangler deploy -c wrangler.staging.toml
 ```
 
 Production uses the existing command (assets ship with the Worker):
 
 ```sh
-npm run deploy
+pnpm deploy
 ```

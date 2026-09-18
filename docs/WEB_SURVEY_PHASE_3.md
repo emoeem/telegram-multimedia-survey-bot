@@ -60,9 +60,9 @@ GET  /api/survey/media/:id        媒体读取（按 scope 鉴权）
 ## 验证
 
 ```bash
-npm run typecheck
-npm test
-npm --prefix admin run build
+pnpm typecheck
+pnpm test
+pnpm --dir admin build
 ```
 
 手工验证（staging）：发布一份含多选/矩阵/媒体题的问卷 → 打开

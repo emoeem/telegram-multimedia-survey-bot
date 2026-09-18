@@ -40,12 +40,17 @@ import { requestConfiguredResultVisual } from "../services/result-visual.service
 
 import { getSurveyFlow } from "../services/question.service";
 import { completeSession } from "../services/session.service";
-import { ADMIN_LOGIN_TTL_SECONDS, createBrowserLoginToken } from "../services/admin-session.service";
 import { createSurveyParticipantToken, SURVEY_PARTICIPANT_TOKEN_PARAM } from "../services/participant-session.service";
 import { loadSystemSettings } from "../services/system-settings.service";
+import {
+  approveAdminLoginRequest,
+  cancelAdminLoginRequest,
+  getAdminLoginRequest,
+} from "../services/admin-login.service";
 
 import {
   answerCallbackQuery,
+  editMessageText,
   getBotUsername,
   getChat,
   sendLongMessage,
@@ -1137,6 +1142,39 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         console.warn("Start command interaction cleanup failed; continuing", result.reason);
       }
     }
+    const adminLoginId = payload?.match(/^admin_login_([A-Za-z0-9_-]{32})$/)?.[1];
+    if (adminLoginId) {
+      if (!isAdmin(userId, ctx.adminIds)) {
+        await sendMessage(ctx.botToken, message.chat.id, "⛔ 仅管理员可以确认管理后台登录。");
+        return;
+      }
+      if (!ctx.cache) {
+        await sendMessage(ctx.botToken, message.chat.id, "登录服务暂时不可用，请稍后重试。");
+        return;
+      }
+      const request = await getAdminLoginRequest(ctx.cache, adminLoginId);
+      if (!request || request.status !== "pending") {
+        await sendMessage(
+          ctx.botToken,
+          message.chat.id,
+          "⚠️ 这个登录请求已过期或已经处理，请回到电脑重新点击“使用 Telegram 登录”。",
+        );
+        return;
+      }
+      await sendMessage(
+        ctx.botToken,
+        message.chat.id,
+        "🔐 管理后台登录请求\n\n检测到一台浏览器正在请求登录管理后台。\n\n如果这是你刚刚在电脑上发起的登录，请点击“确认登录”。",
+        {
+          inline_keyboard: [
+            [{ text: "✅ 确认登录", callback_data: `adminlogin:confirm:${adminLoginId}` }],
+            [{ text: "取消", callback_data: `adminlogin:cancel:${adminLoginId}` }],
+          ],
+        },
+      );
+      return;
+    }
+
     const linkKey = payload?.match(/^link_([A-Za-z0-9_-]{8,64})$/)?.[1];
     if (linkKey) {
       if (!dbUser) {
@@ -1215,17 +1253,14 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       await sendMessage(ctx.botToken, message.chat.id, "仅管理员可使用该命令。");
       return;
     }
-    if (!ctx.origin || !ctx.webhookSecret) {
+    if (!ctx.origin) {
       await sendMessage(ctx.botToken, message.chat.id, "无法获取站点地址，请稍后重试。");
       return;
     }
-    const token = await createBrowserLoginToken(ctx.webhookSecret, userId);
     await sendMessage(
       ctx.botToken,
       message.chat.id,
-      `🔐 电脑浏览器登录链接（${Math.round(ADMIN_LOGIN_TTL_SECONDS / 60)} 分钟内有效）：\n` +
-        `${ctx.origin}/api/admin/auth/browser?t=${token}\n\n` +
-        `在电脑默认浏览器打开即可进入管理后台，会话有效期 7 天。`,
+      `🔐 管理后台登录\n\n请在电脑浏览器打开：${ctx.origin}/admin/login\n\n点击“使用 Telegram 登录”，然后在 Telegram 中确认这次登录。\n\n无需验证码，也无需复制登录链接。登录成功后会自动进入管理后台，会话有效期 7 天。`,
     );
     return;
   }
@@ -1582,6 +1617,45 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
 
   if (!data || !chatId) {
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  if (data.startsWith("adminlogin:confirm:") || data.startsWith("adminlogin:cancel:")) {
+    if (!ctx.cache || !isAdmin(userId, ctx.adminIds)) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "仅管理员可以确认登录");
+      return;
+    }
+    const [scope, action, requestId] = data.split(":");
+    const safeRequestId = requestId ?? "";
+    if (scope !== "adminlogin" || !/^[A-Za-z0-9_-]{32}$/.test(safeRequestId)) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "登录请求无效");
+      return;
+    }
+    if (action === "confirm") {
+      const approved = await approveAdminLoginRequest(ctx.cache, safeRequestId, userId);
+      if (!approved) {
+        await answerCallbackQuery(ctx.botToken, callback.id, "请求已过期或已处理");
+        return;
+      }
+      await answerCallbackQuery(ctx.botToken, callback.id, "已确认，电脑端正在登录");
+      if (callback.message) {
+        await editMessageText(
+          ctx.botToken,
+          chatId,
+          callback.message.message_id,
+          "✅ 管理后台登录已确认\n\n请回到电脑浏览器，页面会自动完成登录。",
+          { inline_keyboard: [] },
+        );
+      }
+      return;
+    }
+    const cancelled = await cancelAdminLoginRequest(ctx.cache, safeRequestId);
+    await answerCallbackQuery(ctx.botToken, callback.id, cancelled ? "已取消登录" : "请求已过期或已处理");
+    if (cancelled && callback.message) {
+      await editMessageText(ctx.botToken, chatId, callback.message.message_id, "🚫 管理后台登录请求已取消。", {
+        inline_keyboard: [],
+      });
+    }
     return;
   }
 

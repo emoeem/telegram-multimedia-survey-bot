@@ -249,7 +249,7 @@ JSON → Report → 截图
 - `@playwright/test` + 本地静态服务（`scripts/visual-qa-server.mjs`，离线自包含）
 - `qa/visual/survey.spec.ts`：6 组问卷 fixture（基础/长文本/12+8 多选项/媒体+上传题/深蓝夜主题/分页）× 3 视口 = 18 个用例
 - 硬断言：题目可见、页面无水平溢出（`scrollWidth <= innerWidth+1`）、零控制台错误/零失败请求、主题 `data-theme` 生效；截图基线做像素级回归对比
-- 命令：`npm run test:visual`（回归）/ `npm run test:visual:update`（换字体环境或有意变更后重生成基线）
+- 命令：`pnpm test:visual`（回归）/ `pnpm test:visual:update`（换字体环境或有意变更后重生成基线）
 
 **尚未完成**：报告页（`/report/:id`）视觉回归——等 Phase 4/5 报告引擎定型后补
 

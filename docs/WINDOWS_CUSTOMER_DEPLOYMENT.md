@@ -4,7 +4,7 @@
 
 首次给客户部署时，不需要先阅读这份完整参考。直接发送
 `delivery/01-发给部署服务人员/`，部署人员只做三件事：双击
-`00-安装依赖.cmd`，运行 `npx wrangler login`，再双击 `02-正式部署.cmd`。
+`00-安装依赖.cmd`，运行 `pnpm exec wrangler login`，再双击 `02-正式部署.cmd`。
 授权方先在 `delivery/02-给项目所有者/` 双击 `01-一键发放授权.cmd`，把显示的
 密钥交给部署人员即可。以下内容仅供首次搭建、升级和故障排查时查阅。
 
@@ -121,9 +121,9 @@ PDF 转 JSON 是厂商或高级用户工具，才需要 Python 和 PyMuPDF。
 在项目目录打开 PowerShell 或命令提示符：
 
 ```powershell
-npm install
-npx wrangler login
-npm run migrate:remote
+pnpm install
+pnpm exec wrangler login
+pnpm migrate:remote
 ```
 
 `0008_software_licensing.sql` 会创建许可证、激活记录和版本登记表。
@@ -139,7 +139,7 @@ scripts\setup-license-admin.cmd
 或执行：
 
 ```powershell
-npm run license-admin:setup
+pnpm license-admin:setup
 ```
 
 脚本会：
@@ -161,10 +161,10 @@ node scripts/setup-license-admin.mjs --rotate
 ### 5.3 部署厂商授权中心
 
 ```powershell
-npm run typecheck
-npm test
-npm run migrate:remote
-npm run deploy
+pnpm typecheck
+pnpm test
+pnpm migrate:remote
+pnpm deploy
 ```
 
 厂商 Worker 的 `wrangler.toml` 必须保持：
@@ -213,7 +213,7 @@ Bot Token 只在部署时输入，自动部署工具不会把它写进
 ### 方式 A：Wrangler 浏览器登录
 
 ```powershell
-npx wrangler login
+pnpm exec wrangler login
 ```
 
 部署工具询问 Cloudflare API Token 时可直接回车。
@@ -277,7 +277,7 @@ scripts\deploy-customer.cmd
 或执行：
 
 ```powershell
-npm run customer:deploy
+pnpm customer:deploy
 ```
 
 工具自动完成：
@@ -546,9 +546,9 @@ PDF 识别修复规则：
 客户在原项目和原部署目录执行升级脚本或重新运行部署工具：
 
 ```powershell
-npm install
-npm run typecheck
-npm test
+pnpm install
+pnpm typecheck
+pnpm test
 scripts\deploy-customer.cmd `
   --customer-name "原客户名称" `
   --worker-name "原 Worker 名称" `

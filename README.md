@@ -126,15 +126,15 @@
 
 ### Cloudflare 组件
 
-| 组件 | 用途 |
-|---|---|
-| Workers | HTTP、Telegram Webhook、业务路由与任务入口 |
-| D1 | 问卷、题目、选项、答案、用户、报告投递、审计等持久数据 |
-| KV | 公开接口缓存、临时媒体等低延迟数据 |
-| Durable Objects | 填写会话、Builder 状态、UI Session |
-| Queues | 导出、报告投递及异步任务 |
-| Browser Rendering | HTML → PDF/图片报告渲染 |
-| Workers Assets | Admin 与 Web 静态资源 |
+| 组件              | 用途                                                   |
+| ----------------- | ------------------------------------------------------ |
+| Workers           | HTTP、Telegram Webhook、业务路由与任务入口             |
+| D1                | 问卷、题目、选项、答案、用户、报告投递、审计等持久数据 |
+| KV                | 公开接口缓存、临时媒体等低延迟数据                     |
+| Durable Objects   | 填写会话、Builder 状态、UI Session                     |
+| Queues            | 导出、报告投递及异步任务                               |
+| Browser Rendering | HTML → PDF/图片报告渲染                                |
+| Workers Assets    | Admin 与 Web 静态资源                                  |
 
 ## 数据与存储
 
@@ -247,11 +247,11 @@ Participant Report 是**填写者自己的报告**，与创建者统计报告明
 默认报告模板映射：
 
 | 问卷类型 | 默认模板 |
-|---|---|
+| -------- | -------- |
 | 个人档案 | 身份档案 |
-| 测评 | 数据分析 |
-| 偏好画像 | 杂志 |
-| 普通问卷 | 经典 |
+| 测评     | 数据分析 |
+| 偏好画像 | 杂志     |
+| 普通问卷 | 经典     |
 | 普通表单 | 完整问答 |
 
 问卷显式绑定的模板优先级最高。
@@ -419,13 +419,13 @@ D1 的 Rows Read 是**扫描行数**，不是最终返回行数。因此一个�
 
 修复后的 D1 日级数据明显下降：
 
-| 日期 | Rows Read |
-|---|---:|
-| 2026-09-14 | 5,341,161 |
-| 2026-09-15 | 580,553 |
-| 2026-09-16 | 721,819 |
-| 2026-09-17 | 374,591 |
-| 2026-09-18（验收时） | 102,712 |
+| 日期                 | Rows Read |
+| -------------------- | --------: |
+| 2026-09-14           | 5,341,161 |
+| 2026-09-15           |   580,553 |
+| 2026-09-16           |   721,819 |
+| 2026-09-17           |   374,591 |
+| 2026-09-18（验收时） |   102,712 |
 
 这些是 D1 日 bucket 聚合数据，最后一天是验收时的部分数据，不应解读为精确滚动 24 小时统计。
 
@@ -486,12 +486,12 @@ Admin 已采用 route-level `React.lazy`，ECharts 也采用动态 import。
 
 最近生产构建中的主要 chunk：
 
-| Chunk | Raw | Gzip |
-|---|---:|---:|
-| main | ~111 kB | ~36.6 kB |
-| survey | ~145 kB | ~42.5 kB |
-| pwa/shared | ~194 kB | ~61.9 kB |
-| ECharts lazy chunk | ~1.13 MB | ~376 kB |
+| Chunk              |      Raw |     Gzip |
+| ------------------ | -------: | -------: |
+| main               |  ~111 kB | ~36.6 kB |
+| survey             |  ~145 kB | ~42.5 kB |
+| pwa/shared         |  ~194 kB | ~61.9 kB |
+| ECharts lazy chunk | ~1.13 MB |  ~376 kB |
 
 ECharts 大 chunk 保持懒加载，因此不会进入普通后台首页初始下载。
 
@@ -500,12 +500,12 @@ ECharts 大 chunk 保持懒加载，因此不会进入普通后台首页初始�
 生产发布前已经完成：
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build:admin
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build:admin
 git diff --check
-npx playwright test qa/visual/admin.spec.ts --project=chromium
+pnpm exec playwright test qa/visual/admin.spec.ts --project=chromium
 ```
 
 结果：
@@ -522,6 +522,14 @@ npx playwright test qa/visual/admin.spec.ts --project=chromium
 - D1 migration：生产无待应用 migration；
 - D1 EXPLAIN：关键清理查询确认走索引；
 - D1 Row Metrics：修复后无百万级异常查询。
+
+## 管理后台登录
+
+浏览器管理后台使用 **Telegram Bot Deep Link + 确认** 登录，不依赖 BotFather Login/OIDC 配置。
+
+`/admin/login` → 创建 5 分钟 KV 登录请求 → 打开 Telegram Bot Deep Link → 管理员点击「确认登录」 → 浏览器轮询状态 → 签发现有 7 天 `admin_session`。登录请求使用随机 ID + HMAC 绑定 Cookie，不写 D1。
+
+旧的 `/api/admin/auth/browser?t=...` bearer 登录入口仅保留兼容重定向，不再直接建立会话。
 
 ## 生产部署
 
@@ -545,10 +553,10 @@ main = "src/index.ts"
 标准部署：
 
 ```bash
-npm install
-npm run build:admin
-npx wrangler d1 migrations apply DB --remote
-npx wrangler deploy
+pnpm install
+pnpm build:admin
+pnpm exec wrangler d1 migrations apply DB --remote
+pnpm exec wrangler deploy
 ```
 
 生产部署前必须先确认：
@@ -556,7 +564,7 @@ npx wrangler deploy
 1. `wrangler whoami` 指向正确 Cloudflare 账号；
 2. D1 migration 状态；
 3. secrets 存在且没有进入 Git；
-4. `npm run typecheck && npm run lint && npm test` 全部通过；
+4. `pnpm typecheck && pnpm lint && pnpm test` 全部通过；
 5. Admin build 通过；
 6. `/health` smoke test；
 7. D1 Row Metrics / Insights；
@@ -599,10 +607,10 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
 
 ```bash
 cp .dev.vars.example .dev.vars
-npm install
-npm run typecheck
-npm test
-npm run dev
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm dev
 ```
 
 健康检查：
@@ -618,19 +626,19 @@ Admin 默认由 Worker Assets 提供，开发时根据 Wrangler 输出访问本�
 本地：
 
 ```bash
-npm run migrate:local
+pnpm migrate:local
 ```
 
 远程：
 
 ```bash
-npm run migrate:remote
+pnpm migrate:remote
 ```
 
 查看生产状态：
 
 ```bash
-npx wrangler d1 migrations list telegram-survey-db --remote
+pnpm exec wrangler d1 migrations list telegram-survey-db --remote
 ```
 
 历史 migration 不应修改、删除或重用 tag。新增结构必须增加新的 migration。

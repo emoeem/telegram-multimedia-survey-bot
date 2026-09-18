@@ -27,7 +27,7 @@
 3. 初始化本地授权令牌（只需一次）：
 
 ```bash
-npm run license-admin:setup
+pnpm license-admin:setup
 ```
 
 它会生成 `.license-admin.env`（本地，勿提交）并把 `LICENSE_ADMIN_TOKEN` 写入你的主 Worker Secret。
@@ -37,7 +37,7 @@ npm run license-admin:setup
 ### 1. 签发授权
 
 ```bash
-npm run license:issue
+pnpm license:issue
 ```
 
 按提示输入客户名称、授权期限（默认 365 天，`forever` 为永久）、授权中心地址。完成后会得到一串授权密钥，**只显示一次**，复制保存。
@@ -47,7 +47,7 @@ npm run license:issue
 ```bash
 CLOUDFLARE_ACCOUNT_ID=你的账号ID \
 CLOUDFLARE_API_TOKEN=你的Token \
-npm run customer:deploy
+pnpm customer:deploy
 ```
 
 按提示输入：
@@ -91,12 +91,12 @@ npm run customer:deploy
 
 ```bash
 # 1. 在授权中心登记新版本（客户实例升级时会校验版本号）
-npm run release
+pnpm release
 
 # 2. 批量升级所有客户实例（复用原资源/密钥/授权，自动执行数据库迁移）
 CLOUDFLARE_ACCOUNT_ID=你的账号ID \
 CLOUDFLARE_API_TOKEN=你的Token \
-npm run customer:update
+pnpm customer:update
 ```
 
 也可以单个更新：

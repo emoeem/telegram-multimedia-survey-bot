@@ -53,10 +53,10 @@
 ## 验证
 
 ```bash
-npm run typecheck
-npx vitest run tests/unit/http/admin-api.test.ts tests/unit/http/admin-plaza.test.ts
-npx vitest run tests/unit/bot/survey-handler-routing.test.ts
-npm test
-npm run lint
-npm run build:admin
+pnpm typecheck
+pnpm exec vitest run tests/unit/http/admin-api.test.ts tests/unit/http/admin-plaza.test.ts
+pnpm exec vitest run tests/unit/bot/survey-handler-routing.test.ts
+pnpm test
+pnpm lint
+pnpm build:admin
 ```
