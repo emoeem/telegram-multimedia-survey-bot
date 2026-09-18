@@ -70,9 +70,11 @@ export function ReportsPage() {
   ) : null;
 
   return (
-    <section className="card">
+    <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>报告中心</h2><p>跟踪报告生成、归档与失败任务</p></div></div>
+      <section className="card">
       <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_260px] items-start">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="admin-stat-grid">
           {ORDER.map((k) => {
             const count = summary[k];
             const meta = STATUS_META[k];
@@ -228,5 +230,6 @@ export function ReportsPage() {
         </button>
       </div>
     </section>
+    </div>
   );
 }

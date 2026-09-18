@@ -154,6 +154,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>系统设置</h2><p>管理后台外观、报告与媒体运行参数</p></div></div>
       <section className="card">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-ink)]">界面外观</h2>

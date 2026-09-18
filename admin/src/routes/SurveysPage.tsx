@@ -75,10 +75,12 @@ export function SurveysPage() {
   ) : null;
 
   return (
-    <section className="card">
+    <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>问卷</h2><p>创建、发布和管理全部问卷内容</p></div></div>
+      <section className="card">
       {data ? (
-        <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_220px] items-start">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_240px] items-start">
+          <div className="admin-stat-grid">
             {STATUS_OPTIONS.map((s) => {
               const count = summary[s];
               const meta = STATUS_META[s];
@@ -240,5 +242,6 @@ export function SurveysPage() {
         </div>
       ) : null}
     </section>
+    </div>
   );
 }

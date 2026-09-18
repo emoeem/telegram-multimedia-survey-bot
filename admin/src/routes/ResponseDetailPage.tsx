@@ -226,7 +226,8 @@ export function ResponseDetailPage() {
   if (!data) return <SkeletonPanel lines={8} />;
 
   return (
-    <div>
+    <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>答卷详情</h2><p>{data.survey.title} · #{data.response.id}</p></div><Link className="btn" to={`/surveys/${data.survey.id}/responses`}><ArrowLeft className="h-4 w-4" />返回列表</Link></div>
       <section className="card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

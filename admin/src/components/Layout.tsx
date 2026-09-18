@@ -149,7 +149,7 @@ export function Layout() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-page">
+    <div className="admin-shell flex min-h-dvh flex-col bg-page">
       <TestBanner visible={showTestBanner} />
       {browserMode ? (
         <div className="browser-mode-banner flex flex-wrap items-center justify-center gap-2 border-b border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-4 py-2 text-center text-xs text-[var(--color-primary)]">
@@ -161,11 +161,11 @@ export function Layout() {
       ) : null}
       <div className="flex flex-1">
         <aside
-          className={`fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-sidebar px-4 py-5 text-slate-300 transition-transform duration-200 sm:static sm:translate-x-0 sm:w-16 sm:px-2 lg:w-64 lg:px-4 ${
+          className={`admin-sidebar fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-sidebar px-4 py-5 text-slate-300 transition-transform duration-200 sm:static sm:translate-x-0 sm:w-16 sm:px-2 lg:w-64 lg:px-4 ${
             drawer ? "translate-x-0" : ""
           }`}
         >
-          <div className="mb-7 flex items-center gap-2.5 whitespace-nowrap px-1.5">
+          <div className="admin-brand mb-7 flex items-center gap-2.5 whitespace-nowrap px-1.5">
             <BrandMark />
             <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
           </div>
@@ -250,8 +250,9 @@ export function Layout() {
             onClick={() => setDrawer(false)}
           />
         ) : null}
-        <main className="mx-auto w-full min-w-0 max-w-[1320px] flex-1 p-4 sm:p-8">
-          <header className="mb-7 flex items-center gap-3">
+        <main className="admin-main mx-auto w-full min-w-0 flex-1 p-4 sm:p-8">
+          <header className="admin-content-header">
+            <div className="admin-content-header-inner">
             <button
               aria-label="打开菜单"
               className="btn btn-icon sm:hidden shrink-0"
@@ -268,7 +269,16 @@ export function Layout() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px] min-w-0 flex-1 truncate">{title}</h1>
+            <div className="min-w-0 flex-1">
+              <div className="admin-breadcrumb">
+                <span className="hidden sm:inline">管理后台</span>
+                <span className="hidden sm:inline">/</span>
+                <strong className="truncate">{title}</strong>
+              </div>
+            </div>
+            {environment ? <span className="admin-env-pill hidden sm:inline-flex">{environment === "production" ? "生产环境" : environment}</span> : null}
+            <button className="btn btn-sm hidden sm:inline-flex" onClick={() => navigate("/settings")} title="系统设置"><Settings className="h-4 w-4" />设置</button>
+            </div>
           </header>
           <Outlet />
         </main>

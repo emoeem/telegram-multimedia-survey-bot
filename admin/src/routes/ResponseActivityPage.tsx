@@ -69,9 +69,11 @@ export function ResponseActivityPage() {
   ) : null;
 
   return (
-    <section className="card">
+    <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>答卷动态</h2><p>跨问卷查看最新提交与处理状态</p></div></div>
+      <section className="card">
       <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_220px] items-start">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="admin-stat-grid">
           {STATUS_ORDER.map((k) => {
             const count = summary[k] ?? 0;
             const meta = STATUS_META[k];
@@ -239,5 +241,6 @@ export function ResponseActivityPage() {
         </button>
       </div>
     </section>
+    </div>
   );
 }

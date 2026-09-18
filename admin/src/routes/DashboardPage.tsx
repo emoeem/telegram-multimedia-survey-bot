@@ -75,7 +75,8 @@ export function DashboardPage() {
   };
 
   return (
-    <div>
+    <div className="space-y-5">
+      <div className="admin-page-intro"><div><h2>运营总览</h2><p>查看问卷、答卷与报告交付的实时状态</p></div></div>
       <section className="card">
         <div className="card-title">
           <div>
@@ -88,9 +89,9 @@ export function DashboardPage() {
           </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="admin-stat-grid mt-5">
           {METRICS.map(({ key, label, icon: Icon, tint }) => (
-            <div key={key} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4 transition hover:-translate-y-0.5 hover:shadow-md">
+            <div key={key} className="admin-stat">
               <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
                 <span className={`grid h-7 w-7 place-items-center rounded-lg ${tint}`}>
                   <Icon className="h-4 w-4" />
