@@ -369,3 +369,8 @@ export async function listUserResponses(
     total: Number(countResult.results?.[0]?.count ?? 0),
   };
 }
+
+export async function getFirstAdminUser(db: D1Database): Promise<User | null> {
+  const row = await db.prepare("SELECT * FROM users WHERE system_role = 'admin' ORDER BY id ASC LIMIT 1").first<UserRow>();
+  return row ? mapUser(row) : null;
+}

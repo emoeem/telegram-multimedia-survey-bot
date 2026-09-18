@@ -12,7 +12,7 @@ export const SYSTEM_SETTING_KEYS = [
   "profile_gallery_survey_id",
 ] as const;
 
-export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number];
+export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number] | "admin_password_hash";
 
 export interface SystemSettings {
   reportChannelId: string;

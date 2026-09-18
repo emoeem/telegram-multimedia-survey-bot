@@ -1,89 +1,37 @@
-import { ExternalLink, LoaderCircle, ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Eye, EyeOff, LoaderCircle, LockKeyhole, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 
 export function LoginPage() {
-  const [loginUrl, setLoginUrl] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "starting" | "waiting" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const polling = useRef<number | null>(null);
-  const finishing = useRef(false);
-  const channelRef = useRef<BroadcastChannel | null>(null);
-  const requestVersion = useRef(0);
-  const stopPolling = () => {
-    if (polling.current !== null) window.clearInterval(polling.current);
-    polling.current = null;
-  };
-  const startLogin = async () => {
-    stopPolling();
-    requestVersion.current += 1;
-    finishing.current = false;
-    setStatus("starting");
+
+  const login = async (event: FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
+    setLoading(true);
     setMessage("");
     try {
-      const response = await fetch("/api/admin/auth/telegram/start", { method: "POST", credentials: "same-origin", cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok || typeof body.loginUrl !== "string") throw new Error(body.message || "无法创建登录请求");
-      setLoginUrl(body.loginUrl);
-      setStatus("waiting");
-      window.open(body.loginUrl, "_blank", "noopener,noreferrer");
-      const version = requestVersion.current;
-      const finish = (redirect: string) => {
-        if (finishing.current || version !== requestVersion.current) return;
-        finishing.current = true;
-        stopPolling();
-        setMessage("已确认，正在进入管理后台…");
-        // The status response has already Set-Cookie'd the HttpOnly session.
-        // Use a real browser navigation instead of React Router so the new
-        // session is guaranteed to be picked up by the server-rendered entry.
-        channelRef.current?.postMessage({ type: "LOGIN_APPROVED", redirect });
-        window.location.assign(new URL(redirect, window.location.origin).href);
-      };
-      const poll = async () => {
-        try {
-          const result = await fetch("/api/admin/auth/telegram/status", {
-            credentials: "include",
-            cache: "no-store",
-          });
-          const state = (await result.json()) as { status?: string; message?: string; redirect?: string };
-          if (state.status === "approved") {
-            finish(state.redirect || "/admin/");
-          } else if (state.status === "cancelled" || result.status === 410) {
-            stopPolling();
-            setStatus("error");
-            setMessage(state.message || "登录请求已取消或过期，请重新开始登录。");
-          } else if (!result.ok) {
-            stopPolling();
-            setStatus("error");
-            setMessage(state.message || `登录状态检查失败（HTTP ${result.status}）`);
-          }
-        } catch {
-          /* transient polling errors retry automatically */
-        }
-      };
-      void poll();
-      polling.current = window.setInterval(() => void poll(), 1500);
+      const response = await fetch("/api/admin/auth/password", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      let body: { message?: string; redirect?: string } = {};
+      try { body = (await response.json()) as typeof body; } catch { /* ignore malformed edge responses */ }
+      if (!response.ok) throw new Error(body.message || `登录失败（HTTP ${response.status}）`);
+      window.location.assign(body.redirect || "/admin/");
     } catch (error) {
-      setStatus("error");
-      setMessage(error instanceof Error ? error.message : "无法开始登录");
+      setMessage(error instanceof Error ? error.message : "登录失败，请重试");
+    } finally {
+      setLoading(false);
     }
   };
-  useEffect(() => {
-    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("admin-telegram-login") : null;
-    channelRef.current = channel;
-    if (channel) {
-      channel.onmessage = (event: MessageEvent<{ type?: string; redirect?: string }>) => {
-        if (event.data?.type !== "LOGIN_APPROVED" || finishing.current) return;
-        finishing.current = true;
-        stopPolling();
-        window.location.assign(new URL(event.data.redirect || "/admin/", window.location.origin).href);
-      };
-    }
-    return () => {
-      stopPolling();
-      channel?.close();
-      channelRef.current = null;
-    };
-  }, []);
+
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5">
       <div className="card overflow-hidden p-0">
@@ -92,33 +40,35 @@ export function LoginPage() {
             <ShieldCheck className="h-6 w-6" />
           </span>
           <h1 className="mt-4 text-xl font-bold tracking-tight">登录管理后台</h1>
-          <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">
-            使用 Telegram 确认登录，不需要验证码、复制登录链接，也不需要配置 OAuth。
-          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">输入管理员密码即可登录，无需 Telegram 验证或 OAuth。</p>
         </div>
-        <div className="p-6">
-          <button
-            type="button"
-            className="btn btn-primary w-full"
-            onClick={startLogin}
-            disabled={status === "starting" || status === "waiting"}
-          >
-            {status === "starting" ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {status === "waiting" ? "等待 Telegram 确认…" : "使用 Telegram 登录"}
+        <form className="grid gap-4 p-6" onSubmit={login}>
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-[var(--color-muted)]">管理员密码</span>
+            <span className="relative">
+              <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-soft)]" />
+              <input
+                className="input w-full pr-10 pl-9"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="请输入管理员密码"
+                autoComplete="current-password"
+                autoFocus
+                required
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-[var(--color-muted-soft)] hover:text-[var(--color-ink)]" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </span>
+          </label>
+          <button type="submit" className="btn btn-primary w-full" disabled={loading || !password}>
+            {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
+            {loading ? "登录中…" : "登录管理后台"}
           </button>
-          {loginUrl && status === "waiting" ? (
-            <a className="btn btn-ghost mt-2 w-full" href={loginUrl} target="_blank" rel="noreferrer">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              如果没有自动打开，点击这里
-            </a>
-          ) : null}
-          {status === "waiting" ? (
-            <p className="mt-4 text-center text-xs text-[var(--color-muted-soft)]">
-              请在 Telegram 中点击「确认登录」。确认后本页面会自动进入管理后台，无需刷新。
-            </p>
-          ) : null}
-          {message ? <p className="mt-4 text-sm text-[var(--color-danger)]">{message}</p> : null}
-        </div>
+          {message ? <p role="alert" className="text-sm text-[var(--color-danger)]">{message}</p> : null}
+          <p className="text-center text-xs text-[var(--color-muted-soft)]">密码可在「系统设置」中修改。</p>
+        </form>
       </div>
     </div>
   );

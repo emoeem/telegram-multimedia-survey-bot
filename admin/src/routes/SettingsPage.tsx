@@ -79,6 +79,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [surveys, setSurveys] = useState<SurveySummary[]>([]);
   const [creatingSurvey, setCreatingSurvey] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
 
   useEffect(() => {
     void api<{ items: SurveySummary[] }>(`/api/admin/surveys?pageSize=50&status=published`)
@@ -109,7 +110,9 @@ export function SettingsPage() {
         pdf_max_mb: settings.pdfMaxMb,
         report_watermark: settings.reportWatermark,
         profile_gallery_survey_id: settings.profileGallerySurveyId,
+        ...(adminPassword ? { admin_password: adminPassword } : {}),
       });
+      setAdminPassword("");
       setSaved(true);
       setForm(null);
       retry();
@@ -157,6 +160,18 @@ export function SettingsPage() {
       <div className="admin-page-intro"><div><h2>系统设置</h2><p>管理后台外观、报告与媒体运行参数</p></div></div>
       <section className="card">
         <div>
+          <h2 className="text-lg font-semibold text-[var(--color-ink)]">管理员密码</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">用于登录管理后台。默认密码已内置；修改后立即生效。</p>
+        </div>
+        <div className="mt-4 max-w-xl">
+          <Field label="设置新密码" hint="8-256 个字符；留空表示不修改。密码只保存为不可逆哈希。">
+            <input className="input w-full" type="password" value={adminPassword} onChange={(event) => { setAdminPassword(event.target.value); setSaved(false); }} placeholder="输入新的管理员密码" autoComplete="new-password" />
+          </Field>
+        </div>
+      </section>
+
+      <section className="card">
+        <div>
           <h2 className="text-lg font-semibold text-[var(--color-ink)]">界面外观</h2>
           <p className="mt-1 text-sm text-[var(--color-muted)]">主题即时生效，仅影响当前浏览器。</p>
         </div>
@@ -175,6 +190,7 @@ export function SettingsPage() {
           ))}
         </div>
       </section>
+
 
       <section className="card">
         <div>

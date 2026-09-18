@@ -525,9 +525,9 @@ pnpm exec playwright test qa/visual/admin.spec.ts --project=chromium
 
 ## 管理后台登录
 
-浏览器管理后台使用 **Telegram Bot Deep Link + 确认** 登录，不依赖 BotFather Login/OIDC 配置。
+浏览器管理后台使用 **管理员密码** 登录，不依赖 Telegram OAuth 或 BotFather Login 配置。
 
-`/admin/login` → 创建 5 分钟 KV 登录请求 → 打开 Telegram Bot Deep Link → 管理员点击「确认登录」 → 浏览器轮询状态 → 签发现有 7 天 `admin_session`。登录请求使用随机 ID + HMAC 绑定 Cookie，不写 D1。
+`/admin/login` → 输入管理员密码 → 服务端校验 → 签发 7 天 `admin_session`。密码修改入口位于「系统设置」，数据库仅保存 PBKDF2 哈希。
 
 旧的 `/api/admin/auth/browser?t=...` bearer 登录入口仅保留兼容重定向，不再直接建立会话。
 

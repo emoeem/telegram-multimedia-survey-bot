@@ -1,4 +1,4 @@
-import { getUserById, getUserByTelegramId } from "../../db/repositories/user.repository";
+import { getFirstAdminUser, getUserById, getUserByTelegramId } from "../../db/repositories/user.repository";
 import { isWebhookSecretValid } from "../../core/security";
 import { describeDatabaseError, isDatabaseCapacityError } from "../../db/errors";
 import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repository";
@@ -25,6 +25,8 @@ import {
 import { getBotUsername } from "../../bot/telegram";
 import { checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
 import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
+import { ADMIN_PASSWORD_SETTING_KEY, DEFAULT_ADMIN_PASSWORD_HASH, verifyAdminPassword } from "../../services/admin-password.service";
+import { getSystemSettingValue } from "../../services/system-settings.service";
 
 export async function handleAdminApi(request: Request, env: Env): Promise<Response> {
   try {
@@ -52,6 +54,22 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   const requestId = crypto.randomUUID();
   const fail = (status: number, code: string, message: string) =>
     Response.json({ code, message, requestId }, { status });
+
+  if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
+    const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
+    const limiter = await checkRateLimit(env.CACHE, "admin-password-login", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const body = await request.json().catch(() => null) as { password?: unknown } | null;
+    const password = typeof body?.password === "string" ? body.password : "";
+    const configuredHash = await getSystemSettingValue(env.DB, ADMIN_PASSWORD_SETTING_KEY);
+    const valid = await verifyAdminPassword(password, configuredHash ?? DEFAULT_ADMIN_PASSWORD_HASH);
+    if (!valid) return fail(401, "invalid_password", "管理员密码错误");
+    const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
+    const user = adminIds.length ? await getUserByTelegramId(env.DB, adminIds[0]!) : await getFirstAdminUser(env.DB);
+    if (!user || (user.systemRole !== "admin" && !adminIds.includes(user.telegramUserId))) return fail(403, "admin_access_denied", "当前没有可用于管理后台登录的管理员账号");
+    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, user.id);
+    return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}` } });
+  }
 
   // Simple Telegram deep-link login. The browser creates a short-lived request;
   // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
@@ -135,7 +153,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     : sessionUserId
       ? await getUserById(env.DB, sessionUserId)
       : null;
-  if (!user) return fail(401, "unauthorized", "请通过 Telegram 登录管理后台。");
+  if (!user) return fail(401, "unauthorized", "请先登录管理后台。");
   const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
   const isAdmin = user.systemRole === "admin" || adminIds.includes(user.telegramUserId);
   const json = (body: unknown) => Response.json(body, { headers: { "Cache-Control": "no-store" } });

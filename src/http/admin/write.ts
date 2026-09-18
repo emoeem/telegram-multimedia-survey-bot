@@ -12,6 +12,7 @@ import { ImportValidationError, parseImportedSurvey, saveImportedSurvey } from "
 import type { Env } from "../../index";
 import { REPORT_TEMPLATES } from "../../services/report/template";
 import { saveSystemSetting, SYSTEM_SETTING_KEYS } from "../../services/system-settings.service";
+import { hashAdminPassword, isValidAdminPassword, ADMIN_PASSWORD_SETTING_KEY } from "../../services/admin-password.service";
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
 import { handleAdminEditorWrite } from "./editor";
@@ -64,6 +65,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
   if (request.method === "PUT" && url.pathname === "/api/admin/settings") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可修改系统设置");
     const updates: Record<string, string> = {};
+    const newAdminPassword = typeof body.admin_password === "string" ? body.admin_password : "";
+    if (body.admin_password !== undefined && !isValidAdminPassword(newAdminPassword)) return fail(400, "validation_failed", "管理员密码长度必须为 8-256 个字符");
     for (const key of SYSTEM_SETTING_KEYS) {
       if (body[key] === undefined) continue;
       const value = String(body[key]).trim();
@@ -88,6 +91,9 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
         }
       }
       updates[key] = value;
+    }
+    if (newAdminPassword) {
+      updates[ADMIN_PASSWORD_SETTING_KEY] = await hashAdminPassword(newAdminPassword);
     }
     if (!Object.keys(updates).length) {
       return fail(400, "validation_failed", "没有可更新的设置");

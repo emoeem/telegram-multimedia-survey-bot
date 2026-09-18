@@ -153,7 +153,7 @@ export function Layout() {
       <TestBanner visible={showTestBanner} />
       {browserMode ? (
         <div className="browser-mode-banner flex flex-wrap items-center justify-center gap-2 border-b border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-4 py-2 text-center text-xs text-[var(--color-primary)]">
-          <span>浏览器访问模式：使用 Telegram 官方账号登录</span>
+          <span>浏览器访问模式：使用管理员密码登录</span>
           <Link to="/login" className="link">
             去登录
           </Link>
