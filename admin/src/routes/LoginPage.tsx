@@ -7,12 +7,16 @@ export function LoginPage() {
   const [message, setMessage] = useState("");
   const polling = useRef<number | null>(null);
   const finishing = useRef(false);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const requestVersion = useRef(0);
   const stopPolling = () => {
     if (polling.current !== null) window.clearInterval(polling.current);
     polling.current = null;
   };
   const startLogin = async () => {
     stopPolling();
+    requestVersion.current += 1;
+    finishing.current = false;
     setStatus("starting");
     setMessage("");
     try {
@@ -22,22 +26,31 @@ export function LoginPage() {
       setLoginUrl(body.loginUrl);
       setStatus("waiting");
       window.open(body.loginUrl, "_blank", "noopener,noreferrer");
+      const version = requestVersion.current;
+      const finish = (redirect: string) => {
+        if (finishing.current || version !== requestVersion.current) return;
+        finishing.current = true;
+        stopPolling();
+        setMessage("已确认，正在进入管理后台…");
+        // The status response has already Set-Cookie'd the HttpOnly session.
+        // Use a real browser navigation instead of React Router so the new
+        // session is guaranteed to be picked up by the server-rendered entry.
+        channelRef.current?.postMessage({ type: "LOGIN_APPROVED", redirect });
+        window.location.assign(new URL(redirect, window.location.origin).href);
+      };
       const poll = async () => {
         try {
           const result = await fetch("/api/admin/auth/telegram/status", {
-            credentials: "same-origin",
+            credentials: "include",
             cache: "no-store",
           });
           const state = (await result.json()) as { status?: string; message?: string; redirect?: string };
-          if (state.status === "approved" && !finishing.current) {
-            finishing.current = true;
-            stopPolling();
-            setMessage("已确认，正在进入管理后台…");
-            window.location.replace(state.redirect || "/admin/");
+          if (state.status === "approved") {
+            finish(state.redirect || "/admin/");
           } else if (state.status === "cancelled" || result.status === 410) {
             stopPolling();
             setStatus("error");
-            setMessage(state.message || "登录请求已取消或过期，请重新开始。");
+            setMessage(state.message || "登录请求已取消或过期，请重新开始登录。");
           } else if (!result.ok) {
             stopPolling();
             setStatus("error");
@@ -54,7 +67,23 @@ export function LoginPage() {
       setMessage(error instanceof Error ? error.message : "无法开始登录");
     }
   };
-  useEffect(() => stopPolling, []);
+  useEffect(() => {
+    const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("admin-telegram-login") : null;
+    channelRef.current = channel;
+    if (channel) {
+      channel.onmessage = (event: MessageEvent<{ type?: string; redirect?: string }>) => {
+        if (event.data?.type !== "LOGIN_APPROVED" || finishing.current) return;
+        finishing.current = true;
+        stopPolling();
+        window.location.assign(new URL(event.data.redirect || "/admin/", window.location.origin).href);
+      };
+    }
+    return () => {
+      stopPolling();
+      channel?.close();
+      channelRef.current = null;
+    };
+  }, []);
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5">
       <div className="card overflow-hidden p-0">
