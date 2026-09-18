@@ -137,6 +137,10 @@ export function buildReportViewModel(
   images: Record<string, string> = {},
 ): ReportViewModel {
   const metadata = profile.metadata as Record<string, unknown>;
+  const reportKind = typeof metadata.reportKind === "string" ? metadata.reportKind : "form";
+  const reportLabel = typeof metadata.reportLabel === "string" ? metadata.reportLabel : "我的回答";
+  const answerSectionTitle = typeof metadata.answerSectionTitle === "string" ? metadata.answerSectionTitle : "我的回答";
+  const summaryTitle = typeof metadata.summaryTitle === "string" ? metadata.summaryTitle : "结果概览";
   const rawProfile = Array.isArray(metadata.profile) ? (metadata.profile as Array<Record<string, unknown>>) : [];
   const profileItems = rawProfile
     .map((item, index) => {
@@ -192,20 +196,22 @@ export function buildReportViewModel(
         text: value,
       };
     });
-  const semanticTitles = [
-    "Core Personality",
-    "Behavior Pattern",
-    "Relationship Pattern",
-    "Contradiction",
-    "Final Insight",
-  ];
+  const isPersonalProfile = metadata.reportKind === "personal_profile" || profile.resultType === "identity_card";
+  const isConfiguredScoredReport = !isPersonalProfile && profile.stats.length > 0;
+  // A generic unscored response must never be relabeled as personality or
+  // behavior analysis. Existing explicitly-scored reports keep their legacy
+  // semantic headings for compatibility.
+  const semanticTitles = ["Core Personality", "Behavior Pattern", "Relationship Pattern", "Contradiction", "Final Insight"];
   const insights = longTexts.slice(0, 5).map((item, index) => ({
     ...item,
-    title: semanticTitles[index] ?? item.title,
+    ...(isConfiguredScoredReport ? { title: semanticTitles[index] ?? item.title } : {}),
     text: limitText(item.text, 20_000),
-    ...(index === 0 && profile.tags.length ? { tags: profile.tags.slice(0, 3) } : {}),
   }));
-  const quotes = longTexts.slice(5, 11).map((item) => ({ ...item, text: limitText(item.text, 1800) }));
+  const quoteStart = isPersonalProfile || isConfiguredScoredReport ? 5 : 0;
+  const quotes = longTexts.slice(quoteStart, quoteStart + 6).map((item) => ({
+    ...item,
+    text: limitText(item.text, 1800),
+  }));
   const metadataGallery = Array.isArray(metadata.gallery) ? metadata.gallery : [];
   const gallery: ReportGalleryItem[] = Object.entries(images)
     .filter(
@@ -265,6 +271,10 @@ export function buildReportViewModel(
       ...(text(metadata.reportId) ? { reportId: limitText(text(metadata.reportId), 80) } : {}),
       ...(requestedLayout ? { layout: requestedLayout } : {}),
       ...(requestedTheme ? { theme: requestedTheme } : {}),
+      reportKind,
+      reportLabel,
+      answerSectionTitle,
+      summaryTitle,
     },
   };
 }

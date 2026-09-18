@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ReactECharts from "echarts-for-react";
+import { EChart } from "../components/EChart";
 import { Link } from "react-router";
 import { Search } from "lucide-react";
 import { donutOption } from "../charts";
@@ -97,7 +97,7 @@ export function ResponseActivityPage() {
         </div>
         <div className="rounded-xl border border-[var(--color-edge)] p-2">
           {summaryDonut ? (
-            <ReactECharts option={summaryDonut} style={{ height: 150 }} opts={{ renderer: "svg" }} />
+            <EChart option={summaryDonut} style={{ height: 150 }} opts={{ renderer: "svg" }} />
           ) : (
             <div className="grid h-[150px] place-items-center text-sm text-[var(--color-muted)]">暂无数据</div>
           )}

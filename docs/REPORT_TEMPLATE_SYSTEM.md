@@ -73,8 +73,9 @@ interface ReportTemplateSpec {
 | PDF      | `src/services/report/pdf.ts`                                               | 同一模板 + `@media print`，图片压缩 ≤1200px |
 | Image    | 现有 PNG 管线（`html-report-renderer` 固定画布 / `visual-template` resvg） | 分享卡/结果卡导出                           |
 
-## 后续（未实现）
+## 当前实现与后续演进
 
-- `report_templates` 表：DB 存储自定义模板 + 版本
-- Web Admin 模板编辑器：选择区块/主题/自定义 CSS，实时预览
-- 问卷级默认模板配置（`survey_report_visual_settings` 或新列）
+- Admin 已提供报告模板库、用途说明和可视化 schematic preview。
+- 问卷编辑器已支持绑定报告模板，并在 Participant Report 中优先使用显式绑定。
+- Web/PDF/Image 共用 ReportViewModel 与模板语义。
+- 后续可继续增强真正的模板区块拖拽编辑、模板版本管理和更丰富的实时 HTML/PDF 对照预览；这些不影响当前生产链路。

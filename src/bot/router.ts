@@ -7,6 +7,25 @@ import type { TelegramUser } from "./types";
 import { setUiMessage } from "../services/ui-session.service";
 import { maybeDetectReportChannel } from "./channel-detection";
 
+/**
+ * Wraps a handler failure that has already been reported to the user.
+ *
+ * The webhook releases the idempotency claim when handling throws so Telegram
+ * can redeliver; if the router already answered with a "please retry" message
+ * the outer catch must not send a second one. This marker carries the original
+ * error through so the claim is still released.
+ */
+export class TelegramUpdateHandledError extends Error {
+  constructor(readonly originalError: unknown) {
+    super("Telegram update handling failed after user notification");
+    this.name = "TelegramUpdateHandledError";
+  }
+}
+
+export function isTelegramUpdateHandledError(error: unknown): error is TelegramUpdateHandledError {
+  return error instanceof TelegramUpdateHandledError;
+}
+
 async function ensureUser(ctx: BotContext, telegramUser: TelegramUser): Promise<void> {
   await upsertUser(ctx.db, {
     telegramUserId: telegramUser.id,
@@ -48,6 +67,9 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
     } catch (error) {
       console.error("Telegram message handler failed", error);
       await sendMessage(ctx.botToken, update.message.chat.id, "⚠️ 处理失败，请稍后重试。");
+      // Rethrow so the webhook releases the idempotency claim: a failed update
+      // must stay retryable instead of being permanently swallowed.
+      throw new TelegramUpdateHandledError(error);
     }
     return;
   }
@@ -77,6 +99,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
     } catch (error) {
       console.error("Telegram callback handler failed", error);
       await answerCallbackQuery(ctx.botToken, update.callback_query.id, "处理失败，请稍后重试");
+      throw new TelegramUpdateHandledError(error);
     }
   }
 }

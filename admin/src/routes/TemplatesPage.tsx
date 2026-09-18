@@ -44,6 +44,12 @@ interface TemplateDraft {
   renderers: string[];
 }
 
+function TemplateVisualPreview({ template }: { template: ReportTemplateOption }) {
+  const layout = template.layout ?? "editorial";
+  const visual = layout === "bento" ? "bento" : layout === "gallery" ? "gallery" : layout === "data" ? "data" : layout === "profile" ? "profile" : layout === "magazine" ? "magazine" : "editorial";
+  return <div className={`template-visual-preview template-layout-${visual}`} aria-label={`${template.name}视觉预览`}><div className="template-preview-top"><span>▦</span><i /><i /><i /></div><div className="template-preview-title" /><div className="template-preview-grid"><span /><span /><span /></div><div className="template-preview-lines"><i /><i /><i /></div>{visual === "gallery" ? <div className="template-preview-gallery"><i /><i /><i /></div> : null}</div>;
+}
+
 const SECTION_OPTIONS: Array<{ kind: string; label: string }> = [
   { kind: "cover", label: "封面（大图）" },
   { kind: "hero", label: "档案头（头像+标题）" },
@@ -374,6 +380,7 @@ export function TemplatesPage() {
                     </span>
                   </span>
                 </div>
+                <TemplateVisualPreview template={template} />
                 <div className="mt-1 font-mono text-xs text-[var(--color-muted-soft)]">{template.id}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button

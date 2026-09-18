@@ -1,6 +1,7 @@
 import type { Env } from "../index";
 import { fail, json, resolveParticipant } from "./survey-api";
 import { checkRateLimit } from "../services/rate-limit.service";
+import { resolveSubmissionBotUrl } from "../services/contact-links.service";
 import { listTaskPacks } from "../db/repositories/task-pack.repository";
 import {
   createTaskRun,
@@ -41,6 +42,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
   if (request.method === "GET" && url.pathname === "/api/trial/packs") {
     const packs = await listTaskPacks(env.DB, { enabledOnly: true });
     return json({
+      submissionBotUrl: resolveSubmissionBotUrl(env),
       packs: packs.map((pack) => ({
         id: pack.id,
         name: pack.name,

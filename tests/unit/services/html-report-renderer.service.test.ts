@@ -109,6 +109,41 @@ describe("HTML report renderer", () => {
     expect((html.match(/题目 \d+/g) ?? []).length).toBe(12);
   });
 
+  it("treats a personal profile as a personal dossier, not a numeric score report", () => {
+    const personal: ResultProfileSnapshot = {
+      resultType: "identity_card",
+      title: "小明",
+      subtitle: "设计师 · 上海",
+      fields: {
+        age: { id: "age", type: "number", value: 28 },
+        height: { id: "height", type: "number", value: 178 },
+        weight: { id: "weight", type: "number", value: 68 },
+        favorite: { id: "favorite", type: "long_text", value: "拍照、跑步和阅读。" },
+      },
+      stats: [],
+      tags: ["摄影", "跑步", "阅读"],
+      images: {},
+      metadata: {
+        reportKind: "personal_profile",
+        profile: [
+          { label: "姓名 / 昵称", value: "小明" },
+          { label: "职业 / 身份", value: "设计师" },
+          { label: "所在城市 / 坐标", value: "上海" },
+          { label: "最喜欢的事情", value: "拍照、跑步和阅读。" },
+        ],
+        summary: "身份：设计师 · 上海",
+      },
+      schemaVersion: 1,
+    };
+    const view = buildReportViewModel(personal);
+    expect(view.hero.title).toBe("小明");
+    expect(view.hero.subtitle).toBe("设计师 · 上海");
+    expect(view.scores).toHaveLength(0);
+    expect(view.insights[0]?.title).toBe("最喜欢的事情");
+    expect(view.insights[0]?.text).toContain("拍照");
+    expect(view.tags).toEqual(["摄影", "跑步", "阅读"]);
+  });
+
   it("builds a semantic view model from ResultProfile", () => {
     const view = buildReportViewModel(profile);
     expect(view.hero.title).toBe("独立思考型探索者");

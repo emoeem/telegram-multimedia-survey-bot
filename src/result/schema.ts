@@ -68,9 +68,39 @@ export interface ResultProfileDefaults {
   metadata?: Record<string, ResultJsonValue>;
 }
 
+export interface ResultDimensionScoring {
+  questionId: number;
+  values: Record<string, number>;
+  defaultScore?: number;
+}
+
+export interface ResultDimensionDefinition {
+  id: string;
+  label: string;
+  description?: string | null;
+  min?: number;
+  max?: number;
+  unit?: string | null;
+  scoring?: ResultDimensionScoring[];
+}
+
+export interface ResultTypeDefinition {
+  id: string;
+  label: string;
+  title?: string | null;
+  subtitle?: string | null;
+  description?: string | null;
+  tags?: string[];
+  image?: string | null;
+  minScore?: number;
+  maxScore?: number;
+}
+
 export interface ResultRuleSetDefinition {
   schemaVersion: number;
   defaults?: ResultProfileDefaults;
+  dimensions?: ResultDimensionDefinition[];
+  resultTypes?: ResultTypeDefinition[];
   rules: ResultRule[];
 }
 

@@ -11,6 +11,7 @@ import { notifyPostAuthorOfComment } from "../services/plaza-notify.service";
 import { buildTrialShare } from "../services/trial-share.service";
 import { checkRateLimit } from "../services/rate-limit.service";
 import { loadSystemSettings } from "../services/system-settings.service";
+import { resolveSubmissionBotUrl } from "../services/contact-links.service";
 import {
   getPublishedGalleryMedia,
   listProfileGalleryItems,
@@ -66,6 +67,7 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
         offset,
         surveyId: null,
         communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
+        submissionBotUrl: resolveSubmissionBotUrl(env),
       });
     }
     const { items, total } = await listProfileGalleryItems(env.DB, {
@@ -81,6 +83,7 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
       offset,
       surveyId,
       communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
+      submissionBotUrl: resolveSubmissionBotUrl(env),
     });
   }
 

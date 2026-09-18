@@ -37,6 +37,7 @@ export function ImportPage() {
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [templates, setTemplates] = useState<ReportTemplateOption[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const [duplicates, setDuplicates] = useState<Array<{ id: number; title: string; status: string }>>([]);
 
   useEffect(() => {
     api<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates")
@@ -57,6 +58,16 @@ export function ImportPage() {
         ...(templateId ? { reportTemplateId: templateId } : {}),
       });
       setSummary(result);
+      if (result.title?.trim()) {
+        try {
+          const matches = await api<{ items: Array<{ id: number; title: string; status: string }> }>(`/api/admin/surveys?search=${encodeURIComponent(result.title.trim())}&page=1&pageSize=5`);
+          setDuplicates((matches.items ?? []).filter((item) => item.title.trim() === result.title.trim()));
+        } catch {
+          setDuplicates([]);
+        }
+      } else {
+        setDuplicates([]);
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "校验失败");
       if (requestError instanceof ApiError && Array.isArray(requestError.data?.issues)) {
@@ -73,6 +84,7 @@ export function ImportPage() {
     setError(null);
     setIssues([]);
     setSummary(null);
+    setDuplicates([]);
     try {
       const result = await apiSend<{ content: string; title: string }>("POST", "/api/admin/imports/from-url", {
         url: urlInput.trim(),
@@ -118,6 +130,7 @@ export function ImportPage() {
     try {
       setContent(await file.text());
       setSummary(null);
+      setDuplicates([]);
     } catch {
       setError("读取文件失败，请确认是 UTF-8 编码的 JSON 文件");
     }
@@ -177,6 +190,33 @@ export function ImportPage() {
           }}
         />
         <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            className="btn"
+            disabled={!content.trim()}
+            onClick={() => {
+              try {
+                setContent(JSON.stringify(JSON.parse(content), null, 2));
+                setError(null);
+              } catch {
+                setError("当前内容不是有效 JSON，无法格式化");
+              }
+            }}
+          >
+            格式化 JSON
+          </button>
+          <button
+            className="btn"
+            disabled={!content.trim()}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(content);
+              } catch {
+                setError("复制失败，请检查浏览器剪贴板权限");
+              }
+            }}
+          >
+            复制 JSON
+          </button>
           <button className="btn" disabled={validating || !content.trim()} onClick={() => void validate()}>
             {validating ? (
               "校验中…"
@@ -248,7 +288,21 @@ export function ImportPage() {
                   className="mt-3 aspect-[16/7] w-full max-w-md rounded-xl object-cover"
                 />
               ) : null}
-              {summary.reportTemplateId ? (
+              {duplicates.length ? (
+            <div className="mt-4 rounded-lg border border-[var(--color-warning)]/30 bg-[color-mix(in_srgb,var(--color-warning)_8%,var(--surface))] p-3 text-sm">
+              <div className="font-medium text-[var(--color-warning)]">发现同名问卷</div>
+              <p className="mt-1 text-[var(--color-muted)]">创建前建议确认是否为重复导入，避免产生两份相同问卷。</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {duplicates.map((item) => (
+                  <button key={item.id} className="btn btn-sm" onClick={() => navigate(`/surveys/${item.id}`)}>
+                    #{item.id} · {item.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {summary.reportTemplateId ? (
                 <p className="mt-1 text-sm text-[var(--color-primary)]">
                   报告模板：{summary.reportTemplateName ?? summary.reportTemplateId}
                 </p>

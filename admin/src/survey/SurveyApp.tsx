@@ -11,6 +11,7 @@ import {
   MailCheck,
   Palette,
   Paperclip,
+  Send,
   Users,
   Volume2,
   VolumeX,
@@ -111,6 +112,7 @@ function backSurveyPage(): void {
 function SurveyListPage() {
   const [surveys, setSurveys] = useState<SurveyListItem[] | null>(null);
   const [communityGroupUrl, setCommunityGroupUrl] = useState<string | null>(null);
+  const [submissionBotUrl, setSubmissionBotUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -133,6 +135,7 @@ function SurveyListPage() {
         if (cancelled) return;
         setSurveys(data.surveys);
         setCommunityGroupUrl(data.communityGroupUrl);
+        setSubmissionBotUrl(data.submissionBotUrl);
         setError(null);
       })
       .catch((err) => {
@@ -229,6 +232,18 @@ function SurveyListPage() {
               className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
             >
               加入 Telegram 群聊，和大家交流
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          ) : null}
+          {submissionBotUrl ? (
+            <a
+              href={submissionBotUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              <Send className="h-3.5 w-3.5" />
+              投稿机器人 @tougaojiqirbot，投稿给我
               <ArrowRight className="h-4 w-4" />
             </a>
           ) : null}
@@ -1277,6 +1292,7 @@ export function SurveyApp() {
     const completion = screen.survey.theme?.completion;
     const canRestart = completion?.showRestart === true && screen.survey.allowMultiple;
     const communityGroupUrl = screen.survey.communityGroupUrl;
+    const submissionBotUrl = screen.survey.submissionBotUrl;
     const theme: SurveyThemeDto | null = resolvedUserPreset ? { preset: resolvedUserPreset } : screen.survey.theme;
     const vars = themeCssVars(theme);
     const backgroundStyle = themeBackgroundStyle(theme);
@@ -1301,10 +1317,14 @@ export function SurveyApp() {
           </p>
         ) : null}
         <TelegramLinkCard />
-        {communityGroupUrl ? (
+        {communityGroupUrl || submissionBotUrl ? (
           <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
-            <p className="text-sm font-semibold text-[var(--survey-heading)]">欢迎加入我们的 Telegram 群聊</p>
-            <p className="mt-1 text-xs text-[var(--survey-muted)]">和大家交流问卷内容、分享结果、参与讨论</p>
+            <p className="text-sm font-semibold text-[var(--survey-heading)]">
+              {communityGroupUrl ? "欢迎加入我们的 Telegram 群聊" : "在 Telegram 上继续"}
+            </p>
+            <p className="mt-1 text-xs text-[var(--survey-muted)]">
+              {communityGroupUrl ? "和大家交流问卷内容、分享结果、参与讨论" : "打开投稿机器人，投稿或联系我们"}
+            </p>
             <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
               {showProfileLink ? (
                 <a className="btn btn-primary px-6" href="/plaza?tab=profiles">
@@ -1312,24 +1332,42 @@ export function SurveyApp() {
                   查看我的个人资料
                 </a>
               ) : null}
-              <a
-                className={`btn px-6 ${showProfileLink ? "" : "btn-primary"}`}
-                href={communityGroupUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={
-                  showProfileLink
-                    ? {
-                        backgroundColor: "var(--survey-card-bg)",
-                        borderColor: "var(--survey-card-border)",
-                        color: "var(--survey-primary)",
-                      }
-                    : undefined
-                }
-              >
-                <Users className="h-4 w-4" />
-                加入群聊
-              </a>
+              {communityGroupUrl ? (
+                <a
+                  className={`btn px-6 ${showProfileLink ? "" : "btn-primary"}`}
+                  href={communityGroupUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={
+                    showProfileLink
+                      ? {
+                          backgroundColor: "var(--survey-card-bg)",
+                          borderColor: "var(--survey-card-border)",
+                          color: "var(--survey-primary)",
+                        }
+                      : undefined
+                  }
+                >
+                  <Users className="h-4 w-4" />
+                  加入群聊
+                </a>
+              ) : null}
+              {submissionBotUrl ? (
+                <a
+                  className="btn px-6"
+                  href={submissionBotUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    backgroundColor: "var(--survey-card-bg)",
+                    borderColor: "var(--survey-card-border)",
+                    color: "var(--survey-primary)",
+                  }}
+                >
+                  <Send className="h-4 w-4" />
+                  投稿机器人
+                </a>
+              ) : null}
             </div>
           </div>
         ) : showProfileLink ? (

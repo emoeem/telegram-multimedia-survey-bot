@@ -231,6 +231,35 @@ describe("handleAdminApi authentication and permissions", () => {
     expect(await response.json()).toMatchObject({ code: "invalid_login", message: "用户不存在" });
   });
 
+  // A login link is a bearer credential. If it leaks (chat history, screenshot,
+  // forwarding) the first reader could otherwise mint a 7-day admin session.
+  it("burns a browser login token after its first use", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 42, systemRole: "admin" });
+    const token = await createBrowserLoginToken("test-secret", 42);
+    const { db } = makeDb();
+    const store = new Map<string, string>();
+    const cache = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+    } as unknown as KVNamespace;
+    const env = makeEnv(db, { WEBHOOK_SECRET: "test-secret", CACHE: cache });
+
+    const first = await handleAdminApi(
+      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
+      env,
+    );
+    expect(first.status).toBe(302);
+
+    const second = await handleAdminApi(
+      new Request(`https://example.test/api/admin/auth/browser?t=${encodeURIComponent(token)}`),
+      env,
+    );
+    expect(second.status).toBe(401);
+    expect(await second.json()).toMatchObject({ code: "login_already_used" });
+  });
+
   it("rejects requests without any identity with 401", async () => {
     const { db } = makeDb();
     const response = await handleAdminApi(apiRequest("/api/admin/surveys"), makeEnv(db));
@@ -1232,6 +1261,38 @@ describe("handleAdminApi write endpoints", () => {
     expect(body.reportDeliveries).toEqual({ pending: 1, delivering: 0, delivered: 5, failed: 1 });
     expect(body.todayResponses).toBe(2);
     expect(body.recentActions).toHaveLength(1);
+  });
+
+  // The dashboard is whole-table COUNT/GROUP BY work; refreshing it should not
+  // re-read the database every time.
+  it("serves repeat dashboard loads from cache", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const harness = makeDb();
+    harness.setBatchResults([
+      [{ users: 3, surveys: 10, publishedSurveys: 4, responses: 20, todayResponses: 2 }],
+      [],
+      [],
+      [],
+      [],
+    ]);
+    const store = new Map<string, string>();
+    const cache = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+    } as unknown as KVNamespace;
+    const env = makeEnv(harness.db, { CACHE: cache });
+
+    const first = await handleAdminApi(apiRequest("/api/admin/dashboard", { userId: "111" }), env);
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+    expect(harness.db.batch).toHaveBeenCalledTimes(1);
+
+    const second = await handleAdminApi(apiRequest("/api/admin/dashboard", { userId: "111" }), env);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual(firstBody);
+    expect(harness.db.batch).toHaveBeenCalledTimes(1);
   });
 
   it("closes and archives surveys with audit entries", async () => {

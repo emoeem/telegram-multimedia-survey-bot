@@ -74,6 +74,10 @@ export interface BotContext {
   adminIds: number[];
   exportQueue: Queue;
   origin?: string;
+  /** Public link for the submission bot (投稿机器人); renders as a jump button. */
+  submissionBotUrl?: string | null;
+  /** Community invite shown in the welcome text; defaults to the hosted group. */
+  communityGroupUrl?: string | null;
   licenseServerUrl?: string;
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;

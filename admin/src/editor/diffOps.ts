@@ -34,6 +34,7 @@ export interface DiffSurveyMeta {
   anonymous: boolean;
   allowMultipleResponses: boolean;
   maxResponsesPerUser: number;
+  reportTemplateId?: string | null;
 }
 
 export interface EditorSnapshot {

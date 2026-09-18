@@ -109,6 +109,26 @@ export function parseResultRuleSet(input: string): ResultRuleSetDefinition {
   if (!isRecord(parsed) || parsed.schemaVersion !== RESULT_SCHEMA_VERSION || !Array.isArray(parsed.rules)) {
     throw new Error("Unsupported result rule set schema");
   }
+  if (parsed.dimensions !== undefined) {
+    if (!Array.isArray(parsed.dimensions)) throw new Error("Invalid result dimensions");
+    for (const dimension of parsed.dimensions) {
+      if (!isRecord(dimension) || typeof dimension.id !== "string" || typeof dimension.label !== "string") throw new Error("Invalid result dimension");
+      if (dimension.scoring !== undefined) {
+        if (!Array.isArray(dimension.scoring)) throw new Error("Invalid result dimension scoring");
+        for (const scoring of dimension.scoring) {
+          if (!isRecord(scoring) || !Number.isInteger(scoring.questionId) || !isRecord(scoring.values)) throw new Error("Invalid result dimension scoring entry");
+          for (const value of Object.values(scoring.values)) if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Dimension scores must be finite numbers");
+        }
+      }
+    }
+  }
+  if (parsed.resultTypes !== undefined) {
+    if (!Array.isArray(parsed.resultTypes)) throw new Error("Invalid result types");
+    for (const type of parsed.resultTypes) {
+      if (!isRecord(type) || typeof type.id !== "string" || typeof type.label !== "string") throw new Error("Invalid result type");
+      if (type.tags !== undefined && (!Array.isArray(type.tags) || !type.tags.every((tag) => typeof tag === "string"))) throw new Error("Result type tags must be text");
+    }
+  }
   for (const rule of parsed.rules) {
     if (!isRecord(rule) || !isRecord(rule.set)) throw new Error("Invalid result rule");
     if (rule.when !== undefined) assertCondition(rule.when);
@@ -329,6 +349,37 @@ function isStat(value: unknown): value is ResultStat {
   );
 }
 
+function calculateDimensionStats(answers: Answer[], ruleSet: ResultRuleSetDefinition): ResultStat[] {
+  const answerContext = buildAnswerContext(answers);
+  return (ruleSet.dimensions ?? []).map((dimension) => {
+    let value = 0;
+    for (const scoring of dimension.scoring ?? []) {
+      const answer = resolvePath(answerContext, `answers.${scoring.questionId}.value`);
+      const values = Array.isArray(answer) ? answer : [answer];
+      for (const item of values) {
+        const key = typeof item === "string" ? item : item == null ? "" : JSON.stringify(item);
+        value += scoring.values[key] ?? scoring.defaultScore ?? 0;
+      }
+    }
+    const min = Number.isFinite(dimension.min) ? Number(dimension.min) : 0;
+    const max = Number.isFinite(dimension.max) ? Number(dimension.max) : Math.max(min, value);
+    return { id: dimension.id, label: dimension.label, value, max };
+  });
+}
+
+function resolveResultType(profile: ResultProfileSnapshot, ruleSet: ResultRuleSetDefinition): void {
+  const types = ruleSet.resultTypes ?? [];
+  if (!types.length) return;
+  const total = profile.stats.reduce((sum, stat) => sum + stat.value, 0);
+  const matched = types.find((type) => (type.minScore === undefined || total >= type.minScore) && (type.maxScore === undefined || total <= type.maxScore));
+  if (!matched) return;
+  profile.resultType = matched.id;
+  profile.title = matched.title ?? matched.label;
+  profile.subtitle = matched.subtitle ?? matched.description ?? null;
+  if (matched.tags) profile.tags = [...matched.tags];
+  if (matched.image) profile.images.result = matched.image;
+}
+
 function emptyProfile(ruleSet: ResultRuleSetDefinition): ResultProfileSnapshot {
   const defaults = ruleSet.defaults;
   return {
@@ -356,6 +407,9 @@ export function calculateResultProfile(input: ResultEngineInput): ResultProfileS
     throw new Error(`Unsupported result rule schema version: ${input.ruleSet.schemaVersion}`);
   }
   const profile = emptyProfile(input.ruleSet);
+  const dimensionStats = calculateDimensionStats(input.answers, input.ruleSet);
+  if (dimensionStats.length) profile.stats = dimensionStats;
+  resolveResultType(profile, input.ruleSet);
   const context = buildAnswerContext(input.answers);
   for (const rule of input.ruleSet.rules) applyRule(context, profile, rule);
   return profile;

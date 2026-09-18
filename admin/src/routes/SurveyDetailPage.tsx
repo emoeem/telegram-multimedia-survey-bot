@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import ReactECharts from "echarts-for-react";
+import { EChart } from "../components/EChart";
 import { Link, useParams } from "react-router";
 import {
   Archive,
@@ -26,6 +26,21 @@ import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 import { PresetSwatch } from "../survey/theme-ui";
+
+const REPORT_TEMPLATE_META: Record<string, { description: string; icon: string }> = {
+  classic: { description: "均衡呈现摘要、分数与答案，适合大多数个人问卷。", icon: "◌" },
+  transcript: { description: "以完整问答为主，适合需要保留填写内容的记录型问卷。", icon: "≡" },
+  "magazine-dark": { description: "暗色杂志式信息卡片，强调视觉层次与重点结论。", icon: "◈" },
+  data: { description: "偏数据分析，突出统计、指标和结构化结果。", icon: "▦" },
+  identity: { description: "档案式布局，突出身份信息与个人画像。", icon: "◇" },
+  "art-archive": { description: "复古艺术档案风格，更强调图片、标签与收藏感。", icon: "✦" },
+  magazine: { description: "杂志长页叙事，适合图文并重的结果。", icon: "▤" },
+  minimal: { description: "轻量极简，只保留核心结果与关键答案。", icon: "—" },
+  gallery: { description: "影集式展示，适合图片较多的问卷。", icon: "▧" },
+};
+function reportTemplateDescription(template: ReportTemplateOption) {
+  return REPORT_TEMPLATE_META[template.id] ?? { description: template.isCustom ? "自定义报告模板。" : "系统报告模板。", icon: template.isCustom ? "✎" : "◆" };
+}
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -216,7 +231,7 @@ export function SurveyDetailPage() {
               查看详情 →
             </Link>
           </div>
-          <ReactECharts
+          <EChart
             option={histogramOption(analytics.data.completionTimeBuckets, colors.primary, colors.muted) ?? {}}
             style={{ height: 140, width: "100%" }}
             opts={{ renderer: "svg" }}
@@ -313,28 +328,16 @@ export function SurveyDetailPage() {
           管理员可强制删除该问卷，删除将同时移除 {data.responseCount} 份答卷。
         </p>
       ) : null}
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--color-edge-soft)] pt-4">
-        <span className="text-sm text-[var(--text-soft)]">报告模板</span>
-        {templates.data ? (
-          <select
-            className="select"
-            disabled={templateBusy}
-            value={data.report_template_id ?? ""}
-            onChange={(event) => void setReportTemplate(event.target.value)}
-          >
-            <option value="">默认（经典）</option>
-            {templates.data.templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-sm text-[var(--color-muted-soft)]">加载中…</span>
-        )}
-        <span className="text-xs text-[var(--color-muted-soft)]">Web 报告与 PDF 归档共用该模板</span>
+      <div className="mt-4 border-t border-[var(--color-edge-soft)] pt-4">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div><div className="text-sm text-[var(--text-soft)]">报告模板</div><p className="mt-1 text-xs text-[var(--color-muted-soft)]">模板只改变报告的结构、排版与视觉主题，不改变答案和结果计算。</p></div>
+          {templateBusy ? <span className="text-xs text-[var(--color-primary)]">正在切换…</span> : null}
+        </div>
+        {templates.data ? <div className="report-template-picker mt-3">
+          <button type="button" disabled={templateBusy} className={`report-template-option ${!data.report_template_id ? "is-selected" : ""}`} onClick={() => void setReportTemplate("")}><span className="report-template-icon">◌</span><span><strong>默认（经典）</strong><small>使用系统默认报告样式。</small></span></button>
+          {templates.data.templates.map((template) => { const meta = reportTemplateDescription(template); const selected = data.report_template_id === template.id; return <button key={template.id} type="button" disabled={templateBusy} className={`report-template-option ${selected ? "is-selected" : ""}`} onClick={() => void setReportTemplate(template.id)}><span className="report-template-icon">{meta.icon}</span><span><strong>{template.name}</strong><small>{meta.description}</small><em>{template.layout ?? "自动布局"} · {template.theme}</em></span></button>; })}
+        </div> : <span className="text-sm text-[var(--color-muted-soft)]">加载中…</span>}
       </div>
-
       <div className="mt-4 border-t border-[var(--color-edge-soft)] pt-4">
         <div className="text-sm text-[var(--text-soft)]">问卷主题</div>
         <p className="mt-1 text-xs text-[var(--color-muted-soft)]">

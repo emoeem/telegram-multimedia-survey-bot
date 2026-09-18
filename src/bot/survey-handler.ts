@@ -6,14 +6,7 @@ import {
   updateSurveyResponsePolicy,
   updateSurveyStatus,
 } from "../db/repositories/survey.repository";
-import {
-  deleteOptionMedia,
-  deleteQuestionMedia,
-  getAnswerMediaByAnswerId,
-  getMediaAssetById,
-  getOptionMediaByOptionId,
-  getQuestionMediaByQuestionId,
-} from "../db/repositories/media.repository";
+import { deleteOptionMedia, deleteQuestionMedia } from "../db/repositories/media.repository";
 import {
   deleteQuestion,
   deleteQuestionOption,
@@ -41,30 +34,23 @@ import {
   listMySurveys as listOwnedSurveys,
   publishSurvey,
 } from "../services/survey.service";
-import { getCompletionTimeBuckets, getNumericStatistics, getOptionStatistics, getSurveyStatistics } from "../services/statistics.service";
-import { getResponseDetail, listResponses } from "../services/result.service";
-import { enqueueExportJob, type SurveyExportFormat } from "../services/export-queue.service";
+
+import { type SurveyExportFormat } from "../services/export-queue.service";
 import { requestConfiguredResultVisual } from "../services/result-visual.service";
-import { renderResponseReport, type ResponseReport } from "../services/response-report.service";
-import { renderSurveySummaryReport } from "../services/survey-report.service";
-import { exportUnifiedSurveyJson } from "../services/survey-json.service";
+
 import { getSurveyFlow } from "../services/question.service";
 import { completeSession } from "../services/session.service";
 import { ADMIN_LOGIN_TTL_SECONDS, createBrowserLoginToken } from "../services/admin-session.service";
 import { createSurveyParticipantToken, SURVEY_PARTICIPANT_TOKEN_PARAM } from "../services/participant-session.service";
 import { loadSystemSettings } from "../services/system-settings.service";
-import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
-import type { SurveyQuestionView } from "../survey/engine";
+
 import {
   answerCallbackQuery,
-  downloadTelegramFile,
   getBotUsername,
   getChat,
-  sendDocument,
   sendLongMessage,
   sendMessage,
   sendPhoto,
-  sendPhotoAlbum,
   type InlineKeyboardMarkup,
 } from "./telegram";
 import { renderUiScreen } from "./ui";
@@ -91,7 +77,7 @@ import { clearAdminInteractionState, handleAdminCallback, handleAdminMessage } f
 import { decryptSurveyAccessCode } from "../core/security";
 import { REPORT_CHANNEL_CACHE_KEY, reportChannelPendingKey } from "../services/report-delivery.service";
 import { botCanManageChannel, REPORT_CHANNEL_DETECT_REQUEST_KEY } from "./channel-detection";
-import type { MediaAsset, Survey } from "../db/schema";
+import type { Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
 import {
   getCompletionPosterSetting,
@@ -114,6 +100,11 @@ import { clearResultVisualInteractionState } from "./result-visual-admin-handler
 import { clearUiSession } from "../services/ui-session.service";
 import { clearPlazaInteractionState, handlePlazaCallback, handlePlazaMessage } from "./plaza-handler";
 import { listVisualTemplates } from "../db/repositories/visual-template.repository";
+import { sendSurveyExport, sendSurveyJsonExport } from "./survey-report";
+import { handleReportCallbacks } from "./survey-callbacks";
+
+// Kept re-exported for the export worker's dynamic import.
+export { sendResponseReportExport } from "./survey-report";
 
 const botUsernameCacheKey = "telegram-bot-username";
 const publicSurveySearchKeyPrefix = "public-survey-search:";
@@ -208,12 +199,18 @@ async function promptProfileQuestionnaire(
   }
 }
 
-const COMMUNITY_GROUP_URL = "https://t.me/+Zh5pq2dxN5xkYTcx";
+/**
+ * Fallback for deployments that do not set COMMUNITY_GROUP_URL. The web
+ * surfaces read the variable directly, so a configured deployment shows the
+ * same invite in both places.
+ */
+const DEFAULT_COMMUNITY_GROUP_URL = "https://t.me/+Zh5pq2dxN5xkYTcx";
 
 function buildWelcomeText(
   creator: boolean,
   first_name?: string,
   opts?: { returning?: boolean; reset?: boolean },
+  communityGroupUrl?: string | null,
 ): string {
   const greet = first_name ? `${first_name}` : "朋友";
   const header = opts?.returning
@@ -221,9 +218,7 @@ function buildWelcomeText(
       ? `👋 欢迎回来，${greet}！已清理未完成操作，从问卷机器人重新开始～`
       : `👋 欢迎回来，${greet}！欢迎回到问卷机器人～`
     : `👋 你好，${greet}！欢迎来到问卷机器人～`;
-  const creatorExtra = creator
-    ? "\n✨ 作为创作者，你还可以发布自己的问卷、查看填写报告、管理权限。"
-    : "";
+  const creatorExtra = creator ? "\n✨ 作为创作者，你还可以发布自己的问卷、查看填写报告、管理权限。" : "";
   return `${header}
 
 这里不只是填问卷 —— 还有很多有意思的事可以做：
@@ -235,7 +230,7 @@ function buildWelcomeText(
 🎯 挑战任务 —— 趣味打卡，解锁成就${creatorExtra}
 
 💬 欢迎加入社群一起交流：
-${COMMUNITY_GROUP_URL}
+${communityGroupUrl || DEFAULT_COMMUNITY_GROUP_URL}
 
 🔑 问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。`;
 }
@@ -247,6 +242,7 @@ async function buildHomeKeyboard(
   webhookSecret?: string,
   userId?: number,
   from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
+  submissionBotUrl?: string | null,
 ): Promise<InlineKeyboardMarkup> {
   const participantParam =
     webhookSecret && userId
@@ -264,6 +260,11 @@ async function buildHomeKeyboard(
     origin ? [{ text: "🏛 广场", url: `${origin}/plaza` }] : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
     ...(trialUrl ? [[{ text: "🎯 挑战任务", url: trialUrl }]] : []),
   ];
+  // Same jump the web surfaces carry: a direct Telegram deep link, so it works
+  // from inside the chat without leaving for the browser first.
+  if (submissionBotUrl) {
+    rows.push([{ text: "📮 投稿机器人", url: submissionBotUrl }]);
+  }
   if (creator) {
     if (origin) {
       rows.push([{ text: "🌐 网页管理后台", url: `${origin}/admin` }]);
@@ -285,7 +286,7 @@ async function showHomeMenu(
   from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
-  const text = buildWelcomeText(creator, from?.first_name, { returning: creator });
+  const text = buildWelcomeText(creator, from?.first_name, { returning: creator }, ctx.communityGroupUrl);
   await renderScreen({
     botToken: ctx.botToken,
     chatId,
@@ -299,6 +300,7 @@ async function showHomeMenu(
       ctx.webhookSecret,
       userId,
       from,
+      ctx.submissionBotUrl,
     ),
     ...(messageId === undefined ? {} : { messageId }),
   });
@@ -461,18 +463,6 @@ export function cleanSurveyDescription(description: string | null): string | nul
   return compact;
 }
 
-function formatResponseRespondent(
-  respondent: Awaited<ReturnType<typeof listResponses>>[number]["respondent"],
-  anonymous: boolean,
-): string {
-  if (anonymous) return "匿名填写者";
-  if (!respondent) return "未知填写者";
-  const name = [respondent.firstName, respondent.lastName].filter(Boolean).join(" ");
-  if (name) return name;
-  if (respondent.username) return `@${respondent.username}`;
-  return `用户 ${respondent.telegramUserId}`;
-}
-
 async function listManageableSurveys(ctx: BotContext, userId: number): Promise<Survey[]> {
   const user = await getUserByTelegramId(ctx.db, userId);
   if (!user) throw new Error("用户信息不存在，请重新 /start。");
@@ -595,619 +585,6 @@ async function beginSurveyPasswordInput(
       "请直接发送新密码，长度为 4 到 64 个字符；保存后会显示一次，方便复制。",
       "发送 /cancel 取消。",
     ].join("\n"),
-  );
-}
-
-const responseStatusLabels = {
-  in_progress: "填写中",
-  completed: "已完成",
-  abandoned: "已中止",
-  cancelled: "已取消",
-  archived: "已归档",
-} as const;
-
-const chinaDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  timeZone: "Asia/Shanghai",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-function formatChinaDateTime(value: string | null): string {
-  if (!value) return "未完成";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? chinaDateTimeFormatter.format(date) : value;
-}
-
-function formatRespondent(
-  respondent: Awaited<ReturnType<typeof getResponseDetail>> extends infer Detail
-    ? Detail extends { respondent: infer Respondent }
-      ? Respondent
-      : never
-    : never,
-  anonymous: boolean,
-): string {
-  if (anonymous) return "匿名";
-  if (!respondent) return "未知填写者";
-  const name = [respondent.firstName, respondent.lastName].filter(Boolean).join(" ");
-  const parts = [
-    name,
-    respondent.username ? `@${respondent.username}` : "",
-    `Telegram ID: ${respondent.telegramUserId}`,
-  ].filter(Boolean);
-  return parts.join(" / ");
-}
-
-function formatStoredAnswer(
-  answer: Awaited<ReturnType<typeof getResponseDetail>> extends infer Detail
-    ? Detail extends { answers: Array<infer Item> }
-      ? Item | undefined
-      : never
-    : never,
-  question: SurveyQuestionView,
-): string {
-  if (!answer) return "未作答";
-
-  if (answer.jsonValue) {
-    try {
-      const parsed = JSON.parse(answer.jsonValue) as unknown;
-      if (
-        question.type === "matrix" &&
-        parsed &&
-        typeof parsed === "object" &&
-        (parsed as { kind?: unknown }).kind === "matrix"
-      ) {
-        const selections = (parsed as { selections?: unknown }).selections;
-        const columns = matrixColumns(question);
-        if (selections && typeof selections === "object") {
-          const rowLabels = new Map(question.options.map((row) => [String(row.id), row.label]));
-          return Object.entries(selections as Record<string, unknown>)
-            .map(
-              ([rowId, columnIndex]) =>
-                `${rowLabels.get(rowId) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`,
-            )
-            .join("\n");
-        }
-      }
-      if (Array.isArray(parsed)) {
-        const optionLabels = new Map(question.options.map((option) => [option.id, option.label]));
-        const labels = parsed.map((optionId) => optionLabels.get(Number(optionId)) ?? `已删除选项 #${optionId}`);
-        if (labels.length > 0) return labels.join("、");
-      } else if (parsed && typeof parsed === "object" && "mediaAssetId" in parsed) {
-        return "已上传媒体文件";
-      }
-    } catch {
-      return answer.jsonValue;
-    }
-  }
-
-  if (answer.ratingValue !== null) return String(answer.ratingValue);
-  if (answer.numberValue !== null) return String(answer.numberValue);
-  if (answer.booleanValue !== null) return answer.booleanValue ? "是" : "否";
-  if (answer.dateValue !== null) return answer.dateValue;
-  if (answer.timeValue !== null) return answer.timeValue;
-  if (answer.textValue !== null) return answer.textValue || "（空白）";
-  return "未作答";
-}
-
-function describeMediaAsset(asset: MediaAsset): string {
-  const typeLabels: Record<MediaAsset["mediaType"], string> = {
-    photo: "图片",
-    video: "视频",
-    audio: "音频",
-    voice: "语音",
-    animation: "动画",
-    gif: "GIF",
-    sticker: "贴纸",
-    document: "文件",
-  };
-  const details = [typeLabels[asset.mediaType], asset.fileName, asset.duration ? `${asset.duration} 秒` : null].filter(
-    Boolean,
-  );
-  return details.join(" · ");
-}
-
-function mediaAssetIdFromJson(jsonValue: string | null): number | null {
-  if (!jsonValue) return null;
-  try {
-    const parsed = JSON.parse(jsonValue) as unknown;
-    if (parsed && typeof parsed === "object" && "mediaAssetId" in parsed) {
-      const id = Number((parsed as { mediaAssetId?: unknown }).mediaAssetId);
-      return Number.isInteger(id) && id > 0 ? id : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-async function getAnswerMediaAssets(
-  ctx: BotContext,
-  answer: NonNullable<Awaited<ReturnType<typeof getResponseDetail>>>["answers"][number],
-): Promise<MediaAsset[]> {
-  const relations = await getAnswerMediaByAnswerId(ctx.db, answer.id);
-  const ids = relations.map((relation) => relation.mediaAssetId);
-  const fallbackId = mediaAssetIdFromJson(answer.jsonValue);
-  if (fallbackId && !ids.includes(fallbackId)) {
-    ids.push(fallbackId);
-  }
-
-  const assets: MediaAsset[] = [];
-  for (const id of ids) {
-    const asset = await getMediaAssetById(ctx.db, id);
-    if (asset) assets.push(asset);
-  }
-  return assets;
-}
-
-interface ResponseReportBundle {
-  report: ResponseReport;
-  attachments: Array<{
-    itemIndex: number;
-    mediaIndex: number;
-    optionIndex?: number;
-    role: "question" | "answer" | "option";
-    questionNumber: number;
-    asset: MediaAsset;
-  }>;
-}
-
-async function buildResponseReportBundle(
-  ctx: BotContext,
-  surveyId: number,
-  responseId: number,
-  responseNumber: number,
-): Promise<ResponseReportBundle> {
-  const survey = await getSurveyById(ctx.db, surveyId);
-  if (!survey) throw new Error("问卷不存在");
-  const detail = await getResponseDetail(ctx.db, responseId, survey.anonymous);
-  if (!detail || detail.response.surveyId !== surveyId) {
-    throw new Error("答卷不存在或不属于该问卷");
-  }
-
-  const flow = await getSurveyFlow(ctx.db, surveyId);
-  const answersByQuestion = new Map(detail.answers.map((answer) => [answer.questionId, answer]));
-  const attachments: ResponseReportBundle["attachments"] = [];
-  const items: ResponseReport["items"] = [];
-
-  for (let index = 0; index < flow.questions.length; index += 1) {
-    const question = flow.questions[index];
-    if (!question) continue;
-    const answer = answersByQuestion.get(question.id);
-    const answerAssets = answer ? await getAnswerMediaAssets(ctx, answer) : [];
-    const questionRelations = await getQuestionMediaByQuestionId(ctx.db, question.id);
-    const questionAssets = (
-      await Promise.all(questionRelations.map((relation) => getMediaAssetById(ctx.db, relation.mediaAssetId)))
-    ).filter((asset): asset is MediaAsset => asset !== null);
-    const itemIndex = items.length;
-    const questionMedia = questionAssets.map((asset, mediaIndex) => {
-      attachments.push({
-        itemIndex,
-        mediaIndex,
-        role: "question",
-        questionNumber: index + 1,
-        asset,
-      });
-      return {
-        id: asset.id,
-        label: describeMediaAsset(asset),
-        role: "question" as const,
-        width: asset.width,
-        height: asset.height,
-      };
-    });
-    const answerMedia = answerAssets.map((asset, mediaIndex) => {
-      attachments.push({ itemIndex, mediaIndex, role: "answer", questionNumber: index + 1, asset });
-      return {
-        id: asset.id,
-        label: describeMediaAsset(asset),
-        role: "answer" as const,
-        width: asset.width,
-        height: asset.height,
-      };
-    });
-    let parsedAnswer: unknown = null;
-    try {
-      parsedAnswer = answer?.jsonValue ? JSON.parse(answer.jsonValue) : null;
-    } catch {
-      parsedAnswer = null;
-    }
-    const selectedIds = new Set(Array.isArray(parsedAnswer) ? parsedAnswer.map(Number) : []);
-    const matrixSelections =
-      parsedAnswer &&
-      typeof parsedAnswer === "object" &&
-      !Array.isArray(parsedAnswer) &&
-      (parsedAnswer as { kind?: unknown }).kind === "matrix"
-        ? ((parsedAnswer as { selections?: Record<string, number> }).selections ?? {})
-        : undefined;
-    const options = [];
-    for (let optionIndex = 0; optionIndex < question.options.length; optionIndex += 1) {
-      const option = question.options[optionIndex]!;
-      const relations = await getOptionMediaByOptionId(ctx.db, option.id);
-      const optionAssets = (
-        await Promise.all(relations.map((relation) => getMediaAssetById(ctx.db, relation.mediaAssetId)))
-      ).filter((asset): asset is MediaAsset => asset !== null);
-      const optionMedia = optionAssets.map((asset, mediaIndex) => {
-        attachments.push({ itemIndex, optionIndex, mediaIndex, role: "option", questionNumber: index + 1, asset });
-        return {
-          id: asset.id,
-          label: describeMediaAsset(asset),
-          role: "option" as const,
-          width: asset.width,
-          height: asset.height,
-        };
-      });
-      options.push({ id: option.id, label: option.label, selected: selectedIds.has(option.id), media: optionMedia });
-    }
-    const answerText = formatStoredAnswer(answer, question);
-    const rawAnswer = answer
-      ? (answer.textValue ??
-        (answer.numberValue !== null ? String(answer.numberValue) : (answer.dateValue ?? answer.timeValue ?? null)))
-      : null;
-    items.push({
-      questionId: question.id,
-      number: index + 1,
-      type: question.type,
-      title: question.title,
-      description: question.description,
-      required: question.required,
-      answered: Boolean(answer),
-      answerId: answer?.id ?? null,
-      answer: answerText,
-      rawAnswer,
-      options,
-      matrixColumns: question.type === "matrix" ? matrixColumns(question) : undefined,
-      matrixSelections,
-      questionMedia,
-      answerMedia,
-    });
-  }
-
-  return {
-    report: {
-      surveyTitle: survey.title,
-      responseNumber,
-      status: responseStatusLabels[detail.response.status] ?? detail.response.status,
-      respondent: formatRespondent(detail.respondent, survey.anonymous),
-      startedAt: formatChinaDateTime(detail.response.startedAt),
-      completedAt: formatChinaDateTime(detail.response.completedAt),
-      items,
-    },
-    attachments,
-  };
-}
-
-function bytesToBase64(data: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < data.length; offset += chunkSize) {
-    binary += String.fromCharCode(...data.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
-}
-
-async function addReportImages(ctx: BotContext, bundle: ResponseReportBundle): Promise<ResponseReport> {
-  const report: ResponseReport = {
-    ...bundle.report,
-    items: bundle.report.items.map((item) => ({
-      ...item,
-      options: item.options.map((option) => ({ ...option, media: option.media.map((media) => ({ ...media })) })),
-      questionMedia: item.questionMedia.map((media) => ({ ...media })),
-      answerMedia: item.answerMedia.map((media) => ({ ...media })),
-    })),
-  };
-
-  for (const attachment of bundle.attachments) {
-    const asset = attachment.asset;
-    if (asset.mediaType !== "photo") continue;
-    if (!asset.telegramFileId) throw new Error(`答卷图片 #${asset.id} 缺少可下载文件，已中止导出以避免生成不完整文件`);
-    try {
-      const downloaded = await downloadTelegramFile(ctx.botToken, asset.telegramFileId);
-      const item = report.items[attachment.itemIndex];
-      const media =
-        attachment.role === "option"
-          ? item?.options[attachment.optionIndex!]?.media[attachment.mediaIndex]
-          : attachment.role === "question"
-            ? item?.questionMedia[attachment.mediaIndex]
-            : item?.answerMedia[attachment.mediaIndex];
-      if (media) {
-        media.imageDataUrl = `data:${downloaded.contentType};base64,${bytesToBase64(downloaded.data)}`;
-      }
-    } catch (error) {
-      throw new Error(`答卷媒体 #${asset.id} 下载失败，已中止导出以避免生成不完整文件`, { cause: error });
-    }
-  }
-
-  return report;
-}
-
-async function assertResponseAccess(ctx: BotContext, userId: number, surveyId: number): Promise<void> {
-  const user = await getUserByTelegramId(ctx.db, userId);
-  if (!user) throw new Error("用户信息不存在");
-  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-}
-
-async function showSurveyResponses(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  offset: number,
-): Promise<void> {
-  await assertResponseAccess(ctx, userId, surveyId);
-  const survey = await getSurveyById(ctx.db, surveyId);
-  if (!survey) throw new Error("问卷不存在");
-  const stats = await getSurveyStatistics(ctx.db, surveyId);
-  const pageSize = 8;
-  const lastPageOffset = stats.totalCompleted === 0 ? 0 : Math.floor((stats.totalCompleted - 1) / pageSize) * pageSize;
-  const safeOffset = Math.max(0, Math.min(offset, lastPageOffset));
-  const responses = await listResponses(ctx.db, surveyId, pageSize, safeOffset, "completed");
-  const rows: InlineKeyboardMarkup["inline_keyboard"] = responses.map((response, index) => {
-    const responseNumber = stats.totalCompleted - safeOffset - index;
-    return [
-      {
-        text: `第 ${responseNumber} 份 · ${formatResponseRespondent(response.respondent, survey.anonymous)}`,
-        callback_data: `owner:response:${surveyId}:${response.id}:${responseNumber}:${safeOffset}`,
-      },
-    ];
-  });
-
-  const navigation: InlineKeyboardMarkup["inline_keyboard"][number] = [];
-  if (safeOffset > 0) {
-    navigation.push({
-      text: "上一页",
-      callback_data: `owner:responses:${surveyId}:${Math.max(0, safeOffset - pageSize)}`,
-    });
-  }
-  if (safeOffset + responses.length < stats.totalCompleted) {
-    navigation.push({
-      text: "下一页",
-      callback_data: `owner:responses:${surveyId}:${safeOffset + pageSize}`,
-    });
-  }
-  if (navigation.length > 0) rows.push(navigation);
-  rows.push([
-    {
-      text: "返回统计",
-      callback_data: `owner:survey:${surveyId}`,
-    },
-  ]);
-
-  const page = Math.floor(safeOffset / pageSize) + 1;
-  await renderUiScreen(ctx, chatId, userId, {
-    screen: "response_list",
-    text:
-      stats.totalCompleted === 0
-        ? `“${survey.title}”还没有已完成的答卷。`
-        : `“${survey.title}”已完成 ${stats.totalCompleted} 份答卷\n第 ${page} 页`,
-    replyMarkup: { inline_keyboard: rows },
-    state: { surveyId, offset: safeOffset },
-  });
-}
-
-async function showResponseDetail(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  responseId: number,
-  responseNumber: number,
-  returnOffset: number,
-): Promise<void> {
-  await assertResponseAccess(ctx, userId, surveyId);
-  await renderUiScreen(ctx, chatId, userId, {
-    screen: "response_actions",
-    text: `第 ${responseNumber} 份答卷\n请选择操作：`,
-    replyMarkup: {
-      inline_keyboard: [
-        [
-          {
-            text: "🎨 生成分析报告",
-            callback_data: `owner:response_report:${surveyId}:${responseId}`,
-          },
-        ],
-        [
-          {
-            text: "📱 手机版报告",
-            callback_data: `owner:response_export:png:${surveyId}:${responseId}:${responseNumber}:${returnOffset}`,
-          },
-        ],
-        [
-          {
-            text: "💻 高清 PDF",
-            callback_data: `owner:response_export:pdf:${surveyId}:${responseId}:${responseNumber}:${returnOffset}`,
-          },
-        ],
-        [
-          {
-            text: "脱敏 PDF",
-            callback_data: `owner:response_export:pdf_private:${surveyId}:${responseId}:${responseNumber}:${returnOffset}`,
-          },
-        ],
-        [
-          {
-            text: "返回答卷列表",
-            callback_data: `owner:responses:${surveyId}:${returnOffset}`,
-          },
-        ],
-      ],
-    },
-    state: { surveyId, responseId, returnOffset },
-  });
-}
-
-async function showManagedResponseReportTemplates(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  responseId: number,
-): Promise<void> {
-  await assertResponseAccess(ctx, userId, surveyId);
-  const response = await getResponseById(ctx.db, responseId);
-  if (!response || response.surveyId !== surveyId || response.status !== "completed") {
-    throw new Error("找不到可生成报告的已完成答卷");
-  }
-  const templates = (await listVisualTemplates(ctx.db, 100)).filter(
-    (template) =>
-      template.type === "report" &&
-      template.status === "published" &&
-      template.currentVersion &&
-      (template.surveyId === null || template.surveyId === surveyId),
-  );
-  await renderUiScreen(ctx, chatId, userId, {
-    screen: "response_report_templates",
-    text: templates.length
-      ? "🎨 生成分析报告\n\n请选择报告模板。生成结果会发送到当前管理员会话。"
-      : "当前没有适用于该问卷的已发布报告模板。",
-    replyMarkup: {
-      inline_keyboard: [
-        ...templates.map((template) => [
-          {
-            text: `📊 ${template.name}`,
-            callback_data: `owner:response_report_generate:${surveyId}:${responseId}:${template.id}`,
-          },
-        ]),
-        [{ text: "返回答卷列表", callback_data: `owner:responses:${surveyId}:0` }],
-      ],
-    },
-    state: { surveyId, responseId },
-  });
-}
-
-export async function sendResponseReportExport(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  responseId: number,
-  responseNumber: number,
-  format: "pdf" | "png",
-  anonymize = false,
-): Promise<void> {
-  await assertResponseAccess(ctx, userId, surveyId);
-  if (!ctx.browser) {
-    throw new Error("当前部署未启用 PDF/PNG 导出服务");
-  }
-  const bundle = await buildResponseReportBundle(ctx, surveyId, responseId, responseNumber);
-  const report = await addReportImages(ctx, bundle);
-  if (anonymize) {
-    report.respondent = "已隐藏";
-    report.startedAt = "已隐藏";
-  }
-  const artifact = await renderResponseReport(ctx.browser, report, format);
-  if (artifact.format === "png") {
-    for (let offset = 0; offset < artifact.pages.length; offset += 10) {
-      const pages = artifact.pages.slice(offset, offset + 10);
-      if (pages.length === 1) {
-        await sendPhoto(
-          ctx.botToken,
-          chatId,
-          pages[0]!.bytes,
-          `📱 手机版报告 · 第 ${offset + 1}/${artifact.pages.length} 页`,
-        );
-      } else {
-        await sendPhotoAlbum(
-          ctx.botToken,
-          chatId,
-          pages.map((page, index) => ({
-            bytes: page.bytes,
-            ...(index === 0
-              ? { caption: `📱 手机版报告 · 第 ${offset + 1}–${offset + pages.length}/${artifact.pages.length} 页` }
-              : {}),
-          })),
-        );
-      }
-    }
-    if (artifact.targetTotalBytesExceeded) {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `手机版报告共 ${artifact.pages.length} 页、${(artifact.totalBytes / 1024 / 1024).toFixed(1)} MB，内容已全部发送。`,
-      );
-    }
-    return;
-  }
-  const files = [artifact.bytes];
-  for (let index = 0; index < files.length; index += 1) {
-    await sendDocument(
-      ctx.botToken,
-      chatId,
-      `survey-${surveyId}-response-${responseNumber}${anonymize ? "-private" : ""}${files.length > 1 ? `-page-${String(index + 1).padStart(2, "0")}` : ""}.${format}`,
-      files[index]!,
-      "application/pdf",
-    );
-  }
-}
-
-async function sendSurveyExport(
-  ctx: BotContext,
-  chatId: number,
-  userId: number,
-  surveyId: number,
-  format: SurveyExportFormat,
-): Promise<void> {
-  const user = await getUserByTelegramId(ctx.db, userId);
-  if (!user) {
-    throw new Error("用户信息不存在");
-  }
-  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-
-  const jobId = await enqueueExportJob(ctx, {
-    surveyId,
-    userId: user.id,
-    chatId,
-    format,
-  });
-  await sendMessage(ctx.botToken, chatId, `导出任务 #${jobId} 已创建，文件生成后会自动发送。`);
-}
-
-async function sendSurveySummaryPdf(ctx: BotContext, chatId: number, userId: number, surveyId: number): Promise<void> {
-  await assertResponseAccess(ctx, userId, surveyId);
-  if (!ctx.browser) {
-    throw new Error("当前部署未启用 PDF 导出服务");
-  }
-  const [survey, statistics, optionStatistics, numericStatistics, completionTimeBuckets] = await Promise.all([
-    getSurveyById(ctx.db, surveyId),
-    getSurveyStatistics(ctx.db, surveyId),
-    getOptionStatistics(ctx.db, surveyId),
-    getNumericStatistics(ctx.db, surveyId),
-    getCompletionTimeBuckets(ctx.db, surveyId, 14),
-  ]);
-  if (!survey) throw new Error("问卷不存在");
-  const content = await renderSurveySummaryReport(ctx.browser, {
-    surveyTitle: survey.title,
-    surveyId,
-    generatedAt: formatChinaDateTime(new Date().toISOString()),
-    statistics,
-    optionStatistics,
-    numericStatistics,
-    completionTimeBuckets,
-  });
-  await sendDocument(ctx.botToken, chatId, `survey-${surveyId}-statistics.pdf`, content, "application/pdf");
-}
-
-async function sendSurveyJsonExport(ctx: BotContext, chatId: number, userId: number, surveyId: number): Promise<void> {
-  const user = await getUserByTelegramId(ctx.db, userId);
-  if (!user) {
-    throw new Error("用户信息不存在");
-  }
-  await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
-
-  const unified = await exportUnifiedSurveyJson(ctx.db, surveyId);
-  if (!unified) {
-    throw new Error("问卷不存在");
-  }
-  await sendDocument(
-    ctx.botToken,
-    chatId,
-    `survey-${surveyId}.json`,
-    JSON.stringify(unified, null, 2),
-    "application/json",
   );
 }
 
@@ -1687,6 +1064,11 @@ async function showResponseReportTemplates(
     },
   ]);
   rows.push([{ text: "暂不生成", callback_data: `rv:skip:${response.id}` }]);
+  // Finishing a survey is the moment people most often want to submit
+  // something of their own, so the jump sits right here too.
+  if (ctx.submissionBotUrl) {
+    rows.push([{ text: "📮 投稿机器人", url: ctx.submissionBotUrl }]);
+  }
   await renderScreen({
     botToken: ctx.botToken,
     chatId,
@@ -1808,7 +1190,12 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     const creator = await canCreateFromCache();
     await renderUiScreen(ctx, message.chat.id, userId, {
       screen: "home",
-      text: buildWelcomeText(creator, message.from?.first_name, { returning: true, reset: true }),
+      text: buildWelcomeText(
+        creator,
+        message.from?.first_name,
+        { returning: true, reset: true },
+        ctx.communityGroupUrl,
+      ),
       replyMarkup: await buildHomeKeyboard(
         creator,
         Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
@@ -1816,6 +1203,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         ctx.webhookSecret,
         userId,
         message.from,
+        ctx.submissionBotUrl,
       ),
     });
     return;
@@ -1868,6 +1256,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         ctx.webhookSecret,
         userId,
         message.from,
+        ctx.submissionBotUrl,
       ),
     });
     return;
@@ -2018,6 +1407,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
             ctx.webhookSecret,
             userId,
             message.from,
+            ctx.submissionBotUrl,
           ),
         });
         return;
@@ -2052,6 +1442,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         ctx.webhookSecret,
         userId,
         message.from,
+        ctx.submissionBotUrl,
       ),
     });
     return;
@@ -2172,6 +1563,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       ctx.webhookSecret,
       userId,
       message.from,
+      ctx.submissionBotUrl,
     ),
   });
 }
@@ -2514,7 +1906,12 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
         messageId: callback.message.message_id,
         screen: "RESULT_VISUAL_SKIPPED",
         text: "✅ 问卷已完成。结果报告尚未生成。",
-        replyMarkup: { inline_keyboard: [[{ text: "返回主页", callback_data: "home:menu" }]] },
+        replyMarkup: {
+          inline_keyboard: [
+            [{ text: "返回主页", callback_data: "home:menu" }],
+            ...(ctx.submissionBotUrl ? [[{ text: "📮 投稿机器人", url: ctx.submissionBotUrl }]] : []),
+          ],
+        },
       });
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
@@ -2606,6 +2003,10 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
     return;
   }
 
+  if (await handleReportCallbacks(ctx, callback, chatId, userId, dbUserId, data)) {
+    return;
+  }
+
   if (data.startsWith("owner:poster_menu:")) {
     const surveyId = Number(data.slice("owner:poster_menu:".length));
     await answerCallbackQuery(ctx.botToken, callback.id);
@@ -2676,117 +2077,6 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
       await sendPhoto(ctx.botToken, chatId, png, "完成海报预览");
     } catch (error) {
       await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "预览失败");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:response_export:")) {
-    const [, , format, surveyIdRaw, responseIdRaw, responseNumberRaw] = data.split(":");
-    if (format !== "pdf" && format !== "png" && format !== "pdf_private" && format !== "png_private") {
-      await answerCallbackQuery(ctx.botToken, callback.id, "导出格式无效");
-      return;
-    }
-    await answerCallbackQuery(
-      ctx.botToken,
-      callback.id,
-      format.startsWith("png") ? "正在生成手机版报告" : "正在生成高清 PDF",
-    );
-    try {
-      if (format.startsWith("png")) {
-        await assertResponseAccess(ctx, userId, Number(surveyIdRaw));
-        await ctx.exportQueue.send({
-          kind: "response_report",
-          chatId,
-          userId,
-          surveyId: Number(surveyIdRaw),
-          responseId: Number(responseIdRaw),
-          responseNumber: Number(responseNumberRaw),
-          format: "png",
-          anonymize: format.endsWith("_private"),
-        });
-        await sendMessage(ctx.botToken, chatId, "📱 手机版报告已加入后台生成队列，完成后会发送到当前会话。");
-        return;
-      }
-      await sendResponseReportExport(
-        ctx,
-        chatId,
-        userId,
-        Number(surveyIdRaw),
-        Number(responseIdRaw),
-        Number(responseNumberRaw),
-        format.startsWith("pdf") ? "pdf" : "png",
-        format.endsWith("_private"),
-      );
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "答卷导出失败。");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:response_report_generate:")) {
-    const [, , surveyIdRaw, responseIdRaw, templateIdRaw] = data.split(":");
-    const surveyId = Number(surveyIdRaw);
-    const responseId = Number(responseIdRaw);
-    const templateId = Number(templateIdRaw);
-    try {
-      await assertResponseAccess(ctx, userId, surveyId);
-      const response = await getResponseById(ctx.db, responseId);
-      if (!response || response.surveyId !== surveyId || response.status !== "completed") {
-        throw new Error("找不到可生成报告的已完成答卷");
-      }
-      const result = await requestConfiguredResultVisual(ctx.db, ctx.exportQueue, {
-        responseId,
-        chatId,
-        requestedBy: dbUserId,
-        templateId,
-        forceRegenerate: true,
-      });
-      if (!result) throw new Error("所选报告模板不可用");
-      await answerCallbackQuery(ctx.botToken, callback.id, "已开始生成");
-      await sendMessage(ctx.botToken, chatId, "🎨 正在为这份答卷生成分析报告，完成后会发送到当前会话。");
-    } catch (error) {
-      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法生成分析报告");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:response_report:")) {
-    const [, , surveyIdRaw, responseIdRaw] = data.split(":");
-    try {
-      await showManagedResponseReportTemplates(ctx, chatId, userId, Number(surveyIdRaw), Number(responseIdRaw));
-      await answerCallbackQuery(ctx.botToken, callback.id);
-    } catch (error) {
-      await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法打开报告模板");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:responses:")) {
-    const [, , surveyIdRaw, offsetRaw] = data.split(":");
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在读取答卷");
-    try {
-      await showSurveyResponses(ctx, chatId, userId, Number(surveyIdRaw), Number(offsetRaw ?? 0));
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "读取答卷失败。");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:response:")) {
-    const [, , surveyIdRaw, responseIdRaw, responseNumberRaw, returnOffsetRaw] = data.split(":");
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在读取答卷");
-    try {
-      await showResponseDetail(
-        ctx,
-        chatId,
-        userId,
-        Number(surveyIdRaw),
-        Number(responseIdRaw),
-        Number(responseNumberRaw),
-        Number(returnOffsetRaw ?? 0),
-      );
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "读取答卷失败。");
     }
     return;
   }
@@ -2870,44 +2160,6 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
       await sendSurveyPreview(ctx, chatId, userId, surveyId);
     } catch (error) {
       await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "预览失败。");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:export_json:")) {
-    const surveyId = Number(data.slice("owner:export_json:".length));
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在导出 JSON");
-    try {
-      await sendSurveyJsonExport(ctx, chatId, userId, surveyId);
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "导出失败。");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:export:")) {
-    const [, , formatRaw, surveyIdRaw] = data.split(":");
-    const surveyId = Number(surveyIdRaw);
-    if (formatRaw !== "csv" && formatRaw !== "zip") {
-      await answerCallbackQuery(ctx.botToken, callback.id, "导出格式无效");
-      return;
-    }
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在创建导出任务");
-    try {
-      await sendSurveyExport(ctx, chatId, userId, surveyId, formatRaw);
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "导出失败。");
-    }
-    return;
-  }
-
-  if (data.startsWith("owner:export_summary_pdf:")) {
-    const surveyId = Number(data.slice("owner:export_summary_pdf:".length));
-    await answerCallbackQuery(ctx.botToken, callback.id, "正在生成统计 PDF");
-    try {
-      await sendSurveySummaryPdf(ctx, chatId, userId, surveyId);
-    } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "统计 PDF 导出失败。");
     }
     return;
   }

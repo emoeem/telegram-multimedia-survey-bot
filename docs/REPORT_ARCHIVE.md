@@ -1,6 +1,6 @@
 # 报告归档管线（Phase 4-6）
 
-> 状态：已实现，未部署。Web-first 迁移计划 Phase 4 / 5 / 6。
+> 状态：**已实现并已部署（2026-09-18）**。Web-first Phase 4 / 5 / 6 已进入生产运行。
 
 ## 数据流
 
@@ -26,7 +26,7 @@ ReportDeliveryWorker
 - `report_deliveries.delivery_id` UNIQUE：同一答卷只归档一次；worker 已
   delivered 直接跳过
 - 失败：`failReportDelivery(retryable, nextRetryAt)`，退避 1m/5m/15m/1h，
-  最多 5 次；cron（`*/10 * * * *`）驱动到点重入队，超限转 failed 并通知管理员
+  最多 5 次；cron（`*/30 * * * *`）驱动到点重入队，超限转 failed 并通知管理员
 - 配置错误（`REPORT_CHANNEL_ID` / `BROWSER` 缺失）直接 failed，不重试
 
 ## Web Report
@@ -53,5 +53,24 @@ ReportDeliveryWorker
 npm run typecheck && npm test && npm run lint
 ```
 
+> 相关结构重构（admin API 与 bot survey handler 拆分）见
+> [`docs/MODULARIZATION.md`](./MODULARIZATION.md)。
+
 Staging 手工验证：上传图片 → 提交 → 检查频道收到 PDF + 附件 → KV 中
 `media:temp:*` 键消失 → 重复触发不重发 → 断网模拟失败后 cron 重试。
+
+
+## Telegram 归档包 v2
+
+完成答卷的私人频道归档现在统一生成结构化 ZIP（只要 ZIP 不超过发送上限，即使没有图片也会生成），而不是只把 PDF 和附件平铺在频道中。
+
+包内目录：
+- `00-index.json`：归档索引、问卷/答卷/用户信息及文件清单；
+- `01-report/report.pdf`：最终报告；
+- `01-report/result.json`：Participant Report 结果快照；
+- `02-answers/answers.json`：答卷答案原始结构；
+- `03-attachments/`：gallery / 用户附件；
+- `04-profile/`：头像、肖像等个人资料图片；
+- `05-result-assets/`：结果类型或其他报告图片。
+
+文件名带序号与来源 key，便于在频道中下载后直接浏览和归档。ZIP 超过 Telegram 发送安全阈值时，系统仍回退为 PDF + 图片逐项发送。

@@ -6,6 +6,8 @@ const VIEWPORTS = [
   { width: 1440, height: 900 },
 ];
 
+const THEMES = ["light", "dark"] as const;
+
 const PAGES = [
   "/admin/",
   "/admin/login",
@@ -16,6 +18,17 @@ const PAGES = [
   "/admin/surveys/1/responses",
   "/admin/templates",
   "/admin/task-packs",
+  "/admin/analytics",
+  "/admin/audit",
+  "/admin/plaza",
+  "/admin/profile-gallery",
+  "/admin/reports",
+  "/admin/settings",
+  "/admin/licenses",
+  "/admin/users",
+  "/admin/surveys/1/analytics",
+  "/admin/surveys/1/versions",
+  "/admin/surveys/1/responses/10",
 ];
 
 const TELEGRAM_STUB = `
@@ -226,6 +239,56 @@ const API_MOCKS: Record<string, unknown> = {
       pdfMaxMb: 15,
     },
   },
+  "/api/admin/surveys/1/analytics": {
+    survey: { id: 1, title: "示例问卷", status: "published" },
+    overview: { totalStarted: 5, totalCompleted: 4, completionRate: 80 },
+    statusCounts: { completed: 4, in_progress: 1, abandoned: 0, cancelled: 0, archived: 0 },
+    optionStats: [],
+    numericStats: [],
+    completionTimeBuckets: [],
+  },
+  "/api/admin/audit-logs": { items: [], page: 1, total: 0, totalPages: 1 },
+  "/api/admin/plaza/posts": { items: [], total: 0, limit: 20, offset: 0 },
+  "/api/admin/profile-gallery": {
+    items: [],
+    total: 0,
+    publishedTotal: 0,
+    limit: 20,
+    offset: 0,
+    surveyId: null,
+    surveyTitle: "",
+  },
+  "/api/admin/report-deliveries": {
+    items: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+    statusSummary: { pending: 0, delivering: 0, delivered: 0, failed: 0 },
+  },
+  "/api/admin/licenses": { items: [] },
+  "/api/admin/releases": { items: [] },
+  "/api/admin/trials": { items: [] },
+  "/api/admin/users": { items: [], page: 1, pageSize: 20, total: 0, totalPages: 1 },
+  "/api/admin/surveys/1/versions": { versions: [] },
+  "/api/admin/surveys/1/responses/10": {
+    survey: { id: 1, title: "示例问卷", anonymous: false },
+    response: {
+      id: 10,
+      status: "completed",
+      statusLabel: "已完成",
+      version: 1,
+      startedAt: now,
+      completedAt: now,
+      updatedAt: now,
+      respondent: { telegramUserId: 100, username: "demo", firstName: "演示", lastName: null },
+      participantKey: null,
+      submittedAt: now,
+      previousResponseId: null,
+      nextResponseId: null,
+    },
+    answers: [],
+  },
 };
 
 const indexHtml = readFileSync("admin/dist/index.html", "utf-8");
@@ -256,36 +319,40 @@ async function mockAdminApi(page: Page) {
   );
 }
 
-for (const viewport of VIEWPORTS) {
-  for (const path of PAGES) {
-    test(`admin ${path} @ ${viewport.width}x${viewport.height}`, async ({ page }) => {
-      await page.setViewportSize(viewport);
-      await mockAdminApi(page);
+for (const theme of THEMES) {
+  for (const viewport of VIEWPORTS) {
+    for (const path of PAGES) {
+      test(`admin ${path} · ${theme} @ ${viewport.width}x${viewport.height}`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await page.addInitScript((value) => localStorage.setItem("admin_theme", value), theme);
+        await mockAdminApi(page);
 
-      const problems: string[] = [];
-      page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
-      page.on("console", (message) => {
-        if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
+        const problems: string[] = [];
+        page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
+        page.on("console", (message) => {
+          if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
+        });
+
+        await page.goto(path, { waitUntil: "domcontentloaded" });
+        await expect(page.locator("h1").first()).toBeVisible();
+        await page.waitForTimeout(250);
+        if (path === "/admin/surveys/3/editor") {
+          await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
+        }
+        if (path === "/admin/surveys/1/editor") {
+          await expect(page.getByText("上传题面附件")).toBeVisible();
+          await expect(page.getByText("选项媒体").first()).toBeVisible();
+        }
+
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        expect(overflow).toBeLessThanOrEqual(1);
+        expect(problems).toEqual([]);
+
+        await expect(page).toHaveScreenshot(
+          `admin-${path.replaceAll("/", "_")}${theme === "dark" ? "-dark" : ""}-${viewport.width}x${viewport.height}.png`,
+          { maxDiffPixelRatio: 0.002 },
+        );
       });
-
-      await page.goto(path, { waitUntil: "domcontentloaded" });
-      await expect(page.locator("h1").first()).toBeVisible();
-      if (path === "/admin/surveys/3/editor") {
-        await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
-      }
-      if (path === "/admin/surveys/1/editor") {
-        await expect(page.getByText("上传题面附件")).toBeVisible();
-        await expect(page.getByText("选项媒体").first()).toBeVisible();
-      }
-
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-      expect(overflow).toBeLessThanOrEqual(1);
-      expect(problems).toEqual([]);
-
-      await expect(page).toHaveScreenshot(
-        `admin-${path.replaceAll("/", "_")}-${viewport.width}x${viewport.height}.png`,
-        { maxDiffPixelRatio: 0.002 },
-      );
-    });
+    }
   }
 }

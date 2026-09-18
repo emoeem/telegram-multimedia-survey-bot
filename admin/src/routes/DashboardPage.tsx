@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ReactECharts from "echarts-for-react";
+import { EChart } from "../components/EChart";
 import { Link, useNavigate } from "react-router";
 import { Activity, Archive, CheckCircle2, ClipboardList, Clock, FileText, Loader, Package, RefreshCw, Users, XCircle } from "lucide-react";
 import { donutOption } from "../charts";
@@ -137,7 +137,7 @@ export function DashboardPage() {
           </div>
           <div className="rounded-xl border border-[var(--color-edge)] p-2">
             {deliveryTotal > 0 ? (
-              <ReactECharts option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
+              <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
             ) : (
               <EmptyPanel text="暂无报告" />
             )}

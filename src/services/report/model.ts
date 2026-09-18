@@ -54,7 +54,7 @@ export interface ReportViewModel {
   summary: string;
   profile: ReportAnswerItem[];
   contentStats: { answerCount: number; imageCount: number; longTextCount: number; scoreCount: number };
-  meta: { surveyTitle?: string; submittedAt?: string; reportId?: string; layout?: ReportLayout; theme?: ReportTheme };
+  meta: { surveyTitle?: string; submittedAt?: string; reportId?: string; layout?: ReportLayout; theme?: ReportTheme; reportKind?: string; reportLabel?: string; answerSectionTitle?: string; summaryTitle?: string };
 }
 
 export type ReportReadingWidth = "compact" | "standard" | "wide" | "full";

@@ -22,20 +22,40 @@ import { fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
 
-const NAV_ITEMS = [
-  { to: "/", icon: LayoutDashboard, label: "总览" },
-  { to: "/surveys", icon: ClipboardList, label: "问卷" },
-  { to: "/responses", icon: ListChecks, label: "答卷动态" },
-  { to: "/imports", icon: FileUp, label: "导入" },
-  { to: "/users", icon: Users, label: "用户" },
-  { to: "/reports", icon: Package, label: "报告" },
-  { to: "/templates", icon: Palette, label: "模板" },
-  { to: "/plaza", icon: Sprout, label: "树洞" },
-  { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
-  { to: "/task-packs", icon: Target, label: "挑战任务" },
-  { to: "/audit", icon: ScrollText, label: "审计" },
-  { to: "/licenses", icon: KeyRound, label: "授权" },
-  { to: "/settings", icon: Settings, label: "设置" },
+const NAV_GROUPS = [
+  {
+    label: "工作台",
+    items: [
+      { to: "/", icon: LayoutDashboard, label: "总览" },
+      { to: "/surveys", icon: ClipboardList, label: "问卷" },
+      { to: "/responses", icon: ListChecks, label: "答卷动态" },
+      { to: "/imports", icon: FileUp, label: "导入" },
+    ],
+  },
+  {
+    label: "内容",
+    items: [
+      { to: "/users", icon: Users, label: "用户" },
+      { to: "/reports", icon: Package, label: "报告" },
+      { to: "/templates", icon: Palette, label: "模板" },
+    ],
+  },
+  {
+    label: "社区",
+    items: [
+      { to: "/plaza", icon: Sprout, label: "树洞" },
+      { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
+      { to: "/task-packs", icon: Target, label: "挑战任务" },
+    ],
+  },
+  {
+    label: "系统",
+    items: [
+      { to: "/audit", icon: ScrollText, label: "审计" },
+      { to: "/licenses", icon: KeyRound, label: "授权" },
+      { to: "/settings", icon: Settings, label: "设置" },
+    ],
+  },
 ];
 
 function BrandMark() {
@@ -97,7 +117,12 @@ export function Layout() {
   }, [location.pathname]);
 
   const showTestBanner = environment === "development" && !getTelegramInitData();
-  const browserMode = !getTelegramInitData() && !location.pathname.startsWith("/login");
+  // The admin app is mounted under /admin, so the login route is
+  // "/admin/login" — checking "/login" showed this banner on the login page
+  // itself, telling people to go where they already were.
+  const browserMode = !getTelegramInitData() && !location.pathname.endsWith("/login");
+  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
+  const isNestedSurveyPage = /^\/surveys\/\d+/.test(normalizedPath);
   const goBack = () => {
     const path = location.pathname;
     if (/^\/surveys\/\d+\/responses\/\d+$/.test(path)) {
@@ -127,7 +152,7 @@ export function Layout() {
     <div className="flex min-h-dvh flex-col bg-page">
       <TestBanner visible={showTestBanner} />
       {browserMode ? (
-        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-4 py-2 text-center text-xs text-[var(--color-primary)]">
+        <div className="browser-mode-banner flex flex-wrap items-center justify-center gap-2 border-b border-[color-mix(in_srgb,var(--color-primary)_20%,var(--surface))] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-4 py-2 text-center text-xs text-[var(--color-primary)]">
           <span>浏览器访问模式：在 Telegram 发送 /admin_login 获取电脑登录链接</span>
           <Link to="/login" className="link">
             去登录
@@ -144,31 +169,38 @@ export function Layout() {
             <BrandMark />
             <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
           </div>
-          <nav className="flex flex-1 flex-col gap-0.5">
-            {NAV_ITEMS.map((item) => {
-              const active =
-                item.to === "/"
-                  ? location.pathname === "/"
-                  : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
-                    active
-                      ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
-                      : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
-                  }`}
-                >
-                  {active ? (
-                    <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[var(--color-primary)]" />
-                  ) : null}
-                  <Icon className="h-[18px] w-[18px] shrink-0" />
-                  <span className="sm:hidden lg:inline">{item.label}</span>
-                </Link>
-              );
-            })}
+          <nav className="admin-nav flex flex-1 flex-col gap-3">
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label} className="admin-nav-group">
+                <p className="admin-nav-label">{group.label}</p>
+                <div className="flex flex-col gap-0.5">
+                  {group.items.map((item) => {
+                    const active =
+                      item.to === "/"
+                        ? location.pathname === "/"
+                        : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
+                          active
+                            ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
+                            : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
+                        }`}
+                      >
+                        {active ? (
+                          <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[var(--color-primary)]" />
+                        ) : null}
+                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                        <span className="sm:hidden lg:inline">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
           <div className="mt-4 border-t border-white/5 pt-3">
             <p className="mb-2 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 sm:hidden lg:block">
@@ -220,11 +252,21 @@ export function Layout() {
         ) : null}
         <main className="mx-auto w-full min-w-0 max-w-[1320px] flex-1 p-4 sm:p-8">
           <header className="mb-7 flex items-center gap-3">
-            <button aria-label="返回上一页" title="返回上一页" onClick={goBack} className="btn btn-icon shrink-0">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <button aria-label="打开菜单" className="btn btn-icon sm:hidden shrink-0" onClick={() => setDrawer(!drawer)}>
+            <button
+              aria-label="打开菜单"
+              className="btn btn-icon sm:hidden shrink-0"
+              onClick={() => setDrawer(!drawer)}
+            >
               <Menu className="h-5 w-5" />
+            </button>
+            <button
+              aria-label="返回上一页"
+              title="返回上一页"
+              onClick={goBack}
+              className="btn btn-icon shrink-0"
+              style={{ display: isNestedSurveyPage ? undefined : "none" }}
+            >
+              <ArrowLeft className="h-5 w-5" />
             </button>
             <h1 className="m-0 text-xl font-bold tracking-tight sm:text-[26px] min-w-0 flex-1 truncate">{title}</h1>
           </header>

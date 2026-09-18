@@ -12,6 +12,7 @@ import { useSurveyEditor, type SurveyMetaState } from "../editor/useSurveyEditor
 import { buildEditorPreviewFlow } from "../editor/previewModel";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime, matrixColumns } from "../format";
+import { ResultRulesPanel } from "../components/editor/ResultRulesPanel";
 
 // Phase 2.4: field edits commit on blur into a pending-op
 // queue; 保存 flushes it sequentially (temp ids resolve to server ids).
@@ -389,12 +390,17 @@ function EditableEditor({ data }: { data: EditorData }) {
             onAddPage={() => void addPage()}
             onDeletePage={(pageId) => void deletePage(pageId)}
             onMoveQuestion={moveQuestion}
+            onBatchRequired={(questionIds, required) => {
+              for (const questionId of questionIds) editor.queueQuestionPatch(questionId, { required }, required ? "批量设为必答" : "批量设为选填");
+            }}
           />
         </aside>
 
         <main className="editor-canvas editor-col">
           {selection.kind === "settings" ? (
             <SurveySettingsPanel
+              surveyId={survey.id}
+              questions={editor.questions}
               meta={editor.surveyMeta}
               disabled={editingDisabled}
               onUpdate={(patch) => editor.updateSurveyMeta(patch)}
@@ -559,10 +565,14 @@ function EditableTitle({
 }
 
 function SurveySettingsPanel({
+  surveyId,
+  questions,
   meta,
   disabled,
   onUpdate,
 }: {
+  surveyId: number;
+  questions: Array<{ id: number; type: string; title: string; options: Array<{ id: number; label: string }> }>;
   meta: SurveyMetaState;
   disabled: boolean;
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
@@ -601,6 +611,14 @@ function SurveySettingsPanel({
           }}
         />
       </label>
+
+      <ReportTemplateSetting
+        value={meta.reportTemplateId}
+        disabled={disabled}
+        onChange={(value) => onUpdate({ reportTemplateId: value })}
+      />
+
+      <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
 
       <div className="settings-check">
         <div>
@@ -654,6 +672,37 @@ function SurveySettingsPanel({
         </label>
       ) : null}
     </div>
+  );
+}
+
+function ReportTemplateSetting({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string | null;
+  disabled: boolean;
+  onChange: (value: string | null) => void;
+}) {
+  const { data } = useApi<{ templates: Array<{ id: string; name: string; isCustom?: boolean }> }>("/api/admin/report-templates");
+  return (
+    <label className="settings-field">
+      <span className="q-label">填写后报告模板</span>
+      <select
+        className="settings-input"
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value || null)}
+      >
+        <option value="">平台默认</option>
+        {(data?.templates ?? []).map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.name}{template.isCustom ? " · 自定义" : ""}
+          </option>
+        ))}
+      </select>
+      <span className="q-help">发布后，填写者看到的个人结果报告会使用这里指定的模板。</span>
+    </label>
   );
 }
 

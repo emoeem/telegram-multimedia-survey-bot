@@ -124,7 +124,7 @@ async function trialRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function fetchTrialPacks(): Promise<{ packs: TrialPack[] }> {
+export function fetchTrialPacks(): Promise<{ packs: TrialPack[]; submissionBotUrl: string | null }> {
   return trialRequest("/api/trial/packs");
 }
 

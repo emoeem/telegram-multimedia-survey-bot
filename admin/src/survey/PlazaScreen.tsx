@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, ChevronDown, Palette, Pencil, Users, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Palette, Pencil, Send, Users, X } from "lucide-react";
 import {
   loadGlobalPreset,
   saveGlobalPreset,
@@ -280,6 +280,7 @@ function useProfileFeed(reloadKey: number) {
   const [error, setError] = useState<string | null>(null);
   const [surveyId, setSurveyId] = useState<number | null>(null);
   const [communityGroupUrl, setCommunityGroupUrl] = useState<string | null>(null);
+  const [submissionBotUrl, setSubmissionBotUrl] = useState<string | null>(null);
 
   const load = useCallback(async (offset: number, append: boolean) => {
     setLoading(true);
@@ -290,6 +291,7 @@ function useProfileFeed(reloadKey: number) {
       setTotal(response.total);
       setSurveyId(response.surveyId);
       setCommunityGroupUrl(response.communityGroupUrl);
+      setSubmissionBotUrl(response.submissionBotUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -308,6 +310,7 @@ function useProfileFeed(reloadKey: number) {
     error,
     surveyId,
     communityGroupUrl,
+    submissionBotUrl,
     loadMore: () => {
       if (!loading && items.length < total) void load(items.length, true);
     },
@@ -428,6 +431,25 @@ export function PlazaScreen() {
                 <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">加入 Telegram 群聊</span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
                   认识更多参与者，交流个人资料卡和问卷内容
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+            </a>
+          ) : null}
+          {profiles.submissionBotUrl ? (
+            <a
+              href={profiles.submissionBotUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-3 flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+                <Send className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                  通过 @tougaojiqirbot 投稿你的内容
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />

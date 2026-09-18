@@ -42,6 +42,7 @@ function sectionTitle(kind: ReportSectionKind, section: ReportTemplateSection): 
 }
 
 function renderHero(view: ReportViewModel, section: ReportTemplateSection): string {
+  const reportLabel = view.meta.reportLabel ?? "个人结果";
   const avatar = view.hero.avatar
     ? `<img class="avatar" src="${escapeHtml(view.hero.avatar)}" alt="" loading="lazy" onerror="this.remove()" />`
     : "";
@@ -52,7 +53,7 @@ function renderHero(view: ReportViewModel, section: ReportTemplateSection): stri
     return `<header class="hero profile-hero">
       ${avatar}
       <div class="profile-meta">
-        <h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
+        <div class="report-kind">${escapeHtml(reportLabel)}</div><div class="report-kind">${escapeHtml(reportLabel)}</div><h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
         ${view.hero.subtitle ? `<p class="hero-sub">${escapeHtml(view.hero.subtitle)}</p>` : ""}
         ${tags}
       </div>
@@ -60,7 +61,7 @@ function renderHero(view: ReportViewModel, section: ReportTemplateSection): stri
   }
   return `<header class="hero">
     ${avatar}
-    <h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
+    <div class="report-kind">${escapeHtml(reportLabel)}</div><h1 class="hero-title">${escapeHtml(view.hero.title)}</h1>
     ${view.hero.subtitle ? `<p class="hero-sub">${escapeHtml(view.hero.subtitle)}</p>` : ""}
     ${tags}
   </header>`;
@@ -82,7 +83,8 @@ function renderCover(view: ReportViewModel): string {
 
 function renderSummary(view: ReportViewModel): string {
   if (!view.summary.trim()) return "";
-  return `<section class="report-section summary"><h2>总结</h2><p>${escapeHtml(view.summary)}</p></section>`;
+  const title = view.meta.summaryTitle ?? "结果概览";
+  return `<section class="report-section summary"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(view.summary)}</p></section>`;
 }
 
 function renderScores(view: ReportViewModel, section: ReportTemplateSection): string {
@@ -165,8 +167,9 @@ function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): s
     }
     return `<span>${escapeHtml(item.value)}</span>`;
   };
+  const heading = view.meta.answerSectionTitle ?? "我的回答";
   if (section.presentation === "list") {
-    return `<ul class="checklist">
+    return `<ul class="checklist" data-section-title="${escapeHtml(heading)}">
       ${view.profile
         .map(
           (item) => `
@@ -175,7 +178,7 @@ function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): s
         .join("")}
     </ul>`;
   }
-  return `<section class="report-section"><h2>回答明细</h2>
+  return `<section class="report-section"><h2>${escapeHtml(heading)}</h2>
     <dl class="answer-list">
       ${view.profile
         .map(
@@ -261,7 +264,7 @@ function baseCss(): string {
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
 .wrap{max-width:760px;margin:0 auto;padding:0 20px 56px}
 header.hero{padding:44px 0 26px;display:grid;gap:16px;border-bottom:1px solid var(--border)}
-.hero-title{margin:0;font-size:32px;line-height:1.22;letter-spacing:-.02em}
+.report-kind{display:inline-flex;align-items:center;width:max-content;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:650;letter-spacing:.04em}.hero-title{margin:0;font-size:32px;line-height:1.22;letter-spacing:-.02em}
 .hero-sub{margin:0;color:var(--muted);white-space:pre-wrap}
 .avatar{width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);box-shadow:0 10px 28px -14px var(--accent)}
 .tags{display:flex;flex-wrap:wrap;gap:8px}

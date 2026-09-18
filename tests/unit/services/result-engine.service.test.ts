@@ -87,6 +87,28 @@ describe("result engine", () => {
     expect(profile.fields["scene_type"]).toEqual({ id: "scene_type", type: "text", value: "urban_noir" });
   });
 
+  it("calculates configured dimensions and maps total score to a result type", () => {
+    const profile = calculateResultProfile({
+      answers: [answer({ questionId: 1, textValue: "A" }), answer({ questionId: 2, textValue: "B" })],
+      ruleSet: {
+        schemaVersion: 1,
+        dimensions: [
+          { id: "logic", label: "逻辑性", min: 0, max: 10, scoring: [{ questionId: 1, values: { A: 7, B: 2 } }] },
+          { id: "openness", label: "开放性", min: 0, max: 10, scoring: [{ questionId: 2, values: { A: 1, B: 5 } }] },
+        ],
+        resultTypes: [{ id: "explorer", label: "探索者", title: "探索型", minScore: 12, maxScore: 20, tags: ["探索"] }],
+        rules: [],
+      },
+    });
+    expect(profile.stats).toEqual([
+      { id: "logic", label: "逻辑性", value: 7, max: 10 },
+      { id: "openness", label: "开放性", value: 5, max: 10 },
+    ]);
+    expect(profile.resultType).toBe("explorer");
+    expect(profile.title).toBe("探索型");
+    expect(profile.tags).toEqual(["探索"]);
+  });
+
   it("serializes a stable profile snapshot for persistence", () => {
     const serialized = serializeResultProfile(
       calculateResultProfile({

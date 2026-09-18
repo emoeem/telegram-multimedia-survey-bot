@@ -66,6 +66,7 @@ interface FeedResponse<T> {
 export interface PlazaProfilesData extends FeedResponse<PlazaProfileItem> {
   surveyId: number | null;
   communityGroupUrl: string | null;
+  submissionBotUrl: string | null;
 }
 
 async function plazaRequest<T>(path: string, init?: RequestInit): Promise<T> {

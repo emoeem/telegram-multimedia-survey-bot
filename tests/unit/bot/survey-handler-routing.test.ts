@@ -161,6 +161,42 @@ describe("survey message routing", () => {
     expect(body.text).toContain("t.me/+Zh5pq2dxN5xkYTcx");
   });
 
+  it("offers the submission bot as a jump button on the home screen", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      systemRole: "participant",
+    });
+    mocks.getActiveResponseByUser.mockResolvedValue(null);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: { prepare: vi.fn(() => ({ bind: vi.fn(() => ({ run: vi.fn() })) })) } as unknown as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+        submissionBotUrl: "https://t.me/tougaojiqirbot",
+      },
+      {
+        message_id: 9,
+        chat: { id: 10 },
+        from: { id: 88 },
+        text: "/start",
+      },
+    );
+
+    const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMessage"));
+    expect(sendCall).toBeDefined();
+    const body = JSON.parse(String((sendCall?.[1] as RequestInit).body));
+    const keyboard = JSON.stringify(body.reply_markup);
+    expect(keyboard).toContain("投稿机器人");
+    expect(keyboard).toContain("https://t.me/tougaojiqirbot");
+  });
+
   it("links an anonymous participant key to the Telegram user via /start", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,

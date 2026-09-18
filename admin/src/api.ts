@@ -40,7 +40,9 @@ async function throwApiError(response: Response): Promise<never> {
     window.location.assign("/admin/login");
   }
   const data = await parseResponse(response);
-  throw new ApiError(response.status, (data.message as string) || "请求失败", data);
+  // Surface the status when the body is not our JSON: a Worker/edge error page
+  // carries no message, and "请求失败" alone gives nobody anything to act on.
+  throw new ApiError(response.status, (data.message as string) || `请求失败（HTTP ${response.status}）`, data);
 }
 
 export async function api<T>(path: string): Promise<T> {
@@ -395,6 +397,7 @@ export interface EditorData {
     responseCount: number;
     questionCount: number;
     editable: boolean;
+    reportTemplateId: string | null;
     theme?: { preset?: string } | null;
   };
   questions: EditorQuestion[];

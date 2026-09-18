@@ -215,9 +215,9 @@ describe("report delivery worker", () => {
     expect(mocks.sendDocument).toHaveBeenCalledWith(
       "token",
       -1009999999999,
-      "report-42.pdf",
+      "report-42.zip",
       expect.any(Uint8Array),
-      "application/pdf",
+      "application/zip",
       expect.any(String),
       "HTML",
     );

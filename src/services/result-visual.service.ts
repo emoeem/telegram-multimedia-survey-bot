@@ -18,6 +18,7 @@ import { enqueueResultVisualJob, type ResultVisualEnqueueResult } from "./result
 import { normalizeAnswer } from "./answer-value-adapter.service";
 import type { ResultProfileSnapshot } from "../result/schema";
 import { getResponseSurveySnapshot } from "./survey-version.service";
+import { classifyParticipantReport } from "./participant-report.service";
 
 export interface PreparedResultProfile {
   profile: ResultProfile;
@@ -62,6 +63,7 @@ function fallbackResultProfile(
   questions: Array<Pick<Awaited<ReturnType<typeof listQuestionsBySurvey>>[number], "id" | "type" | "title">>,
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>,
   optionRows: Awaited<ReturnType<typeof listOptionsForQuestions>>,
+  hasExplicitResultRules = false,
 ): ResultProfileSnapshot {
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer]));
   const optionLabelById = new Map(optionRows.map((option) => [option.id, option.label]));
@@ -73,7 +75,7 @@ function fallbackResultProfile(
   }
   const fields: ResultProfileSnapshot["fields"] = {};
   const profile: Array<{ label: string; value: string }> = [];
-  const stats: ResultProfileSnapshot["stats"] = [];
+  const ratingStats: ResultProfileSnapshot["stats"] = [];
   const images: ResultProfileSnapshot["images"] = {};
   const gallery: Array<{ mediaAssetId: number }> = [];
   const summary: string[] = [];
@@ -111,12 +113,14 @@ function fallbackResultProfile(
     if (Array.isArray(normalized.value)) {
       for (const item of normalized.value) if (typeof item === "string" && item.trim()) tags.add(item.trim());
     }
-    if (typeof normalized.value === "number" && Number.isFinite(normalized.value)) {
-      stats.push({
+    // Numeric profile fields such as age/height/weight are facts, not scores.
+    // Only an explicit rating question contributes to the score section.
+    if (question.type === "rating" && typeof normalized.value === "number" && Number.isFinite(normalized.value)) {
+      ratingStats.push({
         id: fieldId,
         label: question.title,
         value: normalized.value,
-        max: question.type === "rating" ? 10 : Math.max(100, normalized.value),
+        max: 10,
       });
     }
     if (normalized.media.length > 0) {
@@ -130,19 +134,43 @@ function fallbackResultProfile(
     }
   }
 
+  const classification = classifyParticipantReport(questions, hasExplicitResultRules);
+  const isPersonalProfile = classification.kind === "personal_profile";
+  const nameQuestion = questions.find((question) => /姓名|昵称/.test(question.title));
+  const identityQuestion = questions.find((question) => /职业|身份/.test(question.title));
+  const locationQuestion = questions.find((question) => /所在城市|城市/.test(question.title));
+  const answerValueText = (question?: (typeof questions)[number]) => {
+    if (!question) return "";
+    const answer = answerMap.get(question.id);
+    if (!answer) return "";
+    return displayAnswer(normalizeAnswer(answer, question.type).value, question.type, optionLabelById);
+  };
+  const profileTitle = answerValueText(nameQuestion);
+  const profileSubtitle = [answerValueText(identityQuestion), answerValueText(locationQuestion)].filter(Boolean).join(" · ");
+
   return {
-    resultType: "survey_result",
-    title: surveyTitle,
-    subtitle: "问卷完成 · 自动整理结果",
+    resultType: isPersonalProfile ? "identity_card" : classification.kind,
+    title: isPersonalProfile && profileTitle ? profileTitle : classification.resultTitle,
+    subtitle: isPersonalProfile ? profileSubtitle || "个人档案 · 本次填写结果" : `${surveyTitle} · ${classification.label}`,
     fields,
-    stats,
+    stats: ratingStats,
     tags: [...tags],
     images,
     metadata: {
       profile,
       gallery,
       status: [],
-      summary: summary.join("\n\n"),
+      summary: isPersonalProfile
+        ? [
+            profileSubtitle ? `身份：${profileSubtitle}` : "",
+            tags.size ? `兴趣与标签：${[...tags].slice(0, 8).join("、")}` : "",
+          ].filter(Boolean).join("\n\n")
+        : summary.join("\n\n"),
+      reportKind: classification.kind,
+      reportLabel: classification.label,
+      reportConfidence: classification.confidence,
+      answerSectionTitle: classification.answerSectionTitle,
+      summaryTitle: classification.summaryTitle,
     },
     schemaVersion: 1,
   };
@@ -188,7 +216,7 @@ export async function prepareResultProfileForResponse(
     db,
     questions.map((question) => question.id),
   );
-  const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionRows);
+  const fallback = fallbackResultProfile(surveyTitle, questions, answers, optionRows, Boolean(ruleSetRecord));
   const snapshot = ruleSetRecord
     ? (() => {
         const calculated = calculateResultProfile({ answers, ruleSet: parseResultRuleSet(ruleSetRecord.rulesJson) });

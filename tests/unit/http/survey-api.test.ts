@@ -228,6 +228,83 @@ describe("web survey API", () => {
       questionCount: 3,
       accessCodeRequired: false,
     });
+    // The submission-bot entry rides along with the list, next to the group
+    // invite the pages already show.
+    expect((body as { submissionBotUrl?: string | null }).submissionBotUrl).toBe("https://t.me/tougaojiqirbot");
+  });
+
+  // The list costs one question-count subquery per published survey — about
+  // 15,000 rows read at 200 surveys × 74 questions — out of a free-tier budget
+  // of 5,000,000 rows/day for the whole account. A repeat load has to come
+  // from KV rather than D1.
+  it("serves repeat survey-list loads from the KV cache", async () => {
+    const db = makeDb();
+    const store = new Map<string, string>();
+    const cache = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+    } as unknown as KVNamespace;
+    const env = makeEnv(db, { CACHE: cache });
+    const prepareCalls = (db.prepare as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const listQueries = () => prepareCalls.filter((call) => String(call[0]).includes("FROM surveys s")).length;
+
+    const first = await handleSurveyApiRequest(
+      request("/api/surveys"),
+      env,
+      new URL("https://worker.test/api/surveys"),
+    );
+    expect(first?.status).toBe(200);
+    const firstBody = await first?.json();
+    expect(listQueries()).toBe(1);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+
+    const second = await handleSurveyApiRequest(
+      request("/api/surveys"),
+      env,
+      new URL("https://worker.test/api/surveys"),
+    );
+    expect(second?.status).toBe(200);
+    expect(await second?.json()).toEqual(firstBody);
+    expect(listQueries()).toBe(1);
+  });
+
+  // The definition is the other hot, visitor-independent read: questions,
+  // options, media and pages for the same survey version are identical for
+  // everyone, so a repeat load should not re-read them.
+  it("serves repeat survey-definition loads from the KV cache", async () => {
+    const db = makeDb();
+    const store = new Map<string, string>();
+    const cache = {
+      get: vi.fn(async (key: string) => store.get(key) ?? null),
+      put: vi.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+    } as unknown as KVNamespace;
+    const env = makeEnv(db, { CACHE: cache });
+    const prepareCalls = (db.prepare as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const questionQueries = () =>
+      prepareCalls.filter((call) => String(call[0]).includes("FROM survey_questions WHERE survey_id")).length;
+
+    const first = await handleSurveyApiRequest(
+      request("/api/survey/1"),
+      env,
+      new URL("https://worker.test/api/survey/1"),
+    );
+    expect(first?.status).toBe(200);
+    const firstBody = await first?.json();
+    expect(questionQueries()).toBe(1);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+
+    const second = await handleSurveyApiRequest(
+      request("/api/survey/1"),
+      env,
+      new URL("https://worker.test/api/survey/1"),
+    );
+    expect(second?.status).toBe(200);
+    expect(await second?.json()).toEqual(firstBody);
+    expect(questionQueries()).toBe(1);
   });
 
   it("serves the published survey definition for the renderer", async () => {
@@ -248,6 +325,7 @@ describe("web survey API", () => {
     expect(body.pages).toEqual([{ id: 5, title: "第一页", description: null, order: 0 }]);
     expect(body.questions).toHaveLength(1);
     expect(body.questions[0]?.type).toBe("multiple");
+    expect((body as { submissionBotUrl?: string | null }).submissionBotUrl).toBe("https://t.me/tougaojiqirbot");
     expect(body.questions[0]?.options).toHaveLength(2);
     expect(body.questions[0]?.validation).toEqual({ min_selections: 1 });
   });

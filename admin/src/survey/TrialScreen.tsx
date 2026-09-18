@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Palette, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Palette, Send, X } from "lucide-react";
 import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
@@ -109,6 +109,7 @@ export function TrialScreen() {
   const [screen, setScreen] = useState<Screen>(() => (safeGet(AGREEMENT_KEY) === "1" ? "home" : "gate"));
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [packs, setPacks] = useState<TrialPack[] | null>(null);
+  const [submissionBotUrl, setSubmissionBotUrl] = useState<string | null>(null);
   const [packsError, setPacksError] = useState<string | null>(null);
   const [persona, setPersona] = useState<TrialPersona | null>(null);
   const [mode, setMode] = useState<TrialMode>("normal");
@@ -207,6 +208,7 @@ export function TrialScreen() {
         const response = await fetchTrialPacks();
         if (cancelled) return;
         setPacks(response.packs);
+        setSubmissionBotUrl(response.submissionBotUrl);
         if (response.packs.length > 0) {
           setPackId((current) => current ?? response.packs[0]?.id ?? null);
         }
@@ -666,6 +668,26 @@ export function TrialScreen() {
         <div className="rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-2.5 text-[13px] font-medium text-[var(--survey-primary)]">
           {notice}
         </div>
+      ) : null}
+
+      {submissionBotUrl ? (
+        <a
+          href={submissionBotUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+            <Send className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
+            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+              通过 @tougaojiqirbot 投稿你的内容
+            </span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+        </a>
       ) : null}
 
       {activeLoading ? (

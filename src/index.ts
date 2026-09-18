@@ -2,8 +2,10 @@ import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
 import { UiSessionDO } from "./durable-objects/ui-session";
 import { handleTelegramUpdate } from "./bot/router";
+import { isTelegramUpdateHandledError } from "./bot/router";
 import { syncDefaultBotCommands } from "./bot/telegram";
-import { getWebhookInfo, setWebhook } from "./bot/telegram";
+import { answerCallbackQuery, getWebhookInfo, setWebhook } from "./bot/telegram";
+import { describePublicDatabaseError, isDatabaseCapacityError } from "./db/errors";
 import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
@@ -22,11 +24,14 @@ import { cleanupExpiredTemporaryMedia } from "./services/media/temporary-media.s
 import { KVMediaStore } from "./services/media/temporary-media-store";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
+import { resolveSubmissionBotUrl } from "./services/contact-links.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
 import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-digest.service";
 import { loadSystemSettings } from "./services/system-settings.service";
 import { sendMessage } from "./bot/telegram";
+import { createUpdateDedupStore } from "./services/update-dedup.service";
+import { withQueueMetrics, withRequestMetrics } from "./observability/metrics";
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 
@@ -115,6 +120,8 @@ export interface Env {
   /** Telegram channel that mirrors published plaza cards and tree-hole posts. */
   PLAZA_CHANNEL_ID?: string;
   COMMUNITY_GROUP_URL?: string;
+  /** Public link for the submission bot (投稿机器人); defaults to @tougaojiqirbot. */
+  SUBMISSION_BOT_URL?: string;
   /** Transactional email (Resend) for email+password auth. */
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
@@ -124,6 +131,58 @@ export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
 
 const commandMenuCacheKey = "telegram-command-menu:v2";
 const webhookConfigCacheKey = "telegram-webhook-config:v2";
+
+function parseAdminIds(value: string): number[] {
+  return value
+    .split(",")
+    .map((entry) => Number(entry.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+/**
+ * A maintenance run that stops at its read budget means the account's daily D1
+ * quota is at risk again — the failure mode that took the bot and every survey
+ * down for a full day on 2026-09-14. The admins should hear it from the bot
+ * rather than from users.
+ */
+async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Promise<void> {
+  try {
+    const message =
+      `⚠️ 数据库维护任务读取了 ${rowsRead.toLocaleString("en-US")} 行，已提前停止本次清理。\n` +
+      `常见原因是新加的清理查询缺少索引。请先确认再让它继续跑，避免再次耗尽当天 D1 额度。`;
+    await Promise.all(parseAdminIds(env.ADMIN_IDS).map((chatId) => sendMessage(env.BOT_TOKEN, chatId, message)));
+  } catch (error) {
+    console.warn("Maintenance budget notice failed", error);
+  }
+}
+
+/**
+ * Single boundary for the public JSON APIs.
+ *
+ * An unhandled throw used to leave the Worker's own 500 page in the body, which
+ * the survey/trial/plaza SPAs can only render as a bare "请求失败" — that is how
+ * the 2026-09-14 quota exhaustion looked like a broken survey to users. Every
+ * API failure now returns JSON the client can explain, with 503 for a database
+ * capacity problem so retrying clients back off differently than on a bug.
+ */
+async function guardApiResponse(run: () => Promise<Response | null>): Promise<Response> {
+  try {
+    return (await run()) ?? new Response("Not Found", { status: 404 });
+  } catch (error) {
+    console.error("API request failed", error);
+    return Response.json(
+      {
+        ok: false,
+        code: isDatabaseCapacityError(error) ? "database_capacity" : "internal_error",
+        message: describePublicDatabaseError(error),
+      },
+      {
+        status: isDatabaseCapacityError(error) ? 503 : 500,
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
+  }
+}
 
 async function ensureTelegramCommandMenu(env: Env): Promise<void> {
   try {
@@ -158,6 +217,10 @@ async function ensureWebhookAllowsChannelPosts(env: Env, origin: string): Promis
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // One structured metrics line per request (route/duration/status plus the
+    // D1 rows read and KV/queue/Telegram call counts). Instrumented bindings
+    // also make the request's own D1 query budget visible in production.
+    return withRequestMetrics(request, env, async (env, metrics) => {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
@@ -223,27 +286,23 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/plaza/")) {
-      return (await handlePlazaApiRequest(request, env, url)) ?? new Response("Not Found", { status: 404 });
+      return guardApiResponse(() => handlePlazaApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
-      const response = await handleSurveyApiRequest(request, env, url);
-      return response ?? new Response("Not Found", { status: 404 });
+      return guardApiResponse(() => handleSurveyApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
-      const response = await handleReportRequest(request, env, url);
-      return response ?? new Response("Not Found", { status: 404 });
+      return guardApiResponse(() => handleReportRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/auth/email/")) {
-      const response = await handleEmailAuthApiRequest(request, env, url);
-      return response ?? new Response("Not Found", { status: 404 });
+      return guardApiResponse(() => handleEmailAuthApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/trial/")) {
-      const response = await handleTrialApiRequest(request, env, url);
-      return response ?? new Response("Not Found", { status: 404 });
+      return guardApiResponse(() => handleTrialApiRequest(request, env, url));
     }
 
     const licenseApiResponse = await handleLicenseApiRequest(request, env.DB, env.LICENSE_ADMIN_TOKEN);
@@ -291,6 +350,17 @@ export default {
         return new Response("Bad Request", { status: 400 });
       }
 
+      // Idempotency: Telegram redelivers an update when our answer was slow or
+      // lost. Claim it before doing any work so a redelivery of a completed
+      // create/answer/submit/publish/export/reward action is skipped instead
+      // of running its side effects twice.
+      const dedup = createUpdateDedupStore(env.DB);
+      if (!(await dedup.claim(update.update_id))) {
+        metrics.recordDuplicateUpdate();
+        console.info("Duplicate Telegram update skipped", { updateId: update.update_id });
+        return Response.json({ ok: true, duplicate: true });
+      }
+
       await ensureTelegramCommandMenu(env);
 
       console.log("Telegram update received", {
@@ -313,15 +383,45 @@ export default {
           exportQueue: env.EXPORT_QUEUE,
           mediaKv: env.MEDIA_KV,
           origin: url.origin,
+          submissionBotUrl: resolveSubmissionBotUrl(env),
+          communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
           licenseServerUrl: url.origin,
           licenseAdminEnabled: Boolean(env.LICENSE_ADMIN_TOKEN),
           browser: env.BROWSER,
           webhookSecret: env.WEBHOOK_SECRET,
         };
         await handleTelegramUpdate(update, context);
+        await dedup.complete(update.update_id);
         return Response.json({ ok: true });
       } catch (error) {
         console.error("Telegram webhook handler failed", error);
+        // Release the claim so a genuine Telegram redelivery can retry an
+        // update that failed before its side effects completed.
+        await dedup.release(update.update_id);
+        // The router answers the user itself when a handler fails; only send
+        // the generic notice for failures raised before that point.
+        if (!isTelegramUpdateHandledError(error)) {
+          // A silent failure reads as "the bot is dead" and leaves the chat's
+          // loading spinner running, so always answer the user when possible.
+          try {
+            const callback = update.callback_query;
+            const chatId = update.message?.chat?.id ?? callback?.message?.chat.id;
+            if (typeof chatId === "number") {
+              if (callback) {
+                await answerCallbackQuery(env.BOT_TOKEN, callback.id, "服务暂时不可用，请稍后再试");
+              }
+              await sendMessage(
+                env.BOT_TOKEN,
+                chatId,
+                isDatabaseCapacityError(error)
+                  ? "⚠️ 数据库今日查询额度已用尽，暂时无法处理操作，请稍后再试。"
+                  : "😥 服务暂时出了点小问题，请稍后再试。",
+              );
+            }
+          } catch (notifyError) {
+            console.warn("Telegram failure notice failed", notifyError);
+          }
+        }
         return Response.json({ ok: false }, { status: 200 });
       }
     }
@@ -361,10 +461,13 @@ export default {
       return serveHtmlAsset(env, request, "/index.html");
     }
     return env.ASSETS.fetch(request);
+    });
   },
 
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
-    await handleExportQueue(batch, env);
+    await withQueueMetrics(batch, env, async (env) => {
+      await handleExportQueue(batch, env);
+    });
   },
 
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
@@ -383,7 +486,7 @@ export default {
       }
       return;
     }
-    if (event.cron === "*/10 * * * *") {
+    if (event.cron === "*/30 * * * *") {
       try {
         const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
         if (summary.requeued > 0) {
@@ -411,6 +514,9 @@ export default {
     try {
       const summary = await runDatabaseMaintenance(env.DB);
       console.info("Database maintenance complete", summary);
+      if (summary.truncated) {
+        await notifyMaintenanceBudgetExhausted(env, summary.rowsRead);
+      }
     } catch (error) {
       console.error("Database maintenance failed", error);
     }

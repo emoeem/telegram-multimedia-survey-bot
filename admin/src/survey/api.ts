@@ -90,6 +90,7 @@ export interface SurveyDto {
   pages: SurveyPageDto[];
   questions: SurveyQuestionDto[];
   communityGroupUrl: string | null;
+  submissionBotUrl: string | null;
 }
 
 export interface SurveyListItem {
@@ -167,7 +168,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await parseJson(response);
-    const error = new Error(String(body.message ?? "请求失败")) as Error & {
+    // Keep the status visible when the body carries no message, so a
+    // non-JSON edge/Worker error page is diagnosable from a screenshot.
+    const error = new Error(String(body.message ?? `请求失败（HTTP ${response.status}）`)) as Error & {
       code?: string;
     };
     error.code = String(body.code ?? "unknown");
@@ -180,8 +183,10 @@ export function fetchSurvey(surveyId: number): Promise<SurveyDto> {
   return request<SurveyDto>(`/api/survey/${surveyId}`);
 }
 
-export function fetchSurveyList(q = ""): Promise<{ surveys: SurveyListItem[]; communityGroupUrl: string | null }> {
-  return request<{ surveys: SurveyListItem[]; communityGroupUrl: string | null }>(
+export function fetchSurveyList(
+  q = "",
+): Promise<{ surveys: SurveyListItem[]; communityGroupUrl: string | null; submissionBotUrl: string | null }> {
+  return request<{ surveys: SurveyListItem[]; communityGroupUrl: string | null; submissionBotUrl: string | null }>(
     `/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`,
   );
 }

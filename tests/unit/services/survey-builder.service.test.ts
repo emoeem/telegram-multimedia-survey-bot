@@ -13,8 +13,8 @@ const repositoryMocks = vi.hoisted(() => ({
   listQuestionsBySurvey: vi.fn(),
   createOptionMedia: vi.fn(),
   createQuestionMedia: vi.fn(),
-  getOptionMediaByOptionId: vi.fn(),
-  getQuestionMediaByQuestionId: vi.fn(),
+  getQuestionMediaByQuestionIds: vi.fn(async (): Promise<unknown[]> => []),
+  listOptionMediaByOptionIds: vi.fn(async (): Promise<unknown[]> => []),
 }));
 
 vi.mock("../../../src/db/repositories/survey.repository", () => ({
@@ -34,11 +34,15 @@ vi.mock("../../../src/db/repositories/question.repository", () => ({
 vi.mock("../../../src/db/repositories/media.repository", () => ({
   createOptionMedia: repositoryMocks.createOptionMedia,
   createQuestionMedia: repositoryMocks.createQuestionMedia,
-  getOptionMediaByOptionId: repositoryMocks.getOptionMediaByOptionId,
-  getQuestionMediaByQuestionId: repositoryMocks.getQuestionMediaByQuestionId,
+  getQuestionMediaByQuestionIds: repositoryMocks.getQuestionMediaByQuestionIds,
+  listOptionMediaByOptionIds: repositoryMocks.listOptionMediaByOptionIds,
 }));
 
-import { finishOptions, saveDraftSurvey } from "../../../src/services/survey-builder.service";
+import {
+  finishOptions,
+  restoreLatestBuilderDraft,
+  saveDraftSurvey,
+} from "../../../src/services/survey-builder.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 
 function createBuilderState(overrides: Partial<SurveyBuilderState> = {}): SurveyBuilderState {
@@ -150,5 +154,56 @@ describe("survey builder service", () => {
     } as unknown as SurveyBuilderNamespace;
 
     await expect(finishOptions(namespace, 99)).rejects.toThrow("单选题或多选题至少需要两个选项");
+  });
+
+  it("restores a draft with one batched query per relation table", async () => {
+    repositoryMocks.getLatestDraftSurveyByOwner.mockResolvedValue({
+      id: 12,
+      title: "媒体问卷",
+      description: "描述",
+    });
+    repositoryMocks.listQuestionsBySurvey.mockResolvedValue([
+      { id: 21, type: "multiple", title: "Q1", required: true, conditionJson: null, skipToQuestionId: null },
+      { id: 22, type: "text", title: "Q2", required: false, conditionJson: null, skipToQuestionId: null },
+    ]);
+    repositoryMocks.listOptionsForQuestions.mockResolvedValue([
+      { id: 31, questionId: 21, label: "A" },
+      { id: 32, questionId: 21, label: "B" },
+      { id: 33, questionId: 22, label: "C" },
+    ]);
+    repositoryMocks.getQuestionMediaByQuestionIds.mockResolvedValue([
+      { id: 1, questionId: 21, mediaAssetId: 501, sortOrder: 0 },
+    ]);
+    repositoryMocks.listOptionMediaByOptionIds.mockResolvedValue([
+      { id: 2, questionOptionId: 31, mediaAssetId: 601, sortOrder: 0 },
+    ]);
+
+    const capture: { body: Record<string, unknown> | null } = { body: null };
+    const namespace = {
+      idFromName: vi.fn(() => ({ id: "builder-id" })),
+      get: vi.fn(() => ({
+        fetch: vi.fn(async (_url: string, init: RequestInit) => {
+          capture.body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          return Response.json(createBuilderState());
+        }),
+      })),
+    } as unknown as SurveyBuilderNamespace;
+
+    await restoreLatestBuilderDraft(createDbMock(), namespace, 99, 7);
+
+    // Two queries total regardless of question/option count.
+    expect(repositoryMocks.getQuestionMediaByQuestionIds).toHaveBeenCalledTimes(1);
+    expect(repositoryMocks.listOptionMediaByOptionIds).toHaveBeenCalledTimes(1);
+    expect(repositoryMocks.getQuestionMediaByQuestionIds).toHaveBeenCalledWith(expect.anything(), [21, 22]);
+    expect(repositoryMocks.listOptionMediaByOptionIds).toHaveBeenCalledWith(expect.anything(), [31, 32, 33]);
+
+    const questions = (capture.body?.questions ?? []) as Array<Record<string, unknown>>;
+    expect(questions).toHaveLength(2);
+    expect(questions[0]?.mediaAssetId).toBe(501);
+    expect(questions[0]?.options).toEqual([
+      { label: "A", mediaAssetId: 601 },
+      { label: "B", mediaAssetId: null },
+    ]);
+    expect(questions[1]?.mediaAssetId).toBeNull();
   });
 });

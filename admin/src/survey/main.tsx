@@ -5,10 +5,9 @@ import { SurveyApp } from "./SurveyApp";
 import { DialogsProvider } from "../components/Dialogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { activateTelegramWebApp, waitForTelegramWebApp } from "../telegram";
+import { initializePwa } from "../pwa";
 
-if (import.meta.env.PROD && window.location.protocol === "https:") {
-  navigator.serviceWorker?.register("/sw.js").catch(() => {});
-}
+initializePwa();
 
 void (async () => {
   await waitForTelegramWebApp();

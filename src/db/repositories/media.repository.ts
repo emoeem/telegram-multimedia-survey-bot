@@ -1,6 +1,8 @@
 import type { MediaAsset, MediaAssetScope, MediaStorageKind, MediaType } from "../schema";
 
 const OPTION_ID_BATCH_SIZE = 90;
+/** D1 caps bound parameters per statement; ids are looked up 90 at a time. */
+const MEDIA_ID_BATCH_SIZE = 90;
 
 interface MediaAssetRow {
   id: number;
@@ -116,6 +118,34 @@ export async function getMediaAssetById(db: D1Database, id: number): Promise<Med
   return row ? mapMediaAsset(row) : null;
 }
 
+/**
+ * Loads many media assets in batched `IN (...)` queries.
+ *
+ * Report rendering resolves every image of a profile; doing that one
+ * `getMediaAssetById` per image was an N+1 that scaled with the number of
+ * images on a response. Callers that already know every id they need should
+ * use this instead of looping over the single-row getter.
+ */
+export async function getMediaAssetsByIds(db: D1Database, ids: readonly number[]): Promise<Map<number, MediaAsset>> {
+  const uniqueIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  const assets = new Map<number, MediaAsset>();
+  if (uniqueIds.length === 0) return assets;
+
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(`SELECT * FROM media_assets WHERE id IN (${placeholders})`)
+      .bind(...batch)
+      .all<MediaAssetRow>();
+    for (const row of result.results ?? []) {
+      assets.set(row.id, mapMediaAsset(row));
+    }
+  }
+
+  return assets;
+}
+
 export async function createQuestionMedia(
   db: D1Database,
   input: {
@@ -154,6 +184,43 @@ export async function getQuestionMediaByQuestionId(
     mediaAssetId: row.media_asset_id,
     sortOrder: row.sort_order,
   }));
+}
+
+/**
+ * Loads the media bindings for many questions in batched `IN (...)` queries.
+ *
+ * Restoring a draft or rendering a response report needs the bindings for
+ * every question on the survey; the single-id getter turned that into one
+ * SELECT per question.
+ */
+export async function getQuestionMediaByQuestionIds(
+  db: D1Database,
+  questionIds: readonly number[],
+): Promise<Array<{ id: number; questionId: number; mediaAssetId: number; sortOrder: number }>> {
+  const uniqueIds = [...new Set(questionIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const media: Array<{ id: number; questionId: number; mediaAssetId: number; sortOrder: number }> = [];
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(
+        `SELECT id, question_id, media_asset_id, sort_order
+         FROM question_media
+         WHERE question_id IN (${placeholders})
+         ORDER BY question_id ASC, sort_order ASC, id ASC`,
+      )
+      .bind(...batch)
+      .all<{ id: number; question_id: number; media_asset_id: number; sort_order: number }>();
+    media.push(
+      ...(result.results ?? []).map((row) => ({
+        id: row.id,
+        questionId: row.question_id,
+        mediaAssetId: row.media_asset_id,
+        sortOrder: row.sort_order,
+      })),
+    );
+  }
+  return media;
 }
 
 export async function deleteQuestionMedia(db: D1Database, questionMediaId: number): Promise<void> {
@@ -211,6 +278,37 @@ export async function getAnswerMediaByAnswerId(
     mediaAssetId: row.media_asset_id,
     sortOrder: row.sort_order,
   }));
+}
+
+/** Batched form of {@link getAnswerMediaByAnswerId} for a full response report. */
+export async function getAnswerMediaByAnswerIds(
+  db: D1Database,
+  answerIds: readonly number[],
+): Promise<Array<{ id: number; answerId: number; mediaAssetId: number; sortOrder: number }>> {
+  const uniqueIds = [...new Set(answerIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const media: Array<{ id: number; answerId: number; mediaAssetId: number; sortOrder: number }> = [];
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(
+        `SELECT id, answer_id, media_asset_id, sort_order
+         FROM answer_media
+         WHERE answer_id IN (${placeholders})
+         ORDER BY answer_id ASC, sort_order ASC, id ASC`,
+      )
+      .bind(...batch)
+      .all<{ id: number; answer_id: number; media_asset_id: number; sort_order: number }>();
+    media.push(
+      ...(result.results ?? []).map((row) => ({
+        id: row.id,
+        answerId: row.answer_id,
+        mediaAssetId: row.media_asset_id,
+        sortOrder: row.sort_order,
+      })),
+    );
+  }
+  return media;
 }
 
 export async function createOptionMedia(

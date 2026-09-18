@@ -14,8 +14,8 @@ import {
 import {
   createOptionMedia,
   createQuestionMedia,
-  getOptionMediaByOptionId,
-  getQuestionMediaByQuestionId,
+  getQuestionMediaByQuestionIds,
+  listOptionMediaByOptionIds,
 } from "../db/repositories/media.repository";
 
 export type SurveyBuilderNamespace = DurableObjectNamespace<SurveyBuilderDO>;
@@ -467,27 +467,45 @@ export async function restoreLatestBuilderDraft(
     db,
     questions.map((question) => question.id),
   );
+
+  // Two batched lookups instead of one SELECT per question and per option.
+  const [questionMediaRows, optionMediaRows] = await Promise.all([
+    getQuestionMediaByQuestionIds(
+      db,
+      questions.map((question) => question.id),
+    ),
+    listOptionMediaByOptionIds(
+      db,
+      options.map((option) => option.id),
+    ),
+  ]);
+  const questionMediaByQuestion = new Map<number, number>();
+  for (const relation of questionMediaRows) {
+    if (!questionMediaByQuestion.has(relation.questionId)) {
+      questionMediaByQuestion.set(relation.questionId, relation.mediaAssetId);
+    }
+  }
+  const optionMediaByOption = new Map<number, number>();
+  for (const relation of optionMediaRows) {
+    if (!optionMediaByOption.has(relation.questionOptionId)) {
+      optionMediaByOption.set(relation.questionOptionId, relation.mediaAssetId);
+    }
+  }
+
   const draftQuestions: DraftQuestion[] = [];
 
   for (const question of questions) {
-    const questionMedia = await getQuestionMediaByQuestionId(db, question.id);
     const questionOptions = options.filter((option) => option.questionId === question.id);
-    const draftOptions = [];
-
-    for (const option of questionOptions) {
-      const optionMedia = await getOptionMediaByOptionId(db, option.id);
-      draftOptions.push({
-        label: option.label,
-        mediaAssetId: optionMedia[0]?.mediaAssetId ?? null,
-      });
-    }
 
     draftQuestions.push({
       type: question.type,
       title: question.title,
       required: question.required,
-      options: draftOptions,
-      mediaAssetId: questionMedia[0]?.mediaAssetId ?? null,
+      options: questionOptions.map((option) => ({
+        label: option.label,
+        mediaAssetId: optionMediaByOption.get(option.id) ?? null,
+      })),
+      mediaAssetId: questionMediaByQuestion.get(question.id) ?? null,
       conditionJson: question.conditionJson ?? null,
       skipToQuestionId: question.skipToQuestionId ?? null,
     });

@@ -1,8 +1,8 @@
 import type { MediaAsset } from "../../db/schema";
-import { getMediaAssetById } from "../../db/repositories/media.repository";
+import { getMediaAssetById, getMediaAssetsByIds } from "../../db/repositories/media.repository";
 import { downloadTelegramFile } from "../../bot/telegram";
 import { KVMediaStore } from "../media/temporary-media-store";
-import type { ResultProfileSnapshot, ResultJsonValue } from "../../result/schema";
+import type { ResultProfileSnapshot } from "../../result/schema";
 
 export interface ReportImagesEnv {
   DB: D1Database;
@@ -70,11 +70,21 @@ async function resolveAssetDataUrl(env: ReportImagesEnv, asset: MediaAsset): Pro
   return null;
 }
 
-async function resolveImageValue(env: ReportImagesEnv, value: unknown): Promise<string | null> {
+/**
+ * Resolves one image value against an asset map prepared by the caller.
+ *
+ * The map is what turns a report with N referenced images from N sequential
+ * `SELECT ... WHERE id = ?` statements into a single batched lookup.
+ */
+async function resolveImageValue(
+  env: ReportImagesEnv,
+  value: unknown,
+  assets: Map<number, MediaAsset>,
+): Promise<string | null> {
   if (typeof value === "string" && value.startsWith("data:image/")) return value;
   const assetId = mediaAssetIdFromValue(value);
   if (assetId !== null) {
-    const asset = await getMediaAssetById(env.DB, assetId);
+    const asset = assets.get(assetId);
     if (!asset) return null;
     return resolveAssetDataUrl(env, asset);
   }
@@ -95,6 +105,29 @@ export async function resolveMediaAssetDataUrl(env: ReportImagesEnv, assetId: nu
   return resolveAssetDataUrl(env, asset);
 }
 
+/** Runs `worker` over `items` with a fixed number of concurrent tasks. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runNext = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      const item = items[index] as T;
+      results[index] = await worker(item, index);
+    }
+  };
+  const runners = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, runNext);
+  await Promise.all(runners);
+  return results;
+}
+
+/** How many images may be fetched from KV/Telegram/R2 at the same time. */
+const IMAGE_RESOLVE_CONCURRENCY = 4;
+
 /**
  * Resolves every image referenced by a ResultProfile into embeddable data
  * URLs for PDF/archive rendering, covering temporary KV, Telegram and future
@@ -104,18 +137,39 @@ export async function resolveReportProfileImages(
   env: ReportImagesEnv,
   profile: ResultProfileSnapshot,
 ): Promise<Record<string, string>> {
-  const images: Record<string, string> = {};
+  // Collect every value that needs resolving first so the referenced media
+  // rows are loaded in one batched query instead of one SELECT per image.
+  const keyedValues: Array<{ key: string; value: unknown }> = [];
   for (const [key, value] of Object.entries(profile.images)) {
     if (key.startsWith("template.")) continue;
-    const resolved = await resolveImageValue(env, value);
-    if (resolved) images[key] = resolved;
+    keyedValues.push({ key, value });
   }
   const gallery = Array.isArray(profile.metadata.gallery) ? profile.metadata.gallery : [];
-  for (const item of gallery as ResultJsonValue[]) {
-    const resolved = await resolveImageValue(env, item);
-    if (resolved && !Object.values(images).includes(resolved)) {
+  gallery.forEach((item, index) => keyedValues.push({ key: `gallery.${index}`, value: item }));
+
+  const assetIds = keyedValues
+    .map((entry) => mediaAssetIdFromValue(entry.value))
+    .filter((id): id is number => id !== null);
+  const assets = await getMediaAssetsByIds(env.DB, assetIds);
+
+  const images: Record<string, string> = {};
+  const resolvedValues = await mapWithConcurrency(
+    keyedValues as Array<{ key: string; value: unknown }>,
+    IMAGE_RESOLVE_CONCURRENCY,
+    (entry) => resolveImageValue(env, entry.value, assets),
+  );
+  keyedValues.forEach((entry, index) => {
+    const resolved = resolvedValues[index];
+    if (!resolved) return;
+    // Named profile images always keep their key (two keys may legitimately
+    // point at the same asset). Gallery entries are anonymous, so an image
+    // already emitted under another key is skipped, exactly as before.
+    if (entry.key.startsWith("gallery.")) {
+      if (Object.values(images).includes(resolved)) return;
       images[`gallery.${Object.keys(images).length}`] = resolved;
+      return;
     }
-  }
+    images[entry.key] = resolved;
+  });
   return images;
 }

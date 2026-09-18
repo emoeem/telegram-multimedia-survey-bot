@@ -10,6 +10,7 @@ import { resolveReportTemplate } from "../services/report/template-resolver";
 import { verifyReportAccessToken } from "../services/report-access-token.service";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { loadSystemSettings } from "../services/system-settings.service";
+import { defaultParticipantReportTemplate } from "../services/participant-report.service";
 
 function fail(status: number, code: string, message: string): Response {
   return Response.json({ ok: false, code, message }, { status });
@@ -85,7 +86,13 @@ async function serveReportPage(env: Env, url: URL, responseId: number): Promise<
   const viewModel = buildReportViewModel(snapshot, images);
   const systemSettings = await loadSystemSettings(env.DB);
   const defaultTemplate = systemSettings.defaultReportTemplate;
-  const templateId = url.searchParams.get("template") ?? survey?.reportTemplateId ?? defaultTemplate ?? "";
+  const requestedTemplateId = url.searchParams.get("template");
+  const templateId =
+    requestedTemplateId ??
+    survey?.reportTemplateId ??
+    defaultParticipantReportTemplate(snapshot.metadata.reportKind, snapshot.resultType) ??
+    defaultTemplate ??
+    "";
   const template = await resolveReportTemplate(env.DB, templateId);
   const meta: ResponsiveReportMeta = {
     reportId: `#${responseId}`,
