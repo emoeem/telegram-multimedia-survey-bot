@@ -14,7 +14,9 @@
 - 普通用户：Web 问卷列表（`/s`）→ Web Survey（`/s/:id`）→ 提交 → Web Report（`/report/:id`，手机浏览器阅读）
 - 后台：Admin Web（`/admin`，Telegram WebApp）是核心控制台
 - 归档：答卷完成后异步生成 PDF → 发送到管理员私人 Telegram 频道（带 hashtag）
-- 用户上传图片是**临时数据**：报告归档成功后删除；答案数据永久保存在 D1
+- 用户上传图片在上传/填写阶段是**临时数据**（`media:temp:*`，默认 7 天，防草稿堆积）；
+  答卷提交后会被"转存"到长效键 `media:report:*`（同一条 asset 记录，`expires_at` 置空），
+  这样后台答卷预览与 Web 报告不会在 7 天后变成空图；答案数据永久保存在 D1
 - R2 不可用（账号支付受限）→ 临时媒体用 KV（`MEDIA_KV`）
 - 不引入 MTProto / MinIO / 新框架；单 Cloudflare Worker + D1 + KV + Queue + DO + Browser Rendering
 

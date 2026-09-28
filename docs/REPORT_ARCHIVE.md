@@ -18,8 +18,14 @@ ReportDeliveryWorker
   ├── sendDocument(PDF, caption=新答卷摘要) → 私人频道
   ├── sendPhoto 用户附件（≤6 张，失败降级 sendDocument）
   ├── completeReportDelivery（chat_id + pdf message_id + image message_ids）
-  └── deleteTemporaryMediaForResponse（原始图片删除，D1 引用保留）
+  └── 长效保留：提交答卷时 `promoteResponseMediaToDurable` 已把附件从 `media:temp:*`
+      转存到 `media:report:*`（asset id 不变、`expires_at` 置空），预览与归档都能继续读
 ```
+
+cron（`*/30 * * * *`）里，`retainFinishedResponseMedia` 会先于
+`cleanupExpiredTemporaryMedia` 跑一批（默认 25 条，按 `expires_at` 升序、走
+`idx_media_assets_temp_expiry`）：历史上在“保留”上线前提交、或提交时转存失败的
+已完成答卷，其附件也会被搬到长效键，抢在过期清理删除 blob 之前救回来。
 
 ## 重试与幂等
 
@@ -35,6 +41,9 @@ ReportDeliveryWorker
   长文本/得分/雷达/回答明细），服务端渲染，无需额外前端包
 - `GET /api/report/media/:id?t=<token>&rid=<id>`：报告媒体代理（按答卷归属鉴权）
 - PDF 与 Web Report 共用同一份 `ReportViewModel` 与同一套 HTML 模板
+- 图片解析同源：Web 报告与 PDF/归档都从 `collectReportImageEntries`
+  （命名图片 + `metadata.gallery`）出发；存量 asset 渲染成 `/api/report/media/:id` 链接，
+  data URL / 编辑器图片 URL / 旧 Telegram file_id 由服务端解析，避免"PDF 有图、网页无图"
 
 ## 配置
 
