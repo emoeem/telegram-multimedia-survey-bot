@@ -202,6 +202,7 @@ export async function handleLicenseApiRequest(
   request: Request,
   db: D1Database,
   adminToken?: string,
+  deploymentRole?: string,
 ): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   const supportedPaths = new Set([
@@ -214,6 +215,14 @@ export async function handleLicenseApiRequest(
   if (!supportedPaths.has(path)) return null;
   if (request.method !== "POST") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  // Issuing licenses and publishing releases are authorization-center powers.
+  // A customer instance must not expose them even if a stray admin token were
+  // configured; `DEPLOYMENT_ROLE=customer` is an unconditional block.
+  const isVendorOnlyIssuerPath = path === "/api/v1/licenses/create" || path === "/api/v1/releases";
+  if (isVendorOnlyIssuerPath && deploymentRole?.trim().toLowerCase() === "customer") {
+    return jsonResponse({ ok: false, error: "license_center_required" }, 403);
   }
 
   try {

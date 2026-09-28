@@ -355,13 +355,41 @@ export interface TemporaryMediaRow {
   id: number;
   storageKey: string | null;
   expiresAt: string | null;
+  mimeType: string | null;
 }
 
-/** Temporary (KV-backed) media linked to a response, newest first. */
+/**
+ * Temporary (KV-backed) media of a response that is still inside its
+ * retention window, newest first. Rows promoted to durable storage on
+ * completion keep `expires_at = NULL` and are deliberately excluded, so any
+ * cleanup that walks this list can never delete an archived answer's photos.
+ */
 export async function listTemporaryMediaByResponse(db: D1Database, responseId: number): Promise<TemporaryMediaRow[]> {
   const result = await db
     .prepare(
-      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE r.id = ? AND m.storage_kind = 'temporary'
+        AND m.expires_at IS NOT NULL
+       ORDER BY m.id DESC`,
+    )
+    .bind(responseId)
+    .all<TemporaryMediaRow>();
+  return result.results ?? [];
+}
+
+/**
+ * Every KV-backed media row of a response, including the ones already
+ * promoted to durable storage (used to make promotion idempotent), newest
+ * first.
+ */
+export async function listResponseMediaForPromotion(db: D1Database, responseId: number): Promise<TemporaryMediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType
        FROM media_assets m
        JOIN answer_media am ON am.media_asset_id = m.id
        JOIN answers a ON a.id = am.answer_id
@@ -374,16 +402,71 @@ export async function listTemporaryMediaByResponse(db: D1Database, responseId: n
   return result.results ?? [];
 }
 
-export async function sumTemporaryMediaBytesForResponse(db: D1Database, responseId: number): Promise<number> {
-  const row = await db
+export interface RetainableMediaRow extends TemporaryMediaRow {
+  responseId: number;
+}
+
+/**
+ * Temporary media that belongs to an already finished response, oldest expiry
+ * first. Bounded and index-backed (`idx_media_assets_temp_expiry`) so the
+ * retention sweep can run on a schedule without repeating the 2026-09-14
+ * rows-read incident. Used to retain media of responses submitted before
+ * retention existed.
+ */
+export async function listRetainableCompletedMedia(db: D1Database, limit: number): Promise<RetainableMediaRow[]> {
+  const result = await db
     .prepare(
-      `SELECT COALESCE(SUM(m.file_size), 0) AS total
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType, r.id responseId
        FROM media_assets m
        JOIN answer_media am ON am.media_asset_id = m.id
        JOIN answers a ON a.id = am.answer_id
        JOIN survey_responses r ON r.id = a.response_id
-       WHERE r.id = ? AND m.storage_kind = 'temporary'
-         AND m.storage_key IS NOT NULL`,
+       WHERE m.storage_kind = 'temporary'
+         AND m.storage_key IS NOT NULL
+         AND m.expires_at IS NOT NULL
+         AND r.status IN ('completed', 'archived')
+       ORDER BY m.expires_at ASC, m.id ASC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all<RetainableMediaRow>();
+  return result.results ?? [];
+}
+
+/**
+ * Points an existing asset row at long-lived storage and clears its expiry.
+ * Used when a completed response's attachments leave the temporary namespace;
+ * the asset id (and every answer reference to it) stays valid.
+ */
+export async function markMediaAssetDurable(
+  db: D1Database,
+  id: number,
+  storageKey: string,
+  updatedAt = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_assets
+       SET storage_key = ?, expires_at = NULL, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(storageKey, updatedAt, id)
+    .run();
+}
+
+export async function sumTemporaryMediaBytesForResponse(db: D1Database, responseId: number): Promise<number> {
+  // Count every still-temporary blob of the response, not just the ones already
+  // attached to an answer. The previous JOIN through answer_media returned 0 for
+  // uploads the participant had not yet saved, so a caller could loop
+  // `POST .../media` and blow past the per-response byte cap without ever
+  // saving an answer. The key is minted as `media:temp:<responseId>:<uuid>`.
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(m.file_size), 0) AS total
+       FROM media_assets m
+       WHERE m.storage_kind = 'temporary'
+         AND m.storage_key LIKE 'media:temp:' || ? || ':%'
+         AND m.expires_at IS NOT NULL`,
     )
     .bind(responseId)
     .first<{ total: number | null }>();

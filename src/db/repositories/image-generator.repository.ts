@@ -176,13 +176,18 @@ export async function addGeneratorQuestion(
     settings?: GeneratorQuestionSettings;
   },
 ): Promise<void> {
-  const row = await db
-    .prepare("SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM image_generator_questions WHERE generator_id=?")
-    .bind(input.generatorId)
-    .first<{ n: number }>();
+  // Compute sort_order inside the INSERT so the read-modify-write can't race a
+  // concurrent admin edit into a duplicate value (D1's single-writer SQLite
+  // serializes the statement).
   await db
     .prepare(
-      "INSERT INTO image_generator_questions(generator_id,variable_name,prompt,type,required,options_json,settings_json,sort_order,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+      `INSERT INTO image_generator_questions(
+         generator_id, variable_name, prompt, type, required,
+         options_json, settings_json, sort_order, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?,
+         (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM image_generator_questions WHERE generator_id = ?),
+         ?)`,
     )
     .bind(
       input.generatorId,
@@ -192,7 +197,7 @@ export async function addGeneratorQuestion(
       input.required ? 1 : 0,
       JSON.stringify(input.options ?? []),
       JSON.stringify(input.settings ?? {}),
-      row?.n ?? 1,
+      input.generatorId,
       new Date().toISOString(),
     )
     .run();

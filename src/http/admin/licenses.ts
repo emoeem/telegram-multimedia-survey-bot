@@ -16,6 +16,7 @@ import {
   listActiveCreatorTrials,
   revokeCreatorTrial,
 } from "../../db/repositories/creator-trial.repository";
+import { isLicenseCenter, isVendorOnlyAdminPath } from "../../services/deployment-role.service";
 
 export async function handleAdminLicensesWrite(
   request: Request,
@@ -26,6 +27,14 @@ export async function handleAdminLicensesWrite(
 ): Promise<Response | null> {
   const { user, isAdmin, fail, json } = ctx;
   const db = env.DB;
+
+  // Vendor-only surface. A customer instance is the admin of its own deployment,
+  // so `isAdmin` alone would let it mint licenses and hand out trial accounts —
+  // i.e. re-authorize third parties with a product it only licensed. Mirrors the
+  // bot's existing `licenseAdminEnabled` gate, now enforced on the web API too.
+  if (isVendorOnlyAdminPath(url.pathname) && !isLicenseCenter(env)) {
+    return fail(403, "license_center_required", "此部署不是授权中心，无法管理授权、版本或体验权限。");
+  }
 
   // ---- 授权管理（仅管理员） --------------------------------------------
   if (url.pathname === "/api/admin/licenses" && request.method === "GET") {

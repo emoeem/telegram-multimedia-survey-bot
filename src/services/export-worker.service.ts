@@ -113,30 +113,21 @@ async function processExportMessage(env: ExportWorkerEnvironment, body: unknown)
     return;
   }
 
+  // A `completed` job is the only terminal no-op. `pending`/`running`/`failed`
+  // are all re-attemptable: a Worker killed mid-export left the row `running`
+  // and the queue redelivers the message, so treating `running` as re-runnable
+  // is what prevents the job from being stuck forever. Errors are re-thrown so
+  // the caller decides retry-vs-terminal from the message attempt count.
   const job = await getExportJobById(env.DB, body.jobId);
-  if (!job || job.status !== "pending") return;
+  if (!job || job.status === "completed") return;
 
   await updateExportJob(env.DB, job.id, { status: "running" });
-  try {
-    const { rows } = await getExportRows(env.DB, body.surveyId);
-    const csv = buildCsv(rows);
-    const content = serializeExport(body.format, csv, rows);
-    const metadata = exportFileMetadata(body.surveyId, body.format);
-    await sendDocument(env.BOT_TOKEN, body.chatId, metadata.fileName, content, metadata.contentType);
-    await updateExportJob(env.DB, job.id, { status: "completed" });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "导出文件生成失败";
-    console.error("Survey export job failed", job.id, error);
-    await updateExportJob(env.DB, job.id, {
-      status: "failed",
-      errorMessage: errorMessage.slice(0, 500),
-    });
-    try {
-      await sendMessage(env.BOT_TOKEN, body.chatId, "导出失败，请稍后重新发起导出。");
-    } catch (notificationError) {
-      console.error("Failed to notify export requester", job.id, notificationError);
-    }
-  }
+  const { rows } = await getExportRows(env.DB, body.surveyId);
+  const csv = buildCsv(rows);
+  const content = serializeExport(body.format, csv, rows);
+  const metadata = exportFileMetadata(body.surveyId, body.format);
+  await sendDocument(env.BOT_TOKEN, body.chatId, metadata.fileName, content, metadata.contentType);
+  await updateExportJob(env.DB, job.id, { status: "completed" });
 }
 
 export async function handleExportQueue(
@@ -239,8 +230,30 @@ export async function handleExportQueue(
         }
       }
     } else {
-      await processExportMessage(env, message.body);
-      message.ack();
+      try {
+        await processExportMessage(env, message.body);
+        message.ack();
+      } catch (error) {
+        const jobId = (message.body as SurveyExportJobMessage).jobId;
+        const chatId = (message.body as SurveyExportJobMessage).chatId;
+        const terminal = message.attempts >= 3;
+        const detail = error instanceof Error ? error.message : "导出文件生成失败";
+        console.error("Survey export queue job failed", { jobId, attempts: message.attempts, terminal, error: detail });
+        await updateExportJob(env.DB, jobId, {
+          status: terminal ? "failed" : "running",
+          errorMessage: terminal ? detail.slice(0, 500) : null,
+        });
+        if (terminal) {
+          try {
+            await sendMessage(env.BOT_TOKEN, chatId, "导出失败，请稍后重新发起导出。");
+          } catch (notificationError) {
+            console.error("Failed to notify export requester", jobId, notificationError);
+          }
+          message.ack();
+        } else {
+          message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
+        }
+      }
     }
   }
 }

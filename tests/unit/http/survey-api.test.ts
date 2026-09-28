@@ -8,7 +8,7 @@ function makeDb(overrides: Record<string, unknown> = {}) {
     prepare: vi.fn((sql: string) => {
       const statement = {
         bind: vi.fn(() => statement),
-        run: vi.fn(async (): Promise<unknown> => ({ success: true, meta: { last_row_id: 99 } })),
+        run: vi.fn(async (): Promise<unknown> => ({ success: true, meta: { last_row_id: 99, changes: 1 } })),
         first: vi.fn(async (): Promise<unknown> => null),
         all: vi.fn(async (): Promise<unknown> => ({ results: [] })),
       };
@@ -467,7 +467,10 @@ describe("web survey API", () => {
       MEDIA_KV: { put: kvPut, get: vi.fn(async () => null) } as unknown as KVNamespace,
     });
     const form = new FormData();
-    form.append("file", new File(["abc"], "photo.png", { type: "image/png" }));
+    // Real PNG magic bytes: upload content is now magic-byte checked, so a
+    // text blob declared as image/png is rejected instead of stored.
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    form.append("file", new File([pngBytes], "photo.png", { type: "image/png" }));
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/media", {
         method: "POST",

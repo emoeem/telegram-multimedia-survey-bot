@@ -260,6 +260,21 @@ export async function listAnswersByResponseId(db: D1Database, responseId: number
   return (result.results ?? []).map(mapAnswer);
 }
 
+/** Batch variant for list pages; keeps the gallery feed at one query instead
+ *  of one per response (json_each stays a single bind regardless of count). */
+export async function listAnswersByResponseIds(db: D1Database, responseIds: number[]): Promise<Answer[]> {
+  if (responseIds.length === 0) return [];
+  const result = await db
+    .prepare(
+      `SELECT a.* FROM answers a
+       JOIN json_each(?) AS r ON r.value = a.response_id
+       ORDER BY a.response_id ASC, a.id ASC`,
+    )
+    .bind(JSON.stringify(responseIds))
+    .all<AnswerRow>();
+  return (result.results ?? []).map(mapAnswer);
+}
+
 export async function updateResponseCurrentQuestion(
   db: D1Database,
   id: number,
@@ -271,16 +286,19 @@ export async function updateResponseCurrentQuestion(
     .run();
 }
 
-export async function completeResponse(db: D1Database, id: number): Promise<void> {
+export async function completeResponse(db: D1Database, id: number): Promise<boolean> {
   const timestamp = nowIso();
-  await db
+  const result = await db
     .prepare(
       `UPDATE survey_responses
        SET status = 'completed', completed_at = ?, submitted_at = ?, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'in_progress'`,
     )
     .bind(timestamp, timestamp, timestamp, id)
     .run();
+  // false when a concurrent submit already completed this response; callers
+  // use this to avoid running the post-completion side effects twice.
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 export async function cancelResponse(db: D1Database, id: number): Promise<void> {

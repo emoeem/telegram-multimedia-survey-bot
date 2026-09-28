@@ -100,8 +100,20 @@ export async function verifyEmailCode(
     await store.delete(key);
     return false;
   }
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(code));
-  if (toBase64(new Uint8Array(digest)) !== hashB64) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(code)));
+  if (!hashB64) {
+    await store.put(key, `${hashB64}:${attempts + 1}`, { expirationTtl: CODE_TTL_SECONDS });
+    return false;
+  }
+  const expected = fromBase64(hashB64);
+  // Constant-time compare so the verification-code oracle doesn't leak timing.
+  let matches = digest.length === expected.length;
+  if (matches) {
+    let diff = 0;
+    for (let index = 0; index < digest.length; index += 1) diff |= digest[index]! ^ expected[index]!;
+    matches = diff === 0;
+  }
+  if (!matches) {
     await store.put(key, `${hashB64}:${attempts + 1}`, { expirationTtl: CODE_TTL_SECONDS });
     return false;
   }
@@ -137,10 +149,15 @@ function sha256Hex(bytes: Uint8Array): Promise<string> {
 }
 
 /** Mints `payload.signature`; the DB stores only the SHA-256 of the token. */
-export async function createEmailSessionToken(secret: string, accountId: number): Promise<string> {
+export async function createEmailSessionToken(secret: string, accountId: number, version = 0): Promise<string> {
   const payload = base64UrlEncode(
     encoder.encode(
-      JSON.stringify({ a: accountId, exp: Math.floor(Date.now() / 1000) + EMAIL_SESSION_TTL_SECONDS, p: "email" }),
+      JSON.stringify({
+        a: accountId,
+        exp: Math.floor(Date.now() / 1000) + EMAIL_SESSION_TTL_SECONDS,
+        p: "email",
+        v: version,
+      }),
     ),
   );
   const key = await hmacKey(secret);
@@ -148,7 +165,10 @@ export async function createEmailSessionToken(secret: string, accountId: number)
   return `${payload}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
-export async function verifyEmailSessionToken(secret: string, token: string): Promise<{ accountId: number } | null> {
+export async function verifyEmailSessionToken(
+  secret: string,
+  token: string,
+): Promise<{ accountId: number; version: number } | null> {
   const dot = token.indexOf(".");
   if (dot <= 0) return null;
   const payloadPart = token.slice(0, dot);
@@ -160,10 +180,10 @@ export async function verifyEmailSessionToken(secret: string, token: string): Pr
   const bytes = base64UrlDecode(payloadPart);
   if (!bytes) return null;
   try {
-    const parsed = JSON.parse(decoder.decode(bytes)) as { a?: unknown; exp?: unknown; p?: unknown };
+    const parsed = JSON.parse(decoder.decode(bytes)) as { a?: unknown; exp?: unknown; p?: unknown; v?: unknown };
     if (parsed.p !== "email" || typeof parsed.a !== "number" || typeof parsed.exp !== "number") return null;
     if (parsed.exp * 1000 <= Date.now()) return null;
-    return { accountId: parsed.a };
+    return { accountId: parsed.a, version: typeof parsed.v === "number" ? parsed.v : 0 };
   } catch {
     return null;
   }

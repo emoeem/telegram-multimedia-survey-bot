@@ -25,8 +25,8 @@ describe("email auth service", () => {
   });
 
   it("round-trips session tokens and rejects tampering", async () => {
-    const token = await createEmailSessionToken("secret", 42);
-    expect(await verifyEmailSessionToken("secret", token)).toEqual({ accountId: 42 });
+    const token = await createEmailSessionToken("secret", 42, 3);
+    expect(await verifyEmailSessionToken("secret", token)).toEqual({ accountId: 42, version: 3 });
     expect(await verifyEmailSessionToken("other-secret", token)).toBeNull();
     expect(await verifyEmailSessionToken("secret", `${token}x`)).toBeNull();
     expect(await verifyEmailSessionToken("secret", "garbage")).toBeNull();

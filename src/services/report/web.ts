@@ -5,6 +5,7 @@ import type { ChartColors } from "./charts";
 import { reportThemes, themeCss } from "./themes";
 import {
   DEFAULT_REPORT_TEMPLATE,
+  sanitizeReportCss,
   type ReportSectionKind,
   type ReportTemplateSection,
   type ReportTemplateSpec,
@@ -381,7 +382,7 @@ export function buildResponsiveReportHtml(
   <style>
     ${baseCss()}
   </style>
-  <style>${themeCss(theme)}${themeAliasCss()}${themePrintResetCss()}${template.css ?? ""}</style>
+  <style>${themeCss(theme)}${themeAliasCss()}${themePrintResetCss()}${sanitizeReportCss(template.css)}</style>
 </head>
 <body>
   <main class="wrap">

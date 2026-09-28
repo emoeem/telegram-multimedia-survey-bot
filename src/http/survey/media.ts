@@ -9,6 +9,7 @@ import {
   TEMP_IMAGE_MIME_TYPES,
 } from "../../services/media/temporary-media.service";
 import { KVMediaStore } from "../../services/media/temporary-media-store";
+import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
 import { loadPublishedSurvey } from "./catalog";
@@ -183,6 +184,13 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     return fail(400, "invalid_media_type", allowedMimeTypes ? "该文件类型不符合本题要求" : policy.label);
   }
 
+  // A `file` question accepts any declared MIME, and the declared MIME is what
+  // gets served back from the media endpoint. Never let an active-content type
+  // (HTML/SVG/XML/JS) in — a stored HTML document would run on the app origin.
+  if (isActiveContentMime(mimeType)) {
+    return fail(400, "invalid_media_type", "该文件类型不允许上传");
+  }
+
   const settings = await loadSystemSettings(env.DB);
   const typeDefaultBytes = questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : TEMP_FILE_UPLOAD_MAX_BYTES;
   const maxUploadBytes = Math.min(
@@ -198,6 +206,17 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     return fail(413, "response_media_limit", `单份答卷媒体总量不能超过 ${settings.maxResponseMediaMb}MB`);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
+  // Magic-byte check media uploads (image/video/audio) so a mismatched or
+  // unrecognized payload can't masquerade as an allowed type. `file` (document)
+  // uploads are protected by the active-content rejection above and by the
+  // serve-side downgrade in `buildMediaResponse`, and their declared type is
+  // kept so legitimate documents (docx/xlsx/...) are not mislabeled.
+  if (questionType !== "file") {
+    const validation = verifyUploadContent(bytes, mimeType);
+    if (!validation.ok) {
+      return fail(400, "invalid_media_type", validation.reason ?? "文件内容无效");
+    }
+  }
   const asset = await storeTemporaryMedia(env.DB, temporaryStore(env), {
     responseId: response.id,
     bytes,

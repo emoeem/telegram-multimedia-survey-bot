@@ -176,8 +176,10 @@ export class SurveySessionDO extends DurableObject {
         version: state.version + 1,
         lastActivityAt: new Date().toISOString(),
       };
-      await this.putState(nextState);
-      await this.ctx.storage.setAlarm(Date.now() + COMPLETED_SESSION_RETENTION_MS);
+      await this.ctx.storage.transaction(async (txn) => {
+        await txn.put(STATE_KEY, nextState);
+        await txn.setAlarm(Date.now() + COMPLETED_SESSION_RETENTION_MS);
+      });
       return Response.json(nextState);
     }
 

@@ -30,7 +30,7 @@ import { renderBarsChart, renderMetricGridBlock, renderPrimaryScoreBlock } from 
 import { renderSelectedResponses } from "./report/blocks/answers";
 import { renderRadarSvg } from "./report/blocks/radar";
 import { renderMetadataBlock } from "./report/blocks/structural";
-import type { ReportTemplateSpec } from "./report/template";
+import { sanitizeReportCss, type ReportTemplateSpec } from "./report/template";
 
 export type { ReportGalleryItem, ReportScore, ReportViewModel } from "./report/model";
 
@@ -451,7 +451,7 @@ export function buildResponsiveCompositionReport(
     ${responsiveCompositionCss()}
     .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:.9}
   </style>
-  <style>${themeCss(theme)}${template.css ?? ""}</style>
+  <style>${themeCss(theme)}${sanitizeReportCss(template.css)}</style>
 </head>
 <body>
   <div class="report-layout-${layout} density-${composition.density}" data-report-layout="${layout}" data-report-theme="${theme.id}" data-report-mode="${theme.dark ? "dark" : "light"}">
@@ -661,7 +661,12 @@ export async function renderHtmlReportArtifact(
   const failures: ReportArtifact["failures"] = [];
   try {
     const optimizerPage = await browser.newPage();
-    const optimizedImages = await optimizeReportImagesInPage(optimizerPage, images, policy);
+    let optimizedImages: Record<string, string>;
+    try {
+      optimizedImages = await optimizeReportImagesInPage(optimizerPage, images, policy);
+    } finally {
+      await optimizerPage.close();
+    }
     const report = buildHtmlReportPages(profile, templateName, optimizedImages, options, policy);
     const pages: ReportArtifact["pages"] = [];
     for (const planned of report.pages) {
@@ -685,8 +690,8 @@ export async function renderHtmlReportArtifact(
       for (let attempt = 0; attempt < maxAttempts && !rendered; attempt += 1) {
         const dpr = attempt === 0 ? policy.preferredDpr : policy.fallbackDpr;
         const format: "png" | "jpeg" = attempt === 2 || imageCount >= 3 ? "jpeg" : "png";
+        const page = await browser.newPage();
         try {
-          const page = await browser.newPage();
           if (htmlByteSize > policy.maxHtmlBytesPerPage)
             throw new Error(`page HTML exceeds ${policy.maxHtmlBytesPerPage} bytes`);
           if (embeddedImageBytes > policy.maxEmbeddedImageBytesPerPage)
@@ -728,6 +733,8 @@ export async function renderHtmlReportArtifact(
         } catch (error) {
           lastError = error;
           attempts.push({ dpr, format, message: error instanceof Error ? error.message : String(error) });
+        } finally {
+          await page.close();
         }
       }
       if (!rendered) {
@@ -805,8 +812,8 @@ export async function renderHtmlReportArtifact(
       selectedPages = selectedPages.filter((page) => !removed.has(page.id));
     }
     let archivePdf: Uint8Array | undefined;
+    const pdfPage = await browser.newPage();
     try {
-      const pdfPage = await browser.newPage();
       await pdfPage.setViewport({ width: policy.pageWidth, height: policy.maxPageHeight, deviceScaleFactor: 1 });
       await pdfPage.setContent(buildHtmlReport(profile, templateName, optimizedImages, options), { waitUntil: "load" });
       await pdfPage.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");
@@ -822,6 +829,8 @@ export async function renderHtmlReportArtifact(
       );
     } catch (error) {
       console.error("[ReportPDF] archive rendering failed", { error });
+    } finally {
+      await pdfPage.close();
     }
     const deliveryMode =
       selectedPages.length === 1

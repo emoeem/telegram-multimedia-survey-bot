@@ -57,6 +57,18 @@ export interface ReportTemplateSpec {
 
 export const REPORT_TEMPLATE_SCHEMA_VERSION = 1;
 
+/**
+ * Strips HTML/script breakout sequences from a template's custom CSS before it
+ * is interpolated into a `<style>` block. Custom CSS is admin-authored and is
+ * rendered inside an unsandboxed preview iframe and for every report viewer, so
+ * `</style><script>…` must never survive. No legitimate stylesheet contains
+ * `</style` or `<script`.
+ */
+export function sanitizeReportCss(css: string | undefined | null): string {
+  if (!css) return "";
+  return css.replace(/<\/style/gi, "").replace(/<script/gi, "");
+}
+
 const compositionBlockKinds = new Set<ReportCompositionBlockKind>([
   "cover",
   "hero",

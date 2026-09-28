@@ -933,8 +933,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       if (text === "/clear") {
         await setSurveyAccessCode(ctx.db, state.targetSurveyId, null);
       } else {
-        if (inputText.length < 4 || inputText.length > 64) {
-          throw new Error("密码长度必须为 4 到 64 个字符");
+        if (inputText.length < 8 || inputText.length > 64) {
+          throw new Error("密码长度必须为 8 到 64 个字符");
         }
         await setSurveyAccessCode(
           ctx.db,
@@ -966,7 +966,10 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
   }
 
   if (state.step === "survey_title" && inputText) {
-    await setSurveyTitle(ctx.builder, userId, inputText);
+    // Telegram captions and the web API both cap titles at 200 chars; keep the
+    // bot path consistent so an over-long title can never blow the archive
+    // caption (and burn retries) later.
+    await setSurveyTitle(ctx.builder, userId, inputText.slice(0, 200));
     await sendMessage(
       ctx.botToken,
       message.chat.id,

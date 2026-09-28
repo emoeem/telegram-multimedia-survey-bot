@@ -25,10 +25,11 @@ import {
  */
 
 function sanitizePaging(url: URL): { limit: number; offset: number } {
-  return {
-    limit: Math.min(30, Math.max(1, Number(url.searchParams.get("limit")) || 10)),
-    offset: Math.max(0, Number(url.searchParams.get("offset")) || 0),
-  };
+  const rawOffset = Number(url.searchParams.get("offset"));
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
+  const rawLimit = Number(url.searchParams.get("limit"));
+  const limit = Number.isFinite(rawLimit) ? Math.min(30, Math.max(1, Math.floor(rawLimit))) : 10;
+  return { limit, offset: Math.min(offset, 10_000) };
 }
 
 export async function handlePlazaApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {

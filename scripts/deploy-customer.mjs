@@ -470,6 +470,10 @@ function buildWranglerConfig({
     `LICENSE_SERVER_URL = ${tomlString(licenseServerUrl)}`,
     `INSTALLATION_ID = ${tomlString(installationId)}`,
     `LICENSE_GRACE_SECONDS = ${tomlString("86400")}`,
+    // Licensed customer instance: may use the bot, but must never issue
+    // licenses, publish releases or hand out trial accounts (no re-authorizing
+    // third parties with a product the customer only licensed).
+    `DEPLOYMENT_ROLE = ${tomlString("customer")}`,
     `ADMIN_IDS = ${tomlString(adminIds)}`,
     "",
     "[[d1_databases]]",

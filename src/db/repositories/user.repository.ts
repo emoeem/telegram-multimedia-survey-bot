@@ -128,58 +128,39 @@ export async function upsertUser(
     systemRole?: UserSystemRole;
   },
 ): Promise<User> {
-  const existing = await getUserByTelegramId(db, input.telegramUserId);
+  // Single atomic upsert: two concurrent first contacts for the same
+  // telegram_user_id used to both see "no row" and the second INSERT died on
+  // the UNIQUE constraint. ON CONFLICT collapses them into one write.
   const timestamp = nowIso();
-
-  if (!existing) {
-    await db
-      .prepare(
-        `INSERT INTO users (
-          telegram_user_id, username, first_name, last_name,
-          language_code, system_role, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        input.telegramUserId,
-        input.username ?? null,
-        input.firstName ?? null,
-        input.lastName ?? null,
-        input.languageCode ?? null,
-        input.systemRole ?? "participant",
-        timestamp,
-        timestamp,
-      )
-      .run();
-  } else {
-    await db
-      .prepare(
-        `UPDATE users SET
-          username = ?,
-          first_name = ?,
-          last_name = ?,
-          language_code = ?,
-          system_role = CASE
-            WHEN system_role IN ('admin', 'owner') AND ? = 'participant'
-              THEN system_role
-            ELSE ?
-          END,
-          updated_at = ?
-        WHERE id = ?`,
-      )
-      .bind(
-        input.username ?? existing.username,
-        input.firstName ?? existing.firstName,
-        input.lastName ?? existing.lastName,
-        input.languageCode ?? existing.languageCode,
-        // Routine Telegram/web interactions report "participant"; never let
-        // them demote a role that was granted out-of-band.
-        input.systemRole ?? existing.systemRole,
-        input.systemRole ?? existing.systemRole,
-        timestamp,
-        existing.id,
-      )
-      .run();
-  }
+  await db
+    .prepare(
+      `INSERT INTO users (
+        telegram_user_id, username, first_name, last_name,
+        language_code, system_role, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(telegram_user_id) DO UPDATE SET
+        username = COALESCE(excluded.username, users.username),
+        first_name = COALESCE(excluded.first_name, users.first_name),
+        last_name = COALESCE(excluded.last_name, users.last_name),
+        language_code = COALESCE(excluded.language_code, users.language_code),
+        system_role = CASE
+          WHEN users.system_role IN ('admin', 'owner') AND excluded.system_role = 'participant'
+            THEN users.system_role
+          ELSE excluded.system_role
+        END,
+        updated_at = excluded.updated_at`,
+    )
+    .bind(
+      input.telegramUserId,
+      input.username ?? null,
+      input.firstName ?? null,
+      input.lastName ?? null,
+      input.languageCode ?? null,
+      input.systemRole ?? "participant",
+      timestamp,
+      timestamp,
+    )
+    .run();
 
   const user = await getUserByTelegramId(db, input.telegramUserId);
   if (!user) {

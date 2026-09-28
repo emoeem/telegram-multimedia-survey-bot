@@ -4,6 +4,8 @@ export interface TemporaryMediaPutInput {
   storageKey: string;
   bytes: Uint8Array;
   contentType: string;
+  /** KV TTL in seconds. Unset means "keep until explicitly deleted". */
+  expirationTtl?: number;
 }
 
 /**
@@ -23,7 +25,9 @@ export class KVMediaStore implements TemporaryMediaStore {
   constructor(private readonly kv: KVNamespace) {}
 
   async put(input: TemporaryMediaPutInput): Promise<void> {
-    await this.kv.put(input.storageKey, input.bytes);
+    await this.kv.put(input.storageKey, input.bytes, {
+      ...(input.expirationTtl !== undefined ? { expirationTtl: input.expirationTtl } : {}),
+    });
   }
 
   async get(storageKey: string): Promise<Uint8Array | null> {

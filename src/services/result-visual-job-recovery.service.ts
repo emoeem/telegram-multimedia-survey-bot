@@ -7,7 +7,15 @@ interface StaleRenderJob {
   attempts: number;
 }
 
-const staleProcessingMs = 2 * 60_000;
+// How long a render may stay `processing` before the recovery sweep reclaims
+// it. This must comfortably exceed the worst legitimate render: multi-page
+// HTML reports render up to 20 pages with up to 3 attempts each, and image
+// resolution downloads Telegram files sequentially (20s timeout each). The old
+// 2-minute cutoff reclaimed *live* jobs, let a second consumer claim the same
+// job, and delivered the report twice to the user. 30 minutes matches the
+// `*/30` cron interval and is far above any healthy render while still
+// recovering a genuinely hung worker within one or two ticks.
+const staleProcessingMs = 30 * 60_000;
 
 export async function recoverStaleResultVisualJobs(
   db: D1Database,

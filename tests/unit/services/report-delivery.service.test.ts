@@ -3,13 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const repositoryMocks = vi.hoisted(() => ({
   createReportDelivery: vi.fn(),
   getReportDeliveryByDeliveryId: vi.fn(),
+  getReportDeliveryById: vi.fn(),
   getReportDeliveryByResponseId: vi.fn(),
+  resetReportDeliveryForRetry: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/report-delivery.repository", () => ({
   createReportDelivery: repositoryMocks.createReportDelivery,
   getReportDeliveryByDeliveryId: repositoryMocks.getReportDeliveryByDeliveryId,
+  getReportDeliveryById: repositoryMocks.getReportDeliveryById,
   getReportDeliveryByResponseId: repositoryMocks.getReportDeliveryByResponseId,
+  resetReportDeliveryForRetry: repositoryMocks.resetReportDeliveryForRetry,
 }));
 
 import {
@@ -71,6 +75,8 @@ describe("report delivery service", () => {
 
   it("re-enqueues a failed delivery when forced", async () => {
     repositoryMocks.getReportDeliveryByResponseId.mockResolvedValue(delivery("failed"));
+    repositoryMocks.resetReportDeliveryForRetry.mockResolvedValue(true);
+    repositoryMocks.getReportDeliveryById.mockResolvedValue(delivery("pending"));
     const queue = { send: vi.fn(async () => {}) } as unknown as Queue;
 
     const result = await enqueueReportDelivery({} as D1Database, queue, {
@@ -79,7 +85,27 @@ describe("report delivery service", () => {
     });
 
     expect(result.queued).toBe(true);
+    expect(repositoryMocks.resetReportDeliveryForRetry).toHaveBeenCalledWith({} as D1Database, 1);
     expect(queue.send).toHaveBeenCalledOnce();
+  });
+
+  it("resets and re-enqueues an already delivered report when forced", async () => {
+    repositoryMocks.getReportDeliveryByResponseId.mockResolvedValue(delivery("delivered"));
+    repositoryMocks.resetReportDeliveryForRetry.mockResolvedValue(true);
+    repositoryMocks.getReportDeliveryById.mockResolvedValue(delivery("pending"));
+    const queue = { send: vi.fn(async () => {}) } as unknown as Queue;
+
+    const result = await enqueueReportDelivery({} as D1Database, queue, {
+      responseId: 10,
+      force: true,
+    });
+
+    expect(result.queued).toBe(true);
+    expect(repositoryMocks.resetReportDeliveryForRetry).toHaveBeenCalledWith({} as D1Database, 1);
+    expect(queue.send).toHaveBeenCalledWith({
+      kind: "report_delivery",
+      deliveryId: "response_10_v1",
+    });
   });
 
   it("computes exponential backoff and stops after the attempt cap", () => {

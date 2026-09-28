@@ -24,7 +24,6 @@ import {
   getOptionStatistics,
   getSurveyStatistics,
 } from "../../services/statistics.service";
-import { downloadTelegramFile } from "../../bot/telegram";
 import {
   ADMIN_DASHBOARD_CACHE_TTL_SECONDS,
   ADMIN_DASHBOARD_CACHE_VERSION,
@@ -529,8 +528,12 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const mediaAssetId = Number(responseMediaMatch[3]);
     const survey = await loadReadableSurvey(env, ctx, surveyId);
     if (survey instanceof Response) return survey;
-    const media = await env.DB.prepare(
-      `SELECT m.telegram_file_id telegramFileId,m.mime_type mimeType,m.file_name fileName,m.file_size fileSize
+    // Ownership is checked in SQL first; the bytes then come from whatever
+    // provider the asset actually uses (KV temp, durable KV, Telegram file
+    // id, R2 or an inlined data URL). Only checking `telegram_file_id` used to
+    // 404 every web-uploaded answer photo, because those live in KV.
+    const owned = await env.DB.prepare(
+      `SELECT m.id
        FROM media_assets m
        JOIN answer_media am ON am.media_asset_id=m.id
        JOIN answers a ON a.id=am.answer_id
@@ -539,39 +542,24 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
        LIMIT 1`,
     )
       .bind(mediaAssetId, responseId, surveyId)
-      .first<{
-        telegramFileId: string | null;
-        mimeType: string | null;
-        fileName: string | null;
-        fileSize: number | null;
-      }>();
-    if (!media?.telegramFileId) return fail(404, "not_found", "答卷媒体不存在或不可用");
-    if (media.fileSize !== null && media.fileSize > 20 * 1024 * 1024) {
+      .first<{ id: number }>();
+    if (!owned) return fail(404, "not_found", "答卷媒体不存在或不可用");
+    const asset = await getMediaAssetById(env.DB, mediaAssetId);
+    if (!asset) return fail(404, "not_found", "答卷媒体不存在或不可用");
+    if (asset.fileSize !== null && asset.fileSize > 20 * 1024 * 1024) {
       return fail(413, "media_too_large", "媒体文件超过 20MB，无法在线预览");
     }
-    try {
-      const downloaded = await downloadTelegramFile(env.BOT_TOKEN, media.telegramFileId);
-      if (downloaded.data.byteLength > 20 * 1024 * 1024) {
-        return fail(413, "media_too_large", "媒体文件超过 20MB，无法在线预览");
-      }
-      const contentType = media.mimeType || downloaded.contentType || "application/octet-stream";
-      const safeName = (media.fileName || downloaded.filePath.split("/").pop() || `media-${mediaAssetId}`).replace(
-        /[\r\n"\\]/g,
-        "_",
-      );
-      const responseBody = new Uint8Array(downloaded.data).buffer;
-      return new Response(responseBody, {
-        headers: {
-          "Cache-Control": "private, max-age=300",
-          "Content-Type": contentType,
-          "Content-Disposition": `inline; filename="${safeName}"`,
-          "X-Content-Type-Options": "nosniff",
-        },
-      });
-    } catch (error) {
-      console.error("Admin response media download failed", { surveyId, responseId, mediaAssetId, error });
-      return fail(502, "media_download_failed", "媒体暂时无法读取，请稍后重试");
+    const mediaResponse = await buildMediaResponse(env, asset);
+    if (!mediaResponse) {
+      return fail(404, "not_found", "答卷媒体不存在或不可用");
     }
+    const headers = new Headers(mediaResponse.headers);
+    headers.set("Cache-Control", "private, max-age=300");
+    headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Referrer-Policy", "no-referrer");
+    const safeName = (asset.fileName ?? `media-${mediaAssetId}`).replace(/[\r\n"\\]/g, "_");
+    headers.set("Content-Disposition", `inline; filename="${safeName}"`);
+    return new Response(mediaResponse.body, { status: mediaResponse.status, headers });
   }
 
   const exportMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)\/export$/);

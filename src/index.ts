@@ -17,15 +17,20 @@ import { handleTrialApiRequest } from "./http/trial-api";
 import { handleEmailAuthApiRequest } from "./http/email-auth-api";
 import { handleReportRequest } from "./http/report-api";
 import { checkDeploymentLicense } from "./services/license-client.service";
+import { isLicenseCenter } from "./services/deployment-role.service";
 import { handleExportQueue } from "./services/export-worker.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
 import { runDatabaseMaintenance } from "./services/database-maintenance.service";
-import { cleanupExpiredTemporaryMedia } from "./services/media/temporary-media.service";
+import {
+  cleanupExpiredTemporaryMedia,
+  retainFinishedResponseMedia,
+} from "./services/media/temporary-media.service";
 import { KVMediaStore } from "./services/media/temporary-media-store";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
 import { resolveSubmissionBotUrl } from "./services/contact-links.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
+import { recoverStaleImageGeneratorJobs } from "./services/image-generator-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
 import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-digest.service";
 import { loadSystemSettings } from "./services/system-settings.service";
@@ -111,6 +116,9 @@ export interface Env {
   LICENSE_ADMIN_TOKEN?: string;
   INSTALLATION_ID?: string;
   LICENSE_GRACE_SECONDS?: string;
+  /** "vendor" = authorization center, "customer" = licensed instance. Unset
+   *  falls back to LICENSE_ADMIN_TOKEN presence (legacy deployments). */
+  DEPLOYMENT_ROLE?: "vendor" | "customer";
   BROWSER: BrowserWorker;
   ASSETS: Fetcher;
   /** Optional R2 bucket; media storage falls back to MEDIA_KV when unset. */
@@ -305,7 +313,12 @@ export default {
       return guardApiResponse(() => handleTrialApiRequest(request, env, url));
     }
 
-    const licenseApiResponse = await handleLicenseApiRequest(request, env.DB, env.LICENSE_ADMIN_TOKEN);
+    const licenseApiResponse = await handleLicenseApiRequest(
+      request,
+      env.DB,
+      env.LICENSE_ADMIN_TOKEN,
+      env.DEPLOYMENT_ROLE,
+    );
     if (licenseApiResponse) {
       return licenseApiResponse;
     }
@@ -386,7 +399,9 @@ export default {
           submissionBotUrl: resolveSubmissionBotUrl(env),
           communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
           licenseServerUrl: url.origin,
-          licenseAdminEnabled: Boolean(env.LICENSE_ADMIN_TOKEN),
+          // Same single source of truth as the web API: only the authorization
+          // center may issue licenses or hand out trial accounts.
+          licenseAdminEnabled: isLicenseCenter(env),
           browser: env.BROWSER,
           webhookSecret: env.WEBHOOK_SECRET,
         };
@@ -502,6 +517,12 @@ export default {
         console.error("Result visual job recovery failed", error);
       }
       try {
+        const summary = await recoverStaleImageGeneratorJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+        if (summary.requeued || summary.failed) console.warn("Recovered stale image generator jobs", summary);
+      } catch (error) {
+        console.error("Image generator job recovery failed", error);
+      }
+      try {
         const migrated = await migrateDataUrlCoversToKv(env.DB, env);
         if (migrated > 0) {
           console.info("Migrated data-URL covers into MEDIA_KV", { migrated });
@@ -519,6 +540,16 @@ export default {
       }
     } catch (error) {
       console.error("Database maintenance failed", error);
+    }
+    try {
+      // Rescue attachments of finished responses before the expiry sweep can
+      // delete a blob whose previews are still expected to work.
+      const retained = await retainFinishedResponseMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
+      if (retained.scanned > 0) {
+        console.info("Finished response media retained", retained);
+      }
+    } catch (error) {
+      console.error("Response media retention sweep failed", error);
     }
     try {
       const summary = await cleanupExpiredTemporaryMedia(env.DB, new KVMediaStore(env.MEDIA_KV));

@@ -2,7 +2,6 @@ const encoder = new TextEncoder();
 
 export const ADMIN_PASSWORD_SETTING_KEY = "admin_password_hash";
 export const ADMIN_PASSWORD_ITERATIONS = 100_000;
-export const DEFAULT_ADMIN_PASSWORD_HASH = "pbkdf2$100000$81UZTs4WYTOFnad_QaPUdg$Edl9BrqhB8YrN0w9l7ImX5gcl-R4MCMa6cEH4BI9HiM";
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";

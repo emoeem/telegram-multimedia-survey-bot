@@ -13,12 +13,15 @@ const QUOTA_ERROR = new Error(
 describe("database error classification", () => {
   it("recognises the D1 daily row limit failure", () => {
     expect(isDatabaseCapacityError(QUOTA_ERROR)).toBe(true);
-    expect(isDatabaseCapacityError(new Error("D1_ERROR: no such table: nope"))).toBe(true);
   });
 
   it("leaves ordinary failures alone", () => {
     expect(isDatabaseCapacityError(new Error("Network connection lost"))).toBe(false);
     expect(isDatabaseCapacityError(null)).toBe(false);
+    // A non-quota D1 error (missing table, constraint violation, ...) must not
+    // be reported as "daily quota exhausted".
+    expect(isDatabaseCapacityError(new Error("D1_ERROR: no such table: nope"))).toBe(false);
+    expect(isDatabaseCapacityError(new Error("D1_ERROR: UNIQUE constraint failed: users.telegram_user_id"))).toBe(false);
   });
 
   it("keeps plan advice out of the message end users see", () => {

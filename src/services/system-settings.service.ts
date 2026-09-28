@@ -12,7 +12,16 @@ export const SYSTEM_SETTING_KEYS = [
   "profile_gallery_survey_id",
 ] as const;
 
-export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number] | "admin_password_hash";
+export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number] | "admin_password_hash" | "admin_session_epoch";
+
+export const ADMIN_SESSION_EPOCH_KEY = "admin_session_epoch";
+
+/** Reads the admin-session epoch, defaulting to 0 when unset. */
+export async function loadAdminSessionEpoch(db: D1Database): Promise<number> {
+  const raw = await getSystemSettingValue(db, ADMIN_SESSION_EPOCH_KEY);
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
 
 export interface SystemSettings {
   reportChannelId: string;

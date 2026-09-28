@@ -49,14 +49,25 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
   if (!isValidEmail(email)) return fail(400, "validation_failed", "邮箱格式不正确");
 
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  const limitKey = `${ip}:${email}`;
-  const rate = await (codeStore
-    ? checkRateLimit(codeStore, "email-auth", limitKey, 10, 3600)
-    : Promise.resolve({ allowed: true, retryAfterSeconds: 0 }));
-  if (!rate.allowed) {
+  const [perAccount, perIp] = await Promise.all(
+    codeStore
+      ? [
+          checkRateLimit(codeStore, "email-auth", `${ip}:${email}`, 10, 3600),
+          // A per-IP ceiling so rotating the email address cannot mint an
+          // unlimited number of verification emails from one host.
+          checkRateLimit(codeStore, "email-auth-ip", ip, 30, 3600),
+        ]
+      : [
+          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
+          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
+        ],
+  );
+  const blocked = [perAccount, perIp].filter((result) => !result.allowed);
+  if (blocked.length > 0) {
+    const retryAfterSeconds = Math.max(...blocked.map((result) => result.retryAfterSeconds));
     return Response.json(
-      { code: "rate_limited", message: `操作太频繁，请 ${Math.ceil(rate.retryAfterSeconds / 60)} 分钟后再试` },
-      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+      { code: "rate_limited", message: `操作太频繁，请 ${Math.ceil(retryAfterSeconds / 60)} 分钟后再试` },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
     );
   }
 
@@ -88,14 +99,18 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     if (!isValidPassword(password)) return fail(400, "validation_failed", "密码至少 8 位");
     if (!codeStore) return fail(503, "unavailable", "当前部署未启用邮箱验证码");
     const existing = await getEmailAccountByEmail(db, email);
-    if (existing?.verifiedAt) return fail(409, "email_taken", "该邮箱已注册，请直接登录");
+    // Verify the code first: request-code never issues a code for an already
+    // registered address, so probing `register` without one no longer reveals
+    // whether the email is taken (the 409 is only reachable with a valid code).
     const valid = await verifyEmailCode(codeStore, email, "register", code);
     if (!valid) return fail(400, "invalid_code", "验证码错误或已过期");
+    if (existing?.verifiedAt) return fail(409, "email_taken", "该邮箱已注册，请直接登录");
     const account =
       existing ?? (await createEmailAccount(db, { email, passwordHash: await hashPassword(password), verified: true }));
     if (!existing) await markEmailAccountVerified(db, account.id);
     else await updateEmailAccountPassword(db, account.id, await hashPassword(password));
-    return json({ token: await mintSession(env, account.id), email: account.email });
+    const version = existing ? account.sessionVersion + 1 : account.sessionVersion;
+    return json({ token: await mintSession(env, account.id, version), email: account.email });
   }
 
   if (url.pathname === "/api/auth/email/login") {
@@ -105,7 +120,7 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     const hash = account?.passwordHash ?? "pbkdf2:100000:AAAA:AAAA";
     const ok = await verifyPassword(password, hash);
     if (!account || !ok || !account.verifiedAt) return fail(401, "invalid_credentials", "邮箱或密码不正确");
-    return json({ token: await mintSession(env, account.id), email: account.email });
+    return json({ token: await mintSession(env, account.id, account.sessionVersion), email: account.email });
   }
 
   if (url.pathname === "/api/auth/email/reset") {
@@ -118,14 +133,16 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     const valid = await verifyEmailCode(codeStore, email, "reset", code);
     if (!valid) return fail(400, "invalid_code", "验证码错误或已过期");
     await updateEmailAccountPassword(db, account.id, await hashPassword(password));
-    return json({ token: await mintSession(env, account.id), email: account.email });
+    // updateEmailAccountPassword bumped session_version, so the fresh token
+    // must carry the new version (and the old token stops verifying).
+    return json({ token: await mintSession(env, account.id, account.sessionVersion + 1), email: account.email });
   }
 
   return fail(404, "not_found", "接口不存在");
 }
 
-async function mintSession(env: Env, accountId: number): Promise<string> {
-  return createEmailSessionToken(env.WEBHOOK_SECRET, accountId);
+async function mintSession(env: Env, accountId: number, version: number): Promise<string> {
+  return createEmailSessionToken(env.WEBHOOK_SECRET, accountId, version);
 }
 
 interface EmailSession {
@@ -138,6 +155,8 @@ export async function resolveEmailSession(request: Request, env: Env): Promise<E
   const parsed = await verifyEmailSessionToken(env.WEBHOOK_SECRET, token);
   if (!parsed) return null;
   const record = await getEmailAccountById(env.DB, parsed.accountId);
-  if (!record || !record.verifiedAt) return null;
+  // A password reset bumps session_version, so a token minted before the reset
+  // no longer matches and is rejected here.
+  if (!record || !record.verifiedAt || record.sessionVersion !== parsed.version) return null;
   return { account: record };
 }

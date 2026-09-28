@@ -202,3 +202,27 @@ export function verifyUploadContent(bytes: Uint8Array, declaredMime: string): Up
 export function requiresContentCheck(mime: string): boolean {
   return familyForMime(mime) !== "document";
 }
+
+/**
+ * MIME types that a browser may execute or render as an active document
+ * (HTML/SVG/XML/JS). These must never be stored as a client-declared type and
+ * must never be served inline: a stored HTML document is served back verbatim
+ * from `/api/.../media` and would otherwise run on the application origin.
+ */
+const ACTIVE_CONTENT_MIME_TYPES = new Set([
+  "text/html",
+  "application/xhtml+xml",
+  "image/svg+xml",
+  "application/xml",
+  "text/xml",
+  "application/javascript",
+  "text/javascript",
+  "application/x-javascript",
+  "application/ecmascript",
+  "text/ecmascript",
+  "application/vnd.ms-html",
+]);
+
+export function isActiveContentMime(mime: string): boolean {
+  return ACTIVE_CONTENT_MIME_TYPES.has(mime.toLowerCase());
+}

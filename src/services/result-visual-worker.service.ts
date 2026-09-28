@@ -128,6 +128,14 @@ async function deliverReportArtifact(
       console.error("Failed to notify partial report delivery", { error, jobId });
     }
   }
+  // A render failure (artifact.failures) has already exhausted its internal
+  // retries, so the job should still complete and tell the user. But a
+  // *delivery* failure (pageFailures) is a transient Telegram 429/5xx: throw so
+  // the queue retries the whole job instead of silently dropping that page and
+  // marking the render `completed`.
+  if (pageFailures.length > 0) {
+    throw new Error(`报告有 ${pageFailures.length} 页发送失败`);
+  }
   return delivered;
 }
 

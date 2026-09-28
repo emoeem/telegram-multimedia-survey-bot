@@ -2,7 +2,9 @@ import { nowIso } from "../db/client";
 import {
   createReportDelivery,
   getReportDeliveryByDeliveryId,
+  getReportDeliveryById,
   getReportDeliveryByResponseId,
+  resetReportDeliveryForRetry,
 } from "../db/repositories/report-delivery.repository";
 import type { ReportDelivery } from "../db/schema";
 
@@ -65,7 +67,17 @@ export async function enqueueReportDelivery(
     }
   }
 
-  const shouldQueue = input.force === true || delivery.status === "pending" || delivery.status === "failed";
+  // An explicit admin resend/regenerate must actually re-archive the report.
+  // The worker returns early for `delivered` rows and `claimReportDelivery`
+  // only accepts `pending`/`failed`, so without this reset the queue message
+  // was silently acked with zero Telegram traffic. Reset in the same request
+  // that enqueues, so the two can never drift apart.
+  if (input.force === true) {
+    await resetReportDeliveryForRetry(db, delivery.id);
+    delivery = (await getReportDeliveryById(db, delivery.id)) ?? delivery;
+  }
+
+  const shouldQueue = delivery.status === "pending" || delivery.status === "failed";
   if (!shouldQueue) {
     return { delivery, queued: false };
   }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSurveyById: vi.fn(),
   getMediaAssetById: vi.fn(),
+  getMediaAssetsByIds: vi.fn(),
   prepareResultProfileForResponse: vi.fn(),
   deserializeResultProfile: vi.fn(),
 }));
@@ -13,6 +14,7 @@ vi.mock("../../../src/db/repositories/survey.repository", () => ({
 
 vi.mock("../../../src/db/repositories/media.repository", () => ({
   getMediaAssetById: mocks.getMediaAssetById,
+  getMediaAssetsByIds: mocks.getMediaAssetsByIds,
 }));
 
 vi.mock("../../../src/services/result-visual.service", () => ({
@@ -83,6 +85,7 @@ describe("report API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSurveyById.mockResolvedValue({ id: 1, title: "问卷标题" });
+    mocks.getMediaAssetsByIds.mockResolvedValue(new Map());
     mocks.prepareResultProfileForResponse.mockResolvedValue({
       profile: { id: 9 },
       reused: false,
@@ -147,6 +150,41 @@ describe("report API", () => {
       new URL("https://worker.test/report/42?t=bad"),
     );
     expect(response?.status).toBe(403);
+  });
+
+  it("renders every uploaded gallery photo, not only the first one per question", async () => {
+    mocks.deserializeResultProfile.mockReturnValue({
+      ...snapshot,
+      images: { question_11: { mediaAssetId: 77 } },
+      metadata: { gallery: [{ mediaAssetId: 77 }, { mediaAssetId: 78 }] },
+    });
+    const token = await createReportAccessToken("secret", 42);
+    const response = await handleReportRequest(
+      new Request(`https://worker.test/report/42?t=${token}`),
+      makeEnv(makeDb()),
+      new URL(`https://worker.test/report/42?t=${token}`),
+    );
+    const html = await response?.text();
+    expect(html).toContain(`/api/report/media/77?t=${token}&rid=42`);
+    expect(html).toContain(`/api/report/media/78?t=${token}&rid=42`);
+    // The first photo is also the question's answer image: the gallery entry
+    // must not repeat it, so the report shows each asset exactly once.
+    expect(html?.split("/api/report/media/77?").length).toBe(2);
+  });
+
+  it("keeps inlined report images that are not stored media assets", async () => {
+    mocks.deserializeResultProfile.mockReturnValue({
+      ...snapshot,
+      images: { "result.images.result": "data:image/png;base64,AAAA" },
+    });
+    const token = await createReportAccessToken("secret", 42);
+    const response = await handleReportRequest(
+      new Request(`https://worker.test/report/42?t=${token}`),
+      makeEnv(makeDb()),
+      new URL(`https://worker.test/report/42?t=${token}`),
+    );
+    const html = await response?.text();
+    expect(html).toContain("data:image/png;base64,AAAA");
   });
 
   it("serves response media owned by the report response", async () => {

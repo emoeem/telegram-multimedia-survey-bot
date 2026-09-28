@@ -198,7 +198,7 @@ describe("result visual queue worker", () => {
     expect(sql.some((statement) => statement.includes("status = 'completed'"))).toBe(true);
   });
 
-  it("continues after an individual report page delivery failure", async () => {
+  it("throws on an individual report page delivery failure so the queue retries", async () => {
     const { db, sql } = createDb(true, 99);
     renderHtmlReportArtifact.mockResolvedValue({
       pages: [
@@ -232,15 +232,18 @@ describe("result visual queue worker", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
     sendDocument.mockRejectedValueOnce(new Error("document failed"));
     sendMessage.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
-    await processResultVisualMessage(
-      { DB: db, BOT_TOKEN: "token", BROWSER: {} as never },
-      { kind: "result_visual", jobId: 8 },
-    );
+    await expect(
+      processResultVisualMessage(
+        { DB: db, BOT_TOKEN: "token", BROWSER: {} as never },
+        { kind: "result_visual", jobId: 8 },
+      ),
+    ).rejects.toThrow("报告有 1 页发送失败");
     expect(sendPhoto).toHaveBeenCalledTimes(2);
     expect(sendPhoto).toHaveBeenLastCalledWith("token", 99, expect.any(Uint8Array), "分析报告 2/2 · verdict", {
       inline_keyboard: [[{ text: "🔄 重新生成", callback_data: "owner:response_report_generate:2:3:6" }]],
     });
     expect(sendMessage).toHaveBeenCalledWith("token", 99, expect.stringContaining("1 个页面生成或发送失败"));
-    expect(sql.some((statement) => statement.includes("status = 'completed'"))).toBe(true);
+    // The render is NOT marked completed: the queue retries the whole delivery.
+    expect(sql.some((statement) => statement.includes("status = 'completed'"))).toBe(false);
   });
 });

@@ -41,8 +41,13 @@ export class UiSessionDO extends DurableObject {
   }
 
   private async putState(state: UiSessionState): Promise<void> {
-    await this.ctx.storage.put(STATE_KEY, state);
-    await this.ctx.storage.setAlarm(Date.now() + UI_SESSION_RETENTION_MS);
+    // Write state and re-arm the alarm atomically: an eviction between the two
+    // awaits would leave a session with no alarm and it would never be
+    // collected.
+    await this.ctx.storage.transaction(async (txn) => {
+      await txn.put(STATE_KEY, state);
+      await txn.setAlarm(Date.now() + UI_SESSION_RETENTION_MS);
+    });
   }
 
   private initialState(request: Request): UiSessionState {

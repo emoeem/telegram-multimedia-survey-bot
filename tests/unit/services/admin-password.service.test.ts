@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_ADMIN_PASSWORD_HASH,
   hashAdminPassword,
   isValidAdminPassword,
   verifyAdminPassword,
 } from "../../../src/services/admin-password.service";
 
 describe("admin password service", () => {
-  it("accepts the default password and rejects incorrect passwords", async () => {
-    expect(await verifyAdminPassword("emoemoemo", DEFAULT_ADMIN_PASSWORD_HASH)).toBe(true);
-    expect(await verifyAdminPassword("wrong-password", DEFAULT_ADMIN_PASSWORD_HASH)).toBe(false);
+  it("rejects a malformed stored hash instead of authenticating", async () => {
+    expect(await verifyAdminPassword("anything", "not-a-valid-hash")).toBe(false);
+    expect(await verifyAdminPassword("anything", "pbkdf2$1$aaaa$aaaa")).toBe(false);
   });
 
   it("hashes passwords with a random salt", async () => {

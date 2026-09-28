@@ -14,6 +14,7 @@ export interface DatabaseMaintenanceSummary {
   expiredExportJobs: number;
   expiredAuditLogs: number;
   expiredTelegramDedupRows: number;
+  expiredRateLimitRows: number;
   /** Rows this run read, as metered by D1. The free tier allows 5,000,000/day. */
   rowsRead: number;
   /** True when the run stopped early to stay inside MAINTENANCE_ROWS_READ_BUDGET. */
@@ -206,40 +207,65 @@ function collectIds(matches: Iterable<RegExpMatchArray | null>): Set<number> {
  * `answers.json_value` has always been written as `{"mediaAssetId": N}`; the
  * regex also catches older or nested spellings so the scan stays strictly
  * safer than the per-row LIKE probes it replaces.
+ *
+ * Paged by `id` and stopped by `shouldStop` so the daily read budget can cut
+ * the scan off between pages instead of after a single unbounded statement.
  */
-async function loadAnswerJsonMediaIds(db: D1Database): Promise<Set<number>> {
-  const result = await db
-    .prepare(
-      `SELECT json_value FROM answers
-        WHERE json_value IS NOT NULL
-          AND json_value LIKE '%"mediaAssetId"%'`,
-    )
-    .all<{ json_value: string | null }>();
+const JSON_SCAN_PAGE_SIZE = 2000;
+
+async function loadAnswerJsonMediaIds(db: D1Database, shouldStop: () => boolean): Promise<Set<number>> {
   const ids = new Set<number>();
-  for (const row of result.results ?? []) {
-    for (const id of collectIds(row.json_value?.matchAll(/"mediaAssetId"\s*:\s*(\d+)/g) ?? [])) {
-      ids.add(id);
+  let lastId = 0;
+  while (!shouldStop()) {
+    const result = await db
+      .prepare(
+        `SELECT id, json_value FROM answers
+          WHERE id > ?
+            AND json_value IS NOT NULL
+            AND json_value LIKE '%"mediaAssetId"%'
+          ORDER BY id ASC
+          LIMIT ?`,
+      )
+      .bind(lastId, JSON_SCAN_PAGE_SIZE)
+      .all<{ id: number; json_value: string | null }>();
+    const rows = result.results ?? [];
+    for (const row of rows) {
+      lastId = row.id;
+      for (const id of collectIds(row.json_value?.matchAll(/"mediaAssetId"\s*:\s*(\d+)/g) ?? [])) {
+        ids.add(id);
+      }
     }
+    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
   }
   return ids;
 }
 
 /** Media ids embedded in survey settings (`{"url":"/api/survey/media/12"}`). */
-async function loadSurveySettingsMediaIds(db: D1Database): Promise<Set<number>> {
-  const result = await db
-    .prepare(
-      `SELECT settings_json FROM surveys
-        WHERE settings_json IS NOT NULL
-          AND settings_json LIKE '%media/%'`,
-    )
-    .all<{ settings_json: string | null }>();
+async function loadSurveySettingsMediaIds(db: D1Database, shouldStop: () => boolean): Promise<Set<number>> {
   const ids = new Set<number>();
-  for (const row of result.results ?? []) {
-    // Matches both `/api/survey/media/12` and relative `media/12` spellings.
-    // Over-matching only keeps a row alive, which is the safe direction.
-    for (const id of collectIds(row.settings_json?.matchAll(/media\/(\d+)/g) ?? [])) {
-      ids.add(id);
+  let lastId = 0;
+  while (!shouldStop()) {
+    const result = await db
+      .prepare(
+        `SELECT id, settings_json FROM surveys
+          WHERE id > ?
+            AND settings_json IS NOT NULL
+            AND settings_json LIKE '%media/%'
+          ORDER BY id ASC
+          LIMIT ?`,
+      )
+      .bind(lastId, JSON_SCAN_PAGE_SIZE)
+      .all<{ id: number; settings_json: string | null }>();
+    const rows = result.results ?? [];
+    for (const row of rows) {
+      lastId = row.id;
+      // Matches both `/api/survey/media/12` and relative `media/12` spellings.
+      // Over-matching only keeps a row alive, which is the safe direction.
+      for (const id of collectIds(row.settings_json?.matchAll(/media\/(\d+)/g) ?? [])) {
+        ids.add(id);
+      }
     }
+    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
   }
   return ids;
 }
@@ -283,12 +309,16 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
   return (result.results ?? []).map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
 }
 
-async function deleteOrphanMediaAssets(db: D1Database, before: string): Promise<number> {
+async function deleteOrphanMediaAssets(
+  db: D1Database,
+  before: string,
+  shouldStop: () => boolean,
+): Promise<number> {
   const candidates = await findOrphanMediaCandidates(db, before);
   if (candidates.length === 0) return 0;
   const referencedInJson = new Set<number>([
-    ...(await loadAnswerJsonMediaIds(db)),
-    ...(await loadSurveySettingsMediaIds(db)),
+    ...(await loadAnswerJsonMediaIds(db, shouldStop)),
+    ...(await loadSurveySettingsMediaIds(db, shouldStop)),
   ]);
   let deleted = 0;
   for (const id of candidates) {
@@ -327,6 +357,7 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
     expiredExportJobs: 0,
     expiredAuditLogs: 0,
     expiredTelegramDedupRows: 0,
+    expiredRateLimitRows: 0,
     rowsRead: 0,
     truncated: false,
   };
@@ -366,14 +397,31 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
       }
     },
     async () => {
+      // Atomic rate-limit counters only need to outlive their largest window
+      // (5 minutes for login / access codes). window_start is milliseconds.
+      try {
+        summary.expiredRateLimitRows = await changes(
+          scoped.prepare("DELETE FROM rate_limits WHERE window_start < ?").bind(now - DAY),
+        );
+      } catch (error) {
+        console.warn("Skipped rate limit cleanup", error);
+      }
+    },
+    async () => {
+      // Split the COALESCE so SQLite can use idx_render_jobs_retention
+      // (status, completed_at, created_at) as a range scan instead of reading
+      // every completed/failed row and filtering in the engine.
       summary.expiredRenderJobs = await changes(
         scoped
           .prepare(
             `DELETE FROM render_jobs
      WHERE status IN ('completed', 'failed')
-       AND COALESCE(completed_at, created_at) < ?`,
+       AND (
+         (completed_at IS NOT NULL AND completed_at < ?)
+         OR (completed_at IS NULL AND created_at < ?)
+       )`,
           )
-          .bind(jobBefore),
+          .bind(jobBefore, jobBefore),
       );
     },
     async () => {
@@ -382,9 +430,12 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
           .prepare(
             `DELETE FROM image_generator_jobs
      WHERE status IN ('completed', 'failed')
-       AND COALESCE(completed_at, created_at) < ?`,
+       AND (
+         (completed_at IS NOT NULL AND completed_at < ?)
+         OR (completed_at IS NULL AND created_at < ?)
+       )`,
           )
-          .bind(jobBefore),
+          .bind(jobBefore, jobBefore),
       );
     },
     async () => {
@@ -393,9 +444,12 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
           .prepare(
             `DELETE FROM export_jobs
      WHERE status IN ('completed', 'failed')
-       AND COALESCE(completed_at, created_at) < ?`,
+       AND (
+         (completed_at IS NOT NULL AND completed_at < ?)
+         OR (completed_at IS NULL AND created_at < ?)
+       )`,
           )
-          .bind(jobBefore),
+          .bind(jobBefore, jobBefore),
       );
     },
     async () => {
@@ -465,7 +519,7 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
     },
     async () => {
       if (await ensureOrphanSweepIndexes(scoped)) {
-        summary.orphanAssets = await deleteOrphanMediaAssets(scoped, previewBefore);
+        summary.orphanAssets = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded);
       }
     },
   ];

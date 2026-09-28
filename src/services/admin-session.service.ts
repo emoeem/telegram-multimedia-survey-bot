@@ -59,6 +59,8 @@ interface SessionPayload {
   u: number;
   exp: number;
   p: "login" | "session";
+  /** Session epoch; bumped to invalidate every issued session at once. */
+  ep: number;
 }
 
 async function issueToken(
@@ -66,6 +68,7 @@ async function issueToken(
   userId: number,
   ttlSeconds: number,
   purpose: SessionPayload["p"],
+  epoch: number,
 ): Promise<string> {
   const payload = base64UrlEncode(
     encoder.encode(
@@ -73,6 +76,7 @@ async function issueToken(
         u: userId,
         exp: Math.floor(Date.now() / 1000) + ttlSeconds,
         p: purpose,
+        ep: epoch,
         // Keep independently issued login links unique even when Telegram
         // generates two links for the same user within the same second.
         // Without a nonce the signed payload was deterministic, so the
@@ -86,7 +90,12 @@ async function issueToken(
   return `${payload}.${signature}`;
 }
 
-async function verifyToken(secret: string, token: string, purpose: SessionPayload["p"]): Promise<number | null> {
+async function verifyToken(
+  secret: string,
+  token: string,
+  purpose: SessionPayload["p"],
+  epoch: number,
+): Promise<number | null> {
   const dot = token.indexOf(".");
   if (dot <= 0) return null;
   const payloadPart = token.slice(0, dot);
@@ -96,7 +105,7 @@ async function verifyToken(secret: string, token: string, purpose: SessionPayloa
   if (!bytes) return null;
   try {
     const parsed = JSON.parse(decoder.decode(bytes)) as SessionPayload;
-    if (parsed.p !== purpose || typeof parsed.u !== "number" || typeof parsed.exp !== "number") {
+    if (parsed.p !== purpose || typeof parsed.u !== "number" || typeof parsed.exp !== "number" || parsed.ep !== epoch) {
       return null;
     }
     if (parsed.exp * 1000 <= Date.now()) return null;
@@ -106,10 +115,10 @@ async function verifyToken(secret: string, token: string, purpose: SessionPayloa
   }
 }
 
-export async function createAdminSessionValue(secret: string, userId: number): Promise<string> {
-  return issueToken(secret, userId, ADMIN_SESSION_TTL_SECONDS, "session");
+export async function createAdminSessionValue(secret: string, userId: number, epoch: number): Promise<string> {
+  return issueToken(secret, userId, ADMIN_SESSION_TTL_SECONDS, "session", epoch);
 }
 
-export async function verifyAdminSessionValue(secret: string, value: string): Promise<number | null> {
-  return verifyToken(secret, value, "session");
+export async function verifyAdminSessionValue(secret: string, value: string, epoch: number): Promise<number | null> {
+  return verifyToken(secret, value, "session", epoch);
 }

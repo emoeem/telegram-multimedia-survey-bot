@@ -4,6 +4,7 @@ export interface EmailAccountRecord {
   passwordHash: string;
   userId: number | null;
   verifiedAt: string | null;
+  sessionVersion: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +16,7 @@ function mapRow(row: Record<string, unknown>): EmailAccountRecord {
     passwordHash: String(row.password_hash),
     userId: typeof row.user_id === "number" ? row.user_id : null,
     verifiedAt: typeof row.verified_at === "string" ? row.verified_at : null,
+    sessionVersion: typeof row.session_version === "number" ? row.session_version : 0,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -62,7 +64,12 @@ export async function markEmailAccountVerified(db: D1Database, id: number): Prom
 export async function updateEmailAccountPassword(db: D1Database, id: number, passwordHash: string): Promise<void> {
   await db
     .prepare(
-      "UPDATE email_accounts SET password_hash = ?, verified_at = COALESCE(verified_at, ?), updated_at = ? WHERE id = ?",
+      `UPDATE email_accounts
+       SET password_hash = ?,
+           verified_at = COALESCE(verified_at, ?),
+           session_version = session_version + 1,
+           updated_at = ?
+       WHERE id = ?`,
     )
     .bind(passwordHash, new Date().toISOString(), new Date().toISOString(), id)
     .run();

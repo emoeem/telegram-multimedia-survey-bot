@@ -264,13 +264,13 @@ export async function getNumericStatistics(db: D1Database, surveyId: number): Pr
        LEFT JOIN answers a
          ON a.question_id = q.id
         AND a.response_id IN (
-          SELECT id FROM survey_responses WHERE status = 'completed'
+          SELECT id FROM survey_responses WHERE status = 'completed' AND survey_id = ?
         )
        WHERE q.survey_id = ? AND q.type IN ('rating', 'number')
        GROUP BY q.id
        ORDER BY q."order" ASC`,
     )
-    .bind(surveyId)
+    .bind(surveyId, surveyId)
     .all<{
       question_id: number;
       question_title: string;

@@ -11,7 +11,12 @@ import { createImportMediaResolver } from "../../services/import-media.service";
 import { ImportValidationError, parseImportedSurvey, saveImportedSurvey } from "../../services/import.service";
 import type { Env } from "../../index";
 import { REPORT_TEMPLATES } from "../../services/report/template";
-import { saveSystemSetting, SYSTEM_SETTING_KEYS } from "../../services/system-settings.service";
+import {
+  ADMIN_SESSION_EPOCH_KEY,
+  loadAdminSessionEpoch,
+  saveSystemSetting,
+  SYSTEM_SETTING_KEYS,
+} from "../../services/system-settings.service";
 import { hashAdminPassword, isValidAdminPassword, ADMIN_PASSWORD_SETTING_KEY } from "../../services/admin-password.service";
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
@@ -94,6 +99,10 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     }
     if (newAdminPassword) {
       updates[ADMIN_PASSWORD_SETTING_KEY] = await hashAdminPassword(newAdminPassword);
+      // Changing the password invalidates every existing admin session, so a
+      // leaked/stale cookie can't outlive the credential rotation.
+      const epoch = await loadAdminSessionEpoch(db);
+      updates[ADMIN_SESSION_EPOCH_KEY] = String(epoch + 1);
     }
     if (!Object.keys(updates).length) {
       return fail(400, "validation_failed", "没有可更新的设置");

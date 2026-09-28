@@ -10,8 +10,7 @@ export function isDatabaseCapacityError(error: unknown): boolean {
   return (
     /exceeded d1/i.test(message) ||
     /daily row (read|write) limit/i.test(message) ||
-    /code:\s*7500/i.test(message) ||
-    /D1_ERROR/i.test(message)
+    /code:\s*7500/i.test(message)
   );
 }
 

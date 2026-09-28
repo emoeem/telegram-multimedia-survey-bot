@@ -8,6 +8,7 @@ const { launch, page, browser } = vi.hoisted(() => {
     evaluate: vi.fn(async () => undefined),
     screenshot: vi.fn(async () => new Uint8Array([137, 80, 78, 71])),
     pdf: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
+    close: vi.fn(async () => undefined),
   };
   const browser = { newPage: vi.fn(async () => page), close: vi.fn(async () => undefined) };
   return { launch: vi.fn(async () => browser), page, browser };

@@ -1,6 +1,6 @@
 import type { Answer, QuestionType } from "../db/schema";
 import { createMediaAsset, expireMediaAsset } from "../db/repositories/media.repository";
-import { listAnswersByResponseId, setResponseGalleryPublished } from "../db/repositories/response.repository";
+import { listAnswersByResponseIds, setResponseGalleryPublished } from "../db/repositories/response.repository";
 import { normalizeAnswer } from "./answer-value-adapter.service";
 import { KVMediaStore } from "./media/temporary-media-store";
 import { getSurveyFlow } from "./question.service";
@@ -124,6 +124,33 @@ async function listGalleryMedia(db: D1Database, responseId: number): Promise<Pro
   return result.results ?? [];
 }
 
+/** Batch variant for the gallery feed; one query for the whole page. */
+async function listGalleryMediaByResponseIds(
+  db: D1Database,
+  responseIds: number[],
+): Promise<Map<number, ProfileGalleryMediaRef[]>> {
+  const map = new Map<number, ProfileGalleryMediaRef[]>();
+  if (responseIds.length === 0) return map;
+  const result = await db
+    .prepare(
+      // Every column is table-qualified: `json_each` also exposes `id` (plus
+      // key/value/parent/...), so a bare `ORDER BY ... id` is an
+      // "ambiguous column name: id" error that took the whole plaza feed down.
+      `SELECT g.response_id responseId, g.media_asset_id mediaAssetId, g.question_id questionId
+       FROM gallery_profile_media g
+       JOIN json_each(?) AS r ON r.value = g.response_id
+       ORDER BY g.response_id ASC, g.sort_order ASC, g.id ASC`,
+    )
+    .bind(JSON.stringify(responseIds))
+    .all<{ responseId: number; mediaAssetId: number; questionId: number }>();
+  for (const row of result.results ?? []) {
+    const list = map.get(row.responseId) ?? [];
+    list.push({ mediaAssetId: row.mediaAssetId, questionId: row.questionId });
+    map.set(row.responseId, list);
+  }
+  return map;
+}
+
 async function listPublishedSourceAssetIds(db: D1Database, responseId: number): Promise<Set<number>> {
   const result = await db
     .prepare(
@@ -226,7 +253,8 @@ export async function publishProfileResponse(
     await env.DB.prepare(
       `INSERT INTO gallery_profile_media (
          response_id, media_asset_id, question_id, source_asset_id, sort_order, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING`,
     )
       .bind(responseId, asset.id, source.questionId, source.mediaAssetId, images.length, timestamp)
       .run();
@@ -314,14 +342,11 @@ export function formatProfileAnswerText(question: ProfileAnswerQuestion, answer:
 }
 
 async function responseToProfileItem(
-  db: D1Database,
   response: ResponseRow,
   flow: Awaited<ReturnType<typeof getSurveyFlow>>,
+  answers: Answer[],
+  images: ProfileGalleryMediaRef[],
 ): Promise<ProfileGalleryItem> {
-  const [answers, images] = await Promise.all([
-    listAnswersByResponseId(db, response.responseId),
-    listGalleryMedia(db, response.responseId),
-  ]);
   const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]));
   const fields: ProfileGalleryField[] = [];
   let visibleQuestionIds: number[] | null = null;
@@ -423,9 +448,29 @@ export async function listProfileGalleryItems(
 
   const responseRows = rows.results ?? [];
   const flow = await getSurveyFlow(db, options.surveyId);
+  // Batch the per-response lookups instead of issuing two queries per row (the
+  // previous N+1 meant up to 60 sequential D1 round-trips per public page).
+  const responseIds = responseRows.map((row) => row.responseId);
+  const [allAnswers, galleryMediaByResponse] = await Promise.all([
+    listAnswersByResponseIds(db, responseIds),
+    listGalleryMediaByResponseIds(db, responseIds),
+  ]);
+  const answersByResponse = new Map<number, Answer[]>();
+  for (const answer of allAnswers) {
+    const list = answersByResponse.get(answer.responseId) ?? [];
+    list.push(answer);
+    answersByResponse.set(answer.responseId, list);
+  }
   const items: ProfileGalleryItem[] = [];
   for (const row of responseRows) {
-    items.push(await responseToProfileItem(db, row, flow));
+    items.push(
+      await responseToProfileItem(
+        row,
+        flow,
+        answersByResponse.get(row.responseId) ?? [],
+        galleryMediaByResponse.get(row.responseId) ?? [],
+      ),
+    );
   }
   return {
     items,

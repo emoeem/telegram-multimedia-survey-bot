@@ -11,10 +11,22 @@ import { verifyReportAccessToken } from "../services/report-access-token.service
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { loadSystemSettings } from "../services/system-settings.service";
 import { defaultParticipantReportTemplate } from "../services/participant-report.service";
+import {
+  assembleReportImages,
+  collectReportImageEntries,
+  mapWithConcurrency,
+  reportImageAssetId,
+  resolveReportImageToDataUrl,
+  type ReportImagesEnv,
+} from "../services/report/report-images.service";
+import type { ResultProfileSnapshot } from "../result/schema";
 
 function fail(status: number, code: string, message: string): Response {
-  return Response.json({ ok: false, code, message }, { status });
+  return Response.json({ ok: false, code, message }, { status, headers: { "Cache-Control": "no-store" } });
 }
+
+/** Keeps a report with many legacy/remote images from flooding subrequests. */
+const REPORT_IMAGE_RESOLVE_CONCURRENCY = 4;
 
 export async function handleReportRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (request.method !== "GET") {
@@ -31,23 +43,34 @@ export async function handleReportRequest(request: Request, env: Env, url: URL):
   return serveReportPage(env, url, Number(pageMatch[1]));
 }
 
-function mediaAssetIdFromValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const candidate = (value as { mediaAssetId?: unknown }).mediaAssetId;
-    if (typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0) {
-      return candidate;
+/**
+ * Builds the image map the web report renders from.
+ *
+ * Stored assets become `/api/report/media/:id` links (cacheable, lazily
+ * loaded, served through the report's own access token). Anything else a
+ * report can reference — an inlined data URL, an editor-entered image URL, a
+ * legacy Telegram file id — is resolved server-side into a data URL, which is
+ * exactly the set the PDF/archive renderer keeps. Previously this map only
+ * understood `{ mediaAssetId }` and ignored `metadata.gallery`, so uploaded
+ * photos beyond the first one of each question, and every configured result
+ * image, were missing from the preview while still present in the PDF.
+ */
+async function buildReportImageSources(
+  env: ReportImagesEnv,
+  profile: ResultProfileSnapshot,
+  token: string | null,
+  responseId: number,
+): Promise<Record<string, string>> {
+  const entries = collectReportImageEntries(profile);
+  const encodedToken = encodeURIComponent(token ?? "");
+  const resolved = await mapWithConcurrency(entries, REPORT_IMAGE_RESOLVE_CONCURRENCY, async (entry) => {
+    const mediaAssetId = reportImageAssetId(entry.value);
+    if (mediaAssetId !== null) {
+      return `/api/report/media/${mediaAssetId}?t=${encodedToken}&rid=${responseId}`;
     }
-    if (typeof candidate === "string" && /^\d+$/.test(candidate)) {
-      const parsed = Number(candidate);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-    }
-  }
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-  return null;
+    return resolveReportImageToDataUrl(env, entry.value);
+  });
+  return assembleReportImages(entries, resolved);
 }
 
 async function serveReportPage(env: Env, url: URL, responseId: number): Promise<Response> {
@@ -74,14 +97,7 @@ async function serveReportPage(env: Env, url: URL, responseId: number): Promise<
     return fail(404, "report_unavailable", "报告不存在或尚未生成");
   }
   const snapshot = deserializeResultProfile(prepared.profile);
-  const images: Record<string, string> = {};
-  for (const [key, value] of Object.entries(snapshot.images)) {
-    if (key.startsWith("template.")) continue;
-    const mediaAssetId = mediaAssetIdFromValue(value);
-    if (mediaAssetId !== null) {
-      images[key] = `/api/report/media/${mediaAssetId}?t=${encodeURIComponent(token ?? "")}&rid=${responseId}`;
-    }
-  }
+  const images = await buildReportImageSources(env, snapshot, token, responseId);
 
   const viewModel = buildReportViewModel(snapshot, images);
   const systemSettings = await loadSystemSettings(env.DB);

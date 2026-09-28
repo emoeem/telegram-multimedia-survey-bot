@@ -5,6 +5,7 @@ import {
   completeReportDelivery,
   createReportDelivery,
   failReportDelivery,
+  resetReportDeliveryForRetry,
 } from "../../../src/db/repositories/report-delivery.repository";
 
 const deliveryRow = {
@@ -96,5 +97,15 @@ describe("report delivery repository", () => {
       nextRetryAt: null,
     });
     expect(statementB.bind.mock.calls[0]?.[0]).toBe("failed");
+  });
+
+  it("resets only terminal deliveries back to pending", async () => {
+    const { db, statement } = makeDb({ changes: 1 });
+    await expect(resetReportDeliveryForRetry(db, 1)).resolves.toBe(true);
+    expect(statement.run).toHaveBeenCalled();
+
+    const { db: dbNoChange, statement: statementNoChange } = makeDb({ changes: 0 });
+    await expect(resetReportDeliveryForRetry(dbNoChange, 1)).resolves.toBe(false);
+    expect(statementNoChange.run).toHaveBeenCalled();
   });
 });

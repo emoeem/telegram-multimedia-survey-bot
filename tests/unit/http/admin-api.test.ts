@@ -101,6 +101,9 @@ function makeDb() {
     firstOn: (pattern: string, value: unknown) => {
       firstRules.push([pattern, () => value]);
     },
+    firstFn: (pattern: string, fn: () => unknown) => {
+      firstRules.push([pattern, fn]);
+    },
     allOn: (pattern: string, rows: unknown[]) => {
       allRules.push([pattern, () => rows]);
     },
@@ -214,7 +217,7 @@ describe("handleAdminApi authentication and permissions", () => {
     expect(repositoryMocks.getUserByTelegramId).not.toHaveBeenCalled();
   });
 
-  it("creates a Telegram deep-link login request without touching D1", async () => {
+  it("creates a Telegram deep-link login request keyed on KV", async () => {
     telegramMocks.getBotUsername.mockResolvedValue("example_bot");
     const { db } = makeDb();
     const store = new Map<string, string>();
@@ -232,27 +235,45 @@ describe("handleAdminApi authentication and permissions", () => {
     const body = (await response.json()) as { loginUrl: string; expiresIn: number };
     expect(body.loginUrl).toMatch(/^https:\/\/t.me\/example_bot\?start=admin_login_[A-Za-z0-9_-]{32}$/);
     expect(body.expiresIn).toBe(300);
-    expect(cache.put).toHaveBeenCalledTimes(2);
-    expect(db.prepare).not.toHaveBeenCalled();
+    // Rate limiting now uses the atomic D1 counter, so only the login request
+    // itself writes to KV.
+    expect(cache.put).toHaveBeenCalledTimes(1);
     expect(response.headers.get("set-cookie")).toContain("admin_login_request=");
   });
 
   it("rate-limits repeated Telegram login starts per client IP", async () => {
     telegramMocks.getBotUsername.mockResolvedValue("example_bot");
-    const { db } = makeDb();
+    const { db, firstFn } = makeDb();
+    // Simulate the atomic rate_limits counter: count increments on every
+    // INSERT ... ON CONFLICT DO UPDATE, so the 6th request exceeds the 5/300s
+    // budget and is rejected.
+    let count = 0;
+    firstFn("INSERT INTO rate_limits", () => {
+      count += 1;
+      return { count };
+    });
     const store = new Map<string, string>();
     const cache = {
       get: vi.fn(async (key: string) => store.get(key) ?? null),
       put: vi.fn(async (key: string, value: string) => {
-        const current = Number(store.get(key) ?? "0");
-        store.set(key, key.startsWith("rl:v1:admin-login-start:") ? String(Math.max(current, Number(value))) : value);
+        store.set(key, value);
       }),
     } as unknown as KVNamespace;
     for (let i = 0; i < 5; i++) {
-      const response = await handleAdminApi(new Request("https://example.test/api/admin/auth/telegram/start", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), makeEnv(db, { CACHE: cache, WEBHOOK_SECRET: "test-secret" }));
+      const response = await handleAdminApi(
+        new Request("https://example.test/api/admin/auth/telegram/start", {
+          headers: { "CF-Connecting-IP": "203.0.113.9" },
+        }),
+        makeEnv(db, { CACHE: cache, WEBHOOK_SECRET: "test-secret" }),
+      );
       expect(response.status).toBe(200);
     }
-    const blocked = await handleAdminApi(new Request("https://example.test/api/admin/auth/telegram/start", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), makeEnv(db, { CACHE: cache }));
+    const blocked = await handleAdminApi(
+      new Request("https://example.test/api/admin/auth/telegram/start", {
+        headers: { "CF-Connecting-IP": "203.0.113.9" },
+      }),
+      makeEnv(db, { CACHE: cache }),
+    );
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("retry-after")).toBeTruthy();
   });
@@ -516,11 +537,26 @@ describe("handleAdminApi authentication and permissions", () => {
     });
     const harness = makeDb();
     harness.firstOn("FROM surveys WHERE id", surveyRow({ owner_id: 7 }));
-    harness.firstOn("FROM media_assets m", {
-      telegramFileId: "telegram-file",
-      mimeType: "image/jpeg",
-      fileName: "answer.jpg",
-      fileSize: 3,
+    harness.firstOn("FROM media_assets m", { id: 51 });
+    harness.firstOn("FROM media_assets WHERE id", {
+      id: 51,
+      asset_scope: "response",
+      media_type: "photo",
+      telegram_file_id: "telegram-file",
+      telegram_file_unique_id: null,
+      url: null,
+      storage_kind: "telegram",
+      storage_key: null,
+      expires_at: null,
+      mime_type: "image/jpeg",
+      file_name: "answer.jpg",
+      file_size: 3,
+      width: null,
+      height: null,
+      duration: null,
+      r2_key: null,
+      created_at: "2026-08-22T00:00:00.000Z",
+      updated_at: "2026-08-22T00:00:00.000Z",
     });
     const response = await handleAdminApi(
       apiRequest("/api/admin/surveys/5/responses/31/media/51", { userId: "222" }),
@@ -532,6 +568,45 @@ describe("handleAdminApi authentication and permissions", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect(telegramMocks.downloadTelegramFile).toHaveBeenCalledWith(BOT_TOKEN, "telegram-file");
     expect(harness.sqlLog.some((sql) => sql.includes("m.asset_scope='response'") && sql.includes("r.id=?"))).toBe(true);
+  });
+
+  it("serves KV-backed answer photos that have no Telegram file id", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const harness = makeDb();
+    harness.firstOn("FROM surveys WHERE id", surveyRow({ owner_id: 7 }));
+    harness.firstOn("FROM media_assets m", { id: 51 });
+    harness.firstOn("FROM media_assets WHERE id", {
+      id: 51,
+      asset_scope: "response",
+      media_type: "photo",
+      telegram_file_id: null,
+      telegram_file_unique_id: null,
+      url: null,
+      storage_kind: "temporary",
+      storage_key: "media:report:31:abc",
+      expires_at: null,
+      mime_type: "image/png",
+      file_name: "answer.png",
+      file_size: 3,
+      width: null,
+      height: null,
+      duration: null,
+      r2_key: null,
+      created_at: "2026-08-22T00:00:00.000Z",
+      updated_at: "2026-08-22T00:00:00.000Z",
+    });
+    const mediaKv = {
+      get: vi.fn(async () => new Uint8Array([9, 8, 7]).buffer as ArrayBuffer),
+    } as unknown as KVNamespace;
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/surveys/5/responses/31/media/51", { userId: "222" }),
+      makeEnv(harness.db, { MEDIA_KV: mediaKv }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=300");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([9, 8, 7]));
+    expect(telegramMocks.downloadTelegramFile).not.toHaveBeenCalled();
   });
 
   it("does not download media outside the scoped response relation", async () => {
@@ -1687,5 +1762,57 @@ describe("handleAdminApi write endpoints", () => {
     const responseB = await handleAdminApi(request, makeEnv(malformed.db));
     expect(responseB.status).toBe(400);
     expect(await responseB.json()).toMatchObject({ code: "invalid_body" });
+  });
+});
+
+describe("vendor-only console isolation", () => {
+  it("refuses license management on a customer deployment even with an admin token", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const { db } = makeDb();
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/licenses", { userId: "111" }),
+      makeEnv(db, { DEPLOYMENT_ROLE: "customer", LICENSE_ADMIN_TOKEN: "leaked-vendor-secret" }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "license_center_required" });
+  });
+
+  it("refuses trial grants on a customer deployment", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const { db } = makeDb();
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/users/42/trial", { method: "POST", userId: "111", body: { days: 30 } }),
+      makeEnv(db, { DEPLOYMENT_ROLE: "customer" }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "license_center_required" });
+  });
+
+  it("keeps the vendor console on the authorization center", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const { db, allOn } = makeDb();
+    allOn("FROM software_licenses", []);
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/licenses", { userId: "111" }),
+      makeEnv(db, { DEPLOYMENT_ROLE: "vendor", LICENSE_ADMIN_TOKEN: "vendor-secret" }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("reports the deployment role so the SPA can hide the console", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const { db } = makeDb();
+    const customer = await handleAdminApi(
+      apiRequest("/api/admin/deployment", { userId: "111" }),
+      makeEnv(db, { DEPLOYMENT_ROLE: "customer" }),
+    );
+    expect(customer.status).toBe(200);
+    expect(await customer.json()).toMatchObject({ role: "customer", licenseCenter: false });
+
+    const vendor = await handleAdminApi(
+      apiRequest("/api/admin/deployment", { userId: "111" }),
+      makeEnv(db, { DEPLOYMENT_ROLE: "vendor", LICENSE_ADMIN_TOKEN: "vendor-secret" }),
+    );
+    expect(await vendor.json()).toMatchObject({ role: "vendor", licenseCenter: true });
   });
 });

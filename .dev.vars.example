@@ -16,6 +16,12 @@ LICENSE_GRACE_SECONDS = "86400"
 # 只用于厂商授权中心的自动发证管理接口，客户部署不要配置。
 LICENSE_ADMIN_TOKEN = "replace-with-a-long-vendor-only-secret"
 
+# 部署角色：vendor = 授权中心（可签发授权、发布版本、发放体验账号）；
+# customer = 已授权客户实例（以上能力全部关闭）。
+# 客户部署由 scripts/deploy-customer.mjs 自动写入 customer；留空则回退为
+# 「是否配置了 LICENSE_ADMIN_TOKEN」的旧判定。
+DEPLOYMENT_ROLE = "vendor"
+
 # 报告归档私人频道（Phase 5 使用）：把 Bot 添加为频道管理员后填入频道 ID
 # （形如 -1001234567890）。
 REPORT_CHANNEL_ID = ""

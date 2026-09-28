@@ -65,6 +65,9 @@ function isRetryableDeliveryError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   if (/REPORT_CHANNEL_ID|BROWSER|未配置|not configured/.test(message)) return false;
   if (/超过大小限制|too large/.test(message)) return false;
+  // A caption over Telegram's 1024-char limit is a permanent content problem,
+  // not a transient one: retrying the same archive never fixes it.
+  if (/caption is too long|caption too long|MEDIA_CAPTION_TOO_LONG/i.test(message)) return false;
   return true;
 }
 
@@ -163,7 +166,7 @@ async function deliverReportToChannel(
   const caption = [
     "📋 新答卷",
     "",
-    `问卷：${escapeHtml(survey?.title ?? "未知问卷")}`,
+    `问卷：${escapeHtml((survey?.title ?? "未知问卷").slice(0, 180))}`,
     `答卷：#${responseId}`,
     `用户：${respondentInfo ? respondentHtml(respondentInfo) : "匿名"}`,
     `完成时间：${completedAt}`,

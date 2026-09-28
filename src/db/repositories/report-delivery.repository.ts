@@ -115,6 +115,30 @@ export async function claimReportDelivery(db: D1Database, id: number): Promise<b
   return (result.meta?.changes ?? 0) > 0;
 }
 
+/**
+ * Reopens a delivery that the worker already considers terminal (delivered or
+ * exhausted its retries) so an explicit admin "resend / regenerate / export"
+ * can archive it again. Only `delivered`/`failed` rows are reset; a
+ * `pending`/`delivering` row is left alone so an in-flight worker is never
+ * disturbed. Returns true when a reset actually happened.
+ */
+export async function resetReportDeliveryForRetry(db: D1Database, id: number): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE report_deliveries
+       SET status = 'pending',
+           attempts = 0,
+           last_error = NULL,
+           next_retry_at = NULL,
+           updated_at = ?
+       WHERE id = ?
+         AND status IN ('delivered', 'failed')`,
+    )
+    .bind(nowIso(), id)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
 export async function completeReportDelivery(
   db: D1Database,
   id: number,

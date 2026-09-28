@@ -17,18 +17,15 @@ import { getFirstQuestion } from "../../survey/engine";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
 import { resolveSubmissionBotUrl } from "../../services/contact-links.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
-import { checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
+import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { createReportAccessToken } from "../../services/report-access-token.service";
+import { createSurveyAccessGrant, verifySurveyAccessGrant } from "../../services/survey-access-grant.service";
 import { publishProfileResponse } from "../../services/profile-gallery.service";
+import { promoteResponseMediaToDurable } from "../../services/media/temporary-media.service";
 import { fail, json } from "../api-response";
 import { findMissingRequiredQuestion, saveWebAnswer } from "./answers";
-import {
-  ANONYMOUS_KEY_PATTERN,
-  enrichBrowserInfo,
-  resolveParticipant,
-  sanitizeHeader,
-} from "./participant";
+import { ANONYMOUS_KEY_PATTERN, enrichBrowserInfo, resolveParticipant, sanitizeHeader } from "./participant";
 import {
   loadPublishedSurvey,
   loadPublishedSurveyList,
@@ -39,12 +36,16 @@ import {
   type PublishedSurveyListItem,
 } from "./catalog";
 import { loadSurveyDefinition } from "./definition";
-import { handleSurveyMediaUpload, serveSurveyMedia } from "./media";
+import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
 
 export async function handleSurveyApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/surveys") {
-    const q = (url.searchParams.get("q") ?? "").trim();
+    // Cap the query: the search path runs a correlated COUNT(*) per row and is
+    // the most expensive read on the public surface, so a hostile `?q=` must
+    // neither be unbounded in length nor unthrottled.
+    const rawQ = (url.searchParams.get("q") ?? "").trim().slice(0, 64);
+    const q = rawQ;
     const communityGroupUrl = env.COMMUNITY_GROUP_URL || null;
     const submissionBotUrl = resolveSubmissionBotUrl(env);
     // Search results are unbounded and rarely repeated, so only the default
@@ -59,6 +60,16 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       await writeCachedJson(env.CACHE, cacheKey, surveys, SURVEY_LIST_CACHE_TTL_SECONDS);
       return json({ communityGroupUrl, submissionBotUrl, surveys });
     }
+    // Abuse damping on the expensive search branch (per IP fixed window). The
+    // default list stays uncapped because it is KV-cached and cheap.
+    const searchLimiter = await checkRateLimit(
+      env.CACHE,
+      "survey-search",
+      request.headers.get("cf-connecting-ip") ?? "unknown",
+      30,
+      60,
+    );
+    if (!searchLimiter.allowed) return rateLimitResponse(searchLimiter.retryAfterSeconds);
     return json({ communityGroupUrl, submissionBotUrl, surveys: await loadPublishedSurveyList(env, q) });
   }
 
@@ -110,20 +121,33 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (!survey || survey.status !== "published") {
       return fail(404, "survey_unavailable", "问卷不存在或未发布");
     }
-    return json(await loadSurveyDefinition(env, request, survey));
+    // A published survey with an access code must not hand out its questions,
+    // options or media until the caller proves the code. The grant is minted
+    // by POST /access and is bound to this survey + short-lived.
+    const accessGranted = survey.accessCode
+      ? await verifySurveyAccessGrant(env.WEBHOOK_SECRET, surveyId, url.searchParams.get("grant"))
+      : true;
+    return json(await loadSurveyDefinition(env, request, survey, accessGranted));
   }
 
   if (request.method === "POST" && rest === "/access") {
     const loaded = await loadPublishedSurvey(env, surveyId);
     if (loaded instanceof Response) return loaded;
     if (!loaded.survey.accessCode) {
-      return json({ ok: true });
+      return json({ ok: true, grant: null });
     }
+    // Abuse damping on the code check: per IP + per survey, so a 4-digit code
+    // cannot be walked in one burst. KV fixed window (same trade-offs as the
+    // other public endpoints).
+    const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "survey-access", `${clientIp}:${surveyId}`, 20, 300);
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
     const code = typeof body?.code === "string" ? body.code : "";
     const valid = await verifySurveyAccessCode(loaded.survey.accessCode, code);
     if (!valid) return fail(403, "invalid_access_code", "访问密码错误");
-    return json({ ok: true });
+    const grant = await createSurveyAccessGrant(env.WEBHOOK_SECRET, surveyId);
+    return json({ ok: true, grant });
   }
 
   if (request.method === "POST" && rest === "/responses") {
@@ -344,10 +368,35 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         });
       } catch (error) {
         console.error("Profile gallery publish failed", { responseId, error });
-        return fail(400, "profile_publish_failed", error instanceof Error ? error.message : "发布到个人画廊失败");
+        return fail(400, "profile_publish_failed", "发布到个人画廊失败，请稍后重试。");
       }
     }
-    await completeResponse(env.DB, responseId);
+    const completed = await completeResponse(env.DB, responseId);
+    if (!completed) {
+      // A concurrent submit already completed this response. Return the same
+      // success shape without re-running the post-completion side effects
+      // (media promotion, report enqueue) — the winning request runs them. The
+      // gallery copy insert above is idempotent via its partial unique index.
+      const token = await createReportAccessToken(env.WEBHOOK_SECRET, responseId);
+      return json({
+        ok: true,
+        completed: true,
+        reportUrl: `/report/${responseId}?t=${token}`,
+        galleryPublished: publishToGallery,
+      });
+    }
+    // The response is now an immutable record: keep its attachments readable
+    // for previews instead of letting the temporary-media TTL expire them.
+    // A failure here must not fail the submission — the temp copy still
+    // serves the report for the rest of its retention window.
+    try {
+      const promotion = await promoteResponseMediaToDurable(env.DB, temporaryStore(env), responseId);
+      if (promotion.promoted > 0 || promotion.discarded > 0) {
+        console.log("Response media retained", { responseId, ...promotion });
+      }
+    } catch (error) {
+      console.error("Response media retention failed", { responseId, error });
+    }
     try {
       await enqueueReportDelivery(env.DB, env.EXPORT_QUEUE, { responseId });
     } catch (error) {

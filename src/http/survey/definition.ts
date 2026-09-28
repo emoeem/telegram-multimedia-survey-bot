@@ -24,10 +24,34 @@ export async function loadSurveyDefinition(
   env: Env,
   request: Request,
   survey: Survey,
+  accessGranted: boolean,
 ): Promise<Record<string, unknown>> {
   const system = await loadSystemSettings(env.DB);
   const gallerySurveyId = Number(system.profileGallerySurveyId);
   const isGallerySurvey = Number.isInteger(gallerySurveyId) && gallerySurveyId > 0 && gallerySurveyId === survey.id;
+
+  // Access-protected surveys withhold their content (questions, options, media,
+  // pages) until the caller proves the access code. Metadata — title, theme,
+  // the `accessCodeRequired` flag — is still returned so the access screen can
+  // render before the grant is fetched.
+  if (!accessGranted) {
+    return {
+      id: survey.id,
+      title: survey.title,
+      ...(survey.description ? { description: survey.description } : {}),
+      accessCodeRequired: Boolean(survey.accessCode),
+      anonymous: survey.anonymous,
+      allowMultiple: survey.allowMultipleResponses,
+      maxResponses: survey.maxResponsesPerUser,
+      theme: normalizeSurveyTheme(parseSettings(survey.settingsJson)),
+      communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
+      pages: [],
+      questions: [],
+      submissionBotUrl: resolveSubmissionBotUrl(env),
+      ...(isGallerySurvey ? { galleryProfile: { enabled: true, canPublish: false } } : {}),
+    };
+  }
+
   let canPublishProfile = false;
   if (isGallerySurvey) {
     const participant = await resolveParticipant(request, env);

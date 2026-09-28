@@ -23,10 +23,21 @@ import {
   verifyAdminLoginCookie,
 } from "../../services/admin-login.service";
 import { getBotUsername } from "../../bot/telegram";
-import { checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
+import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
 import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
-import { ADMIN_PASSWORD_SETTING_KEY, DEFAULT_ADMIN_PASSWORD_HASH, verifyAdminPassword } from "../../services/admin-password.service";
-import { getSystemSettingValue } from "../../services/system-settings.service";
+import { ADMIN_PASSWORD_SETTING_KEY, verifyAdminPassword } from "../../services/admin-password.service";
+import {
+  ADMIN_SESSION_EPOCH_KEY,
+  getSystemSettingValue,
+  loadAdminSessionEpoch,
+  saveSystemSetting,
+} from "../../services/system-settings.service";
+import {
+  configuredDeploymentRole,
+  describeDeploymentRoleIssue,
+  isLicenseCenter,
+  resolveDeploymentRole,
+} from "../../services/deployment-role.service";
 
 export async function handleAdminApi(request: Request, env: Env): Promise<Response> {
   try {
@@ -57,17 +68,24 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
     const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
-    const limiter = await checkRateLimit(env.CACHE, "admin-password-login", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-password-login", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const body = await request.json().catch(() => null) as { password?: unknown } | null;
     const password = typeof body?.password === "string" ? body.password : "";
     const configuredHash = await getSystemSettingValue(env.DB, ADMIN_PASSWORD_SETTING_KEY);
-    const valid = await verifyAdminPassword(password, configuredHash ?? DEFAULT_ADMIN_PASSWORD_HASH);
+    // Fail closed: a deployment without a configured password must never fall
+    // back to a built-in credential. The operator sets the initial hash with
+    // `scripts/set-admin-password.mjs` or from the system settings page.
+    if (!configuredHash) {
+      return fail(503, "admin_password_not_configured", "管理员密码尚未设置，请运行 scripts/set-admin-password.mjs 初始化后再登录。");
+    }
+    const valid = await verifyAdminPassword(password, configuredHash);
     if (!valid) return fail(401, "invalid_password", "管理员密码错误");
     const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
     const user = adminIds.length ? await getUserByTelegramId(env.DB, adminIds[0]!) : await getFirstAdminUser(env.DB);
     if (!user || (user.systemRole !== "admin" && !adminIds.includes(user.telegramUserId))) return fail(403, "admin_access_denied", "当前没有可用于管理后台登录的管理员账号");
-    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, user.id);
+    const epoch = await loadAdminSessionEpoch(env.DB);
+    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, user.id, epoch);
     return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}` } });
   }
 
@@ -75,7 +93,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/telegram/start") {
     const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
-    const limiter = await checkRateLimit(env.CACHE, "admin-login-start", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-login-start", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const login = await createAdminLoginRequest(env.CACHE, env.WEBHOOK_SECRET);
     const username = await getBotUsername(env.BOT_TOKEN);
@@ -113,7 +131,8 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       return fail(403, "admin_access_denied", "该 Telegram 账号没有管理后台权限。");
     const consumed = await consumeAdminLoginRequest(env.DB, env.CACHE, id, state.userId);
     if (!consumed) return fail(409, "login_already_used", "这个登录请求已经完成，请重新开始登录。");
-    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id);
+    const epoch = await loadAdminSessionEpoch(env.DB);
+    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id, epoch);
     return new Response(JSON.stringify({ status: "approved", redirect: "/admin" }), {
       headers: {
         "Content-Type": "application/json",
@@ -125,6 +144,32 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "GET" && url.pathname === "/api/admin/auth/browser") {
     return new Response(null, { status: 302, headers: { Location: "/admin/login", "Cache-Control": "no-store" } });
+  }
+
+  // Logout: bump the session epoch so every previously issued admin session
+  // stops verifying (there is no per-session store to revoke them one by one).
+  // Only an authenticated admin may trigger it, so a cross-site request can't
+  // force every admin to re-login.
+  if (request.method === "POST" && url.pathname === "/api/admin/auth/logout") {
+    const epoch = await loadAdminSessionEpoch(env.DB);
+    const cookie = request.headers
+      .get("cookie")
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
+    const sessionUserId = cookie
+      ? await verifyAdminSessionValue(env.WEBHOOK_SECRET, cookie.slice(ADMIN_SESSION_COOKIE.length + 1), epoch)
+      : null;
+    if (sessionUserId !== null) {
+      await saveSystemSetting(env.DB, ADMIN_SESSION_EPOCH_KEY, String(epoch + 1), sessionUserId);
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${url.protocol === "https:" ? "; Secure" : ""}`,
+      },
+    });
   }
 
   // Local-development identity spoofing: only honored when the deployment is
@@ -146,7 +191,8 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
     if (!match) return null;
     const value = match.slice(ADMIN_SESSION_COOKIE.length + 1);
-    return verifyAdminSessionValue(env.WEBHOOK_SECRET, value);
+    const epoch = await loadAdminSessionEpoch(env.DB);
+    return verifyAdminSessionValue(env.WEBHOOK_SECRET, value, epoch);
   })();
   const user = Number.isInteger(telegramId)
     ? await getUserByTelegramId(env.DB, telegramId)
@@ -192,6 +238,18 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   }
 
   if (request.method === "GET") {
+    // Lets the admin SPA hide the vendor-only console on a customer instance.
+    // The API refuses those calls regardless, so this is UX, not the boundary.
+    if (url.pathname === "/api/admin/deployment") {
+      return json({
+        role: resolveDeploymentRole(env),
+        configuredRole: configuredDeploymentRole(env),
+        licenseCenter: isLicenseCenter(env),
+        // Actionable text when the console is unavailable for a fixable reason
+        // (e.g. a center that forgot LICENSE_ADMIN_TOKEN).
+        hint: describeDeploymentRoleIssue(env),
+      });
+    }
     if (
       url.pathname === "/api/admin/licenses" ||
       url.pathname === "/api/admin/releases" ||
