@@ -297,7 +297,7 @@ export function QuestionCard({
           <input
             className="q-title-input"
             defaultValue={question.title}
-            key={`title-${question.id}`}
+            key={`title-${question.id}-${question.title}`}
             disabled={!editableNow}
             placeholder="输入题目标题"
             onBlur={(event) => {
@@ -315,7 +315,7 @@ export function QuestionCard({
           <textarea
             className="q-desc-input"
             defaultValue={question.description ?? ""}
-            key={`description-${question.id}`}
+            key={`description-${question.id}-${question.description ?? ""}`}
             disabled={!editableNow}
             placeholder="给答题者的一段说明（可选）"
             onBlur={(event) => {
@@ -534,7 +534,7 @@ export function QuestionCard({
                   <input
                     className="q-option-input"
                     defaultValue={option.label}
-                    key={`option-${option.id}`}
+                    key={`option-${option.id}-${option.label}`}
                     disabled={!editableNow}
                     onBlur={(event) => {
                       const next = event.target.value.trim();

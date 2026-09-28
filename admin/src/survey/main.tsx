@@ -10,8 +10,9 @@ import { initializePwa } from "../pwa";
 initializePwa();
 
 void (async () => {
-  await waitForTelegramWebApp();
-  activateTelegramWebApp();
+  // Render immediately; the Telegram bridge loads in the background (initData
+  // is read lazily). Blocking on telegram.org left the survey blank for up to
+  // 2.5s in a plain browser.
   createRoot(document.getElementById("root") as HTMLElement).render(
     <StrictMode>
       <ErrorBoundary scope="survey">
@@ -21,4 +22,5 @@ void (async () => {
       </ErrorBoundary>
     </StrictMode>,
   );
+  void waitForTelegramWebApp().then(() => activateTelegramWebApp());
 })();

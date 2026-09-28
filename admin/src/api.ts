@@ -112,6 +112,31 @@ export async function fetchEnvironment(): Promise<string | null> {
   }
 }
 
+export interface DeploymentInfo {
+  /** "vendor" = authorization center; "customer" = licensed instance. */
+  role: "vendor" | "customer";
+  /** Role as written in the deployment config, or null when unset. */
+  configuredRole?: "vendor" | "customer" | null;
+  /** Vendor-only console (授权 / 版本 / 体验账号) is available. */
+  licenseCenter: boolean;
+  /** Actionable explanation when the console is unavailable. */
+  hint?: string | null;
+}
+
+let deploymentInfoPromise: Promise<DeploymentInfo | null> | null = null;
+
+/**
+ * Whether this deployment is the vendor's authorization center. Cached for the
+ * session — the role cannot change without a redeploy — so the sidebar and the
+ * 授权 page don't each issue a request.
+ */
+export function fetchDeploymentInfo(): Promise<DeploymentInfo | null> {
+  if (!deploymentInfoPromise) {
+    deploymentInfoPromise = api<DeploymentInfo>("/api/admin/deployment").catch(() => null);
+  }
+  return deploymentInfoPromise;
+}
+
 export type SurveyStatus = "draft" | "published" | "closed" | "archived";
 
 export interface SurveySummary {

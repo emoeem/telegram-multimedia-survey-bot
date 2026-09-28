@@ -1,8 +1,19 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export const PIE_PALETTE = ["#4f46e5", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16"];
 
 export function useChartColors() {
+  // Re-read the CSS palette whenever the theme is switched. The previous
+  // `useMemo([], ...)` captured the variables once, so a chart page left open
+  // across an OS-scheme or manual theme change kept the stale colors.
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") ?? "");
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTheme(document.documentElement.getAttribute("data-theme") ?? "");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
   return useMemo(() => {
     const style = getComputedStyle(document.documentElement);
     const read = (name: string) => style.getPropertyValue(name).trim() || "";
@@ -16,7 +27,7 @@ export function useChartColors() {
       warning: "#d97706",
       danger: "#dc2626",
     };
-  }, []);
+  }, [theme]);
 }
 
 export interface DonutSlice {

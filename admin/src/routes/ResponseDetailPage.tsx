@@ -167,14 +167,19 @@ export function ResponseDetailPage() {
     if (confirmText && !await confirm({ message: confirmText, variant: "danger" })) return;
     setBusy(true);
     setActionError(null);
+    // Open synchronously so the popup isn't blocked after the await.
+    const win = window.open("about:blank", "_blank");
     try {
       const result = await apiSend<{ reportUrl?: string }>("POST", path, {});
       if (result.reportUrl) {
-        window.open(result.reportUrl, "_blank");
+        if (win) win.location.href = result.reportUrl;
+        else window.open(result.reportUrl, "_blank");
       } else {
+        win?.close();
         retry();
       }
     } catch (err) {
+      win?.close();
       setActionError(err instanceof Error ? err.message : "操作失败");
     } finally {
       setBusy(false);
@@ -191,8 +196,12 @@ export function ResponseDetailPage() {
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `report-${responseId}.pdf`;
+      document.body.appendChild(anchor);
       anchor.click();
-      URL.revokeObjectURL(url);
+      anchor.remove();
+      // Revoke after the download has had time to start; revoking synchronously
+      // races the download on Firefox/Safari and can yield a 0-byte file.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "PDF 下载失败");
     } finally {
@@ -204,6 +213,8 @@ export function ResponseDetailPage() {
     if (!id || !responseId) return;
     setBusy(true);
     setActionError(null);
+    // Open synchronously so the popup isn't blocked after the await.
+    const win = window.open("about:blank", "_blank");
     try {
       const result = await apiSend<{ reportUrl: string }>(
         "POST",
@@ -214,8 +225,10 @@ export function ResponseDetailPage() {
       const url = previewTemplateId
         ? `${result.reportUrl}${separator}template=${encodeURIComponent(previewTemplateId)}`
         : result.reportUrl;
-      window.open(url, "_blank");
+      if (win) win.location.href = url;
+      else window.open(url, "_blank");
     } catch (err) {
+      win?.close();
       setActionError(err instanceof Error ? err.message : "预览失败");
     } finally {
       setBusy(false);

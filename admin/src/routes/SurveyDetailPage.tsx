@@ -64,8 +64,15 @@ export function SurveyDetailPage() {
   const bgmFileRef = useRef<HTMLInputElement>(null);
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
 
+  // Seed the theme form only when the survey changes, not on every refetch.
+  // runAction / setReportTemplate call retry() after a save, which previously
+  // reset these fields and silently discarded the operator's unsaved custom
+  // JSON / BGM / completion text.
+  const lastSeededIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!data) return;
+    if (lastSeededIdRef.current === data.id) return;
+    lastSeededIdRef.current = data.id;
     setPreset(data.theme?.preset ?? "");
     if (data.theme) {
       // preset/audio/completion get dedicated fields; the rest stays as raw

@@ -92,9 +92,15 @@ export function ResponsesPage() {
 
   const openReportMobile = async (responseId: number) => {
     setActionError(null);
+    // Open synchronously so the popup isn't blocked (the URL arrives after an
+    // await); set the location once it resolves.
+    const win = window.open("about:blank", "_blank");
     try {
-      window.open(await loadReportUrl(responseId), "_blank");
+      const url = await loadReportUrl(responseId);
+      if (win) win.location.href = url;
+      else window.open(url, "_blank");
     } catch (requestError) {
+      win?.close();
       setActionError(requestError instanceof Error ? requestError.message : "打开报告失败");
     }
   };

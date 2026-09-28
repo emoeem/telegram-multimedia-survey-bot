@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { api, apiSend, type CreatorTrialView, type LicenseView, type SoftwareReleaseView } from "../api";
+import { useEffect, useState } from "react";
+import {
+  api,
+  apiSend,
+  fetchDeploymentInfo,
+  type CreatorTrialView,
+  type LicenseView,
+  type SoftwareReleaseView,
+} from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
@@ -16,9 +23,21 @@ const LICENSE_TYPE_LABELS: Record<string, string> = {
 };
 
 export function LicensesPage() {
-  const licenses = useApi<{ items: LicenseView[] }>("/api/admin/licenses");
-  const releases = useApi<{ items: SoftwareReleaseView[] }>("/api/admin/releases");
-  const trials = useApi<{ items: CreatorTrialView[] }>("/api/admin/trials");
+  // Vendor-only console. `null` = role not resolved yet, so hold the requests
+  // until we know — a customer instance would otherwise fire three 403s.
+  const [licenseCenter, setLicenseCenter] = useState<boolean | null>(null);
+  const [roleHint, setRoleHint] = useState<string | null>(null);
+  useEffect(() => {
+    fetchDeploymentInfo().then((info) => {
+      setLicenseCenter(info?.licenseCenter ?? false);
+      setRoleHint(info?.hint ?? null);
+    });
+  }, []);
+  const enabled = licenseCenter === true;
+
+  const licenses = useApi<{ items: LicenseView[] }>(enabled ? "/api/admin/licenses" : null);
+  const releases = useApi<{ items: SoftwareReleaseView[] }>(enabled ? "/api/admin/releases" : null);
+  const trials = useApi<{ items: CreatorTrialView[] }>(enabled ? "/api/admin/trials" : null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -129,6 +148,17 @@ export function LicensesPage() {
     }
   };
 
+  if (licenseCenter === null) return <SkeletonPanel lines={8} />;
+  if (licenseCenter === false) {
+    return (
+      <section className="panel">
+        <h2 className="panel-title">此部署不是授权中心</h2>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">
+          {roleHint ?? "签发授权、发布版本与发放体验账号仅在厂商授权中心进行。"}
+        </p>
+      </section>
+    );
+  }
   if (licenses.error) return <ErrorPanel error={licenses.error} onRetry={licenses.retry} />;
   if (!licenses.data) return <SkeletonPanel lines={8} />;
 

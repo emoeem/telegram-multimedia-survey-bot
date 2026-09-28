@@ -18,7 +18,7 @@ import {
   Sprout,
   Users,
 } from "lucide-react";
-import { fetchEnvironment } from "../api";
+import { fetchDeploymentInfo, fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
 
@@ -71,10 +71,24 @@ export function Layout() {
   const navigate = useNavigate();
   const [drawer, setDrawer] = useState(false);
   const [environment, setEnvironment] = useState<string | null>(null);
+  // Starts hidden: a customer instance must never briefly advertise a console it
+  // cannot use. The vendor's link appears as soon as the role is confirmed.
+  const [licenseCenter, setLicenseCenter] = useState(false);
 
   useEffect(() => {
     fetchEnvironment().then(setEnvironment);
+    fetchDeploymentInfo().then((info) => {
+      if (info) setLicenseCenter(info.licenseCenter);
+    });
   }, []);
+
+  const navGroups = useMemo(() => {
+    if (licenseCenter) return NAV_GROUPS;
+    return NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.to !== "/licenses"),
+    })).filter((group) => group.items.length > 0);
+  }, [licenseCenter]);
 
   useEffect(() => {
     if (!drawer) return undefined;
@@ -170,7 +184,7 @@ export function Layout() {
             <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
           </div>
           <nav className="admin-nav flex flex-1 flex-col gap-3">
-            {NAV_GROUPS.map((group) => (
+            {navGroups.map((group) => (
               <div key={group.label} className="admin-nav-group">
                 <p className="admin-nav-label">{group.label}</p>
                 <div className="flex flex-col gap-0.5">

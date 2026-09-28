@@ -586,6 +586,7 @@ export function TemplatesPage() {
                     className="h-[70vh] rounded-lg border border-[var(--control-border)] bg-[var(--surface)] transition-all"
                     style={{ width: previewWidth, maxWidth: "100%" }}
                     srcDoc={previewHtml}
+                    sandbox=""
                   />
                 ) : (
                   <div className="py-16 text-center text-sm text-[var(--color-muted-soft)]">

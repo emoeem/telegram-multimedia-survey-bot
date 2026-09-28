@@ -24,8 +24,41 @@ export function getDeviceFingerprint(): Promise<string> {
   return fingerprintPromise;
 }
 
-/** Compact, human-readable browser/device description for the admin. */
+/** Sensitive query params that must never be recorded into browser info. */
+const SENSITIVE_PARAMS = ["pt", "t", "token", "grant"];
+
+function safeUrl(): string {
+  try {
+    const url = new URL(location.href);
+    for (const key of SENSITIVE_PARAMS) url.searchParams.delete(key);
+    return url.toString().slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
+function safeQuery(): string {
+  try {
+    const params = new URLSearchParams(location.search);
+    for (const key of SENSITIVE_PARAMS) params.delete(key);
+    return params.toString().slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
+let browserInfoCache: string | null = null;
+
+/**
+ * Compact, human-readable browser/device description for the admin.
+ *
+ * Computed once per session: the WebGL probe creates a canvas + GL context and
+ * browsers cap live contexts (~16), so rebuilding it on every survey request
+ * could silently drop the recorded snapshot. Sensitive URL query params (the
+ * signed participant/report tokens) are stripped before recording.
+ */
 export function getBrowserInfo(): string {
+  if (browserInfoCache !== null) return browserInfoCache;
   const nav = navigator as Navigator & {
     userAgentData?: { platform?: string; mobile?: boolean };
     hardwareConcurrency?: number;
@@ -59,7 +92,7 @@ export function getBrowserInfo(): string {
     }
   })();
   const navigation = performance.getEntriesByType("navigation")[0] as { type?: string } | undefined;
-  return JSON.stringify({
+  browserInfoCache = JSON.stringify({
     ua: navigator.userAgent,
     platform: nav.userAgentData?.platform ?? navigator.platform ?? "",
     mobile: nav.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
@@ -86,9 +119,10 @@ export function getBrowserInfo(): string {
     webgl,
     navigationType: navigation?.type ?? "",
     referrer: document.referrer.slice(0, 500) || "",
-    url: location.href.slice(0, 500),
-    query: location.search.slice(0, 500),
+    url: safeUrl(),
+    query: safeQuery(),
   });
+  return browserInfoCache;
 }
 
 export async function surveyDeviceHeaders(): Promise<Record<string, string>> {

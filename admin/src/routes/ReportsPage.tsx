@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { EChart } from "../components/EChart";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { RefreshCw } from "lucide-react";
 import { donutOption } from "../charts";
 import { apiSend, type ReportDeliveriesData } from "../api";
@@ -35,7 +35,13 @@ const STATUS_META: Record<DeliveryStatus, { color: string; tint: string; icon: s
 const ORDER: DeliveryStatus[] = ["pending", "delivering", "delivered", "failed"];
 
 export function ReportsPage() {
-  const [status, setStatus] = useState<"" | DeliveryStatus>("");
+  const [searchParams] = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const initialStatus: "" | DeliveryStatus =
+    statusParam === "pending" || statusParam === "delivering" || statusParam === "delivered" || statusParam === "failed"
+      ? statusParam
+      : "";
+  const [status, setStatus] = useState<"" | DeliveryStatus>(initialStatus);
   const [page, setPage] = useState(1);
   const query = new URLSearchParams({ page: String(page), pageSize: "20", ...(status ? { status } : {}) });
   const { data, error, retry } = useApi<ReportDeliveriesData>(`/api/admin/report-deliveries?${query}`);

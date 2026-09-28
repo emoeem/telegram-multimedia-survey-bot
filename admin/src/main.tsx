@@ -9,8 +9,10 @@ import { initializePwa } from "./pwa";
 import { applyTheme, getStoredTheme } from "./theme";
 
 void (async () => {
-  await waitForTelegramWebApp();
-  activateTelegramWebApp();
+  // Render immediately. The Telegram bridge is only needed for initData (read
+  // lazily on the first API call) and WebView niceties, so blocking the first
+  // paint on telegram.org (which can be slow or unreachable in a plain
+  // browser) left the login page blank for up to 2.5s.
   applyTheme(getStoredTheme());
   initializePwa();
   createRoot(document.getElementById("root") as HTMLElement).render(
@@ -22,4 +24,5 @@ void (async () => {
       </ErrorBoundary>
     </StrictMode>,
   );
+  void waitForTelegramWebApp().then(() => activateTelegramWebApp());
 })();

@@ -99,7 +99,18 @@ export function StructureTree({
             const active = selection.kind === "question" && items.some((question) => question.id === selection.id);
             return (
               <div key={page.id}>
-                <div className={`tree-page-head ${active ? "active" : ""}`} onClick={() => togglePage(page.id)}>
+                <div
+                  className={`tree-page-head ${active ? "active" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => togglePage(page.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      togglePage(page.id);
+                    }
+                  }}
+                >
                   <span className={`tree-chevron ${isCollapsed ? "" : "is-open"}`}>
                     <ChevronRight className="h-3.5 w-3.5" />
                   </span>

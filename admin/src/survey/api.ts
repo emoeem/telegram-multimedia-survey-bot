@@ -179,8 +179,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await parseJson(response)) as T;
 }
 
-export function fetchSurvey(surveyId: number): Promise<SurveyDto> {
-  return request<SurveyDto>(`/api/survey/${surveyId}`);
+export function fetchSurvey(surveyId: number, accessGrant?: string | null): Promise<SurveyDto> {
+  return request<SurveyDto>(`/api/survey/${surveyId}${accessGrant ? `?grant=${encodeURIComponent(accessGrant)}` : ""}`);
 }
 
 export function fetchSurveyList(
@@ -191,11 +191,12 @@ export function fetchSurveyList(
   );
 }
 
-export async function verifyAccessCode(surveyId: number, code: string): Promise<void> {
-  await request<{ ok: boolean }>(`/api/survey/${surveyId}/access`, {
+export async function verifyAccessCode(surveyId: number, code: string): Promise<string | null> {
+  const result = await request<{ ok: boolean; grant?: string | null }>(`/api/survey/${surveyId}/access`, {
     method: "POST",
     body: JSON.stringify({ code }),
   });
+  return result.grant ?? null;
 }
 
 export interface StartResponseDto {

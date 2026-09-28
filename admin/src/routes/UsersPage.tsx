@@ -27,11 +27,19 @@ const RESPONSE_STATUS_TEXT: Record<string, string> = {
 
 export function UsersPage() {
   const [searchParams] = useSearchParams();
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
   const { confirm } = useDialogs();
+
+  // Debounce the free-text search so a keystroke doesn't fire a request each
+  // time; the directory search is an unindexed LIKE scan on the server.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const [detail, setDetail] = useState<UserDetailData | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -136,9 +144,9 @@ export function UsersPage() {
           <input
             className="input"
             placeholder="搜索姓名 / @用户名 / ID"
-            value={search}
+            value={searchInput}
             onChange={(event) => {
-              setSearch(event.target.value);
+              setSearchInput(event.target.value);
               setPage(1);
             }}
           />

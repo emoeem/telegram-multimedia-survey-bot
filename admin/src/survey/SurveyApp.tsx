@@ -538,7 +538,16 @@ function BgmPlayer({ url }: { url: string }) {
     const audio = new Audio();
     audio.loop = true;
     audioRef.current = audio;
-    fetch(url, { headers: identityHeaders() })
+    // BGM URLs are admin-configured and may point off-origin; never send the
+    // participant's Telegram/email identity headers to a third-party host.
+    const sameOrigin = (() => {
+      try {
+        return new URL(url, window.location.origin).origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    })();
+    fetch(url, { headers: sameOrigin ? identityHeaders() : undefined })
       .then(async (response) => {
         if (!response.ok) throw new Error("load failed");
         const blob = await response.blob();
@@ -852,8 +861,12 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
         type="number"
         value={typeof value === "number" ? String(value) : ""}
         onChange={(event) => {
-          const parsed = event.target.value === "" ? null : Number(event.target.value);
-          if (parsed !== null && Number.isFinite(parsed)) onChange(parsed);
+          if (event.target.value === "") {
+            onChange(null);
+            return;
+          }
+          const parsed = Number(event.target.value);
+          if (Number.isFinite(parsed)) onChange(parsed);
         }}
         placeholder="请输入数字"
         className="input mt-4 w-full"
@@ -934,7 +947,13 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   return <input disabled className="input mt-4 w-full" placeholder="暂不支持该题型" />;
 }
 
-function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (code: string) => void }) {
+function AccessScreen({
+  survey,
+  onVerified,
+}: {
+  survey: SurveyDto;
+  onVerified: (code: string, grant: string | null) => void;
+}) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -943,8 +962,8 @@ function AccessScreen({ survey, onVerified }: { survey: SurveyDto; onVerified: (
     setBusy(true);
     setError(null);
     try {
-      await verifyAccessCode(survey.id, code);
-      onVerified(code);
+      const grant = await verifyAccessCode(survey.id, code);
+      onVerified(code, grant);
     } catch (err) {
       setError(err instanceof Error ? err.message : "密码错误");
     } finally {
@@ -1146,11 +1165,21 @@ export function SurveyApp() {
   );
 
   const onVerified = useCallback(
-    (code: string) => {
+    (code: string, grant: string | null) => {
       const survey = screen.kind === "access" ? screen.survey : null;
       if (!survey) return;
-      setScreen({ kind: "filling", survey, responseId: 0, currentQuestionId: null, answers: {} });
-      void beginFilling(survey, code);
+      // Re-fetch the full definition now that we hold a short-lived grant: the
+      // payload returned before verification deliberately has no questions.
+      const loadFull = async () => {
+        try {
+          const full = grant ? await fetchSurvey(survey.id, grant) : survey;
+          setScreen({ kind: "filling", survey: full, responseId: 0, currentQuestionId: null, answers: {} });
+          void beginFilling(full, code);
+        } catch (err) {
+          setScreen({ kind: "error", message: err instanceof Error ? err.message : "问卷加载失败" });
+        }
+      };
+      void loadFull();
     },
     [beginFilling, screen],
   );
