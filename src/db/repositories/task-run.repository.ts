@@ -199,7 +199,9 @@ export async function listTaskRunLeaderboard(
     const hash = String(row.participant_hash ?? "");
     return {
       runId: Number(row.id),
-      displayName: firstName ? `@${username ?? firstName}` : "玩家",
+      // Prefer the @handle; fall back to the real first name, then a neutral
+      // label — never a fake @ prefix on a first name.
+      displayName: username ? `@${username}` : firstName ?? "玩家",
       score: Number(row.score ?? 0),
       floors: Number(row.max_floor ?? 0) - Number(row.starting_floor ?? 0),
       completedTasks: Number(row.completed_tasks ?? 0),

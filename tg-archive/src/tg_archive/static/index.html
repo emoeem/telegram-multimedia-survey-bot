@@ -326,6 +326,7 @@ const API = '';
 let currentAccountId = 1;
 let msgOffset = 0, msgTotal = 0;
 let qrPollTimer = null, mirrorPollTimer = null;
+let progressSeen = 0;   // how many progress lines were already rendered
 
 function setTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -424,7 +425,7 @@ document.getElementById('account-selector').addEventListener('click', () => {
 });
 
 async function logoutAccount(id, name) {
-  if (!confirm(`登出账号「${name}」？本地登录记录将被删除。`)) return;
+  if (!confirm(`登出账号「${name}」？\n\n只会删除本机登录 session；本地索引（聊天/消息）和已镜像记录会保留，重新登录同一账号可继续。\n如需连同数据一起删除，请用「删除」。`)) return;
   try {
     await api(`/api/auth/logout?account_id=${id}`, { method: 'POST' });
     toast(`已登出「${name}」`, 'success');
@@ -663,6 +664,7 @@ document.getElementById('btn-mirror-start').onclick = async () => {
     document.getElementById('btn-mirror-start').disabled = true;
     document.getElementById('btn-mirror-stop').disabled = false;
     document.getElementById('log-area').innerHTML = '';
+    progressSeen = 0;
     toast('镜像已启动', 'success');
     pollMirrorStatus();
   } catch (e) {
@@ -705,7 +707,14 @@ function updateMirrorUI(data) {
   const listenEl = document.getElementById('stat-listen');
   listenEl.textContent = data.listen_active ? '🟢' : data.running ? '⏳' : '—';
   const log = document.getElementById('log-area');
-  data.progress.forEach(p => addLog(p.text, log));
+  // The server sends the last 80 lines on every poll; render only the ones
+  // added since the previous poll, otherwise the log fills with duplicates.
+  const items = data.progress || [];
+  const total = typeof data.progress_total === 'number' ? data.progress_total : progressSeen + items.length;
+  if (total < progressSeen) progressSeen = 0;   // a new run restarted the counter
+  const fresh = Math.max(0, total - progressSeen);
+  progressSeen = total;
+  items.slice(Math.max(0, items.length - fresh)).forEach(p => addLog(p.text, log));
 }
 
 function addLog(text, logEl) {
@@ -792,7 +801,9 @@ document.getElementById('msg-search').addEventListener('keydown', (e) => {
 // --- Stats ---
 async function loadStats() {
   try {
-    const data = await api(`/api/stats?account_id=${currentAccountId}`);
+    const modeSel = document.getElementById('mirror-mode');
+    const mode = modeSel ? modeSel.value : 'copy';
+    const data = await api(`/api/stats?account_id=${currentAccountId}&mode=${encodeURIComponent(mode)}`);
     document.getElementById('s-accounts').textContent = data.stats.accounts;
     document.getElementById('s-chats').textContent = data.stats.chats;
     document.getElementById('s-mirrored').textContent = data.stats.mirrored;
@@ -821,6 +832,16 @@ function escapeHTML(s) {
 }
 
 // Init
+(async () => {
+  try {
+    const st = await api('/api/mirror/status');
+    if (st.running) {
+      document.getElementById('btn-mirror-start').disabled = true;
+      document.getElementById('btn-mirror-stop').disabled = false;
+      pollMirrorStatus();
+    }
+  } catch (e) {}
+})();
 lucide.createIcons();
 document.querySelector('.tab[data-view="login"]')?.click();
 refreshAccount(true);

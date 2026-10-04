@@ -63,18 +63,25 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
     timersRef.current.set(id, timer);
   }, []);
 
+  // The state updater must stay pure: React may drop or replay an updater
+  // (and StrictMode invokes it twice), so resolving the promise inside it made
+  // the caller's `await confirm(...)` depend on render internals.
+  const confirmsRef = useRef<InternalConfirmItem[]>([]);
+  confirmsRef.current = confirms;
+
   const handleConfirm = useCallback((id: number, ok: boolean) => {
-    setConfirms((prev) => {
-      const item = prev.find((c) => c.id === id);
-      if (item) item.resolve(ok);
-      return prev.filter((c) => c.id !== id);
-    });
+    const item = confirmsRef.current.find((c) => c.id === id);
+    setConfirms((prev) => prev.filter((c) => c.id !== id));
+    item?.resolve(ok);
   }, []);
 
   useEffect(() => {
     return () => {
       timersRef.current.forEach((t) => clearTimeout(t));
       timersRef.current.clear();
+      // A pending confirmation would otherwise hang its caller forever when
+      // the provider unmounts (route change, HMR).
+      confirmsRef.current.forEach((item) => item.resolve(false));
     };
   }, []);
 
@@ -171,18 +178,22 @@ function ToastStack({ items }: { items: InternalToastItem[] }) {
 function ToastItem({ item }: { item: InternalToastItem }) {
   const variant = item.variant ?? "info";
   const Icon = variant === "success" ? CheckCircle2 : variant === "error" ? X : Info;
-  const color =
+  // Theme tokens, not `dark:` variants: the dark variant follows the OS scheme
+  // while the rest of the app follows the selected DaisyUI theme, so on a
+  // "light app on a dark OS" every toast was dark-on-light and vice versa.
+  const border =
     variant === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+      ? "border-s-[3px] border-s-[var(--color-success)]"
       : variant === "error"
-        ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-        : "border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200";
+        ? "border-s-[3px] border-s-[var(--color-danger)]"
+        : "border-s-[3px] border-s-[var(--color-info)]";
+  const color = `border-[var(--color-edge)] bg-[var(--surface)] text-[var(--color-ink)] ${border}`;
   const iconColor =
     variant === "success"
-      ? "text-emerald-500 dark:text-emerald-400"
+      ? "text-[var(--color-success)]"
       : variant === "error"
-        ? "text-red-500 dark:text-red-400"
-        : "text-slate-500 dark:text-slate-400";
+        ? "text-[var(--color-danger)]"
+        : "text-[var(--color-info)]";
 
   return (
     <div

@@ -10,9 +10,14 @@ import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { handleLicenseApiRequest } from "./http/license-api";
+import { handleRemoteApiRequest } from "./http/remote-api";
+import { handleControlApiRequest } from "./http/control-api";
+import { sendCustomerHeartbeat } from "./services/customer-control.service";
 import { handleAdminApi } from "./http/admin-api";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
+import { handleMeApiRequest } from "./http/me-api";
+import { handleShowcaseApiRequest } from "./http/showcase-api";
 import { handleTrialApiRequest } from "./http/trial-api";
 import { handleEmailAuthApiRequest } from "./http/email-auth-api";
 import { handleReportRequest } from "./http/report-api";
@@ -112,15 +117,37 @@ export interface Env {
   APP_VERSION?: string;
   LICENSE_ENFORCEMENT?: "disabled" | "required";
   LICENSE_SERVER_URL?: string;
+  /**
+   * Service binding to the authorization center. Needed whenever this instance
+   * shares the center's Cloudflare account: a Worker cannot `fetch()` another
+   * Worker in the same account over `*.workers.dev` (edge error 1042 → 404).
+   */
+  LICENSE_CENTER?: Fetcher;
   LICENSE_KEY?: string;
   LICENSE_ADMIN_TOKEN?: string;
   INSTALLATION_ID?: string;
   LICENSE_GRACE_SECONDS?: string;
+  CONTROL_PLANE_RUNNER_TOKEN?: string;
+  /**
+   * Shared with the authorization center. The center signs short-lived read
+   * tokens with it; this instance verifies them on `/api/remote/*`, which the
+   * vendor console's browser calls directly (a Worker cannot reach another
+   * Worker in the same account — edge error 1042).
+   */
+  REMOTE_ACCESS_SECRET?: string;
+  /** Shared secret used only to encrypt deployment task credentials at rest. */
+  CONTROL_PLANE_RUNNER_SECRET?: string;
+  WORKER_NAME?: string;
+  WORKER_URL?: string;
   /** "vendor" = authorization center, "customer" = licensed instance. Unset
    *  falls back to LICENSE_ADMIN_TOKEN presence (legacy deployments). */
   DEPLOYMENT_ROLE?: "vendor" | "customer";
   BROWSER: BrowserWorker;
   ASSETS: Fetcher;
+  TARGET_CHAT_ID?: string;
+  TOPIC_ID?: string;
+  PUBLICATION_TARGET_CHAT_ID?: string;
+  PUBLICATION_TARGET_THREAD_ID?: string;
   /** Optional R2 bucket; media storage falls back to MEDIA_KV when unset. */
   MEDIA?: R2Bucket;
   MEDIA_KV: KVNamespace;
@@ -175,7 +202,15 @@ async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Pro
  */
 async function guardApiResponse(run: () => Promise<Response | null>): Promise<Response> {
   try {
-    return (await run()) ?? new Response("Not Found", { status: 404 });
+    // Same JSON error shape as every other API failure: the SPAs parse a body
+    // and fall back to a bare "请求失败（HTTP 404）" for anything else.
+    return (
+      (await run()) ??
+      Response.json(
+        { ok: false, code: "not_found", message: "接口不存在" },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      )
+    );
   } catch (error) {
     console.error("API request failed", error);
     return Response.json(
@@ -282,6 +317,12 @@ export default {
       return serveHtmlAsset(env, request, "/survey.html");
     }
 
+    // Showcase (展示区): the immersive person gallery shares the survey SPA
+    // bundle and picks its screen from the pathname.
+    if (url.pathname === "/showcase" || url.pathname.startsWith("/showcase/")) {
+      return serveHtmlAsset(env, request, "/survey.html");
+    }
+
     // Web task system player page (/trial) shares the survey SPA bundle; the
     // page itself decides between the survey list and the trial screen.
     if (url.pathname === "/trial" || url.pathname.startsWith("/trial/")) {
@@ -289,12 +330,25 @@ export default {
     }
 
     // Email auth pages share the survey SPA bundle as well.
+    // "我的" 个人中心 shares the survey SPA bundle as well.
+    if (url.pathname === "/me" || url.pathname.startsWith("/me/")) {
+      return serveHtmlAsset(env, request, "/survey.html");
+    }
+
     if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
       return serveHtmlAsset(env, request, "/survey.html");
     }
 
+    if (url.pathname.startsWith("/api/me/")) {
+      return guardApiResponse(() => handleMeApiRequest(request, env, url));
+    }
+
     if (url.pathname.startsWith("/api/plaza/")) {
       return guardApiResponse(() => handlePlazaApiRequest(request, env, url));
+    }
+
+    if (url.pathname === "/api/showcase" || url.pathname.startsWith("/api/showcase/")) {
+      return guardApiResponse(() => handleShowcaseApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
@@ -313,6 +367,12 @@ export default {
       return guardApiResponse(() => handleTrialApiRequest(request, env, url));
     }
 
+    if (url.pathname.startsWith("/api/control/customer/") || url.pathname.startsWith("/api/control/runner/")) {
+      const controlResponse = await handleControlApiRequest(request, env, { isAdmin: false, userId: null });
+      if (controlResponse) return controlResponse;
+    }
+    if (url.pathname.startsWith("/api/control/")) return handleAdminApi(request, env);
+
     const licenseApiResponse = await handleLicenseApiRequest(
       request,
       env.DB,
@@ -321,6 +381,11 @@ export default {
     );
     if (licenseApiResponse) {
       return licenseApiResponse;
+    }
+
+    const remoteApiResponse = await handleRemoteApiRequest(request, env);
+    if (remoteApiResponse) {
+      return remoteApiResponse;
     }
 
     if (request.method === "POST" && url.pathname === "/telegram/webhook") {
@@ -502,6 +567,13 @@ export default {
       return;
     }
     if (event.cron === "*/30 * * * *") {
+      if (env.DEPLOYMENT_ROLE === "customer") {
+        try {
+          await sendCustomerHeartbeat(env);
+        } catch (error) {
+          console.warn("Customer Worker heartbeat failed", error);
+        }
+      }
       try {
         const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
         if (summary.requeued > 0) {

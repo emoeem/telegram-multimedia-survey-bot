@@ -78,7 +78,13 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
     if (asset.mimeType && isActiveContentMime(asset.mimeType)) {
       headers.set("Content-Disposition", "attachment");
     }
-    secureHeaders(headers, "private, no-store");
+    // Survey-scope assets are the survey's own content (question/option
+    // attachments): every respondent re-downloads them otherwise, so let
+    // browsers and the edge cache them like the R2/Telegram kinds. Assets are
+    // never overwritten in place (a new upload gets a new id), so a short
+    // max-age cannot serve a replaced blob. Response-scope uploads are
+    // personal data and stay uncacheable.
+    secureHeaders(headers, asset.scope === "survey" ? "public, max-age=300" : "private, no-store");
     return new Response(new Uint8Array(data).buffer, { headers });
   }
 

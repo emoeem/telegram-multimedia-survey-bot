@@ -152,6 +152,8 @@ const questionTypeLabels: Record<QuestionType, string> = {
   video: "上传视频",
   audio: "上传音频",
   file: "上传文件",
+  // 剧情文段暂只在管理端编辑器提供；bot 向导仍可展示/编辑既有题目。
+  note: "剧情文段",
 };
 
 function buildQuestionTypeKeyboard(appendMode = false): InlineKeyboardMarkup {

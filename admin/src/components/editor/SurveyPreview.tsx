@@ -219,11 +219,15 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
     };
   }, [inline, onClose]);
 
+  // Reset when the preview is (re)opened, not when the question array changes:
+  // autosave re-creates that array every couple of seconds, which used to throw
+  // the reader back to question 1 and clear the simulated answers mid-run.
   useEffect(() => {
+    if (inline) return;
     setCurrentIndex(0);
     setAnswers({});
     setError(null);
-  }, [questions]);
+  }, [inline]);
 
   const currentQuestion = questions[currentIndex];
   const currentValue = currentQuestion ? (answers[currentQuestion.id] ?? "") : "";
@@ -305,48 +309,83 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
 
             {currentQuestion ? (
               <div className="mt-4">
-                <article className="survey-card p-5">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-semibold" style={{ color: "var(--survey-primary)" }}>
-                      第 {currentIndex + 1} / {questions.length} 题
-                    </span>
-                    <span
-                      className="rounded px-2 py-0.5 font-semibold"
-                      style={{
-                        background: "var(--survey-primary-soft)",
-                        color: "var(--survey-primary)",
-                      }}
-                    >
-                      {QUESTION_TYPE_LABELS[currentQuestion.type] ?? currentQuestion.type}
-                    </span>
-                    <span style={{ color: currentQuestion.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
-                      {currentQuestion.required ? "必答" : "选答"}
-                    </span>
-                  </div>
-                  <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
-                    {currentQuestion.title || "未填写题目标题"}
-                  </h4>
-                  {currentQuestion.description ? (
-                    <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-muted)" }}>
-                      {currentQuestion.description}
-                    </p>
-                  ) : null}
-                  {currentQuestion.media.length ? (
-                    <div
-                      className="mt-3 rounded-lg p-3 text-xs"
-                      style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
-                    >
-                      题目媒体附件 ×{currentQuestion.media.length}（Web 预览仅展示引用状态）
-                    </div>
-                  ) : null}
-                  <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>
-                    {getQuestionInstruction(currentQuestion)}
-                  </p>
-                  <InteractiveAnswer
-                    question={currentQuestion}
-                    value={currentValue}
-                    onChange={(value) => setAnswers((current) => ({ ...current, [currentQuestion.id]: value }))}
-                  />
+                <article
+                  className={`survey-card p-5 ${currentQuestion.type === "note" ? "survey-card-story" : ""}`}
+                >
+                  {currentQuestion.type === "note" ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span
+                          className="rounded px-2 py-0.5 font-semibold"
+                          style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
+                        >
+                          📖 剧情文段
+                        </span>
+                      </div>
+                      {currentQuestion.title ? (
+                        <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
+                          {currentQuestion.title}
+                        </h4>
+                      ) : null}
+                      {currentQuestion.description ? (
+                        <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7" style={{ color: "var(--survey-body)" }}>
+                          {currentQuestion.description}
+                        </p>
+                      ) : null}
+                      {currentQuestion.media.length ? (
+                        <div
+                          className="mt-3 rounded-lg p-3 text-xs"
+                          style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
+                        >
+                          剧情配图 ×{currentQuestion.media.length}（Web 预览仅展示引用状态）
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-semibold" style={{ color: "var(--survey-primary)" }}>
+                          第 {currentIndex + 1} / {questions.length} 题
+                        </span>
+                        <span
+                          className="rounded px-2 py-0.5 font-semibold"
+                          style={{
+                            background: "var(--survey-primary-soft)",
+                            color: "var(--survey-primary)",
+                          }}
+                        >
+                          {QUESTION_TYPE_LABELS[currentQuestion.type] ?? currentQuestion.type}
+                        </span>
+                        <span style={{ color: currentQuestion.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
+                          {currentQuestion.required ? "必答" : "选答"}
+                        </span>
+                      </div>
+                      <h4 className="mt-3 font-semibold" style={{ color: "var(--survey-heading)" }}>
+                        {currentQuestion.title || "未填写题目标题"}
+                      </h4>
+                      {currentQuestion.description ? (
+                        <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: "var(--survey-muted)" }}>
+                          {currentQuestion.description}
+                        </p>
+                      ) : null}
+                      {currentQuestion.media.length ? (
+                        <div
+                          className="mt-3 rounded-lg p-3 text-xs"
+                          style={{ background: "var(--survey-primary-soft)", color: "var(--survey-primary)" }}
+                        >
+                          题目媒体附件 ×{currentQuestion.media.length}（Web 预览仅展示引用状态）
+                        </div>
+                      ) : null}
+                      <p className="my-3 text-sm" style={{ color: "var(--survey-muted)" }}>
+                        {getQuestionInstruction(currentQuestion)}
+                      </p>
+                      <InteractiveAnswer
+                        question={currentQuestion}
+                        value={currentValue}
+                        onChange={(value) => setAnswers((current) => ({ ...current, [currentQuestion.id]: value }))}
+                      />
+                    </>
+                  )}
                   {error ? (
                     <p className="mt-3 text-sm" style={{ color: "var(--color-danger)" }}>
                       {error}
@@ -371,6 +410,11 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
                         <>
                           <Check className="h-4 w-4" />
                           提交
+                        </>
+                      ) : currentQuestion.type === "note" ? (
+                        <>
+                          继续
+                          <ChevronRight className="h-4 w-4" />
                         </>
                       ) : (
                         <>

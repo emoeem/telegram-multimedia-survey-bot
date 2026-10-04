@@ -1,35 +1,14 @@
-import {
-  SURVEY_SCHEMA_VERSION,
-  type SurveyQuestionType,
-  type UnifiedSurveyImport,
-} from "./schema";
+import { SURVEY_SCHEMA_VERSION, type UnifiedSurveyImport } from "./schema";
+import { MATRIX_COLUMN_MIN, SURVEY_QUESTION_TYPES, isSurveyQuestionType, minOptionCount } from "./question-rules";
 
 export interface ValidationIssue {
   path: string;
   message: string;
 }
 
-const QUESTION_TYPES: SurveyQuestionType[] = [
-  "single",
-  "multiple",
-  "text",
-  "long_text",
-  "number",
-  "boolean",
-  "yes_no",
-  "rating",
-  "matrix",
-  "date",
-  "time",
-  "file",
-  "image",
-  "video",
-  "audio",
-];
+const QUESTION_TYPES = SURVEY_QUESTION_TYPES as readonly string[];
 
-export function validateUnifiedSurvey(
-  input: unknown,
-): ValidationIssue[] {
+export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   if (typeof input !== "object" || input === null) {
@@ -74,7 +53,7 @@ export function validateUnifiedSurvey(
       issues.push({ path: `${path}.id`, message: "id is required" });
     }
 
-    if (!QUESTION_TYPES.includes(question.type)) {
+    if (!isSurveyQuestionType(question.type)) {
       issues.push({
         path: `${path}.type`,
         message: `type must be one of: ${QUESTION_TYPES.join(", ")}`,
@@ -97,18 +76,28 @@ export function validateUnifiedSurvey(
         path: `${path}.options`,
         message: "options must be an array",
       });
-    } else if (
-      (question.type === "single" ||
-        question.type === "multiple" ||
-        question.type === "yes_no" ||
-        question.type === "rating" ||
-        question.type === "matrix") &&
-      question.options.length < 2
-    ) {
-      issues.push({
-        path: `${path}.options`,
-        message: "this question type requires at least two options",
-      });
+    } else if (isSurveyQuestionType(question.type)) {
+      const minOptions = minOptionCount(question.type);
+      if (minOptions !== null && question.options.length < minOptions) {
+        issues.push({
+          path: `${path}.options`,
+          message:
+            question.type === "matrix"
+              ? `matrix questions require at least ${minOptions} row option(s)`
+              : "this question type requires at least two options",
+        });
+      }
+      if (question.type === "matrix") {
+        const columns = Array.isArray(question.settings?.columns)
+          ? (question.settings?.columns as unknown[]).filter((column): column is string => typeof column === "string")
+          : [];
+        if (columns.length < MATRIX_COLUMN_MIN) {
+          issues.push({
+            path: `${path}.settings.columns`,
+            message: `matrix questions require at least ${MATRIX_COLUMN_MIN} columns`,
+          });
+        }
+      }
     }
   });
 

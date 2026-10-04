@@ -1,34 +1,14 @@
-import type {
-  SurveyMedia,
-  SurveyOption,
-  SurveyQuestion,
-  UnifiedSurveyImport,
-} from "../schema";
-import type {
-  ImportedMedia,
-  ImportedSurvey,
-} from "../../services/import.service";
+import type { SurveyMedia, SurveyOption, SurveyQuestion, UnifiedSurveyImport } from "../schema";
+import { surveyOptionId, surveyQuestionId } from "../id-mapping";
+import type { ImportedMedia, ImportedSurvey } from "../../services/import.service";
 
-function normalizeMedia(
-  media: ImportedMedia,
-  fallbackId: string,
-): SurveyMedia {
+function normalizeMedia(media: ImportedMedia, fallbackId: string): SurveyMedia {
   return {
     id: media.id ?? fallbackId,
     type: media.type,
-    source:
-      media.source ??
-      (media.telegramFileId
-        ? "telegram"
-        : media.storageKey
-          ? "r2"
-          : "url"),
-    ...(media.telegramFileId
-      ? { telegram_file_id: media.telegramFileId }
-      : {}),
-    ...(media.telegramFileUniqueId
-      ? { telegram_file_unique_id: media.telegramFileUniqueId }
-      : {}),
+    source: media.source ?? (media.telegramFileId ? "telegram" : media.storageKey ? "r2" : "url"),
+    ...(media.telegramFileId ? { telegram_file_id: media.telegramFileId } : {}),
+    ...(media.telegramFileUniqueId ? { telegram_file_unique_id: media.telegramFileUniqueId } : {}),
     ...(media.url ? { url: media.url } : {}),
     ...(media.storageKey ? { storage_key: media.storageKey } : {}),
     ...(media.mimeType ? { mime_type: media.mimeType } : {}),
@@ -41,29 +21,23 @@ function normalizeMedia(
   };
 }
 
-function normalizeQuestion(
-  question: ImportedSurvey["questions"][number],
-  index: number,
-): SurveyQuestion {
-  const options: SurveyOption[] = (question.options ?? []).map(
-    (option, optionIndex) => ({
-      id: `q${index + 1}_o${optionIndex + 1}`,
-      label: option.label,
-      value: option.value,
-      order: optionIndex + 1,
-      ...(option.media[0]
-        ? {
-            media: normalizeMedia(
-              option.media[0],
-              `q${index + 1}_o${optionIndex + 1}_media`,
-            ),
-          }
-        : {}),
-    }),
-  );
+function normalizeQuestion(question: ImportedSurvey["questions"][number], index: number): SurveyQuestion {
+  const options: SurveyOption[] = (question.options ?? []).map((option, optionIndex) => ({
+    id: surveyOptionId(index, optionIndex),
+    label: option.label,
+    value: option.value,
+    order: optionIndex + 1,
+    ...(option.media.length > 0
+      ? {
+          media: option.media.map((media, mediaIndex) =>
+            normalizeMedia(media, `q${index + 1}_o${optionIndex + 1}_media${mediaIndex + 1}`),
+          ),
+        }
+      : {}),
+  }));
 
   return {
-    id: `q${index + 1}`,
+    id: surveyQuestionId(index),
     type: question.type,
     title: question.title,
     ...(question.description ? { description: question.description } : {}),
@@ -76,9 +50,7 @@ function normalizeQuestion(
   };
 }
 
-export function legacyToUnified(
-  imported: ImportedSurvey,
-): UnifiedSurveyImport {
+export function legacyToUnified(imported: ImportedSurvey): UnifiedSurveyImport {
   return {
     schema_version: 1,
     survey: {
@@ -88,8 +60,7 @@ export function legacyToUnified(
       questions: imported.questions.map(normalizeQuestion),
       settings: {
         anonymous: imported.settings?.anonymous ?? false,
-        allow_multiple:
-          imported.settings?.allowMultipleResponses ?? false,
+        allow_multiple: imported.settings?.allowMultipleResponses ?? false,
         max_responses: imported.settings?.maxResponsesPerUser ?? 1,
         shuffle_questions: false,
         shuffle_options: false,

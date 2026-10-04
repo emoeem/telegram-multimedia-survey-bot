@@ -5,6 +5,8 @@ export interface PlazaCommentRecord {
   content: string;
   status: "published" | "removed";
   createdAt: string;
+  /** Anonymous comments must never expose the commenter, even to the author. */
+  anonymous: boolean;
   owner: {
     telegramUserId: number;
     username: string | null;
@@ -12,13 +14,15 @@ export interface PlazaCommentRecord {
   } | null;
 }
 
-const COMMENT_COLUMNS = `c.id, c.post_id, c.user_id, c.content, c.status, c.created_at,
+const COMMENT_COLUMNS = `c.id, c.post_id, c.user_id, c.content, c.status, c.anonymous, c.created_at,
     u.telegram_user_id AS owner_telegram_user_id, u.username AS owner_username, u.first_name AS owner_first_name`;
 
 type PlazaCommentRow = Record<string, unknown>;
 
 function mapCommentRow(row: PlazaCommentRow): PlazaCommentRecord {
   const ownerTelegramUserId = row.owner_telegram_user_id;
+  // Anonymous is the default for rows written before the column existed too.
+  const anonymous = row.anonymous === undefined || row.anonymous === null ? true : Number(row.anonymous) === 1;
   return {
     id: Number(row.id),
     postId: Number(row.post_id),
@@ -26,8 +30,9 @@ function mapCommentRow(row: PlazaCommentRow): PlazaCommentRecord {
     content: String(row.content),
     status: row.status === "removed" ? "removed" : "published",
     createdAt: String(row.created_at),
+    anonymous,
     owner:
-      ownerTelegramUserId === null || ownerTelegramUserId === undefined
+      anonymous || ownerTelegramUserId === null || ownerTelegramUserId === undefined
         ? null
         : {
             telegramUserId: Number(ownerTelegramUserId),
@@ -45,15 +50,16 @@ export interface PlazaCommentListOptions {
 
 export async function createPlazaComment(
   db: D1Database,
-  input: { postId: number; userId: number; content: string },
+  input: { postId: number; userId: number; content: string; anonymous?: boolean },
 ): Promise<PlazaCommentRecord> {
   const now = new Date().toISOString();
+  const anonymous = input.anonymous !== false;
   const result = await db
     .prepare(
-      `INSERT INTO plaza_post_comments (post_id, user_id, content, status, created_at)
-       VALUES (?, ?, ?, 'published', ?)`,
+      `INSERT INTO plaza_post_comments (post_id, user_id, content, status, anonymous, created_at)
+       VALUES (?, ?, ?, 'published', ?, ?)`,
     )
-    .bind(input.postId, input.userId, input.content, now)
+    .bind(input.postId, input.userId, input.content, anonymous ? 1 : 0, now)
     .run();
   const id = result.meta?.last_row_id;
   if (typeof id !== "number") throw new Error("评论保存失败");
@@ -64,6 +70,7 @@ export async function createPlazaComment(
     content: input.content,
     status: "published",
     createdAt: now,
+    anonymous,
     owner: null,
   };
 }

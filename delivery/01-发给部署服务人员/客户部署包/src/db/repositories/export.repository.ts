@@ -1,14 +1,10 @@
-export type ExportJobStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed";
+export type ExportJobStatus = "pending" | "running" | "completed" | "failed";
 
 export interface ExportJob {
   id: number;
   surveyId: number;
   requestedBy: number | null;
-  format: "csv" | "xlsx" | "zip";
+  format: "csv" | "zip";
   status: ExportJobStatus;
   r2Key: string | null;
   errorMessage: string | null;
@@ -65,10 +61,7 @@ export async function createExportJob(
     throw new Error("Failed to create export job");
   }
 
-  const row = await db
-    .prepare("SELECT * FROM export_jobs WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<ExportJobRow>();
+  const row = await db.prepare("SELECT * FROM export_jobs WHERE id = ? LIMIT 1").bind(id).first<ExportJobRow>();
 
   if (!row) {
     throw new Error("Failed to load export job");
@@ -77,14 +70,8 @@ export async function createExportJob(
   return mapExportJob(row);
 }
 
-export async function getExportJobById(
-  db: D1Database,
-  id: number,
-): Promise<ExportJob | null> {
-  const row = await db
-    .prepare("SELECT * FROM export_jobs WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<ExportJobRow>();
+export async function getExportJobById(db: D1Database, id: number): Promise<ExportJob | null> {
+  const row = await db.prepare("SELECT * FROM export_jobs WHERE id = ? LIMIT 1").bind(id).first<ExportJobRow>();
 
   return row ? mapExportJob(row) : null;
 }

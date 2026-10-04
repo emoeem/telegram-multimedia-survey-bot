@@ -479,6 +479,38 @@ export async function listProfileGalleryItems(
   };
 }
 
+/**
+ * Single published profile for the participant-facing detail page
+ * (/plaza/profile/:id). Published-only: the id comes from a shared URL.
+ */
+export async function getPublishedGalleryProfile(
+  db: D1Database,
+  responseId: number,
+): Promise<ProfileGalleryItem | null> {
+  const row = await db
+    .prepare(
+      `SELECT r.id responseId, r.survey_id surveyId, r.user_id userId,
+              r.gallery_published_at publishedAt, r.created_at createdAt,
+              r.gallery_cover_media_id galleryCoverMediaId,
+              r.gallery_visible_question_ids_json galleryVisibleQuestionIdsJson,
+              r.gallery_show_username galleryShowUsername,
+              u.username, u.first_name firstName, u.last_name lastName, u.telegram_user_id telegramUserId
+       FROM survey_responses r
+       LEFT JOIN users u ON u.id = r.user_id
+       WHERE r.id = ? AND r.status = 'completed' AND r.gallery_published = 1
+       LIMIT 1`,
+    )
+    .bind(responseId)
+    .first<ResponseRow>();
+  if (!row) return null;
+  const flow = await getSurveyFlow(db, row.surveyId);
+  const [answers, galleryMediaByResponse] = await Promise.all([
+    listAnswersByResponseIds(db, [row.responseId]),
+    listGalleryMediaByResponseIds(db, [row.responseId]),
+  ]);
+  return responseToProfileItem(row, flow, answers, galleryMediaByResponse.get(row.responseId) ?? []);
+}
+
 export async function getPublishedGalleryMedia(
   db: D1Database,
   responseId: number,

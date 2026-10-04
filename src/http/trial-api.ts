@@ -14,6 +14,7 @@ import {
   toTrialRun,
   type TaskRunRecord,
 } from "../db/repositories/task-run.repository";
+import { evaluateAchievements, serializeUnlockedAchievements } from "../services/achievement.service";
 import type { TrialAction, TrialInventory, TrialRun, TrialTaskItem } from "../trial/engine";
 import {
   applyTrialAction,
@@ -27,6 +28,7 @@ import {
   shopCost,
   trialGrade,
   TRIAL_GRADE_COPY,
+  TRIAL_SHOP,
   validateShopSelection,
 } from "../trial/engine";
 
@@ -43,6 +45,15 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     const packs = await listTaskPacks(env.DB, { enabledOnly: true });
     return json({
       submissionBotUrl: resolveSubmissionBotUrl(env),
+      // The shop economy is authoritative server-side: the client renders it
+      // but never owns the numbers, so the two can't drift.
+      shop: {
+        normalCoins: TRIAL_SHOP.normalCoins,
+        hellCoins: TRIAL_SHOP.hellCoins,
+        rerollCap: TRIAL_SHOP.rerollCap,
+        prices: { skipTicket: itemPrice("skipTicket"), booster: itemPrice("booster"), shield: itemPrice("shield") },
+        caps: { skipTicket: itemCap("skipTicket"), booster: itemCap("booster"), shield: itemCap("shield") },
+      },
       packs: packs.map((pack) => ({
         id: pack.id,
         name: pack.name,
@@ -85,14 +96,23 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (participant instanceof Response) return participant;
     const run = await getActiveTaskRunByParticipant(env.DB, participant.participantHash);
     if (!run) return json({ run: null });
-    const packs = await listTaskPacks(env.DB, { enabledOnly: true, withItems: true });
+    // A disabled pack must not hide an active run: the participant would be
+    // locked out by run_active on /runs while having no way to even abandon.
+    const packs = await listTaskPacks(env.DB, { withItems: true });
     const pack = packs.find((item) => item.id === run.packId);
-    if (!pack) return json({ run: null });
+    if (!pack) {
+      // Pack deleted outright: the run can never continue — settle it so the
+      // participant regains the ability to start a new one.
+      const settled = applyTrialAction([], toTrialRun(run), "abandon").run;
+      await saveTaskRun(env.DB, mergeTaskRun(run, settled));
+      return json({ run: serializeRun(settled, `#${run.packId}`), task: null, packMissing: true });
+    }
     const items = pack.items ?? [];
     const current = items.find((item) => item.id === run.state.currentTaskId) ?? null;
     return json({
       run: serializeRun(run, pack.name),
       task: current ? serializeTask(current) : null,
+      packEnabled: pack.enabled,
     });
   }
 
@@ -143,11 +163,25 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     const packs = await listTaskPacks(env.DB, { enabledOnly: true, withItems: true });
     const pack = packs.find((item) => item.id === packId);
     if (!pack) return fail(404, "not_found", "任务包不存在或已停用");
-    const floorCount = mode === "hell" ? pack.hellFloors : pack.normalFloors;
-    if (startingFloor > floorCount) return fail(400, "validation_failed", "起始层超出任务包楼层数");
-    const maxFloor = startingFloor + floorCount - 1;
     const items = pack.items ?? [];
     if (items.length === 0) return fail(409, "empty_pack", "该任务包还没有可用任务，请联系管理员");
+    // The run's floor window must stay inside the content actually reachable by
+    // this persona/mode — otherwise the player climbs into floors with no tasks
+    // and the run dead-ends halfway.
+    const matched = items.filter(
+      (item) =>
+        (item.persona === "any" || item.persona === persona) &&
+        (item.mode === "any" || item.mode === mode),
+    );
+    if (matched.length === 0) {
+      return fail(409, "empty_pack", "该任务包在你的身份/模式下没有可用任务，请换个设置或联系管理员");
+    }
+    const coverageTop = matched.reduce((top, item) => Math.max(top, item.maxFloor), 0);
+    if (startingFloor > coverageTop) {
+      return fail(400, "validation_failed", `该任务包的内容只覆盖到第 ${coverageTop} 层，请选择更低的起始层`);
+    }
+    const floorCount = mode === "hell" ? pack.hellFloors : pack.normalFloors;
+    const maxFloor = Math.min(startingFloor + floorCount - 1, coverageTop);
 
     const state = createShopState(items, persona, mode, startingFloor, maxFloor, rollStartCoins(mode));
     const record = await createTaskRun(env.DB, {
@@ -183,7 +217,11 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     } | null;
 
     if (body?.reroll === true) {
+      if ((run.state.coinRerolls ?? 0) >= TRIAL_SHOP.rerollCap) {
+        return fail(409, "reroll_exhausted", `本局重摇次数已用完（最多 ${TRIAL_SHOP.rerollCap} 次）`);
+      }
       run.state.coins = rollStartCoins(run.mode);
+      run.state.coinRerolls = (run.state.coinRerolls ?? 0) + 1;
       await saveTaskRun(env.DB, mergeTaskRun(record, run));
       const packs = await listTaskPacks(env.DB, { withItems: true });
       const pack = packs.find((item) => item.id === run.packId);
@@ -245,6 +283,23 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       return fail(400, "validation_failed", "无效的操作");
     }
     const run = toTrialRun(record);
+    // Abandon is always available — including from the shop phase and when the
+    // pack has since been deleted — otherwise a stuck run locks the participant
+    // out of ever starting a new one.
+    if (rawAction === "abandon") {
+      if (run.status !== "active") return fail(409, "run_not_active", "本局已经结束了");
+      const settled = applyTrialAction([], run, "abandon").run;
+      await saveTaskRun(env.DB, mergeTaskRun(record, settled));
+      const packNames = await listTaskPacks(env.DB, { withItems: true });
+      const packName = packNames.find((item) => item.id === record.packId)?.name ?? `#${record.packId}`;
+      return json({
+        run: serializeRun(settled, packName),
+        task: null,
+        earned: 0,
+        grade: null,
+        gradeCopy: null,
+      });
+    }
     if (run.state.phase !== "playing") return fail(409, "not_playing", "本局还在商店阶段，先确认出发");
     const packs = await listTaskPacks(env.DB, { withItems: true });
     const pack = packs.find((item) => item.id === record.packId);
@@ -258,12 +313,23 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       (nextRun.status === "active" && nextRun.state.currentTaskId !== null
         ? (items.find((item) => item.id === nextRun.state.currentTaskId) ?? null)
         : null);
+    // 收官那一击可能解锁挑战类成就；结算已经落库，徽章失败不影响返回。
+    let newAchievements: ReturnType<typeof serializeUnlockedAchievements> = [];
+    if (nextRun.status === "completed") {
+      newAchievements = serializeUnlockedAchievements(
+        await evaluateAchievements(env.DB, {
+          participantHash: participant.participantHash,
+          userId: participant.dbUserId ?? null,
+        }),
+      );
+    }
     return json({
       run: serializeRun(nextRun, pack.name),
       task: task ? serializeTask(task) : null,
       earned,
       grade: nextRun.status === "completed" ? trialGrade(nextRun) : null,
       gradeCopy: nextRun.status === "completed" ? TRIAL_GRADE_COPY[trialGrade(nextRun)] : null,
+      newAchievements,
     });
   }
 
@@ -297,6 +363,7 @@ interface SerializedRun {
   coins: number;
   inventory: TrialInventory;
   boosted: boolean;
+  coinRerolls: number;
 }
 
 function serializeRun(run: TrialRun | (TaskRunRecord & TrialRun), packName: string): SerializedRun {
@@ -317,6 +384,7 @@ function serializeRun(run: TrialRun | (TaskRunRecord & TrialRun), packName: stri
     coins: run.state?.coins ?? 0,
     inventory: run.state?.inventory ?? { skipTickets: 0, boosters: 0, shields: 0 },
     boosted: run.state?.boosted === true,
+    coinRerolls: run.state?.coinRerolls ?? 0,
   };
 }
 

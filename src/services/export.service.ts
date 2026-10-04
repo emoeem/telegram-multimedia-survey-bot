@@ -160,11 +160,12 @@ export async function getExportRows(
 
   const answersByResponse = new Map<number, Map<number, Record<string, unknown>>>();
 
-  // D1 caps the number of rows a single statement may return; a large survey
-  // would silently truncate (or fail) here, so answers are paged in
-  // response-id batches.
+  // D1 rejects a statement with more than ~100 bound variables, so answers are
+  // paged in response-id batches. This must match QUESTION_ID_BATCH_SIZE above:
+  // the previous value (400) exceeded the cap and turned "export a big survey"
+  // into a "too many SQL variables" 500.
   const responseRows = responsesResult.results ?? [];
-  const ANSWER_BATCH = 400;
+  const ANSWER_BATCH = 90;
   for (let offset = 0; offset < responseRows.length; offset += ANSWER_BATCH) {
     const batch = responseRows.slice(offset, offset + ANSWER_BATCH).map((row) => Number(row.response_id));
     const answersResult = await db

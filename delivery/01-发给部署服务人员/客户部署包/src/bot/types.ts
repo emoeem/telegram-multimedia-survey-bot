@@ -1,5 +1,6 @@
 import type { SurveyBuilderNamespace } from "../services/survey-builder.service";
 import type { SurveySessionNamespace } from "../services/session.service";
+import type { UiSessionNamespace } from "../services/ui-session.service";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 
 export interface TelegramUser {
@@ -12,6 +13,7 @@ export interface TelegramUser {
 export interface TelegramChat {
   id: number;
   type?: string;
+  title?: string;
 }
 
 export interface TelegramMediaFile {
@@ -29,6 +31,12 @@ export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
+  forward_from_chat?: {
+    id: number;
+    type?: string;
+    username?: string;
+    title?: string;
+  };
   text?: string;
   caption?: string;
   photo?: TelegramMediaFile[];
@@ -51,17 +59,27 @@ export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
+  channel_post?: TelegramMessage;
 }
 
 export interface BotContext {
   botToken: string;
   db: D1Database;
   cache?: KVNamespace;
+  /** Media KV store; used to serve stored identity card renders. */
+  mediaKv?: KVNamespace;
   session: SurveySessionNamespace;
+  ui?: UiSessionNamespace;
   builder: SurveyBuilderNamespace;
   adminIds: number[];
   exportQueue: Queue;
+  origin?: string;
+  /** Public link for the submission bot (投稿机器人); renders as a jump button. */
+  submissionBotUrl?: string | null;
+  /** Community invite shown in the welcome text; defaults to the hosted group. */
+  communityGroupUrl?: string | null;
   licenseServerUrl?: string;
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;
+  webhookSecret?: string;
 }

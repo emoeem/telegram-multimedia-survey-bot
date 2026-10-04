@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EChart } from "../components/EChart";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   Archive,
   ArrowLeft,
@@ -44,6 +44,7 @@ function reportTemplateDescription(template: ReportTemplateOption) {
 
 export function SurveyDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { confirm } = useDialogs();
   const colors = useChartColors();
   const analytics = useApi<SurveyAnalyticsData>(id ? `/api/admin/surveys/${id}/analytics` : null);
@@ -102,6 +103,12 @@ export function SurveyDetailPage() {
         action === "delete" ? "DELETE" : "POST",
         `/api/admin/surveys/${id}${action === "delete" ? "" : `/${action}`}`,
       );
+      if (action === "delete") {
+        // The survey no longer exists: refetching it would 404 and replace the
+        // page with "数据不存在" right after a successful delete.
+        navigate("/surveys", { replace: true });
+        return;
+      }
       retry();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "操作失败");

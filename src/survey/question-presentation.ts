@@ -18,6 +18,7 @@ export function getMatrixColumns(question: Pick<PresentableQuestion, "settingsJs
 }
 
 export function getQuestionInstruction(question: Pick<PresentableQuestion, "type">): string {
+  if (question.type === "note") return "阅读这段内容后点击“继续”";
   if (isSingleChoiceQuestion(question)) {
     return question.type === "rating" ? "请选择一个分数" : "请选择一个选项";
   }

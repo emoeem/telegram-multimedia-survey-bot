@@ -13,8 +13,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Everything needed by `pip install -e ".[dev]"` + `pytest`: the async tests
+# need pytest-asyncio and TestClient needs httpx, so they must live here and
+# not only in the uv-only [dependency-groups] table.
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=1.4.0",
+    "httpx>=0.28.1",
 ]
 
 [project.scripts]

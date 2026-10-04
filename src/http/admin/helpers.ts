@@ -287,10 +287,13 @@ export function normalizeQuestionCondition(
 }
 
 // Validates one question payload. `creating` distinguishes the full-create
-// shape (type + options minimums enforced) from partial updates.
+// shape (type + options minimums enforced) from partial updates. `currentType`
+// is the stored type on PATCH (partial payloads may omit body.type, yet rules
+// such as the note description limit still depend on the effective type).
 export function validateQuestionPayload(
   body: Record<string, unknown>,
   creating: boolean,
+  currentType?: QuestionType,
 ): { payload?: QuestionPayload; error?: string } {
   const type = body.type;
   if (creating || type !== undefined) {
@@ -298,19 +301,28 @@ export function validateQuestionPayload(
       return { error: `题型必须是以下之一：${SURVEY_QUESTION_TYPES.join(", ")}` };
     }
   }
+  // note（剧情文段）：正文存 description（放宽到 5000 字），标题可选，永不必答。
+  const isNote = (creating || type !== undefined ? type : currentType) === "note";
 
   let title: string | undefined;
   if (body.title !== undefined || creating) {
-    const error = readString(body.title, "标题", 200);
-    if (error) return { error };
-    title = String(body.title).trim();
+    if (isNote && (body.title === undefined || String(body.title).trim() === "")) {
+      title = "剧情";
+    } else {
+      const error = readString(body.title, "标题", 200);
+      if (error) return { error };
+      title = String(body.title).trim();
+    }
   }
 
   let description: string | null | undefined;
   if (body.description !== undefined) {
     if (body.description === null) description = null;
     else if (typeof body.description === "string") {
-      if (body.description.length > 1000) return { error: "描述长度不能超过 1000 字符" };
+      const maxDescription = isNote ? 5000 : 1000;
+      if (body.description.length > maxDescription) {
+        return { error: `描述长度不能超过 ${maxDescription} 字符` };
+      }
       description = body.description.trim() || null;
     } else return { error: "描述必须是字符串" };
   }
@@ -320,6 +332,7 @@ export function validateQuestionPayload(
     if (typeof body.required !== "boolean") return { error: "必答必须是布尔值" };
     required = body.required;
   }
+  if (isNote) required = false;
 
   let pageId: number | null | undefined;
   if (body.pageId !== undefined) {
@@ -374,15 +387,28 @@ export function validateQuestionPayload(
     if (body.validation === null) {
       validationJson = null;
     } else if (isRecord(body.validation)) {
-      const allowed = ["min_length", "max_length", "min", "max", "min_selections", "max_selections"];
-      const normalized: Record<string, number | boolean> = {};
+      // The whitelist must cover every member of SurveyValidation that the
+      // reader side honours: the media upload endpoint enforces
+      // allowed_mime_types / max_size_mb, so rejecting them here meant a rule
+      // the creator could never set. `decimal` was in the type and handled
+      // below, but the whitelist already rejected it — dead code.
+      const numeric = ["min_length", "max_length", "min", "max", "min_selections", "max_selections", "max_count", "max_size_mb"];
+      const boolean = ["decimal"];
+      const normalized: Record<string, number | boolean | string[]> = {};
       for (const [key, value] of Object.entries(body.validation)) {
-        if (!allowed.includes(key)) return { error: `不支持的校验字段：${key}` };
-        if (key === "decimal") {
-          if (typeof value !== "boolean") return { error: "decimal 必须是布尔值" };
-          normalized.decimal = value;
+        if (key === "allowed_mime_types") {
+          if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry.trim())) {
+            return { error: "allowed_mime_types 必须是非空字符串数组" };
+          }
+          normalized.allowed_mime_types = value.map((entry) => String(entry).trim());
           continue;
         }
+        if (boolean.includes(key)) {
+          if (typeof value !== "boolean") return { error: `${key} 必须是布尔值` };
+          normalized[key] = value;
+          continue;
+        }
+        if (!numeric.includes(key)) return { error: `不支持的校验字段：${key}` };
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
           return { error: `${key} 必须是非负数字` };
         }

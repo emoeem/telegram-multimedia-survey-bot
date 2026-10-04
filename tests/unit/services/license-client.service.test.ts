@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LicenseActivationDecision } from "../../../src/services/license.service";
-import { checkDeploymentLicense } from "../../../src/services/license-client.service";
+import { callLicenseCenter, checkDeploymentLicense } from "../../../src/services/license-client.service";
 
 class MemoryKv {
   values = new Map<string, string>();
@@ -171,5 +171,42 @@ describe("deployment license client", () => {
     expect(first.code).toBe("license_revoked");
     expect(second.source).toBe("cache");
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe("callLicenseCenter transport", () => {
+  // A Worker cannot reach another Worker in the same Cloudflare account over
+  // `*.workers.dev` (edge error 1042 → 404), which silently disabled licensing
+  // for every customer instance. The service binding must win when present.
+  it("prefers the service binding over the public URL", async () => {
+    const globalFetch = vi.spyOn(globalThis, "fetch");
+    const bindingFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const binding = { fetch: bindingFetch } as unknown as Fetcher;
+
+    const response = await callLicenseCenter(
+      { LICENSE_CENTER: binding, LICENSE_SERVER_URL: "https://center.workers.dev" },
+      "/api/v1/licenses/validate",
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(bindingFetch).toHaveBeenCalledTimes(1);
+    expect(globalFetch).not.toHaveBeenCalled();
+    globalFetch.mockRestore();
+  });
+
+  it("falls back to the URL when the deployment has no binding", async () => {
+    const globalFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    await callLicenseCenter(
+      { LICENSE_SERVER_URL: "https://center.workers.dev/" },
+      "/api/v1/licenses/validate",
+      { method: "POST" },
+    );
+
+    expect(globalFetch).toHaveBeenCalledTimes(1);
+    // The trailing slash must not double up.
+    expect(globalFetch.mock.calls[0]?.[0]).toBe("https://center.workers.dev/api/v1/licenses/validate");
+    globalFetch.mockRestore();
   });
 });

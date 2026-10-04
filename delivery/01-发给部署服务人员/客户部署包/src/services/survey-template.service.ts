@@ -11,7 +11,9 @@ export interface SurveyTemplate {
 
 const templates: SurveyTemplate[] = [
   {
-    id: "feedback", title: "活动反馈", description: "收集活动参与者的体验和建议。",
+    id: "feedback",
+    title: "活动反馈",
+    description: "收集活动参与者的体验和建议。",
     questions: [
       { type: "rating", title: "你对本次活动的整体满意度如何？", required: true },
       { type: "single", title: "你最喜欢哪个环节？", required: true, options: ["内容", "互动", "组织", "场地"] },
@@ -19,7 +21,9 @@ const templates: SurveyTemplate[] = [
     ],
   },
   {
-    id: "registration", title: "活动报名", description: "收集报名信息并确认参与意愿。",
+    id: "registration",
+    title: "活动报名",
+    description: "收集报名信息并确认参与意愿。",
     questions: [
       { type: "text", title: "你的姓名", required: true },
       { type: "text", title: "联系方式", required: true },
@@ -28,7 +32,9 @@ const templates: SurveyTemplate[] = [
     ],
   },
   {
-    id: "satisfaction", title: "服务满意度", description: "快速了解客户对服务的满意程度。",
+    id: "satisfaction",
+    title: "服务满意度",
+    description: "快速了解客户对服务的满意程度。",
     questions: [
       { type: "rating", title: "你对服务质量的评分", required: true },
       { type: "rating", title: "你对响应速度的评分", required: true },
@@ -38,7 +44,9 @@ const templates: SurveyTemplate[] = [
   },
 ];
 
-export function listSurveyTemplates(): SurveyTemplate[] { return templates; }
+export function listSurveyTemplates(): SurveyTemplate[] {
+  return templates;
+}
 
 export async function createSurveyFromTemplate(
   db: D1Database,
@@ -50,7 +58,11 @@ export async function createSurveyFromTemplate(
   const survey = await createSurvey(db, { ownerId, title: template.title, description: template.description });
   for (const [index, item] of template.questions.entries()) {
     const questionId = await createQuestion(db, {
-      surveyId: survey.id, type: item.type, title: item.title, required: item.required ?? false, order: index,
+      surveyId: survey.id,
+      type: item.type,
+      title: item.title,
+      required: item.required ?? false,
+      order: index,
     });
     for (const [optionIndex, label] of (item.options ?? []).entries()) {
       await createQuestionOption(db, { questionId, label, value: label, order: optionIndex });

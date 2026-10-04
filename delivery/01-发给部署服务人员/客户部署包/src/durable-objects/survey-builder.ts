@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { QuestionType } from "../db/schema";
+import { CHOICE_OPTION_MIN, MATRIX_COLUMN_MIN, MATRIX_ROW_MIN } from "../survey/question-rules";
 
 export interface DraftOption {
   label: string;
@@ -15,6 +16,10 @@ export interface DraftQuestion {
   options: DraftOption[];
   matrixColumns?: string[];
   mediaAssetId: number | null;
+  /** Skip rules survive a wizard round-trip: restore reads them from D1 and
+   * save writes them back, instead of silently dropping them on re-insert. */
+  conditionJson?: string | null;
+  skipToQuestionId?: number | null;
 }
 
 export type SurveyBuilderStep =
@@ -154,15 +159,12 @@ export class SurveyBuilderDO extends DurableObject {
     const initial = this.createInitialState(state.userId);
     const hasLegacyDraftContent = Boolean(
       state.surveyTitle ||
-        state.surveyDescription ||
-        state.questions?.length ||
-        state.currentQuestionType ||
-        state.currentQuestionTitle,
+      state.surveyDescription ||
+      state.questions?.length ||
+      state.currentQuestionType ||
+      state.currentQuestionTitle,
     );
-    const activeDraft =
-      typeof state.activeDraft === "boolean"
-        ? state.activeDraft
-        : hasLegacyDraftContent;
+    const activeDraft = typeof state.activeDraft === "boolean" ? state.activeDraft : hasLegacyDraftContent;
     const normalizedStep =
       !activeDraft &&
       state.step !== "import" &&
@@ -188,16 +190,15 @@ export class SurveyBuilderDO extends DurableObject {
         required: question.required ?? true,
         matrixColumns: question.matrixColumns ?? [],
         mediaAssetId: question.mediaAssetId ?? null,
+        conditionJson: question.conditionJson ?? null,
+        skipToQuestionId: question.skipToQuestionId ?? null,
       })),
       draftSurveyId: state.draftSurveyId ?? null,
       suspendedStep: state.suspendedStep ?? null,
     };
   }
 
-  private startAuxiliary(
-    state: SurveyBuilderState,
-    step: SurveyBuilderStep,
-  ): SurveyBuilderState {
+  private startAuxiliary(state: SurveyBuilderState, step: SurveyBuilderStep): SurveyBuilderState {
     const alreadyAuxiliary = state.suspendedStep !== null;
     return {
       ...state,
@@ -213,15 +214,14 @@ export class SurveyBuilderDO extends DurableObject {
     }
 
     if (
-      (state.currentQuestionType === "single" ||
-        state.currentQuestionType === "multiple") &&
-      state.currentOptions.length < 2
+      (state.currentQuestionType === "single" || state.currentQuestionType === "multiple") &&
+      state.currentOptions.length < CHOICE_OPTION_MIN
     ) {
       throw new Error("choice_options_incomplete");
     }
     if (
       state.currentQuestionType === "matrix" &&
-      (state.currentOptions.length < 1 || (state.currentMatrixColumns?.length ?? 0) < 2)
+      (state.currentOptions.length < MATRIX_ROW_MIN || (state.currentMatrixColumns?.length ?? 0) < MATRIX_COLUMN_MIN)
     ) {
       throw new Error("matrix_incomplete");
     }
@@ -255,10 +255,7 @@ export class SurveyBuilderDO extends DurableObject {
     let state = await this.getState();
 
     if (action.action === "init") {
-      const nextState =
-        state?.userId === action.userId
-          ? state
-          : this.createInitialState(action.userId);
+      const nextState = state?.userId === action.userId ? state : this.createInitialState(action.userId);
       await this.putState(nextState);
       return Response.json(nextState);
     }
@@ -359,15 +356,15 @@ export class SurveyBuilderDO extends DurableObject {
           ? "survey_title"
           : state.step === "question_type"
             ? "survey_description"
-          : state.step === "question_title"
+            : state.step === "question_title"
               ? "question_type"
               : state.step === "question_required"
                 ? "question_title"
-              : state.step === "question_media"
-                ? "question_required"
-                : state.step === "question_options"
-                  ? "question_media"
-                  : state.step;
+                : state.step === "question_media"
+                  ? "question_required"
+                  : state.step === "question_options"
+                    ? "question_media"
+                    : state.step;
 
       state = {
         ...state,
@@ -454,16 +451,16 @@ export class SurveyBuilderDO extends DurableObject {
         }
         state = { ...state, step: "matrix_columns", updatedAt: new Date().toISOString() };
       } else {
-      try {
-        state = this.appendCurrentQuestion(state);
-      } catch (error) {
-        return Response.json(
-          {
-            error: error instanceof Error ? error.message : "question_incomplete",
-          },
-          { status: 400 },
-        );
-      }
+        try {
+          state = this.appendCurrentQuestion(state);
+        } catch (error) {
+          return Response.json(
+            {
+              error: error instanceof Error ? error.message : "question_incomplete",
+            },
+            { status: 400 },
+          );
+        }
       }
     } else if (action.action === "finish_questions") {
       if (state.currentQuestionType || state.currentQuestionTitle) {

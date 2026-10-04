@@ -4,6 +4,7 @@ import { loadSystemSettings } from "../../services/system-settings.service";
 import { WriteContext, writeAudit } from "./helpers";
 import { Env } from "../../index";
 import { publishProfileResponse, unpublishProfileResponse } from "../../services/profile-gallery.service";
+import { purgePlazaPostImage } from "../../services/plaza-media.service";
 
 export async function handleAdminCommunityWrite(
   request: Request,
@@ -63,6 +64,10 @@ export async function handleAdminCommunityWrite(
     if (!Number.isInteger(postId) || postId <= 0) return fail(400, "validation_failed", "无效的树洞内容编号");
     const updated = await setPlazaPostStatus(env.DB, postId, status);
     if (!updated) return fail(404, "not_found", "树洞内容不存在");
+    // 下架即清除配图字节：违规图片不该继续躺在 KV 里。恢复帖子不会带回图片。
+    if (status === "removed" && typeof updated.imageAssetId === "number") {
+      await purgePlazaPostImage({ DB: env.DB, MEDIA_KV: env.MEDIA_KV }, postId);
+    }
     await writeAudit(db, {
       actorUserId: user.id,
       action: status === "removed" ? "plaza_post.remove" : "plaza_post.restore",

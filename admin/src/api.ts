@@ -1,4 +1,5 @@
 import { getTelegramInitData } from "./telegram";
+import { safeGet } from "./survey/storage";
 
 export class ApiError extends Error {
   status: number;
@@ -17,19 +18,33 @@ export function authHeaders(): Record<string, string> {
     // initData contains non-ASCII characters (e.g. Chinese first names) which
     // are not valid in header values, so it must be percent-encoded.
     "x-telegram-init-data": telegramInitData ? encodeURIComponent(telegramInitData) : "",
-    "x-telegram-user-id": localStorage.getItem("telegramUserId") || "",
+    // Reaching localStorage directly throws a SecurityError in Safari private
+    // mode and in some WebViews, which used to take the whole shell down on the
+    // first request. safeGet degrades to null instead.
+    "x-telegram-user-id": safeGet("telegramUserId") || "",
     // Local development only: the worker accepts the x-telegram-user-id
     // fallback solely when this matches ADMIN_DEV_AUTH_SECRET, so a public
     // deployment can never be taken over by a spoofed user id header.
-    "x-dev-auth-secret": localStorage.getItem("adminDevAuthSecret") || "",
+    "x-dev-auth-secret": safeGet("adminDevAuthSecret") || "",
   };
 }
 
+/**
+ * Parses a JSON body, and refuses to invent an empty object when the body is
+ * not JSON.
+ *
+ * Returning `{}` on a 200 HTML error page used to look like a successful
+ * response, so pages immediately threw a TypeError on `data.items.length` and
+ * the root ErrorBoundary replaced the whole app with "页面出错了". Throwing a
+ * typed ApiError keeps the failure inside the page that can explain it.
+ */
 async function parseResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text.trim()) return {};
   try {
-    return (await response.json()) as Record<string, unknown>;
+    return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    return {};
+    throw new ApiError(response.status, `服务端返回了非 JSON 响应（HTTP ${response.status}）`);
   }
 }
 
@@ -112,6 +127,63 @@ export async function fetchEnvironment(): Promise<string | null> {
   }
 }
 
+export interface DeploymentView {
+  id: number;
+  licenseId: number;
+  installationId: string;
+  workerName: string;
+  workerUrl: string | null;
+  status: "pending" | "deploying" | "online" | "offline" | "disabled" | "failed";
+  currentVersion: string | null;
+  desiredVersion: string | null;
+  lastSeenAt: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+  licensePublicId: string;
+  customerName: string | null;
+  licenseStatus: string;
+  licenseExpiresAt: string | null;
+}
+
+export interface DeploymentTaskView {
+  id: number;
+  deploymentId: number;
+  type: "deploy" | "update" | "rollback" | "disable" | "enable";
+  targetVersion: string | null;
+  status: "queued" | "running" | "succeeded" | "failed";
+  requestedBy: number | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  logText: string | null;
+  resultJson: string | null;
+  errorMessage: string | null;
+}
+
+export interface ProvisionCustomerResult {
+  license: {
+    publicId: string;
+    licenseKey: string;
+    startsAt: string;
+    expiresAt: string | null;
+  };
+  deployment: DeploymentView;
+  task: DeploymentTaskView;
+}
+
+export interface PublicationTargetView {
+  id: number;
+  name: string;
+  targetType: "telegram_topic";
+  chatId: string;
+  threadId: number | null;
+  enabled: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DeploymentInfo {
   /** "vendor" = authorization center; "customer" = licensed instance. */
   role: "vendor" | "customer";
@@ -135,6 +207,258 @@ export function fetchDeploymentInfo(): Promise<DeploymentInfo | null> {
     deploymentInfoPromise = api<DeploymentInfo>("/api/admin/deployment").catch(() => null);
   }
   return deploymentInfoPromise;
+}
+
+export interface AdminSessionInfo {
+  ok: boolean;
+  /** "creator" means a time-limited survey author, not a platform admin. */
+  role: "admin" | "creator";
+  userId: number;
+  telegramUserId: number;
+  firstName: string | null;
+}
+
+/**
+ * The signed-in role, so the shell can limit a creator trial to the survey
+ * workspace. Any failure resolves to null and the caller keeps the full admin
+ * navigation: an older worker without this endpoint must never lock an admin
+ * out of their own panel.
+ */
+export async function fetchAdminSession(): Promise<AdminSessionInfo | null> {
+  try {
+    return await api<AdminSessionInfo>("/api/admin/session");
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- *
+ * Vendor console → customer instance read-only access (客户数据)
+ *
+ * A Cloudflare Worker cannot fetch another Worker in the same account (edge
+ * error 1042), but a browser can. The console therefore mints a 5-minute
+ * read-only token from the control plane and reads the instance directly, so
+ * the center's Worker never sees — and never stores — customer data.
+ * Every helper below is GET-only on the instance side.
+ * -------------------------------------------------------------------------- */
+
+/** Result of `POST /api/control/deployments/:id/remote-token`. */
+export interface RemoteAccessToken {
+  token: string;
+  expiresAt: string;
+  /** The instance's own origin, as reported on its last heartbeat. */
+  workerUrl: string | null;
+  installationId: string;
+}
+
+export interface RemoteSummary {
+  surveys: number;
+  responses: number;
+  completed: number;
+  users: number;
+}
+
+export interface RemoteSummaryData {
+  summary: RemoteSummary;
+}
+
+export interface RemoteSurvey {
+  id: number;
+  title: string;
+  description: string | null;
+  status: string;
+  ownerId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RemoteResponse {
+  id: number;
+  surveyId: number;
+  userId: number | null;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+  surveyTitle: string | null;
+  username: string | null;
+  firstName: string | null;
+}
+
+export interface RemoteUser {
+  id: number;
+  telegramUserId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  systemRole: string;
+  createdAt: string;
+  botStartedAt: string | null;
+  /** SQLite has no boolean type, so the instance sends 1/0. */
+  banned: number | boolean;
+}
+
+export interface RemoteAnswer {
+  id: number;
+  responseId: number;
+  questionId: number;
+  textValue: string | null;
+  numberValue: number | null;
+  booleanValue: boolean | null;
+  ratingValue: number | null;
+  dateValue: string | null;
+  timeValue: string | null;
+  jsonValue: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RemoteListData<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface RemoteResponseDetail {
+  /** The instance's detail endpoint returns a subset of the list columns. */
+  response: Pick<RemoteResponse, "id" | "surveyId" | "userId" | "status" | "createdAt" | "completedAt" | "surveyTitle">;
+  answers: RemoteAnswer[];
+}
+
+/** The instance has not reported its read-only secret yet (HTTP 409). */
+export class RemoteNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RemoteNotConfiguredError";
+  }
+}
+
+/** A read-only read against the customer instance failed. */
+export class RemoteRequestError extends Error {
+  /** HTTP status, or 0 when the request never reached the instance. */
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "RemoteRequestError";
+    this.status = status;
+  }
+}
+
+export function isRemoteNotConfigured(error: unknown): error is RemoteNotConfiguredError {
+  return error instanceof RemoteNotConfiguredError;
+}
+
+export interface RemoteClient {
+  /**
+   * Mints a fresh token for the next read. One read-only view calls this once
+   * when it opens or refreshes, so the view gets a new 5-minute token instead
+   * of reusing one that may already be about to expire.
+   */
+  renew(): Promise<void>;
+  /** Reads one read-only endpoint of the customer instance. */
+  get<T>(path: string): Promise<T>;
+}
+
+function remoteUrl(origin: string, path: string): string {
+  const base = /^https?:\/\//i.test(origin) ? origin : `https://${origin}`;
+  return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+}
+
+/**
+ * Read-only client for one customer instance.
+ *
+ * `renew()` is the only place a token is minted, so concurrent reads started by
+ * one view share a single mint, and a 401 — the 5-minute token lapsed, or the
+ * instance rotated its secret — transparently renews once and retries. Create a
+ * client per deployment and keep it for the lifetime of the viewer.
+ */
+export function createRemoteClient(deploymentId: number): RemoteClient {
+  let session: RemoteAccessToken | null = null;
+  let minting: Promise<RemoteAccessToken> | null = null;
+
+  const mint = (): Promise<RemoteAccessToken> => {
+    if (!minting) {
+      // The async IIFE starts synchronously, so `minting` is already set by the
+      // time a second caller arrives within the same tick.
+      minting = (async () => {
+        try {
+          const fresh = await apiSend<RemoteAccessToken>(
+            "POST",
+            `/api/control/deployments/${deploymentId}/remote-token`,
+            {},
+          );
+          session = fresh;
+          return fresh;
+        } catch (error) {
+          if (error instanceof ApiError && error.data && error.data.error === "remote_access_not_configured") {
+            // A state to explain ("完成一次心跳"), not a failure to retry blindly.
+            const message = error.data.message;
+            throw new RemoteNotConfiguredError(
+              typeof message === "string" && message ? message : "该实例尚未上报只读访问密钥，请先完成一次心跳。",
+            );
+          }
+          throw error;
+        } finally {
+          minting = null;
+        }
+      })();
+    }
+    return minting;
+  };
+
+  async function request<T>(path: string, retried: boolean): Promise<T> {
+    const current = session ?? (await mint());
+    const origin = current.workerUrl;
+    if (!origin) {
+      throw new RemoteRequestError(0, "该实例尚未上报访问地址（workerUrl），暂时无法直接读取数据。");
+    }
+    let target: string;
+    try {
+      target = remoteUrl(origin, path);
+    } catch {
+      throw new RemoteRequestError(0, `该实例上报的访问地址无效：${origin}`);
+    }
+    const used = session;
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${current.token}` },
+        cache: "no-store",
+      });
+    } catch {
+      throw new RemoteRequestError(
+        0,
+        "无法连接客户实例：请确认该 Worker 已上线，且它的 LICENSE_SERVER_URL 指向本控制中心。",
+      );
+    }
+    if (response.status === 401 && !retried) {
+      // Renew only if no concurrent read already replaced the token we used.
+      if (session === used) await mint();
+      return request<T>(path, true);
+    }
+    if (!response.ok) {
+      throw new RemoteRequestError(
+        response.status,
+        response.status === 401
+          ? "只读访问被拒绝：请关闭后重新打开客户数据。"
+          : `读取客户数据失败（HTTP ${response.status}）。`,
+      );
+    }
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new RemoteRequestError(response.status, "客户实例返回了无法解析的数据。");
+    }
+  }
+
+  return {
+    renew: async () => {
+      await mint();
+    },
+    get: <T>(path: string) => request<T>(path, false),
+  };
 }
 
 export type SurveyStatus = "draft" | "published" | "closed" | "archived";
@@ -668,6 +992,9 @@ export interface PlazaPostSummary {
   content: string;
   kind: "text" | "trial";
   payload: Record<string, unknown> | null;
+  /** 配图（0068）：下架会把 KV 里的字节一并清除。 */
+  imageAssetId: number | null;
+  topic: string | null;
   anonymous: boolean;
   status: "published" | "removed";
   createdAt: string;
@@ -796,3 +1123,111 @@ export function updateAdminTaskPack(id: number, input: AdminTaskPackInput): Prom
 export function deleteAdminTaskPack(id: number): Promise<{ ok: boolean }> {
   return apiSend("DELETE", `/api/admin/task-packs/${id}`);
 }
+
+/* ---- Showcase (展示区) management ------------------------------------- */
+
+export type ShowcaseItemKind =
+  | "image"
+  | "article"
+  | "audio"
+  | "video"
+  | "project"
+  | "github"
+  | "website"
+  | "social"
+  | "survey"
+  | "other";
+
+export interface ShowcaseAdminItem {
+  id: number;
+  title: string;
+  description: string | null;
+  kind: ShowcaseItemKind;
+  coverMediaId: number | null;
+  coverUrl: string | null;
+  /** 作品本体（图片/音频/视频）的媒体 id 与管理端预览地址。 */
+  mediaAssetId: number | null;
+  mediaUrl: string | null;
+  url: string | null;
+  featured: boolean;
+  sortOrder: number;
+}
+
+export interface ShowcaseAdminPerson {
+  id: number;
+  name: string;
+  subtitle: string | null;
+  description: string | null;
+  accentColor: string | null;
+  background: { from: string | null; to: string | null; imageUrl: string | null };
+  backgroundFrom: string | null;
+  backgroundTo: string | null;
+  backgroundMediaId: number | null;
+  backgroundUrl: string | null;
+  illustrationMediaId: number | null;
+  illustrationUrl: string | null;
+  avatarMediaId: number | null;
+  avatarUrl: string | null;
+  tags: string[];
+  links: { type: string; label: string; url: string }[];
+  surveyId: number | null;
+  responseId: number | null;
+  ownerUserId: number | null;
+  featureRank: number;
+  published: boolean;
+  sortOrder: number;
+  items: ShowcaseAdminItem[];
+}
+
+export interface ShowcaseAdminData {
+  persons: ShowcaseAdminPerson[];
+  total: number;
+  publishedTotal: number;
+  limit: number;
+}
+
+export function fetchAdminShowcase(): Promise<ShowcaseAdminData> {
+  return api<ShowcaseAdminData>("/api/admin/showcase");
+}
+
+export function createShowcasePerson(input: Record<string, unknown>): Promise<{ person: ShowcaseAdminPerson | null }> {
+  return apiSend("POST", "/api/admin/showcase/persons", input);
+}
+
+export function updateShowcasePerson(
+  id: number,
+  input: Record<string, unknown>,
+): Promise<{ person: ShowcaseAdminPerson | null }> {
+  return apiSend("PATCH", `/api/admin/showcase/persons/${id}`, input);
+}
+
+export function deleteShowcasePerson(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", `/api/admin/showcase/persons/${id}`);
+}
+
+export function reorderShowcasePersons(ids: number[]): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/showcase/persons/reorder", { ids });
+}
+
+export function createShowcaseItem(
+  personId: number,
+  input: Record<string, unknown>,
+): Promise<{ person: ShowcaseAdminPerson | null }> {
+  return apiSend("POST", `/api/admin/showcase/persons/${personId}/items`, input);
+}
+
+export function updateShowcaseItem(
+  id: number,
+  input: Record<string, unknown>,
+): Promise<{ person: ShowcaseAdminPerson | null }> {
+  return apiSend("PATCH", `/api/admin/showcase/items/${id}`, input);
+}
+
+export function deleteShowcaseItem(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", `/api/admin/showcase/items/${id}`);
+}
+
+export function uploadShowcaseMedia(file: File): Promise<{ mediaAssetId: number; url: string }> {
+  return apiUpload("/api/admin/showcase/media", file);
+}
+

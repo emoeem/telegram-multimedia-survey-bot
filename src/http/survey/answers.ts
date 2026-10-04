@@ -28,6 +28,9 @@ export async function saveWebAnswer(
   value: unknown,
 ): Promise<Response | null> {
   const type = question.type as QuestionType;
+  // 剧情文段不收集答案；正常流程客户端不会为它发请求，这里兜底为成功，
+  // 让"必答检查/续答重放"等路径不会因叙述节点而失败。
+  if (type === "note") return null;
   if (type === "single" || type === "yes_no" || type === "rating") {
     const optionId = Number(value);
     if (!Number.isInteger(optionId) || !question.options.some((option) => option.id === optionId)) {

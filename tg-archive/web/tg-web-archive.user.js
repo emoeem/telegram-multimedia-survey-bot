@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TG Web Archive（流式截图归档）
 // @namespace    tg-web-archive
-// @version      0.5.0
+// @version      0.6.0
 // @description  在官方 web.telegram.org 内把聊天归档进自己的频道：snapshot 截图 / copy 文字 / forward 原生转发；流式处理、失败自动重试、幂等去重；不需要 api_id。
 // @match        https://web.telegram.org/a/*
 // @match        https://web.telegram.org/k/*
@@ -32,7 +32,9 @@
 (function () {
   "use strict";
 
-  const APP = location.pathname.startsWith("/a") ? "A" : location.pathname.startsWith("/k") ? "K" : "?";
+  // 应用探测（P0-1）：本脚本的所有选择器都来自 Web K（/k）实测；Web A（/a）没有
+  // 可用选择器，必须在运行入口明确报错中止，绝不静默什么都不做。
+  const APP = /\/a\//.test(location.pathname) ? "A" : /\/k\//.test(location.pathname) ? "K" : "?";
   const LS = "tg-web-archive";
   const store = {
     get(key, dft) {
@@ -74,6 +76,58 @@
   function updateStatus(text) {
     const el = document.getElementById("tgwa-status");
     if (el) el.textContent = text;
+  }
+
+  // ------------------------------------------------------ 应用支持与运行锁
+
+  // 只支持 Web K（P0-1）：Web A 的选择器与 DOM 完全不同，宁可不跑也不能错归档。
+  function appSupported() {
+    return APP === "K";
+  }
+
+  function appStatusText() {
+    return appSupported() ? `APP=${APP}（Web K，受支持）` : `APP=${APP}（不受支持）`;
+  }
+
+  function unsupportedAppMessage() {
+    return APP === "A"
+      ? "当前为 web.telegram.org/a（Web A），本脚本只支持 /k（Web K）：请在 https://web.telegram.org/k/ 打开后重试。"
+      : "无法识别当前页面（既不是 /a 也不是 /k），本脚本只支持 Web K：https://web.telegram.org/k/";
+  }
+
+  /** 运行入口守卫：返回 false 时调用方必须立即中止，并已给出明确原因（P0-1）。 */
+  function ensureSupportedApp() {
+    if (appSupported()) return true;
+    const msg = unsupportedAppMessage();
+    log("⛔ " + msg);
+    updateStatus("⛔ " + msg);
+    return false;
+  }
+
+  // 运行锁（P1-2）：streamRun 与 sendQueueNow 互斥；运行期间禁用会启动新任务的
+  // 四个按钮（截图到最新 / 向上回溯 / 重试队列 / 清理队列），「停止」保持可用。
+  const RUN_BUTTON_IDS = ["tgwa-down", "tgwa-up", "tgwa-retry", "tgwa-clear"];
+  let running = false;
+
+  function refreshButtonState() {
+    const blocked = running || !appSupported();
+    for (const id of RUN_BUTTON_IDS) {
+      const b = document.getElementById(id);
+      if (b) b.disabled = blocked;
+    }
+    const stopBtn = document.getElementById("tgwa-stop");
+    if (stopBtn) stopBtn.disabled = !running;
+    const runEl = document.getElementById("tgwa-run");
+    if (runEl) {
+      const idleText = appSupported() ? "空闲" : "不可用：当前不是 Web K";
+      runEl.textContent = running ? "运行中…（可点「停止」中断）" : idleText;
+      runEl.style.color = running ? "#ffd479" : "";
+    }
+  }
+
+  function setRunning(on) {
+    running = on;
+    refreshButtonState();
   }
 
   function firstVisible(selectors) {
@@ -144,10 +198,12 @@
   // ------------------------------------------------------------ 可配置项（P1-9 / P2-14）
 
   function getSettings() {
+    // P2-11：不要用「秒 * 1000 || 默认值」的写法——那会把“显式填 0”当成无效值退回 1.2s。
+    const delaySec = Number(store.get("optDelay", 1.2));
     return {
       scale: Math.max(1, Math.min(3, Number(store.get("optScale", 2)) || 2)),
       format: store.get("optFormat", "png") === "jpeg" ? "jpeg" : "png",
-      delayMs: Math.max(0, Math.min(30, Number(store.get("optDelay", 1.2)) * 1000 || 1200)),
+      delayMs: Math.round(Math.max(0, Math.min(30, Number.isFinite(delaySec) ? delaySec : 1.2)) * 1000),
     };
   }
 
@@ -188,14 +244,15 @@
       return kids ? meta + "\n" + kids : meta;
     };
     const bubbles = Array.from(document.querySelectorAll(".bubble:not(.service)")).slice(0, 3);
+    // P2-15：只记录长度/标签/类名，绝不输出消息或会话行的文本内容本身。
     const sidebar = Array.from(document.querySelectorAll("[data-peer-id]"))
       .filter((el) => !el.closest(".bubble") && el.offsetParent !== null)
       .slice(0, 12)
-      .map((el) => `<${el.tagName.toLowerCase()} cls="${(el.className || "").toString().slice(0, 80)}" peer=${el.getAttribute("data-peer-id")} text="${textOf(el).slice(0, 26)}">`)
+      .map((el) => `<${el.tagName.toLowerCase()} cls="${(el.className || "").toString().slice(0, 80)}" peer=${el.getAttribute("data-peer-id")} textLen=${textOf(el).length}>`)
       .join(" ");
     const report = [
       "app=" + APP + " url=" + location.href,
-      "chatTitle=" + textOf(firstVisible(H.chatTitle)),
+      "chatTitleLen=" + textOf(firstVisible(H.chatTitle)).length,
       "bubbles=" + bubbles.length,
       "sidebarRows: " + (sidebar || "无（没有找到带 data-peer-id 的会话行）"),
       "composer: " +
@@ -214,7 +271,8 @@
     ];
     bubbles.forEach((b, i) => {
       const t = textOf(b);
-      report.push(`--- bubble${i + 1} mid=${b.getAttribute("data-mid")} ts=${b.getAttribute("data-timestamp")} textLen=${t.length} head=${t.slice(0, 30)}`);
+      // P2-15：只有长度与属性，不落文本内容（probe.mjs 同样只记录标签/类名/属性）。
+      report.push(`--- bubble${i + 1} mid=${b.getAttribute("data-mid")} ts=${b.getAttribute("data-timestamp")} textLen=${t.length}`);
       report.push(tree(b, 0).split("\n").slice(0, 34).join("\n"));
     });
     return report.join("\n");
@@ -359,21 +417,107 @@
 
   // ------------------------------------------------------------ 断点/判重（P0-3）
 
-  // done:<peer> —— 该聊天已归档（或按策略有意跳过）的消息 key 列表。
-  // 发送发生在归档频道聊天里，但 peer 始终显式传入，不会记错地方。
-  const doneKey = (peer) => "done:" + peer;
-  const isDone = (peer, k) => (peer ? (store.get(doneKey(peer), []) || []).includes(k) : false);
+  // done:<peer>:<bucket> —— 该聊天已归档（或按策略有意跳过）的消息 key，分桶存放。
+  // 旧版是单个 done:<peer> 数组，超过 5 万条时从头部整体淘汰，历史区间会被重新
+  // 当成未归档而重复归档；分桶后按 peer 不再淘汰（P2-10）。
+  const DONE_BUCKETS = 32;
+  const LEGACY_DONE_KEY = (peer) => "done:" + peer;
+  const doneKey = (peer, bucket) => `done:${peer}:${bucket}`;
+  const doneBucketOf = (k) => {
+    const n = Number(k);
+    return Number.isFinite(n) ? Math.abs(Math.floor(n)) % DONE_BUCKETS : 0;
+  };
+
+  const doneCache = new Map(); // peer -> Set<string>；内存索引，避免每次都全量读 GM 存储
+  function loadDone(peer) {
+    let set = doneCache.get(peer);
+    if (set) return set;
+    set = new Set();
+    // 读的时候兼容老键：把 done:<peer> 一并读进来（P2-10）
+    const legacy = store.get(LEGACY_DONE_KEY(peer), []);
+    if (Array.isArray(legacy)) for (const k of legacy) set.add(String(k));
+    for (let b = 0; b < DONE_BUCKETS; b++) {
+      const arr = store.get(doneKey(peer, b), []);
+      if (Array.isArray(arr)) for (const k of arr) set.add(String(k));
+    }
+    doneCache.set(peer, set);
+    return set;
+  }
+
+  // 单键落盘：读-合并-写（P2-14），多标签页共享 GM 存储时不会用陈旧快照覆盖。
+  function persistDoneKey(peer, k) {
+    const key = doneKey(peer, doneBucketOf(k));
+    const cur = store.get(key, []);
+    const arr = Array.isArray(cur) ? cur.slice() : [];
+    const s = String(k);
+    if (!arr.includes(s)) {
+      arr.push(s);
+      store.set(key, arr);
+    }
+  }
+
+  // 写时迁移老格式：把 done:<peer> 按桶并入后清空老键（P2-10）。
+  function migrateLegacyDone(peer) {
+    const legacy = store.get(LEGACY_DONE_KEY(peer), null);
+    if (!Array.isArray(legacy) || !legacy.length) return;
+    const buckets = new Map();
+    for (const k of legacy) {
+      const b = doneBucketOf(k);
+      if (!buckets.has(b)) buckets.set(b, new Set());
+      buckets.get(b).add(String(k));
+    }
+    for (const [b, keys] of buckets) {
+      const cur = store.get(doneKey(peer, b), []);
+      const arr = Array.isArray(cur) ? cur.slice() : [];
+      for (const k of keys) if (!arr.includes(k)) arr.push(k);
+      store.set(doneKey(peer, b), arr);
+    }
+    store.set(LEGACY_DONE_KEY(peer), []);
+    log(`♻️ 已把 ${legacy.length} 条旧格式判重记录迁移到分桶存储（peer=${peer}）。`);
+  }
+
+  const isDone = (peer, k) => (peer ? loadDone(peer).has(String(k)) : false);
+
   function markDone(peer, k) {
     if (!peer || k == null) return;
-    const arr = store.get(doneKey(peer), []) || [];
-    if (!arr.includes(k)) {
-      arr.push(k);
-      if (arr.length > 50000) arr.splice(0, arr.length - 50000);
-      store.set(doneKey(peer), arr);
-    }
+    const set = loadDone(peer);
+    const s = String(k);
+    if (set.has(s)) return;
+    set.add(s);
+    migrateLegacyDone(peer);
+    persistDoneKey(peer, s);
   }
   function markAllDone(peer, keys) {
     for (const k of keys || []) markDone(peer, k);
+  }
+
+  // sent:<peer>:<bucket> —— 已“验证发送成功”的 mid 标记（P1-6）。频道内查重只看
+  // 得到渲染窗口里的气泡，这里持久化一层，跨刷新/跨运行仍然判重。
+  // 注意用集合而不是“最大 mid 水位”：向上回溯时 mid 递减，水位会误跳老消息。
+  const sentCache = new Map(); // peer -> Set<string>
+  function loadSent(peer) {
+    let set = sentCache.get(peer);
+    if (set) return set;
+    set = new Set();
+    for (let b = 0; b < DONE_BUCKETS; b++) {
+      const arr = store.get(`sent:${peer}:${b}`, []);
+      if (Array.isArray(arr)) for (const k of arr) set.add(String(k));
+    }
+    sentCache.set(peer, set);
+    return set;
+  }
+  const isSent = (peer, mid) => (peer && mid ? loadSent(peer).has(String(mid)) : false);
+  function markSent(peer, mid) {
+    if (!peer || !mid) return;
+    const s = String(mid);
+    const set = loadSent(peer);
+    if (set.has(s)) return;
+    set.add(s);
+    const key = `sent:${peer}:${doneBucketOf(s)}`;
+    const cur = store.get(key, []); // 读-合并-写（P2-14）
+    const arr = Array.isArray(cur) ? cur.slice() : [];
+    if (!arr.includes(s)) arr.push(s);
+    store.set(key, arr);
   }
 
   // check:<peer> —— 向下方向的“高水位”断点：已发送的最大 mid/ts。
@@ -388,25 +532,68 @@
 
   let queue = []; // 失败/待重试的元数据（无 PNG/el，重试时回源聊天重新定位）
   const stop = { flag: false };
+  let queueRevSeen = 0; // 本地已同步的队列版本号（多标签页合并用，P2-14）
+
+  function stripQueueRefs(it) {
+    // 只保留可 JSON 化的元数据；PNG / DOM 引用重试时重建（P0-4）
+    const { png, el, ...rest } = it;
+    return rest;
+  }
 
   function loadQueue() {
     const saved = store.get("queueV1", []);
     queue = Array.isArray(saved) ? saved.filter((x) => x && x.key) : [];
+    queueRevSeen = Number(store.get("queueRev", 0)) || 0;
   }
-  function saveQueue() {
-    // 只保留可 JSON 化的元数据；PNG / DOM 引用重试时重建（P0-4）
-    store.set(
-      "queueV1",
-      queue.map((it) => {
-        const { png, el, ...rest } = it;
-        return rest;
-      })
-    );
+
+  // 同名条目合并：保留 attempts 更多、且有错误信息的一条，两侧都不丢弃（P2-14）。
+  function mergeQueueItems(remote, local) {
+    const byKey = new Map();
+    for (const it of [...remote, ...local]) {
+      if (!it || !it.key) continue;
+      const prev = byKey.get(it.key);
+      if (!prev) {
+        byKey.set(it.key, it);
+        continue;
+      }
+      const better = (it.attempts || 0) > (prev.attempts || 0) ? it : prev;
+      byKey.set(it.key, { ...better, error: better.error || prev.error || it.error });
+    }
+    return [...byKey.values()];
+  }
+
+  function saveQueue({ force = false } = {}) {
+    let rev = Number(store.get("queueRev", 0)) || 0;
+    if (!force && rev !== queueRevSeen) {
+      // 其他标签页在本地快照之后改过队列：合并而不是整体覆盖（P2-14）
+      const remote = store.get("queueV1", []);
+      if (Array.isArray(remote) && remote.length) {
+        queue = mergeQueueItems(remote, queue);
+        log(`⚠️ 检测到其他标签页修改了重试队列，已合并为 ${queue.length} 条（两侧都不丢弃）。`);
+        rev = Math.max(rev, queueRevSeen) + 1;
+        store.set("queueV1", queue.map(stripQueueRefs));
+        store.set("queueRev", rev);
+        queueRevSeen = rev;
+        return;
+      }
+    }
+    rev += 1;
+    store.set("queueV1", queue.map(stripQueueRefs));
+    store.set("queueRev", rev);
+    queueRevSeen = rev;
+  }
+
+  // 入队前清空 DOM 引用（P1-3）：节点随时可能被 Vue 重渲染替换，脱离文档后
+  // 必须重新定位，直接复用旧节点只会操作到一个不可见/已失效的元素。
+  function enqueue(item) {
+    item.el = null;
+    queue.push(item);
+    updateQueueUi();
   }
 
   function clearQueue() {
     queue = [];
-    saveQueue();
+    saveQueue({ force: true }); // 用户显式清理优先，不与并发标签页做合并
     updateQueueUi();
     log("🗑 队列已清空。");
   }
@@ -421,7 +608,12 @@
       log("已取消重置。");
       return;
     }
-    store.set(doneKey(peer), []);
+    for (let b = 0; b < DONE_BUCKETS; b++) store.set(doneKey(peer, b), []);
+    store.set(LEGACY_DONE_KEY(peer), []);
+    doneCache.delete(peer);
+    // sent 标记同样要清掉，否则“重置后重跑会被再次发送”的语义不成立（P1-6）。
+    for (let b = 0; b < DONE_BUCKETS; b++) store.set(`sent:${peer}:${b}`, []);
+    sentCache.delete(peer);
     store.set(checkKey(peer), { mid: 0, ts: 0 });
     log(`已重置 ${peer} 的断点与已处理标记（done/check），可重新 ▲ 向上回溯。`);
   }
@@ -524,17 +716,44 @@
     return { count, last };
   }
 
-  function channelChanged(sig) {
-    if (!sig || (!sig.count && !sig.last)) return true; // 无法取签名时退回旧行为
-    const cur = channelSignature();
-    return cur.count > sig.count || cur.last > sig.last;
+  // 硬错误：签名读不到 / 上下文不对时，本轮必须中止，且绝不能记成成功（P1-7）。
+  const hardAbort = { flag: false, reason: "" };
+  function abortRun(reason) {
+    hardAbort.flag = true;
+    hardAbort.reason = reason;
+    log(`⛔ ${reason}：本轮中止（不计为成功；本轮未确认的条目已留在重试队列）。`);
+    updateStatus(`⛔ ${reason}`);
   }
 
-  // 发送 + 校验“频道里真的多了一条消息”（P0-2）。
-  async function trySendVerified() {
-    const sig = channelSignature();
+  // 读取频道签名，并确认当前确实停在归档频道上（P1-7）。
+  // 读不到时返回 null（绝不“假设成功”）；空频道返回 {count:0,last:0}，是合法读数。
+  function readChannelSignature(archivePeer, context) {
+    if (!archivePeer) return null;
+    if (currentPeerId() !== String(archivePeer)) {
+      log(`  ❌ ${context}：当前不在归档频道（peer=${currentPeerId() || "未知"}），无法校验发送结果。`);
+      return null;
+    }
+    return channelSignature();
+  }
+
+  function sigChanged(before, after) {
+    if (!before || !after) return false;
+    return after.count > before.count || after.last > before.last;
+  }
+
+  // 发送 + 校验“频道里真的多了一条消息”（P0-2）。expectedPeer 必须是归档频道。
+  async function trySendVerified(expectedPeer) {
+    const sig = readChannelSignature(expectedPeer, "发送前读取频道签名");
+    if (!sig) {
+      abortRun("无法读取归档频道签名");
+      return false;
+    }
     if (!(await trySend())) return false;
-    if (!(await waitFor(() => channelChanged(sig), 8000))) {
+    const changed = await waitFor(() => {
+      if (expectedPeer && currentPeerId() !== String(expectedPeer)) return false;
+      return sigChanged(sig, channelSignature());
+    }, 8000);
+    if (!changed) {
       log("  ⚠️ 输入框已清空但频道未出现新消息，按失败处理。");
       return false;
     }
@@ -600,12 +819,23 @@
     return null;
   }
 
+  // 上传中的进度元素（P2-8）：扫描 composer 内“全部可见元素”，包含 baseline 里
+  // 已经存在的节点；只看 baseline 之后新增的节点会永远看不到上传进度，退化成固定 1.8s。
+  function composerUploadEl() {
+    for (const el of scopeElements(composerScope())) {
+      if (el.offsetParent === null) continue; // 只认可见元素，避免隐藏的 loading 占位符
+      if (uploadish(el)) return el;
+    }
+    return null;
+  }
+
   // 附件进入输入框后，等上传进度条消失（本地小图可能无进度 UI，1.8s 后视为完成）。
-  async function waitUploadSettled(baseline, uploadTimeout) {
+  // _baseline 仅为兼容调用方保留：现在扫描全部元素，天然覆盖 baseline 成员。
+  async function waitUploadSettled(_baseline, uploadTimeout) {
     const start = Date.now();
     let saw = false;
     while (Date.now() - start < uploadTimeout) {
-      const up = newComposerSignal(baseline, uploadish);
+      const up = composerUploadEl();
       if (up) {
         saw = true;
       } else if (saw) {
@@ -632,9 +862,14 @@
   }
 
   async function attachViaFileInput(file) {
-    const input = Array.from(document.querySelectorAll('input[type="file"]')).find((el) => {
-      return el.offsetParent !== null || !el.closest("#tgwa-panel");
-    });
+    // P2-13：优先用输入框所在容器内的 file input，找不到才退回全局（排除本面板自己的）。
+    const scope = composerScope();
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    const scoped = scope && scope !== document ? inputs.filter((el) => scope.contains(el)) : [];
+    const input =
+      scoped.find((el) => el.offsetParent !== null) ||
+      scoped[0] ||
+      inputs.find((el) => !el.closest("#tgwa-panel"));
     if (!input) return;
     const dt = new DataTransfer();
     dt.items.add(file);
@@ -692,21 +927,38 @@
     return { ok: false };
   }
 
+  const MAX_MEDIA_BYTES = 100 * 1024 * 1024; // 单条媒体上限（P2-9），超限直接中止
   async function fetchMediaBlob(url) {
     const chunks = [];
     let offset = 0;
     let mime = "";
+    let total = 0;
     for (let i = 0; i < 512; i++) {
       const res = await fetch(url, { headers: { Range: `bytes=${offset}-` }, credentials: "same-origin" });
       if (![200, 206].includes(res.status)) throw new Error("HTTP " + res.status);
       mime = (res.headers.get("Content-Type") || "").split(";")[0];
-      chunks.push(await res.blob());
+      // 先看声明长度，避免把超大文件整段拉进内存（P2-9）
+      const declared = Number(res.headers.get("Content-Length") || 0);
+      if (declared && total + declared > MAX_MEDIA_BYTES) throw mediaTooBigError();
+      const blob = await res.blob();
+      total += blob.size;
+      if (total > MAX_MEDIA_BYTES) throw mediaTooBigError();
+      chunks.push(blob);
       const m = (res.headers.get("Content-Range") || "").match(/bytes (\d+)-(\d+)\/(\d+)/);
       if (!m) break;
       offset = Number(m[2]) + 1;
       if (offset >= Number(m[3])) break;
     }
+    if (!chunks.length) throw new Error("empty media");
+    // 单块时直接复用，避免 chunks + new Blob 的双份全量拷贝（P2-9）
+    if (chunks.length === 1 && chunks[0].type) return chunks[0];
     return new Blob(chunks, { type: mime });
+  }
+
+  function mediaTooBigError() {
+    const err = new Error(`media-too-big: 超过 ${Math.round(MAX_MEDIA_BYTES / 1048576)}MB 上限`);
+    err.code = "media-too-big";
+    return err;
   }
 
   function snapshotReady() {
@@ -737,11 +989,18 @@
 
   // 发送“一条”到当前打开的聊天（调用方保证已在目标频道）；成功 true，失败 false，
   // “频道里已存在同标记消息”视为成功（幂等跳过）。失败原因写入 item.error（P2-15）。
-  async function sendOne(item) {
+  // archivePeer：归档频道 peer，用于发送前后校验签名（P1-7）。
+  async function sendOne(item, archivePeer) {
     await clearComposer();
     await sleep(250);
+    // 幂等三层（P1-6）：持久 sent 标记 → 频道内可见的 #m_ 标记 → 发送后签名变化。
+    if (isSent(item.peer, item.mid)) {
+      log(`  ♻️ 已记录过该消息发送成功（sent），跳过重复发送：#${item.key}`);
+      return true;
+    }
     if (channelHasItem(item)) {
       log(`  ♻️ 频道已有同标记消息，跳过重复发送：#${item.key}`);
+      markSent(item.peer, item.mid);
       return true;
     }
     if (item.mode === "snapshot") {
@@ -783,8 +1042,9 @@
         await clearComposer();
         return false;
       }
-      const ok = await trySendVerified();
-      if (!ok) item.error = "send";
+      const ok = await trySendVerified(archivePeer);
+      if (ok) markSent(item.peer, item.mid);
+      else item.error = "send";
       return ok;
     }
     if (item.text) {
@@ -794,8 +1054,9 @@
         return false;
       }
       await sleep(250);
-      const ok = await trySendVerified();
-      if (!ok) item.error = "send";
+      const ok = await trySendVerified(archivePeer);
+      if (ok) markSent(item.peer, item.mid);
+      else item.error = "send";
       return ok;
     }
     if (item.mediaUrls.length && currentPolicy() === "allow_media") {
@@ -815,14 +1076,16 @@
             await clearComposer();
             return false;
           }
-          if (!(await trySendVerified())) {
+          if (!(await trySendVerified(archivePeer))) {
             item.error = "send";
             return false;
           }
+          markSent(item.peer, item.mid);
         }
         return true;
       } catch (err) {
-        item.error = "media-fetch";
+        // P2-9：超限时带上明确原因，便于 UI/日志区分“太大”与“网络失败”
+        item.error = (err && err.code) || "media-fetch";
         log("  媒体获取失败：" + (err && err.message ? err.message : err));
         return false;
       }
@@ -854,32 +1117,59 @@
     return ok;
   }
 
-  function findSidebarPeer(name) {
-    const rows = Array.from(document.querySelectorAll("[data-peer-id]")).filter(
+  // 标题归一化 + 严格比较（P1-5）：只接受“归一化后完全相等”，不做子串匹配，
+  // 避免把「我的频道」匹配到「我的频道（备份）」而发错聊天。
+  function normalizeTitle(s) {
+    return String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  // 会话行的标题元素；找不到时退回整行文本。选择器与 HINTS.K.chatTitle 同源。
+  const ROW_TITLE_SELECTORS = [".peer-title", "[class*='peer-title' i]", ".title"];
+  function rowTitleOf(row) {
+    const el = firstWithin(row, ROW_TITLE_SELECTORS);
+    return el ? textOf(el) : textOf(row);
+  }
+  function rowTitleMatches(row, name) {
+    return normalizeTitle(rowTitleOf(row)) === normalizeTitle(name);
+  }
+
+  function sidebarRows() {
+    return Array.from(document.querySelectorAll("[data-peer-id]")).filter(
       (el) => !el.closest(".bubble") && el.offsetParent !== null
     );
-    const name2 = String(name).trim();
-    const exact = rows.find((el) => textOf(el).trim() === name2);
-    const fuzzy = exact || rows.find((el) => textOf(el).includes(name2));
-    return fuzzy ? fuzzy.getAttribute("data-peer-id") : null;
+  }
+
+  function findSidebarPeer(name) {
+    const target = normalizeTitle(name);
+    if (!target) return null;
+    const hit = sidebarRows().find((el) => normalizeTitle(rowTitleOf(el)) === target);
+    return hit ? hit.getAttribute("data-peer-id") : null;
   }
 
   async function openChannelByName(name) {
+    const target = normalizeTitle(name);
+    if (!target) return null;
     const peer = findSidebarPeer(name);
     if (peer) {
-      const row = Array.from(document.querySelectorAll("[data-peer-id]")).find(
-        (el) => !el.closest(".bubble") && el.getAttribute("data-peer-id") === peer
-      );
+      const row = sidebarRows().find((el) => el.getAttribute("data-peer-id") === peer);
       click(row);
       if (await waitFor(() => currentPeerId() === peer, 3000)) {
         await sleep(600);
+        // 打开后再用标题核对一次（P1-5）；读不到标题就不继续——宁可不动，
+        // 也不能把内容发到无法确认的聊天里。
+        const title = textOf(firstVisible(H.chatTitle));
+        if (!title) {
+          log("❌ 打开频道后读不到聊天标题，无法核对目标，已中止（请点「① 探测 DOM」校准标题选择器）。");
+          return null;
+        }
+        if (normalizeTitle(title) !== target) {
+          log(`❌ 打开的聊天标题「${title}」与目标频道「${name}」不一致，已中止以免发错聊天。`);
+          return null;
+        }
         return peer;
       }
     }
-    // 兜底：如果当前打开的聊天标题就是目标频道（用户手动打开过）
-    if (textOf(firstVisible(H.chatTitle)).includes(String(name).trim()) && currentPeerId()) {
-      return currentPeerId();
-    }
+    log(`❌ 左侧列表里没有标题完全等于「${name}」的会话（已禁用模糊匹配，避免发错聊天）。`);
     return null;
   }
 
@@ -893,7 +1183,9 @@
 
   // 回源聊天定位消息；截图类重试需要它，forward 重试也需要。
   async function ensureMessageEl(item) {
-    if (item.el) return item.el;
+    // P1-3：只有仍挂在文档里的节点才可复用；脱离文档的引用会让后续操作静默失效。
+    if (item.el && item.el.isConnected) return item.el;
+    item.el = null; // 清理已失效的引用
     if (!(await openPeer(item.peer))) return null;
     await sleep(800);
     // 消息可能已滚出视口：向上翻几屏找（失败消息通常靠近当前停留位置）
@@ -924,9 +1216,27 @@
   // ------------------------------------------------------------ forward 模式（P1-5，实验性）
 
   // 对当前打开源聊天里的某条消息调用原生转发对话框。
-  // 返回 {ok} | {denied}（受保护/无转发权限）| {ok:false, error}。
+  // 菜单项/按钮文案匹配（P1-4）：不同语言与版本差异大，取“宽松标签匹配”，
+  // 但必须限定在已定位的菜单/对话框容器内，避免误点页面上的其它按钮。
+  function labelOf(el) {
+    return `${el.getAttribute("aria-label") || ""} ${el.title || ""} ${el.innerText || ""}`.trim();
+  }
+  const FORWARD_LABEL_RE = /forward|轉發|转发/i;
+  // 转发对话框的确认按钮在不同版本里叫 Forward / Send / 发送 / 保存。
+  const SEND_LABEL_RE = /forward|send|发送|傳送|save|保存|完成|done/i;
+
+  function menuContainer() {
+    return allVisible(["[role='menu']", "[class*='menu' i]", "[class*='dropdown' i]", "[class*='context' i]"])[0] || null;
+  }
+
+  function dialogContainer() {
+    return allVisible(["[role='dialog']", "[class*='modal' i]", "[class*='dialog' i]", "[class*='popup' i]"])[0] || null;
+  }
+
+  // 对当前打开源聊天里的某条消息调用原生转发对话框。
+  // 返回 {ok} | {denied}（确实没有转发权限）| {ok:false, error}（可重试）。
   async function forwardOne(item, channelName) {
-    const el = item.el || findMessageEl(item);
+    const el = item.el && item.el.isConnected ? item.el : findMessageEl(item);
     if (!el) return { ok: false, error: "forward-noel" };
     const rect = el.getBoundingClientRect();
     el.dispatchEvent(
@@ -937,42 +1247,41 @@
         clientY: Math.round(rect.top + Math.min(rect.height / 2, 60)),
       })
     );
-    // 菜单项：转发 / Forward
-    const menuItem = await waitFor(() => {
-      return allVisible(["[role='menuitem']", ".MenuItem", "button", "li"]).find((e) => {
-        const t = (e.innerText || "").trim();
-        return (/^(forward|转发|轉發)$/i.test(t) || /^forward$/i.test(t)) && !e.closest("#tgwa-panel");
-      });
-    }, 3500);
-    if (!menuItem) return { denied: true }; // 右键无“转发” ⇒ 多半是受保护聊天
+    // P1-4：菜单容器必须先出现。容器都没出来属于“超时/找不到”，是可重试错误；
+    // 绝不能当成“没有转发权限”去 markDone，否则一次超时就永久跳过该消息。
+    const menu = await waitFor(menuContainer, 3500);
+    if (!menu) return { ok: false, error: "forward-menu-timeout" };
+    const menuItem = Array.from(menu.querySelectorAll("[role='menuitem'], button, li, [class*='item' i]"))
+      .filter((e) => !e.closest("#tgwa-panel"))
+      .find((e) => FORWARD_LABEL_RE.test(labelOf(e)));
+    if (!menuItem) {
+      // 菜单确实存在、但没有“转发”项 ⇒ 该消息不可转发（受保护/受限），可安全跳过。
+      return { denied: true, error: "forward-denied" };
+    }
     click(menuItem);
     await sleep(500);
-    // 转发对话框里的搜索框 + 收件人列表
-    const search = await waitFor(() => {
-      const modal = allVisible(["[role='dialog']", "[class*='modal' i]", "[class*='dialog' i]"])[0];
-      const inputs = allVisible(["input[type='text']", "input[type='search']", "input"]);
-      return inputs.find((i) => (modal ? modal.contains(i) : true)) || null;
-    }, 3500);
+    // 转发对话框里的搜索框 + 收件人列表，全部限定在已定位的对话框内（P1-4）。
+    const dialog = await waitFor(dialogContainer, 3500);
+    const scope = dialog || document;
+    const search =
+      firstWithin(scope, ["input[type='text']", "input[type='search']", "input"]) ||
+      (dialog ? null : firstVisible(["input[type='text']", "input[type='search']"]));
     if (!search) return { ok: false, error: "forward-search" };
     setText(search, channelName);
     await sleep(700);
-    const name2 = String(channelName).trim();
     const row = await waitFor(() => {
-      const rows = allVisible(["[data-peer-id]", "[class*='chat-item' i]", "[class*='Chat']"]).filter(
+      const rows = Array.from(scope.querySelectorAll("[data-peer-id], [class*='chat-item' i], [class*='Chat']")).filter(
         (r) => !r.closest(".bubble") && textOf(r)
       );
-      return rows.find((r) => textOf(r).trim() === name2) || rows.find((r) => textOf(r).includes(name2)) || null;
+      return rows.find((r) => rowTitleMatches(r, channelName)) || null;
     }, 4000);
-    if (!row) return { ok: false, error: "forward-select" };
-    // 严格校验：行文本必须包含频道名，避免转发到错误会话
-    if (!textOf(row).includes(name2)) return { ok: false, error: "forward-select" };
+    if (!row || !rowTitleMatches(row, channelName)) return { ok: false, error: "forward-select" };
     click(row);
     await sleep(500);
     const sendBtn = await waitFor(() => {
-      return allVisible(["button", "[role='button']"]).find((b) => {
-        const label = (b.getAttribute("aria-label") || b.title || b.innerText || "").toLowerCase();
-        return /send|发送|傳送|save|保存/.test(label) && !b.closest("#tgwa-panel");
-      });
+      return Array.from(scope.querySelectorAll("button, [role='button']"))
+        .filter((b) => !b.closest("#tgwa-panel"))
+        .find((b) => SEND_LABEL_RE.test(labelOf(b)));
     }, 3000);
     if (!sendBtn) return { ok: false, error: "forward-send" };
     click(sendBtn);
@@ -1025,7 +1334,23 @@
     };
   }
 
-  async function streamRun(direction, { limit = 200, sinceTs = 0 } = {}) {
+  async function streamRun(direction, opts = {}) {
+    // 运行入口守卫（P0-1）：不支持的页面明确报错；运行锁保证同一时间只有一个任务（P1-2）。
+    if (!ensureSupportedApp()) return;
+    if (running) {
+      log("⚠️ 已有任务在运行中（streamRun / 重试队列互斥），请等它结束或点「停止」。");
+      return;
+    }
+    setRunning(true);
+    hardAbort.flag = false;
+    try {
+      await streamRunInner(direction, opts);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function streamRunInner(direction, { limit = 200, sinceTs = 0 } = {}) {
     if (!snapshotReady()) return;
     stop.flag = false;
     const mode = currentMode();
@@ -1053,15 +1378,28 @@
     await sleep(900);
     const sourceTitle = textOf(firstVisible(H.chatTitle));
 
+    // forward 模式：本轮开始前先取一次真实的频道签名基线（P1-4）。第一条消息的
+    // 校验不能是空操作，否则“转发失败”会被直接记成成功。
+    let forwardSig = null;
+    if (mode === "forward") {
+      await openPeer(archivePeer);
+      await sleep(700);
+      forwardSig = readChannelSignature(archivePeer, "forward 基线读取");
+      await openPeer(sourcePeer);
+      await sleep(800);
+      if (!forwardSig) {
+        abortRun("无法读取归档频道签名基线");
+        updateStatus("");
+        return;
+      }
+    }
+
     const checkpoint = getCheckpoint(sourcePeer) || { mid: 0, ts: 0 };
     const since = sinceTs || readSinceTs();
     const { delayMs } = getSettings();
     const scroller = findScroller();
     if (direction === "up") scroller.scrollTop = scroller.scrollHeight;
     await sleep(900);
-
-    // forward 模式需要频道签名基线做发送校验
-    let forwardSig = null;
 
     let done = 0;
     let failed = 0;
@@ -1073,6 +1411,12 @@
     const seen = new Set();
     const kindCounts = {};
     const albumHandled = new Set();
+    // 本轮失败原因统计（P2-12）：只算本次 run，不含队列里遗留的历史失败。
+    const runFailures = {};
+    const noteFailure = (err) => {
+      const k = err || "unknown";
+      runFailures[k] = (runFailures[k] || 0) + 1;
+    };
     // 向上回溯的停止条件：开始产出后，连续遇到 25 条已处理消息视为到达
     // “上次归档边界”。开始产出前的已处理区不做早停（否则刚跑完向下再回溯
     // 会被已归档的新消息卡住），整段都处理过的情况由步数上限兜底。
@@ -1084,8 +1428,9 @@
         log("⏹ 已停止（下次继续从断点之后开始）。");
         break;
       }
+      if (hardAbort.flag) break;
       for (const m of visibleMessages()) {
-        if (stop.flag) break;
+        if (stop.flag || hardAbort.flag) break;
         if (seen.has(m.key)) continue;
         if (isDone(sourcePeer, m.key)) {
           seen.add(m.key);
@@ -1136,8 +1481,8 @@
           if (!item.png) {
             item.error = "capture";
             failed++;
-            queue.push(item);
-            updateQueueUi();
+            noteFailure(item.error);
+            enqueue(item);
             continue;
           }
           item.caption = captionFor(item);
@@ -1157,17 +1502,15 @@
           ok = !!r.ok;
           if (!ok) item.error = r.error || "forward";
           if (ok) {
-            // 校验（P0-2）：频道出现新消息才算成功
+            // 校验（P0-2 / P1-4）：频道签名必须真的发生变化才算成功——包括第一条。
             await openPeer(archivePeer);
             await sleep(700);
-            const sig = channelSignature();
-            if (forwardSig && (sig.last > forwardSig.last || sig.count > forwardSig.count)) {
-              forwardSig = sig;
-            } else if (!forwardSig) {
-              forwardSig = sig;
+            const sigAfter = readChannelSignature(archivePeer, "forward 结果校验");
+            if (sigAfter && sigChanged(forwardSig, sigAfter)) {
+              forwardSig = sigAfter;
             } else {
               ok = false;
-              item.error = "forward-verify";
+              item.error = sigAfter ? "forward-verify" : "forward-signature";
             }
             await openPeer(sourcePeer);
             await sleep(800);
@@ -1178,7 +1521,7 @@
           const scrollOffset = live ? live.scrollTop : 0;
           await openPeer(archivePeer);
           await sleep(800);
-          ok = currentPeerId() === archivePeer && (await sendOne(item));
+          ok = currentPeerId() === archivePeer && (await sendOne(item, archivePeer));
           if (!ok && currentPeerId() !== archivePeer) item.error = "switch";
           if (ok) {
             done++;
@@ -1193,8 +1536,8 @@
             log(`  ✅ ${item.kind}${item.albumMids ? `×${item.albumMids.length}` : ""} #${item.key}${item.ts ? " " + fmtHuman(item.ts) : ""}`);
           } else {
             failed++;
-            queue.push(item);
-            updateQueueUi();
+            noteFailure(item.error);
+            enqueue(item);
             log(`  ❌ #${item.key}${item.error ? `（${item.error}）` : ""}`);
           }
           item.png = null; // 释放，内存中任意时刻只保留正在发送的这一张
@@ -1218,8 +1561,8 @@
             log(`  ✅ forward #${item.key}${item.ts ? " " + fmtHuman(item.ts) : ""}`);
           } else {
             failed++;
-            queue.push(item);
-            updateQueueUi();
+            noteFailure(item.error);
+            enqueue(item);
             log(`  ❌ #${item.key}${item.error ? `（${item.error}）` : ""}`);
           }
         }
@@ -1254,8 +1597,9 @@
     if (maxMid > (checkpoint.mid || 0)) setCheckpoint(sourcePeer, maxMid, maxTs);
     updateQueueUi();
     const kindSummary = Object.entries(kindCounts).map(([k, n]) => `${k}×${n}`).join(" ") || "无";
-    const errSummary = countBy(queue.map((q) => q.error || "unknown"));
-    const errText = Object.entries(errSummary).map(([k, n]) => `${k}×${n}`).join(" ");
+    // P2-12：错误汇总只统计本轮 run 的失败，不再把队列里遗留的历史失败算进来。
+    const errText = Object.entries(runFailures).map(([k, n]) => `${k}×${n}`).join(" ");
+    if (hardAbort.flag) log(`⛔ 本轮因「${hardAbort.reason}」提前中止（未验证的条目已留在重试队列）。`);
     log(
       `📊 流式归档结束：成功 ${done}（${kindSummary}），失败 ${failed}（${errText || "无"}），按策略跳过 ${skipped}，` +
         (reachedEnd ? "已处理到边界。" : "达到本次上限，可再点一次继续。") +
@@ -1272,8 +1616,28 @@
 
   // ------------------------------------------------------------ 重试队列
 
-  // 重试自动打开归档频道并校验 peer 后才发送；截图类先回源聊天重新截图（P0-4）。
+  // 重试入口守卫（P0-1 / P1-2）：与 streamRun 共用运行锁。
   async function sendQueueNow() {
+    if (!ensureSupportedApp()) return;
+    if (!queue.length) {
+      log("重试队列为空。");
+      return;
+    }
+    if (running) {
+      log("⚠️ 已有任务在运行中（streamRun / 重试队列互斥），请等它结束或点「停止」。");
+      return;
+    }
+    setRunning(true);
+    hardAbort.flag = false;
+    try {
+      await sendQueueNowInner();
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  // 重试自动打开归档频道并校验 peer 后才发送；截图类先回源聊天重新截图（P0-4）。
+  async function sendQueueNowInner() {
     if (!queue.length) {
       log("重试队列为空。");
       return;
@@ -1294,7 +1658,7 @@
     const next = [];
     let okCount = 0;
     for (const item of queue) {
-      if (stop.flag) {
+      if (stop.flag || hardAbort.flag) {
         next.push(item);
         continue;
       }
@@ -1304,6 +1668,15 @@
       }
       updateStatus(`重试中：#${item.key}`);
       if (item.mode === "forward") {
+        // P1-4：先在频道里取真实基线，再回源聊天定位并转发；发送后必须由签名
+        // 变化证实，第一条同样如此（旧实现这里直接 okCount++ 并 markDone）。
+        await openPeer(archivePeer);
+        await sleep(600);
+        const sigBefore = readChannelSignature(archivePeer, "重试 forward 基线读取");
+        if (!sigBefore) {
+          next.push(item); // hardAbort 已置位，后续条目会在循环顶部原样放行
+          continue;
+        }
         const el = await ensureMessageEl(item);
         if (!el) {
           item.attempts = (item.attempts || 0) + 1;
@@ -1323,14 +1696,23 @@
           continue;
         }
         if (r.ok) {
-          // 校验频道出现新消息
+          // 校验频道出现新消息（P0-2 / P1-4）
           await openPeer(archivePeer);
           await sleep(700);
-          okCount++;
-          markDone(item.peer, item.key);
-          markAllDone(item.peer, item.albumMids);
-          setCheckpoint(item.peer, item.mid || 0, item.ts || 0);
-          log(`  ✅ 重试成功（forward）#${item.key}`);
+          const sigAfter = readChannelSignature(archivePeer, "重试 forward 结果校验");
+          if (sigAfter && sigChanged(sigBefore, sigAfter)) {
+            okCount++;
+            markDone(item.peer, item.key);
+            markAllDone(item.peer, item.albumMids);
+            markSent(item.peer, item.mid);
+            setCheckpoint(item.peer, item.mid || 0, item.ts || 0);
+            log(`  ✅ 重试成功（forward）#${item.key}`);
+          } else {
+            item.error = sigAfter ? "forward-verify" : "forward-signature";
+            item.attempts = (item.attempts || 0) + 1;
+            next.push(item);
+            log(`  ⚠️ forward 未被频道签名证实，留队重试：#${item.key}`);
+          }
         } else {
           item.error = r.error || "forward";
           item.attempts = (item.attempts || 0) + 1;
@@ -1352,7 +1734,7 @@
         }
         await openPeer(archivePeer);
         await sleep(600);
-        const ok = currentPeerId() === archivePeer && (await sendOne(item));
+        const ok = currentPeerId() === archivePeer && (await sendOne(item, archivePeer));
         if (ok) {
           okCount++;
           markDone(item.peer, item.key);
@@ -1364,6 +1746,7 @@
           next.push(item);
         }
         item.png = null;
+        item.el = null; // 已切到频道，源聊天节点引用失效（P1-3）
       }
       if (delayMs) await sleep(delayMs);
     }
@@ -1371,6 +1754,7 @@
     saveQueue();
     updateQueueUi();
     updateStatus("");
+    if (hardAbort.flag) log(`⛔ 重试因「${hardAbort.reason}」提前中止。`);
     log(`重试完成：成功 ${okCount}，剩余 ${queue.length}。`);
   }
 
@@ -1462,8 +1846,10 @@
         <button id="tgwa-reset" class="secondary">重置进度</button>
         <button id="tgwa-hide" class="secondary">收起</button>
       </div>
+      <div id="tgwa-app" class="meta"></div>
       <div id="tgwa-status" class="meta"></div>
       <div id="tgwa-queue" class="meta">重试队列：0 条</div>
+      <div id="tgwa-run" class="meta">空闲</div>
       <pre id="tgwa-log"></pre>`;
     document.body.appendChild(panel);
 
@@ -1495,10 +1881,20 @@
     });
 
     const modeName = { snapshot: "snapshot（截图）", copy: "copy（文字）", forward: "forward（转发）" }[modeSel.value];
-    log(`面板就绪，当前模式：${modeName}，保护策略：${protSel.value}。队列已恢复 ${queue.length} 条。`);
+    // P0-1：面板常驻显示当前 APP 与支持状态（不支持时运行按钮直接禁用）。
+    const appEl = panel.querySelector("#tgwa-app");
+    if (appEl) {
+      appEl.textContent = appSupported() ? `✅ ${appStatusText()}` : `⛔ ${appStatusText()}，运行入口已禁用`;
+      appEl.style.color = appSupported() ? "" : "#ff8080";
+    }
+    refreshButtonState();
+    log(`面板就绪（${appStatusText()}），当前模式：${modeName}，保护策略：${protSel.value}。队列已恢复 ${queue.length} 条。`);
+    if (!appSupported()) log("⛔ " + unsupportedAppMessage());
     log("⚠️ 自动化操作存在账号风控风险：请只归档有权使用的聊天，保持温和节奏（建议间隔 ≥1 秒）。");
 
     panel.querySelector("#tgwa-down").addEventListener("click", () => {
+      // P0-1：先判应用是否受支持，再谈频道是否填了，避免在 /a 上给出误导性的报错。
+      if (!ensureSupportedApp()) return;
       const ch = (document.getElementById("tgwa-channel") || {}).value.trim();
       if (!ch) {
         log("请先填归档频道。");
@@ -1510,6 +1906,7 @@
       streamRun("down").catch((err) => log("运行出错：" + (err && err.message ? err.message : err)));
     });
     panel.querySelector("#tgwa-up").addEventListener("click", () => {
+      if (!ensureSupportedApp()) return;
       streamRun("up").catch((err) => log("回溯出错：" + (err && err.message ? err.message : err)));
     });
     panel.querySelector("#tgwa-stop").addEventListener("click", () => {

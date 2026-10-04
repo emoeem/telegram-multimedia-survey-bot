@@ -26,7 +26,7 @@ Normalizer + SQLite（messages / events / mirror_log）
   - `copy`（默认）：带元数据标签重发，适合“单频道 + 标签组织”。
   - `forward`：服务器级转发，保真度最高，但没有附加标签。
 - **受保护内容默认不写入频道**：只保留本地索引；归档需逐次显式开启高级策略：`--protected text_only`（仅文字）或 `--protected allow_media`（含媒体，“下载→重发”，绕过保存限制，高风险，详见“边界与合规”）。
-- 实时增量：`mirror --listen` 同步后保持监听，新消息/编辑/删除自动入库（新消息会写入频道）。
+- 实时增量：`mirror --listen` 保持监听，新消息/编辑/删除自动入库（新消息会写入频道）。监听器在**回填/发帖开始之前**就注册，因此长时间回填期间到达的消息不会被漏掉；若连接意外断开，进程会打印警告并退出（未确认的条目留在待处理队列里，重跑即可补上）。
 
 ## 快速开始
 
@@ -35,7 +35,8 @@ cd tg-archive
 
 # 1. 安装（Python >= 3.10）
 uv venv .venv
-uv pip install --python .venv -e ".[qr]"   # qr 额外依赖用于扫码登录；不要可去掉
+uv pip install --python .venv -e .            # 运行时依赖（qrcode/pillow 已内置）
+# uv pip install --python .venv -e ".[dev]"    # 跑测试时额外装 pytest / pytest-asyncio / httpx
 
 # 2. 配置 api_id / api_hash（https://my.telegram.org -> API development tools）
 cp .env.example .env
@@ -73,6 +74,7 @@ cp .env.example .env
 | `--fetch-limit N` | 单次运行最多新增 N 条后暂停（断点续传，不会丢老消息） |
 | `--post-delay 1.5` | 频道写入间隔（秒），保守一点避免 FloodWait |
 | `--max-posts N` | 本次最多写 N 条到频道（分批跑） |
+| 退出码 | `0` 全部成功；`2` 有写入失败（下次运行会自动重试）；`130` 被中断 |
 
 > 扫码登录说明：`login --qr` 会在终端打印二维码并保存到 `data/login_qr.png`，
 > 用手机 Telegram「设置 → 设备 → 扫码登录」扫描即可，免短信验证码；过期会自动重新生成。
@@ -83,12 +85,14 @@ cp .env.example .env
 `copy` 模式的 caption 形如：
 
 ```text
-#chat_群名 #user_42 #date_2026_09
+#chat_群名 #user_42 #date_2026_09 #m_1001234567890_5
 <原文 / 媒体原 caption>
 📅 2026-09-07 04:00 UTC · 📌 群名 · msg 5
 ```
 
 说明：Telegram 把 `:` 和 `-` 当作词分隔，`#chat:xxx` / `#2026-09` 并不能作为一个可搜索标签，所以 MVP 使用 `#chat_…`、`#user_…`、`#date_…` 这类下划线标签。转发（forward）不能附加文字，因此没有标签；需要标签请用 `copy`。
+
+`#m_<chat_id>_<msg_id>` 是**幂等标记**：发送前会先把该条在 `mirror_log` 里记为 `posting`，发送成功后改为 `done`；若进程恰好死在“已发出、还没记账”之间，下次运行会先用这个标记在频道里查一次——查到就补记账（不重复发），查不到才重发。forward 模式无法附加标记，这一步对它不生效。
 
 ## 数据与本地文件
 

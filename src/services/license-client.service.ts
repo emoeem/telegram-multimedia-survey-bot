@@ -12,9 +12,43 @@ export interface LicenseClientEnv {
   APP_VERSION?: string;
   LICENSE_ENFORCEMENT?: string;
   LICENSE_SERVER_URL?: string;
+  /**
+   * Service binding to the authorization center (see `callLicenseCenter`).
+   * Present when the customer instance shares the vendor's Cloudflare account.
+   */
+  LICENSE_CENTER?: Fetcher;
   LICENSE_KEY?: string;
   INSTALLATION_ID?: string;
   LICENSE_GRACE_SECONDS?: string;
+}
+
+/**
+ * Calls the authorization center.
+ *
+ * A Worker must NOT reach another Worker in the same Cloudflare account over
+ * `*.workers.dev`: the edge answers `error code: 1042` with a **404**, and the
+ * request never arrives. That check is what silently killed every customer
+ * instance — the client read the 404 as "center unreachable", the webhook
+ * answered 503, and the bot stopped replying (the heartbeat died the same way,
+ * which is why `last_seen_at` never advanced).
+ *
+ * A Service Binding reaches the target Worker directly without touching the
+ * network, so same-account instances use it. `LICENSE_SERVER_URL` remains the
+ * transport for a customer deployed into its own account, where a binding
+ * cannot exist.
+ */
+export async function callLicenseCenter(
+  env: { LICENSE_CENTER?: Fetcher; LICENSE_SERVER_URL?: string },
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  const base = (env.LICENSE_SERVER_URL ?? "").trim().replace(/\/+$/, "");
+  // The host is irrelevant to a service binding; it only needs a valid URL.
+  const url = /^https?:\/\//i.test(base) ? `${base}${path}` : `https://license-center.invalid${path}`;
+  if (env.LICENSE_CENTER) {
+    return env.LICENSE_CENTER.fetch(new Request(url, init));
+  }
+  return fetch(url, init);
 }
 
 interface CachedLicenseDecision {
@@ -97,7 +131,7 @@ function isLicenseDecision(value: unknown): value is LicenseActivationDecision {
 }
 
 async function callLicenseServer(
-  serverUrl: string,
+  env: LicenseClientEnv,
   path: "validate" | "activate",
   payload: {
     licenseKey: string;
@@ -106,7 +140,7 @@ async function callLicenseServer(
     metadata: Record<string, unknown>;
   },
 ): Promise<LicenseActivationDecision> {
-  const response = await fetch(`${serverUrl.replace(/\/+$/, "")}/api/v1/licenses/${path}`, {
+  const response = await callLicenseCenter(env, `/api/v1/licenses/${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -157,7 +191,9 @@ export async function checkDeploymentLicense(
   const licenseKey = env.LICENSE_KEY?.trim();
   const installationId = env.INSTALLATION_ID?.trim();
   const appVersion = env.APP_VERSION?.trim();
-  if (!serverUrl || !/^https?:\/\//i.test(serverUrl)) {
+  // A service binding reaches the center without a URL; only require the URL
+  // when this deployment has no binding.
+  if (!env.LICENSE_CENTER && (!serverUrl || !/^https?:\/\//i.test(serverUrl))) {
     return configurationError("LICENSE_SERVER_URL 未正确配置");
   }
   if (!licenseKey) {
@@ -202,9 +238,9 @@ export async function checkDeploymentLicense(
   };
 
   try {
-    let decision = await callLicenseServer(serverUrl, "validate", payload);
+    let decision = await callLicenseServer(env, "validate", payload);
     if (decision.code === "activation_not_found") {
-      decision = await callLicenseServer(serverUrl, "activate", payload);
+      decision = await callLicenseServer(env, "activate", payload);
     }
     await writeCache(
       env.CACHE,

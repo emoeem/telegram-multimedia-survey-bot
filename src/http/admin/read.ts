@@ -44,11 +44,15 @@ import { listUserDirectory, listUserResponses, listUserTags } from "../../db/rep
 import { getCustomReportTemplate, listCustomReportTemplates } from "../../db/repositories/report-template.repository";
 import { getMediaAssetById } from "../../db/repositories/media.repository";
 import { listProfileGalleryItems } from "../../services/profile-gallery.service";
+import { handleAdminShowcaseRead } from "./showcase";
 import { listOptionsForQuestions, listQuestionsBySurvey } from "../../db/repositories/question.repository";
 import { getSurveyResultRuleSet } from "../../db/repositories/result-profile.repository";
 
 export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
+
+  const showcaseResponse = await handleAdminShowcaseRead(url, env, ctx);
+  if (showcaseResponse) return showcaseResponse;
 
   const resultRulesMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)\/result-rules$/);
   if (resultRulesMatch) {

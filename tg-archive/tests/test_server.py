@@ -71,11 +71,36 @@ def test_token_endpoint_removed(api):
     assert client.get("/api/token", params=_auth()).status_code == 404
 
 
-def test_index_is_public_and_injects_token(api):
+def test_index_requires_token_and_injects_it(api):
+    """The page embeds the access token, so it must never be public."""
     client, state = api
-    r = client.get("/")
+    assert client.get("/").status_code == 401
+    assert client.get("/", params={"token": "wrong"}).status_code == 401
+    r = client.get("/", params=_auth())
     assert r.status_code == 200
     assert f'content="{TOKEN}"' in r.text
+
+
+def test_non_ascii_token_is_401_not_500(api):
+    """compare_digest() rejects non-ASCII str input; must not 500."""
+    client, _ = api
+    r = client.get("/api/accounts", params={"token": "日本"})
+    assert r.status_code == 401
+
+
+def test_cors_preflight_is_answered(api):
+    """The token middleware runs outside CORSMiddleware, so it must let
+    preflight requests through or allow_origins can never take effect."""
+    client, _ = api
+    r = client.options(
+        "/api/mirror/start",
+        headers={
+            "Origin": "http://localhost:8765",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:8765"
 
 
 def test_favicon_public(api):
@@ -134,6 +159,21 @@ def test_messages_pending_status_filter(api, tmp_path):
     r = client.get("/api/messages", params=_auth(status="pending"))
     items = r.json()["items"]
     assert [i["tg_message_id"] for i in items] == [2]
+
+    # "pending" must match what the engine will actually process: an
+    # interrupted send ('posting') and a retryable failure, but not a row that
+    # has exhausted its retries (terminal 'skipped').
+    db.upsert_messages(
+        chat_id, [_msg(3, "interrupted"), _msg(4, "retry"), _msg(5, "exhausted")]
+    )
+    db.mark_posting(chat_id, 3, "copy")
+    db.mark_failed(chat_id, 4, "copy", "boom")
+    for _ in range(5):
+        db.mark_failed(chat_id, 5, "copy", "boom")
+    assert db.mirror_status(chat_id, 5, "copy")["status"] == "skipped"
+
+    r = client.get("/api/messages", params=_auth(status="pending"))
+    assert [i["tg_message_id"] for i in r.json()["items"]] == [4, 3, 2]
 
     r = client.get("/api/messages", params=_auth(status="done"))
     assert [i["tg_message_id"] for i in r.json()["items"]] == [1]
@@ -212,3 +252,91 @@ def test_authorized_client_recovers_after_reset(monkeypatch):
     _, ok = asyncio.run(srv._authorized_client(1))
     assert ok is True
     assert events == ["get"]
+
+
+def test_progress_counter_survives_trimming(api):
+    """The UI renders only new lines, so the counter must stay monotonic even
+    after the server trims its ring buffer."""
+    from tg_archive import server as srv
+
+    client, state = api
+    state.mirror_progress = []
+    state.mirror_progress_total = 0
+    for i in range(600):
+        srv._progress_sink(f"line {i}")
+
+    assert state.mirror_progress_total == 600
+    # one trim at 501 lines (down to 400) plus the 99 that followed
+    assert len(state.mirror_progress) == 499
+    assert state.mirror_progress[0]["text"] == "line 101"   # older lines dropped
+    assert state.mirror_progress[-1]["text"] == "line 599"
+
+    body = client.get("/api/mirror/status", params=_auth()).json()
+    assert body["progress_total"] == 600
+    assert len(body["progress"]) == 80  # what the UI receives per poll
+    assert body["progress"][-1]["text"] == "line 599"
+
+
+def test_access_log_filter_redacts_the_token():
+    """uvicorn logs the full request line, which carries ?token=..."""
+    import logging
+
+    from tg_archive.server import _RedactTokenFilter
+
+    filt = _RedactTokenFilter()
+    record = logging.LogRecord(
+        "uvicorn.access", logging.INFO, __file__, 1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1", "GET", "/?token=SUPERSECRET&x=1", "1.1", 200),
+        None,
+    )
+    assert filt.filter(record) is True
+    assert "SUPERSECRET" not in str(record.args)
+    assert record.args[2] == "/?token=***&x=1"
+    # a line without a token is untouched
+    record2 = logging.LogRecord(
+        "uvicorn.access", logging.INFO, __file__, 1, "%s - %s", ("a", "/api/stats"), None
+    )
+    filt.filter(record2)
+    assert record2.args == ("a", "/api/stats")
+
+
+def test_config_endpoint_does_not_leak_api_id(api):
+    client, _ = api
+    body = client.get("/api/config", params=_auth()).json()
+    assert "api_id" not in body
+    assert "writer_mode" in body
+
+
+def test_logout_keeps_the_index_and_the_mirror_ledger(api, tmp_path):
+    """Logging out must not drop mirror_log: that would make the next run
+    re-post everything already archived."""
+    client, state = api
+    db = ArchiveDB(tmp_path / "logout.sqlite3", check_same_thread=False)
+    chat_id = db.upsert_chat(_chat())
+    db.upsert_messages(chat_id, [_msg(1, "already archived")])
+    db.mark_mirrored(chat_id, 1, "copy", -100999, 11)
+    state.db = db
+    state.account_ids = [1]
+
+    r = client.post("/api/auth/logout", params=_auth(account_id=1))
+    assert r.status_code == 200
+    assert db.mirror_status(chat_id, 1, "copy")["status"] == "done"
+    assert db.stats(1)["messages"] == 1
+    assert db.get_account(1) is None or db.get_account(1)["is_active"] == 0
+    # the account stays listed (it still owns local data), just logged out
+    assert 1 in state.account_ids
+
+
+def test_access_log_config_attaches_the_filter():
+    import logging.config
+
+    from tg_archive.server import _RedactTokenFilter, _access_log_config
+
+    config = _access_log_config()
+    assert "redact_token" in config["filters"]
+    assert "redact_token" in config["loggers"]["uvicorn.access"]["filters"]
+
+    logging.config.dictConfig(config)  # must be a valid dictConfig
+    logger = logging.getLogger("uvicorn.access")
+    assert any(isinstance(f, _RedactTokenFilter) for f in logger.filters)

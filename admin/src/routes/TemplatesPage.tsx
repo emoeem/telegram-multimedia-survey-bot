@@ -159,7 +159,7 @@ function SortableSectionRow({
     >
       <button
         type="button"
-        className="cursor-grab touch-none px-1 text-[var(--color-muted-soft)]"
+        className="grid h-11 w-9 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-[var(--color-muted-soft)] hover:bg-[var(--surface-hover)]"
         aria-label="拖动排序"
         {...attributes}
         {...listeners}
@@ -208,7 +208,9 @@ export function TemplatesPage() {
   const [cssExtra, setCssExtra] = useState("");
   const sensors = useSensors(
     useSensor(MouseSensor),
-    useSensor(TouchSensor),
+    // Without a delay, a finger that lands on the handle starts a drag instead
+    // of scrolling the list.
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const combinedCss = [visualCss(visual), cssExtra].filter(Boolean).join("\n");

@@ -15,12 +15,15 @@ import {
   KeyRound,
   ScrollText,
   Settings,
+  ServerCog,
   Sprout,
   Users,
+  Images,
 } from "lucide-react";
-import { fetchDeploymentInfo, fetchEnvironment } from "../api";
+import { fetchAdminSession, fetchDeploymentInfo, fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
 import { TestBanner } from "./TestBanner";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const NAV_GROUPS = [
   {
@@ -45,6 +48,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/plaza", icon: Sprout, label: "树洞" },
       { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
+      { to: "/showcase", icon: Images, label: "展示区" },
       { to: "/task-packs", icon: Target, label: "挑战任务" },
     ],
   },
@@ -53,10 +57,24 @@ const NAV_GROUPS = [
     items: [
       { to: "/audit", icon: ScrollText, label: "审计" },
       { to: "/licenses", icon: KeyRound, label: "授权" },
+      { to: "/control", icon: ServerCog, label: "控制中心" },
       { to: "/settings", icon: Settings, label: "设置" },
     ],
   },
 ];
+
+/**
+ * A creator trial only ever authors its own surveys, so the shell shows it just
+ * the survey workspace (editor and response pages live under /surveys). Every
+ * other page is admin-only and the API refuses it anyway.
+ */
+const CREATOR_NAV_TARGETS = new Set(["/", "/surveys", "/responses"]);
+
+/** Survey-detail routes live under these prefixes, so they stay reachable. */
+function isCreatorAllowedPath(path: string): boolean {
+  const normalized = path.replace(/\/+$/, "") || "/";
+  return normalized === "/" || normalized.startsWith("/surveys") || normalized.startsWith("/responses");
+}
 
 function BrandMark() {
   return (
@@ -74,21 +92,33 @@ export function Layout() {
   // Starts hidden: a customer instance must never briefly advertise a console it
   // cannot use. The vendor's link appears as soon as the role is confirmed.
   const [licenseCenter, setLicenseCenter] = useState(false);
+  // Defaults to the full admin navigation: if the session probe fails we must
+  // never lock a real admin out of pages only they can use.
+  const [isCreator, setIsCreator] = useState(false);
 
   useEffect(() => {
     fetchEnvironment().then(setEnvironment);
     fetchDeploymentInfo().then((info) => {
       if (info) setLicenseCenter(info.licenseCenter);
     });
+    fetchAdminSession().then((info) => {
+      if (info?.role === "creator") setIsCreator(true);
+    });
   }, []);
 
   const navGroups = useMemo(() => {
+    if (isCreator) {
+      return NAV_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => CREATOR_NAV_TARGETS.has(item.to)),
+      })).filter((group) => group.items.length > 0);
+    }
     if (licenseCenter) return NAV_GROUPS;
     return NAV_GROUPS.map((group) => ({
       ...group,
-      items: group.items.filter((item) => item.to !== "/licenses"),
+      items: group.items.filter((item) => item.to !== "/licenses" && item.to !== "/control"),
     })).filter((group) => group.items.length > 0);
-  }, [licenseCenter]);
+  }, [isCreator, licenseCenter]);
 
   useEffect(() => {
     if (!drawer) return undefined;
@@ -107,6 +137,12 @@ export function Layout() {
     setDrawer(false);
   }, [location.pathname]);
 
+  // A creator trial that reaches an admin-only URL (bookmark, typed address) is
+  // sent back to the survey workspace; the API refuses those pages anyway.
+  useEffect(() => {
+    if (isCreator && !isCreatorAllowedPath(location.pathname)) navigate("/");
+  }, [isCreator, location.pathname, navigate]);
+
   const title = useMemo(() => {
     const path = location.pathname;
     if (/^\/surveys\/\d+\/responses\/\d+$/.test(path)) return "答卷详情";
@@ -122,9 +158,11 @@ export function Layout() {
     if (path.startsWith("/templates")) return "报告模板";
     if (path.startsWith("/plaza")) return "树洞";
     if (path.startsWith("/profile-gallery")) return "个人画廊";
+    if (path.startsWith("/showcase")) return "展示区";
     if (path.startsWith("/task-packs")) return "挑战任务包";
     if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/licenses")) return "授权管理";
+    if (path.startsWith("/control")) return "控制中心";
     if (path.startsWith("/login")) return "浏览器登录";
     if (path.startsWith("/settings")) return "系统设置";
     return "总览";
@@ -151,7 +189,11 @@ export function Layout() {
       navigate("/surveys");
       return;
     }
-    if (path.startsWith("/profile-gallery") || path.startsWith("/plaza")) {
+    if (
+      path.startsWith("/profile-gallery") ||
+      path.startsWith("/plaza") ||
+      path.startsWith("/showcase")
+    ) {
       navigate("/");
       return;
     }
@@ -221,26 +263,42 @@ export function Layout() {
               线上体验
             </p>
             <div className="flex flex-col gap-0.5">
-              <a
-                href="/plaza"
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
-              >
-                <Sprout className="h-[18px] w-[18px] shrink-0" />
-                <span className="sm:hidden lg:inline">打开树洞</span>
-                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
-              </a>
-              <a
-                href="/trial"
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
-              >
-                <Target className="h-[18px] w-[18px] shrink-0" />
-                <span className="sm:hidden lg:inline">挑战任务</span>
-                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
-              </a>
+              {isCreator ? null : (
+                <a
+                  href="/plaza"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+                >
+                  <Sprout className="h-[18px] w-[18px] shrink-0" />
+                  <span className="sm:hidden lg:inline">打开树洞</span>
+                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+                </a>
+              )}
+              {isCreator ? null : (
+                <a
+                  href="/showcase"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+                >
+                  <Images className="h-[18px] w-[18px] shrink-0" />
+                  <span className="sm:hidden lg:inline">打开展示区</span>
+                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+                </a>
+              )}
+              {isCreator ? null : (
+                <a
+                  href="/trial"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+                >
+                  <Target className="h-[18px] w-[18px] shrink-0" />
+                  <span className="sm:hidden lg:inline">挑战任务</span>
+                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+                </a>
+              )}
               <a
                 href="/s"
                 target="_blank"
@@ -291,10 +349,17 @@ export function Layout() {
               </div>
             </div>
             {environment ? <span className="admin-env-pill hidden sm:inline-flex">{environment === "production" ? "生产环境" : environment}</span> : null}
-            <button className="btn btn-sm hidden sm:inline-flex" onClick={() => navigate("/settings")} title="系统设置"><Settings className="h-4 w-4" />设置</button>
+            {isCreator ? null : (
+              <button className="btn btn-sm hidden sm:inline-flex" onClick={() => navigate("/settings")} title="系统设置"><Settings className="h-4 w-4" />设置</button>
+            )}
             </div>
           </header>
-          <Outlet />
+          {/* Scoped to the route: a render error on one page used to replace
+              the whole shell (sidebar, navigation and an editor's unsaved
+              state included). Re-keyed by path so navigating away resets it. */}
+          <ErrorBoundary key={location.pathname} scope="route">
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

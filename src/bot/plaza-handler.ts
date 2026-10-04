@@ -148,7 +148,9 @@ async function showTreeholePost(
   const text = [
     `🌳 树洞 ${page + 1}/${total}`,
     "",
-    post.content,
+    // 0068 允许纯图片帖：正文可能为空，频道/机器人里给一句占位而不是空气泡。
+    post.content || "🖼 （图片投稿，去网页版广场看原图）",
+    ...(post.topic ? [`#${post.topic}#`] : []),
     "",
     `—— ${author} · ${formatDay(post.createdAt)}`,
   ].join("\n");

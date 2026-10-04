@@ -149,6 +149,25 @@ export const ORPHAN_SWEEP_INDEXES = [
     name: "idx_surveys_cover_media",
     create: "CREATE INDEX IF NOT EXISTS idx_surveys_cover_media ON surveys(cover_media_id)",
   },
+  // 树洞配图与展示区图片只被这两处引用。漏掉它们时，7 天前的图会被当成孤儿删掉
+  // （行 + KV 字节），帖子/展示页就此变成破图。
+  {
+    name: "idx_plaza_posts_image_asset",
+    create: "CREATE INDEX IF NOT EXISTS idx_plaza_posts_image_asset ON plaza_posts(image_asset_id)",
+  },
+  {
+    name: "idx_showcase_persons_illustration_asset",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_showcase_persons_illustration_asset ON showcase_persons(illustration_media_id)",
+  },
+  {
+    name: "idx_showcase_items_cover_asset",
+    create: "CREATE INDEX IF NOT EXISTS idx_showcase_items_cover_asset ON showcase_items(cover_media_id)",
+  },
+  {
+    name: "idx_showcase_items_media_asset",
+    create: "CREATE INDEX IF NOT EXISTS idx_showcase_items_media_asset ON showcase_items(media_asset_id)",
+  },
 ] as const;
 
 async function missingOrphanSweepIndexes(db: D1Database): Promise<string[]> {
@@ -301,6 +320,13 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
           AND NOT EXISTS (SELECT 1 FROM image_generators ig WHERE ig.report_background_asset_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM surveys s WHERE s.cover_media_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM survey_responses r WHERE r.gallery_cover_source_asset_id = m.id)
+          AND NOT EXISTS (SELECT 1 FROM plaza_posts p WHERE p.image_asset_id = m.id)
+          AND NOT EXISTS (SELECT 1 FROM showcase_persons sp
+                           WHERE sp.background_media_id = m.id
+                              OR sp.illustration_media_id = m.id
+                              OR sp.avatar_media_id = m.id)
+          AND NOT EXISTS (SELECT 1 FROM showcase_items si
+                           WHERE si.cover_media_id = m.id OR si.media_asset_id = m.id)
         ORDER BY m.created_at ASC, m.id ASC
         LIMIT ?`,
     )

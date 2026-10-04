@@ -50,6 +50,8 @@ export interface TrialRunState {
   maxScore: number;
   /** Currently served task id (null only in the shop phase). */
   currentTaskId: number | null;
+  /** Times the starting coins were rerolled this run (capped per run). */
+  coinRerolls?: number;
 }
 
 export interface TrialRun {
@@ -71,6 +73,9 @@ export const TRIAL_SHOP = {
   /** Starting coin ranges by mode: [min, max] inclusive. */
   normalCoins: [60, 110] as const,
   hellCoins: [90, 150] as const,
+  /** Coin rerolls allowed per run — unlimited rerolling reduces the random
+   * budget to its ceiling on every run, which defeats the point. */
+  rerollCap: 3,
   prices: {
     skipTicket: 45,
     booster: 35,
@@ -130,6 +135,7 @@ export function normalizeState(raw: unknown): TrialRunState {
     maxScore: Number.isFinite(maxScore) && maxScore > 0 ? maxScore : 1,
     currentTaskId:
       state.currentTaskId !== undefined && state.currentTaskId !== null ? Number(state.currentTaskId) : null,
+    coinRerolls: clampNonNegativeInt(state.coinRerolls, 0),
   };
 }
 
@@ -189,6 +195,7 @@ export function createShopState(
     usedTaskIds: [],
     maxScore: computeMaxScore(items, persona, mode, fromFloor, toFloor),
     currentTaskId: null,
+    coinRerolls: 0,
   };
 }
 
@@ -258,9 +265,16 @@ function advance(items: TrialTaskItem[], run: TrialRun): TrialActionResult {
   }
   const moved = withState(run, { currentFloor: nextFloor, state: { boosted: false } });
   const nextTask = pickNextTask(items, moved);
-  const usedTaskIds = nextTask ? [...moved.state.usedTaskIds.slice(-59), nextTask.id] : moved.state.usedTaskIds;
+  if (!nextTask) {
+    // No eligible task on this floor (e.g. pack content changed mid-run):
+    // settle the run instead of stranding the player with no card and no
+    // enabled buttons. Grading is unaffected — floors without tasks add 0
+    // to maxScore.
+    return { run: withState(moved, { status: "completed", state: { boosted: false } }), nextTask: null, earned: 0 };
+  }
+  const usedTaskIds = [...moved.state.usedTaskIds.slice(-59), nextTask.id];
   return {
-    run: withState(moved, { state: { currentTaskId: nextTask?.id ?? null, usedTaskIds } }),
+    run: withState(moved, { state: { currentTaskId: nextTask.id, usedTaskIds } }),
     nextTask,
     earned: 0,
   };

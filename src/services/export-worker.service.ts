@@ -14,6 +14,7 @@ import {
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { isReportDeliveryMessage, type ReportDeliveryMessage } from "./report-delivery.service";
 import { processReportDeliveryMessage, type ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
+import { publishPublicResponseReport } from "./public-report.service";
 
 export interface ExportWorkerEnvironment {
   DB: D1Database;
@@ -27,6 +28,21 @@ export interface ExportWorkerEnvironment {
   BROWSER?: BrowserWorker;
   MEDIA_KV?: KVNamespace;
   REPORT_CHANNEL_ID?: string;
+  TARGET_CHAT_ID?: string;
+  TOPIC_ID?: string;
+  PUBLICATION_TARGET_CHAT_ID?: string;
+  PUBLICATION_TARGET_THREAD_ID?: string;
+}
+
+interface PublicReportMessage {
+  kind: "public_report";
+  responseId: number;
+}
+
+function isPublicReportMessage(value: unknown): value is PublicReportMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  return message.kind === "public_report" && Number.isInteger(message.responseId) && Number(message.responseId) > 0;
 }
 
 interface ResponseReportJobMessage {
@@ -135,7 +151,23 @@ export async function handleExportQueue(
   env: ExportWorkerEnvironment & ResultVisualWorkerEnvironment & ReportDeliveryWorkerEnvironment,
 ): Promise<void> {
   for (const message of batch.messages) {
-    if (isReportDeliveryMessage(message.body)) {
+    if (isPublicReportMessage(message.body)) {
+      try {
+        const result = await publishPublicResponseReport(env, message.body.responseId);
+        console.info("Public Telegram report published", { responseId: message.body.responseId, ...result });
+        message.ack();
+      } catch (error) {
+        const terminal = message.attempts >= 3;
+        console.error("Public Telegram report job failed", { responseId: message.body.responseId, attempts: message.attempts, terminal, error });
+        if (terminal) {
+          await env.DB.prepare("UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?")
+            .bind(new Date().toISOString(), message.body.responseId).run();
+          message.ack();
+        } else {
+          message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
+        }
+      }
+    } else if (isReportDeliveryMessage(message.body)) {
       try {
         await processReportDeliveryMessage(env, message.body);
         message.ack();

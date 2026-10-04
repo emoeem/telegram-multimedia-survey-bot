@@ -38,6 +38,22 @@ jobs:
           /tmp/pdf-venv/bin/python scripts/test_forms_pdf_to_survey.py
           /tmp/pdf-venv/bin/python scripts/test_import_survey_from_url.py
 
+  tg-archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tg-archive (offline test deps)
+        working-directory: tg-archive
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Tests
+        working-directory: tg-archive
+        run: python -m pytest -q
+
   visual:
     runs-on: ubuntu-latest
     steps:

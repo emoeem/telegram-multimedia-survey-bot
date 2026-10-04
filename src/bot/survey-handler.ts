@@ -27,7 +27,7 @@ import {
   linkResponsesToUser,
   upsertParticipantLink,
 } from "../db/repositories/participant-link.repository";
-import { assertCanManageSurvey, canCreateSurvey, isAdmin } from "../services/permission.service";
+import { assertCanManageSurvey, canCreateSurvey, canUseAdminPanel, isAdmin } from "../services/permission.service";
 import {
   assertSurveyQuestionsEditable,
   duplicateSurvey,
@@ -232,7 +232,8 @@ function buildWelcomeText(
 🪪 我的资料 —— 设置头像、简介、隐私
 🌳 树洞 —— 匿名倾诉心事，温柔接住情绪
 🏛 广场 —— 分享故事、点赞互动，遇见同频的人
-🎯 挑战任务 —— 趣味打卡，解锁成就${creatorExtra}
+🎯 挑战任务 —— 趣味打卡，解锁成就
+👤 我的 —— 答卷、资料卡、挑战记录与已点亮的徽章${creatorExtra}
 
 💬 欢迎加入社群一起交流：
 ${communityGroupUrl || DEFAULT_COMMUNITY_GROUP_URL}
@@ -264,6 +265,10 @@ async function buildHomeKeyboard(
       : [{ text: "🌳 树洞", callback_data: "plaza:treehole:0" }],
     origin ? [{ text: "🏛 广场", url: `${origin}/plaza` }] : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
     ...(trialUrl ? [[{ text: "🎯 挑战任务", url: trialUrl }]] : []),
+    // 「我的」需要身份才聚合得准：带上和 /trial 同一个参与者 token。
+    ...(origin
+      ? [[{ text: "👤 我的 · 成就", url: `${origin}/me${participantParam ? `?${participantParam.slice(1)}` : ""}` }]]
+      : []),
   ];
   // Same jump the web surfaces carry: a direct Telegram deep link, so it works
   // from inside the chat without leaving for the browser first.
@@ -1144,7 +1149,9 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     }
     const adminLoginId = payload?.match(/^admin_login_([A-Za-z0-9_-]{32})$/)?.[1];
     if (adminLoginId) {
-      if (!isAdmin(userId, ctx.adminIds)) {
+      // A creator-trial user approves their own panel login here, so the gate
+      // matches the panel gate (`canUseAdminPanel`) instead of admin-only.
+      if (!dbUser || !(await canUseAdminPanel(ctx.db, dbUser, ctx.adminIds))) {
         await sendMessage(ctx.botToken, message.chat.id, "⛔ 仅管理员可以确认管理后台登录。");
         return;
       }
@@ -1621,7 +1628,7 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
   }
 
   if (data.startsWith("adminlogin:confirm:") || data.startsWith("adminlogin:cancel:")) {
-    if (!ctx.cache || !isAdmin(userId, ctx.adminIds)) {
+    if (!ctx.cache || !dbUser || !(await canUseAdminPanel(ctx.db, dbUser, ctx.adminIds))) {
       await answerCallbackQuery(ctx.botToken, callback.id, "仅管理员可以确认登录");
       return;
     }

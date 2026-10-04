@@ -347,7 +347,7 @@ export async function handleAdminEditorWrite(
 
     // PATCH — 更新题目字段（保 ID；不改题型）
     if (request.method === "PATCH") {
-      const { payload, error } = validateQuestionPayload(body, false);
+      const { payload, error } = validateQuestionPayload(body, false, question.type);
       if (error) return fail(400, "validation_failed", error);
       const targetType = body.type !== undefined ? (body.type as QuestionType) : question.type;
       if (body.type !== undefined && body.type !== question.type) {
@@ -363,6 +363,12 @@ export async function handleAdminEditorWrite(
             return fail(400, "validation_failed", "matrix 题需要提供 settings.columns");
           }
           await updateQuestionSettings(db, questionId, payload!.settingsJson);
+        }
+        // 换成剧情文段时收起必答；换回普通题型时恢复默认必答。
+        if (targetType === "note" && question.required) {
+          await updateQuestionRequired(db, questionId, false);
+        } else if (question.type === "note" && targetType !== "note" && body.required === undefined) {
+          await updateQuestionRequired(db, questionId, true);
         }
       }
       if (payload!.title) await updateQuestionTitle(db, questionId, payload!.title);

@@ -97,11 +97,15 @@ describe("response repository", () => {
       selectedOptionIds: [101, 102],
     });
 
-    const deleteStatement = statements.find((statement) => statement.sql.includes("DELETE FROM answer_options"));
+    // The clear and the re-insert ship as ONE batch, so the delete is the first
+    // statement of that batch rather than a standalone write. Split across two
+    // statements, a failure in between left `answers.json_value` listing
+    // options while `answer_options` had already been emptied.
+    const batchStatements = batch.mock.calls[0]?.[0] as CapturedStatement[];
+    expect(batchStatements).toHaveLength(3);
+    const [deleteStatement, ...insertedOptions] = batchStatements;
+    expect(deleteStatement?.sql).toContain("DELETE FROM answer_options");
     expect(deleteStatement?.bindings).toEqual([91]);
-
-    const insertedOptions = batch.mock.calls[0]?.[0] as CapturedStatement[];
-    expect(insertedOptions).toHaveLength(2);
     expect(insertedOptions.map((statement) => statement.bindings.slice(0, 2))).toEqual([
       [91, 101],
       [91, 102],

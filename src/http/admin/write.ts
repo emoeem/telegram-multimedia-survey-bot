@@ -23,6 +23,7 @@ import { handleAdminSurveysWrite } from "./surveys";
 import { handleAdminEditorWrite } from "./editor";
 import { handleAdminReportsWrite } from "./reports";
 import { handleAdminCommunityWrite } from "./community";
+import { handleAdminShowcaseWrite } from "./showcase";
 import { handleAdminTemplatesWrite } from "./templates";
 import { handleAdminUsersWrite } from "./users";
 import { handleAdminLicensesWrite } from "./licenses";
@@ -67,6 +68,9 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
   const communityResponse = await handleAdminCommunityWrite(request, url, env, ctx, body);
   if (communityResponse) return communityResponse;
 
+  const showcaseResponse = await handleAdminShowcaseWrite(request, url, env, ctx, body);
+  if (showcaseResponse) return showcaseResponse;
+
   if (request.method === "PUT" && url.pathname === "/api/admin/settings") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可修改系统设置");
     const updates: Record<string, string> = {};
@@ -107,9 +111,24 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     if (!Object.keys(updates).length) {
       return fail(400, "validation_failed", "没有可更新的设置");
     }
-    for (const [key, value] of Object.entries(updates)) {
-      await saveSystemSetting(db, key, value, user.id);
-    }
+    // One batch: changing the admin password also bumps the session epoch, and
+    // a partial write would leave a rotated password with all old sessions still
+    // valid. `db.batch` commits the group atomically.
+    const timestamp = new Date().toISOString();
+    await db.batch(
+      Object.entries(updates).map(([key, value]) =>
+        db
+          .prepare(
+            `INSERT INTO system_settings (key, value, updated_by, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_by = excluded.updated_by,
+               updated_at = excluded.updated_at`,
+          )
+          .bind(key, value, user.id, timestamp),
+      ),
+    );
     await writeAudit(db, {
       actorUserId: user.id,
       action: "settings.update",

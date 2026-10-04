@@ -62,7 +62,9 @@ export type QuestionType =
   | "image"
   | "video"
   | "audio"
-  | "file";
+  | "file"
+  // 剧情文段：不收集答案的叙述节点，用于"不同答案不同过程"的剧情分支。
+  | "note";
 
 export interface SurveyQuestion {
   id: number;
@@ -146,6 +148,12 @@ export interface SurveyResponse {
   version: number;
   galleryPublished: boolean;
   galleryPublishedAt: string | null;
+  reportPublicationRequested: boolean;
+  reportPublicationStatus: "private" | "pending" | "published" | "failed";
+  reportPublishedAt: string | null;
+  publicationTargetId: number | null;
+  publicationTargetChatId: string | null;
+  publicationTargetThreadId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -354,6 +362,44 @@ export interface SoftwareLicenseActivation {
   deactivatedAt: string | null;
 }
 
+export type CustomerDeploymentStatus = "pending" | "deploying" | "online" | "offline" | "disabled" | "failed";
+export type DeploymentTaskType = "deploy" | "update" | "rollback" | "disable" | "enable";
+export type DeploymentTaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface CustomerDeployment {
+  id: number;
+  licenseId: number;
+  installationId: string;
+  workerName: string;
+  workerUrl: string | null;
+  status: CustomerDeploymentStatus;
+  currentVersion: string | null;
+  desiredVersion: string | null;
+  lastSeenAt: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+  licensePublicId: string;
+  customerName: string | null;
+  licenseStatus: string;
+  licenseExpiresAt: string | null;
+}
+
+export interface DeploymentTask {
+  id: number;
+  deploymentId: number;
+  type: DeploymentTaskType;
+  targetVersion: string | null;
+  status: DeploymentTaskStatus;
+  requestedBy: number | null;
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  logText: string | null;
+  resultJson: string | null;
+  errorMessage: string | null;
+}
+
 export interface SoftwareRelease {
   id: number;
   version: string;
@@ -366,3 +412,71 @@ export interface SoftwareRelease {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Showcase (展示区) — a person's public exhibition page. */
+export type ShowcaseItemKind =
+  | "image"
+  | "article"
+  /** 音频作品（朗读 / 歌曲 / 播客），前台点击后内联播放器。 */
+  | "audio"
+  | "video"
+  | "project"
+  | "github"
+  | "website"
+  | "social"
+  | "survey"
+  | "other";
+
+export interface ShowcaseLink {
+  /** github | website | social | email | telegram | other */
+  type: string;
+  label: string;
+  url: string;
+}
+
+export interface ShowcasePerson {
+  id: number;
+  name: string;
+  subtitle: string | null;
+  description: string | null;
+  accentColor: string | null;
+  backgroundFrom: string | null;
+  backgroundTo: string | null;
+  backgroundMediaId: number | null;
+  illustrationMediaId: number | null;
+  avatarMediaId: number | null;
+  backgroundUrl: string | null;
+  illustrationUrl: string | null;
+  tags: string[];
+  links: ShowcaseLink[];
+  surveyId: number | null;
+  responseId: number | null;
+  ownerUserId: number | null;
+  featureRank: number;
+  published: boolean;
+  sortOrder: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShowcaseItem {
+  id: number;
+  personId: number;
+  title: string;
+  description: string | null;
+  kind: ShowcaseItemKind;
+  coverMediaId: number | null;
+  coverUrl: string | null;
+  /** 作品的内容文件（图片/音频/视频），前台点击后用它播放或放大。 */
+  mediaAssetId: number | null;
+  url: string | null;
+  featured: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface ShowcasePersonWithItems extends ShowcasePerson {
+  items: ShowcaseItem[];
+}
+

@@ -46,6 +46,10 @@ def _as_float(name: str, default: float) -> float:
         raise ValueError(f"{name} must be a number, got {raw!r}") from None
 
 
+WRITER_MODES = frozenset({"copy", "forward"})
+PROTECTED_POLICIES = frozenset({"skip", "text_only", "allow_media"})
+
+
 @dataclass(frozen=True)
 class ArchiveConfig:
     """Runtime configuration for tg-archive."""
@@ -77,6 +81,33 @@ class ArchiveConfig:
     include_link: bool = False
 
     root_dir: Path = field(default=Path("."))
+
+    def __post_init__(self) -> None:
+        """Validate on every construction path.
+
+        load_config() already checks the .env values, but with_overrides() is
+        used by the HTTP API and the CLI and used to bypass that check
+        entirely -- an unrecognised protected_policy silently allowed
+        protected media through.
+        """
+
+        if self.writer_mode not in WRITER_MODES:
+            raise ValueError(
+                f"writer_mode must be one of {sorted(WRITER_MODES)}, got {self.writer_mode!r}"
+            )
+        if self.protected_policy not in PROTECTED_POLICIES:
+            raise ValueError(
+                "protected_policy must be one of "
+                f"{sorted(PROTECTED_POLICIES)}, got {self.protected_policy!r}"
+            )
+        if self.max_posts is not None and self.max_posts < 1:
+            raise ValueError(f"max_posts must be >= 1, got {self.max_posts!r}")
+        if self.fetch_limit is not None and self.fetch_limit < 1:
+            raise ValueError(f"fetch_limit must be >= 1, got {self.fetch_limit!r}")
+        if self.post_delay_seconds is not None and self.post_delay_seconds < 0:
+            raise ValueError(
+                f"post_delay_seconds must be >= 0, got {self.post_delay_seconds!r}"
+            )
 
     @property
     def resolved_session(self) -> Path:

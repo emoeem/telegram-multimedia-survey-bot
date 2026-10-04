@@ -103,6 +103,28 @@ function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: 
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-200">
         {post.content}
       </p>
+      {post.topic ? (
+        <p className="mt-2">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            #{post.topic}#
+          </span>
+        </p>
+      ) : null}
+      {post.imageAssetId !== null ? (
+        <a
+          href={`/api/admin/media/${post.imageAssetId}/image`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 block w-fit"
+        >
+          <img
+            src={`/api/admin/media/${post.imageAssetId}/image`}
+            alt="树洞配图"
+            loading="lazy"
+            className="max-h-56 rounded-xl border border-slate-200 object-cover dark:border-slate-700"
+          />
+        </a>
+      ) : null}
 
       <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
         <button

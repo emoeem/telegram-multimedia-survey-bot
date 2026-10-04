@@ -80,6 +80,8 @@ export function SettingsPage() {
   const [surveys, setSurveys] = useState<SurveySummary[]>([]);
   const [creatingSurvey, setCreatingSurvey] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
+  /** In-progress text for the numeric fields; cleared once committed. */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void api<{ items: SurveySummary[] }>(`/api/admin/surveys?pageSize=50&status=published`)
@@ -123,6 +125,12 @@ export function SettingsPage() {
     }
   };
 
+  /**
+   * A number input needs a string draft, not the committed number: with a
+   * numeric value, clearing the field to type a new one became `Number("")`
+   * = 0, so the box snapped to "0" and `min={1}` then rejected the form —
+   * the value could never be replaced by typing. The draft commits on blur.
+   */
   const numberField = (key: keyof SystemSettingsData, label: string, hint: string, step = 1) => (
     <Field key={key} label={label} hint={hint}>
       <input
@@ -130,8 +138,19 @@ export function SettingsPage() {
         type="number"
         min={1}
         step={step}
-        value={settings[key]}
-        onChange={(event) => update({ [key]: Number(event.target.value) } as Partial<SystemSettingsData>)}
+        value={drafts[key] ?? String(settings[key])}
+        onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
+        onBlur={(event) => {
+          const parsed = Number(event.target.value);
+          setDrafts((current) => {
+            const next = { ...current };
+            delete next[key];
+            return next;
+          });
+          if (Number.isFinite(parsed) && parsed >= 1) {
+            update({ [key]: parsed } as Partial<SystemSettingsData>);
+          }
+        }}
       />
     </Field>
   );

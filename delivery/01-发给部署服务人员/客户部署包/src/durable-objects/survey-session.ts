@@ -45,6 +45,7 @@ type SessionAction =
     };
 
 const STATE_KEY = "survey-session";
+const COMPLETED_SESSION_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export class SurveySessionDO extends DurableObject {
   private async getState(): Promise<SurveySessionState | null> {
@@ -55,9 +56,7 @@ export class SurveySessionDO extends DurableObject {
     await this.ctx.storage.put(STATE_KEY, state);
   }
 
-  private createInitialState(
-    action: Extract<SessionAction, { action: "init" }>,
-  ): SurveySessionState {
+  private createInitialState(action: Extract<SessionAction, { action: "init" }>): SurveySessionState {
     return {
       userId: action.userId,
       surveyId: action.surveyId,
@@ -76,12 +75,12 @@ export class SurveySessionDO extends DurableObject {
     const state = await this.getState();
 
     if (action.action === "init") {
+      await this.ctx.storage.deleteAlarm();
       const nextState =
         state?.status === "active"
           ? {
               ...state,
-              currentQuestionId:
-                action.currentQuestionId ?? state.currentQuestionId,
+              currentQuestionId: action.currentQuestionId ?? state.currentQuestionId,
               lastActivityAt: new Date().toISOString(),
             }
           : this.createInitialState(action);
@@ -147,7 +146,12 @@ export class SurveySessionDO extends DurableObject {
     }
 
     if (action.action === "clear_matrix_selections") {
-      const nextState = { ...state, matrixSelections: {}, version: state.version + 1, lastActivityAt: new Date().toISOString() };
+      const nextState = {
+        ...state,
+        matrixSelections: {},
+        version: state.version + 1,
+        lastActivityAt: new Date().toISOString(),
+      };
       await this.putState(nextState);
       return Response.json(nextState);
     }
@@ -172,10 +176,17 @@ export class SurveySessionDO extends DurableObject {
         version: state.version + 1,
         lastActivityAt: new Date().toISOString(),
       };
-      await this.putState(nextState);
+      await this.ctx.storage.transaction(async (txn) => {
+        await txn.put(STATE_KEY, nextState);
+        await txn.setAlarm(Date.now() + COMPLETED_SESSION_RETENTION_MS);
+      });
       return Response.json(nextState);
     }
 
     return Response.json({ error: "unknown_action" }, { status: 400 });
+  }
+
+  async alarm(): Promise<void> {
+    await this.ctx.storage.deleteAll();
   }
 }

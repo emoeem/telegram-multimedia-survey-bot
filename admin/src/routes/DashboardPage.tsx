@@ -24,6 +24,8 @@ const DELIVERY_LABELS: Record<string, string> = {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  // Rendered in the header: it was tracked but never displayed, so "刷新" gave
+  // no indication that anything had been refetched.
   const [now, setNow] = useState(() => new Date().toISOString());
   const { data, error, retry } = useApi<DashboardData>("/api/admin/dashboard");
 
@@ -81,7 +83,9 @@ export function DashboardPage() {
         <div className="card-title">
           <div>
             <h2>数据总览</h2>
-            <p className="card-sub">核心运营指标</p>
+            <p className="card-sub">
+              核心运营指标 · 更新于 {new Date(now).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+            </p>
           </div>
           <button className="btn btn-sm" onClick={handleRefresh} title="刷新数据">
             <RefreshCw className="h-3.5 w-3.5" />

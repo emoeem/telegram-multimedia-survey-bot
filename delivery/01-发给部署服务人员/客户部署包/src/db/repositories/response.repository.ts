@@ -12,6 +12,14 @@ interface SurveyResponseRow {
   submitted_at: string | null;
   current_question_id: number | null;
   version: number;
+  gallery_published?: number;
+  gallery_published_at?: string | null;
+  report_publication_requested?: number;
+  report_publication_status?: string | null;
+  report_published_at?: string | null;
+  publication_target_id?: number | null;
+  publication_target_chat_id?: string | null;
+  publication_target_thread_id?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,9 +51,43 @@ function mapResponse(row: SurveyResponseRow): SurveyResponse {
     submittedAt: row.submitted_at,
     currentQuestionId: row.current_question_id,
     version: row.version,
+    galleryPublished: Number(row.gallery_published ?? 0) === 1,
+    galleryPublishedAt: row.gallery_published_at ?? null,
+    reportPublicationRequested: Number(row.report_publication_requested ?? 0) === 1,
+    reportPublicationStatus: (row.report_publication_status as SurveyResponse["reportPublicationStatus"]) ?? "private",
+    reportPublishedAt: row.report_published_at ?? null,
+    publicationTargetId: row.publication_target_id ?? null,
+    publicationTargetChatId: row.publication_target_chat_id ?? null,
+    publicationTargetThreadId: row.publication_target_thread_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+export async function setResponseReportPublication(
+  db: D1Database,
+  id: number,
+  requested: boolean,
+  status: SurveyResponse["reportPublicationStatus"],
+  publicationTargetId: number | null = null,
+  publicationTargetChatId: string | null = null,
+  publicationTargetThreadId: number | null = null,
+): Promise<void> {
+  const timestamp = nowIso();
+  await db.prepare(`UPDATE survey_responses SET report_publication_requested = ?, report_publication_status = ?, report_published_at = ?, publication_target_id = ?, publication_target_chat_id = ?, publication_target_thread_id = ?, updated_at = ? WHERE id = ?`)
+    .bind(requested ? 1 : 0, status, status === "published" ? timestamp : null, publicationTargetId, publicationTargetChatId, publicationTargetThreadId, timestamp, id).run();
+}
+
+export async function setResponseGalleryPublished(db: D1Database, id: number, published: boolean): Promise<void> {
+  const timestamp = nowIso();
+  await db
+    .prepare(
+      `UPDATE survey_responses
+       SET gallery_published = ?, gallery_published_at = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(published ? 1 : 0, published ? timestamp : null, timestamp, id)
+    .run();
 }
 
 function mapAnswer(row: AnswerRow): Answer {
@@ -55,7 +97,9 @@ function mapAnswer(row: AnswerRow): Answer {
     questionId: row.question_id,
     textValue: row.text_value,
     numberValue: row.number_value,
-    booleanValue: toBoolean(row.boolean_value),
+    // Preserve NULL so normalizeAnswer can distinguish "not stored" from an
+    // explicit false; otherwise false would shadow json/text answer values.
+    booleanValue: row.boolean_value === null ? null : toBoolean(row.boolean_value),
     ratingValue: row.rating_value,
     dateValue: row.date_value,
     timeValue: row.time_value,
@@ -72,6 +116,9 @@ export async function createResponse(
     userId: number | null;
     participantHash: string;
     currentQuestionId?: number | null;
+    deviceFingerprint?: string | null;
+    browserInfo?: string | null;
+    ipAddress?: string | null;
   },
 ): Promise<SurveyResponse> {
   const timestamp = nowIso();
@@ -79,8 +126,13 @@ export async function createResponse(
     .prepare(
       `INSERT INTO survey_responses (
         survey_id, user_id, participant_hash, status,
-        started_at, current_question_id, version, created_at, updated_at
-      ) VALUES (?, ?, ?, 'in_progress', ?, ?, 1, ?, ?)`,
+        started_at, current_question_id, version, created_at, updated_at,
+        device_fingerprint, browser_info, ip_address
+      ) VALUES (
+        ?, ?, ?, 'in_progress', ?, ?,
+        (SELECT version FROM surveys WHERE id = ?), ?, ?,
+        ?, ?, ?
+      )`,
     )
     .bind(
       input.surveyId,
@@ -88,8 +140,12 @@ export async function createResponse(
       input.participantHash,
       timestamp,
       input.currentQuestionId ?? null,
+      input.surveyId,
       timestamp,
       timestamp,
+      input.deviceFingerprint ?? null,
+      input.browserInfo ?? null,
+      input.ipAddress ?? null,
     )
     .run();
 
@@ -106,10 +162,7 @@ export async function createResponse(
   return response;
 }
 
-export async function getResponseById(
-  db: D1Database,
-  id: number,
-): Promise<SurveyResponse | null> {
+export async function getResponseById(db: D1Database, id: number): Promise<SurveyResponse | null> {
   const row = await db
     .prepare("SELECT * FROM survey_responses WHERE id = ? LIMIT 1")
     .bind(id)
@@ -135,10 +188,7 @@ export async function getActiveResponse(
   return row ? mapResponse(row) : null;
 }
 
-export async function getActiveResponseByUser(
-  db: D1Database,
-  userId: number,
-): Promise<SurveyResponse | null> {
+export async function getActiveResponseByUser(db: D1Database, userId: number): Promise<SurveyResponse | null> {
   const row = await db
     .prepare(
       `SELECT * FROM survey_responses
@@ -185,6 +235,23 @@ export async function countCompletedResponsesBySurveyAndUser(
   return row?.count ?? 0;
 }
 
+export async function getCompletedResponseBySurveyAndUser(
+  db: D1Database,
+  surveyId: number,
+  userId: number,
+): Promise<SurveyResponse | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM survey_responses
+       WHERE survey_id = ? AND user_id = ? AND status = 'completed'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .bind(surveyId, userId)
+    .first<SurveyResponseRow>();
+
+  return row ? mapResponse(row) : null;
+}
+
 export async function getResponseBySurveyAndHash(
   db: D1Database,
   surveyId: number,
@@ -202,19 +269,36 @@ export async function getResponseBySurveyAndHash(
   return row ? mapResponse(row) : null;
 }
 
-export async function getAnswer(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): Promise<Answer | null> {
+export async function getAnswer(db: D1Database, responseId: number, questionId: number): Promise<Answer | null> {
   const row = await db
-    .prepare(
-      "SELECT * FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT * FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(responseId, questionId)
     .first<AnswerRow>();
 
   return row ? mapAnswer(row) : null;
+}
+
+export async function listAnswersByResponseId(db: D1Database, responseId: number): Promise<Answer[]> {
+  const result = await db
+    .prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC")
+    .bind(responseId)
+    .all<AnswerRow>();
+  return (result.results ?? []).map(mapAnswer);
+}
+
+/** Batch variant for list pages; keeps the gallery feed at one query instead
+ *  of one per response (json_each stays a single bind regardless of count). */
+export async function listAnswersByResponseIds(db: D1Database, responseIds: number[]): Promise<Answer[]> {
+  if (responseIds.length === 0) return [];
+  const result = await db
+    .prepare(
+      `SELECT a.* FROM answers a
+       JOIN json_each(?) AS r ON r.value = a.response_id
+       ORDER BY a.response_id ASC, a.id ASC`,
+    )
+    .bind(JSON.stringify(responseIds))
+    .all<AnswerRow>();
+  return (result.results ?? []).map(mapAnswer);
 }
 
 export async function updateResponseCurrentQuestion(
@@ -223,45 +307,72 @@ export async function updateResponseCurrentQuestion(
   questionId: number | null,
 ): Promise<void> {
   await db
-    .prepare(
-      "UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?",
-    )
+    .prepare("UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?")
     .bind(questionId, nowIso(), id)
     .run();
 }
 
-export async function completeResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function completeResponse(db: D1Database, id: number): Promise<boolean> {
   const timestamp = nowIso();
-  await db
+  const result = await db
     .prepare(
       `UPDATE survey_responses
        SET status = 'completed', completed_at = ?, submitted_at = ?, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'in_progress'`,
     )
     .bind(timestamp, timestamp, timestamp, id)
     .run();
+  // false when a concurrent submit already completed this response; callers
+  // use this to avoid running the post-completion side effects twice.
+  return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function cancelResponse(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function cancelResponse(db: D1Database, id: number): Promise<void> {
   await db
-    .prepare(
-      "UPDATE survey_responses SET status = 'cancelled', updated_at = ? WHERE id = ?",
-    )
+    .prepare("UPDATE survey_responses SET status = 'cancelled', updated_at = ? WHERE id = ?")
     .bind(nowIso(), id)
     .run();
 }
 
-export async function restartResponse(
-  db: D1Database,
-  id: number,
-  currentQuestionId: number,
-): Promise<SurveyResponse> {
+export async function archiveResponse(db: D1Database, id: number): Promise<void> {
+  await db
+    .prepare("UPDATE survey_responses SET status = 'archived', updated_at = ? WHERE id = ?")
+    .bind(nowIso(), id)
+    .run();
+}
+
+/**
+ * Deletes a response and its answers. Completed responses are permanent and
+ * cannot be deleted; only abandoned/in-progress/cancelled rows may be removed.
+ */
+export async function deleteResponse(db: D1Database, id: number): Promise<void> {
+  const row = await db
+    .prepare("SELECT status FROM survey_responses WHERE id = ? LIMIT 1")
+    .bind(id)
+    .first<{ status: string }>();
+  if (!row) return;
+  if (row.status === "completed") {
+    throw new Error("已完成的答卷属于永久数据，禁止删除；请归档");
+  }
+  await db.batch([
+    db
+      .prepare(
+        `DELETE FROM answer_media
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        `DELETE FROM answer_options
+         WHERE answer_id IN (SELECT id FROM answers WHERE response_id = ?)`,
+      )
+      .bind(id),
+    db.prepare("DELETE FROM answers WHERE response_id = ?").bind(id),
+    db.prepare("DELETE FROM survey_responses WHERE id = ?").bind(id),
+  ]);
+}
+
+export async function restartResponse(db: D1Database, id: number, currentQuestionId: number): Promise<SurveyResponse> {
   const timestamp = nowIso();
   await db.batch([
     db
@@ -339,8 +450,7 @@ async function upsertAnswerValues(
       input.questionId,
       input.values.textValue ?? null,
       input.values.numberValue ?? null,
-      input.values.booleanValue === undefined ||
-        input.values.booleanValue === null
+      input.values.booleanValue === undefined || input.values.booleanValue === null
         ? null
         : input.values.booleanValue
           ? 1
@@ -355,9 +465,7 @@ async function upsertAnswerValues(
     .run();
 
   const answer = await db
-    .prepare(
-      "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(input.responseId, input.questionId)
     .first<{ id: number }>();
 
@@ -386,7 +494,11 @@ export async function upsertJsonAnswer(
   db: D1Database,
   input: { responseId: number; questionId: number; jsonValue: string },
 ): Promise<void> {
-  await upsertAnswerValues(db, { responseId: input.responseId, questionId: input.questionId, values: { jsonValue: input.jsonValue } });
+  await upsertAnswerValues(db, {
+    responseId: input.responseId,
+    questionId: input.questionId,
+    values: { jsonValue: input.jsonValue },
+  });
 }
 
 export async function upsertNumberAnswer(
@@ -449,20 +561,13 @@ export async function upsertOptionAnswer(
     responseId: input.responseId,
     questionId: input.questionId,
     values: {
-      ...(input.booleanValue !== undefined
-        ? { booleanValue: input.booleanValue }
-        : {}),
-      ...(input.ratingValue !== undefined
-        ? { ratingValue: input.ratingValue }
-        : {}),
+      ...(input.booleanValue !== undefined ? { booleanValue: input.booleanValue } : {}),
+      ...(input.ratingValue !== undefined ? { ratingValue: input.ratingValue } : {}),
       jsonValue: JSON.stringify(input.selectedOptionIds),
     },
   });
 
-  await db
-    .prepare("DELETE FROM answer_options WHERE answer_id = ?")
-    .bind(answerId)
-    .run();
+  await db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answerId).run();
 
   if (input.selectedOptionIds.length > 0) {
     await db.batch(
@@ -495,23 +600,14 @@ export async function upsertMediaAnswer(
     },
   });
 
-  await db
-    .prepare("DELETE FROM answer_media WHERE answer_id = ?")
-    .bind(answerId)
-    .run();
+  await db.prepare("DELETE FROM answer_media WHERE answer_id = ?").bind(answerId).run();
 
   return answerId;
 }
 
-export async function deleteAnswer(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): Promise<void> {
+export async function deleteAnswer(db: D1Database, responseId: number, questionId: number): Promise<void> {
   const answer = await db
-    .prepare(
-      "SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1",
-    )
+    .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
     .bind(responseId, questionId)
     .first<{ id: number }>();
   if (!answer) {

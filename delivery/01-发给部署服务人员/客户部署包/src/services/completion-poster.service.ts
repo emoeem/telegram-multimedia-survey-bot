@@ -9,7 +9,12 @@ export interface CompletionPosterData {
 }
 
 function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function buildCompletionPosterHtml(data: CompletionPosterData): string {
@@ -26,12 +31,17 @@ export function buildCompletionPosterHtml(data: CompletionPosterData): string {
   </style></head><body><main class="poster"><div><div class="tag">SURVEY COMPLETE</div><h1>${escapeHtml(data.surveyTitle)}</h1><div class="bar"></div></div><div class="image">${image}</div><div><p class="done">已完成，感谢参与</p><p class="date">${escapeHtml(data.completedAt)}</p></div></main></body></html>`;
 }
 
-export async function renderCompletionPoster(browserBinding: BrowserWorker, data: CompletionPosterData): Promise<Uint8Array> {
+export async function renderCompletionPoster(
+  browserBinding: BrowserWorker,
+  data: CompletionPosterData,
+): Promise<Uint8Array> {
   const browser = await puppeteer.launch(browserBinding);
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 1 });
     await page.setContent(buildCompletionPosterHtml(data), { waitUntil: "load" });
     return new Uint8Array(await page.screenshot({ type: "png" }));
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+  }
 }

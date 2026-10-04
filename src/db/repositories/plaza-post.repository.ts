@@ -4,6 +4,10 @@ export interface PlazaPostRecord {
   content: string;
   kind: "text" | "trial";
   payload: Record<string, unknown> | null;
+  /** 配图（0068）：画廊/展示区同一套 durable 媒体，只在 published 时可读。 */
+  imageAssetId: number | null;
+  /** #话题#（0068）：由正文解析或客户端显式传入，用于筛选。 */
+  topic: string | null;
   /** Anonymous posts hide the author in the public feed. */
   anonymous: boolean;
   status: "published" | "removed";
@@ -17,7 +21,7 @@ export interface PlazaPostRecord {
 }
 
 const POST_COLUMNS = `p.id, p.user_id, p.content, p.anonymous, p.status, p.created_at,
-    p.kind, p.payload_json,
+    p.kind, p.payload_json, p.image_asset_id, p.topic,
     (SELECT COUNT(*) FROM plaza_post_comments c WHERE c.post_id = p.id AND c.status = 'published') AS comment_count,
     u.telegram_user_id AS owner_telegram_user_id, u.username AS owner_username, u.first_name AS owner_first_name`;
 
@@ -40,6 +44,8 @@ function mapPlazaPostRow(row: PlazaPostRow): PlazaPostRecord {
     content: String(row.content),
     kind: row.kind === "trial" ? "trial" : "text",
     payload,
+    imageAssetId: row.image_asset_id === null || row.image_asset_id === undefined ? null : Number(row.image_asset_id),
+    topic: typeof row.topic === "string" && row.topic ? row.topic : null,
     anonymous: Number(row.anonymous ?? 1) === 1,
     status: row.status === "removed" ? "removed" : "published",
     createdAt: String(row.created_at),
@@ -61,6 +67,8 @@ export interface CreatePlazaPostInput {
   anonymous: boolean;
   kind?: "text" | "trial";
   payload?: Record<string, unknown> | null;
+  imageAssetId?: number | null;
+  topic?: string | null;
 }
 
 export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInput): Promise<PlazaPostRecord> {
@@ -68,8 +76,8 @@ export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInpu
   const kind = input.kind ?? "text";
   const result = await db
     .prepare(
-      `INSERT INTO plaza_posts (user_id, content, anonymous, status, kind, payload_json, created_at)
-       VALUES (?, ?, ?, 'published', ?, ?, ?)`,
+      `INSERT INTO plaza_posts (user_id, content, anonymous, status, kind, payload_json, image_asset_id, topic, created_at)
+       VALUES (?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.userId,
@@ -77,6 +85,8 @@ export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInpu
       input.anonymous ? 1 : 0,
       kind,
       input.payload === undefined || input.payload === null ? null : JSON.stringify(input.payload),
+      input.imageAssetId ?? null,
+      input.topic ?? null,
       now,
     )
     .run();
@@ -88,6 +98,8 @@ export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInpu
     content: input.content,
     kind,
     payload: input.payload ?? null,
+    imageAssetId: input.imageAssetId ?? null,
+    topic: input.topic ?? null,
     anonymous: input.anonymous,
     status: "published",
     createdAt: now,
@@ -101,6 +113,8 @@ export interface PlazaPostListOptions {
   offset: number;
   /** "published" is the public bot feed; "all" is the admin console. */
   view?: "all" | "published";
+  /** 只返回该话题的帖子（公开流筛选）。 */
+  topic?: string | null;
 }
 
 export interface PlazaPostListPage {
@@ -109,19 +123,70 @@ export interface PlazaPostListPage {
 }
 
 export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptions): Promise<PlazaPostListPage> {
-  const where = options.view === "published" ? "WHERE p.status = 'published'" : "";
-  const totalRow = await db.prepare(`SELECT COUNT(*) AS total FROM plaza_posts p ${where}`).first<{ total: number }>();
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (options.view === "published") conditions.push("p.status = 'published'");
+  if (options.topic) {
+    conditions.push("p.topic = ?");
+    binds.push(options.topic);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const totalRow = await db
+    .prepare(`SELECT COUNT(*) AS total FROM plaza_posts p ${where}`)
+    .bind(...binds)
+    .first<{ total: number }>();
   const rows = await db
     .prepare(
       `SELECT ${POST_COLUMNS} FROM plaza_posts p LEFT JOIN users u ON u.id = p.user_id
        ${where} ORDER BY p.id DESC LIMIT ? OFFSET ?`,
     )
-    .bind(options.limit, options.offset)
+    .bind(...binds, options.limit, options.offset)
     .all<PlazaPostRow>();
   return {
     items: (rows.results ?? []).map(mapPlazaPostRow),
     total: Number(totalRow?.total ?? 0),
   };
+}
+
+/** 公开流的话题榜：发布中的帖子按话题聚合，热度降序。 */
+export async function listPlazaTopics(
+  db: D1Database,
+  limit = 12,
+): Promise<Array<{ topic: string; count: number }>> {
+  const rows = await db
+    .prepare(
+      `SELECT topic, COUNT(*) AS count, MAX(id) AS latestId
+         FROM plaza_posts
+        WHERE status = 'published' AND topic IS NOT NULL AND topic <> ''
+        GROUP BY topic
+        ORDER BY count DESC, latestId DESC
+        LIMIT ?`,
+    )
+    .bind(limit)
+    .all<{ topic: string; count: number }>();
+  return (rows.results ?? []).map((row) => ({ topic: String(row.topic), count: Number(row.count ?? 0) }));
+}
+
+/** 公开读图的唯一授权：图片必须挂在一个发布中的帖子上。 */
+export async function isPublishedPlazaImage(db: D1Database, mediaAssetId: number): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS found FROM plaza_posts WHERE image_asset_id = ? AND status = 'published' LIMIT 1")
+    .bind(mediaAssetId)
+    .first<{ found: number }>();
+  return Boolean(row);
+}
+
+export async function getPlazaPostImageAssetId(db: D1Database, postId: number): Promise<number | null> {
+  const row = await db
+    .prepare("SELECT image_asset_id AS imageAssetId FROM plaza_posts WHERE id = ? LIMIT 1")
+    .bind(postId)
+    .first<{ imageAssetId: number | null }>();
+  return row?.imageAssetId === null || row?.imageAssetId === undefined ? null : Number(row.imageAssetId);
+}
+
+/** 下架时摘掉配图引用（blob 由服务层负责删除）。 */
+export async function detachPlazaPostImage(db: D1Database, postId: number): Promise<void> {
+  await db.prepare("UPDATE plaza_posts SET image_asset_id = NULL WHERE id = ?").bind(postId).run();
 }
 
 export async function setPlazaPostStatus(

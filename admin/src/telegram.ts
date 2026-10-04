@@ -7,7 +7,8 @@ interface TelegramWebApp {
 
 const TELEGRAM_BRIDGE_URL = "https://telegram.org/js/telegram-web-app.js";
 
-function currentWebApp(): TelegramWebApp | undefined {
+/** Shared with navigation.ts so "close the mini app" has one implementation. */
+export function currentWebApp(): TelegramWebApp | undefined {
   return (window as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp;
 }
 

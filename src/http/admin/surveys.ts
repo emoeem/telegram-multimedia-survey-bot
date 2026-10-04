@@ -38,7 +38,9 @@ export async function handleAdminSurveysWrite(
       ? body.responseIds
           .filter((value): value is number => Number.isInteger(value))
           .map(Number)
-          .slice(0, 100)
+          // 90, not 100: survey_id is bound in the same statement, so 100 ids
+          // would be 101 bound variables — over D1's per-statement cap.
+          .slice(0, 90)
       : [];
     if (!responseIds.length) return fail(400, "validation_failed", "请选择要导出的答卷");
     const rows = await env.DB.prepare(
@@ -121,7 +123,8 @@ export async function handleAdminSurveysWrite(
       ? body.ids
           .filter((value): value is number => Number.isInteger(value))
           .map(Number)
-          .slice(0, 100)
+          // Same binding budget as batch-export: the survey_id binding is extra.
+          .slice(0, 90)
       : [];
     if (!ids.length) return fail(400, "validation_failed", "缺少 ids");
     // Ownership: only report deliveries whose response actually belongs to

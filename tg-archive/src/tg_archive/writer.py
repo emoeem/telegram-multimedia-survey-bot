@@ -10,6 +10,7 @@ forward - native forward: highest fidelity, no added tags. Server rejects
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from dataclasses import dataclass
@@ -29,6 +30,30 @@ class PostResult:
     channel_message_id: Optional[int] = None
     error: str = ""
     skipped: bool = False
+    # rate-limited/too-slow-to-wait: must not be counted as a hard failure or
+    # it eventually becomes a terminal "skipped" row that is never retried
+    deferred: bool = False
+    # the request *may* have been delivered (timeout / connection reset): the
+    # caller must verify the channel before re-posting
+    ambiguous: bool = False
+
+
+def _is_ambiguous(exc: BaseException) -> bool:
+    """True when the request may still have been processed by the server.
+
+    A telethon RPCError means Telegram answered (definite rejection / flood
+    wait). Network-level failures -- timeout, connection reset, EOF -- are
+    unknown: the request may have been delivered.
+    """
+
+    try:
+        from telethon.errors import RPCError
+    except Exception:  # pragma: no cover - telethon is a hard dependency
+        return False
+    if isinstance(exc, RPCError):
+        return False
+    # OSError covers ConnectionError and TimeoutError
+    return isinstance(exc, (OSError, EOFError, asyncio.TimeoutError))
 
 
 class ChannelWriter:
@@ -136,7 +161,7 @@ class ChannelWriter:
                 mid = getattr(result, "id", None)
             return PostResult(ok=mid is not None, channel_message_id=mid)
         except Exception as exc:  # noqa: BLE001 - surface as failed post
-            return PostResult(ok=False, error=str(exc))
+            return PostResult(ok=False, error=str(exc), ambiguous=_is_ambiguous(exc))
 
     async def _copy(
         self,
@@ -147,8 +172,9 @@ class ChannelWriter:
     ) -> PostResult:
         try:
             if nm.has_media and nm.content_type not in TEXT_FALLBACK_TYPES:
-                cached = await self._download(message)
+                cached: Optional[Path] = None
                 try:
+                    cached = await self._download(message)
                     extra: dict[str, Any] = {}
                     if nm.content_type == CT_VOICE:
                         extra["voice_note"] = True
@@ -163,7 +189,9 @@ class ChannelWriter:
                         **extra,
                     )
                 finally:
-                    self._cleanup(cached)
+                    # Also cleans up after a *failed* download, which used to
+                    # leave the partial file (and its directory) behind.
+                    self._cleanup_media_cache(message.id, cached)
             else:
                 sent = await self.client.send_message(channel_entity, caption)
             mid = getattr(sent, "id", None)
@@ -171,7 +199,7 @@ class ChannelWriter:
                 mid = getattr(sent[-1], "id", None)
             return PostResult(ok=mid is not None, channel_message_id=mid)
         except Exception as exc:  # noqa: BLE001 - surface as failed post
-            return PostResult(ok=False, error=str(exc))
+            return PostResult(ok=False, error=str(exc), ambiguous=_is_ambiguous(exc))
 
     async def _download(self, message: Any) -> Path:
         cache_dir = self.cfg.resolved_media_cache / str(message.id)
@@ -205,3 +233,16 @@ class ChannelWriter:
                 shutil.rmtree(parent, ignore_errors=True)
         except OSError:
             pass
+
+    def _cleanup_media_cache(self, message_id: int, path: Optional[Path]) -> None:
+        """Remove the temp file *and* the per-message cache directory.
+
+        When the download itself raised there is no path to derive the
+        directory from, so it is looked up by message id.
+        """
+
+        if path is not None:
+            self._cleanup(path)
+        directory = self.cfg.resolved_media_cache / str(message_id)
+        if directory.exists():
+            shutil.rmtree(directory, ignore_errors=True)

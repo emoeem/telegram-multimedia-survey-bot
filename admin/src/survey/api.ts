@@ -99,7 +99,10 @@ export interface SurveyListItem {
   description?: string;
   accessCodeRequired: boolean;
   publishedAt: string | null;
+  closedAt?: string | null;
+  anonymous?: boolean;
   questionCount: number;
+  responseCount?: number;
   coverUrl?: string;
   theme: SurveyThemeDto | null;
 }
@@ -183,6 +186,69 @@ export function fetchSurvey(surveyId: number, accessGrant?: string | null): Prom
   return request<SurveyDto>(`/api/survey/${surveyId}${accessGrant ? `?grant=${encodeURIComponent(accessGrant)}` : ""}`);
 }
 
+/** 成就徽章：目录由服务端下发，客户端不硬编码任何一条。 */
+export interface AchievementItem {
+  code: string;
+  title: string;
+  description: string;
+  icon: string;
+  group: "问卷" | "挑战" | "广场" | "彩蛋";
+  secret: boolean;
+  unlocked: boolean;
+  unlockedAt: string | null;
+}
+
+export interface AchievementOverview {
+  unlocked: number;
+  total: number;
+  /** 已解锁但还没在「我的」页面看过的数量，用于显示小红点。 */
+  unseen: number;
+  items: AchievementItem[];
+}
+
+/** 动作接口返回的「刚刚解锁」列表（提交问卷 / 通关挑战 / 广场发言）。 */
+export interface UnlockedAchievement {
+  code: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
+/** 展示页软连接：由自己的资料卡生成（showcase_persons.response_id）。 */
+export interface MyShowcase {
+  personId: number;
+  published: boolean;
+}
+
+export interface MyOverview {
+  identity: { telegram: boolean };
+  completedSurveys: number;
+  profileSurveyId: number | null;
+  myProfile: { responseId: number; heading: string | null; publishedAt: string | null } | null;
+  trial: { runs: number; completed: number; bestScore: number };
+  achievements: AchievementOverview;
+  showcase: MyShowcase | null;
+}
+
+export function fetchMyOverview(): Promise<MyOverview> {
+  return request<MyOverview>("/api/me/overview");
+}
+
+/** 用当前资料卡生成/取回展示页草稿（草稿需管理员审核后公开）。 */
+export function createMyShowcase(): Promise<{
+  showcase: { personId: number; created: boolean; published: boolean; url: string };
+}> {
+  return request<{ showcase: { personId: number; created: boolean; published: boolean; url: string } }>(
+    "/api/me/showcase",
+    { method: "POST" },
+  );
+}
+
+/** 打开「我的」后清掉徽章小红点。 */
+export function markAchievementsSeen(): Promise<{ ok: boolean; marked: number }> {
+  return request<{ ok: boolean; marked: number }>("/api/me/achievements/seen", { method: "POST" });
+}
+
 export function fetchSurveyList(
   q = "",
 ): Promise<{ surveys: SurveyListItem[]; communityGroupUrl: string | null; submissionBotUrl: string | null }> {
@@ -237,12 +303,23 @@ export function submitResponse(
     galleryCoverMediaId?: number | null;
     galleryVisibleQuestionIds?: number[];
     galleryShowUsername?: boolean;
+    publishToTelegram?: boolean;
   } = {},
-): Promise<{ ok: boolean; completed: boolean; galleryPublished?: boolean }> {
-  return request<{ ok: boolean; completed: boolean; galleryPublished?: boolean }>(
-    `/api/survey/${surveyId}/responses/${responseId}/submit`,
-    { method: "POST", body: JSON.stringify(options) },
-  );
+): Promise<{
+  ok: boolean;
+  completed: boolean;
+  reportUrl?: string;
+  galleryPublished?: boolean;
+  telegramPublicationQueued?: boolean;
+  newAchievements?: UnlockedAchievement[];
+}> {
+  return request<{
+    ok: boolean;
+    completed: boolean;
+    reportUrl?: string;
+    galleryPublished?: boolean;
+    newAchievements?: UnlockedAchievement[];
+  }>(`/api/survey/${surveyId}/responses/${responseId}/submit`, { method: "POST", body: JSON.stringify(options) });
 }
 
 export function uploadAnswerMedia(

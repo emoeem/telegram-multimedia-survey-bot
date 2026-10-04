@@ -1,12 +1,20 @@
-import { Eye, EyeOff, LoaderCircle, LockKeyhole, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, LockKeyhole, Send, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent } from "react";
+
+/** How often the browser asks whether the bot has confirmed the login. */
+const TELEGRAM_POLL_INTERVAL_MS = 2000;
+/** Hard cap in case the backend reports a longer lifetime than the request. */
+const TELEGRAM_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramHint, setTelegramHint] = useState("");
+  const [telegramError, setTelegramError] = useState("");
 
   const login = async (event: FormEvent) => {
     event.preventDefault();
@@ -29,6 +37,61 @@ export function LoginPage() {
       setMessage(error instanceof Error ? error.message : "登录失败，请重试");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Deep-link login: this page starts a request, the user confirms it inside the
+  // Telegram bot, and we poll until the bot has approved (or cancelled) it.
+  const telegramLogin = async () => {
+    if (telegramLoading) return;
+    setTelegramLoading(true);
+    setTelegramError("");
+    setTelegramHint("");
+    // Opened synchronously: a window opened after the await counts as an
+    // unsolicited popup and gets blocked. The deep link is known only later.
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    try {
+      const startResponse = await fetch("/api/admin/auth/telegram/start", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      let start: { loginUrl?: string; expiresIn?: number; message?: string } = {};
+      try { start = (await startResponse.json()) as typeof start; } catch { /* ignore malformed edge responses */ }
+      if (!startResponse.ok || !start.loginUrl) {
+        throw new Error(start.message || `无法发起 Telegram 登录（HTTP ${startResponse.status}）`);
+      }
+      if (popup) popup.location.href = start.loginUrl;
+      else window.open(start.loginUrl, "_blank");
+      setTelegramHint("已打开 Telegram 机器人，请在那里点击「✅ 确认登录」完成验证，本页面会自动跳转。");
+      const deadline = Date.now() + Math.min((start.expiresIn ?? 300) * 1000, TELEGRAM_LOGIN_TIMEOUT_MS);
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, TELEGRAM_POLL_INTERVAL_MS));
+        if (Date.now() >= deadline) {
+          throw new Error("登录请求已超时，请重新点击「使用 Telegram 登录」。");
+        }
+        const statusResponse = await fetch("/api/admin/auth/telegram/status", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        let status: { status?: string; message?: string } = {};
+        try { status = (await statusResponse.json()) as typeof status; } catch { /* ignore malformed edge responses */ }
+        if (!statusResponse.ok) throw new Error(status.message || `登录状态查询失败（HTTP ${statusResponse.status}）`);
+        if (status.status === "approved") {
+          window.location.assign("/admin");
+          return;
+        }
+        if (status.status === "cancelled") {
+          setTelegramHint("");
+          setTelegramError("本次 Telegram 登录已在机器人中取消。");
+          return;
+        }
+      }
+    } catch (error) {
+      setTelegramHint("");
+      setTelegramError(error instanceof Error ? error.message : "Telegram 登录失败，请重试");
+    } finally {
+      setTelegramLoading(false);
     }
   };
 
@@ -69,6 +132,27 @@ export function LoginPage() {
           {message ? <p role="alert" className="text-sm text-[var(--color-danger)]">{message}</p> : null}
           <p className="text-center text-xs text-[var(--color-muted-soft)]">密码可在「系统设置」中修改。</p>
         </form>
+        <div className="border-t border-[var(--color-edge-soft)] p-6">
+          <div className="flex items-center gap-3 text-xs text-[var(--color-muted-soft)]">
+            <span className="h-px flex-1 bg-[var(--color-edge-soft)]" />
+            或者
+            <span className="h-px flex-1 bg-[var(--color-edge-soft)]" />
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline mt-4 w-full"
+            onClick={telegramLogin}
+            disabled={telegramLoading}
+          >
+            {telegramLoading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+            {telegramLoading ? "等待 Telegram 确认…" : "使用 Telegram 登录"}
+          </button>
+          <p className="mt-3 text-xs leading-relaxed text-[var(--color-muted-soft)]">
+            点击后会打开 Telegram 机器人；确认登录必须在 Telegram 机器人里点击「✅ 确认登录」，本页面不能自行完成验证。
+          </p>
+          {telegramHint ? <p className="mt-2 text-xs text-[var(--color-primary)]">{telegramHint}</p> : null}
+          {telegramError ? <p role="alert" className="mt-2 text-sm text-[var(--color-danger)]">{telegramError}</p> : null}
+        </div>
       </div>
     </div>
   );

@@ -17,15 +17,7 @@ export type SurveyQuestionType =
   | "video"
   | "audio";
 
-export type MediaType =
-  | "photo"
-  | "video"
-  | "audio"
-  | "voice"
-  | "animation"
-  | "gif"
-  | "sticker"
-  | "document";
+export type MediaType = "photo" | "video" | "audio" | "voice" | "animation" | "gif" | "sticker" | "document";
 
 export interface SurveyMedia {
   id: string;
@@ -49,7 +41,7 @@ export interface SurveyOption {
   label: string;
   value: string;
   order: number;
-  media?: SurveyMedia;
+  media?: SurveyMedia[];
 }
 
 export interface SurveyValidation {

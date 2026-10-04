@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Copy, Paperclip, Plus, Trash2, Upload, X } from "lucide-react";
+import { Copy, GitBranch, Paperclip, Plus, Trash2, Upload, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -18,9 +18,13 @@ const EDITABLE_TYPES = new Set([
   "video",
   "audio",
   "file",
+  "note",
 ]);
 
 const CHOICE_TYPES = new Set(["single", "multiple", "yes_no", "rating"]);
+// 跳转只在"选一个"的题型上生效：引擎按选中项匹配规则，
+// 多选/矩阵没有单一选中项，配了也不会触发。
+const JUMPABLE_TYPES = new Set(["single", "yes_no", "rating"]);
 const MEDIA_TYPES = new Set(["image", "video", "audio", "file"]);
 
 export function isEditableType(type: string): boolean {
@@ -177,6 +181,8 @@ export function QuestionCard({
   const [mediaBusy, setMediaBusy] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const editableNow = editable && isEditableType(question.type);
+  const isNote = question.type === "note";
+  const jumpable = JUMPABLE_TYPES.has(question.type) && editableNow;
   const validation = question.validation ?? {};
   const commitValidation = (patch: Record<string, number | boolean>) => {
     const next = { ...validation, ...patch };
@@ -187,6 +193,34 @@ export function QuestionCard({
     onLocalChange(question.id, { columns });
     onFieldCommit(question.id, { settings: { columns } }, "矩阵列");
   };
+  // 每个选项的跳转目标存在 condition.rules 里（optionId → targetQuestionId）。
+  // UI 按"选项 → 下拉选目标"呈现：未设置 = 顺序继续。
+  const branchByOption = (() => {
+    const map = new Map<number, number>();
+    const savedRules = (question.condition as { rules?: unknown } | null)?.rules;
+    if (Array.isArray(savedRules)) {
+      for (const rule of savedRules) {
+        if (!rule || typeof rule !== "object") continue;
+        const item = rule as Record<string, unknown>;
+        const optionId = Number(item.optionId);
+        const target = Number(item.targetQuestionId);
+        if (optionId > 0 && target > 0) map.set(optionId, target);
+      }
+    }
+    return map;
+  })();
+  const commitBranch = (optionId: number, targetQuestionId: number | null) => {
+    const next = new Map(branchByOption);
+    if (targetQuestionId === null) next.delete(optionId);
+    else next.set(optionId, targetQuestionId);
+    const rules = question.options
+      .filter((option) => next.has(option.id))
+      .map((option) => ({ optionId: option.id, targetQuestionId: next.get(option.id)! }));
+    const condition = rules.length ? { kind: "option_equals", rules } : null;
+    onLocalChange(question.id, { condition });
+    onFieldCommit(question.id, { condition }, "跳转规则");
+  };
+  const availableTargets = allQuestions.filter((item) => item.id !== question.id && item.order > question.order);
   const runMediaAction = async (key: string, action: () => Promise<boolean>) => {
     setMediaBusy(key);
     setMediaError(null);
@@ -293,13 +327,13 @@ export function QuestionCard({
 
       <div className="q-body">
         <label className="q-field">
-          <span className="q-label">题目标题</span>
+          <span className="q-label">{isNote ? "段落标题（显示为小标题，可留空）" : "题目标题"}</span>
           <input
             className="q-title-input"
             defaultValue={question.title}
             key={`title-${question.id}-${question.title}`}
             disabled={!editableNow}
-            placeholder="输入题目标题"
+            placeholder={isNote ? "如：序章 · 深夜来信" : "输入题目标题"}
             onBlur={(event) => {
               const next = event.target.value.trim();
               if (next && next !== question.title) {
@@ -311,45 +345,54 @@ export function QuestionCard({
         </label>
 
         <label className="q-field">
-          <span className="q-label">描述 / 帮助文本（可选）</span>
+          <span className="q-label">{isNote ? "剧情正文（支持换行分段）" : "描述 / 帮助文本（可选）"}</span>
           <textarea
-            className="q-desc-input"
+            className={`q-desc-input ${isNote ? "is-note-body" : ""}`}
             defaultValue={question.description ?? ""}
             key={`description-${question.id}-${question.description ?? ""}`}
             disabled={!editableNow}
-            placeholder="给答题者的一段说明（可选）"
+            placeholder={
+              isNote
+                ? "在这里写剧情…\n\n空行分段，答题者会先读到这段内容，再继续后面的题目或分支。"
+                : "给答题者的一段说明（可选）"
+            }
             onBlur={(event) => {
               const next = event.target.value.trim() || null;
               if (next !== question.description) {
                 onLocalChange(question.id, { description: next });
-                onFieldCommit(question.id, { description: next }, "题目描述");
+                onFieldCommit(question.id, { description: next }, isNote ? "剧情正文" : "题目描述");
               }
             }}
           />
+          {isNote ? (
+            <span className="q-help">剧情文段不收集答案；可上传插图作配图，之后的题目选项可把答题者跳转到不同文段。</span>
+          ) : null}
         </label>
 
-        <div className="q-switch-row">
-          <div>
-            <div className="q-label">必答</div>
-            <div className="q-help">开启后，答题者必须回答此题才能继续</div>
+        {!isNote ? (
+          <div className="q-switch-row">
+            <div>
+              <div className="q-label">必答</div>
+              <div className="q-help">开启后，答题者必须回答此题才能继续</div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={question.required}
+              className="switch"
+              data-on={question.required}
+              disabled={!editableNow}
+              onClick={() => {
+                const next = !question.required;
+                onLocalChange(question.id, { required: next });
+                onFieldCommit(question.id, { required: next }, "必答设置");
+              }}
+            />
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={question.required}
-            className="switch"
-            data-on={question.required}
-            disabled={!editableNow}
-            onClick={() => {
-              const next = !question.required;
-              onLocalChange(question.id, { required: next });
-              onFieldCommit(question.id, { required: next }, "必答设置");
-            }}
-          />
-        </div>
+        ) : null}
 
         <div className="q-field">
-          <span className="q-label">题面附件（图片 / 视频 / 音频 / 文件，可选）</span>
+          <span className="q-label">{isNote ? "剧情配图 / 附件（可选）" : "题面附件（图片 / 视频 / 音频 / 文件，可选）"}</span>
           {question.media.length ? (
             <div className="flex flex-wrap items-center gap-2">
               {question.media.map((media) => (
@@ -422,106 +465,17 @@ export function QuestionCard({
           </label>
         ) : null}
 
-        {(CHOICE_TYPES.has(question.type) || question.type === "matrix") && editableNow ? (
-          <div className="q-field">
-            <span className="q-label">跳题规则（可选）</span>
-            {(() => {
-              type Rule = { optionId: number; targetQuestionId: number };
-              const savedRules = (question.condition as { rules?: unknown } | null)?.rules;
-              const rules: Rule[] = Array.isArray(savedRules)
-                ? savedRules.flatMap((rule) => {
-                    if (!rule || typeof rule !== "object") return [];
-                    const item = rule as Record<string, unknown>;
-                    const optionId = Number(item.optionId);
-                    const target = Number(item.targetQuestionId);
-                    return optionId > 0 && target > 0 ? [{ optionId, targetQuestionId: target }] : [];
-                  })
-                : [];
-              const availableTargets = allQuestions.filter(
-                (item) => item.id !== question.id && item.order > question.order,
-              );
-              const commitRules = (nextRules: Rule[]) => {
-                const condition = nextRules.length ? { kind: "option_equals", rules: nextRules } : null;
-                onLocalChange(question.id, { condition });
-                onFieldCommit(question.id, { condition }, "跳题规则");
-              };
-              return (
-                <div className="grid gap-2">
-                  {rules.map((rule, index) => (
-                    <div key={`${rule.optionId}-${index}`} className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs" style={{ color: "var(--color-muted)" }}>
-                        当
-                      </span>
-                      <select
-                        className="q-select min-w-32 flex-1"
-                        value={rule.optionId}
-                        onChange={(event) => {
-                          const next = [...rules];
-                          next[index] = { ...rule, optionId: Number(event.target.value) };
-                          commitRules(next);
-                        }}
-                      >
-                        {question.options.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-xs" style={{ color: "var(--color-muted)" }}>
-                        跳到
-                      </span>
-                      <select
-                        className="q-select min-w-40 flex-1"
-                        value={rule.targetQuestionId}
-                        onChange={(event) => {
-                          const next = [...rules];
-                          next[index] = { ...rule, targetQuestionId: Number(event.target.value) };
-                          commitRules(next);
-                        }}
-                      >
-                        {availableTargets.map((target) => (
-                          <option key={target.id} value={target.id}>
-                            第 {allQuestions.indexOf(target) + 1} 题：{target.title || "未命名题目"}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger-hover"
-                        title="删除这条规则"
-                        onClick={() => commitRules(rules.filter((_, ruleIndex) => ruleIndex !== index))}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    disabled={!question.options.length || !availableTargets.length}
-                    onClick={() =>
-                      commitRules([
-                        ...rules,
-                        { optionId: question.options[0]!.id, targetQuestionId: availableTargets[0]!.id },
-                      ])
-                    }
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    添加规则
-                  </button>
-                </div>
-              );
-            })()}
-            <p className="q-help">每条规则对应一个选项；目标题目只能选择当前题目之后的题目。</p>
-          </div>
-        ) : null}
-
         {CHOICE_TYPES.has(question.type) || question.type === "matrix" ? (
           <div className="q-field">
             <span className="q-label">
               {question.type === "matrix" ? "行选项" : "选项"}
               <span className="ml-1 q-help">（修改文案不会影响已有答案关联）</span>
             </span>
+            {jumpable ? (
+              <span className="q-help">
+                每个选项可设置「选择后跳转」：选它的人会直接跳到目标题目或剧情文段，实现不同答案不同剧情。
+              </span>
+            ) : null}
             {question.options.map((option) => (
               <div key={option.id}>
                 <div className="q-option-row">
@@ -590,6 +544,28 @@ export function QuestionCard({
                         <span>{mediaBusy === `option-upload-${option.id}` ? "上传中…" : "选项媒体"}</span>
                       </label>
                     ) : null}
+                  </div>
+                ) : null}
+                {jumpable ? (
+                  <div className="q-branch-row">
+                    <GitBranch className="h-3.5 w-3.5 shrink-0" />
+                    <span className="q-branch-label">选择后</span>
+                    <select
+                      className="q-branch-select"
+                      value={branchByOption.get(option.id) ?? ""}
+                      disabled={!editableNow}
+                      onChange={(event) =>
+                        commitBranch(option.id, event.target.value === "" ? null : Number(event.target.value))
+                      }
+                    >
+                      <option value="">按顺序继续</option>
+                      {availableTargets.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.type === "note" ? "📖 " : ""}
+                          {allQuestions.indexOf(target) + 1}. {target.title || "未命名"}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ) : null}
               </div>

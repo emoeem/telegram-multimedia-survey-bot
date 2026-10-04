@@ -29,6 +29,7 @@ export function UsersPage() {
   const [searchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [tagInput, setTagInput] = useState("");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number | null>(null);
@@ -36,10 +37,16 @@ export function UsersPage() {
 
   // Debounce the free-text search so a keystroke doesn't fire a request each
   // time; the directory search is an unindexed LIKE scan on the server.
+  // Both filters feed the same unindexed LIKE scan on the server, so both are
+  // debounced: applying the tag on every keystroke fired one full scan per
+  // character.
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setTag(tagInput.trim());
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, tagInput]);
 
   const [detail, setDetail] = useState<UserDetailData | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -153,9 +160,9 @@ export function UsersPage() {
           <input
             className="input"
             placeholder="按标签筛选"
-            value={tag}
+            value={tagInput}
             onChange={(event) => {
-              setTag(event.target.value);
+              setTagInput(event.target.value);
               setPage(1);
             }}
           />

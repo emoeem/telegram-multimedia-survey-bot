@@ -25,6 +25,15 @@ class CaptionOptions:
     user_tag: bool = True
     date_tag: bool = True
     include_link: bool = False
+    # machine-readable "#m_<chat>_<msg>" marker, used to detect a post that was
+    # actually delivered before the process died (prevents duplicate archives)
+    marker: bool = True
+
+
+def idempotency_marker(chat_id: int, tg_message_id: int) -> str:
+    """Unique, searchable marker for one source message."""
+
+    return "#" + hashtag(f"{chat_id}_{tg_message_id}", "m")
 
 
 def hashtag(value: str, prefix: str) -> str:
@@ -94,6 +103,20 @@ def _fit(text: str, limit: int) -> str:
     return cut + ELLIPSIS
 
 
+def _fit_body(text: str, limit: int, *reserved: str) -> str:
+    """Truncate the body so the tags and metadata lines still fit.
+
+    Truncating the assembled caption instead cut its tail -- which is exactly
+    the 📅/📌 source line (and the deep link), leaving archived posts
+    untraceable to their original message.
+    """
+
+    budget = limit - sum(len(part) for part in reserved) - len(reserved)
+    if budget <= len(ELLIPSIS):
+        return ""
+    return _fit(text, budget)
+
+
 def build_caption(
     msg: NormalizedMessage,
     chat_title: str,
@@ -115,10 +138,11 @@ def build_caption(
         msg.date,
         opts.include_link,
     )
-    body = msg.text or ""
-    if msg.has_media:
-        # Media caption: hashtags + original caption + source line.
-        content = "\n".join(part for part in (tags, body, meta) if part)
-        return _fit(content, CAPTION_LIMIT)
-    content = "\n".join(part for part in (tags, body, meta) if part)
-    return _fit(content, TEXT_LIMIT)
+    limit = CAPTION_LIMIT if msg.has_media else TEXT_LIMIT
+    marker = (
+        idempotency_marker(msg.tg_chat_id, msg.tg_message_id) if opts.marker else ""
+    )
+    # Media caption: hashtags + original caption + source line. The body is
+    # truncated so that the marker and the source line always survive.
+    body = _fit_body(msg.text or "", limit, tags, marker, meta)
+    return "\n".join(part for part in (tags, marker, body, meta) if part)

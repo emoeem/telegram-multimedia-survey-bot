@@ -1,12 +1,19 @@
-import type { MediaAsset, MediaType } from "../schema";
+import type { MediaAsset, MediaAssetScope, MediaStorageKind, MediaType } from "../schema";
 
 const OPTION_ID_BATCH_SIZE = 90;
+/** D1 caps bound parameters per statement; ids are looked up 90 at a time. */
+const MEDIA_ID_BATCH_SIZE = 90;
 
 interface MediaAssetRow {
   id: number;
+  asset_scope?: string;
   media_type: string;
   telegram_file_id: string | null;
   telegram_file_unique_id: string | null;
+  url: string | null;
+  storage_kind: string;
+  storage_key: string | null;
+  expires_at: string | null;
   mime_type: string | null;
   file_name: string | null;
   file_size: number | null;
@@ -21,9 +28,14 @@ interface MediaAssetRow {
 function mapMediaAsset(row: MediaAssetRow): MediaAsset {
   return {
     id: row.id,
+    scope: (row.asset_scope ?? "legacy") as MediaAssetScope,
     mediaType: row.media_type as MediaType,
     telegramFileId: row.telegram_file_id,
     telegramFileUniqueId: row.telegram_file_unique_id,
+    url: row.url,
+    storageKind: (row.storage_kind ?? "telegram") as MediaStorageKind,
+    storageKey: row.storage_key,
+    expiresAt: row.expires_at,
     mimeType: row.mime_type,
     fileName: row.file_name,
     fileSize: row.file_size,
@@ -39,9 +51,14 @@ function mapMediaAsset(row: MediaAssetRow): MediaAsset {
 export async function createMediaAsset(
   db: D1Database,
   input: {
+    scope?: MediaAssetScope;
     mediaType: MediaType;
     telegramFileId?: string | null;
     telegramFileUniqueId?: string | null;
+    url?: string | null;
+    storageKind?: MediaStorageKind;
+    storageKey?: string | null;
+    expiresAt?: string | null;
     mimeType?: string | null;
     fileName?: string | null;
     fileSize?: number | null;
@@ -55,15 +72,21 @@ export async function createMediaAsset(
   const result = await db
     .prepare(
       `INSERT INTO media_assets (
-        media_type, telegram_file_id, telegram_file_unique_id,
+        asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
+        url, storage_kind, storage_key, expires_at,
         mime_type, file_name, file_size, width, height, duration,
         r2_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
+      input.scope ?? "survey",
       input.mediaType,
       input.telegramFileId ?? null,
       input.telegramFileUniqueId ?? null,
+      input.url ?? null,
+      input.storageKind ?? "telegram",
+      input.storageKey ?? null,
+      input.expiresAt ?? null,
       input.mimeType ?? null,
       input.fileName ?? null,
       input.fileSize ?? null,
@@ -89,16 +112,38 @@ export async function createMediaAsset(
   return asset;
 }
 
-export async function getMediaAssetById(
-  db: D1Database,
-  id: number,
-): Promise<MediaAsset | null> {
-  const row = await db
-    .prepare("SELECT * FROM media_assets WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<MediaAssetRow>();
+export async function getMediaAssetById(db: D1Database, id: number): Promise<MediaAsset | null> {
+  const row = await db.prepare("SELECT * FROM media_assets WHERE id = ? LIMIT 1").bind(id).first<MediaAssetRow>();
 
   return row ? mapMediaAsset(row) : null;
+}
+
+/**
+ * Loads many media assets in batched `IN (...)` queries.
+ *
+ * Report rendering resolves every image of a profile; doing that one
+ * `getMediaAssetById` per image was an N+1 that scaled with the number of
+ * images on a response. Callers that already know every id they need should
+ * use this instead of looping over the single-row getter.
+ */
+export async function getMediaAssetsByIds(db: D1Database, ids: readonly number[]): Promise<Map<number, MediaAsset>> {
+  const uniqueIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  const assets = new Map<number, MediaAsset>();
+  if (uniqueIds.length === 0) return assets;
+
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(`SELECT * FROM media_assets WHERE id IN (${placeholders})`)
+      .bind(...batch)
+      .all<MediaAssetRow>();
+    for (const row of result.results ?? []) {
+      assets.set(row.id, mapMediaAsset(row));
+    }
+  }
+
+  return assets;
 }
 
 export async function createQuestionMedia(
@@ -116,12 +161,7 @@ export async function createQuestionMedia(
         question_id, media_asset_id, sort_order, created_at
       ) VALUES (?, ?, ?, ?)`,
     )
-    .bind(
-      input.questionId,
-      input.mediaAssetId,
-      input.sortOrder ?? 0,
-      timestamp,
-    )
+    .bind(input.questionId, input.mediaAssetId, input.sortOrder ?? 0, timestamp)
     .run();
 }
 
@@ -146,14 +186,58 @@ export async function getQuestionMediaByQuestionId(
   }));
 }
 
-export async function deleteQuestionMedia(
+/**
+ * Loads the media bindings for many questions in batched `IN (...)` queries.
+ *
+ * Restoring a draft or rendering a response report needs the bindings for
+ * every question on the survey; the single-id getter turned that into one
+ * SELECT per question.
+ */
+export async function getQuestionMediaByQuestionIds(
   db: D1Database,
-  questionMediaId: number,
-): Promise<void> {
-  await db
-    .prepare("DELETE FROM question_media WHERE id = ?")
-    .bind(questionMediaId)
+  questionIds: readonly number[],
+): Promise<Array<{ id: number; questionId: number; mediaAssetId: number; sortOrder: number }>> {
+  const uniqueIds = [...new Set(questionIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const media: Array<{ id: number; questionId: number; mediaAssetId: number; sortOrder: number }> = [];
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(
+        `SELECT id, question_id, media_asset_id, sort_order
+         FROM question_media
+         WHERE question_id IN (${placeholders})
+         ORDER BY question_id ASC, sort_order ASC, id ASC`,
+      )
+      .bind(...batch)
+      .all<{ id: number; question_id: number; media_asset_id: number; sort_order: number }>();
+    media.push(
+      ...(result.results ?? []).map((row) => ({
+        id: row.id,
+        questionId: row.question_id,
+        mediaAssetId: row.media_asset_id,
+        sortOrder: row.sort_order,
+      })),
+    );
+  }
+  return media;
+}
+
+export async function deleteQuestionMedia(db: D1Database, questionMediaId: number): Promise<void> {
+  await db.prepare("DELETE FROM question_media WHERE id = ?").bind(questionMediaId).run();
+}
+
+/** Removes every question_media binding between one question and one asset. */
+export async function deleteQuestionMediaByAsset(
+  db: D1Database,
+  questionId: number,
+  mediaAssetId: number,
+): Promise<number> {
+  const result = await db
+    .prepare("DELETE FROM question_media WHERE question_id = ? AND media_asset_id = ?")
+    .bind(questionId, mediaAssetId)
     .run();
+  return result.meta?.changes ?? 0;
 }
 
 export async function createAnswerMedia(
@@ -196,6 +280,37 @@ export async function getAnswerMediaByAnswerId(
   }));
 }
 
+/** Batched form of {@link getAnswerMediaByAnswerId} for a full response report. */
+export async function getAnswerMediaByAnswerIds(
+  db: D1Database,
+  answerIds: readonly number[],
+): Promise<Array<{ id: number; answerId: number; mediaAssetId: number; sortOrder: number }>> {
+  const uniqueIds = [...new Set(answerIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const media: Array<{ id: number; answerId: number; mediaAssetId: number; sortOrder: number }> = [];
+  for (let start = 0; start < uniqueIds.length; start += MEDIA_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(start, start + MEDIA_ID_BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    const result = await db
+      .prepare(
+        `SELECT id, answer_id, media_asset_id, sort_order
+         FROM answer_media
+         WHERE answer_id IN (${placeholders})
+         ORDER BY answer_id ASC, sort_order ASC, id ASC`,
+      )
+      .bind(...batch)
+      .all<{ id: number; answer_id: number; media_asset_id: number; sort_order: number }>();
+    media.push(
+      ...(result.results ?? []).map((row) => ({
+        id: row.id,
+        answerId: row.answer_id,
+        mediaAssetId: row.media_asset_id,
+        sortOrder: row.sort_order,
+      })),
+    );
+  }
+  return media;
+}
+
 export async function createOptionMedia(
   db: D1Database,
   input: {
@@ -236,6 +351,146 @@ export async function getOptionMediaByOptionId(
   }));
 }
 
+export interface TemporaryMediaRow {
+  id: number;
+  storageKey: string | null;
+  expiresAt: string | null;
+  mimeType: string | null;
+}
+
+/**
+ * Temporary (KV-backed) media of a response that is still inside its
+ * retention window, newest first. Rows promoted to durable storage on
+ * completion keep `expires_at = NULL` and are deliberately excluded, so any
+ * cleanup that walks this list can never delete an archived answer's photos.
+ */
+export async function listTemporaryMediaByResponse(db: D1Database, responseId: number): Promise<TemporaryMediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE r.id = ? AND m.storage_kind = 'temporary'
+        AND m.expires_at IS NOT NULL
+       ORDER BY m.id DESC`,
+    )
+    .bind(responseId)
+    .all<TemporaryMediaRow>();
+  return result.results ?? [];
+}
+
+/**
+ * Every KV-backed media row of a response, including the ones already
+ * promoted to durable storage (used to make promotion idempotent), newest
+ * first.
+ */
+export async function listResponseMediaForPromotion(db: D1Database, responseId: number): Promise<TemporaryMediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE r.id = ? AND m.storage_kind = 'temporary'
+       ORDER BY m.id DESC`,
+    )
+    .bind(responseId)
+    .all<TemporaryMediaRow>();
+  return result.results ?? [];
+}
+
+export interface RetainableMediaRow extends TemporaryMediaRow {
+  responseId: number;
+}
+
+/**
+ * Temporary media that belongs to an already finished response, oldest expiry
+ * first. Bounded and index-backed (`idx_media_assets_temp_expiry`) so the
+ * retention sweep can run on a schedule without repeating the 2026-09-14
+ * rows-read incident. Used to retain media of responses submitted before
+ * retention existed.
+ */
+export async function listRetainableCompletedMedia(db: D1Database, limit: number): Promise<RetainableMediaRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT m.id, m.storage_key storageKey, m.expires_at expiresAt, m.mime_type mimeType, r.id responseId
+       FROM media_assets m
+       JOIN answer_media am ON am.media_asset_id = m.id
+       JOIN answers a ON a.id = am.answer_id
+       JOIN survey_responses r ON r.id = a.response_id
+       WHERE m.storage_kind = 'temporary'
+         AND m.storage_key IS NOT NULL
+         AND m.expires_at IS NOT NULL
+         AND r.status IN ('completed', 'archived')
+       ORDER BY m.expires_at ASC, m.id ASC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all<RetainableMediaRow>();
+  return result.results ?? [];
+}
+
+/**
+ * Points an existing asset row at long-lived storage and clears its expiry.
+ * Used when a completed response's attachments leave the temporary namespace;
+ * the asset id (and every answer reference to it) stays valid.
+ */
+export async function markMediaAssetDurable(
+  db: D1Database,
+  id: number,
+  storageKey: string,
+  updatedAt = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_assets
+       SET storage_key = ?, expires_at = NULL, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(storageKey, updatedAt, id)
+    .run();
+}
+
+export async function sumTemporaryMediaBytesForResponse(db: D1Database, responseId: number): Promise<number> {
+  // Count every still-temporary blob of the response, not just the ones already
+  // attached to an answer. The previous JOIN through answer_media returned 0 for
+  // uploads the participant had not yet saved, so a caller could loop
+  // `POST .../media` and blow past the per-response byte cap without ever
+  // saving an answer. The key is minted as `media:temp:<responseId>:<uuid>`.
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(m.file_size), 0) AS total
+       FROM media_assets m
+       WHERE m.storage_kind = 'temporary'
+         AND m.storage_key LIKE 'media:temp:' || ? || ':%'
+         AND m.expires_at IS NOT NULL`,
+    )
+    .bind(responseId)
+    .first<{ total: number | null }>();
+  return Number(row?.total ?? 0);
+}
+
+/** Marks an asset as expired and detaches its blob reference. Callers delete
+ * the underlying object first; the row (and answer linkage) is preserved so
+ * structured answers stay traceable after the image is gone. */
+export async function expireMediaAsset(
+  db: D1Database,
+  id: number,
+  expiredAt = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_assets
+       SET storage_key = NULL, expires_at = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(expiredAt, new Date().toISOString(), id)
+    .run();
+}
+
 export async function listOptionMediaByOptionIds(
   db: D1Database,
   questionOptionIds: number[],
@@ -258,11 +513,7 @@ export async function listOptionMediaByOptionIds(
     mediaAssetId: number;
     sortOrder: number;
   }> = [];
-  for (
-    let start = 0;
-    start < uniqueOptionIds.length;
-    start += OPTION_ID_BATCH_SIZE
-  ) {
+  for (let start = 0; start < uniqueOptionIds.length; start += OPTION_ID_BATCH_SIZE) {
     const optionIdBatch = uniqueOptionIds.slice(start, start + OPTION_ID_BATCH_SIZE);
     const placeholders = optionIdBatch.map(() => "?").join(",");
     const result = await db
@@ -292,9 +543,19 @@ export async function listOptionMediaByOptionIds(
   return media;
 }
 
-export async function deleteOptionMedia(
-  db: D1Database,
-  optionMediaId: number,
-): Promise<void> {
+export async function deleteOptionMedia(db: D1Database, optionMediaId: number): Promise<void> {
   await db.prepare("DELETE FROM option_media WHERE id = ?").bind(optionMediaId).run();
+}
+
+/** Removes every option_media binding between one option and one asset. */
+export async function deleteOptionMediaByAsset(
+  db: D1Database,
+  questionOptionId: number,
+  mediaAssetId: number,
+): Promise<number> {
+  const result = await db
+    .prepare("DELETE FROM option_media WHERE question_option_id = ? AND media_asset_id = ?")
+    .bind(questionOptionId, mediaAssetId)
+    .run();
+  return result.meta?.changes ?? 0;
 }

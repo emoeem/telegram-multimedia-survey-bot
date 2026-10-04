@@ -14,6 +14,10 @@ from .model import ChatInfo, NormalizedMessage
 from .normalizer import build_chat_info, normalize_message
 
 PAGE_SIZE = 200
+# Small pause between *full* history pages: GetHistoryRequest floods at roughly
+# 30 seconds per 10 requests, and unpaced backfills hit it immediately.
+PAGE_PAUSE_SECONDS = 0.25
+FLOOD_READ_RETRIES = 4
 
 
 class Collector:
@@ -145,30 +149,49 @@ class Collector:
             if not page:
                 return
             yield [normalize_message(raw_message, chat) for raw_message in page]
-            offset_id = page[-1].id
-            if len(page) < PAGE_SIZE:
+            last_id = page[-1].id
+            # A short page is NOT the end of history: Telethon warns that some
+            # channels return fewer messages than requested (e.g. messages
+            # "not displayable due to local laws"), so stopping on
+            # len(page) < PAGE_SIZE silently truncates all older history and
+            # pins the sync cursor past it. Only a non-advancing offset stops.
+            if last_id == offset_id:
                 return
+            offset_id = last_id
+            if len(page) >= PAGE_SIZE:
+                # small pause between full pages to stay below the GetHistory
+                # flood threshold (~30s per 10 requests)
+                await asyncio.sleep(PAGE_PAUSE_SECONDS)
 
-    async def _fetch_page(self, entity: Any, offset_id: int, after_id: Optional[int]):
+    async def _with_flood_retry(self, label: str, call: Any) -> Any:
+        """Await ``call()``, retrying FloodWaitError like Telethon does.
+
+        Used by every read path: an unretried flood used to escape
+        get_messages_batch() as a hard traceback that killed the run midway.
+        """
+
         from telethon.errors import FloodWaitError
 
-        for attempt in range(4):
+        for attempt in range(FLOOD_READ_RETRIES):
             try:
-                return await self.client.get_messages(
-                    entity,
-                    limit=PAGE_SIZE,
-                    offset_id=offset_id,
-                    min_id=after_id or 0,
-                )
+                return await call()
             except FloodWaitError as exc:
                 wait = min(max(int(getattr(exc, "seconds", 30)), 1), 300)
-                self.progress(f"  ⏳ 同步 FloodWait ~{wait}s（第 {attempt + 1} 次重试）")
+                self.progress(
+                    f"  ⏳ {label} FloodWait ~{wait}s（第 {attempt + 1} 次重试）"
+                )
                 await asyncio.sleep(wait)
-        return await self.client.get_messages(
-            entity,
-            limit=PAGE_SIZE,
-            offset_id=offset_id,
-            min_id=after_id or 0,
+        return await call()
+
+    async def _fetch_page(self, entity: Any, offset_id: int, after_id: Optional[int]):
+        return await self._with_flood_retry(
+            "同步",
+            lambda: self.client.get_messages(
+                entity,
+                limit=PAGE_SIZE,
+                offset_id=offset_id,
+                min_id=after_id or 0,
+            ),
         )
 
     async def get_message(self, entity: Any, msg_id: int) -> Optional[Any]:
@@ -180,7 +203,9 @@ class Collector:
     async def get_messages_batch(self, entity: Any, msg_ids: list[int]) -> dict[int, Any]:
         if not msg_ids:
             return {}
-        result = await self.client.get_messages(entity, ids=msg_ids)
+        result = await self._with_flood_retry(
+            "取回消息", lambda: self.client.get_messages(entity, ids=msg_ids)
+        )
         by_id: dict[int, Any] = {}
         for msg in (result if isinstance(result, (list, tuple)) else [result]):
             mid = getattr(msg, "id", None)

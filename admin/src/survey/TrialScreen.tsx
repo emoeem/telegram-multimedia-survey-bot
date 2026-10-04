@@ -27,8 +27,10 @@ import {
   type TrialPersona,
   type TrialRun,
   type TrialRunStatus,
+  type TrialShopEconomy,
   type TrialTask,
 } from "./trial-api";
+import type { UnlockedAchievement } from "./api";
 
 const AGREEMENT_KEY = "trialAdultAgreement:v1";
 
@@ -110,6 +112,7 @@ export function TrialScreen() {
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [packs, setPacks] = useState<TrialPack[] | null>(null);
   const [submissionBotUrl, setSubmissionBotUrl] = useState<string | null>(null);
+  const [shopEconomy, setShopEconomy] = useState<TrialShopEconomy | null>(null);
   const [packsError, setPacksError] = useState<string | null>(null);
   const [persona, setPersona] = useState<TrialPersona | null>(null);
   const [mode, setMode] = useState<TrialMode>("normal");
@@ -134,6 +137,7 @@ export function TrialScreen() {
     grade: TrialGrade;
     copy: TrialGradeCopy;
     run: TrialRun;
+    newAchievements?: UnlockedAchievement[];
   } | null>(null);
   const lastConfigRef = useRef<{ packId: number; persona: TrialPersona; mode: TrialMode; startFloor: number } | null>(
     null,
@@ -163,6 +167,13 @@ export function TrialScreen() {
     const theme = resolvedPreset ? { preset: resolvedPreset } : null;
     return { vars: themeCssVars(theme), background: themeBackgroundStyle(theme) };
   }, [resolvedPreset]);
+
+  // 文案跟随配置的投稿机器人链接，避免写死 handle 与配置漂移。
+  const submissionBotHandle = useMemo(() => {
+    if (!submissionBotUrl) return "投稿机器人";
+    const match = submissionBotUrl.match(/t\.me\/([A-Za-z0-9_]+)/);
+    return match ? `@${match[1]}` : "投稿机器人";
+  }, [submissionBotUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +220,7 @@ export function TrialScreen() {
         if (cancelled) return;
         setPacks(response.packs);
         setSubmissionBotUrl(response.submissionBotUrl);
+        setShopEconomy(response.shop ?? null);
         if (response.packs.length > 0) {
           setPackId((current) => current ?? response.packs[0]?.id ?? null);
         }
@@ -348,7 +360,12 @@ export function TrialScreen() {
       if (response.run.status === "completed" && response.grade && response.gradeCopy) {
         vibrateSuccess();
         notify(`挑战完成 · ${response.grade}`, response.gradeCopy.title);
-        setSettlement({ grade: response.grade, copy: response.gradeCopy, run: response.run });
+        setSettlement({
+          grade: response.grade,
+          copy: response.gradeCopy,
+          run: response.run,
+          newAchievements: response.newAchievements?.length ? response.newAchievements : undefined,
+        });
         setHistory(null);
         setScreen("done");
       } else if (response.run.status === "abandoned") {
@@ -377,21 +394,31 @@ export function TrialScreen() {
     }
   };
 
+  // Prices/caps/coin ranges are authoritative from the server (single source of
+  // truth in the engine); the local config only supplies labels and fallbacks.
+  const priceOf = (kind: string): number =>
+    shopEconomy?.prices[kind as keyof TrialShopEconomy["prices"]] ?? SHOP_PRICES[kind] ?? 0;
+  const capOf = (kind: string): number =>
+    shopEconomy?.caps[kind as keyof TrialShopEconomy["caps"]] ??
+    TRIAL_SHOP_CONFIG.items.find((item) => item.kind === kind)?.cap ??
+    0;
+  const rerollCap = shopEconomy?.rerollCap ?? 3;
+
   const shopTotal = () =>
-    shopQty.skipTickets * (SHOP_PRICES.skipTicket ?? 0) +
-    shopQty.boosters * (SHOP_PRICES.booster ?? 0) +
-    shopQty.shields * (SHOP_PRICES.shield ?? 0);
+    shopQty.skipTickets * priceOf("skipTicket") +
+    shopQty.boosters * priceOf("booster") +
+    shopQty.shields * priceOf("shield");
 
   const adjustShopQty = (kind: "skipTickets" | "boosters" | "shields", delta: number) => {
     setShopQty((current) => {
       const capKey = kind === "skipTickets" ? "skipTicket" : kind === "boosters" ? "booster" : "shield";
-      const cap = TRIAL_SHOP_CONFIG.items.find((item) => item.kind === capKey)?.cap ?? 0;
+      const cap = capOf(capKey);
       const next = Math.min(Math.max(current[kind] + delta, 0), cap);
       const candidate = { ...current, [kind]: next };
       const candidateCost =
-        candidate.skipTickets * (SHOP_PRICES.skipTicket ?? 0) +
-        candidate.boosters * (SHOP_PRICES.booster ?? 0) +
-        candidate.shields * (SHOP_PRICES.shield ?? 0);
+        candidate.skipTickets * priceOf("skipTicket") +
+        candidate.boosters * priceOf("booster") +
+        candidate.shields * priceOf("shield");
       if (run && candidateCost > run.coins) return current;
       return candidate;
     });
@@ -683,7 +710,7 @@ export function TrialScreen() {
           <span className="min-w-0 flex-1 text-left">
             <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
             <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-              通过 @tougaojiqirbot 投稿你的内容
+              通过 {submissionBotHandle} 投稿你的内容
             </span>
           </span>
           <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
@@ -718,16 +745,14 @@ export function TrialScreen() {
             >
               {activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
             </button>
-            {activeRun.phase !== "shop" ? (
-              <button
-                type="button"
-                disabled={busyActive}
-                onClick={() => void abandonFromHome()}
-                className="rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-2 text-sm font-medium text-[var(--survey-muted)] disabled:opacity-50"
-              >
-                放弃
-              </button>
-            ) : null}
+            <button
+              type="button"
+              disabled={busyActive}
+              onClick={() => void abandonFromHome()}
+              className="rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-2 text-sm font-medium text-[var(--survey-muted)] disabled:opacity-50"
+            >
+              放弃
+            </button>
           </div>
         </div>
       ) : null}
@@ -868,9 +893,17 @@ export function TrialScreen() {
 
   const renderShop = () => {
     if (!run) return null;
-    const coinRange = run.mode === "hell" ? TRIAL_SHOP_CONFIG.hellCoins : TRIAL_SHOP_CONFIG.normalCoins;
+    const economyRange = shopEconomy
+      ? run.mode === "hell"
+        ? shopEconomy.hellCoins
+        : shopEconomy.normalCoins
+      : run.mode === "hell"
+        ? TRIAL_SHOP_CONFIG.hellCoins
+        : TRIAL_SHOP_CONFIG.normalCoins;
     const total = shopTotal();
     const remaining = Math.max(0, run.coins - total);
+    const rerollsLeft = Math.max(0, rerollCap - (run.coinRerolls ?? 0));
+    const rerollDisabled = shopBusy || rerollsLeft <= 0;
     return (
       <>
         {renderHeader("开局商店", `${run.packName} · ${personaLabel(run.persona)} · ${modeLabel(run.mode)}`, true)}
@@ -888,16 +921,17 @@ export function TrialScreen() {
                   🪙 开局金币 <span className="text-xl font-black text-[var(--survey-primary)]">{run.coins}</span>
                 </p>
                 <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">
-                  {modeLabel(run.mode)}模式范围 {coinRange[0]}–{coinRange[1]}，可反复重摇
+                  {modeLabel(run.mode)}模式范围 {economyRange[0]}–{economyRange[1]}
+                  {rerollsLeft > 0 ? `，还可重摇 ${rerollsLeft} 次` : "，重摇次数已用完"}
                 </p>
               </div>
               <button
                 type="button"
-                disabled={shopBusy}
+                disabled={rerollDisabled}
                 onClick={() => void rerollCoins()}
                 className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-4 py-2 text-xs font-semibold text-[var(--survey-body)] disabled:opacity-50"
               >
-                {shopBusy ? "重摇中…" : "🎲 重摇金币"}
+                {shopBusy ? "重摇中…" : rerollsLeft > 0 ? `🎲 重摇金币（${rerollsLeft}）` : "重摇已用完"}
               </button>
             </div>
           </section>
@@ -907,8 +941,9 @@ export function TrialScreen() {
               const qtyKey =
                 item.kind === "skipTicket" ? "skipTickets" : item.kind === "booster" ? "boosters" : "shields";
               const qty = shopQty[qtyKey];
-              const price = SHOP_PRICES[item.kind] ?? 0;
-              const canAdd = qty < item.cap && (!run || total + price <= run.coins);
+              const price = priceOf(item.kind);
+              const cap = capOf(item.kind);
+              const canAdd = qty < cap && (!run || total + price <= run.coins);
               return (
                 <article
                   key={item.kind}
@@ -924,7 +959,7 @@ export function TrialScreen() {
                     </span>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[11px] text-[var(--survey-muted)]">单局上限 {item.cap}</span>
+                    <span className="text-[11px] text-[var(--survey-muted)]">单局上限 {cap}</span>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -968,6 +1003,14 @@ export function TrialScreen() {
               className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-50"
             >
               {shopBusy ? "出发中…" : total === 0 ? "不买东西，直接出发" : "购买并出发"}
+            </button>
+            <button
+              type="button"
+              disabled={shopBusy}
+              onClick={() => void act("abandon")}
+              className="mt-3 w-full py-2 text-center text-[13px] font-medium text-red-400 disabled:opacity-50"
+            >
+              放弃这一局
             </button>
             {selectedPack && (selectedPack.prepItems.length > 0 || selectedPack.prepText) ? (
               <p className="mt-3 rounded-lg border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-2.5 text-[11px] leading-5 text-[var(--survey-muted)]">
@@ -1021,7 +1064,8 @@ export function TrialScreen() {
                 )}
               </div>
               <p className="mt-1.5 text-xs leading-5 text-[var(--survey-muted)]">
-                {personaLabel(item.persona)} · {modeLabel(item.mode)} · 到达第 {item.maxFloor} 层 · 积分 {item.score} ·{" "}
+                {personaLabel(item.persona)} · {modeLabel(item.mode)} ·{" "}
+                {item.status === "completed" ? "到达" : "止步于"}第 {item.currentFloor} 层 · 积分 {item.score} ·{" "}
                 {formatDayTime(item.startedAt)}
               </p>
             </article>
@@ -1068,7 +1112,7 @@ export function TrialScreen() {
         </div>
 
         <p className="mt-1 text-[11px] text-[var(--survey-muted)]">
-          仅统计 Telegram 登录玩家的最好成绩，匿名挑战不上榜
+          仅统计 Telegram 实名玩家的最好成绩，匿名挑战不上榜
         </p>
         {boardLoading && boardEntries === null ? (
           <p className="text-sm text-[var(--survey-muted)]">加载中…</p>
@@ -1108,7 +1152,7 @@ export function TrialScreen() {
                     ) : null}
                   </p>
                   <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
-                    完成 {entry.completedTasks} 层 · {formatDayTime(entry.finishedAt)}
+                    完成 {entry.completedTasks} 题 · 爬过 {entry.floors} 层 · {formatDayTime(entry.finishedAt)}
                   </p>
                 </div>
                 <span className="shrink-0 text-right">
@@ -1120,7 +1164,7 @@ export function TrialScreen() {
           </div>
         )}
         <p className="text-center text-[11px] text-[var(--survey-muted)]">
-          只展示已完成并结算的挑战 · 匿名玩家仅显示尾号
+          只展示已完成并结算的挑战 · 每位玩家取最好一局
         </p>
       </main>
     );
@@ -1129,7 +1173,12 @@ export function TrialScreen() {
   const renderRun = () => {
     if (!run) return null;
     const warningUnacked = Boolean(task?.warning && warningAckId !== task.id);
-    const progress = Math.min(100, Math.round(((run.currentFloor - 1) / Math.max(1, run.maxFloor - 1)) * 100));
+    // 进度从起始层起算：一开局就在 0%，而不是按整栋楼显示 30%+。
+    const progressStart = run.startingFloor ?? 1;
+    const progress = Math.min(
+      100,
+      Math.max(0, Math.round(((run.currentFloor - progressStart) / Math.max(1, run.maxFloor - progressStart)) * 100)),
+    );
     return (
       <>
         {renderHeader(run.packName, `${personaLabel(run.persona)} · ${modeLabel(run.mode)}`, true)}
@@ -1188,10 +1237,10 @@ export function TrialScreen() {
               <span>
                 积分 <b className="text-base font-black text-[var(--survey-heading)]">{run.score}</b>
               </span>
-              <span className="flex items-center gap-2 text-[var(--survey-heading)]">
-                <span title="跳过券">🎫{run.inventory.skipTickets}</span>
-                <span title="加倍券">⚡{run.inventory.boosters}</span>
-                <span title="护盾">🛡{run.inventory.shields}</span>
+              <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[var(--survey-heading)]">
+                <span>🎫 跳过 ×{run.inventory.skipTickets}</span>
+                <span>⚡ 加倍 ×{run.inventory.boosters}</span>
+                <span>🛡 护盾 ×{run.inventory.shields}</span>
               </span>
             </div>
           </section>
@@ -1217,6 +1266,14 @@ export function TrialScreen() {
           ) : (
             <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 text-center text-sm text-[var(--survey-muted)]">
               正在抽取本层任务…
+              <button
+                type="button"
+                disabled={acting}
+                onClick={() => void act("abandon")}
+                className="mt-3 block w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2 text-[13px] font-medium text-[var(--survey-body)]"
+              >
+                抽不到任务？放弃本局并保留进度
+              </button>
             </section>
           )}
 
@@ -1310,6 +1367,26 @@ export function TrialScreen() {
               <p className="text-[11px] text-[var(--survey-muted)]">模式</p>
             </div>
           </div>
+
+          {settlement.newAchievements?.length ? (
+            <div className="mx-auto mt-5 max-w-md rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3">
+              <p className="text-xs font-semibold text-[var(--survey-heading)]">🏅 解锁新成就</p>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                {settlement.newAchievements.map((item) => (
+                  <span
+                    key={item.code}
+                    className="flex items-center gap-1.5 rounded-full bg-[var(--survey-primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--survey-heading)]"
+                  >
+                    <span aria-hidden>{item.icon}</span>
+                    {item.title}
+                  </span>
+                ))}
+              </div>
+              <a className="mt-2 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline" href="/me">
+                去「我的」看看全部徽章
+              </a>
+            </div>
+          ) : null}
 
           <div className="mx-auto mt-6 flex max-w-md flex-col gap-2">
             <button
@@ -1455,7 +1532,7 @@ export function TrialScreen() {
       data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
-      {renderHeader("🌆 挑战任务", "选一个任务包，从第一层开始往上爬", false)}
+      {renderHeader("🌆 挑战任务", "选一个任务包和起始层，一路向上挑战", false)}
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
       {renderThemePicker()}

@@ -1,9 +1,5 @@
-import {
-  activateLicense,
-  createLicense,
-  deactivateLicense,
-  validateLicense,
-} from "../services/license.service";
+import { activateLicense, createLicense, deactivateLicense, validateLicense } from "../services/license.service";
+import { createSoftwareRelease } from "../db/repositories/license.repository";
 
 const MAX_BODY_LENGTH = 16_384;
 const NO_STORE_HEADERS = {
@@ -29,8 +25,7 @@ function constantTimeEquals(expected: string, actual: string): boolean {
 
   let difference = 0;
   for (let index = 0; index < expectedBytes.length; index += 1) {
-    difference |=
-      (expectedBytes[index] ?? 0) ^ (actualBytes[index] ?? 0);
+    difference |= (expectedBytes[index] ?? 0) ^ (actualBytes[index] ?? 0);
   }
   return difference === 0;
 }
@@ -42,9 +37,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-async function readJsonObject(
-  request: Request,
-): Promise<Record<string, unknown>> {
+async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
   const contentLength = Number(request.headers.get("Content-Length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_LENGTH) {
     throw new LicenseApiInputError("请求内容过大");
@@ -65,21 +58,14 @@ async function readJsonObject(
   return value as Record<string, unknown>;
 }
 
-function requiredString(
-  body: Record<string, unknown>,
-  field: string,
-  minLength: number,
-  maxLength: number,
-): string {
+function requiredString(body: Record<string, unknown>, field: string, minLength: number, maxLength: number): string {
   const value = body[field];
   if (typeof value !== "string") {
     throw new LicenseApiInputError(`${field} 必须是字符串`);
   }
   const trimmed = value.trim();
   if (trimmed.length < minLength || trimmed.length > maxLength) {
-    throw new LicenseApiInputError(
-      `${field} 长度必须在 ${minLength} 到 ${maxLength} 个字符之间`,
-    );
+    throw new LicenseApiInputError(`${field} 长度必须在 ${minLength} 到 ${maxLength} 个字符之间`);
   }
   return trimmed;
 }
@@ -99,20 +85,14 @@ function parseLicenseRequest(body: Record<string, unknown>): LicenseRequestBody 
     }
     installationName = installationNameValue.trim();
     if (!installationName || installationName.length > 100) {
-      throw new LicenseApiInputError(
-        "installationName 长度必须在 1 到 100 个字符之间",
-      );
+      throw new LicenseApiInputError("installationName 长度必须在 1 到 100 个字符之间");
     }
   }
 
   const metadataValue = body.metadata;
   let metadata: Record<string, unknown> | undefined;
   if (metadataValue !== undefined) {
-    if (
-      !metadataValue ||
-      typeof metadataValue !== "object" ||
-      Array.isArray(metadataValue)
-    ) {
+    if (!metadataValue || typeof metadataValue !== "object" || Array.isArray(metadataValue)) {
       throw new LicenseApiInputError("metadata 必须是 JSON 对象");
     }
     if (JSON.stringify(metadataValue).length > 2_048) {
@@ -143,11 +123,7 @@ function parseDeactivateRequest(
   };
 }
 
-function optionalString(
-  body: Record<string, unknown>,
-  field: string,
-  maxLength: number,
-): string | null {
+function optionalString(body: Record<string, unknown>, field: string, maxLength: number): string | null {
   const value = body[field];
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") {
@@ -155,24 +131,14 @@ function optionalString(
   }
   const trimmed = value.trim();
   if (trimmed.length > maxLength) {
-    throw new LicenseApiInputError(
-      `${field} 不能超过 ${maxLength} 个字符`,
-    );
+    throw new LicenseApiInputError(`${field} 不能超过 ${maxLength} 个字符`);
   }
   return trimmed || null;
 }
 
-function positiveInteger(
-  body: Record<string, unknown>,
-  field: string,
-  fallback: number,
-): number {
+function positiveInteger(body: Record<string, unknown>, field: string, fallback: number): number {
   const value = body[field] ?? fallback;
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value <= 0
-  ) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new LicenseApiInputError(`${field} 必须是正整数`);
   }
   return value;
@@ -194,10 +160,7 @@ function parseCreateLicenseRequest(body: Record<string, unknown>): {
     throw new LicenseApiInputError("customerName 不能为空");
   }
 
-  if (
-    typeof period === "string" &&
-    period.trim().toLowerCase() === "forever"
-  ) {
+  if (typeof period === "string" && period.trim().toLowerCase() === "forever") {
     return {
       licenseType: "perpetual",
       updateDays: null,
@@ -214,14 +177,8 @@ function parseCreateLicenseRequest(body: Record<string, unknown>): {
       : typeof period === "string" && /^\d+$/.test(period.trim())
         ? Number(period)
         : Number.NaN;
-  if (
-    !Number.isInteger(usageDays) ||
-    usageDays <= 0 ||
-    usageDays > 36_500
-  ) {
-    throw new LicenseApiInputError(
-      "period 必须是 1 到 36500 之间的天数或 forever",
-    );
+  if (!Number.isInteger(usageDays) || usageDays <= 0 || usageDays > 36_500) {
+    throw new LicenseApiInputError("period 必须是 1 到 36500 之间的天数或 forever");
   }
   return {
     licenseType: "timed",
@@ -245,6 +202,7 @@ export async function handleLicenseApiRequest(
   request: Request,
   db: D1Database,
   adminToken?: string,
+  deploymentRole?: string,
 ): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   const supportedPaths = new Set([
@@ -252,24 +210,26 @@ export async function handleLicenseApiRequest(
     "/api/v1/licenses/activate",
     "/api/v1/licenses/validate",
     "/api/v1/licenses/deactivate",
+    "/api/v1/releases",
   ]);
   if (!supportedPaths.has(path)) return null;
   if (request.method !== "POST") {
-    return jsonResponse(
-      { ok: false, error: "method_not_allowed" },
-      405,
-    );
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  // Issuing licenses and publishing releases are authorization-center powers.
+  // A customer instance must not expose them even if a stray admin token were
+  // configured; `DEPLOYMENT_ROLE=customer` is an unconditional block.
+  const isVendorOnlyIssuerPath = path === "/api/v1/licenses/create" || path === "/api/v1/releases";
+  if (isVendorOnlyIssuerPath && deploymentRole?.trim().toLowerCase() === "customer") {
+    return jsonResponse({ ok: false, error: "license_center_required" }, 403);
   }
 
   try {
     if (path === "/api/v1/licenses/create") {
       const expectedToken = adminToken?.trim() ?? "";
       const submittedToken = readAdminToken(request);
-      if (
-        !expectedToken ||
-        !submittedToken ||
-        !constantTimeEquals(expectedToken, submittedToken)
-      ) {
+      if (!expectedToken || !submittedToken || !constantTimeEquals(expectedToken, submittedToken)) {
         return jsonResponse({ ok: false, error: "unauthorized" }, 401);
       }
       const body = parseCreateLicenseRequest(await readJsonObject(request));
@@ -287,6 +247,29 @@ export async function handleLicenseApiRequest(
         },
         licenseKey: created.licenseKey,
       });
+    }
+
+    if (path === "/api/v1/releases") {
+      const expectedToken = adminToken?.trim() ?? "";
+      const submittedToken = readAdminToken(request);
+      if (!expectedToken || !submittedToken || !constantTimeEquals(expectedToken, submittedToken)) {
+        return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+      }
+      const body = await readJsonObject(request);
+      const version = typeof body.version === "string" ? body.version.trim() : "";
+      if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)) {
+        return jsonResponse({ ok: false, error: "invalid_version", message: "版本号格式无效（应为 x.y.z）" }, 400);
+      }
+      const notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim().slice(0, 2000) : null;
+      const channel =
+        typeof body.channel === "string" && body.channel.trim() ? body.channel.trim().slice(0, 40) : "stable";
+      const release = await createSoftwareRelease(db, {
+        version,
+        releasedAt: new Date().toISOString(),
+        channel,
+        ...(notes ? { notes } : {}),
+      });
+      return jsonResponse({ ok: true, release });
     }
 
     const rawBody = await readJsonObject(request);
@@ -310,15 +293,9 @@ export async function handleLicenseApiRequest(
     const message = error instanceof Error ? error.message : "请求处理失败";
     if (!(error instanceof LicenseApiInputError)) {
       console.error("License API request failed", error);
-      return jsonResponse(
-        { ok: false, error: "internal_error" },
-        500,
-      );
+      return jsonResponse({ ok: false, error: "internal_error" }, 500);
     }
     const status = message === "请求内容过大" ? 413 : 400;
-    return jsonResponse(
-      { ok: false, error: "invalid_request", message },
-      status,
-    );
+    return jsonResponse({ ok: false, error: "invalid_request", message }, status);
   }
 }

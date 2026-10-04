@@ -22,6 +22,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
   video: "视频",
   audio: "音频",
   file: "文件",
+  note: "剧情文段",
 };
 
 export function formatDateTime(value?: string | null): string {

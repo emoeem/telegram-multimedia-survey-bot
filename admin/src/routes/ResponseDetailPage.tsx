@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   Archive,
   ArrowLeft,
@@ -162,13 +162,17 @@ export function ResponseDetailPage() {
   const [previewTemplateId, setPreviewTemplateId] = useState("");
   const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
 
-  const runAction = async (path: string, confirmText?: string) => {
+  const navigate = useNavigate();
+
+  const runAction = async (path: string, options: { confirmText?: string; newWindow?: boolean } = {}) => {
     if (!id || !responseId) return;
-    if (confirmText && !await confirm({ message: confirmText, variant: "danger" })) return;
+    if (options.confirmText && !(await confirm({ message: options.confirmText, variant: "danger" }))) return;
+    // The blank tab is opened synchronously and only for the actions that
+    // actually return a report URL: it used to flash an empty tab for
+    // archive/delete/regenerate too, and every one of those closes it again.
+    const win = options.newWindow ? window.open("about:blank", "_blank") : null;
     setBusy(true);
     setActionError(null);
-    // Open synchronously so the popup isn't blocked after the await.
-    const win = window.open("about:blank", "_blank");
     try {
       const result = await apiSend<{ reportUrl?: string }>("POST", path, {});
       if (result.reportUrl) {
@@ -176,6 +180,10 @@ export function ResponseDetailPage() {
         else window.open(result.reportUrl, "_blank");
       } else {
         win?.close();
+        if (path.endsWith("/delete")) {
+          navigate(`/surveys/${id}/responses`, { replace: true });
+          return;
+        }
         retry();
       }
     } catch (err) {
@@ -421,7 +429,9 @@ export function ResponseDetailPage() {
           className="btn"
           disabled={busy}
           onClick={() =>
-            void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/report-link`)
+            void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/report-link`, {
+              newWindow: true,
+            })
           }
         >
           <Globe className="h-4 w-4" />
@@ -474,10 +484,9 @@ export function ResponseDetailPage() {
             className="btn"
             disabled={busy}
             onClick={() =>
-              void runAction(
-                `/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/archive`,
-                "确定归档该答卷？",
-              )
+              void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/archive`, {
+                confirmText: "确定归档该答卷？",
+              })
             }
           >
             <Archive className="h-4 w-4" />
@@ -489,10 +498,9 @@ export function ResponseDetailPage() {
           disabled={busy || data.response.status === "completed"}
           title={data.response.status === "completed" ? "已完成答卷是永久数据，禁止删除" : undefined}
           onClick={() =>
-            void runAction(
-              `/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/delete`,
-              "确定删除该答卷？此操作不可恢复。",
-            )
+            void runAction(`/api/admin/surveys/${data.survey.id}/responses/${data.response.id}/delete`, {
+              confirmText: "确定删除该答卷？此操作不可恢复。",
+            })
           }
         >
           <Trash2 className="h-4 w-4" />

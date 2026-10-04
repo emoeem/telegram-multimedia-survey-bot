@@ -14,6 +14,12 @@ interface SurveyResponseRow {
   version: number;
   gallery_published?: number;
   gallery_published_at?: string | null;
+  report_publication_requested?: number;
+  report_publication_status?: string | null;
+  report_published_at?: string | null;
+  publication_target_id?: number | null;
+  publication_target_chat_id?: string | null;
+  publication_target_thread_id?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,9 +53,29 @@ function mapResponse(row: SurveyResponseRow): SurveyResponse {
     version: row.version,
     galleryPublished: Number(row.gallery_published ?? 0) === 1,
     galleryPublishedAt: row.gallery_published_at ?? null,
+    reportPublicationRequested: Number(row.report_publication_requested ?? 0) === 1,
+    reportPublicationStatus: (row.report_publication_status as SurveyResponse["reportPublicationStatus"]) ?? "private",
+    reportPublishedAt: row.report_published_at ?? null,
+    publicationTargetId: row.publication_target_id ?? null,
+    publicationTargetChatId: row.publication_target_chat_id ?? null,
+    publicationTargetThreadId: row.publication_target_thread_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+export async function setResponseReportPublication(
+  db: D1Database,
+  id: number,
+  requested: boolean,
+  status: SurveyResponse["reportPublicationStatus"],
+  publicationTargetId: number | null = null,
+  publicationTargetChatId: string | null = null,
+  publicationTargetThreadId: number | null = null,
+): Promise<void> {
+  const timestamp = nowIso();
+  await db.prepare(`UPDATE survey_responses SET report_publication_requested = ?, report_publication_status = ?, report_published_at = ?, publication_target_id = ?, publication_target_chat_id = ?, publication_target_thread_id = ?, updated_at = ? WHERE id = ?`)
+    .bind(requested ? 1 : 0, status, status === "published" ? timestamp : null, publicationTargetId, publicationTargetChatId, publicationTargetThreadId, timestamp, id).run();
 }
 
 export async function setResponseGalleryPublished(db: D1Database, id: number, published: boolean): Promise<void> {
@@ -541,21 +567,22 @@ export async function upsertOptionAnswer(
     },
   });
 
-  await db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answerId).run();
-
-  if (input.selectedOptionIds.length > 0) {
-    await db.batch(
-      input.selectedOptionIds.map((optionId) =>
-        db
-          .prepare(
-            `INSERT INTO answer_options (
+  // The clear and the re-insert must be one atomic group: running them as two
+  // statements could leave `answers.json_value` listing options while
+  // `answer_options` was already emptied, which statistics and exports read
+  // differently. A D1 batch commits as a unit.
+  await db.batch([
+    db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answerId),
+    ...input.selectedOptionIds.map((optionId) =>
+      db
+        .prepare(
+          `INSERT INTO answer_options (
               answer_id, question_option_id, created_at
             ) VALUES (?, ?, ?)`,
-          )
-          .bind(answerId, optionId, timestamp),
-      ),
-    );
-  }
+        )
+        .bind(answerId, optionId, timestamp),
+    ),
+  ]);
 }
 
 export async function upsertMediaAnswer(

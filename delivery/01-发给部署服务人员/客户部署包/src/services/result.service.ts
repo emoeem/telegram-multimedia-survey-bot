@@ -1,8 +1,4 @@
-import type {
-  Answer,
-  SurveyResponse,
-  SurveyResponseStatus,
-} from "../db/schema";
+import type { Answer, SurveyResponse, SurveyResponseStatus } from "../db/schema";
 
 export interface ResponseListItem {
   id: number;
@@ -36,9 +32,7 @@ export async function listResponses(
   status?: SurveyResponseStatus,
 ): Promise<ResponseListItem[]> {
   const statusClause = status ? "AND status = ?" : "";
-  const bindings = status
-    ? [surveyId, status, limit, offset]
-    : [surveyId, limit, offset];
+  const bindings = status ? [surveyId, status, limit, offset] : [surveyId, limit, offset];
   const result = await db
     .prepare(
       `SELECT r.id, r.status, r.started_at, r.completed_at,
@@ -67,14 +61,15 @@ export async function listResponses(
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
-    respondent: row.telegram_user_id === null
-      ? null
-      : {
-          telegramUserId: row.telegram_user_id,
-          username: row.username,
-          firstName: row.first_name,
-          lastName: row.last_name,
-        },
+    respondent:
+      row.telegram_user_id === null
+        ? null
+        : {
+            telegramUserId: row.telegram_user_id,
+            username: row.username,
+            firstName: row.first_name,
+            lastName: row.last_name,
+          },
   }));
 }
 
@@ -124,6 +119,14 @@ export async function getResponseDetail(
       submittedAt: response["submitted_at"] === null ? null : String(response["submitted_at"]),
       currentQuestionId: response["current_question_id"] === null ? null : Number(response["current_question_id"]),
       version: Number(response["version"]),
+      galleryPublished: Number(response["gallery_published"] ?? 0) === 1,
+      galleryPublishedAt: response["gallery_published_at"] === null ? null : String(response["gallery_published_at"]),
+      reportPublicationRequested: Number(response["report_publication_requested"] ?? 0) === 1,
+      reportPublicationStatus: String(response["report_publication_status"] ?? "private") as SurveyResponse["reportPublicationStatus"],
+      reportPublishedAt: response["report_published_at"] === null ? null : String(response["report_published_at"]),
+      publicationTargetId: response["publication_target_id"] === null ? null : Number(response["publication_target_id"]),
+      publicationTargetChatId: response["publication_target_chat_id"] === null ? null : String(response["publication_target_chat_id"]),
+      publicationTargetThreadId: response["publication_target_thread_id"] === null ? null : Number(response["publication_target_thread_id"]),
       createdAt: String(response["created_at"]),
       updatedAt: String(response["updated_at"]),
     },

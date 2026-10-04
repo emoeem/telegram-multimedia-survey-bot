@@ -141,8 +141,8 @@ export function StructureTree({
                         onClick={() => onSelect({ kind: "question", id: question.id })}
                       >
                         <input type="checkbox" aria-label={`选择第 ${numberById.get(question.id)} 题`} checked={selected.has(question.id)} onChange={() => toggleSelected(question.id)} onClick={(event) => event.stopPropagation()} />
-                        <span className="tree-question-index">{numberById.get(question.id)}</span>
-                        <span className="tree-question-title">{question.title || "未命名题目"}</span>
+                        <span className="tree-question-index">{question.type === "note" ? "📖" : numberById.get(question.id)}</span>
+                        <span className="tree-question-title">{question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}</span>
                         <span className="row-actions">
                           <button
                             type="button"
@@ -196,8 +196,8 @@ export function StructureTree({
                 onClick={() => onSelect({ kind: "question", id: question.id })}
               >
                 <input type="checkbox" aria-label={`选择第 ${numberById.get(question.id)} 题`} checked={selected.has(question.id)} onChange={() => toggleSelected(question.id)} onClick={(event) => event.stopPropagation()} />
-                        <span className="tree-question-index">{numberById.get(question.id)}</span>
-                <span className="tree-question-title">{question.title || "未命名题目"}</span>
+                        <span className="tree-question-index">{question.type === "note" ? "📖" : numberById.get(question.id)}</span>
+                <span className="tree-question-title">{question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}</span>
                 <span className="row-actions">
                   <button
                     type="button"

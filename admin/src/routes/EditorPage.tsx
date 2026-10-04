@@ -1,18 +1,79 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowRight, Eye, FilePlus2, Pencil, Redo2, Rocket, Save, Undo2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  Eye,
+  FilePlus2,
+  GitBranch,
+  Pencil,
+  Plus,
+  Redo2,
+  Rocket,
+  Save,
+  Undo2,
+} from "lucide-react";
 import { useApi } from "../hooks";
 import { ApiError, apiSend, apiUpload, type EditorData, type PublishResult, type WriteResult } from "../api";
-import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
-import { QuestionCard, editableTypeList } from "../components/editor/QuestionCard";
+import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
+import { QuestionCard } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
 import { LivePreview } from "../components/editor/LivePreview";
 import { SurveyPreview } from "../components/editor/SurveyPreview";
-import { useSurveyEditor, type SurveyMetaState } from "../editor/useSurveyEditor";
+import { useSurveyEditor, type EditableQuestion, type SurveyMetaState } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
 import { useDialogs } from "../components/Dialogs";
-import { formatDateTime, matrixColumns } from "../format";
+import { formatDateTime, matrixColumns, QUESTION_TYPE_LABELS } from "../format";
 import { ResultRulesPanel } from "../components/editor/ResultRulesPanel";
+
+// 添加题目面板按用途分组；剧情文段放最前面，因为"多文段剧情"是这份编辑器的主场景。
+const TYPE_GROUPS: Array<{ title: string; hint: string; types: Array<{ type: string; desc: string }> }> = [
+  {
+    title: "剧情",
+    hint: "不收集答案的叙述节点，配合选项跳转即可实现不同答案、不同过程",
+    types: [{ type: "note", desc: "展示一段故事文字（可配图），答题者读完继续" }],
+  },
+  {
+    title: "选择",
+    hint: "单选 / 是非 / 评分的每个选项都可以设置「选择后跳转」",
+    types: [
+      { type: "single", desc: "从多个选项里选一个" },
+      { type: "multiple", desc: "可同时选中多个选项" },
+      { type: "yes_no", desc: "是 / 否 二选一" },
+      { type: "rating", desc: "星级评分" },
+      { type: "matrix", desc: "多行 × 多列的网格作答" },
+    ],
+  },
+  {
+    title: "填写",
+    hint: "",
+    types: [
+      { type: "text", desc: "单行文字" },
+      { type: "long_text", desc: "多行长文本" },
+      { type: "number", desc: "数字输入" },
+      { type: "date", desc: "日期选择" },
+      { type: "time", desc: "时间选择" },
+    ],
+  },
+  {
+    title: "上传",
+    hint: "由答题者上传对应媒体文件",
+    types: [
+      { type: "image", desc: "上传照片" },
+      { type: "video", desc: "上传视频" },
+      { type: "audio", desc: "上传音频" },
+      { type: "file", desc: "上传任意文件" },
+    ],
+  },
+];
+
+function branchCountOf(question: EditableQuestion): number {
+  const rules = (question.condition as { rules?: unknown } | null)?.rules;
+  return Array.isArray(rules) ? rules.length : 0;
+}
 
 // Phase 2.4: field edits commit on blur into a pending-op
 // queue; 保存 flushes it sequentially (temp ids resolve to server ids).
@@ -95,9 +156,6 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   const selectedQuestion =
     selection.kind === "question" ? (editor.questions.find((question) => question.id === selection.id) ?? null) : null;
-  const questionIndex = selectedQuestion
-    ? editor.questions.findIndex((question) => question.id === selectedQuestion.id)
-    : -1;
   const previewIndex = selectedQuestion
     ? Math.max(
         0,
@@ -133,10 +191,11 @@ function EditableEditor({ data }: { data: EditorData }) {
       video: { title: "上传视频题" },
       audio: { title: "上传音频题" },
       file: { title: "上传文件题" },
+      note: { title: "剧情" },
     };
     const draft = defaults[type] ?? { title: "新题目" };
     const tempId = editor.addQuestion({ type, ...draft });
-    setSelection({ kind: "question", id: tempId });
+    applySelection({ kind: "question", id: tempId });
     setPickerOpen(false);
   };
 
@@ -286,7 +345,20 @@ function EditableEditor({ data }: { data: EditorData }) {
           ? "is-dirty"
           : "is-saved";
 
-  const selectQuestion = (questionId: number) => setSelection({ kind: "question", id: questionId });
+  // 选中即展开对应卡片；切换后滚到可视区，手机上尤其需要（列表就是导航）。
+  const applySelection = (next: BuilderSelection) => {
+    setSelection(next);
+    requestAnimationFrame(() => {
+      if (next.kind === "question") {
+        document
+          .querySelector(`[data-block-id="${next.id}"]`)
+          ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else {
+        document.querySelector(".editor-canvas")?.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  };
+  const selectQuestion = (questionId: number) => applySelection({ kind: "question", id: questionId });
   const navigatePreview = (index: number) => {
     const question = previewQuestions[index];
     if (question) selectQuestion(question.id);
@@ -335,16 +407,24 @@ function EditableEditor({ data }: { data: EditorData }) {
           >
             <Redo2 className="h-4 w-4" />
           </button>
-          <button className="btn btn-sm" disabled={editor.saveState === "saving"} onClick={() => editor.save()}>
+          <button
+            className="btn btn-sm editor-desktop-action"
+            disabled={editor.saveState === "saving"}
+            onClick={() => editor.save()}
+          >
             <Save className="h-4 w-4" />
             保存
           </button>
-          <button className="btn btn-sm" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
+          <button
+            className="btn btn-sm editor-desktop-action"
+            disabled={editor.saveState === "saving"}
+            onClick={() => setPreviewOpen(true)}
+          >
             <Eye className="h-4 w-4" />
             预览
           </button>
           <button
-            className="btn btn-sm btn-accent"
+            className="btn btn-sm btn-accent editor-desktop-action"
             disabled={editingDisabled || editor.dirty || publishing || editor.questions.length === 0}
             title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
             onClick={publish}
@@ -385,101 +465,120 @@ function EditableEditor({ data }: { data: EditorData }) {
             pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
             questions={editor.questions}
             selection={selection}
-            onSelect={setSelection}
+            onSelect={applySelection}
             editable={!editingDisabled}
             onAddPage={() => void addPage()}
             onDeletePage={(pageId) => void deletePage(pageId)}
             onMoveQuestion={moveQuestion}
             onBatchRequired={(questionIds, required) => {
-              for (const questionId of questionIds) editor.queueQuestionPatch(questionId, { required }, required ? "批量设为必答" : "批量设为选填");
+              for (const questionId of questionIds) {
+                // Single-question edits update local state and enqueue; the
+                // batch path only enqueued, so the switches and the live
+                // preview kept the old value until the next reload — and a
+                // follow-up manual toggle then wrote the stale one back.
+                editor.patchQuestionLocal(questionId, { required });
+                editor.queueQuestionPatch(questionId, { required }, required ? "批量设为必答" : "批量设为选填");
+              }
             }}
           />
         </aside>
 
         <main className="editor-canvas editor-col">
           {selection.kind === "settings" ? (
-            <SurveySettingsPanel
-              surveyId={survey.id}
-              questions={editor.questions}
-              meta={editor.surveyMeta}
-              disabled={editingDisabled}
-              onUpdate={(patch) => editor.updateSurveyMeta(patch)}
-            />
-          ) : selectedQuestion ? (
-            <>
-              <QuestionCard
-                key={selectedQuestion.id}
-                question={selectedQuestion}
-                index={questionIndex}
-                editable={!editingDisabled}
-                onFieldCommit={handleFieldCommit}
-                onLocalChange={editor.patchQuestionLocal}
-                onOptionRename={handleOptionRename}
-                onAddOption={editor.addOption}
-                onDeleteOption={editor.deleteOption}
-                onDelete={(questionId) => editor.deleteQuestion(questionId)}
-                onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
-                onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
-                onAttachQuestionMedia={(questionId, file) => attachQuestionMedia(questionId, file)}
-                onRemoveQuestionMedia={(questionId, mediaAssetId) => removeQuestionMedia(questionId, mediaAssetId)}
-                onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
-                onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
-                allQuestions={editor.questions}
-                pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+            <div className="block-item">
+              <SurveySettingsPanel
+                surveyId={survey.id}
+                questions={editor.questions}
+                meta={editor.surveyMeta}
+                disabled={editingDisabled}
+                onUpdate={(patch) => editor.updateSurveyMeta(patch)}
               />
-              <div className="q-nav">
-                <button
-                  className="btn btn-sm"
-                  disabled={questionIndex <= 0}
-                  onClick={() => questionIndex > 0 && selectQuestion(editor.questions[questionIndex - 1]!.id)}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  上一题
-                </button>
-                <span className="q-nav-position">
-                  第 {questionIndex + 1} / {editor.questions.length} 题
-                </span>
-                <button
-                  className="btn btn-sm"
-                  disabled={questionIndex >= editor.questions.length - 1}
-                  onClick={() =>
-                    questionIndex < editor.questions.length - 1 &&
-                    selectQuestion(editor.questions[questionIndex + 1]!.id)
-                  }
-                >
-                  下一题
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </>
-          ) : (
-            <EmptyPanel text="这份问卷还没有题目，点击下方「添加题目」开始" />
-          )}
-          <div className="add-question-wrap mt-3">
-            <button className="btn w-full" disabled={editingDisabled} onClick={() => setPickerOpen((open) => !open)}>
+            </div>
+          ) : null}
+          <div className="block-list">
+            {editor.questions.map((question, index) => {
+              const active = selection.kind === "question" && selection.id === question.id;
+              if (active) {
+                return (
+                  <div key={question.id} data-block-id={question.id} className="block-item is-active">
+                    <QuestionCard
+                      question={question}
+                      index={index}
+                      editable={!editingDisabled}
+                      dragHandle={
+                        <span className="q-move">
+                          <button
+                            type="button"
+                            className="row-action"
+                            title="上移"
+                            disabled={!editingDisabled ? undefined : true}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              moveQuestion(question.id, -1);
+                            }}
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="row-action"
+                            title="下移"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              moveQuestion(question.id, 1);
+                            }}
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+                        </span>
+                      }
+                      onFieldCommit={handleFieldCommit}
+                      onLocalChange={editor.patchQuestionLocal}
+                      onOptionRename={handleOptionRename}
+                      onAddOption={editor.addOption}
+                      onDeleteOption={editor.deleteOption}
+                      onDelete={(questionId) => editor.deleteQuestion(questionId)}
+                      onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
+                      onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
+                      onAttachQuestionMedia={(questionId, file) => attachQuestionMedia(questionId, file)}
+                      onRemoveQuestionMedia={(questionId, mediaAssetId) => removeQuestionMedia(questionId, mediaAssetId)}
+                      onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
+                      onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
+                      allQuestions={editor.questions}
+                      pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+                    />
+                  </div>
+                );
+              }
+              return (
+                <div key={question.id} data-block-id={question.id} className="block-item">
+                  <QuestionSummaryRow
+                    question={question}
+                    index={index}
+                    editable={!editingDisabled}
+                    onOpen={() => selectQuestion(question.id)}
+                    onMove={(direction) => moveQuestion(question.id, direction)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {editor.questions.length === 0 ? (
+            <EmptyPanel text="这份问卷还没有内容，点击下方「添加题目 / 剧情文段」开始" />
+          ) : null}
+          <div className="add-block-bar">
+            <button className="btn" disabled={editingDisabled} onClick={() => setPickerOpen(true)}>
               <FilePlus2 className="h-4 w-4" />
               添加题目
             </button>
-            {pickerOpen ? (
-              <div className="add-question-menu is-inline">
-                <div className="add-question-menu-title">选择题型</div>
-                <div className="grid grid-cols-2 gap-1">
-                  {editableTypeList().map(({ type, label }) => (
-                    <button
-                      key={type}
-                      className="add-question-item"
-                      disabled={editingDisabled}
-                      onClick={() => addDefaultQuestion(type)}
-                    >
-                      <span className="truncate">{label}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="px-2 pb-1 pt-2 text-[11px]" style={{ color: "var(--color-muted-soft)" }}>
-                  图片 / 视频 / 音频 / 文件上传题由作答者上传对应媒体；题干与选项附件可在题卡内直接上传。
-                </p>
-              </div>
-            ) : null}
+            <button
+              className="btn add-block-note-btn"
+              disabled={editingDisabled}
+              onClick={() => addDefaultQuestion("note")}
+            >
+              <BookOpen className="h-4 w-4" />
+              添加剧情文段
+            </button>
           </div>
         </main>
 
@@ -507,6 +606,42 @@ function EditableEditor({ data }: { data: EditorData }) {
           preset={data.survey.theme?.preset ?? null}
         />
       ) : null}
+
+      {pickerOpen ? (
+        <TypePickerSheet
+          disabled={editingDisabled}
+          onClose={() => setPickerOpen(false)}
+          onPick={(type) => addDefaultQuestion(type)}
+        />
+      ) : null}
+
+      {/* 手机端底部操作栏：桌面端按钮在窄屏下藏进这里 */}
+      <nav className="editor-mobile-bar" aria-label="编辑器操作">
+        <button className="editor-mobile-btn is-add" disabled={editingDisabled} onClick={() => setPickerOpen(true)}>
+          <Plus className="h-5 w-5" />
+          添加
+        </button>
+        <button
+          className="editor-mobile-btn"
+          disabled={editor.saveState === "saving"}
+          onClick={() => void editor.save()}
+        >
+          <Save className="h-5 w-5" />
+          保存
+        </button>
+        <button className="editor-mobile-btn" onClick={() => setPreviewOpen(true)}>
+          <Eye className="h-5 w-5" />
+          预览
+        </button>
+        <button
+          className="editor-mobile-btn is-publish"
+          disabled={editingDisabled || editor.dirty || publishing || editor.questions.length === 0}
+          onClick={() => void publish()}
+        >
+          <Rocket className="h-5 w-5" />
+          发布
+        </button>
+      </nav>
     </div>
   );
 }
@@ -561,6 +696,126 @@ function EditableTitle({
         }
       }}
     />
+  );
+}
+
+function QuestionSummaryRow({
+  question,
+  index,
+  editable,
+  onOpen,
+  onMove,
+}: {
+  question: EditableQuestion;
+  index: number;
+  editable: boolean;
+  onOpen: () => void;
+  onMove: (direction: -1 | 1) => void;
+}) {
+  const isNote = question.type === "note";
+  const branches = branchCountOf(question);
+  return (
+    <div
+      className="q-row"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <span className={`q-row-index ${isNote ? "is-note" : ""}`}>{isNote ? "📖" : index + 1}</span>
+      <span className="q-row-main">
+        <span className="q-row-title">{question.title || (isNote ? "未命名剧情" : "未命名题目")}</span>
+        <span className="q-row-meta">
+          <span className="q-row-type">{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
+          {question.required && !isNote ? <span className="q-row-tag is-req">必答</span> : null}
+          {branches > 0 ? (
+            <span className="q-row-tag is-branch">
+              <GitBranch className="h-3 w-3" />
+              {branches} 分支
+            </span>
+          ) : null}
+          {question.media.length ? <span className="q-row-tag">附件 ×{question.media.length}</span> : null}
+          {question.id < 0 ? <span className="q-row-tag is-unsaved">未保存</span> : null}
+        </span>
+      </span>
+      <span className="row-actions">
+        <button
+          type="button"
+          className="row-action"
+          title="上移"
+          disabled={!editable}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMove(-1);
+          }}
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="row-action"
+          title="下移"
+          disabled={!editable}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMove(1);
+          }}
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+        </button>
+      </span>
+      <ChevronDown className="q-row-chevron" />
+    </div>
+  );
+}
+
+function TypePickerSheet({
+  disabled,
+  onClose,
+  onPick,
+}: {
+  disabled: boolean;
+  onClose: () => void;
+  onPick: (type: string) => void;
+}) {
+  return (
+    <Modal open onClose={onClose} title="添加题目 / 剧情文段" size="lg">
+      <div className="type-picker">
+        {TYPE_GROUPS.map((group) => (
+          <section key={group.title} className="type-picker-group">
+            <header className="type-picker-head">
+              <h3>{group.title}</h3>
+              {group.hint ? <p>{group.hint}</p> : null}
+            </header>
+            <div className="type-picker-grid">
+              {group.types.map(({ type, desc }) => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`type-picker-item ${type === "note" ? "is-note" : ""}`}
+                  disabled={disabled}
+                  onClick={() => onPick(type)}
+                >
+                  <span className="type-picker-label">
+                    {type === "note" ? "📖 " : ""}
+                    {QUESTION_TYPE_LABELS[type] ?? type}
+                  </span>
+                  <span className="type-picker-desc">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+        <p className="type-picker-note">
+          图片 / 视频 / 音频 / 文件上传题由作答者上传对应媒体；题干与选项附件可在题卡内直接上传。
+        </p>
+      </div>
+    </Modal>
   );
 }
 
@@ -840,7 +1095,7 @@ function ReadOnlyQuestion({ question, index }: { question: EditorData["questions
               color: "var(--color-primary)",
             }}
           >
-            {question.type}
+            {QUESTION_TYPE_LABELS[question.type] ?? question.type}
           </span>
           <span
             className="q-chip"
@@ -851,7 +1106,7 @@ function ReadOnlyQuestion({ question, index }: { question: EditorData["questions
               color: question.required ? "var(--color-danger)" : "var(--color-muted)",
             }}
           >
-            {question.required ? "必答" : "选答"}
+            {question.type === "note" ? "非题目" : question.required ? "必答" : "选答"}
           </span>
         </div>
       </div>

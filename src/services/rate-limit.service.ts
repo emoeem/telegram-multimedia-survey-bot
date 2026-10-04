@@ -25,6 +25,10 @@ export async function checkRateLimit(
   const windowIndex = Math.floor(now / (windowSeconds * 1000));
   const key = `${RATE_LIMIT_PREFIX}:${bucket}:${identity}:${windowIndex}`;
   const retryAfterSeconds = Math.max(1, Math.ceil(((windowIndex + 1) * windowSeconds * 1000 - now) / 1000));
+  // A deployment without the CACHE binding must still be able to answer
+  // surveys: the limiter is abuse damping, not an authorization gate, so it
+  // degrades to "allow" instead of throwing a TypeError on every write.
+  if (!cache) return { allowed: true, retryAfterSeconds };
 
   const current = Number((await cache.get(key)) ?? "0");
   if (Number.isFinite(current) && current >= limit) {

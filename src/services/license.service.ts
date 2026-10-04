@@ -33,7 +33,8 @@ export type LicenseDecisionCode =
   | "updates_expired"
   | "activation_limit_reached"
   | "activation_not_found"
-  | "activation_deactivated";
+  | "activation_deactivated"
+  | "deployment_disabled";
 
 export interface PublicLicenseInfo {
   publicId: string;
@@ -304,6 +305,23 @@ function withActivation(
   return { ...decision, activation };
 }
 
+async function checkCustomerDeploymentStatus(db: D1Database, licenseId: number, installationId: string, checkedAt: string, license: PublicLicenseInfo, release: LicenseDecision["release"]): Promise<LicenseDecision | null> {
+  if (typeof db.prepare !== "function") return null;
+  const deployment = await db.prepare("SELECT status FROM customer_deployments WHERE license_id=? AND installation_id=? LIMIT 1")
+    .bind(licenseId, installationId).first<{ status: string }>();
+  if (deployment?.status === "disabled") {
+    return {
+      valid: false,
+      code: "deployment_disabled",
+      message: "当前 Customer Worker 已被厂商控制中心停用",
+      checkedAt,
+      license,
+      release,
+    };
+  }
+  return null;
+}
+
 export async function activateLicense(
   db: D1Database,
   input: {
@@ -320,6 +338,8 @@ export async function activateLicense(
   if (!decision.valid || !license) {
     return withActivation(decision, null);
   }
+  const deploymentBlock = await checkCustomerDeploymentStatus(db, license.id, input.installationId, decision.checkedAt, license, decision.release);
+  if (deploymentBlock) return withActivation(deploymentBlock, null);
 
   const existing = await getLicenseActivation(db, license.id, input.installationId);
   const metadataJson = input.metadata === undefined ? null : JSON.stringify(input.metadata);
@@ -378,6 +398,8 @@ export async function validateLicense(
   if (!decision.valid || !license) {
     return withActivation(decision, null);
   }
+  const deploymentBlock = await checkCustomerDeploymentStatus(db, license.id, input.installationId, decision.checkedAt, license, decision.release);
+  if (deploymentBlock) return withActivation(deploymentBlock, null);
   const activation = await getLicenseActivation(db, license.id, input.installationId);
   if (!activation) {
     return withActivation(

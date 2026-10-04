@@ -22,6 +22,7 @@
     "license:issue": "node scripts/issue-license.mjs",
     "customer:deploy": "node scripts/deploy-customer.mjs",
     "customer:update": "node scripts/update-customers.mjs",
+    "deployment:runner": "node scripts/deployment-runner.mjs",
     "release": "node scripts/publish-release.mjs"
   },
   "devDependencies": {

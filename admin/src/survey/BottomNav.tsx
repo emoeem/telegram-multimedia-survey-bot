@@ -1,4 +1,4 @@
-import { ClipboardList, Sparkles, Sprout } from "lucide-react";
+import { ClipboardList, Images, Sparkles, Sprout, UserRound } from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -11,6 +11,8 @@ const ITEMS: NavItem[] = [
   { href: "/s", label: "问卷", icon: ClipboardList, pathStartsWith: ["/s"] },
   { href: "/trial", label: "挑战", icon: Sparkles, pathStartsWith: ["/trial"] },
   { href: "/plaza", label: "广场", icon: Sprout, pathStartsWith: ["/plaza"] },
+  { href: "/showcase", label: "展示", icon: Images, pathStartsWith: ["/showcase"] },
+  { href: "/me", label: "我的", icon: UserRound, pathStartsWith: ["/me"] },
 ];
 
 function isActive(item: NavItem, path: string): boolean {
@@ -33,7 +35,7 @@ export function BottomNav() {
             <a
               key={item.href}
               href={item.href}
-              className={`group flex min-w-[72px] flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-all ${
+              className={`group flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition-all ${
                 active
                   ? "text-[var(--survey-primary)]"
                   : "text-[var(--survey-muted)] hover:text-[var(--survey-heading)]"

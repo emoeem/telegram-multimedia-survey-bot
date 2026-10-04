@@ -121,8 +121,12 @@ export function ImportPage() {
 
   const pickFile = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > 40 * 1024 * 1024) {
-      setError("导入文件不能超过 40MB");
+    // The file is rendered into a controlled <textarea>, so a multi-megabyte
+    // document is a multi-megabyte text node the browser has to lay out and
+    // select — enough to lock up a phone. The server accepts more through the
+    // API; this path is for editing by hand.
+    if (file.size > 4 * 1024 * 1024) {
+      setError("本地编辑的导入文件不能超过 4MB，请先用脚本压缩或改用服务端导入接口");
       return;
     }
     setError(null);

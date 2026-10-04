@@ -1,4 +1,4 @@
-import { identityHeaders } from "./api";
+import { identityHeaders, type UnlockedAchievement } from "./api";
 
 export type TrialPersona = "male" | "female";
 export type TrialMode = "normal" | "hell";
@@ -26,6 +26,14 @@ export interface TrialShopSelection {
   skipTickets: number;
   boosters: number;
   shields: number;
+}
+
+export interface TrialShopEconomy {
+  normalCoins: readonly [number, number];
+  hellCoins: readonly [number, number];
+  rerollCap: number;
+  prices: { skipTicket: number; booster: number; shield: number };
+  caps: { skipTicket: number; booster: number; shield: number };
 }
 
 export interface TrialPack {
@@ -68,6 +76,7 @@ export interface TrialRun {
   coins: number;
   inventory: TrialInventory;
   boosted: boolean;
+  coinRerolls?: number;
   startingFloor?: number;
 }
 
@@ -100,6 +109,8 @@ interface TrialActionResponse {
   earned: number;
   grade: TrialGrade | null;
   gradeCopy: TrialGradeCopy | null;
+  /** 通关这一局时新解锁的徽章。 */
+  newAchievements?: UnlockedAchievement[];
 }
 
 async function trialRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -124,7 +135,11 @@ async function trialRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function fetchTrialPacks(): Promise<{ packs: TrialPack[]; submissionBotUrl: string | null }> {
+export function fetchTrialPacks(): Promise<{
+  packs: TrialPack[];
+  submissionBotUrl: string | null;
+  shop?: TrialShopEconomy;
+}> {
   return trialRequest("/api/trial/packs");
 }
 

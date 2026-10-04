@@ -160,6 +160,7 @@ const QUESTION_TYPES = new Set<QuestionType>([
   "video",
   "audio",
   "file",
+  "note",
 ]);
 
 const MEDIA_TYPES = new Set<MediaType>(["photo", "video", "audio", "voice", "animation", "gif", "sticker", "document"]);

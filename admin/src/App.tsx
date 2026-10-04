@@ -30,11 +30,13 @@ const LoginPage = lazy(() => import("./routes/LoginPage").then((m) => ({ default
 const AuditPage = lazy(() => import("./routes/AuditPage").then((m) => ({ default: m.AuditPage })));
 const SettingsPage = lazy(() => import("./routes/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LicensesPage = lazy(() => import("./routes/LicensesPage").then((m) => ({ default: m.LicensesPage })));
+const ControlCenterPage = lazy(() => import("./routes/ControlCenterPage").then((m) => ({ default: m.ControlCenterPage })));
 const PlazaPostsPage = lazy(() => import("./routes/PlazaPostsPage").then((m) => ({ default: m.PlazaPostsPage })));
 const ProfileGalleryPage = lazy(() =>
   import("./routes/ProfileGalleryPage").then((m) => ({ default: m.ProfileGalleryPage })),
 );
 const TaskPacksPage = lazy(() => import("./routes/TaskPacksPage").then((m) => ({ default: m.TaskPacksPage })));
+const ShowcasePage = lazy(() => import("./routes/ShowcasePage").then((m) => ({ default: m.ShowcasePage })));
 
 /** Skeleton shown while the route chunk downloads. */
 function RouteFallback() {
@@ -72,10 +74,12 @@ const router = createBrowserRouter(
         { path: "templates", element: lazyElement(<TemplatesPage />) },
         { path: "plaza", element: lazyElement(<PlazaPostsPage />) },
         { path: "profile-gallery", element: lazyElement(<ProfileGalleryPage />) },
+        { path: "showcase", element: lazyElement(<ShowcasePage />) },
         { path: "task-packs", element: lazyElement(<TaskPacksPage />) },
         { path: "audit", element: lazyElement(<AuditPage />) },
         { path: "settings", element: lazyElement(<SettingsPage />) },
         { path: "licenses", element: lazyElement(<LicensesPage />) },
+        { path: "control", element: lazyElement(<ControlCenterPage />) },
         { path: "users", element: lazyElement(<UsersPage />) },
         { path: "*", element: <Navigate to="/" replace /> },
       ],

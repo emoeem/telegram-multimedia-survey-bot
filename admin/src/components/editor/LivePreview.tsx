@@ -76,25 +76,46 @@ export function LivePreview({
                 <div className="phone-progress-bar" style={{ width: `${progress}%` }} />
               </div>
               <div className="phone-card">
-                <div className="phone-card-meta">
-                  <strong>
-                    第 {currentIndex + 1} / {total} 题
-                  </strong>
-                  <span>·</span>
-                  <span>{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
-                  <span>·</span>
-                  <span style={{ color: question.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
-                    {question.required ? "必答" : "选答"}
-                  </span>
-                </div>
-                <div className="phone-card-title">{question.title || "未填写题目标题"}</div>
-                {question.description ? <p className="phone-card-desc">{question.description}</p> : null}
-                <div className="mt-3" style={{ color: "var(--survey-muted)", fontSize: 12 }}>
-                  {getQuestionInstruction(question)}
-                </div>
-                <div className="mt-3">
-                  <PreviewAnswer question={question} />
-                </div>
+                {question.type === "note" ? (
+                  <div className="phone-card-meta">
+                    <strong>📖 剧情</strong>
+                    <span>·</span>
+                    <span>剧情文段</span>
+                  </div>
+                ) : (
+                  <div className="phone-card-meta">
+                    <strong>
+                      第 {currentIndex + 1} / {total} 题
+                    </strong>
+                    <span>·</span>
+                    <span>{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
+                    <span>·</span>
+                    <span style={{ color: question.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
+                      {question.required ? "必答" : "选答"}
+                    </span>
+                  </div>
+                )}
+                {question.type === "note" ? (
+                  <>
+                    {question.title ? <div className="phone-card-title">📖 {question.title}</div> : null}
+                    {question.description ? (
+                      <p className="phone-card-desc whitespace-pre-wrap text-[15px] leading-7">
+                        {question.description}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div className="phone-card-title">{question.title || "未填写题目标题"}</div>
+                    {question.description ? <p className="phone-card-desc">{question.description}</p> : null}
+                    <div className="mt-3" style={{ color: "var(--survey-muted)", fontSize: 12 }}>
+                      {getQuestionInstruction(question)}
+                    </div>
+                    <div className="mt-3">
+                      <PreviewAnswer question={question} />
+                    </div>
+                  </>
+                )}
                 <div className="mt-3 flex gap-2">
                   {currentIndex > 0 ? (
                     <button
@@ -117,6 +138,11 @@ export function LivePreview({
                       <>
                         <Check className="h-4 w-4" />
                         提交
+                      </>
+                    ) : question.type === "note" ? (
+                      <>
+                        继续
+                        <ChevronRight className="h-4 w-4" />
                       </>
                     ) : (
                       <>

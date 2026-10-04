@@ -566,6 +566,7 @@ export async function sendPhoto(
   photo: string | Uint8Array,
   caption?: string,
   replyMarkup?: InlineKeyboardMarkup,
+  messageThreadId?: number,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), telegramMediaRequestTimeoutMs);
@@ -575,7 +576,7 @@ export async function sendPhoto(
         ? await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, photo, caption, reply_markup: replyMarkup }),
+            body: JSON.stringify({ chat_id: chatId, photo, caption, reply_markup: replyMarkup, ...(messageThreadId ? { message_thread_id: messageThreadId } : {}) }),
             signal: controller.signal,
           })
         : await (() => {
@@ -606,6 +607,7 @@ export async function sendPhotoAlbum(
   botToken: string,
   chatId: number,
   photos: Array<{ bytes: Uint8Array; caption?: string }>,
+  messageThreadId?: number,
 ): Promise<Response> {
   if (photos.length < 2 || photos.length > 10) throw new Error("Telegram 相册必须包含 2–10 张图片");
   const controller = new AbortController();
@@ -613,6 +615,7 @@ export async function sendPhotoAlbum(
   try {
     const form = new FormData();
     form.append("chat_id", String(chatId));
+    if (messageThreadId) form.append("message_thread_id", String(messageThreadId));
     const media = photos.map((photo, index) => {
       const name = `report_page_${index}`;
       form.append(name, new Blob([photo.bytes as BlobPart], { type: "image/png" }), `report-${index + 1}.png`);

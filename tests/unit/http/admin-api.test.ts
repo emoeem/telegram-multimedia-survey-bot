@@ -323,6 +323,34 @@ describe("handleAdminApi authentication and permissions", () => {
     expect(sqlLog[0]).not.toContain("s.owner_id = ?");
   });
 
+  it("reports the admin role on the session endpoint", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
+    const { db } = makeDb();
+    const response = await handleAdminApi(apiRequest("/api/admin/session", { userId: "111" }), makeEnv(db));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, role: "admin", userId: 1, telegramUserId: 111 });
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("reports the creator role for a non-admin with an active trial", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const { db, setFirst } = makeDb();
+    // hasActiveCreatorTrial() selects from creator_trial_grants.
+    setFirst({ id: 3 });
+    const response = await handleAdminApi(apiRequest("/api/admin/session", { userId: "222" }), makeEnv(db));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, role: "creator", userId: 7, telegramUserId: 222 });
+  });
+
+  it("refuses the session endpoint for a non-admin without a trial", async () => {
+    repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+    const { db, setFirst } = makeDb();
+    setFirst(null);
+    const response = await handleAdminApi(apiRequest("/api/admin/session", { userId: "222" }), makeEnv(db));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "admin_access_denied" });
+  });
+
   it("blocks non-owners from a survey detail with 403", async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
     const { db, setFirst } = makeDb();

@@ -14,6 +14,7 @@ describe("shared question presentation", () => {
     expect(getQuestionInstruction({ type: "matrix" })).toContain("完成矩阵");
     expect(getQuestionInstruction({ type: "image" })).toContain("媒体文件");
     expect(getQuestionInstruction({ type: "date" })).toContain("YYYY-MM-DD");
+    expect(getQuestionInstruction({ type: "note" })).toContain("继续");
   });
 
   it("reads valid matrix columns and ignores malformed settings", () => {

@@ -8,6 +8,7 @@ interface QuestionRow {
   description: string | null;
   required: number;
   order: number;
+  page_id: number | null;
   validation_json: string | null;
   settings_json: string | null;
   parent_question_id: number | null;
@@ -41,6 +42,7 @@ function mapQuestion(row: QuestionRow): SurveyQuestion {
     description: row.description,
     required: row.required === 1,
     order: row.order,
+    pageId: row.page_id,
     validationJson: row.validation_json,
     settingsJson: row.settings_json,
     parentQuestionId: row.parent_question_id,
@@ -64,39 +66,24 @@ function mapOption(row: QuestionOptionRow): QuestionOption {
   };
 }
 
-export async function listQuestionsBySurvey(
-  db: D1Database,
-  surveyId: number,
-): Promise<SurveyQuestion[]> {
+export async function listQuestionsBySurvey(db: D1Database, surveyId: number): Promise<SurveyQuestion[]> {
   const result = await db
-    .prepare(
-      'SELECT * FROM survey_questions WHERE survey_id = ? ORDER BY "order" ASC, id ASC',
-    )
+    .prepare('SELECT * FROM survey_questions WHERE survey_id = ? ORDER BY "order" ASC, id ASC')
     .bind(surveyId)
     .all<QuestionRow>();
 
   return (result.results ?? []).map(mapQuestion);
 }
 
-export async function listOptionsForQuestions(
-  db: D1Database,
-  questionIds: number[],
-): Promise<QuestionOption[]> {
+export async function listOptionsForQuestions(db: D1Database, questionIds: number[]): Promise<QuestionOption[]> {
   const uniqueQuestionIds = [...new Set(questionIds)];
   if (uniqueQuestionIds.length === 0) {
     return [];
   }
 
   const options: QuestionOption[] = [];
-  for (
-    let start = 0;
-    start < uniqueQuestionIds.length;
-    start += QUESTION_ID_BATCH_SIZE
-  ) {
-    const questionIdBatch = uniqueQuestionIds.slice(
-      start,
-      start + QUESTION_ID_BATCH_SIZE,
-    );
+  for (let start = 0; start < uniqueQuestionIds.length; start += QUESTION_ID_BATCH_SIZE) {
+    const questionIdBatch = uniqueQuestionIds.slice(start, start + QUESTION_ID_BATCH_SIZE);
     const placeholders = questionIdBatch.map(() => "?").join(",");
     const result = await db
       .prepare(
@@ -121,7 +108,11 @@ export async function createQuestion(
     description?: string | null;
     required?: boolean;
     order: number;
+    pageId?: number | null;
     settingsJson?: string | null;
+    validationJson?: string | null;
+    conditionJson?: string | null;
+    skipToQuestionId?: number | null;
   },
 ): Promise<number> {
   const timestamp = new Date().toISOString();
@@ -129,8 +120,9 @@ export async function createQuestion(
     .prepare(
       `INSERT INTO survey_questions (
         survey_id, type, title, description, required,
-        "order", settings_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        "order", page_id, settings_json, validation_json, condition_json, skip_to_question_id,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.surveyId,
@@ -139,7 +131,11 @@ export async function createQuestion(
       input.description ?? null,
       input.required ? 1 : 0,
       input.order,
+      input.pageId ?? null,
       input.settingsJson ?? null,
+      input.validationJson ?? null,
+      input.conditionJson ?? null,
+      input.skipToQuestionId ?? null,
       timestamp,
       timestamp,
     )
@@ -169,14 +165,7 @@ export async function createQuestionOption(
         question_id, label, value, "order", created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .bind(
-      input.questionId,
-      input.label,
-      input.value,
-      input.order,
-      timestamp,
-      timestamp,
-    )
+    .bind(input.questionId, input.label, input.value, input.order, timestamp, timestamp)
     .run();
 
   const id = result.meta?.last_row_id;
@@ -187,22 +176,13 @@ export async function createQuestionOption(
   return id;
 }
 
-export async function getQuestionById(
-  db: D1Database,
-  id: number,
-): Promise<SurveyQuestion | null> {
-  const row = await db
-    .prepare("SELECT * FROM survey_questions WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<QuestionRow>();
+export async function getQuestionById(db: D1Database, id: number): Promise<SurveyQuestion | null> {
+  const row = await db.prepare("SELECT * FROM survey_questions WHERE id = ? LIMIT 1").bind(id).first<QuestionRow>();
 
   return row ? mapQuestion(row) : null;
 }
 
-export async function getQuestionOptionById(
-  db: D1Database,
-  id: number,
-): Promise<QuestionOption | null> {
+export async function getQuestionOptionById(db: D1Database, id: number): Promise<QuestionOption | null> {
   const row = await db
     .prepare("SELECT * FROM question_options WHERE id = ? LIMIT 1")
     .bind(id)
@@ -211,22 +191,82 @@ export async function getQuestionOptionById(
   return row ? mapOption(row) : null;
 }
 
-export async function updateQuestionTitle(
-  db: D1Database,
-  id: number,
-  title: string,
-): Promise<void> {
+export async function updateQuestionTitle(db: D1Database, id: number, title: string): Promise<void> {
   await db
     .prepare("UPDATE survey_questions SET title = ?, updated_at = ? WHERE id = ?")
     .bind(title, new Date().toISOString(), id)
     .run();
 }
 
-export async function updateQuestionOptionLabel(
+export async function updateQuestionDescription(db: D1Database, id: number, description: string | null): Promise<void> {
+  await db
+    .prepare("UPDATE survey_questions SET description = ?, updated_at = ? WHERE id = ?")
+    .bind(description, new Date().toISOString(), id)
+    .run();
+}
+
+export async function updateQuestionSettings(db: D1Database, id: number, settingsJson: string | null): Promise<void> {
+  await db
+    .prepare("UPDATE survey_questions SET settings_json = ?, updated_at = ? WHERE id = ?")
+    .bind(settingsJson, new Date().toISOString(), id)
+    .run();
+}
+
+export async function updateQuestionValidation(
   db: D1Database,
   id: number,
-  label: string,
+  validationJson: string | null,
 ): Promise<void> {
+  await db
+    .prepare("UPDATE survey_questions SET validation_json = ?, updated_at = ? WHERE id = ?")
+    .bind(validationJson, new Date().toISOString(), id)
+    .run();
+}
+
+export async function updateQuestionType(db: D1Database, id: number, type: SurveyQuestion["type"]): Promise<void> {
+  await db
+    .prepare("UPDATE survey_questions SET type = ?, updated_at = ? WHERE id = ?")
+    .bind(type, new Date().toISOString(), id)
+    .run();
+}
+
+export async function updateQuestionPage(db: D1Database, id: number, pageId: number | null): Promise<void> {
+  await db
+    .prepare("UPDATE survey_questions SET page_id = ?, updated_at = ? WHERE id = ?")
+    .bind(pageId, new Date().toISOString(), id)
+    .run();
+}
+
+export async function updateQuestionCondition(
+  db: D1Database,
+  id: number,
+  conditionJson: string | null,
+  skipToQuestionId: number | null,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE survey_questions
+       SET condition_json = ?, skip_to_question_id = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(conditionJson, skipToQuestionId, new Date().toISOString(), id)
+    .run();
+}
+
+// Reorders all questions of a survey to match the given ID sequence,
+// preserving the contiguous 0..n-1 "order" invariant in one batch.
+export async function normalizeQuestionOrder(db: D1Database, surveyId: number, orderedIds: number[]): Promise<void> {
+  const timestamp = new Date().toISOString();
+  await db.batch(
+    orderedIds.map((id, index) =>
+      db
+        .prepare('UPDATE survey_questions SET "order" = ?, updated_at = ? WHERE id = ? AND survey_id = ?')
+        .bind(index, timestamp, id, surveyId),
+    ),
+  );
+}
+
+export async function updateQuestionOptionLabel(db: D1Database, id: number, label: string): Promise<void> {
   await db
     .prepare(
       `UPDATE question_options
@@ -237,10 +277,7 @@ export async function updateQuestionOptionLabel(
     .run();
 }
 
-export async function deleteQuestionOption(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function deleteQuestionOption(db: D1Database, id: number): Promise<void> {
   const option = await getQuestionOptionById(db, id);
   if (!option) {
     return;
@@ -259,11 +296,7 @@ export async function deleteQuestionOption(
   ]);
 }
 
-export async function updateQuestionRequired(
-  db: D1Database,
-  id: number,
-  required: boolean,
-): Promise<void> {
+export async function updateQuestionRequired(db: D1Database, id: number, required: boolean): Promise<void> {
   await db
     .prepare("UPDATE survey_questions SET required = ?, updated_at = ? WHERE id = ?")
     .bind(required ? 1 : 0, new Date().toISOString(), id)
@@ -286,37 +319,45 @@ export async function setQuestionSkipRule(
             const row = item as { optionId?: unknown; targetQuestionId?: unknown };
             const optionId = Number(row.optionId);
             const targetQuestionId = Number(row.targetQuestionId);
-            if (Number.isInteger(optionId) && Number.isInteger(targetQuestionId)) legacyRules.push({ optionId, targetQuestionId });
+            if (Number.isInteger(optionId) && Number.isInteger(targetQuestionId))
+              legacyRules.push({ optionId, targetQuestionId });
           }
         }
       } else {
         const optionId = Number(parsed.optionId);
-        if (Number.isInteger(optionId) && current.skipToQuestionId) legacyRules.push({ optionId, targetQuestionId: current.skipToQuestionId });
+        if (Number.isInteger(optionId) && current.skipToQuestionId)
+          legacyRules.push({ optionId, targetQuestionId: current.skipToQuestionId });
       }
     } catch {
       // Invalid historical data is replaced by the newly saved rule.
     }
   }
-  const rules = rule
-    ? [...legacyRules.filter((item) => item.optionId !== rule.optionId), rule]
-    : [];
-  await db.prepare(
-    "UPDATE survey_questions SET condition_json = ?, skip_to_question_id = ?, updated_at = ? WHERE id = ?",
-  ).bind(
-    rules.length > 0 ? JSON.stringify({ kind: "option_equals", rules }) : null,
-    rules[0]?.targetQuestionId ?? null,
-    new Date().toISOString(),
-    questionId,
-  ).run();
+  const rules = rule ? [...legacyRules.filter((item) => item.optionId !== rule.optionId), rule] : [];
+  await db
+    .prepare("UPDATE survey_questions SET condition_json = ?, skip_to_question_id = ?, updated_at = ? WHERE id = ?")
+    .bind(
+      rules.length > 0 ? JSON.stringify({ kind: "option_equals", rules }) : null,
+      rules[0]?.targetQuestionId ?? null,
+      new Date().toISOString(),
+      questionId,
+    )
+    .run();
 }
 
-export async function deleteQuestion(
-  db: D1Database,
-  id: number,
-): Promise<void> {
+export async function deleteQuestion(db: D1Database, id: number): Promise<void> {
   const question = await getQuestionById(db, id);
   if (!question) {
     return;
+  }
+
+  // Defensive DB-layer guard: question deletion must never silently destroy
+  // historical answers, even if a future code path bypasses the runtime lock.
+  const answerCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM answers WHERE question_id = ?")
+    .bind(id)
+    .first<{ count: number }>();
+  if (Number(answerCount?.count ?? 0) > 0) {
+    throw new Error("该题目已有答卷，禁止删除");
   }
 
   const timestamp = new Date().toISOString();
@@ -332,40 +373,25 @@ export async function deleteQuestion(
   ]);
 }
 
-export async function swapQuestionOptionOrder(
-  db: D1Database,
-  firstId: number,
-  secondId: number,
-): Promise<void> {
+export async function swapQuestionOptionOrder(db: D1Database, firstId: number, secondId: number): Promise<void> {
   const first = await getQuestionOptionById(db, firstId);
   const second = await getQuestionOptionById(db, secondId);
-  if (
-    !first ||
-    !second ||
-    first.questionId !== second.questionId
-  ) {
+  if (!first || !second || first.questionId !== second.questionId) {
     return;
   }
 
   const timestamp = new Date().toISOString();
   await db.batch([
     db
-      .prepare(
-        'UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?',
-      )
+      .prepare('UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?')
       .bind(second.order, timestamp, firstId),
     db
-      .prepare(
-        'UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?',
-      )
+      .prepare('UPDATE question_options SET "order" = ?, updated_at = ? WHERE id = ?')
       .bind(first.order, timestamp, secondId),
   ]);
 }
 
-export async function duplicateQuestion(
-  db: D1Database,
-  questionId: number,
-): Promise<number> {
+export async function duplicateQuestion(db: D1Database, questionId: number): Promise<number> {
   const question = await getQuestionById(db, questionId);
   if (!question) {
     throw new Error("Question not found");
@@ -384,8 +410,8 @@ export async function duplicateQuestion(
     .prepare(
       `INSERT INTO survey_questions (
         survey_id, type, title, description, required,
-        "order", settings_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        "order", page_id, settings_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       question.surveyId,
@@ -394,6 +420,7 @@ export async function duplicateQuestion(
       question.description,
       question.required ? 1 : 0,
       question.order + 1,
+      question.pageId,
       question.settingsJson,
       new Date().toISOString(),
       new Date().toISOString(),
@@ -443,20 +470,52 @@ export async function duplicateQuestion(
   return id;
 }
 
-export async function swapQuestionOrder(
-  db: D1Database,
-  firstId: number,
-  secondId: number,
-): Promise<void> {
+export async function duplicateQuestionOption(db: D1Database, optionId: number): Promise<number> {
+  const option = await getQuestionOptionById(db, optionId);
+  if (!option) {
+    throw new Error("Option not found");
+  }
+  const timestamp = new Date().toISOString();
+  await db
+    .prepare(
+      `UPDATE question_options
+       SET "order" = "order" + 1, updated_at = ?
+       WHERE question_id = ? AND "order" > ?`,
+    )
+    .bind(timestamp, option.questionId, option.order)
+    .run();
+  const newOptionId = await createQuestionOption(db, {
+    questionId: option.questionId,
+    label: `${option.label} (副本)`,
+    value: option.value,
+    order: option.order + 1,
+  });
+  await db
+    .prepare(
+      `INSERT INTO option_media (
+        question_option_id, media_asset_id, sort_order, created_at
+      )
+      SELECT ?, media_asset_id, sort_order, ?
+      FROM option_media
+      WHERE question_option_id = ?`,
+    )
+    .bind(newOptionId, timestamp, optionId)
+    .run();
+  return newOptionId;
+}
+
+export async function swapQuestionOrder(db: D1Database, firstId: number, secondId: number): Promise<void> {
   const first = await getQuestionById(db, firstId);
   const second = await getQuestionById(db, secondId);
   if (!first || !second) return;
 
   const timestamp = new Date().toISOString();
   await db.batch([
-    db.prepare('UPDATE survey_questions SET "order" = ?, updated_at = ? WHERE id = ?')
+    db
+      .prepare('UPDATE survey_questions SET "order" = ?, updated_at = ? WHERE id = ?')
       .bind(second.order, timestamp, firstId),
-    db.prepare('UPDATE survey_questions SET "order" = ?, updated_at = ? WHERE id = ?')
+    db
+      .prepare('UPDATE survey_questions SET "order" = ?, updated_at = ? WHERE id = ?')
       .bind(first.order, timestamp, secondId),
   ]);
 }

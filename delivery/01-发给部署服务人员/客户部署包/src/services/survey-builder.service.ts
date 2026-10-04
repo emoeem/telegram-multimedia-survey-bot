@@ -1,8 +1,4 @@
-import type {
-  DraftQuestion,
-  SurveyBuilderDO,
-  SurveyBuilderState,
-} from "../durable-objects/survey-builder";
+import type { DraftQuestion, SurveyBuilderDO, SurveyBuilderState } from "../durable-objects/survey-builder";
 import {
   createSurvey,
   getLatestDraftSurveyByOwner,
@@ -18,8 +14,8 @@ import {
 import {
   createOptionMedia,
   createQuestionMedia,
-  getOptionMediaByOptionId,
-  getQuestionMediaByQuestionId,
+  getQuestionMediaByQuestionIds,
+  listOptionMediaByOptionIds,
 } from "../db/repositories/media.repository";
 
 export type SurveyBuilderNamespace = DurableObjectNamespace<SurveyBuilderDO>;
@@ -63,10 +59,7 @@ async function callBuilder(
   return response.json() as Promise<SurveyBuilderState>;
 }
 
-export async function initBuilder(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function initBuilder(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "init",
     userId,
@@ -198,19 +191,13 @@ export async function setQuestionMedia(
   });
 }
 
-export async function finishOptions(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function finishOptions(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "finish_options",
   });
 }
 
-export async function startImport(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function startImport(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "start_import",
   });
@@ -302,28 +289,19 @@ export async function resumeBuilderAfterAuxiliary(
   });
 }
 
-export async function builderBack(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function builderBack(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "back",
   });
 }
 
-export async function finishQuestions(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function finishQuestions(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "finish_questions",
   });
 }
 
-export async function resetBuilder(
-  namespace: SurveyBuilderNamespace,
-  userId: number,
-): Promise<SurveyBuilderState> {
+export async function resetBuilder(namespace: SurveyBuilderNamespace, userId: number): Promise<SurveyBuilderState> {
   return callBuilder(namespace, userId, {
     action: "reset",
   });
@@ -356,11 +334,7 @@ async function restoreBuilder(
   });
 }
 
-export async function saveDraftSurvey(
-  db: D1Database,
-  state: SurveyBuilderState,
-  ownerId: number,
-): Promise<number> {
+export async function saveDraftSurvey(db: D1Database, state: SurveyBuilderState, ownerId: number): Promise<number> {
   if (!state.surveyTitle.trim()) {
     throw new Error("问卷标题不能为空");
   }
@@ -372,11 +346,7 @@ export async function saveDraftSurvey(
   let surveyId = state.draftSurveyId;
   if (surveyId) {
     const existing = await getSurveyById(db, surveyId);
-    if (
-      !existing ||
-      existing.ownerId !== ownerId ||
-      existing.status !== "draft"
-    ) {
+    if (!existing || existing.ownerId !== ownerId || existing.status !== "draft") {
       throw new Error("原草稿不存在、已发布，或不属于当前用户");
     }
 
@@ -386,10 +356,7 @@ export async function saveDraftSurvey(
       title: state.surveyTitle.trim(),
       description: state.surveyDescription.trim() || null,
     });
-    await db
-      .prepare("DELETE FROM survey_questions WHERE survey_id = ?")
-      .bind(surveyId)
-      .run();
+    await db.prepare("DELETE FROM survey_questions WHERE survey_id = ?").bind(surveyId).run();
   } else {
     const survey = await createSurvey(db, {
       ownerId,
@@ -421,9 +388,10 @@ async function insertDraftQuestions(
       title: draftQuestion.title,
       required: draftQuestion.required ?? true,
       order: startOrder + index,
-      settingsJson: draftQuestion.type === "matrix"
-        ? JSON.stringify({ columns: draftQuestion.matrixColumns ?? [] })
-        : null,
+      settingsJson:
+        draftQuestion.type === "matrix" ? JSON.stringify({ columns: draftQuestion.matrixColumns ?? [] }) : null,
+      conditionJson: draftQuestion.conditionJson ?? null,
+      skipToQuestionId: draftQuestion.skipToQuestionId ?? null,
     });
 
     if (draftQuestion.mediaAssetId) {
@@ -433,11 +401,7 @@ async function insertDraftQuestions(
       });
     }
 
-    for (
-      let optionIndex = 0;
-      optionIndex < draftQuestion.options.length;
-      optionIndex += 1
-    ) {
+    for (let optionIndex = 0; optionIndex < draftQuestion.options.length; optionIndex += 1) {
       const option = draftQuestion.options[optionIndex];
       if (!option) {
         continue;
@@ -458,7 +422,6 @@ async function insertDraftQuestions(
       }
     }
   }
-
 }
 
 export async function appendBuilderQuestions(
@@ -504,29 +467,47 @@ export async function restoreLatestBuilderDraft(
     db,
     questions.map((question) => question.id),
   );
+
+  // Two batched lookups instead of one SELECT per question and per option.
+  const [questionMediaRows, optionMediaRows] = await Promise.all([
+    getQuestionMediaByQuestionIds(
+      db,
+      questions.map((question) => question.id),
+    ),
+    listOptionMediaByOptionIds(
+      db,
+      options.map((option) => option.id),
+    ),
+  ]);
+  const questionMediaByQuestion = new Map<number, number>();
+  for (const relation of questionMediaRows) {
+    if (!questionMediaByQuestion.has(relation.questionId)) {
+      questionMediaByQuestion.set(relation.questionId, relation.mediaAssetId);
+    }
+  }
+  const optionMediaByOption = new Map<number, number>();
+  for (const relation of optionMediaRows) {
+    if (!optionMediaByOption.has(relation.questionOptionId)) {
+      optionMediaByOption.set(relation.questionOptionId, relation.mediaAssetId);
+    }
+  }
+
   const draftQuestions: DraftQuestion[] = [];
 
   for (const question of questions) {
-    const questionMedia = await getQuestionMediaByQuestionId(db, question.id);
-    const questionOptions = options.filter(
-      (option) => option.questionId === question.id,
-    );
-    const draftOptions = [];
-
-    for (const option of questionOptions) {
-      const optionMedia = await getOptionMediaByOptionId(db, option.id);
-      draftOptions.push({
-        label: option.label,
-        mediaAssetId: optionMedia[0]?.mediaAssetId ?? null,
-      });
-    }
+    const questionOptions = options.filter((option) => option.questionId === question.id);
 
     draftQuestions.push({
       type: question.type,
       title: question.title,
       required: question.required,
-      options: draftOptions,
-      mediaAssetId: questionMedia[0]?.mediaAssetId ?? null,
+      options: questionOptions.map((option) => ({
+        label: option.label,
+        mediaAssetId: optionMediaByOption.get(option.id) ?? null,
+      })),
+      mediaAssetId: questionMediaByQuestion.get(question.id) ?? null,
+      conditionJson: question.conditionJson ?? null,
+      skipToQuestionId: question.skipToQuestionId ?? null,
     });
   }
 

@@ -32,6 +32,7 @@ import {
   loadAdminSessionEpoch,
   saveSystemSetting,
 } from "../../services/system-settings.service";
+import { handleControlApiRequest } from "../control-api";
 import {
   configuredDeploymentRole,
   describeDeploymentRoleIssue,
@@ -64,7 +65,9 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const requestId = crypto.randomUUID();
   const fail = (status: number, code: string, message: string) =>
-    Response.json({ code, message, requestId }, { status });
+    // `no-store` on failures too: an edge/intermediary that caches a 401/403
+    // would keep telling an already-logged-in admin that they are logged out.
+    Response.json({ code, message, requestId }, { status, headers: { "Cache-Control": "no-store" } });
 
   if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
     const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
@@ -83,7 +86,17 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     if (!valid) return fail(401, "invalid_password", "管理员密码错误");
     const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
     const user = adminIds.length ? await getUserByTelegramId(env.DB, adminIds[0]!) : await getFirstAdminUser(env.DB);
-    if (!user || (user.systemRole !== "admin" && !adminIds.includes(user.telegramUserId))) return fail(403, "admin_access_denied", "当前没有可用于管理后台登录的管理员账号");
+    // A fresh deployment has the password hash but no `users` row yet: those are
+    // only created when someone messages the bot. Without this hint the very
+    // first customer admin sees a bare "没有管理员账号" and cannot tell that the
+    // fix is to open the bot and send /start once.
+    if (!user || (user.systemRole !== "admin" && !adminIds.includes(user.telegramUserId))) {
+      return fail(
+        403,
+        "admin_access_denied",
+        "当前没有可用于管理后台登录的管理员账号。请先用管理员 Telegram 账号向机器人发送 /start 完成注册，再返回此页面登录。",
+      );
+    }
     const epoch = await loadAdminSessionEpoch(env.DB);
     const session = await createAdminSessionValue(env.WEBHOOK_SECRET, user.id, epoch);
     return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}` } });
@@ -127,8 +140,14 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     if (!state.userId) return fail(401, "invalid_login_request", "登录状态无效，请重新开始登录。");
     const target = await getUserByTelegramId(env.DB, state.userId);
     const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
-    if (!target || (target.systemRole !== "admin" && !adminIds.includes(target.telegramUserId)))
-      return fail(403, "admin_access_denied", "该 Telegram 账号没有管理后台权限。");
+    if (!target) return fail(403, "admin_access_denied", "该 Telegram 账号没有管理后台权限。");
+    // A creator trial opens the panel too; the read/write handlers keep that
+    // session scoped to the creator's own surveys.
+    const canUseAdminPanel =
+      target.systemRole === "admin" ||
+      adminIds.includes(target.telegramUserId) ||
+      (await hasActiveCreatorTrial(env.DB, target.id));
+    if (!canUseAdminPanel) return fail(403, "admin_access_denied", "该 Telegram 账号没有管理后台权限。");
     const consumed = await consumeAdminLoginRequest(env.DB, env.CACHE, id, state.userId);
     if (!consumed) return fail(409, "login_already_used", "这个登录请求已经完成，请重新开始登录。");
     const epoch = await loadAdminSessionEpoch(env.DB);
@@ -203,6 +222,27 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   const adminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
   const isAdmin = user.systemRole === "admin" || adminIds.includes(user.telegramUserId);
   const json = (body: unknown) => Response.json(body, { headers: { "Cache-Control": "no-store" } });
+
+  // Lets the SPA adapt its navigation to the signed-in role. A creator trial
+  // reaches the panel but must only ever see its own survey workspace, so the
+  // shell needs to know without probing an admin-only endpoint.
+  if (request.method === "GET" && url.pathname === "/api/admin/session") {
+    if (!isAdmin && !(await hasActiveCreatorTrial(env.DB, user.id))) {
+      return fail(403, "admin_access_denied", "当前账号没有管理后台权限。");
+    }
+    return json({
+      ok: true,
+      role: isAdmin ? "admin" : "creator",
+      userId: user.id,
+      telegramUserId: user.telegramUserId,
+      firstName: user.firstName,
+    });
+  }
+
+  if (url.pathname.startsWith("/api/control/")) {
+    const controlResponse = await handleControlApiRequest(request, env, { isAdmin, userId: user.id });
+    if (controlResponse) return controlResponse;
+  }
 
   // Upload a survey background-music audio file into the media system.
   if (request.method === "POST" && url.pathname === "/api/admin/media/audio") {

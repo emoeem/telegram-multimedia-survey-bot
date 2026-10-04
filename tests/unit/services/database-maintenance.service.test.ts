@@ -89,6 +89,24 @@ describe("database maintenance", () => {
     expect(statements.some((sql) => sql.includes("LIKE '%\"mediaAssetId\":'"))).toBe(false);
   });
 
+  // 树洞配图与展示区图片只被 plaza_posts / showcase_* 引用。反连接里漏掉它们，
+  // 7 天前的图就会被当成孤儿、连同 KV 字节一起删掉，帖子与展示页直接变破图。
+  it("protects plaza and showcase media from the orphan sweep", async () => {
+    const { db, statements } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [51],
+    });
+    await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
+    const candidateQuery = statements.find((sql) => sql.includes("FROM media_assets m") && sql.includes("LIMIT ?"));
+    expect(candidateQuery).toContain("plaza_posts p WHERE p.image_asset_id = m.id");
+    expect(candidateQuery).toContain("showcase_persons");
+    expect(candidateQuery).toContain("showcase_items");
+    // 这三个索引同时兼作「相关列是否存在」的探针：列缺失时建索引失败，扫描会自我停用。
+    expect(ORPHAN_SWEEP_INDEXES.map((index) => index.name)).toEqual(
+      expect.arrayContaining(["idx_plaza_posts_image_asset", "idx_showcase_persons_illustration_asset", "idx_showcase_items_cover_asset"]),
+    );
+  });
+
   it("keeps media that answers or survey settings still reference", async () => {
     const { db, deleted } = createMaintenanceDb({
       indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),

@@ -33,6 +33,12 @@ import {
   setLicenseStatus,
 } from "../services/license.service";
 import type { SoftwareLicense, SoftwareLicenseActivation, SoftwareLicenseType } from "../db/schema";
+import {
+  createDeploymentTask,
+  getCustomerDeployment,
+  listCustomerDeployments,
+  listDeploymentTasks,
+} from "../db/repositories/deployment.repository";
 import { sendLongMessage } from "./telegram";
 import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
@@ -369,8 +375,42 @@ async function sendLicenseDetails(ctx: BotContext, chatId: number, publicId: str
       },
     ]);
   }
+  rows.push([{ text: "客户部署", callback_data: `deployment:list:${license.publicId}` }]);
   await sendLongMessage(ctx.botToken, chatId, text, rows.length > 0 ? { inline_keyboard: rows } : undefined);
   return true;
+}
+
+async function sendDeploymentList(ctx: BotContext, chatId: number, publicId: string): Promise<void> {
+  const license = await getSoftwareLicenseByPublicId(ctx.db, publicId);
+  if (!license) throw new Error("授权不存在");
+  const deployments = await listCustomerDeployments(ctx.db, license.id);
+  if (!deployments.length) {
+    await sendMessage(ctx.botToken, chatId, `授权 ${publicId} 当前没有已登记的 Customer Worker。`);
+    return;
+  }
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = deployments.map((deployment) => [
+    { text: `${deployment.workerName} · ${deployment.status} · ${deployment.currentVersion ?? "未知版本"}`, callback_data: `deployment:view:${deployment.id}` },
+  ]);
+  rows.push([{ text: "返回授权", callback_data: `license:view:${publicId}` }]);
+  await sendMessage(ctx.botToken, chatId, "Customer Deployments：", { inline_keyboard: rows });
+}
+
+async function sendDeploymentDetails(ctx: BotContext, chatId: number, deploymentId: number): Promise<void> {
+  const deployment = await getCustomerDeployment(ctx.db, deploymentId);
+  if (!deployment) throw new Error("客户部署不存在");
+  const tasks = await listDeploymentTasks(ctx.db, deploymentId, 5);
+  const taskText = tasks.length ? tasks.map((task) => `#${task.id} ${task.type} · ${task.status}`).join("\n") : "暂无部署任务";
+  await sendMessage(ctx.botToken, chatId, [
+    `Worker：${deployment.workerName}`,
+    `状态：${deployment.status}`,
+    `当前版本：${deployment.currentVersion ?? "未知"}`,
+    `目标版本：${deployment.desiredVersion ?? "—"}`,
+    `最后在线：${deployment.lastSeenAt ?? "—"}`,
+    "",
+    taskText,
+  ].join("\n"), {
+    inline_keyboard: [[{ text: "提交升级任务", callback_data: `deployment:update:${deployment.id}` }]],
+  });
 }
 
 async function sendLicenseList(ctx: BotContext, chatId: number): Promise<void> {
@@ -1344,6 +1384,32 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
     const publicId = data.slice("license:view:".length);
     await sendLicenseDetails(ctx, chatId, publicId);
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("deployment:list:")) {
+    const publicId = data.slice("deployment:list:".length);
+    await sendDeploymentList(ctx, chatId, publicId);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("deployment:view:")) {
+    await sendDeploymentDetails(ctx, chatId, Number(data.slice("deployment:view:".length)));
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("deployment:update:")) {
+    const deploymentId = Number(data.slice("deployment:update:".length));
+    const deployment = await getCustomerDeployment(ctx.db, deploymentId);
+    if (!deployment) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "客户部署不存在");
+      return true;
+    }
+    await createDeploymentTask(ctx.db, { deploymentId, type: "update", requestedBy: user.id });
+    await sendMessage(ctx.botToken, chatId, `升级任务已提交：${deployment.workerName}。Vendor Deployment Runner 会执行实际部署。`);
+    await answerCallbackQuery(ctx.botToken, callback.id, "已提交");
     return true;
   }
 

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, ChevronDown, Palette, Pencil, Send, Users, X } from "lucide-react";
+import type { SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, ChevronDown, ImagePlus, Palette, Pencil, Send, Users, X } from "lucide-react";
 import {
   loadGlobalPreset,
   saveGlobalPreset,
@@ -10,15 +11,20 @@ import {
 } from "./theme-ui";
 import { BottomNav } from "./BottomNav";
 import {
+  botHandleFromUrl,
   createPlazaPost,
   createPlazaComment,
   fetchPlazaComments,
   fetchPlazaPosts,
   fetchPlazaProfiles,
+  fetchPlazaProfile,
+  fetchPlazaTopics,
   ownerDisplayName,
+  uploadPlazaImage,
   type PlazaCommentItem,
   type PlazaPostItem,
   type PlazaProfileItem,
+  type PlazaTopic,
 } from "./plaza-api";
 
 type Tab = "treehole" | "profiles";
@@ -45,14 +51,19 @@ const TRIAL_GRADE_CHIP: Record<string, string> = {
   C: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 
-function TreeHolePost({ post }: { post: PlazaPostItem }) {
+function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTopic: (topic: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comments, setComments] = useState<PlazaCommentItem[] | null>(null);
   const [total, setTotal] = useState(post.commentCount);
   const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Anonymous by default: the API defaults to it too, and a reader who wants to
+  // sign a comment can opt in explicitly.
+  const [anonymous, setAnonymous] = useState(true);
 
   const toggleComments = async () => {
     if (open) {
@@ -72,6 +83,21 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
     }
   };
 
+  const loadMoreComments = async () => {
+    if (comments === null || commentsLoadingMore) return;
+    setCommentsLoadingMore(true);
+    setCommentsError(null);
+    try {
+      const response = await fetchPlazaComments(post.id, comments.length);
+      setComments((current) => [...(current ?? []), ...response.items]);
+      setTotal(response.total);
+    } catch (error) {
+      setCommentsError(error instanceof Error ? error.message : "评论加载失败");
+    } finally {
+      setCommentsLoadingMore(false);
+    }
+  };
+
   const submitComment = async () => {
     const trimmed = content.trim();
     if (!trimmed || busy) return;
@@ -79,7 +105,7 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
     setMessage(null);
     setCommentsError(null);
     try {
-      const response = await createPlazaComment(post.id, trimmed);
+      const response = await createPlazaComment(post.id, trimmed, anonymous);
       setComments((current) => [...(current ?? []), response.comment]);
       setTotal((current) => current + 1);
       setContent("");
@@ -112,6 +138,30 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
         </div>
       ) : null}
       <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[var(--survey-body)]">{post.content}</p>
+      {post.imageUrl ? (
+        <button
+          type="button"
+          onClick={() => setLightboxUrl(post.imageUrl)}
+          className="mt-2.5 block w-full overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)]"
+        >
+          <img
+            src={post.imageUrl}
+            alt="树洞配图"
+            loading="lazy"
+            onError={hideBrokenImage}
+            className="max-h-80 w-full bg-[var(--survey-bg)] object-cover"
+          />
+        </button>
+      ) : null}
+      {post.topic ? (
+        <button
+          type="button"
+          onClick={() => onSelectTopic(post.topic as string)}
+          className="mt-2.5 rounded-full bg-[var(--survey-primary-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
+        >
+          #{post.topic}#
+        </button>
+      ) : null}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--survey-card-border)]/60 pt-2.5">
         <p className="min-w-0 truncate text-xs text-[var(--survey-muted)]">
           —— {post.anonymous ? "匿名" : ownerDisplayName(post.owner)} · {formatDay(post.createdAt)}
@@ -119,6 +169,7 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
         <button
           type="button"
           onClick={() => void toggleComments()}
+          aria-expanded={open}
           className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--survey-muted)]"
         >
           💬 {total}
@@ -145,7 +196,29 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
               </div>
             ))
           )}
-          <div className="flex gap-2">
+          {comments !== null && comments.length < total ? (
+            <button
+              type="button"
+              disabled={commentsLoadingMore}
+              onClick={() => void loadMoreComments()}
+              className="w-full rounded-xl border border-[var(--survey-card-border)] py-2 text-xs font-semibold text-[var(--survey-muted)] disabled:opacity-50"
+            >
+              {commentsLoadingMore ? "加载中…" : `加载更多评论（${comments.length}/${total}）`}
+            </button>
+          ) : null}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAnonymous((current) => !current)}
+              aria-pressed={anonymous}
+              className={`shrink-0 rounded-full border px-2.5 py-2 text-[11px] font-medium ${
+                anonymous
+                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
+                  : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
+              }`}
+            >
+              {anonymous ? "🎭 匿名" : "👤 署名"}
+            </button>
             <input
               value={content}
               maxLength={300}
@@ -153,7 +226,7 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
               onKeyDown={(event) => {
                 if (event.key === "Enter") void submitComment();
               }}
-              placeholder="写下你的评论（需从 Telegram 打开）"
+              placeholder="写下你的评论（默认匿名，需从 Telegram 打开）"
               className="min-w-0 flex-1 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-bg)] px-3 py-2 text-[13px] text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]"
             />
             <button
@@ -168,7 +241,37 @@ function TreeHolePost({ post }: { post: PlazaPostItem }) {
           {message ? <p className="text-xs text-red-500">{message}</p> : null}
         </div>
       ) : null}
+      {lightboxUrl ? <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} /> : null}
     </article>
+  );
+}
+
+function hideBrokenImage(event: SyntheticEvent<HTMLImageElement>): void {
+  // 公开页的破图比没有图更糟：媒体过期（410）时直接隐藏占位。
+  event.currentTarget.style.display = "none";
+}
+
+/** 0 依赖的全屏看图：点击/Esc 关闭，深色遮罩，图片按原比例适配视口。 */
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={onClose}>
+      <img src={url} alt="查看大图" className="max-h-full max-w-full rounded-lg object-contain" />
+      <button
+        type="button"
+        aria-label="关闭大图"
+        className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white"
+        onClick={onClose}
+      >
+        <X className="h-5 w-5" />
+      </button>
+    </div>
   );
 }
 
@@ -177,13 +280,27 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
   const headingField = headingIndex >= 0 ? profile.fields[headingIndex] : undefined;
   const detailFields = headingField ? profile.fields.filter((field, index) => index !== headingIndex) : profile.fields;
   const [expanded, setExpanded] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const visibleDetailFields = expanded ? detailFields : detailFields.slice(0, 4);
   const [cover, ...moreImages] = profile.images;
 
   return (
     <article className="overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]">
       {cover ? (
-        <img src={cover.url} alt="个人资料照片" loading="lazy" className="max-h-[460px] w-full object-cover" />
+        <button
+          type="button"
+          aria-label="查看大图"
+          onClick={() => setLightboxUrl(cover.url)}
+          className="block w-full"
+        >
+          <img
+            src={cover.url}
+            alt="个人资料照片"
+            loading="lazy"
+            onError={hideBrokenImage}
+            className="max-h-[460px] w-full object-cover"
+          />
+        </button>
       ) : (
         <div className="grid h-36 place-items-center bg-[var(--survey-card-border)]/40 text-xs text-[var(--survey-muted)]">
           暂无照片
@@ -192,13 +309,21 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
       {moreImages.length > 0 ? (
         <div className="grid grid-cols-2 gap-0.5 border-t border-[var(--survey-card-border)]/60">
           {moreImages.map((image) => (
-            <img
+            <button
               key={image.mediaAssetId}
-              src={image.url}
-              alt="个人资料照片"
-              loading="lazy"
-              className="h-36 w-full object-cover"
-            />
+              type="button"
+              aria-label="查看大图"
+              onClick={() => setLightboxUrl(image.url)}
+              className="block"
+            >
+              <img
+                src={image.url}
+                alt="个人资料照片"
+                loading="lazy"
+                onError={hideBrokenImage}
+                className="h-36 w-full object-cover"
+              />
+            </button>
           ))}
         </div>
       ) : null}
@@ -227,7 +352,15 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
             <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </button>
         ) : null}
+        <a
+          href={`/plaza/profile/${profile.id}`}
+          className="flex w-full items-center justify-center gap-1 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2 text-[13px] font-semibold text-[var(--survey-primary)]"
+        >
+          查看资料卡
+          <ArrowRight className="h-4 w-4" />
+        </a>
       </div>
+      {lightboxUrl ? <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} /> : null}
     </article>
   );
 }
@@ -239,31 +372,41 @@ interface FeedState<T> {
   error: string | null;
 }
 
-function usePlazaFeed(reloadKey: number): FeedState<PlazaPostItem> & { loadMore: () => void } {
+function usePlazaFeed(
+  reloadKey: number,
+  active: boolean,
+  topic: string | null,
+): FeedState<PlazaPostItem> & { loadMore: () => void } {
   const [state, setState] = useState<FeedState<PlazaPostItem>>({ items: [], total: 0, loading: true, error: null });
 
-  const load = useCallback(async (offset: number, append: boolean) => {
-    setState((current) => ({ ...current, loading: true, error: null }));
-    try {
-      const response = await fetchPlazaPosts(offset, PAGE_SIZE);
-      setState((current) => ({
-        items: append ? [...current.items, ...response.items] : response.items,
-        total: response.total,
-        loading: false,
-        error: null,
-      }));
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error.message : "加载失败",
-      }));
-    }
-  }, []);
+  const load = useCallback(
+    async (offset: number, append: boolean) => {
+      setState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetchPlazaPosts(offset, PAGE_SIZE, topic);
+        setState((current) => ({
+          items: append ? [...current.items, ...response.items] : response.items,
+          total: response.total,
+          loading: false,
+          error: null,
+        }));
+      } catch (error) {
+        setState((current) => ({
+          ...current,
+          loading: false,
+          error: error instanceof Error ? error.message : "加载失败",
+        }));
+      }
+    },
+    [topic],
+  );
 
   useEffect(() => {
+    // 只拉取当前 tab 的信息流：切到该 tab 时才请求，避免挂载即双倍请求。
+    // 话题变化时必须回到第 0 页，"全部" 与某个话题是两份不同的流。
+    if (!active) return;
     void load(0, false);
-  }, [load, reloadKey]);
+  }, [load, reloadKey, active]);
 
   return {
     ...state,
@@ -273,7 +416,7 @@ function usePlazaFeed(reloadKey: number): FeedState<PlazaPostItem> & { loadMore:
   };
 }
 
-function useProfileFeed(reloadKey: number) {
+function useProfileFeed(reloadKey: number, active: boolean) {
   const [items, setItems] = useState<PlazaProfileItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -300,8 +443,9 @@ function useProfileFeed(reloadKey: number) {
   }, []);
 
   useEffect(() => {
+    if (!active) return;
     void load(0, false);
-  }, [load, reloadKey]);
+  }, [load, reloadKey, active]);
 
   return {
     items,
@@ -317,7 +461,120 @@ function useProfileFeed(reloadKey: number) {
   };
 }
 
+/** 资料卡详情页（/plaza/profile/:id）：完整资料 + 大图浏览，可分享直达。 */
+function ProfileDetailScreen({ profileId }: { profileId: number }) {
+  const [profile, setProfile] = useState<PlazaProfileItem | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [userThemePreset] = useState<string | null>(() => loadGlobalPreset());
+  const resolvedPreset = useResolvedPreset(userThemePreset);
+  const theme = resolvedPreset ? { preset: resolvedPreset } : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPlazaProfile(profileId)
+      .then((response) => {
+        if (!cancelled) setProfile(response.profile);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "资料加载失败");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  const headingIndex = profile
+    ? profile.fields.findIndex((field) => /姓名|名字|昵称|称呼|name/i.test(field.title))
+    : -1;
+  const headingField = headingIndex >= 0 && profile ? profile.fields[headingIndex] : undefined;
+  const restFields =
+    profile && headingField ? profile.fields.filter((field, index) => index !== headingIndex) : profile?.fields ?? [];
+
+  return (
+    <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}>
+      <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
+          <a href="/plaza" className="flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
+            <ArrowLeft className="h-4 w-4" />
+            返回广场
+          </a>
+          <p className="text-[13px] font-semibold text-[var(--survey-muted)]">个人资料卡</p>
+        </div>
+      </header>
+      <main className="mx-auto max-w-xl px-5 py-5 lg:max-w-3xl">
+        {loading ? (
+          <p className="py-16 text-center text-sm text-[var(--survey-muted)]">加载中…</p>
+        ) : error || !profile ? (
+          <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-8 text-center">
+            <p className="text-sm text-[var(--survey-body)]">{error ?? "资料不存在或未公开"}</p>
+            <a
+              href="/plaza"
+              className="mt-4 inline-block rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-6 py-2.5 text-sm font-semibold text-[var(--survey-primary-content)]"
+            >
+              回广场逛逛
+            </a>
+          </div>
+        ) : (
+          <article className="overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]">
+            {profile.images.length > 0 ? (
+              <div className="grid gap-0.5 bg-[var(--survey-card-border)]/40">
+                {profile.images.map((image, index) => (
+                  <button
+                    key={image.mediaAssetId}
+                    type="button"
+                    aria-label="查看大图"
+                    onClick={() => setLightboxUrl(image.url)}
+                    className="block"
+                  >
+                    <img
+                      src={image.url}
+                      alt="个人资料照片"
+                      loading={index === 0 ? "eager" : "lazy"}
+                      onError={hideBrokenImage}
+                      className={`w-full object-cover ${index === 0 ? "max-h-[520px]" : "h-48"}`}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="space-y-3 px-5 py-5">
+              <p className="text-xs font-medium text-[var(--survey-muted)]">
+                {ownerDisplayName(profile.owner)} · 发布于 {formatDay(profile.publishedAt ?? profile.createdAt)}
+              </p>
+              <h1 className="text-3xl font-black tracking-tight text-[var(--survey-heading)]">
+                {headingField?.value ?? ownerDisplayName(profile.owner)}
+              </h1>
+              {restFields.map((field) => (
+                <div key={field.questionId} className="flex items-baseline gap-x-3 border-t border-[var(--survey-card-border)]/60 pt-3 text-[15px] leading-6">
+                  <span className="w-24 shrink-0 text-[13px] text-[var(--survey-muted)]">{field.title}</span>
+                  <span className="min-w-0 whitespace-pre-wrap break-words font-medium text-[var(--survey-body)]">
+                    {field.value}
+                  </span>
+                </div>
+              ))}
+              {profile.fields.length === 0 ? (
+                <p className="pt-2 text-sm text-[var(--survey-muted)]">这位参与者还没有公开更多资料。</p>
+              ) : null}
+            </div>
+          </article>
+        )}
+      </main>
+      {lightboxUrl ? <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} /> : null}
+      <BottomNav />
+    </div>
+  );
+}
+
 export function PlazaScreen() {
+  const profileRoute = window.location.pathname.match(/^\/plaza\/profile\/(\d+)$/);
+  if (profileRoute) {
+    return <ProfileDetailScreen profileId={Number(profileRoute[1])} />;
+  }
   const [tab, setTab] = useState<Tab>(() =>
     new URLSearchParams(window.location.search).get("tab") === "treehole" ? "treehole" : "profiles",
   );
@@ -329,9 +586,29 @@ export function PlazaScreen() {
   const [anonymous, setAnonymous] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [composerMessage, setComposerMessage] = useState<string | null>(null);
+  // 配图先上传拿到 mediaAssetId，发布时再随帖子提交；预览用本地 object URL。
+  const [imageAssetId, setImageAssetId] = useState<number | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [topicInput, setTopicInput] = useState("");
+  const [topicFilter, setTopicFilter] = useState<string | null>(null);
+  const [topics, setTopics] = useState<PlazaTopic[]>([]);
 
-  const posts = usePlazaFeed(reloadKey);
-  const profiles = useProfileFeed(reloadKey);
+  const posts = usePlazaFeed(reloadKey, tab === "treehole", topicFilter);
+  const profiles = useProfileFeed(reloadKey, tab === "profiles");
+
+  useEffect(() => {
+    if (tab !== "treehole") return;
+    let cancelled = false;
+    fetchPlazaTopics()
+      .then((response) => {
+        if (!cancelled) setTopics(response.topics);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, reloadKey]);
 
   const selectTheme = (presetId: string | null) => {
     setUserThemePreset(presetId);
@@ -348,14 +625,53 @@ export function PlazaScreen() {
     setComposerOpen(true);
   };
 
+  const selectImage = async (file: File | null) => {
+    if (!file) return;
+    setComposerMessage(null);
+    setImageBusy(true);
+    try {
+      const uploaded = await uploadPlazaImage(file);
+      setImageAssetId(uploaded.mediaAssetId);
+      setImagePreview((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return URL.createObjectURL(file);
+      });
+    } catch (error) {
+      setComposerMessage(error instanceof Error ? error.message : "图片上传失败");
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const clearImage = () => {
+    setImageAssetId(null);
+    setImagePreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  };
+
   const submitPost = async () => {
     if (submitting) return;
+    const trimmed = content.trim();
+    // 带图可以只配图不写字；不带图仍然要求 5 个字以上。
+    if (!imageAssetId && trimmed.length < 5) {
+      setComposerMessage("写下至少 5 个字，或者配一张图");
+      return;
+    }
     setSubmitting(true);
     setComposerMessage(null);
     try {
-      await createPlazaPost(content.trim(), anonymous);
+      await createPlazaPost(trimmed, anonymous, {
+        imageAssetId,
+        topic: topicInput.trim() || null,
+      });
       setComposerOpen(false);
       setContent("");
+      setTopicInput("");
+      clearImage();
+      // 新帖子可能不属于当前筛选的话题，回到「全部」才看得到自己刚发的内容。
+      setTopicFilter(null);
       setReloadKey((key) => key + 1);
       setTab("treehole");
     } catch (error) {
@@ -417,6 +733,35 @@ export function PlazaScreen() {
         </header>
 
         <main className="mx-auto max-w-xl px-5 pb-28 pt-4 lg:max-w-3xl">
+          {tab === "treehole" && (topics.length > 0 || topicFilter) ? (
+            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setTopicFilter(null)}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
+                  topicFilter === null
+                    ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                    : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
+                }`}
+              >
+                全部
+              </button>
+              {topics.map((entry) => (
+                <button
+                  key={entry.topic}
+                  type="button"
+                  onClick={() => setTopicFilter(entry.topic)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
+                    topicFilter === entry.topic
+                      ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                      : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
+                  }`}
+                >
+                  #{entry.topic}# {entry.count}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {profiles.communityGroupUrl ? (
             <a
               href={profiles.communityGroupUrl}
@@ -449,7 +794,7 @@ export function PlazaScreen() {
               <span className="min-w-0 flex-1 text-left">
                 <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                  通过 @tougaojiqirbot 投稿你的内容
+                  通过 {botHandleFromUrl(profiles.submissionBotUrl)} 投稿你的内容
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
@@ -466,6 +811,13 @@ export function PlazaScreen() {
           {activeFeed.error ? (
             <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 text-center text-sm text-[var(--survey-body)]">
               {activeFeed.error}
+              <button
+                type="button"
+                onClick={() => setReloadKey((key) => key + 1)}
+                className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-[13px] font-semibold text-[var(--survey-primary-content)]"
+              >
+                重新加载
+              </button>
             </div>
           ) : !activeFeed.loading && activeFeed.items.length === 0 ? (
             <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-8 text-center">
@@ -477,13 +829,13 @@ export function PlazaScreen() {
                   ? "点击右下角 ✏️ 说出第一句心里话（可以匿名）。"
                   : profiles.surveyId
                     ? "填写一份个人介绍问卷，提交时选择「发布到个人画廊」，就会出现在这里。"
-                    : "个人画廊还未启用：请在后台「设置」里选择一份问卷作为个人画廊问卷。"}
+                    : "还没有人发布个人资料，先去逛逛树洞吧。"}
               </p>
             </div>
           ) : tab === "treehole" ? (
             <div className="flex flex-col gap-3">
               {posts.items.map((post) => (
-                <TreeHolePost key={post.id} post={post} />
+                <TreeHolePost key={post.id} post={post} onSelectTopic={setTopicFilter} />
               ))}
             </div>
           ) : (
@@ -511,7 +863,7 @@ export function PlazaScreen() {
             type="button"
             aria-label="投稿树洞"
             onClick={openComposer}
-            className="fixed bottom-[calc(env(safe-area-inset-bottom)+18px)] right-5 z-20 flex items-center justify-center rounded-full bg-[var(--survey-primary)] p-4 text-[var(--survey-primary-content)] shadow-lg"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+84px)] right-5 z-20 flex items-center justify-center rounded-full bg-[var(--survey-primary)] p-4 text-[var(--survey-primary-content)] shadow-lg"
           >
             <Pencil className="h-5 w-5" />
           </button>
@@ -540,9 +892,54 @@ export function PlazaScreen() {
                 value={content}
                 onChange={(event) => setContent(event.target.value.slice(0, 500))}
                 rows={4}
-                placeholder="写下你想说的话（5-500 字）…"
+                autoFocus
+                placeholder="写下你想说的话（5-500 字，配图后可以只发图）…"
                 className="mt-3 w-full resize-none rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-3 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]"
               />
+
+              {imagePreview ? (
+                <div className="relative mt-2.5 overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)]">
+                  <img src={imagePreview} alt="配图预览" className="max-h-52 w-full object-cover" />
+                  <button
+                    type="button"
+                    aria-label="移除配图"
+                    onClick={clearImage}
+                    className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="mt-2.5 flex items-center gap-2">
+                <label
+                  className={`flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-[var(--survey-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--survey-body)] ${
+                    imageBusy ? "opacity-60" : ""
+                  }`}
+                >
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  {imageBusy ? "上传中…" : imageAssetId ? "换一张" : "配图"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    disabled={imageBusy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      // 允许重复选择同一个文件：清空 value。
+                      event.target.value = "";
+                      void selectImage(file);
+                    }}
+                  />
+                </label>
+                <input
+                  value={topicInput}
+                  maxLength={20}
+                  onChange={(event) => setTopicInput(event.target.value)}
+                  placeholder="#话题#（可选）"
+                  className="min-w-0 flex-1 rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-bg)] px-3 py-1.5 text-xs text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]"
+                />
+              </div>
               <div className="mt-2 flex items-center justify-between">
                 <div className="flex gap-1.5">
                   {(
@@ -570,7 +967,7 @@ export function PlazaScreen() {
               {composerMessage ? <p className="mt-2 text-xs text-red-500">{composerMessage}</p> : null}
               <button
                 type="button"
-                disabled={submitting || content.trim().length < 5}
+                disabled={submitting || imageBusy || (!imageAssetId && content.trim().length < 5)}
                 onClick={() => void submitPost()}
                 className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
               >

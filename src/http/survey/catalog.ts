@@ -22,7 +22,7 @@ import { mediaPublicUrl, parseSettings } from "./presentation";
  * free plan allows 1,000 writes/day for the whole account, and a short TTL
  * would spend that budget re-writing the same payload.
  */
-export const SURVEY_LIST_CACHE_VERSION = "v1";
+export const SURVEY_LIST_CACHE_VERSION = "v2";
 export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
 /**
@@ -48,7 +48,10 @@ export interface PublishedSurveyListItem {
   description?: string;
   accessCodeRequired: boolean;
   publishedAt: string | null;
+  closedAt: string | null;
+  anonymous: boolean;
   questionCount: number;
+  responseCount: number;
   coverUrl?: string;
   theme: unknown;
 }
@@ -73,10 +76,13 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
   }
   const rows = await env.DB.prepare(
     `SELECT s.id, s.title, s.description, s.access_code accessCode,
-              s.published_at publishedAt, s.settings_json settingsJson,
+              s.published_at publishedAt, s.closed_at closedAt, s.anonymous anonymous,
+              s.settings_json settingsJson,
               m.id coverMediaId, m.url coverUrl,
               (SELECT COUNT(*) FROM survey_questions q
-               WHERE q.survey_id = s.id) questionCount
+               WHERE q.survey_id = s.id) questionCount,
+              (SELECT COUNT(*) FROM survey_responses r
+               WHERE r.survey_id = s.id AND r.status = 'completed') responseCount
        FROM surveys s
        LEFT JOIN media_assets m ON m.id = s.cover_media_id
        WHERE ${conditions.join(" AND ")}
@@ -90,7 +96,10 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
       description: string | null;
       accessCode: string | null;
       publishedAt: string | null;
+      closedAt: string | null;
+      anonymous: number;
       questionCount: number;
+      responseCount: number;
       settingsJson: string | null;
       coverMediaId: number | null;
       coverUrl: string | null;
@@ -101,7 +110,10 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
     ...(row.description ? { description: row.description } : {}),
     accessCodeRequired: Boolean(row.accessCode),
     publishedAt: row.publishedAt,
+    closedAt: row.closedAt,
+    anonymous: Boolean(row.anonymous),
     questionCount: Number(row.questionCount ?? 0),
+    responseCount: Number(row.responseCount ?? 0),
     // Always serve the cover through the media endpoint so KV/R2/data-URL
     // covers share one path and the public list stays small.
     ...(typeof row.coverMediaId === "number" ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) } : {}),

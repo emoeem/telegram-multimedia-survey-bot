@@ -1,5 +1,4 @@
 import { strToU8, zipSync } from "fflate";
-import * as XLSX from "xlsx";
 
 import type { QuestionType } from "../db/schema";
 
@@ -21,22 +20,12 @@ export interface ResponseRow {
 
 const QUESTION_ID_BATCH_SIZE = 90;
 
-async function loadOptionLabels(
-  db: D1Database,
-  questionIds: number[],
-): Promise<Map<number, string>> {
+async function loadOptionLabels(db: D1Database, questionIds: number[]): Promise<Map<number, string>> {
   const optionLabels = new Map<number, string>();
   const uniqueQuestionIds = [...new Set(questionIds)];
 
-  for (
-    let start = 0;
-    start < uniqueQuestionIds.length;
-    start += QUESTION_ID_BATCH_SIZE
-  ) {
-    const questionIdBatch = uniqueQuestionIds.slice(
-      start,
-      start + QUESTION_ID_BATCH_SIZE,
-    );
+  for (let start = 0; start < uniqueQuestionIds.length; start += QUESTION_ID_BATCH_SIZE) {
+    const questionIdBatch = uniqueQuestionIds.slice(start, start + QUESTION_ID_BATCH_SIZE);
     const result = await db
       .prepare(
         `SELECT id, label
@@ -86,25 +75,32 @@ function answerValue(
       const parsed = JSON.parse(String(row["json_value"])) as unknown;
       if (
         column?.type === "matrix" &&
-        parsed && typeof parsed === "object" &&
-        "kind" in parsed && (parsed as { kind?: unknown }).kind === "matrix"
+        parsed &&
+        typeof parsed === "object" &&
+        "kind" in parsed &&
+        (parsed as { kind?: unknown }).kind === "matrix"
       ) {
         const selections = (parsed as { selections?: unknown }).selections;
         let columns: string[] = [];
         try {
-          const settings = column.settingsJson ? JSON.parse(column.settingsJson) as { columns?: unknown } : null;
-          columns = Array.isArray(settings?.columns) ? settings.columns.filter((item): item is string => typeof item === "string") : [];
-        } catch { /* keep raw column number below */ }
+          const settings = column.settingsJson ? (JSON.parse(column.settingsJson) as { columns?: unknown }) : null;
+          columns = Array.isArray(settings?.columns)
+            ? settings.columns.filter((item): item is string => typeof item === "string")
+            : [];
+        } catch {
+          /* keep raw column number below */
+        }
         if (selections && typeof selections === "object") {
           return Object.entries(selections as Record<string, unknown>)
-            .map(([rowId, columnIndex]) => `${optionLabels.get(Number(rowId)) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`)
+            .map(
+              ([rowId, columnIndex]) =>
+                `${optionLabels.get(Number(rowId)) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`,
+            )
             .join(" | ");
         }
       }
       if (Array.isArray(parsed)) {
-        return parsed
-          .map((optionId) => optionLabels.get(Number(optionId)) ?? String(optionId))
-          .join(" | ");
+        return parsed.map((optionId) => optionLabels.get(Number(optionId)) ?? String(optionId)).join(" | ");
       }
     } catch {
       // Fall through to the original JSON text.
@@ -133,20 +129,14 @@ export async function getExportRows(
 
   const titleCounts = new Map<string, number>();
   for (const question of questionsResult.results ?? []) {
-    titleCounts.set(
-      question.title,
-      (titleCounts.get(question.title) ?? 0) + 1,
-    );
+    titleCounts.set(question.title, (titleCounts.get(question.title) ?? 0) + 1);
   }
   const columns = (questionsResult.results ?? []).map((question) => ({
     id: question.id,
     title: question.title,
     type: question.type as QuestionType,
     settingsJson: question.settings_json,
-    key:
-      (titleCounts.get(question.title) ?? 0) > 1
-        ? `${question.title} (#${question.id})`
-        : question.title,
+    key: (titleCounts.get(question.title) ?? 0) > 1 ? `${question.title} (#${question.id})` : question.title,
   }));
   const optionLabels = await loadOptionLabels(
     db,
@@ -168,40 +158,45 @@ export async function getExportRows(
       completed_at: string | null;
     }>();
 
-  const answersResult = await db
-    .prepare(
-      `SELECT
-        response_id,
-        question_id,
-        text_value,
-        number_value,
-        boolean_value,
-        rating_value,
-        date_value,
-        time_value,
-        json_value,
-        (
-          SELECT GROUP_CONCAT(qo.label, ' | ')
-          FROM answer_options ao
-          JOIN question_options qo ON qo.id = ao.question_option_id
-          WHERE ao.answer_id = answers.id
-        ) AS selected_options
-       FROM answers
-       WHERE response_id IN (
-         SELECT id FROM survey_responses WHERE survey_id = ?
-       )`,
-    )
-    .bind(surveyId)
-    .all<Record<string, unknown>>();
-
   const answersByResponse = new Map<number, Map<number, Record<string, unknown>>>();
 
-  for (const answer of answersResult.results ?? []) {
-    const responseId = Number(answer["response_id"]);
-    const questionId = Number(answer["question_id"]);
-    const responseAnswers = answersByResponse.get(responseId) ?? new Map();
-    responseAnswers.set(questionId, answer);
-    answersByResponse.set(responseId, responseAnswers);
+  // D1 caps the number of rows a single statement may return; a large survey
+  // would silently truncate (or fail) here, so answers are paged in
+  // response-id batches.
+  const responseRows = responsesResult.results ?? [];
+  const ANSWER_BATCH = 400;
+  for (let offset = 0; offset < responseRows.length; offset += ANSWER_BATCH) {
+    const batch = responseRows.slice(offset, offset + ANSWER_BATCH).map((row) => Number(row.response_id));
+    const answersResult = await db
+      .prepare(
+        `SELECT
+          response_id,
+          question_id,
+          text_value,
+          number_value,
+          boolean_value,
+          rating_value,
+          date_value,
+          time_value,
+          json_value,
+          (
+            SELECT GROUP_CONCAT(qo.label, ' | ')
+            FROM answer_options ao
+            JOIN question_options qo ON qo.id = ao.question_option_id
+            WHERE ao.answer_id = answers.id
+          ) AS selected_options
+         FROM answers
+         WHERE response_id IN (${batch.map(() => "?").join(",")})`,
+      )
+      .bind(...batch)
+      .all<Record<string, unknown>>();
+    for (const answer of answersResult.results ?? []) {
+      const responseId = Number(answer["response_id"]);
+      const questionId = Number(answer["question_id"]);
+      const responseAnswers = answersByResponse.get(responseId) ?? new Map();
+      responseAnswers.set(questionId, answer);
+      answersByResponse.set(responseId, responseAnswers);
+    }
   }
 
   const rows = (responsesResult.results ?? []).map((response) => {
@@ -230,27 +225,17 @@ export function buildCsv(rows: ResponseRow[]): string {
   }
 
   const csvCell = (value: unknown): string => {
-    const text = value === null || value === undefined ? "" : String(value);
+    const rawText = value === null || value === undefined ? "" : String(value);
+    const text = /^[\t\r\n ]*[=+\-@]/.test(rawText) ? `'${rawText}` : rawText;
     return `"${text.replaceAll('"', '""')}"`;
   };
   const headers = Object.keys(rows[0] ?? {});
   const lines = [
     headers.map(csvCell).join(","),
-    ...rows.map((row) =>
-      headers
-        .map((header) => csvCell(row[header]))
-        .join(","),
-    ),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(",")),
   ];
 
   return lines.join("\n");
-}
-
-export function buildXlsx(rows: ResponseRow[]): Uint8Array {
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Responses");
-  return XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as Uint8Array;
 }
 
 export function buildExportZip(
@@ -280,7 +265,7 @@ export function buildExportZip(
   return zipSync(zipEntries);
 }
 
-export type ExportFormat = "csv" | "xlsx" | "zip";
+export type ExportFormat = "csv" | "zip";
 
 export function serializeExport(
   format: ExportFormat,
@@ -290,10 +275,6 @@ export function serializeExport(
 ): Uint8Array | string {
   if (format === "csv") {
     return csv;
-  }
-
-  if (format === "xlsx") {
-    return buildXlsx(rows);
   }
 
   return buildExportZip(csv, rows, mediaFiles);

@@ -1,4 +1,5 @@
 import type { Env } from "../../index";
+import type { User } from "../../db/schema";
 import { verifyTelegramWebAppProfile } from "../admin-api";
 import { verifySurveyParticipantToken } from "../../services/participant-session.service";
 import { getUserById, getUserByTelegramId, upsertUser } from "../../db/repositories/user.repository";
@@ -25,6 +26,73 @@ export interface Participant {
  * Every branch returns a `Response` instead of throwing when identity is
  * missing or invalid so the caller can surface the exact 401 to the client.
  */
+/**
+ * A ban is account-wide, but it used to be enforced only inside the Telegram
+ * chat: the same account could keep answering surveys, posting to the plaza and
+ * playing challenges through the web APIs with its mini-app initData, a
+ * participant token, an email session or a linked browser key. Admins stay
+ * exempt, matching the bot's own check.
+ */
+function bannedResponse(
+  env: Env,
+  user: { bannedAt: string | null; telegramUserId: number | null },
+): Response | null {
+  if (!user.bannedAt) return null;
+  if (user.telegramUserId !== null) {
+    const adminIds = env.ADMIN_IDS.split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isInteger(value));
+    if (adminIds.includes(user.telegramUserId)) return null;
+  }
+  return fail(403, "account_banned", "该账号已被限制使用，如有疑问请联系管理员。");
+}
+
+interface TelegramProfile {
+  telegramUserId: number;
+  username?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  languageCode?: string | null;
+}
+
+function telegramProfileMatches(
+  user: { username: string | null; firstName: string | null; lastName: string | null; languageCode: string | null },
+  profile: TelegramProfile,
+): boolean {
+  return (
+    user.username === (profile.username ?? null) &&
+    user.firstName === (profile.firstName ?? null) &&
+    user.lastName === (profile.lastName ?? null) &&
+    user.languageCode === (profile.languageCode ?? null)
+  );
+}
+
+/**
+ * Shared tail of the two Telegram identity branches. Reads the user first and
+ * only writes (upsertUser) when the profile actually changed or the account is
+ * new: resolveParticipant runs on every survey request including read-only
+ * ones (definition, saved answers, media), and an unconditional upsert cost a
+ * D1 write + a follow-up SELECT per page interaction.
+ */
+async function resolveTelegramUser(env: Env, profile: TelegramProfile): Promise<User | Response> {
+  const existing = await getUserByTelegramId(env.DB, profile.telegramUserId);
+  if (existing && telegramProfileMatches(existing, profile)) {
+    const banned = bannedResponse(env, existing);
+    return banned ?? existing;
+  }
+  const user = await upsertUser(env.DB, {
+    telegramUserId: profile.telegramUserId,
+    username: profile.username ?? null,
+    firstName: profile.firstName ?? null,
+    lastName: profile.lastName ?? null,
+    languageCode: profile.languageCode ?? null,
+    systemRole: "participant",
+  });
+  const banned = bannedResponse(env, user);
+  if (banned) return banned;
+  return user;
+}
+
 export async function resolveParticipant(request: Request, env: Env): Promise<Participant | Response> {
   const initDataHeader = request.headers.get("x-telegram-init-data");
   if (initDataHeader) {
@@ -32,18 +100,8 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     if (!profile || profile.telegramUserId <= 0) {
       return fail(401, "invalid_identity", "Telegram 身份验证失败");
     }
-    await upsertUser(env.DB, {
-      telegramUserId: profile.telegramUserId,
-      username: profile.username,
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      languageCode: profile.languageCode,
-      systemRole: "participant",
-    });
-    const user = await getUserByTelegramId(env.DB, profile.telegramUserId);
-    if (!user) {
-      return fail(500, "identity_lookup_failed", "无法创建用户身份");
-    }
+    const user = await resolveTelegramUser(env, profile);
+    if (user instanceof Response) return user;
     return {
       kind: "telegram",
       dbUserId: user.id,
@@ -59,18 +117,8 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     if (!profile || profile.telegramUserId <= 0) {
       return fail(401, "invalid_identity", "登录状态已失效，请重新从 Telegram 打开问卷。");
     }
-    await upsertUser(env.DB, {
-      telegramUserId: profile.telegramUserId,
-      username: profile.username,
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      languageCode: profile.languageCode,
-      systemRole: "participant",
-    });
-    const user = await getUserByTelegramId(env.DB, profile.telegramUserId);
-    if (!user) {
-      return fail(500, "identity_lookup_failed", "无法创建用户身份");
-    }
+    const user = await resolveTelegramUser(env, profile);
+    if (user instanceof Response) return user;
     return {
       kind: "telegram",
       dbUserId: user.id,
@@ -87,6 +135,9 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     if (!account || !account.verifiedAt) {
       return fail(401, "invalid_identity", "邮箱登录状态已失效，请重新登录。");
     }
+    const accountUser = account.userId === null ? null : await getUserById(env.DB, account.userId);
+    const banned = accountUser ? bannedResponse(env, accountUser) : null;
+    if (banned) return banned;
     return {
       kind: "email",
       dbUserId: account.userId,
@@ -107,6 +158,8 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
   if (linked) {
     const user = await getUserById(env.DB, linked.userId);
     if (user) {
+      const banned = bannedResponse(env, user);
+      if (banned) return banned;
       return {
         kind: "telegram",
         dbUserId: user.id,

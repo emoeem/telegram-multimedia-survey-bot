@@ -442,7 +442,7 @@ export function useSurveyEditor(data: EditorData) {
         if (value && typeof value === "object") {
           const source = value as Record<string, unknown>;
           const next: Record<string, unknown> = { ...source };
-          for (const key of ["targetQuestionId", "skipToQuestionId"]) {
+          for (const key of ["targetQuestionId", "skipToQuestionId", "optionId"]) {
             if (typeof next[key] === "number" && idMap.has(next[key] as number)) {
               next[key] = idMap.get(next[key] as number);
             }

@@ -12,6 +12,7 @@ import {
   getCompletedResponseBySurveyAndUser,
   getResponseBySurveyAndHash,
   listAnswersByResponseId,
+  setResponseReportPublication,
 } from "../../db/repositories/response.repository";
 import { getFirstQuestion } from "../../survey/engine";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
@@ -22,6 +23,12 @@ import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { createReportAccessToken } from "../../services/report-access-token.service";
 import { createSurveyAccessGrant, verifySurveyAccessGrant } from "../../services/survey-access-grant.service";
 import { publishProfileResponse } from "../../services/profile-gallery.service";
+import {
+  evaluateAchievements,
+  evaluateTimeOfDayAchievements,
+  serializeUnlockedAchievements,
+} from "../../services/achievement.service";
+import { getDefaultPublicationTarget } from "../../db/repositories/publication-target.repository";
 import { promoteResponseMediaToDurable } from "../../services/media/temporary-media.service";
 import { fail, json } from "../api-response";
 import { findMissingRequiredQuestion, saveWebAnswer } from "./answers";
@@ -38,6 +45,28 @@ import {
 import { loadSurveyDefinition } from "./definition";
 import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
+
+interface ResolvedPublicationTarget {
+  id: number | null;
+  chatId: string;
+  threadId: number | null;
+}
+
+async function resolvePublicationTarget(env: Env): Promise<ResolvedPublicationTarget | null> {
+  if (env.DEPLOYMENT_ROLE === "customer" && env.LICENSE_SERVER_URL && env.LICENSE_KEY && env.INSTALLATION_ID) {
+    const response = await fetch(env.LICENSE_SERVER_URL.replace(/\/+$/, "") + "/api/control/customer/publication-target", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ licenseKey: env.LICENSE_KEY, installationId: env.INSTALLATION_ID, appVersion: env.APP_VERSION ?? "0.0.0" }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null) as { target?: { chatId?: string; threadId?: number | null } } | null;
+    if (!payload?.target?.chatId) return null;
+    return { id: null, chatId: payload.target.chatId, threadId: payload.target.threadId ?? null };
+  }
+  const target = await getDefaultPublicationTarget(env.DB);
+  return target ? { id: target.id, chatId: target.chatId, threadId: target.threadId } : null;
+}
 
 export async function handleSurveyApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/surveys") {
@@ -215,15 +244,32 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (!firstQuestion) {
       return fail(400, "empty_survey", "问卷还没有题目");
     }
-    const response = await createResponse(env.DB, {
-      surveyId,
-      userId: participant.dbUserId,
-      participantHash: participant.participantHash,
-      currentQuestionId: firstQuestion.id,
-      deviceFingerprint: sanitizeHeader(request.headers.get("x-device-fingerprint"), 128),
-      browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request),
-      ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
-    });
+    let response: Awaited<ReturnType<typeof createResponse>>;
+    try {
+      response = await createResponse(env.DB, {
+        surveyId,
+        userId: participant.dbUserId,
+        participantHash: participant.participantHash,
+        currentQuestionId: firstQuestion.id,
+        deviceFingerprint: sanitizeHeader(request.headers.get("x-device-fingerprint"), 128),
+        browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request),
+        ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
+      });
+    } catch (error) {
+      // A double-tap or a retried request passes the "is there an active
+      // response?" check twice; the partial unique index on
+      // (survey_id, participant_hash) WHERE status='in_progress' then makes the
+      // second INSERT fail. That is a resume, not a server error — look up the
+      // winning row and continue it.
+      const raced = await getActiveResponse(env.DB, surveyId, participant.participantHash);
+      if (!raced) throw error;
+      return json({
+        responseId: raced.id,
+        currentQuestionId: raced.currentQuestionId,
+        status: raced.status,
+        resumed: true,
+      });
+    }
     return json(
       {
         responseId: response.id,
@@ -321,8 +367,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       galleryCoverMediaId?: unknown;
       galleryVisibleQuestionIds?: unknown;
       galleryShowUsername?: unknown;
+      publishToTelegram?: unknown;
     } | null;
     const publishToGallery = Boolean(body?.publishToGallery);
+    const publishToTelegram = Boolean(body?.publishToTelegram);
     const galleryCoverMediaId =
       typeof body?.galleryCoverMediaId === "number" && Number.isInteger(body.galleryCoverMediaId)
         ? body.galleryCoverMediaId
@@ -371,6 +419,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         return fail(400, "profile_publish_failed", "发布到个人画廊失败，请稍后重试。");
       }
     }
+    const publicationTarget = publishToTelegram ? await resolvePublicationTarget(env) : null;
     const completed = await completeResponse(env.DB, responseId);
     if (!completed) {
       // A concurrent submit already completed this response. Return the same
@@ -404,12 +453,55 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       // queue pipeline, so a transient enqueue failure must not fail submit.
       console.error("Report delivery enqueue failed", { responseId, error });
     }
+    if (publishToTelegram) {
+      try {
+        if (!publicationTarget) throw new Error("Web 管理后台尚未配置公开报告发布目标");
+        await setResponseReportPublication(
+          env.DB,
+          responseId,
+          true,
+          "pending",
+          publicationTarget.id,
+          publicationTarget.chatId,
+          publicationTarget.threadId,
+        );
+        await env.EXPORT_QUEUE.send({ kind: "public_report", responseId });
+      } catch (error) {
+        await setResponseReportPublication(
+          env.DB,
+          responseId,
+          true,
+          "failed",
+          publicationTarget?.id ?? null,
+          publicationTarget?.chatId ?? null,
+          publicationTarget?.threadId ?? null,
+        );
+        console.error("Public Telegram report enqueue failed", { responseId, error });
+      }
+    }
+    // 成就：答卷已经落库，徽章只是装饰——统计失败绝不能反过来让提交失败。
+    // 时间彩蛋（深夜/早起）必须在「刚刚完成」的这一刻判定，事后无法重建。
+    let newAchievements: ReturnType<typeof serializeUnlockedAchievements> = [];
+    try {
+      const achievementCtx = {
+        participantHash: participant.participantHash,
+        userId: participant.dbUserId ?? null,
+      };
+      const unlocked = [
+        ...(await evaluateAchievements(env.DB, achievementCtx)),
+        ...(await evaluateTimeOfDayAchievements(env.DB, achievementCtx)),
+      ];
+      newAchievements = serializeUnlockedAchievements(unlocked);
+    } catch (error) {
+      console.error("Achievement grant failed", { responseId, error });
+    }
     const token = await createReportAccessToken(env.WEBHOOK_SECRET, responseId);
     return json({
       ok: true,
       completed: true,
       reportUrl: `/report/${responseId}?t=${token}`,
       galleryPublished: publishToGallery,
+      newAchievements,
     });
   }
 

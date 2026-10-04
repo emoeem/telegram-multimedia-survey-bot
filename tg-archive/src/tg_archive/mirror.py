@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .captions import CaptionOptions, build_caption
+from .captions import CaptionOptions, build_caption, idempotency_marker
 from .collector import Collector
 from .config import ArchiveConfig
 from .db import ArchiveDB
@@ -32,15 +32,33 @@ class MirrorStats:
     posted: int = 0
     failed: int = 0
     skipped: int = 0
+    deferred: int = 0  # rate-limited too long to wait: retry on a later run
+    recovered: int = 0  # already in the channel, only the bookkeeping was missing
+
+
+# Longest wait a single run will block on. A longer server-mandated wait is
+# deferred to a later run instead of retried early (which burned the failure
+# budget until the row became terminally "skipped" and was never retried).
+FLOOD_WAIT_CAP = 3600
+
+
+def _flood_required(error: str) -> int:
+    """Seconds the server asked us to wait; 0 when this is not a flood error."""
+    match = re.search(r"A wait of (\d+) seconds", error, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    lowered = error.lower()
+    if "flood" in lowered or "slow mode" in lowered or "slowmode" in lowered:
+        return 20
+    return 0
 
 
 def _flood_seconds(error: str) -> int:
-    match = re.search(r"A wait of (\d+) seconds", error, re.IGNORECASE)
-    if match:
-        return min(int(match.group(1)), 300)
-    if "flood" in error.lower():
-        return 20
-    return 0
+    """Wait actually applied before a retry (capped at FLOOD_WAIT_CAP)."""
+    required = _flood_required(error)
+    if required <= 0:
+        return 0
+    return min(required, FLOOD_WAIT_CAP)
 
 
 class MirrorEngine:
@@ -71,6 +89,9 @@ class MirrorEngine:
         self.include_topics = set(include_topics) if include_topics else None
         self.exclude_topics = set(exclude_topics) if exclude_topics else None
         self.stats = MirrorStats()
+        # ids currently being posted by _write_pending: a live event for the
+        # same message must not post it a second time
+        self._in_flight: set[int] = set()
         self.collector = Collector(client, cfg, progress=self.progress)
         self.writer = ChannelWriter(client, cfg)
 
@@ -95,6 +116,11 @@ class MirrorEngine:
             channel_entity = None
 
         chat_local_id = self.db.upsert_chat(chat)
+
+        if self.listen and channel_entity is not None:
+            # before the (potentially hours-long) backfill/post phase
+            self._register_listeners(entity, chat, chat_local_id, channel_entity)
+
         cursor = self.db.get_last_sync_id(chat_local_id)
         sync_state = self.db.get_sync_state(chat_local_id)
         incremental = sync_state == "synced" and cursor is not None
@@ -164,6 +190,9 @@ class MirrorEngine:
             media_only=self.cfg.media_only,
             since=self.cfg.since,
             until=self.cfg.until,
+            topic_id=self.topic_id,
+            include_topics=self.include_topics,
+            exclude_topics=self.exclude_topics,
         )
 
         if protected and self.cfg.protected_policy == "skip":
@@ -189,7 +218,8 @@ class MirrorEngine:
         if not pending:
             self.progress("✅ 没有待写入频道的消息。")
             if self.listen:
-                await self._listen_loop(entity, chat, chat_local_id, channel_entity)
+                await self._await_disconnect()
+                return 2 if self.stats.failed else 0
             return 0
 
         if not channel_entity:
@@ -231,7 +261,14 @@ class MirrorEngine:
         )
         self._show_stats()
         if self.listen:
-            await self._listen_loop(entity, chat, chat_local_id, channel_entity)
+            await self._await_disconnect()
+            return 2 if self.stats.failed else 0
+        if self.stats.failed:
+            # Report partial failure to cron/CI instead of exiting 0
+            self.progress(
+                f"⚠️  {self.stats.failed} 条未能写入频道（下次运行会自动重试）"
+            )
+            return 2
         return 0
 
     # ------------------------------------------------------------- helpers
@@ -288,13 +325,17 @@ class MirrorEngine:
             return False, "service message"
         if row["deleted_at"]:
             return False, "deleted"
-        if protected:
+        # `can_be_saved` is 0 for a protected chat *or* a message carrying the
+        # per-message noforwards flag; both follow the same policy.
+        if protected or not row["can_be_saved"]:
             reason = self._protected_skip_reason(
                 self.cfg.protected_policy,
                 self.cfg.writer_mode,
                 bool(row["has_media"]),
             )
             if reason:
+                if not protected:
+                    reason = f"message-level noforwards ({reason})"
                 return False, reason
         return True, ""
 
@@ -304,15 +345,23 @@ class MirrorEngine:
         mode: str,
         has_media: bool,
     ) -> str:
-        """Return a skip reason when the current policy forbids this message."""
+        """Return a skip reason when the current policy forbids this message.
+
+        Fails closed: an unrecognised policy skips rather than allows (the
+        web API validates the value, but this must not depend on that).
+        """
 
         if policy == "skip":
             return "protected chat (default policy)"
         if mode == "forward":
             return "protected chat cannot be forwarded"
-        if policy == "text_only" and has_media:
-            return "protected chat media never copied under text_only"
-        return ""
+        if policy == "text_only":
+            if has_media:
+                return "protected chat media never copied under text_only"
+            return ""
+        if policy == "allow_media":
+            return ""
+        return f"unknown protected policy {policy!r}"
 
     async def _write_pending(
         self,
@@ -369,6 +418,23 @@ class MirrorEngine:
                 self.stats.skipped += 1
                 continue
 
+            # The decision above used the indexed row; the payload is
+            # re-normalized from the live message, so its media flags may have
+            # changed (e.g. a text message edited to add a photo). Re-check
+            # against the policy or text_only would upload protected media.
+            if protected or not nm.can_be_saved:
+                reason = self._protected_skip_reason(
+                    self.cfg.protected_policy,
+                    self.cfg.writer_mode,
+                    nm.has_media,
+                )
+                if reason:
+                    self.db.mark_skipped(
+                        chat_local_id, mid, self.cfg.writer_mode, reason
+                    )
+                    self.stats.skipped += 1
+                    continue
+
             caption = ""
             if self.cfg.writer_mode == "copy":
                 caption = build_caption(
@@ -382,13 +448,35 @@ class MirrorEngine:
                     ),
                 )
 
-            result = await self._post_with_retry(
-                entity,
-                channel_entity,
-                raw_message,
-                nm,
-                caption,
-            )
+            # A previous run may have delivered this post and died before
+            # recording it (status 'posting'). Verify the channel by marker
+            # before posting a possible duplicate.
+            if row.get("mirror_status") == "posting" and caption:
+                already = await self._find_in_channel(channel_entity, chat, mid)
+                if already is not None:
+                    self.db.mark_mirrored(
+                        chat_local_id,
+                        mid,
+                        self.cfg.writer_mode,
+                        peer_to_chat_id(channel_entity) or 0,
+                        already,
+                    )
+                    self.stats.recovered += 1
+                    self.progress(f"  ↺ #{mid} 上次已写入频道（#{already}），补记账")
+                    continue
+
+            self.db.mark_posting(chat_local_id, mid, self.cfg.writer_mode)
+            self._in_flight.add(mid)
+            try:
+                result = await self._post_with_retry(
+                    entity,
+                    channel_entity,
+                    raw_message,
+                    nm,
+                    caption,
+                )
+            finally:
+                self._in_flight.discard(mid)
             if result.ok:
                 self.db.mark_mirrored(
                     chat_local_id,
@@ -403,15 +491,56 @@ class MirrorEngine:
                 )
                 if self.cfg.post_delay_seconds > 0:
                     await asyncio.sleep(self.cfg.post_delay_seconds)
+            elif result.ambiguous:
+                # The request may have been delivered: leave the row in
+                # 'posting' so the next run verifies the channel (by marker)
+                # before re-posting instead of duplicating it.
+                self.stats.deferred += 1
+                self.progress(
+                    f"  ⏸ #{mid} 连接中断、结果未知：下次运行会先查频道再决定"
+                )
             else:
                 self.db.mark_failed(
                     chat_local_id,
                     row["tg_message_id"],
                     self.cfg.writer_mode,
                     result.error,
+                    deferred=result.deferred,
                 )
-                self.stats.failed += 1
-                self.progress(f"  ❌ #{row['tg_message_id']}: {result.error[:180]}")
+                if result.deferred:
+                    self.stats.deferred += 1
+                    self.progress(
+                        f"  ⏸  #{row['tg_message_id']} 限流延后：{result.error[:180]}"
+                    )
+                else:
+                    self.stats.failed += 1
+                    self.progress(f"  ❌ #{row['tg_message_id']}: {result.error[:180]}")
+
+    async def _find_in_channel(
+        self,
+        channel_entity: Any,
+        chat: Any,
+        tg_message_id: int,
+    ) -> Optional[int]:
+        """Return the channel message id already carrying this marker, if any.
+
+        Used only for rows left in the 'posting' state by an interrupted run,
+        so it costs one search per *recovered* message, not per message.
+        """
+
+        marker = idempotency_marker(chat.tg_chat_id, tg_message_id)
+        try:
+            found = await self.client.get_messages(
+                channel_entity, search=marker, limit=1
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to re-posting
+            self.progress(f"  ⚠️ 频道查重失败（按未写入处理）：{exc}")
+            return None
+        if not found:
+            return None
+        first = found[0] if isinstance(found, (list, tuple)) else found
+        found_id = getattr(first, "id", None)
+        return int(found_id) if found_id is not None else None
 
     async def _post_with_retry(
         self,
@@ -421,6 +550,7 @@ class MirrorEngine:
         nm: NormalizedMessage,
         caption: str,
     ) -> PostResult:
+        result = PostResult(ok=False, error="no attempt made")
         for _ in range(3):
             result = await self.writer.post(
                 entity,
@@ -432,12 +562,24 @@ class MirrorEngine:
             )
             if result.ok or not result.error:
                 return result
+            required = _flood_required(result.error)
+            if required <= 0:
+                return result
+            if required > FLOOD_WAIT_CAP:
+                # Waiting hours inside one run is not useful, and retrying
+                # before the window expires is guaranteed to fail -- which used
+                # to consume the failure budget until the row became
+                # terminally "skipped". Defer to a later run instead.
+                self.progress(
+                    f"  ⏳ FloodWait {required}s 超出本次等待上限，"
+                    f"本条改为稍后再试（不计失败）"
+                )
+                return PostResult(
+                    ok=False, error=result.error, deferred=True
+                )
             wait = _flood_seconds(result.error)
-            if wait > 0:
-                self.progress(f"  ⏳ FloodWait ~{wait}s，稍候重试…")
-                await asyncio.sleep(wait)
-                continue
-            return result
+            self.progress(f"  ⏳ FloodWait ~{wait}s，稍候重试…")
+            await asyncio.sleep(wait)
         return result
 
     # ------------------------------------------------------------ reporting
@@ -461,8 +603,10 @@ class MirrorEngine:
         self.progress(
             f"📊 本次：同步 {s.fetched}（新增 {s.inserted} / 更新 {s.updated}），"
             f"写入频道 {s.posted}，跳过 {s.skipped}，失败 {s.failed}"
+            + (f"，限流延后 {s.deferred}" if s.deferred else "")
+            + (f"，补记账 {s.recovered}" if s.recovered else "")
         )
-        total = self.db.stats()
+        total = self.db.stats(mode=self.cfg.writer_mode)
         self.progress(
             f"🗄  本地索引：聊天 {total['chats']}，消息 {total['messages']}，"
             f"已镜像 {total['mirrored']}，待处理 {total['pending']}"
@@ -470,13 +614,19 @@ class MirrorEngine:
 
     @staticmethod
     def _same_peer(chat_id: int, channel_entity: Any) -> bool:
-        raw = getattr(channel_entity, "to_dict", None)
-        channel_id = None
-        if callable(raw):
-            channel_id = (raw() or {}).get("id")
+        # InputPeerChannel carries .channel_id but neither .id nor to_dict(),
+        # so the guard silently returned False and allowed the source chat to
+        # be used as its own archive channel.
+        channel_id = getattr(channel_entity, "channel_id", None)
+        if channel_id is None:
+            raw = getattr(channel_entity, "to_dict", None)
+            if callable(raw):
+                channel_id = (raw() or {}).get("id")
         if channel_id is None:
             channel_id = getattr(channel_entity, "id", None)
-        if channel_id is not None and channel_id > 0:
+        if channel_id is None:
+            return False
+        if channel_id > 0:
             # entity id for a channel is the inner positive id
             expected = -(10**12) - channel_id
         else:
@@ -485,13 +635,21 @@ class MirrorEngine:
 
     # ----------------------------------------------------------------- listen
 
-    async def _listen_loop(
+    def _register_listeners(
         self,
         entity: Any,
         chat: Any,
         chat_local_id: int,
         channel_entity: Any,
     ) -> None:
+        """Register the incremental handlers.
+
+        Called *before* the backfill/post phase: registering only afterwards
+        dropped every message that arrived while a long run was posting (they
+        were still visible to a later manual run, but --listen promises live
+        capture).
+        """
+
         from telethon import events
 
         chat_id = chat.tg_chat_id
@@ -530,8 +688,11 @@ class MirrorEngine:
             for deleted_id in getattr(event, "deleted_ids", []) or []:
                 self.db.mark_deleted(chat_local_id, deleted_id)
 
+    async def _await_disconnect(self) -> None:
         self.progress("👂 监听中… Ctrl+C 退出。新消息将同步并写入频道。")
         await self.client.run_until_disconnected()
+        # a normal return here means the client dropped (Ctrl+C raises instead)
+        self.progress("⚠️ 监听连接已断开，未再收到新消息；请检查网络后重新运行")
 
     async def _mirror_one(
         self,
@@ -544,7 +705,7 @@ class MirrorEngine:
     ) -> None:
         if self.dry_run or channel_entity is None:
             return
-        if chat.has_protected_content:
+        if chat.has_protected_content or not nm.can_be_saved:
             reason = self._protected_skip_reason(
                 self.cfg.protected_policy,
                 self.cfg.writer_mode,
@@ -558,9 +719,14 @@ class MirrorEngine:
                     reason,
                 )
                 return
-        if self.db.mirror_status(
+        if nm.tg_message_id in self._in_flight:
+            return  # the backfill batch is already posting this message
+        existing = self.db.mirror_status(
             chat_local_id, nm.tg_message_id, self.cfg.writer_mode
-        ):
+        )
+        # Any recorded row used to suppress the retry, including status
+        # 'failed', so a live message that failed once was never retried.
+        if existing and existing["status"] in {"done", "skipped"}:
             return
 
         caption = ""
@@ -575,6 +741,7 @@ class MirrorEngine:
                     include_link=self.cfg.include_link,
                 ),
             )
+        self.db.mark_posting(chat_local_id, nm.tg_message_id, self.cfg.writer_mode)
         result = await self._post_with_retry(
             entity,
             channel_entity,
@@ -590,11 +757,21 @@ class MirrorEngine:
                 peer_to_chat_id(channel_entity) or 0,
                 int(result.channel_message_id or 0),
             )
+        elif result.ambiguous:
+            self.stats.deferred += 1
+            self.progress(
+                f"  ⏸  新消息 #{nm.tg_message_id} 连接中断、结果未知：下次运行先查频道"
+            )
         else:
             self.db.mark_failed(
                 chat_local_id,
                 nm.tg_message_id,
                 self.cfg.writer_mode,
                 result.error,
+                deferred=result.deferred,
             )
-            self.progress(f"  ❌ 新消息 #{nm.tg_message_id}: {result.error[:180]}")
+            if result.deferred:
+                self.stats.deferred += 1
+                self.progress(f"  ⏸  新消息 #{nm.tg_message_id} 限流延后：{result.error[:180]}")
+            else:
+                self.progress(f"  ❌ 新消息 #{nm.tg_message_id}: {result.error[:180]}")

@@ -25,6 +25,7 @@ vi.mock("../../../src/db/repositories/creator-trial.repository", () => ({
 import {
   canFillSurvey,
   canCreateSurvey,
+  canUseAdminPanel,
   getEffectiveRole,
   isAdmin,
   assertCanFillSurvey,
@@ -109,6 +110,31 @@ describe("permission service", () => {
         id: 20,
         telegramUserId: 30,
       }),
+    ).resolves.toBe(false);
+  });
+
+  it("opens the admin panel for admins by system role or telegram id", async () => {
+    await expect(
+      canUseAdminPanel({} as D1Database, { id: 30, telegramUserId: 4, systemRole: "admin" }, adminIds),
+    ).resolves.toBe(true);
+
+    await expect(
+      canUseAdminPanel({} as D1Database, { id: 30, telegramUserId: 1, systemRole: "participant" }, adminIds),
+    ).resolves.toBe(true);
+  });
+
+  it("opens the admin panel for a user with an active creator trial", async () => {
+    repositoryMocks.hasActiveCreatorTrial.mockResolvedValue(true);
+
+    await expect(
+      canUseAdminPanel({} as D1Database, { id: 30, telegramUserId: 4, systemRole: "participant" }, adminIds),
+    ).resolves.toBe(true);
+    expect(repositoryMocks.hasActiveCreatorTrial).toHaveBeenCalledWith(expect.anything(), 30);
+  });
+
+  it("keeps the admin panel closed for a plain participant without a trial", async () => {
+    await expect(
+      canUseAdminPanel({} as D1Database, { id: 30, telegramUserId: 4, systemRole: "participant" }, adminIds),
     ).resolves.toBe(false);
   });
 

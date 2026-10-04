@@ -72,4 +72,30 @@ describe("admin login request service", () => {
     expect(await verifyAdminLoginCookie("wrong-secret", value)).toBeNull();
     expect(await verifyAdminLoginCookie(SECRET, "bad.value")).toBeNull();
   });
+
+  it("never asks KV for a TTL below its 60 second minimum", async () => {
+    // Cloudflare KV rejects `expirationTtl` under 60 with
+    // `KV PUT failed: 400 Invalid expiration_ttl`, which made the Telegram
+    // login answer 500 the moment a login was redeemed — silently, because the
+    // login page previously only offered the password form.
+    const values = new Map<string, string>();
+    const ttls: number[] = [];
+    const cache = {
+      get: async (key: string) => values.get(key) ?? null,
+      put: async (key: string, value: string, options?: { expirationTtl?: number }) => {
+        values.set(key, value);
+        if (typeof options?.expirationTtl === "number") ttls.push(options.expirationTtl);
+      },
+    } as unknown as KVNamespace;
+    const db = {
+      prepare: () => ({ bind: () => ({ run: async () => ({ meta: { changes: 1 } }) }) }),
+    } as unknown as D1Database;
+
+    const { id } = await createAdminLoginRequest(cache, SECRET);
+    await approveAdminLoginRequest(cache, id, 42);
+    expect(await consumeAdminLoginRequest(db, cache, id, 42)).toBe(true);
+
+    expect(ttls.length).toBeGreaterThan(0);
+    for (const ttl of ttls) expect(ttl).toBeGreaterThanOrEqual(60);
+  });
 });

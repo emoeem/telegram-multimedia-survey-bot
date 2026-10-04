@@ -11,14 +11,19 @@ import {
   MailCheck,
   Palette,
   Paperclip,
+  RefreshCw,
   Send,
+  Sparkles,
+  Star,
   Users,
   Volume2,
   VolumeX,
   X,
 } from "lucide-react";
 import { EmailAuthScreen } from "./EmailAuthScreen";
+import { MyScreen } from "./MyScreen";
 import { PlazaScreen } from "./PlazaScreen";
+import { ShowcaseScreen } from "./ShowcaseScreen";
 import { TrialScreen } from "./TrialScreen";
 import { BottomNav } from "./BottomNav";
 import {
@@ -47,12 +52,41 @@ import {
   type SurveyThemeDto,
   type SurveyDto,
   type SurveyQuestionDto,
+  type UnlockedAchievement,
   saveAnswer,
   startResponse,
   submitResponse,
   uploadAnswerMedia,
   verifyAccessCode,
 } from "./api";
+import { safeGet, safeSet } from "./storage";
+
+const COMPLETED_SURVEYS_KEY = "surveyCompletedIds:v1";
+
+/** Local "已填过" markers — best-effort hints for the list, not an authority. */
+function getCompletedSurveyIds(): number[] {
+  const raw = safeGet(COMPLETED_SURVEYS_KEY);
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function markSurveyCompleted(surveyId: number): void {
+  const ids = getCompletedSurveyIds();
+  if (!ids.includes(surveyId)) {
+    safeSet(COMPLETED_SURVEYS_KEY, JSON.stringify([...ids.slice(-99), surveyId]));
+  }
+}
+
+function botHandleFromUrl(url: string | null): string {
+  if (!url) return "投稿机器人";
+  const match = url.match(/t\.me\/([A-Za-z0-9_]+)/);
+  return match ? `@${match[1]}` : "投稿机器人";
+}
 import { identityHeaders } from "./api";
 
 declare global {
@@ -76,7 +110,14 @@ type Screen =
       currentQuestionId: number | null;
       answers: Record<number, AnswerValue>;
     }
-  | { kind: "done"; survey: SurveyDto };
+  | {
+      kind: "done";
+      survey: SurveyDto;
+      reportUrl?: string;
+      profileUrl?: string;
+      /** 提交那一刻新解锁的徽章（服务端判定），用于在完成页做一次庆祝。 */
+      newAchievements?: UnlockedAchievement[];
+    };
 
 function surveyIdFromPath(): number {
   const match = window.location.pathname.match(/^\/s\/(\d+)/);
@@ -116,8 +157,11 @@ function SurveyListPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<"new" | "hot">("new");
+  const [completedIds, setCompletedIds] = useState<number[]>(() => getCompletedSurveyIds());
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
+  const [retryKey, setRetryKey] = useState(0);
   const resolvedPreset = useResolvedPreset(themePreset);
 
   const selectHomeTheme = (id: string | null) => {
@@ -146,48 +190,74 @@ function SurveyListPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, retryKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  // Every terminal state renders through the same shell, so the bottom
+  // navigation is always reachable. The failure branch used to be a dead end:
+  // a single flaky request left the visitor with a red line and no retry, and
+  // no way to reach the challenge or plaza tabs without reloading the WebView.
+  const shell = (content: React.ReactNode) => (
+    <div
+      className="survey-glow min-h-dvh pb-24"
+      data-theme={resolvedPreset ?? undefined}
+      style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
+    >
+      {content}
+      <BottomNav />
+    </div>
+  );
   if (error) {
-    return (
-      <div
-        className="survey-glow min-h-dvh"
-        data-theme={resolvedPreset ?? undefined}
-        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
-      >
-        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-danger)]">{error}</div>
-      </div>
+    return shell(
+      <div className="mx-auto max-w-xl px-5 py-16 text-center">
+        <p className="text-[var(--color-danger)]">{error}</p>
+        <button
+          type="button"
+          className="survey-card mt-5 w-full py-3 text-sm font-semibold text-[var(--survey-heading)]"
+          onClick={() => {
+            setError(null);
+            setRetryKey((key) => key + 1);
+          }}
+        >
+          重新加载
+        </button>
+      </div>,
     );
   }
   if (!surveys) {
-    return (
-      <div
-        className="survey-glow min-h-dvh"
-        data-theme={resolvedPreset ?? undefined}
-        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
-      >
-        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>
-      </div>
+    return shell(
+      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>,
     );
   }
   if (surveys.length === 0) {
-    return (
-      <div
-        className="survey-glow min-h-dvh"
-        data-theme={resolvedPreset ?? undefined}
-        style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
-      >
-        <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">
-          当前没有可填写的问卷
-        </div>
-      </div>
+    return shell(
+      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">
+        {debouncedQuery ? (
+          <>
+            没有找到与「{debouncedQuery}」相关的问卷
+            <button
+              type="button"
+              className="survey-card mt-5 w-full py-3 text-sm font-semibold text-[var(--survey-heading)]"
+              onClick={() => setQuery("")}
+            >
+              清空搜索，看全部问卷
+            </button>
+          </>
+        ) : (
+          "当前没有可填写的问卷，过段时间再来看看"
+        )}
+      </div>,
     );
   }
+
+  const orderedSurveys =
+    sortOrder === "hot"
+      ? [...surveys].sort((a, b) => (b.responseCount ?? 0) - (a.responseCount ?? 0))
+      : surveys;
 
   return (
     <div
@@ -224,6 +294,28 @@ function SurveyListPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
+          <div className="mt-3 flex items-center gap-2">
+            {(
+              [
+                { id: "new", label: "最新" },
+                { id: "hot", label: "热门" },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSortOrder(option.id)}
+                aria-pressed={sortOrder === option.id}
+                className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                  sortOrder === option.id
+                    ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                    : "text-[var(--color-muted)] hover:bg-[var(--survey-primary-soft)]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           {communityGroupUrl ? (
             <a
               href={communityGroupUrl}
@@ -243,7 +335,7 @@ function SurveyListPage() {
               className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
             >
               <Send className="h-3.5 w-3.5" />
-              投稿机器人 @tougaojiqirbot，投稿给我
+              投稿机器人 {botHandleFromUrl(submissionBotUrl)}，投稿给我
               <ArrowRight className="h-4 w-4" />
             </a>
           ) : null}
@@ -251,41 +343,70 @@ function SurveyListPage() {
       </header>
       <main className="mx-auto w-full max-w-6xl px-5 pt-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {surveys.map((survey) => (
-            <a
-              key={survey.id}
-              href={`/s/${survey.id}`}
-              className="survey-card block p-4 transition hover:-translate-y-0.5 hover:shadow-lg"
-            >
-              {survey.coverUrl ? (
-                <img
-                  src={survey.coverUrl}
-                  alt=""
-                  className="mb-3 aspect-[16/7] w-full rounded-xl object-cover"
-                  loading="lazy"
-                />
-              ) : null}
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="text-[17px] font-semibold leading-snug text-[var(--color-ink)]">{survey.title}</h2>
-                {survey.accessCodeRequired ? (
-                  <span className="badge badge-amber shrink-0">
-                    <Lock className="h-3 w-3" />
-                    需密码
-                  </span>
+          {orderedSurveys.map((survey) => {
+            const isClosed = Boolean(survey.closedAt && new Date(survey.closedAt).getTime() < Date.now());
+            const answered = completedIds.includes(survey.id);
+            return (
+              <a
+                key={survey.id}
+                href={`/s/${survey.id}`}
+                className="survey-card block p-4 transition hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                {survey.coverUrl ? (
+                  <img
+                    src={survey.coverUrl}
+                    alt=""
+                    className="mb-3 aspect-[16/7] w-full rounded-xl object-cover"
+                    loading="lazy"
+                    onError={(event) => {
+                      // 封面失效时直接隐藏，避免公开页出现破图
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
                 ) : null}
-              </div>
-              {survey.description ? (
-                <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
-              ) : null}
-              <div className="mt-3 flex items-center justify-between">
-                <span className="chip text-xs">{survey.questionCount} 道题</span>
-                <span className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-indigo-500/25">
-                  开始填写
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </div>
-            </a>
-          ))}
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-[17px] font-semibold leading-snug text-[var(--color-ink)]">{survey.title}</h2>
+                  {survey.accessCodeRequired ? (
+                    <span className="badge badge-amber shrink-0">
+                      <Lock className="h-3 w-3" />
+                      需密码
+                    </span>
+                  ) : null}
+                </div>
+                {survey.description ? (
+                  <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
+                ) : null}
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="chip text-xs">{survey.questionCount} 道题</span>
+                  {survey.anonymous ? <span className="chip text-xs">🎭 匿名</span> : null}
+                  {isClosed ? (
+                    <span className="chip text-xs text-[var(--color-muted)]">已截止</span>
+                  ) : null}
+                  {answered ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--survey-primary)]">
+                      <Check className="h-3 w-3" />
+                      已填过
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-[var(--color-muted)]">
+                    {(survey.responseCount ?? 0) > 0 ? `${survey.responseCount} 份答卷` : "期待第一份回答"}
+                  </span>
+                  <span
+                    className="inline-flex items-center gap-1 rounded-xl px-3.5 py-2 text-sm font-medium shadow-md transition-transform"
+                    style={{
+                      backgroundColor: isClosed ? "var(--color-muted)" : "var(--survey-primary)",
+                      color: isClosed ? "var(--survey-card-bg)" : "var(--survey-primary-content)",
+                    }}
+                  >
+                    {isClosed ? "已截止" : "开始填写"}
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </div>
+              </a>
+            );
+          })}
         </div>
       </main>
       <ThemePickerSheet
@@ -659,6 +780,53 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   const { toast } = useDialogs();
   const [uploading, setUploading] = useState(false);
 
+  // Rating gets a star scale: the generic option list gave no visual sense of
+  // "how much", and 1-5 options read like five unrelated choices.
+  if (question.type === "rating") {
+    const selectedId = typeof value === "number" ? value : null;
+    const selectedIndex = selectedId !== null ? question.options.findIndex((option) => option.id === selectedId) : -1;
+    const first = question.options[0]?.label ?? "";
+    const last = question.options[question.options.length - 1]?.label ?? "";
+    return (
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-1.5" role="radiogroup" aria-label={question.title}>
+          {question.options.map((option, position) => {
+            const active = selectedIndex >= 0 && position <= selectedIndex;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={value === option.id}
+                disabled={disabled}
+                onClick={() => onChange(option.id)}
+                className="flex flex-1 flex-col items-center gap-1 rounded-2xl border px-1 py-2.5 transition active:scale-95"
+                style={
+                  active
+                    ? {
+                        borderColor: "var(--survey-primary)",
+                        backgroundColor: "var(--survey-primary-soft)",
+                        color: "var(--survey-primary)",
+                      }
+                    : { borderColor: "var(--survey-card-border)", color: "var(--survey-muted)" }
+                }
+              >
+                <Star className="h-6 w-6" strokeWidth={1.8} style={active ? { fill: "currentColor" } : undefined} />
+                <span className="text-[11px] font-semibold">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {question.options.length >= 2 ? (
+          <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--survey-muted)]">
+            <span>{first}</span>
+            <span>{last}</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (question.type === "single" || question.type === "yes_no" || question.type === "rating") {
     if (question.options.some((option) => option.media.length > 0)) {
       return (
@@ -785,7 +953,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
       value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, number>) : {};
     return (
       <div className="mt-4 overflow-x-auto rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]">
-        <table className="w-full min-w-[420px] border-collapse text-sm">
+        <table className="w-full min-w-[300px] border-collapse text-sm">
           <thead>
             <tr className="bg-[var(--surface-muted)] text-[var(--color-muted)]">
               <th className="px-3 py-2 text-left font-medium">行</th>
@@ -835,31 +1003,47 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   }
 
   if (question.type === "text" || question.type === "long_text") {
+    const maxLength = Number(question.validation?.max_length);
+    const maxLengthAttr = Number.isFinite(maxLength) && maxLength > 0 ? maxLength : undefined;
+    const currentLength = typeof value === "string" ? value.length : 0;
     return question.type === "long_text" ? (
-      <textarea
-        disabled={disabled}
-        value={typeof value === "string" ? value : ""}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="请输入回答"
-        className="input mt-4 min-h-36 w-full"
-      />
+      <>
+        <textarea
+          disabled={disabled}
+          value={typeof value === "string" ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="请输入回答"
+          maxLength={maxLengthAttr}
+          className="input mt-4 min-h-36 w-full"
+        />
+        {maxLengthAttr ? (
+          <p className={`mt-1 text-right text-[11px] ${currentLength > maxLengthAttr ? "text-[var(--color-danger)]" : "text-[var(--survey-muted)]"}`}>
+            {currentLength}/{maxLengthAttr}
+          </p>
+        ) : null}
+      </>
     ) : (
       <input
         disabled={disabled}
         value={typeof value === "string" ? value : ""}
         onChange={(event) => onChange(event.target.value)}
         placeholder="请输入回答"
+        maxLength={maxLengthAttr}
         className="input mt-4 w-full"
       />
     );
   }
 
   if (question.type === "number") {
+    const min = Number(question.validation?.min);
+    const max = Number(question.validation?.max);
     return (
       <input
         disabled={disabled}
         type="number"
         value={typeof value === "number" ? String(value) : ""}
+        min={Number.isFinite(min) ? min : undefined}
+        max={Number.isFinite(max) ? max : undefined}
         onChange={(event) => {
           if (event.target.value === "") {
             onChange(null);
@@ -868,7 +1052,11 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
           const parsed = Number(event.target.value);
           if (Number.isFinite(parsed)) onChange(parsed);
         }}
-        placeholder="请输入数字"
+        placeholder={
+          Number.isFinite(min) && Number.isFinite(max)
+            ? `请输入 ${min} – ${max} 之间的数字`
+            : "请输入数字"
+        }
         className="input mt-4 w-full"
       />
     );
@@ -900,11 +1088,23 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
     return (
       <div className="mt-4">
         {mediaAnswer ? (
-          <div className="flex items-center justify-between rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--color-success)]">
-            <span>已上传附件 #{mediaAnswer.mediaAssetId}</span>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--color-success)]">
+            <span className="flex min-w-0 items-center gap-3">
+              {question.type === "image" ? (
+                <img
+                  src={`/api/survey/media/${mediaAnswer.mediaAssetId}`}
+                  alt=""
+                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : null}
+              <span className="min-w-0 truncate">已上传{question.type === "image" ? "图片" : "文件"}（#{mediaAnswer.mediaAssetId}）</span>
+            </span>
             <button
               type="button"
-              className="font-medium text-[var(--color-success)] underline"
+              className="shrink-0 font-medium text-[var(--color-success)] underline"
               disabled={disabled}
               onClick={() => onChange(null)}
             >
@@ -983,11 +1183,18 @@ function AccessScreen({
         <X className="h-5 w-5" />
       </button>
       <div className="survey-card p-6 text-center">
-        <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
+        <span
+          className="mx-auto grid h-14 w-14 place-items-center rounded-2xl shadow-lg"
+          style={{
+            backgroundColor: "var(--survey-primary)",
+            color: "var(--survey-primary-content)",
+            boxShadow: "0 16px 32px -12px color-mix(in srgb, var(--survey-primary) 45%, transparent)",
+          }}
+        >
           <Lock className="h-7 w-7" />
         </span>
         <h1 className="mt-4 text-xl font-bold tracking-tight text-[var(--color-ink)]">需要访问密码</h1>
-        <p className="mt-1.5 text-sm text-[var(--color-muted)]">请输入此问卷的访问密码后继续填写。</p>
+        <p className="mt-1.5 truncate text-sm text-[var(--color-muted)]">「{survey.title}」已加密，输入访问密码后继续填写。</p>
         <input
           value={code}
           onChange={(event) => setCode(event.target.value)}
@@ -1021,8 +1228,16 @@ function AccessScreen({
 
 export function SurveyApp() {
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
-  if (window.location.pathname === "/plaza") {
+  if (window.location.pathname === "/plaza" || window.location.pathname.startsWith("/plaza/")) {
     return <PlazaScreen />;
+  }
+  // "我的" 个人中心.
+  if (window.location.pathname === "/me" || window.location.pathname.startsWith("/me/")) {
+    return <MyScreen />;
+  }
+  // The showcase ("展示区") is the immersive person gallery.
+  if (window.location.pathname === "/showcase" || window.location.pathname.startsWith("/showcase/")) {
+    return <ShowcaseScreen />;
   }
   // The web task system ("/trial") also shares the SPA bundle.
   if (window.location.pathname === "/trial" || window.location.pathname.startsWith("/trial/")) {
@@ -1033,14 +1248,18 @@ export function SurveyApp() {
     return <EmailAuthScreen />;
   }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
-  const { toast } = useDialogs();
+  const { toast, confirm } = useDialogs();
 
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
+  const [retryKey, setRetryKey] = useState(0);
+  // 「再填一次」必须复用通过验证的访问码，否则访问码问卷会直接 403 掉进错误页。
+  const accessCodeRef = useRef<string | undefined>(undefined);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [publishToGallery, setPublishToGallery] = useState(false);
+  const [publishToTelegram, setPublishToTelegram] = useState(false);
   const [galleryCoverMediaId, setGalleryCoverMediaId] = useState<number | null>(null);
   const [galleryShowUsername, setGalleryShowUsername] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -1130,14 +1349,15 @@ export function SurveyApp() {
     return () => {
       cancelled = true;
     };
-    // Only surveyId should trigger a reload; survey/theme options are resolved
-    // inside fetchSurvey and do not need to re-fire the fetch effect.
+    // Only surveyId and retryKey should trigger a reload; survey/theme options
+    // are resolved inside fetchSurvey and do not need to re-fire the fetch effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surveyId]);
+  }, [surveyId, retryKey]);
 
   const beginFilling = useCallback(
     async (survey: SurveyDto, accessCode: string | undefined, isCancelled: () => boolean = () => false) => {
       try {
+        if (accessCode) accessCodeRef.current = accessCode;
         const started = await startResponse(survey.id, accessCode);
         if (isCancelled()) return;
         setPublishToGallery(false);
@@ -1228,10 +1448,22 @@ export function SurveyApp() {
     }
   }, [answers, index, persistCurrent, screen]);
 
-  const goBack = useCallback(() => {
+  const goBack = useCallback(async () => {
+    if (screen.kind !== "filling") return;
+    // 往回翻也要把当前题先落库：不阻塞校验（回退是导航意图，不是提交意图），
+    // 保存失败也照常返回——答案仍在本地 state，不会打断用户。
+    const question = screen.survey.questions[index];
+    const value = question ? answers[question.id] : undefined;
+    if (question && value !== undefined && value !== null && screen.responseId > 0) {
+      try {
+        await saveAnswer(screen.survey.id, screen.responseId, question.id, value);
+      } catch {
+        // 本地已持有该答案；续答时会再次保存
+      }
+    }
     setIndex((current) => Math.max(0, current - 1));
     setError(null);
-  }, []);
+  }, [answers, index, screen]);
 
   const submit = useCallback(async () => {
     if (screen.kind !== "filling") return;
@@ -1242,11 +1474,21 @@ export function SurveyApp() {
       try {
         const result = await submitResponse(screen.survey.id, screen.responseId, {
           publishToGallery,
+          publishToTelegram,
           galleryCoverMediaId,
           galleryShowUsername,
         });
         if (result.completed) {
-          setScreen({ kind: "done", survey: screen.survey });
+          // 本地"已填过"标记：列表页下次挂载时读取（跨页面导航会重新初始化）。
+          markSurveyCompleted(screen.survey.id);
+          setScreen({
+            kind: "done",
+            survey: screen.survey,
+            reportUrl: result.reportUrl,
+            // 已发布画廊时带上资料卡深链，落点从 feed 顶部改为"我的卡片"。
+            profileUrl: publishToGallery ? `/plaza/profile/${screen.responseId}` : undefined,
+            newAchievements: result.newAchievements?.length ? result.newAchievements : undefined,
+          });
         } else {
           // Server accepted the request but refused completion (e.g. a
           // required question is still missing); without feedback the
@@ -1265,7 +1507,20 @@ export function SurveyApp() {
     } finally {
       setBusy(false);
     }
-  }, [galleryCoverMediaId, galleryShowUsername, persistCurrent, publishToGallery, screen]);
+  }, [galleryCoverMediaId, galleryShowUsername, persistCurrent, publishToGallery, publishToTelegram, screen]);
+
+  // 退出前确认：填卷进行中直接关掉会丢掉未保存的输入。
+  const exitFillingWithConfirm = useCallback(async () => {
+    const inProgress =
+      screen.kind === "filling" && Object.values(screen.answers).some((value) => value !== null && value !== undefined);
+    if (!inProgress) {
+      closeSurveyPage();
+      return;
+    }
+    if (await confirm({ message: "确定要退出问卷吗？尚未提交的回答将丢失。", variant: "danger" })) {
+      closeSurveyPage();
+    }
+  }, [confirm, screen]);
 
   if (!Number.isFinite(surveyId)) {
     return <SurveyListPage />;
@@ -1299,6 +1554,16 @@ export function SurveyApp() {
       >
         <div className="mx-auto max-w-xl px-5 py-16 text-center">
           <p className="text-[var(--color-danger)]">{screen.message}</p>
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <button type="button" className="btn btn-primary px-8" onClick={() => setRetryKey((key) => key + 1)}>
+              <RefreshCw className="h-4 w-4" />
+              重新加载
+            </button>
+            <a className="btn px-6" href="/s">
+              <Home className="h-4 w-4" />
+              返回问卷列表
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -1333,13 +1598,48 @@ export function SurveyApp() {
         data-theme={theme?.preset}
         style={{ ...vars, ...backgroundStyle }}
       >
-        <div className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-xl shadow-emerald-500/30">
+        <div
+          className="grid h-20 w-20 place-items-center rounded-full shadow-xl"
+          style={{
+            backgroundColor: "var(--survey-primary)",
+            color: "var(--survey-primary-content)",
+            boxShadow: "0 20px 40px -12px color-mix(in srgb, var(--survey-primary) 45%, transparent)",
+          }}
+        >
           <CheckCircle2 className="h-10 w-10" strokeWidth={2.2} />
         </div>
         <h1 className="mt-5 text-2xl font-bold tracking-tight text-[var(--survey-heading)]">提交成功</h1>
         <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--survey-muted)]">
           {completion?.message ?? "感谢你的参与，你的回答已记录。"}
         </p>
+        {screen.reportUrl ? (
+          <a className="btn btn-primary mt-5 px-8" href={screen.reportUrl}>
+            <CheckCircle2 className="h-4 w-4" />
+            查看我的报告
+          </a>
+        ) : null}
+        {screen.newAchievements?.length ? (
+          <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
+            <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
+              <Sparkles className="h-4 w-4 text-[var(--survey-primary)]" />
+              {screen.newAchievements.length > 1 ? "解锁了新成就" : "解锁新成就"}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {screen.newAchievements.map((item) => (
+                <span
+                  key={item.code}
+                  className="flex items-center gap-1.5 rounded-full bg-[var(--survey-primary-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--survey-heading)]"
+                >
+                  <span aria-hidden>{item.icon}</span>
+                  {item.title}
+                </span>
+              ))}
+            </div>
+            <a className="mt-3 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline" href="/me">
+              去「我的」看看全部徽章
+            </a>
+          </div>
+        ) : null}
         {galleryProfileEnabled && !publishToGallery ? (
           <p className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-2.5 text-xs text-[var(--survey-muted)]">
             已提交完成（未公开）。再次填写并勾选「发布到个人画廊」即可公开展示。
@@ -1356,7 +1656,7 @@ export function SurveyApp() {
             </p>
             <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
               {showProfileLink ? (
-                <a className="btn btn-primary px-6" href="/plaza?tab=profiles">
+                <a className="btn btn-primary px-6" href={screen.profileUrl ?? "/plaza?tab=profiles"}>
                   <Check className="h-4 w-4" />
                   查看我的个人资料
                 </a>
@@ -1400,7 +1700,7 @@ export function SurveyApp() {
             </div>
           </div>
         ) : showProfileLink ? (
-          <a className="btn btn-primary mt-7 px-8" href="/plaza?tab=profiles">
+          <a className="btn btn-primary mt-7 px-8" href={screen.profileUrl ?? "/plaza?tab=profiles"}>
             <Check className="h-4 w-4" />
             查看我的个人资料
           </a>
@@ -1438,7 +1738,7 @@ export function SurveyApp() {
                 currentQuestionId: null,
                 answers: {},
               });
-              void beginFilling(screen.survey, undefined);
+              void beginFilling(screen.survey, screen.survey.accessCodeRequired ? accessCodeRef.current : undefined);
             }}
           >
             再填一次
@@ -1467,9 +1767,15 @@ export function SurveyApp() {
   }
   const currentPage = survey.pages.find((page) => page.id === question.pageId);
   const value = answers[question.id];
+  const isNote = question.type === "note";
   const isLast = index === survey.questions.length - 1;
-  const total = survey.questions.length;
-  const percent = Math.round(((index + 1) / total) * 100);
+  // 进度按"需要作答的题"计数：剧情文段只展示内容，不占题号、不计百分比。
+  const answerableTotal = survey.questions.filter((item) => item.type !== "note").length;
+  const answerableIndex = isNote
+    ? 0
+    : survey.questions.slice(0, index + 1).filter((item) => item.type !== "note").length;
+  const total = answerableTotal;
+  const percent = answerableTotal ? Math.round((answerableIndex / answerableTotal) * 100) : 0;
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
   // The participant can override the survey's default theme for this session;
   // the choice is remembered per survey in localStorage.
@@ -1530,7 +1836,7 @@ export function SurveyApp() {
                   type="button"
                   aria-label="退出问卷"
                   title="退出问卷"
-                  onClick={closeSurveyPage}
+                  onClick={() => void exitFillingWithConfirm()}
                   className="survey-icon-btn"
                 >
                   <X className="h-4 w-4" />
@@ -1553,7 +1859,7 @@ export function SurveyApp() {
                 <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
               </div>
               <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--survey-muted)]">
-                {index + 1}/{total} · {percent}%
+                {isNote ? "📖 剧情" : `${answerableIndex}/${answerableTotal} · ${percent}%`}
               </span>
             </div>
           </div>
@@ -1564,107 +1870,99 @@ export function SurveyApp() {
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
-          <div className="survey-card p-5">
+          <div className={`survey-card p-5 ${isNote ? "survey-card-story" : ""}`}>
             {currentPage?.title ? (
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
                 {currentPage.title}
               </p>
             ) : null}
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
-                {question.title}
-              </h1>
-              {question.required ? <span className="badge badge-red mt-1 shrink-0">必答</span> : null}
-            </div>
-            {question.description ? (
-              <ExpandableText
-                className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--survey-muted)]"
-                text={question.description}
-              />
-            ) : null}
-            <MediaBlock
-              urls={question.media}
-              type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"}
-            />
-            <div className="mt-5">
-              <QuestionAnswer
-                question={question}
-                value={value}
-                onChange={(next) => updateAnswer(question.id, next)}
-                disabled={busy}
-              />
-            </div>
-            {error ? <p className="mt-4 text-sm font-medium text-[var(--color-danger)]">{error}</p> : null}
-          </div>
-          {isLast && survey.galleryProfile?.enabled ? (
-            survey.galleryProfile.canPublish ? (
+            {isNote ? (
               <>
-                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-primary mt-0.5 shrink-0"
-                    checked={publishToGallery}
-                    disabled={busy}
-                    onChange={(event) => setPublishToGallery(event.target.checked)}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-[var(--survey-heading)]">🌍 发布到个人画廊</span>
-                    <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-                      默认不展示 Telegram 个人信息，你还可以选择画廊封面
-                    </span>
-                  </span>
-                </label>
-                {publishToGallery ? (
-                  <div className="mt-2 space-y-2">
-                    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-primary mt-0.5 shrink-0"
-                        checked={galleryShowUsername}
-                        disabled={busy}
-                        onChange={(event) => setGalleryShowUsername(event.target.checked)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
-                        <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-                          勾选后，资料卡会显示你的 Telegram 用户名和姓名
-                        </span>
-                      </span>
-                    </label>
-                    <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
-                      <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
-                      <select
-                        className="select mt-2 w-full"
-                        value={galleryCoverMediaId ?? ""}
-                        onChange={(event) =>
-                          setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)
-                        }
-                      >
-                        <option value="">默认第一张图片</option>
-                        {survey.questions
-                          .filter((question) => ["image", "video", "audio", "file"].includes(question.type))
-                          .map((question) => {
-                            const answer = answers[question.id];
-                            const media =
-                              answer && typeof answer === "object" && !Array.isArray(answer) && "mediaAssetId" in answer
-                                ? answer.mediaAssetId
-                                : null;
-                            return typeof media === "number" ? (
-                              <option key={question.id} value={media}>
-                                {question.title}
-                              </option>
-                            ) : null;
-                          })}
-                      </select>
-                    </label>
-                  </div>
+                {question.title ? (
+                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                    📖 {question.title}
+                  </h1>
                 ) : null}
+                {question.description ? (
+                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                    {question.description}
+                  </p>
+                ) : null}
+                <MediaBlock urls={question.media} type="image" />
               </>
             ) : (
-              <p className="mt-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-center text-xs leading-5 text-[var(--survey-muted)]">
-                发布到个人画廊需要 Telegram 身份：请从 Telegram 机器人打开本问卷后提交，即可勾选发布。
-              </p>
-            )
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
+                    {question.title}
+                  </h1>
+                  {question.required ? <span className="badge badge-red mt-1 shrink-0">必答</span> : null}
+                </div>
+                {question.description ? (
+                  <ExpandableText
+                    className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--survey-muted)]"
+                    text={question.description}
+                  />
+                ) : null}
+                <MediaBlock
+                  urls={question.media}
+                  type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"}
+                />
+                <div className="mt-5">
+                  <QuestionAnswer
+                    question={question}
+                    value={value}
+                    onChange={(next) => updateAnswer(question.id, next)}
+                    disabled={busy}
+                  />
+                </div>
+              </>
+            )}
+            {error ? <p className="mt-4 text-sm font-medium text-[var(--color-danger)]">{error}</p> : null}
+          </div>
+          {isLast ? (
+            <>
+              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+                <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={publishToTelegram} disabled={busy} onChange={(event) => setPublishToTelegram(event.target.checked)} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-[var(--survey-heading)]">📣 公开发布到 Telegram</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。</span>
+                </span>
+              </label>
+              {survey.galleryProfile?.enabled && survey.galleryProfile.canPublish ? (
+                <>
+                  <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+                    <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={publishToGallery} disabled={busy} onChange={(event) => setPublishToGallery(event.target.checked)} />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[var(--survey-heading)]">🌍 发布到个人画廊</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">默认不展示 Telegram 个人信息，你还可以选择画廊封面</span>
+                    </span>
+                  </label>
+                  {publishToGallery ? (
+                    <div className="mt-2 space-y-2">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                        <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={galleryShowUsername} disabled={busy} onChange={(event) => setGalleryShowUsername(event.target.checked)} />
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
+                          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">勾选后，资料卡会显示你的 Telegram 用户名和姓名</span>
+                        </span>
+                      </label>
+                      <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                        <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
+                        <select className="select mt-2 w-full" value={galleryCoverMediaId ?? ""} onChange={(event) => setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)}>
+                          <option value="">默认第一张图片</option>
+                          {survey.questions.filter((item) => ["image", "video", "audio", "file"].includes(item.type)).map((item) => {
+                            const answer = answers[item.id];
+                            const media = answer && typeof answer === "object" && !Array.isArray(answer) && "mediaAssetId" in answer ? answer.mediaAssetId : null;
+                            return typeof media === "number" ? <option key={item.id} value={media}>{item.title}</option> : null;
+                          })}
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </>
           ) : null}
         </main>
 
@@ -1706,6 +2004,11 @@ export function SurveyApp() {
                   <>
                     <Check className="h-4 w-4" />
                     提交问卷
+                  </>
+                ) : isNote ? (
+                  <>
+                    继续
+                    <ArrowRight className="h-4 w-4" />
                   </>
                 ) : (
                   <>

@@ -237,9 +237,9 @@ def normalize_message(message: Any, chat: Optional[ChatInfo] = None) -> Normaliz
         fwd_chat = peer_to_chat_id(fwd.get("from_id"))
         fwd_msg = fwd.get("channel_post")
 
-    # Message-level protection is a chat flag in MTProto; the "can be saved"
-    # decision mirrors that flag so later stages can enforce the default policy.
-    can_be_saved = True
+    # Protection exists at two levels: a chat-level flag and a per-message
+    # `noforwards` flag. Both are honoured downstream via can_be_saved.
+    can_be_saved = not bool(raw.get("noforwards"))
     if chat is not None and chat.has_protected_content:
         can_be_saved = False
 

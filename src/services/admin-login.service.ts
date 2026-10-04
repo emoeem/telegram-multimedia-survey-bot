@@ -147,7 +147,14 @@ export async function consumeAdminLoginRequest(
   if ((result.meta?.changes ?? 0) !== 1) return false;
 
   await cache.put(REQUEST_PREFIX + id, JSON.stringify({ ...current, status: "completed" } satisfies LoginRequest), {
-    expirationTtl: 30,
+    // Cloudflare KV rejects `expirationTtl` below 60 seconds, so the previous
+    // value of 30 threw `KV PUT failed: 400 Invalid expiration_ttl of 30` and
+    // made the Telegram login answer 500 on every redemption. It went unnoticed
+    // because the login page only offered the password form, so this path was
+    // never exercised. 60 is enough: permanent single-use enforcement is the
+    // unique `admin_login_consumptions` row above; this marker only tidies up
+    // the KV entry.
+    expirationTtl: 60,
   });
   return true;
 }

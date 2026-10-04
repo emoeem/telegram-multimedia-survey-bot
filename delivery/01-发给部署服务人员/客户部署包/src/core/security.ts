@@ -1,7 +1,4 @@
-export function isWebhookSecretValid(
-  expected: string | undefined,
-  actual: string | null,
-): boolean {
+export function isWebhookSecretValid(expected: string | undefined, actual: string | null): boolean {
   if (!expected || !actual) {
     return false;
   }
@@ -45,21 +42,13 @@ export async function hashSurveyAccessCode(code: string): Promise<string> {
     throw new Error("访问密码不能为空");
   }
 
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(normalized),
-  );
-  const hex = [...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  const hex = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 
   return `sha256:${hex}`;
 }
 
-export async function verifySurveyAccessCode(
-  storedCode: string,
-  submittedCode: string,
-): Promise<boolean> {
+export async function verifySurveyAccessCode(storedCode: string, submittedCode: string): Promise<boolean> {
   const normalized = submittedCode.trim();
   if (storedCode.startsWith("sha256:")) {
     const submittedHash = await hashSurveyAccessCode(normalized);
@@ -84,39 +73,23 @@ function base64ToBytes(value: string): Uint8Array {
 }
 
 function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 async function surveyCodeEncryptionKey(botToken: string): Promise<CryptoKey> {
-  const material = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(`survey-access-code:v1:${botToken}`),
-  );
+  const material = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`survey-access-code:v1:${botToken}`));
   return crypto.subtle.importKey("raw", material, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
 /** Encrypts a viewable copy; the verifier remains the SHA-256 value above. */
-export async function encryptSurveyAccessCode(
-  code: string,
-  botToken: string,
-): Promise<string> {
+export async function encryptSurveyAccessCode(code: string, botToken: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await surveyCodeEncryptionKey(botToken);
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    new TextEncoder().encode(code.trim()),
-  );
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(code.trim()));
   return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(encrypted))}`;
 }
 
-export async function decryptSurveyAccessCode(
-  encryptedCode: string,
-  botToken: string,
-): Promise<string | null> {
+export async function decryptSurveyAccessCode(encryptedCode: string, botToken: string): Promise<string | null> {
   const [version, ivEncoded, payloadEncoded] = encryptedCode.split(":");
   if (version !== "v1" || !ivEncoded || !payloadEncoded) return null;
   try {

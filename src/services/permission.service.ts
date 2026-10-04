@@ -39,6 +39,21 @@ export async function canCreateSurvey(
   );
 }
 
+/**
+ * Whether this user may sign in to the web admin panel at all. Admins always
+ * may; a creator trial is exactly the right to author surveys, so it must also
+ * open the panel — scoped to the user's own surveys by the read/write handlers.
+ */
+export async function canUseAdminPanel(
+  db: D1Database,
+  user: Pick<User, "id" | "telegramUserId" | "systemRole">,
+  adminIds: number[],
+): Promise<boolean> {
+  return (
+    user.systemRole === "admin" || isAdmin(user.telegramUserId, adminIds) || (await hasActiveCreatorTrial(db, user.id))
+  );
+}
+
 export async function canManageSurvey(
   db: D1Database,
   user: Pick<User, "id" | "telegramUserId" | "systemRole">,

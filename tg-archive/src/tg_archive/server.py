@@ -10,22 +10,26 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import logging
 import os
+import re
 import secrets
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .config import ArchiveConfig, load_config
 from .db import ArchiveDB
 from .mirror import MirrorEngine, MirrorStats
+
+log = logging.getLogger(__name__)
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -41,6 +45,9 @@ class AppState:
         self.default_account_id: int = 1
         self.mirror_task: Optional[asyncio.Task] = None
         self.mirror_progress: list[dict[str, Any]] = []
+        # monotonic counter: lets the UI render only new lines instead of
+        # re-appending the whole window on every poll
+        self.mirror_progress_total = 0
         self.mirror_done = asyncio.Event()
         self.mirror_stats: MirrorStats = MirrorStats()
         self.mirror_account_id: int = 0
@@ -218,14 +225,16 @@ class LoginCodeRequest(BaseModel):
 class MirrorRequest(BaseModel):
     chat: str
     channel: Optional[str] = None
-    mode: str = "copy"
-    protected_policy: str = "skip"
+    # Literal (not bare str): without validation an unknown value such as
+    # "text-only" silently disabled the protected-content guard, because
+    # _protected_skip_reason() treats anything it does not recognise as allowed.
+    mode: Literal["copy", "forward"] = "copy"
+    protected_policy: Literal["skip", "text_only", "allow_media"] = "skip"
     dry_run: bool = False
     listen: bool = False
-    yes: bool = True
-    max_posts: Optional[int] = None
-    fetch_limit: Optional[int] = None
-    post_delay: Optional[float] = None
+    max_posts: Optional[int] = Field(None, ge=1, le=100_000)
+    fetch_limit: Optional[int] = Field(None, ge=1)
+    post_delay: Optional[float] = Field(None, ge=0, le=600)
     account_id: int = 1
     topic_id: Optional[int] = None
     include_topics: Optional[list[int]] = None
@@ -284,13 +293,8 @@ async def delete_account(account_id: int):
     if session.exists():
         session.unlink()
     assert state.db is not None
+    state.db._purge_account_data(account_id)
     state.db.conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
-    state.db.conn.execute(
-        "DELETE FROM mirror_log WHERE chat_id IN (SELECT id FROM chats WHERE account_id = ?)",
-        (account_id,),
-    )
-    state.db.conn.execute("DELETE FROM chats WHERE account_id = ?", (account_id,))
-    state.db.conn.execute("DELETE FROM messages WHERE account_id = ?", (account_id,))
     state.db.conn.commit()
     state.account_ids = [a for a in state.account_ids if a != account_id]
     state.default_account_id = state.account_ids[0] if state.account_ids else 1
@@ -317,6 +321,7 @@ async def auth_status(account_id: int = Query(1)):
                 tg_user_id=int(me["id"]),
                 username=me.get("username"),
                 first_name=me.get("first_name"),
+                account_id=account_id,
             )
             if local_aid not in state.account_ids:
                 state.account_ids.append(local_aid)
@@ -325,20 +330,24 @@ async def auth_status(account_id: int = Query(1)):
 
 @app.post("/api/auth/logout")
 async def auth_logout(account_id: int = 1):
+    """Log out of one account: remove its session file and mark it inactive.
+
+    The local index (chats/messages) and the mirror_log ledger are kept on
+    purpose: dropping the ledger would make the next run re-post everything
+    already in the channel. Use DELETE /api/accounts/{id} to erase an account
+    and its data.
+    """
+
     await _disconnect_account(account_id)
     session = _session_path(account_id)
     if session.exists():
         session.unlink()
     if state.db:
-        state.db.conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
         state.db.conn.execute(
-            "DELETE FROM mirror_log WHERE chat_id IN (SELECT id FROM chats WHERE account_id = ?)",
-            (account_id,),
+            "UPDATE accounts SET is_active = 0 WHERE id = ?", (account_id,)
         )
         state.db.conn.commit()
-        state.account_ids = [a for a in state.account_ids if a != account_id]
-        state.default_account_id = state.account_ids[0] if state.account_ids else 1
-    return {"ok": True}
+    return {"ok": True, "session_removed": True, "local_index_kept": True}
 
 
 @app.post("/api/auth/login-qr")
@@ -392,6 +401,7 @@ async def _wait_qr(qr: Any, account_id: int) -> dict[str, Any]:
                     tg_user_id=int(getattr(user, "id", 0)),
                     username=getattr(user, "username", None),
                     first_name=getattr(user, "first_name", None),
+                    account_id=account_id,
                 )
             return result
         return {"authorized": False, "error": "timeout", "account_id": account_id}
@@ -446,6 +456,7 @@ async def login_code(req: LoginCodeRequest):
             username=getattr(me, "username", None),
             phone=req.phone,
             first_name=getattr(me, "first_name", None),
+            account_id=req.account_id,
         )
     return {
         "authorized": True,
@@ -499,17 +510,35 @@ async def list_chat_topics(local_id: int, account_id: int = Query(1)):
 
     client = await _get_or_create_client(account_id)
     try:
-        raw_topics = await client.get_forum_topics(int(row["tg_chat_id"]))
+        # TelegramClient has no get_forum_topics() helper (telethon 1.45), so
+        # this endpoint used to raise AttributeError on every call and always
+        # reported "no topics".
+        from telethon.tl.functions.messages import GetForumTopicsRequest
+
+        peer = await client.get_input_entity(int(row["tg_chat_id"]))
+        result = await client(
+            GetForumTopicsRequest(
+                peer=peer,
+                offset_date=None,
+                offset_id=0,
+                offset_topic=0,
+                limit=100,
+            )
+        )
+        raw_topics = getattr(result, "topics", None) or []
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"no topics or error: {exc}")
+        log.warning("listing forum topics for chat %s failed: %s", local_id, exc)
+        raise HTTPException(
+            status_code=400, detail=f"读取话题失败：{type(exc).__name__}"
+        ) from None
 
     topics = []
     for t in raw_topics:
         topics.append({
             "topic_id": getattr(t, "id", None),
             "title": getattr(t, "title", ""),
-            "is_my_topic": getattr(t, "is_my_topic", None),
-            "count": getattr(t, "count", 0),
+            "is_my_topic": getattr(t, "my", None),
+            "count": getattr(t, "unread_count", 0),
             "top_message": getattr(t, "top_message", None),
         })
     return {"topics": topics, "chat_id": local_id}
@@ -521,6 +550,7 @@ async def list_chat_topics(local_id: int, account_id: int = Query(1)):
 
 def _progress_sink(line: str) -> None:
     state.mirror_progress.append({"ts": _now(), "text": line})
+    state.mirror_progress_total += 1
     if len(state.mirror_progress) > 500:
         state.mirror_progress = state.mirror_progress[-400:]
 
@@ -532,6 +562,7 @@ def _now() -> str:
 
 async def _run_mirror(task_id: str, req: MirrorRequest) -> None:
     state.mirror_progress = []
+    state.mirror_progress_total = 0
     state.mirror_stats = MirrorStats()
     state.mirror_done.clear()
     state.mirror_account_id = req.account_id
@@ -553,7 +584,9 @@ async def _run_mirror(task_id: str, req: MirrorRequest) -> None:
             cfg,
             db,
             dry_run=req.dry_run,
-            yes=req.yes,
+            # never prompt on a request-driven path: input() would block the
+            # event loop and /api/mirror/stop could not cancel it
+            yes=True,
             listen=req.listen,
             progress=_progress_sink,
             account_id=req.account_id,
@@ -611,9 +644,12 @@ async def mirror_status():
             "posted": state.mirror_stats.posted,
             "skipped": state.mirror_stats.skipped,
             "failed": state.mirror_stats.failed,
+            "deferred": state.mirror_stats.deferred,
+            "recovered": state.mirror_stats.recovered,
         },
         "exit_code": state.mirror_exit_code,
         "progress": state.mirror_progress[-80:],
+        "progress_total": state.mirror_progress_total,
     }
 
 
@@ -642,18 +678,37 @@ async def mirror_stop():
 # ---------------------------------------------------------------------------
 
 @app.get("/api/stats")
-async def global_stats(account_id: int = Query(1)):
+async def global_stats(
+    account_id: int = Query(1),
+    mode: Optional[str] = Query(None, pattern="^(copy|forward)$"),
+):
     assert state.db is not None
-    s = state.db.stats(account_id)
+    # mirror counters are per writer mode; default to the configured one so the
+    # "待处理" figure matches the work a run in that mode will do
+    effective_mode = mode or state.cfg.writer_mode
+    s = state.db.stats(account_id, mode=effective_mode)
     chats = state.db.list_chats(account_id)
-    for c in chats:
-        c["msg_count"] = int(
-            state.db.conn.execute(
-                "SELECT COUNT(*) FROM messages WHERE chat_id = ? AND account_id = ? AND deleted_at IS NULL",
-                (c["id"], account_id),
-            ).fetchone()[0]
+    # One grouped query instead of a COUNT(*) per chat (N+1).
+    counts = {
+        int(r["chat_id"]): int(r["n"])
+        for r in state.db.conn.execute(
+            """
+            SELECT chat_id, COUNT(*) AS n
+            FROM messages
+            WHERE account_id = ? AND deleted_at IS NULL
+            GROUP BY chat_id
+            """,
+            (account_id,),
         )
-    return {"stats": s, "chats": chats, "account_id": account_id}
+    }
+    for c in chats:
+        c["msg_count"] = counts.get(int(c["id"]), 0)
+    return {
+        "stats": s,
+        "chats": chats,
+        "account_id": account_id,
+        "mode": effective_mode,
+    }
 
 
 @app.get("/api/messages")
@@ -686,18 +741,19 @@ async def list_messages(
 
     if status:
         if status == "pending":
-            # 待处理：从未镜像过，或 mirror_log 里最新记录仍是 pending
-            clauses.append("(l.status = 'pending' OR l.id IS NULL)")
+            # 待处理：与 MirrorEngine 实际会处理的行保持一致——从未镜像过、
+            # 上次发送中断（posting）或失败但仍在重试次数内
+            clauses.append(
+                "(l.id IS NULL OR l.status = 'posting'"
+                " OR (l.status = 'failed' AND l.attempt < 5))"
+            )
         else:
             clauses.append("l.status = ?")
             params.append(status)
 
     dir_key = "DESC" if order == "new" else "ASC"
 
-    count_row = state.db.conn.execute(
-        f"""
-        SELECT COUNT(*)
-        FROM messages m
+    mirror_join = """
         LEFT JOIN mirror_log l ON l.id = (
             SELECT id FROM mirror_log
             WHERE mirror_log.chat_id = m.chat_id
@@ -705,10 +761,28 @@ async def list_messages(
             ORDER BY COALESCE(mirrored_at, '') DESC, id DESC
             LIMIT 1
         )
-        WHERE {' AND '.join(clauses)}
-        """,
-        params,
-    ).fetchone()
+    """
+    # Without a status filter the mirror_log join cannot change the count, and
+    # the correlated subquery makes COUNT(*) far more expensive than a scan.
+    if status is None:
+        count_row = state.db.conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM messages m
+            WHERE {' AND '.join(clauses)}
+            """,
+            params,
+        ).fetchone()
+    else:
+        count_row = state.db.conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM messages m
+            {mirror_join}
+            WHERE {' AND '.join(clauses)}
+            """,
+            params,
+        ).fetchone()
     total = int(count_row[0]) if count_row else 0
 
     rows = state.db.conn.execute(
@@ -722,13 +796,7 @@ async def list_messages(
                m.chat_id AS local_chat_id
         FROM messages m
         JOIN chats c ON c.id = m.chat_id
-        LEFT JOIN mirror_log l ON l.id = (
-            SELECT id FROM mirror_log
-            WHERE mirror_log.chat_id = m.chat_id
-              AND mirror_log.tg_message_id = m.tg_message_id
-            ORDER BY COALESCE(mirrored_at, '') DESC, id DESC
-            LIMIT 1
-        )
+        {mirror_join}
         WHERE {' AND '.join(clauses)}
         ORDER BY m.date {dir_key}, m.tg_message_id {dir_key}
         LIMIT ? OFFSET ?
@@ -746,7 +814,6 @@ async def list_messages(
 async def get_config():
     assert state.cfg is not None
     return {
-        "api_id": state.cfg.api_id,
         "channel": state.cfg.channel,
         "writer_mode": state.cfg.writer_mode,
         "protected_policy": state.cfg.protected_policy,
@@ -767,6 +834,8 @@ if STATIC_DIR.exists():
 
     @app.get("/")
     async def index():
+        # Only reachable with a valid token (see _require_token): this page
+        # embeds the access token, so it must never be public.
         html_path = STATIC_DIR / "index.html"
         html = html_path.read_text()
         html = html.replace(
@@ -776,7 +845,13 @@ if STATIC_DIR.exists():
         return StreamingResponse(io.BytesIO(html.encode()), media_type="text/html")
 
 
-PUBLIC_PATHS = {"/", "/favicon.ico"}
+# "/" is deliberately NOT public: it serves index.html, which embeds the
+# access token that authenticates every other endpoint.
+PUBLIC_PATHS = {"/favicon.ico"}
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": "unauthorized"})
 
 
 @app.middleware("http")
@@ -784,15 +859,24 @@ async def _require_token(request: Request, call_next):
     path = request.url.path
     if path in PUBLIC_PATHS or path.startswith("/assets/"):
         return await call_next(request)
+    # A CORS preflight never carries the token by design; let CORSMiddleware
+    # answer it (the real request is still authenticated below).
+    if request.method == "OPTIONS":
+        return await call_next(request)
 
     provided = (
         request.query_params.get("token")
         or request.headers.get("authorization", "").removeprefix("Bearer ").strip()
         or request.headers.get("x-tg-archive-token")
     )
-    if not provided or not state.token or not secrets.compare_digest(provided, state.token):
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=401, content={"detail": "unauthorized"})
+    if not provided or not state.token:
+        return _unauthorized()
+    # compare_digest() raises TypeError on non-ASCII str input, which turned a
+    # crafted ?token= into an unauthenticated 500. Compare bytes instead.
+    if not secrets.compare_digest(
+        provided.encode("utf-8", "surrogatepass"), state.token.encode("utf-8")
+    ):
+        return _unauthorized()
 
     return await call_next(request)
 
@@ -805,6 +889,42 @@ async def favicon():
     return FileResponse(path, media_type="image/svg+xml")
 
 
+# The browser passes the token as ?token=..., which uvicorn's access log would
+# otherwise write to disk in clear text.
+_TOKEN_QUERY_RE = re.compile(r"(token=)[^&\s\"]*")
+
+
+class _RedactTokenFilter(logging.Filter):
+    """Strip the access token from uvicorn's access log lines."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        # uvicorn.access args: (client_addr, method, full_path, http_version, status)
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = (
+                args[:2] + (_TOKEN_QUERY_RE.sub(r"\1***", args[2]),) + args[3:]
+            )
+        return True
+
+
+def _access_log_config() -> dict[str, Any]:
+    """uvicorn's logging config plus the token-redaction filter."""
+
+    import copy
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    log_config = copy.deepcopy(LOGGING_CONFIG)
+    log_config.setdefault("filters", {})["redact_token"] = {"()": _RedactTokenFilter}
+    log_config["loggers"].setdefault("uvicorn.access", {}).setdefault(
+        "filters", []
+    ).append("redact_token")
+    return log_config
+
+
 def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
     import uvicorn
-    uvicorn.run(app, host=host, port=port, log_level="info")
+
+    uvicorn.run(
+        app, host=host, port=port, log_level="info", log_config=_access_log_config()
+    )

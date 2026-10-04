@@ -47,6 +47,9 @@ export function createSqliteD1(schema: string): D1Database {
   function prepare(sql: string): D1PreparedStatement {
     let params: unknown[] = [];
     const statement = {
+      // batch() needs the SQL text to tell write statements (whose results
+      // must carry meta.changes, like real D1) apart from reads.
+      sql,
       bind(...args: unknown[]) {
         params = normalizeParams(args);
         return statement;
@@ -73,7 +76,19 @@ export function createSqliteD1(schema: string): D1Database {
 
   return {
     prepare,
-    batch: async (statements: D1PreparedStatement[]) => Promise.all(statements.map((item) => item.all())),
+    batch: async (statements: D1PreparedStatement[]) =>
+      // Real D1 batch returns per-statement meta (including changes) for write
+      // statements and rows for reads. The shim's run() carries the write
+      // meta while all() hardcodes changes: 0, so route writes through run() —
+      // otherwise INSERT OR IGNORE idempotence checks ("was this the call that
+      // actually unlocked it?") always read false under the shim.
+      Promise.all(
+        statements.map((item) =>
+          /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test((item as { sql?: string }).sql ?? "")
+            ? item.run()
+            : item.all(),
+        ),
+      ),
     exec: async (query: string) => {
       db.exec(query);
       return { count: 0, duration: 0 };

@@ -153,21 +153,12 @@ export async function createSoftwareLicense(
   return license;
 }
 
-export async function getSoftwareLicenseById(
-  db: D1Database,
-  id: number,
-): Promise<SoftwareLicense | null> {
-  const row = await db
-    .prepare("SELECT * FROM software_licenses WHERE id = ? LIMIT 1")
-    .bind(id)
-    .first<LicenseRow>();
+export async function getSoftwareLicenseById(db: D1Database, id: number): Promise<SoftwareLicense | null> {
+  const row = await db.prepare("SELECT * FROM software_licenses WHERE id = ? LIMIT 1").bind(id).first<LicenseRow>();
   return row ? mapLicense(row) : null;
 }
 
-export async function getSoftwareLicenseByPublicId(
-  db: D1Database,
-  publicId: string,
-): Promise<SoftwareLicense | null> {
+export async function getSoftwareLicenseByPublicId(db: D1Database, publicId: string): Promise<SoftwareLicense | null> {
   const row = await db
     .prepare("SELECT * FROM software_licenses WHERE public_id = ? LIMIT 1")
     .bind(publicId)
@@ -180,18 +171,13 @@ export async function getSoftwareLicenseByKeyHash(
   licenseKeyHash: string,
 ): Promise<SoftwareLicense | null> {
   const row = await db
-    .prepare(
-      "SELECT * FROM software_licenses WHERE license_key_hash = ? LIMIT 1",
-    )
+    .prepare("SELECT * FROM software_licenses WHERE license_key_hash = ? LIMIT 1")
     .bind(licenseKeyHash)
     .first<LicenseRow>();
   return row ? mapLicense(row) : null;
 }
 
-export async function listSoftwareLicenses(
-  db: D1Database,
-  limit = 30,
-): Promise<SoftwareLicense[]> {
+export async function listSoftwareLicenses(db: D1Database, limit = 30): Promise<SoftwareLicense[]> {
   const result = await db
     .prepare(
       `SELECT * FROM software_licenses
@@ -235,12 +221,7 @@ export async function updateSoftwareLicenseDates(
        SET expires_at = ?, updates_until = ?, updated_at = ?
        WHERE public_id = ?`,
     )
-    .bind(
-      input.expiresAt,
-      input.updatesUntil,
-      new Date().toISOString(),
-      publicId,
-    )
+    .bind(input.expiresAt, input.updatesUntil, new Date().toISOString(), publicId)
     .run();
   return getSoftwareLicenseByPublicId(db, publicId);
 }
@@ -261,10 +242,7 @@ export async function getLicenseActivation(
   return row ? mapActivation(row) : null;
 }
 
-export async function countActiveLicenseActivations(
-  db: D1Database,
-  licenseId: number,
-): Promise<number> {
+export async function countActiveLicenseActivations(db: D1Database, licenseId: number): Promise<number> {
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS count
@@ -311,11 +289,7 @@ export async function upsertLicenseActivation(
     )
     .run();
 
-  const activation = await getLicenseActivation(
-    db,
-    input.licenseId,
-    input.installationId,
-  );
+  const activation = await getLicenseActivation(db, input.licenseId, input.installationId);
   if (!activation) {
     throw new Error("保存激活记录失败");
   }
@@ -382,11 +356,7 @@ export async function claimLicenseActivation(
     )
     .run();
 
-  const activation = await getLicenseActivation(
-    db,
-    input.licenseId,
-    input.installationId,
-  );
+  const activation = await getLicenseActivation(db, input.licenseId, input.installationId);
   return activation && activation.deactivatedAt === null ? activation : null;
 }
 
@@ -436,10 +406,7 @@ export async function deactivateLicenseActivation(
     .run();
 }
 
-export async function listLicenseActivations(
-  db: D1Database,
-  licenseId: number,
-): Promise<SoftwareLicenseActivation[]> {
+export async function listLicenseActivations(db: D1Database, licenseId: number): Promise<SoftwareLicenseActivation[]> {
   const result = await db
     .prepare(
       `SELECT * FROM software_license_activations
@@ -499,10 +466,7 @@ export async function createSoftwareRelease(
   return release;
 }
 
-export async function getSoftwareReleaseByVersion(
-  db: D1Database,
-  version: string,
-): Promise<SoftwareRelease | null> {
+export async function getSoftwareReleaseByVersion(db: D1Database, version: string): Promise<SoftwareRelease | null> {
   const row = await db
     .prepare("SELECT * FROM software_releases WHERE version = ? LIMIT 1")
     .bind(version)
@@ -510,10 +474,7 @@ export async function getSoftwareReleaseByVersion(
   return row ? mapRelease(row) : null;
 }
 
-export async function listSoftwareReleases(
-  db: D1Database,
-  limit = 30,
-): Promise<SoftwareRelease[]> {
+export async function listSoftwareReleases(db: D1Database, limit = 30): Promise<SoftwareRelease[]> {
   const result = await db
     .prepare(
       `SELECT * FROM software_releases
