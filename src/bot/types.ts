@@ -31,6 +31,8 @@ export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
+  /** Forum-topic thread the message was posted in; absent outside topic groups. */
+  message_thread_id?: number;
   forward_from_chat?: {
     id: number;
     type?: string;

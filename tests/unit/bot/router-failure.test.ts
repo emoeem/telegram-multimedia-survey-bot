@@ -78,6 +78,31 @@ describe("handleTelegramUpdate failure signalling", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sendMessage");
   });
 
+  it("answers inside the original forum topic when a group message fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      handleTelegramUpdate(
+        {
+          update_id: 13,
+          message: {
+            message_id: 1,
+            chat: { id: -1009876543210 },
+            from: { id: 99 },
+            text: "hi",
+            message_thread_id: 77,
+          },
+        },
+        createContext(),
+      ),
+    ).rejects.toSatisfy(isTelegramUpdateHandledError);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({ chat_id: -1009876543210, message_thread_id: 77 });
+  });
+
   it("rethrows a callback failure as a handled error after answering once", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

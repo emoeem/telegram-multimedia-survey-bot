@@ -79,11 +79,13 @@ export async function sendMessage(
   chatId: number,
   text: string,
   replyMarkup?: InlineKeyboardMarkup,
+  messageThreadId?: number,
 ): Promise<Response> {
   const response = await postTelegramJson(botToken, "sendMessage", {
     chat_id: chatId,
     text,
     reply_markup: replyMarkup,
+    ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
   });
 
   return assertTelegramResponse(response, "sendMessage");
@@ -297,12 +299,14 @@ export async function sendDocument(
   contentType = "application/octet-stream",
   caption?: string,
   parseMode?: "Markdown" | "MarkdownV2" | "HTML",
+  messageThreadId?: number,
 ): Promise<Response> {
   const formData = new FormData();
   formData.append("chat_id", String(chatId));
   formData.append("document", new Blob([content as BlobPart], { type: contentType }), fileName);
   if (caption) formData.append("caption", caption);
   if (parseMode) formData.append("parse_mode", parseMode);
+  if (messageThreadId) formData.append("message_thread_id", String(messageThreadId));
 
   const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
     method: "POST",

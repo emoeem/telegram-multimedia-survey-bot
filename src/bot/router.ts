@@ -6,6 +6,7 @@ import { getUserByTelegramId, upsertUser } from "../db/repositories/user.reposit
 import type { TelegramUser } from "./types";
 import { setUiMessage } from "../services/ui-session.service";
 import { maybeDetectReportChannel } from "./channel-detection";
+import { maybeHandlePublishTargetCommand } from "./publish-target";
 
 /**
  * Wraps a handler failure that has already been reported to the user.
@@ -58,15 +59,25 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
           ctx.botToken,
           update.message.chat.id,
           "⛔ 你的账号当前无法使用此机器人。如有疑问，请联系管理员。",
+          undefined,
+          update.message.message_thread_id,
         );
         return;
       }
     }
     try {
+      if (await maybeHandlePublishTargetCommand(ctx, update.message)) return;
       await handleTelegramMessage(ctx, update.message);
     } catch (error) {
       console.error("Telegram message handler failed", error);
-      await sendMessage(ctx.botToken, update.message.chat.id, "⚠️ 处理失败，请稍后重试。");
+      // 论坛群必须带回原话题，否则会落到可能已关闭的 General 话题（TOPIC_CLOSED）。
+      await sendMessage(
+        ctx.botToken,
+        update.message.chat.id,
+        "⚠️ 处理失败，请稍后重试。",
+        undefined,
+        update.message.message_thread_id,
+      );
       // Rethrow so the webhook releases the idempotency claim: a failed update
       // must stay retryable instead of being permanently swallowed.
       throw new TelegramUpdateHandledError(error);
