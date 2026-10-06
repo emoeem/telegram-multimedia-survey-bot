@@ -49,8 +49,6 @@ import {
   answerCallbackQuery,
   deleteMessage,
   getTelegramFileText,
-  sendLongMessage,
-  sendMessage,
   type InlineKeyboardMarkup,
   uploadMediaForReuse,
 } from "./telegram";
@@ -58,6 +56,7 @@ import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types
 import type { SurveyBuilderState } from "../durable-objects/survey-builder";
 import { showQuestionEditor } from "./question-editor";
 import { renderUiScreen } from "./ui";
+import { replyLongMessage, replyMessage } from "./reply";
 
 interface ImportReviewState {
   rawJson: string;
@@ -91,8 +90,8 @@ async function showImportReview(
     .slice(0, 8)
     .map((question, index) => `${index + 1}. ${question.title}（${question.type}）`)
     .join("\n");
-  await sendMessage(
-    ctx.botToken,
+  await replyMessage(
+    ctx,
     chatId,
     [
       "导入审核",
@@ -492,7 +491,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
   if (text === "/create" || text === "/continue" || text === "/import") {
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
-      await sendMessage(ctx.botToken, message.chat.id, "你没有创建或导入问卷的权限。");
+      await replyMessage(ctx, message.chat.id, "你没有创建或导入问卷的权限。");
       return true;
     }
   }
@@ -511,7 +510,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     }
 
     if (!state) {
-      await sendMessage(ctx.botToken, message.chat.id, "没有可继续的草稿。");
+      await replyMessage(ctx, message.chat.id, "没有可继续的草稿。");
       return true;
     }
 
@@ -522,12 +521,12 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
   if (text === "/import") {
     const state = await initBuilder(ctx.builder, userId);
     if (hasDraftContent(state) && state.step !== "idle") {
-      await sendMessage(ctx.botToken, message.chat.id, "当前还有未完成草稿，请先 /save 保存或 /discard 放弃。");
+      await replyMessage(ctx, message.chat.id, "当前还有未完成草稿，请先 /save 保存或 /discard 放弃。");
       return true;
     }
     await startImport(ctx.builder, userId);
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       message.chat.id,
       "请直接发送 survey.json 文件。\n\n不是发送文件路径，而是像发送普通文件一样上传。",
     );
@@ -537,7 +536,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
   if (text?.startsWith("/option_media ")) {
     const optionId = Number(text.slice("/option_media ".length));
     if (!Number.isInteger(optionId) || optionId <= 0) {
-      await sendMessage(ctx.botToken, message.chat.id, "选项 ID 无效。");
+      await replyMessage(ctx, message.chat.id, "选项 ID 无效。");
       return true;
     }
     const optionRow = await ctx.db
@@ -551,19 +550,19 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       .first<{ survey_id: number }>();
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!optionRow || !user) {
-      await sendMessage(ctx.botToken, message.chat.id, "选项不存在或用户不存在。");
+      await replyMessage(ctx, message.chat.id, "选项不存在或用户不存在。");
       return true;
     }
     try {
       await assertCanManageSurvey(ctx.db, user, optionRow.survey_id, ctx.adminIds);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权管理该选项。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "无权管理该选项。");
       return true;
     }
 
     await initBuilder(ctx.builder, userId);
     await startOptionMedia(ctx.builder, userId, optionId);
-    await sendMessage(ctx.botToken, message.chat.id, `请发送要绑定到选项 #${optionId} 的媒体文件。`);
+    await replyMessage(ctx, message.chat.id, `请发送要绑定到选项 #${optionId} 的媒体文件。`);
     return true;
   }
 
@@ -572,19 +571,19 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     const question = await getQuestionById(ctx.db, questionId);
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!question || !user) {
-      await sendMessage(ctx.botToken, message.chat.id, "题目不存在或用户不存在。");
+      await replyMessage(ctx, message.chat.id, "题目不存在或用户不存在。");
       return true;
     }
     try {
       await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权管理该题目。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "无权管理该题目。");
       return true;
     }
 
     await initBuilder(ctx.builder, userId);
     await startQuestionMedia(ctx.builder, userId, questionId);
-    await sendMessage(ctx.botToken, message.chat.id, `请发送要绑定到题目 #${questionId} 的媒体文件。`);
+    await replyMessage(ctx, message.chat.id, `请发送要绑定到题目 #${questionId} 的媒体文件。`);
     return true;
   }
 
@@ -593,19 +592,19 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     const question = await getQuestionById(ctx.db, questionId);
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!question || !user) {
-      await sendMessage(ctx.botToken, message.chat.id, "题目不存在或用户不存在。");
+      await replyMessage(ctx, message.chat.id, "题目不存在或用户不存在。");
       return true;
     }
     try {
       await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "无权编辑该题目。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "无权编辑该题目。");
       return true;
     }
 
     await initBuilder(ctx.builder, userId);
     await startEditQuestionTitle(ctx.builder, userId, questionId);
-    await sendMessage(ctx.botToken, message.chat.id, "请输入新的题目内容：");
+    await replyMessage(ctx, message.chat.id, "请输入新的题目内容：");
     return true;
   }
 
@@ -617,13 +616,13 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
   if (text === "/cancel") {
     if (state.suspendedStep !== null) {
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await sendMessage(ctx.botToken, message.chat.id, "已取消当前操作。");
+      await replyMessage(ctx, message.chat.id, "已取消当前操作。");
       return true;
     }
 
     if (hasDraftContent(state)) {
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         `当前草稿已有 ${state.questions.length} 道完整题目。请选择下一步：`,
         cancelDraftKeyboard(),
@@ -632,31 +631,31 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     }
 
     await resetBuilder(ctx.builder, userId);
-    await sendMessage(ctx.botToken, message.chat.id, "已取消创建。");
+    await replyMessage(ctx, message.chat.id, "已取消创建。");
     return true;
   }
 
   if (text === "/discard") {
     await discardCurrentDraft(ctx, userId, state);
-    await sendMessage(ctx.botToken, message.chat.id, "已放弃当前草稿。");
+    await replyMessage(ctx, message.chat.id, "已放弃当前草稿。");
     return true;
   }
 
   if (text === "/save") {
     if (state.questions.length === 0) {
-      await sendMessage(ctx.botToken, message.chat.id, "还没有可保存的完整题目。");
+      await replyMessage(ctx, message.chat.id, "还没有可保存的完整题目。");
       return true;
     }
 
     try {
       const surveyId = await saveCurrentDraft(ctx, userId, state);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         `✅ 草稿已保存，内部编号：${surveyId}\n可继续添加题目，稍后也能用 /continue 恢复。`,
       );
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "保存失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "保存失败。");
     }
     return true;
   }
@@ -671,12 +670,12 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     const importingUser = await getUserByTelegramId(ctx.db, userId);
     if (!importingUser || !(await canCreateSurvey(ctx.db, importingUser, ctx.adminIds))) {
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(ctx.botToken, message.chat.id, "你没有导入问卷的权限，导入操作已取消。");
+      await replyMessage(ctx, message.chat.id, "你没有导入问卷的权限，导入操作已取消。");
       return true;
     }
 
     if (message.document) {
-      await sendMessage(ctx.botToken, message.chat.id, "正在解析文件，请稍候...");
+      await replyMessage(ctx, message.chat.id, "正在解析文件，请稍候...");
     }
 
     try {
@@ -745,8 +744,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
         }
       }
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         [
           "📥 导入完成",
@@ -767,22 +766,14 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
         },
       );
     } catch (error) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        `导入失败：${error instanceof Error ? error.message : "JSON 格式错误"}`,
-      );
+      await replyMessage(ctx, message.chat.id, `导入失败：${error instanceof Error ? error.message : "JSON 格式错误"}`);
     }
     return true;
   }
 
   if (state.step === "add_question_option") {
     if (!state.targetQuestionId || !inputText) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "请输入选项名称。也可以发送带说明文字的媒体，直接创建带附件的选项。",
-      );
+      await replyMessage(ctx, message.chat.id, "请输入选项名称。也可以发送带说明文字的媒体，直接创建带附件的选项。");
       return true;
     }
 
@@ -827,14 +818,14 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "新增选项失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "新增选项失败。");
     }
     return true;
   }
 
   if (state.step === "option_media") {
     if (!state.targetOptionId) {
-      await sendMessage(ctx.botToken, message.chat.id, "目标选项 ID 不存在。");
+      await replyMessage(ctx, message.chat.id, "目标选项 ID 不存在。");
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       return true;
     }
@@ -853,14 +844,14 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "绑定选项附件失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "绑定选项附件失败。");
     }
     return true;
   }
 
   if (state.step === "question_media_existing") {
     if (!state.targetQuestionId) {
-      await sendMessage(ctx.botToken, message.chat.id, "目标题目 ID 不存在。");
+      await replyMessage(ctx, message.chat.id, "目标题目 ID 不存在。");
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       return true;
     }
@@ -879,14 +870,14 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "绑定题目附件失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "绑定题目附件失败。");
     }
     return true;
   }
 
   if (state.step === "edit_question_title") {
     if (!state.targetQuestionId || !inputText) {
-      await sendMessage(ctx.botToken, message.chat.id, "请输入有效的题目内容。");
+      await replyMessage(ctx, message.chat.id, "请输入有效的题目内容。");
       return true;
     }
 
@@ -896,14 +887,14 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "更新题目失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "更新题目失败。");
     }
     return true;
   }
 
   if (state.step === "edit_option_label") {
     if (!state.targetOptionId || !inputText) {
-      await sendMessage(ctx.botToken, message.chat.id, "请输入有效的选项名称。");
+      await replyMessage(ctx, message.chat.id, "请输入有效的选项名称。");
       return true;
     }
 
@@ -913,20 +904,20 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
       await showQuestionEditor(ctx, message.chat.id, userId, question.id);
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "更新选项失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "更新选项失败。");
     }
     return true;
   }
 
   if (state.step === "set_survey_access_code") {
     if (!state.targetSurveyId || !inputText) {
-      await sendMessage(ctx.botToken, message.chat.id, "请输入至少 4 个字符的密码，或发送 /clear。");
+      await replyMessage(ctx, message.chat.id, "请输入至少 4 个字符的密码，或发送 /clear。");
       return true;
     }
 
     const user = await getUserByTelegramId(ctx.db, userId);
     if (!user) {
-      await sendMessage(ctx.botToken, message.chat.id, "用户不存在。");
+      await replyMessage(ctx, message.chat.id, "用户不存在。");
       return true;
     }
 
@@ -946,15 +937,15 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
         );
       }
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         text === "/clear"
           ? "访问密码已移除。"
           : `访问密码已保存。请复制并妥善保存：\n\n${inputText}\n\n以后可在“问卷访问密码”中查看或更换。`,
       );
     } catch (error) {
-      await sendMessage(ctx.botToken, message.chat.id, error instanceof Error ? error.message : "设置密码失败。");
+      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "设置密码失败。");
     }
     return true;
   }
@@ -972,8 +963,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     // bot path consistent so an over-long title can never blow the archive
     // caption (and burn retries) later.
     await setSurveyTitle(ctx.builder, userId, inputText.slice(0, 200));
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       message.chat.id,
       "问卷设置 2/2 · 问卷说明\n\n可输入问卷描述，也可以直接跳过：",
       descriptionKeyboard(),
@@ -983,8 +974,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
 
   if (state.step === "survey_description" && inputText) {
     await setSurveyDescription(ctx.builder, userId, inputText);
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       message.chat.id,
       `创建进度 3/4 · 已完成 ${state.questions.length} 题\n\n请选择下一题题型：`,
       buildQuestionTypeKeyboard(Boolean(state.appendSurveyId)),
@@ -994,7 +985,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
 
   if (state.step === "question_title") {
     if (!inputText) {
-      await sendMessage(ctx.botToken, message.chat.id, "媒体需要附带说明文字，该说明文字会作为题目内容。");
+      await replyMessage(ctx, message.chat.id, "媒体需要附带说明文字，该说明文字会作为题目内容。");
       return true;
     }
 
@@ -1003,8 +994,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       const mediaAssetId = await registerMediaAsset(ctx, message);
       if (mediaAssetId) {
         nextState = await setQuestionMedia(ctx.builder, userId, mediaAssetId);
-        await sendMessage(
-          ctx.botToken,
+        await replyMessage(
+          ctx,
           message.chat.id,
           `第 ${nextState.questions.length + 1} 题 · 3/4 是否必答？\n\n已添加题目附件。请选择填写者是否必须回答这道题。`,
           questionRequiredKeyboard(),
@@ -1013,24 +1004,19 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
       }
     }
 
-    await sendMessage(ctx.botToken, message.chat.id, "第 3/4 步：请选择这道题是否必答。", questionRequiredKeyboard());
+    await replyMessage(ctx, message.chat.id, "第 3/4 步：请选择这道题是否必答。", questionRequiredKeyboard());
     return true;
   }
 
   if (state.step === "question_media") {
     if (!messageHasMedia(message)) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "请发送媒体附件，或点击“不添加附件，继续”。",
-        questionMediaKeyboard(),
-      );
+      await replyMessage(ctx, message.chat.id, "请发送媒体附件，或点击“不添加附件，继续”。", questionMediaKeyboard());
       return true;
     }
 
     const mediaAssetId = await registerMediaAsset(ctx, message);
     if (!mediaAssetId) {
-      await sendMessage(ctx.botToken, message.chat.id, "无法识别该媒体，请重新上传。");
+      await replyMessage(ctx, message.chat.id, "无法识别该媒体，请重新上传。");
       return true;
     }
 
@@ -1045,15 +1031,15 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
         const nextState = await finishOptions(ctx.builder, userId);
         if (nextState.step === "matrix_columns") await showBuilderStep(ctx, message.chat.id, nextState);
         else
-          await sendMessage(
-            ctx.botToken,
+          await replyMessage(
+            ctx,
             message.chat.id,
             `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
             buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
           );
       } catch (error) {
-        await sendMessage(
-          ctx.botToken,
+        await replyMessage(
+          ctx,
           message.chat.id,
           error instanceof Error ? error.message : "选项尚未填写完整。",
           optionEntryKeyboard(),
@@ -1065,13 +1051,13 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     if (state.step === "matrix_columns") {
       const labels = inputText ? normalizeOptionLabels(inputText) : [];
       if (labels.length === 0) {
-        await sendMessage(ctx.botToken, message.chat.id, "请输入有效的矩阵列名称。");
+        await replyMessage(ctx, message.chat.id, "请输入有效的矩阵列名称。");
         return true;
       }
       let nextState = state;
       for (const label of labels) nextState = await addMatrixColumn(ctx.builder, userId, label);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         `已添加 ${labels.length} 个列，当前共 ${nextState.currentMatrixColumns?.length ?? 0} 个。\n至少两个列后点击“完成选项”。`,
         optionEntryKeyboard(),
@@ -1081,17 +1067,17 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
 
     if (messageHasMedia(message)) {
       if (!message.caption?.trim()) {
-        await sendMessage(ctx.botToken, message.chat.id, "请给媒体添加说明文字，说明文字会作为选项名称。");
+        await replyMessage(ctx, message.chat.id, "请给媒体添加说明文字，说明文字会作为选项名称。");
         return true;
       }
       const mediaAssetId = await registerMediaAsset(ctx, message);
       if (!mediaAssetId) {
-        await sendMessage(ctx.botToken, message.chat.id, "无法识别该媒体，请重新上传。");
+        await replyMessage(ctx, message.chat.id, "无法识别该媒体，请重新上传。");
         return true;
       }
       const nextState = await addOption(ctx.builder, userId, message.caption.trim(), mediaAssetId);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         `已添加带媒体选项：${message.caption.trim()}\n当前共 ${nextState.currentOptions.length} 个选项。`,
         optionEntryKeyboard(),
@@ -1101,7 +1087,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
 
     const labels = inputText ? normalizeOptionLabels(inputText) : [];
     if (labels.length === 0) {
-      await sendMessage(ctx.botToken, message.chat.id, "请输入有效选项。");
+      await replyMessage(ctx, message.chat.id, "请输入有效选项。");
       return true;
     }
 
@@ -1109,8 +1095,8 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
     for (const label of labels) {
       nextState = await addOption(ctx.builder, userId, label);
     }
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       message.chat.id,
       `已添加 ${labels.length} 个选项，当前共 ${nextState.currentOptions.length} 个。`,
       optionEntryKeyboard(),
@@ -1145,13 +1131,13 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
     if (data === "import_review:cancel") {
       await ctx.cache?.delete(importReviewKey(userId));
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(ctx.botToken, chatId, "已取消导入，未创建任何问卷。");
+      await replyMessage(ctx, chatId, "已取消导入，未创建任何问卷。");
       await answerCallbackQuery(ctx.botToken, callback.id);
       return true;
     }
     if (data === "import_review:warnings") {
-      await sendLongMessage(
-        ctx.botToken,
+      await replyLongMessage(
+        ctx,
         chatId,
         review.imported.importWarnings?.length
           ? `导入提示：\n${review.imported.importWarnings.map((warning) => `- ${warning}`).join("\n")}`
@@ -1186,17 +1172,17 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
   if (data === "builder:cancel") {
     if (state?.suspendedStep !== null && state?.suspendedStep !== undefined) {
       await resumeBuilderAfterAuxiliary(ctx.builder, userId);
-      await sendMessage(ctx.botToken, chatId, "已取消当前操作。");
+      await replyMessage(ctx, chatId, "已取消当前操作。");
     } else if (hasDraftContent(state)) {
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         `当前草稿已有 ${state?.questions.length ?? 0} 道完整题目。请选择下一步：`,
         cancelDraftKeyboard(),
       );
     } else {
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(ctx.botToken, chatId, "已取消创建。");
+      await replyMessage(ctx, chatId, "已取消创建。");
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1208,7 +1194,7 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
       return true;
     }
     await discardCurrentDraft(ctx, userId, state);
-    await sendMessage(ctx.botToken, chatId, "已放弃当前草稿。");
+    await replyMessage(ctx, chatId, "已放弃当前草稿。");
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
   }
@@ -1298,8 +1284,8 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
       if (nextState.step === "matrix_columns") {
         await showBuilderStep(ctx, chatId, nextState);
       } else {
-        await sendMessage(
-          ctx.botToken,
+        await replyMessage(
+          ctx,
           chatId,
           `第 ${nextState.questions.length} 题已保存。请选择下一道题的题型，或${nextState.appendSurveyId ? "添加题目" : "完成问卷"}。`,
           buildQuestionTypeKeyboard(Boolean(nextState.appendSurveyId)),
@@ -1325,15 +1311,15 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
     try {
       const surveyId = await saveCurrentDraft(ctx, userId, state);
       await resetBuilder(ctx.builder, userId);
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         state.appendSurveyId
           ? `已向问卷 #${surveyId} 添加 ${state.questions.length} 道题。`
           : `问卷创建完成，已保存为草稿。\n内部编号：${surveyId}\n发送 /my_surveys 可设置密码、编辑或发布。`,
       );
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, `保存失败：${error instanceof Error ? error.message : "未知错误"}`);
+      await replyMessage(ctx, chatId, `保存失败：${error instanceof Error ? error.message : "未知错误"}`);
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;
@@ -1347,9 +1333,9 @@ export async function handleBuilderCallback(ctx: BotContext, callback: TelegramC
 
     try {
       const surveyId = await saveCurrentDraft(ctx, userId, state);
-      await sendMessage(ctx.botToken, chatId, `草稿已保存，内部编号：${surveyId}\n创建状态已保留，可继续添加题目。`);
+      await replyMessage(ctx, chatId, `草稿已保存，内部编号：${surveyId}\n创建状态已保留，可继续添加题目。`);
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "保存草稿失败");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "保存草稿失败");
     }
     await answerCallbackQuery(ctx.botToken, callback.id);
     return true;

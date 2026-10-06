@@ -1,5 +1,5 @@
 import { handleTelegramCallback, handleTelegramMessage } from "./survey-handler";
-import { answerCallbackQuery, sendMessage } from "./telegram";
+import { answerCallbackQuery } from "./telegram";
 import type { BotContext, TelegramUpdate } from "./types";
 import { getUpdateKind } from "./update-parser";
 import { getUserByTelegramId, upsertUser } from "../db/repositories/user.repository";
@@ -7,6 +7,7 @@ import type { TelegramUser } from "./types";
 import { setUiMessage } from "../services/ui-session.service";
 import { maybeDetectReportChannel } from "./channel-detection";
 import { maybeHandlePublishTargetCommand } from "./publish-target";
+import { replyMessage } from "./reply";
 
 /**
  * Wraps a handler failure that has already been reported to the user.
@@ -41,6 +42,15 @@ async function ensureUser(ctx: BotContext, telegramUser: TelegramUser): Promise<
 export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotContext): Promise<void> {
   const kind = getUpdateKind(update);
 
+  // 本条 update 所在的会话：论坛群里所有回复都要带回话题 id，否则消息会落到可能
+  // 已关闭的 General 话题（TOPIC_CLOSED）。发送一律走 ./reply.ts 的 replyXxx。
+  const incomingMessage = update.message ?? update.callback_query?.message ?? update.channel_post;
+  if (incomingMessage) {
+    const threadId = incomingMessage.message_thread_id;
+    ctx.incoming =
+      threadId === undefined ? { chatId: incomingMessage.chat.id } : { chatId: incomingMessage.chat.id, threadId };
+  }
+
   if (kind === "channel_post" && update.channel_post) {
     try {
       await maybeDetectReportChannel(ctx, update.channel_post);
@@ -55,13 +65,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
       await ensureUser(ctx, update.message.from);
       const user = await getUserByTelegramId(ctx.db, update.message.from.id);
       if (user?.bannedAt && !ctx.adminIds.includes(update.message.from.id)) {
-        await sendMessage(
-          ctx.botToken,
-          update.message.chat.id,
-          "⛔ 你的账号当前无法使用此机器人。如有疑问，请联系管理员。",
-          undefined,
-          update.message.message_thread_id,
-        );
+        await replyMessage(ctx, update.message.chat.id, "⛔ 你的账号当前无法使用此机器人。如有疑问，请联系管理员。");
         return;
       }
     }
@@ -70,14 +74,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
       await handleTelegramMessage(ctx, update.message);
     } catch (error) {
       console.error("Telegram message handler failed", error);
-      // 论坛群必须带回原话题，否则会落到可能已关闭的 General 话题（TOPIC_CLOSED）。
-      await sendMessage(
-        ctx.botToken,
-        update.message.chat.id,
-        "⚠️ 处理失败，请稍后重试。",
-        undefined,
-        update.message.message_thread_id,
-      );
+      await replyMessage(ctx, update.message.chat.id, "⚠️ 处理失败，请稍后重试。");
       // Rethrow so the webhook releases the idempotency claim: a failed update
       // must stay retryable instead of being permanently swallowed.
       throw new TelegramUpdateHandledError(error);

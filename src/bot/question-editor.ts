@@ -8,9 +8,10 @@ import { getSurveyById } from "../db/repositories/survey.repository";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
 import { assertCanManageSurvey } from "../services/permission.service";
 import { getResponseCount } from "../services/statistics.service";
-import { sendLongMessage, sendMessage, type InlineKeyboardMarkup } from "./telegram";
+import { type InlineKeyboardMarkup } from "./telegram";
 import type { BotContext } from "./types";
 import { renderUiScreen } from "./ui";
+import { replyMessage } from "./reply";
 
 const EDITABLE_OPTION_STRUCTURE_TYPES = new Set(["single", "multiple", "matrix"]);
 
@@ -41,14 +42,14 @@ export async function showQuestionList(
 ): Promise<void> {
   const user = await getUserByTelegramId(ctx.db, userId);
   if (!user) {
-    await sendMessage(ctx.botToken, chatId, "用户信息不存在。");
+    await replyMessage(ctx, chatId, "用户信息不存在。");
     return;
   }
 
   try {
     await assertCanManageSurvey(ctx.db, user, surveyId, ctx.adminIds);
   } catch {
-    await sendMessage(ctx.botToken, chatId, "无权编辑该问卷。");
+    await replyMessage(ctx, chatId, "无权编辑该问卷。");
     return;
   }
 
@@ -58,7 +59,7 @@ export async function showQuestionList(
     getResponseCount(ctx.db, surveyId),
   ]);
   if (!survey) {
-    await sendMessage(ctx.botToken, chatId, "问卷不存在。");
+    await replyMessage(ctx, chatId, "问卷不存在。");
     return;
   }
 
@@ -148,14 +149,14 @@ export async function showQuestionEditor(
     getUserByTelegramId(ctx.db, userId),
   ]);
   if (!question || !user) {
-    await sendMessage(ctx.botToken, chatId, "题目不存在或用户不存在。");
+    await replyMessage(ctx, chatId, "题目不存在或用户不存在。");
     return;
   }
 
   try {
     await assertCanManageSurvey(ctx.db, user, question.surveyId, ctx.adminIds);
   } catch {
-    await sendMessage(ctx.botToken, chatId, "无权编辑该题目。");
+    await replyMessage(ctx, chatId, "无权编辑该题目。");
     return;
   }
 

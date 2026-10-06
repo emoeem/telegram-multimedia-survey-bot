@@ -25,8 +25,15 @@ vi.mock("../../../src/db/repositories/publication-target.repository", () => ({
 
 import { maybeHandlePublishTargetCommand } from "../../../src/bot/publish-target";
 
-function makeCtx() {
-  return { botToken: "token", db: {} as never, adminIds: [42] } as never;
+const GROUP_CHAT_ID = -1009876543210;
+
+/**
+ * 复制 router 的行为：把本条 update 所在的会话写进 ctx.incoming，handler 再据此
+ * 决定回复要不要带话题（见 src/bot/reply.ts）。测试直接调用 handler，所以必须
+ * 自己补上这一步，否则就绕过了真实的话题来源。
+ */
+function makeCtx(incoming: { chatId: number; threadId?: number } = { chatId: GROUP_CHAT_ID }) {
+  return { botToken: "token", db: {} as never, adminIds: [42], incoming } as never;
 }
 
 function groupMessage(overrides: Partial<Parameters<typeof maybeHandlePublishTargetCommand>[1]> = {}) {
@@ -69,7 +76,6 @@ describe("set_publish_target command", () => {
       -1009876543210,
       expect.stringContaining("-1009876543210"),
       undefined,
-      undefined,
     );
   });
 
@@ -83,7 +89,10 @@ describe("set_publish_target command", () => {
   });
 
   it("sends every group reply inside the original forum topic (TOPIC_CLOSED regression)", async () => {
-    await maybeHandlePublishTargetCommand(makeCtx(), groupMessage({ message_thread_id: 77 }));
+    await maybeHandlePublishTargetCommand(
+      makeCtx({ chatId: GROUP_CHAT_ID, threadId: 77 }),
+      groupMessage({ message_thread_id: 77 }),
+    );
 
     const groupReplies = mocks.sendMessage.mock.calls.filter((call) => call[1] === -1009876543210);
     expect(groupReplies.length).toBeGreaterThan(0);
@@ -96,7 +105,7 @@ describe("set_publish_target command", () => {
     mocks.canCreateSurvey.mockResolvedValue(false);
 
     await maybeHandlePublishTargetCommand(
-      makeCtx(),
+      makeCtx({ chatId: GROUP_CHAT_ID, threadId: 77 }),
       groupMessage({ from: { id: 999, first_name: "Random" }, message_thread_id: 77 }),
     );
 
@@ -112,10 +121,14 @@ describe("set_publish_target command", () => {
   it("explains a genuinely closed topic when Telegram answers TOPIC_CLOSED", async () => {
     mocks.sendMessage.mockRejectedValueOnce(new Error("Telegram sendMessage failed: 400 Bad Request: TOPIC_CLOSED"));
 
-    await maybeHandlePublishTargetCommand(makeCtx(), groupMessage({ message_thread_id: 77 }));
+    await maybeHandlePublishTargetCommand(
+      makeCtx({ chatId: GROUP_CHAT_ID, threadId: 77 }),
+      groupMessage({ message_thread_id: 77 }),
+    );
 
     expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("话题已被关闭"));
+    // 私聊通知属于另一个会话，带上群话题会被 Telegram 拒绝（message thread not found）。
+    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("话题已被关闭"), undefined);
   });
 
   it("rejects senders without creator or admin rights", async () => {
@@ -133,7 +146,6 @@ describe("set_publish_target command", () => {
       -1009876543210,
       expect.stringContaining("只有管理员或创作者"),
       undefined,
-      undefined,
     );
   });
 
@@ -143,18 +155,18 @@ describe("set_publish_target command", () => {
     await maybeHandlePublishTargetCommand(makeCtx(), groupMessage());
 
     expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("发布目标设置失败"));
+    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("发布目标设置失败"), undefined);
   });
 
   it("answers the usage hint in private chat without touching the target table", async () => {
     const handled = await maybeHandlePublishTargetCommand(
-      makeCtx(),
+      makeCtx({ chatId: 42 }),
       groupMessage({ chat: { id: 42, type: "private" } }),
     );
 
     expect(handled).toBe(true);
     expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("目标群组"));
+    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("目标群组"), undefined);
   });
 
   it("ignores unrelated messages", async () => {

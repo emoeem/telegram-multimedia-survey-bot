@@ -53,7 +53,12 @@ describe("report channel detection via channel_post", () => {
 
     expect(cache.put).toHaveBeenCalledWith(REPORT_CHANNEL_CACHE_KEY, "-1001234567890");
     expect(cache.delete).toHaveBeenCalledWith(REPORT_CHANNEL_DETECT_REQUEST_KEY);
-    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("token", 111, expect.stringContaining("-1001234567890"));
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith(
+      "token",
+      111,
+      expect.stringContaining("-1001234567890"),
+      undefined,
+    );
   });
 
   it("warns the admin when the bot is not a channel administrator", async () => {
@@ -71,7 +76,12 @@ describe("report channel detection via channel_post", () => {
     });
 
     expect(cache.put).not.toHaveBeenCalled();
-    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("token", 111, expect.stringContaining("不是该频道的管理员"));
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith(
+      "token",
+      111,
+      expect.stringContaining("不是该频道的管理员"),
+      undefined,
+    );
   });
 
   it("ignores channel posts when no admin is waiting for detection", async () => {

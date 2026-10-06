@@ -1,6 +1,6 @@
 import { getResponseById } from "../db/repositories/response.repository";
 import { BotContext, TelegramCallbackQuery } from "./types";
-import { answerCallbackQuery, sendMessage } from "./telegram";
+import { answerCallbackQuery } from "./telegram";
 import {
   assertResponseAccess,
   sendResponseReportExport,
@@ -12,6 +12,7 @@ import {
   showSurveyResponses,
 } from "./survey-report";
 import { requestConfiguredResultVisual } from "../services/result-visual.service";
+import { replyMessage } from "./reply";
 
 export async function handleReportCallbacks(
   ctx: BotContext,
@@ -45,7 +46,7 @@ export async function handleReportCallbacks(
           format: "png",
           anonymize: format.endsWith("_private"),
         });
-        await sendMessage(ctx.botToken, chatId, "📱 手机版报告已加入后台生成队列，完成后会发送到当前会话。");
+        await replyMessage(ctx, chatId, "📱 手机版报告已加入后台生成队列，完成后会发送到当前会话。");
         return true;
       }
       await sendResponseReportExport(
@@ -59,7 +60,7 @@ export async function handleReportCallbacks(
         format.endsWith("_private"),
       );
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "答卷导出失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "答卷导出失败。");
     }
     return true;
   }
@@ -84,7 +85,7 @@ export async function handleReportCallbacks(
       });
       if (!result) throw new Error("所选报告模板不可用");
       await answerCallbackQuery(ctx.botToken, callback.id, "已开始生成");
-      await sendMessage(ctx.botToken, chatId, "🎨 正在为这份答卷生成分析报告，完成后会发送到当前会话。");
+      await replyMessage(ctx, chatId, "🎨 正在为这份答卷生成分析报告，完成后会发送到当前会话。");
     } catch (error) {
       await answerCallbackQuery(ctx.botToken, callback.id, error instanceof Error ? error.message : "无法生成分析报告");
     }
@@ -108,7 +109,7 @@ export async function handleReportCallbacks(
     try {
       await showSurveyResponses(ctx, chatId, userId, Number(surveyIdRaw), Number(offsetRaw ?? 0));
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "读取答卷失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "读取答卷失败。");
     }
     return true;
   }
@@ -127,7 +128,7 @@ export async function handleReportCallbacks(
         Number(returnOffsetRaw ?? 0),
       );
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "读取答卷失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "读取答卷失败。");
     }
     return true;
   }
@@ -138,7 +139,7 @@ export async function handleReportCallbacks(
     try {
       await sendSurveyJsonExport(ctx, chatId, userId, surveyId);
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "导出失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "导出失败。");
     }
     return true;
   }
@@ -154,7 +155,7 @@ export async function handleReportCallbacks(
     try {
       await sendSurveyExport(ctx, chatId, userId, surveyId, formatRaw);
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "导出失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "导出失败。");
     }
     return true;
   }
@@ -165,7 +166,7 @@ export async function handleReportCallbacks(
     try {
       await sendSurveySummaryPdf(ctx, chatId, userId, surveyId);
     } catch (error) {
-      await sendMessage(ctx.botToken, chatId, error instanceof Error ? error.message : "统计 PDF 导出失败。");
+      await replyMessage(ctx, chatId, error instanceof Error ? error.message : "统计 PDF 导出失败。");
     }
     return true;
   }

@@ -12,14 +12,7 @@ import {
   getQuestionMediaByQuestionIds,
   listOptionMediaByOptionIds,
 } from "../db/repositories/media.repository";
-import {
-  InlineKeyboardMarkup,
-  downloadTelegramFile,
-  sendDocument,
-  sendMessage,
-  sendPhoto,
-  sendPhotoAlbum,
-} from "./telegram";
+import { InlineKeyboardMarkup, downloadTelegramFile } from "./telegram";
 import { getUserByTelegramId } from "../db/repositories/user.repository";
 import { assertCanManageSurvey } from "../services/permission.service";
 import {
@@ -35,6 +28,7 @@ import { SurveyExportFormat, enqueueExportJob } from "../services/export-queue.s
 import { renderSurveySummaryReport } from "../services/survey-report.service";
 import { exportUnifiedSurveyJson } from "../services/survey-json.service";
 import { getMatrixColumns as matrixColumns } from "../survey/question-presentation";
+import { replyDocument, replyMessage, replyPhoto, replyPhotoAlbum } from "./reply";
 
 function formatResponseRespondent(
   respondent: Awaited<ReturnType<typeof listResponses>>[number]["respondent"],
@@ -609,15 +603,10 @@ export async function sendResponseReportExport(
     for (let offset = 0; offset < artifact.pages.length; offset += 10) {
       const pages = artifact.pages.slice(offset, offset + 10);
       if (pages.length === 1) {
-        await sendPhoto(
-          ctx.botToken,
-          chatId,
-          pages[0]!.bytes,
-          `📱 手机版报告 · 第 ${offset + 1}/${artifact.pages.length} 页`,
-        );
+        await replyPhoto(ctx, chatId, pages[0]!.bytes, `📱 手机版报告 · 第 ${offset + 1}/${artifact.pages.length} 页`);
       } else {
-        await sendPhotoAlbum(
-          ctx.botToken,
+        await replyPhotoAlbum(
+          ctx,
           chatId,
           pages.map((page, index) => ({
             bytes: page.bytes,
@@ -629,8 +618,8 @@ export async function sendResponseReportExport(
       }
     }
     if (artifact.targetTotalBytesExceeded) {
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         `手机版报告共 ${artifact.pages.length} 页、${(artifact.totalBytes / 1024 / 1024).toFixed(1)} MB，内容已全部发送。`,
       );
@@ -639,8 +628,8 @@ export async function sendResponseReportExport(
   }
   const files = [artifact.bytes];
   for (let index = 0; index < files.length; index += 1) {
-    await sendDocument(
-      ctx.botToken,
+    await replyDocument(
+      ctx,
       chatId,
       `survey-${surveyId}-response-${responseNumber}${anonymize ? "-private" : ""}${files.length > 1 ? `-page-${String(index + 1).padStart(2, "0")}` : ""}.${format}`,
       files[index]!,
@@ -668,7 +657,7 @@ export async function sendSurveyExport(
     chatId,
     format,
   });
-  await sendMessage(ctx.botToken, chatId, `导出任务 #${jobId} 已创建，文件生成后会自动发送。`);
+  await replyMessage(ctx, chatId, `导出任务 #${jobId} 已创建，文件生成后会自动发送。`);
 }
 
 export async function sendSurveySummaryPdf(
@@ -698,7 +687,7 @@ export async function sendSurveySummaryPdf(
     numericStatistics,
     completionTimeBuckets,
   });
-  await sendDocument(ctx.botToken, chatId, `survey-${surveyId}-statistics.pdf`, content, "application/pdf");
+  await replyDocument(ctx, chatId, `survey-${surveyId}-statistics.pdf`, content, "application/pdf");
 }
 
 export async function sendSurveyJsonExport(
@@ -717,11 +706,5 @@ export async function sendSurveyJsonExport(
   if (!unified) {
     throw new Error("问卷不存在");
   }
-  await sendDocument(
-    ctx.botToken,
-    chatId,
-    `survey-${surveyId}.json`,
-    JSON.stringify(unified, null, 2),
-    "application/json",
-  );
+  await replyDocument(ctx, chatId, `survey-${surveyId}.json`, JSON.stringify(unified, null, 2), "application/json");
 }

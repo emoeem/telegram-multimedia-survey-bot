@@ -1,6 +1,7 @@
 import { editMessageText, sendMessage, type InlineKeyboardMarkup } from "./telegram";
 import { getUiSession, replaceUiScreen, setUiMessage } from "../services/ui-session.service";
 import type { BotContext } from "./types";
+import { replyMessage } from "./reply";
 
 export interface UiScreen {
   screen: string;
@@ -22,7 +23,7 @@ function messageIdFromResponse(response: Response): Promise<number | null> {
 
 export async function renderUiScreen(ctx: BotContext, chatId: number, userId: number, screen: UiScreen): Promise<void> {
   if (!ctx.ui) {
-    await sendMessage(ctx.botToken, chatId, screen.text, screen.replyMarkup);
+    await replyMessage(ctx, chatId, screen.text, screen.replyMarkup);
     return;
   }
 
@@ -31,7 +32,7 @@ export async function renderUiScreen(ctx: BotContext, chatId: number, userId: nu
     session = await getUiSession(ctx.ui, userId, chatId);
   } catch (error) {
     console.warn("UI session read failed; falling back to sendMessage", error);
-    await sendMessage(ctx.botToken, chatId, screen.text, screen.replyMarkup);
+    await replyMessage(ctx, chatId, screen.text, screen.replyMarkup);
     return;
   }
   if (session.messageId !== null) {
@@ -42,7 +43,7 @@ export async function renderUiScreen(ctx: BotContext, chatId: number, userId: nu
       if (!message.includes("message to edit not found") && !message.includes("can't be edited")) {
         throw error;
       }
-      const response = await sendMessage(ctx.botToken, chatId, screen.text, screen.replyMarkup);
+      const response = await replyMessage(ctx, chatId, screen.text, screen.replyMarkup);
       const messageId = await messageIdFromResponse(response);
       if (messageId !== null) {
         try {
@@ -53,7 +54,7 @@ export async function renderUiScreen(ctx: BotContext, chatId: number, userId: nu
       }
     }
   } else {
-    const response = await sendMessage(ctx.botToken, chatId, screen.text, screen.replyMarkup);
+    const response = await replyMessage(ctx, chatId, screen.text, screen.replyMarkup);
     const messageId = await messageIdFromResponse(response);
     if (messageId !== null) {
       try {

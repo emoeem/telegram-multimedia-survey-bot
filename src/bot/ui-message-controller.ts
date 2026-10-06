@@ -14,12 +14,14 @@ export interface UiMessageState {
   method: "edit" | "send";
 }
 
-interface RenderInput extends UiScreen {
+export interface RenderScreenInput extends UiScreen {
   botToken: string;
   chatId: number;
   userId: number;
   messageId?: number;
   version?: number;
+  /** 论坛群话题 id；缺省表示不带话题（私聊或普通群）。 */
+  messageThreadId?: number;
 }
 
 function responseMessageId(response: Response): Promise<number | null> {
@@ -40,7 +42,7 @@ function isEditFallbackError(error: unknown): boolean {
   );
 }
 
-export async function renderScreen(input: RenderInput): Promise<UiMessageState> {
+export async function renderScreen(input: RenderScreenInput): Promise<UiMessageState> {
   const requestId = crypto.randomUUID();
   const base = {
     requestId,
@@ -73,7 +75,10 @@ export async function renderScreen(input: RenderInput): Promise<UiMessageState> 
     }
   }
 
-  const response = await sendMessage(input.botToken, input.chatId, input.text, input.replyMarkup);
+  const response =
+    input.messageThreadId === undefined
+      ? await sendMessage(input.botToken, input.chatId, input.text, input.replyMarkup)
+      : await sendMessage(input.botToken, input.chatId, input.text, input.replyMarkup, input.messageThreadId);
   const messageId = await responseMessageId(response);
   if (messageId === null) {
     throw new Error("Telegram sendMessage did not return a message id");

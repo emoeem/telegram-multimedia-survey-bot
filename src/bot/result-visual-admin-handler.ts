@@ -1,4 +1,4 @@
-import { answerCallbackQuery, sendDocument, sendMessage, sendPhoto, type InlineKeyboardMarkup } from "./telegram";
+import { answerCallbackQuery, type InlineKeyboardMarkup } from "./telegram";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import { registerMediaAsset } from "../services/media.service";
@@ -29,6 +29,7 @@ import {
   visualReportExampleTemplate,
 } from "../visual-template/examples";
 import type { VisualTemplateDefinition } from "../visual-template/schema";
+import { replyDocument, replyMessage, replyPhoto, replyScreen } from "./reply";
 
 const templateImportStatePrefix = "result-visual-template-import:";
 const templateEditorStatePrefix = "result-visual-template-editor:";
@@ -193,10 +194,17 @@ async function render(
   messageId?: number,
 ): Promise<void> {
   if (messageId === undefined) {
-    await sendMessage(ctx.botToken, chatId, text, replyMarkup);
+    await replyMessage(ctx, chatId, text, replyMarkup);
     return;
   }
-  await renderScreen({ botToken: ctx.botToken, chatId, userId, messageId, screen, text, replyMarkup });
+  await replyScreen(ctx, {
+    chatId,
+    userId,
+    messageId,
+    screen,
+    text,
+    replyMarkup,
+  });
 }
 
 async function loadTemplateDefinition(
@@ -511,7 +519,7 @@ export async function previewTemplate(
     fontBuffers: RESULT_VISUAL_FONTS,
     images,
   });
-  await sendPhoto(ctx.botToken, chatId, png, `🎨 模板预览：${template.name}`);
+  await replyPhoto(ctx, chatId, png, `🎨 模板预览：${template.name}`);
 }
 
 async function showSurveySettings(
@@ -639,7 +647,7 @@ async function handleTemplateEditorMessage(
 
   if (state.mode === "background") {
     if (!message.photo?.length) {
-      await sendMessage(ctx.botToken, message.chat.id, "请发送一张图片作为海报背景，或发送 /cancel 取消。");
+      await replyMessage(ctx, message.chat.id, "请发送一张图片作为海报背景，或发送 /cancel 取消。");
       return true;
     }
     const assetId = await registerMediaAsset(ctx, message, { scope: "template" });
@@ -649,19 +657,19 @@ async function handleTemplateEditorMessage(
     await saveTemplateDefinition(ctx, state.templateId, internalUserId, definition);
     await ctx.cache.delete(templateEditorStateKey(telegramUserId));
     await showTemplateEditor(ctx, state.chatId, telegramUserId, state.templateId, state.messageId);
-    await sendMessage(ctx.botToken, message.chat.id, "✅ 背景图片已上传。可继续添加动态元素或预览。");
+    await replyMessage(ctx, message.chat.id, "✅ 背景图片已上传。可继续添加动态元素或预览。");
     return true;
   }
 
   const text = message.text?.trim();
   if (!text) {
-    await sendMessage(ctx.botToken, message.chat.id, "请按当前提示发送文字配置，或发送 /cancel 取消。");
+    await replyMessage(ctx, message.chat.id, "请按当前提示发送文字配置，或发送 /cancel 取消。");
     return true;
   }
   if (state.mode === "element_variable") {
     await ctx.cache.delete(templateEditorStateKey(telegramUserId));
     await showTemplateEditor(ctx, state.chatId, telegramUserId, state.templateId, state.messageId);
-    await sendMessage(ctx.botToken, message.chat.id, "字段选择已更新，请点击添加动态元素后从列表选择数据来源。");
+    await replyMessage(ctx, message.chat.id, "字段选择已更新，请点击添加动态元素后从列表选择数据来源。");
     return true;
   }
 
@@ -669,8 +677,8 @@ async function handleTemplateEditorMessage(
   if (state.elementType === "image") {
     const layout = parseImageLayout(text);
     if (!layout) {
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         message.chat.id,
         "图片布局格式无效。请使用：X,Y,宽度,高度,cover|contain|stretch,rectangle|rounded|circle",
       );
@@ -687,11 +695,7 @@ async function handleTemplateEditorMessage(
   } else {
     const layout = parseTextLayout(text);
     if (!layout) {
-      await sendMessage(
-        ctx.botToken,
-        message.chat.id,
-        "文字布局格式无效。请使用：X,Y,宽度,字号,left|center|right,#RRGGBB",
-      );
+      await replyMessage(ctx, message.chat.id, "文字布局格式无效。请使用：X,Y,宽度,字号,left|center|right,#RRGGBB");
       return true;
     }
     ensureEditorVariable(definition, state.source, "text");
@@ -708,7 +712,7 @@ async function handleTemplateEditorMessage(
   await saveTemplateDefinition(ctx, state.templateId, internalUserId, definition);
   await ctx.cache.delete(templateEditorStateKey(telegramUserId));
   await showTemplateEditor(ctx, state.chatId, telegramUserId, state.templateId, state.messageId);
-  await sendMessage(ctx.botToken, message.chat.id, "✅ 动态元素已保存到模板草稿。");
+  await replyMessage(ctx, message.chat.id, "✅ 动态元素已保存到模板草稿。");
   return true;
 }
 
@@ -725,7 +729,7 @@ export async function handleResultVisualAdminMessage(
   if ((await ctx.cache.get(templateImportStateKey(telegramUserId))) !== "1") return false;
   if (text === "/cancel") {
     await ctx.cache.delete(templateImportStateKey(telegramUserId));
-    await sendMessage(ctx.botToken, message.chat.id, "已取消模板导入。");
+    await replyMessage(ctx, message.chat.id, "已取消模板导入。");
     return true;
   }
   if (text.startsWith("/")) return false;
@@ -733,8 +737,8 @@ export async function handleResultVisualAdminMessage(
   try {
     definition = parseVisualTemplateDefinition(text);
   } catch (error) {
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       message.chat.id,
       `模板 JSON 无法导入：${error instanceof Error ? error.message : "格式无效"}\n\n请修正后重新发送，或发送 /cancel 取消。`,
     );
@@ -756,7 +760,7 @@ export async function handleResultVisualAdminMessage(
     createdBy: internalUserId,
   });
   await ctx.cache.delete(templateImportStateKey(telegramUserId));
-  await sendMessage(ctx.botToken, message.chat.id, "模板 JSON 已导入为草稿。", {
+  await replyMessage(ctx, message.chat.id, "模板 JSON 已导入为草稿。", {
     inline_keyboard: [[{ text: "查看模板", callback_data: `visual:view:${template.id}` }]],
   });
   return true;
@@ -790,8 +794,8 @@ export async function handleResultVisualAdminCallback(
       await showTemplateEditor(ctx, chatId, userId, templateId, messageId);
     } else if (action === "background") {
       await setTemplateEditorState(ctx, userId, { mode: "background", templateId, chatId, messageId });
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         "请发送一张图片作为海报背景。图片仅保留 Telegram file_id，不上传到 R2；发送 /cancel 取消。",
       );
@@ -856,8 +860,8 @@ export async function handleResultVisualAdminCallback(
         elementType,
         source,
       });
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         elementType === "image"
           ? "请输入图片布局：X,Y,宽度,高度,裁剪,形状\n例如：340,600,400,400,cover,circle\n裁剪：cover / contain / stretch；形状：rectangle / rounded / circle"
@@ -934,8 +938,8 @@ export async function handleResultVisualAdminCallback(
     } catch (error) {
       const detail = error instanceof Error ? error.message : "未知错误";
       console.error("Visual template preview failed", { templateId: data, error: detail });
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         chatId,
         `⚠️ 模板预览失败：${detail.slice(0, 300)}\n\n请确认背景图片可由 Telegram 下载后重试。`,
       );
@@ -947,8 +951,8 @@ export async function handleResultVisualAdminCallback(
       ? await getVisualTemplateVersion(ctx.db, template.id, template.currentVersion)
       : null;
     if (!template || !version) throw new Error("模板版本不存在");
-    await sendDocument(
-      ctx.botToken,
+    await replyDocument(
+      ctx,
       chatId,
       `visual-template-${template.id}-v${version.version}.json`,
       version.definitionJson,
@@ -957,8 +961,8 @@ export async function handleResultVisualAdminCallback(
   } else if (data === "visual:import") {
     if (!ctx.cache) throw new Error("当前部署未启用模板导入状态");
     await ctx.cache.put(templateImportStateKey(userId), "1", { expirationTtl: 15 * 60 });
-    await sendMessage(
-      ctx.botToken,
+    await replyMessage(
+      ctx,
       chatId,
       "请发送完整的 VisualTemplate JSON；发送 /cancel 取消。导入前会校验变量、颜色、元素和条件，不执行任何脚本。",
     );

@@ -228,12 +228,13 @@ export async function sendLongMessage(
   chatId: number,
   text: string,
   replyMarkup?: InlineKeyboardMarkup,
+  messageThreadId?: number,
 ): Promise<void> {
   const chunks = splitTelegramText(text);
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
     if (!chunk) continue;
-    await sendMessage(botToken, chatId, chunk, index === chunks.length - 1 ? replyMarkup : undefined);
+    await sendMessage(botToken, chatId, chunk, index === chunks.length - 1 ? replyMarkup : undefined, messageThreadId);
   }
 }
 
@@ -580,7 +581,13 @@ export async function sendPhoto(
         ? await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, photo, caption, reply_markup: replyMarkup, ...(messageThreadId ? { message_thread_id: messageThreadId } : {}) }),
+            body: JSON.stringify({
+              chat_id: chatId,
+              photo,
+              caption,
+              reply_markup: replyMarkup,
+              ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
+            }),
             signal: controller.signal,
           })
         : await (() => {
@@ -589,6 +596,9 @@ export async function sendPhoto(
             form.append("photo", new Blob([photo as BlobPart], { type: "image/png" }), "completion-poster.png");
             if (caption) form.append("caption", caption);
             if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
+            // 二进制图片走 FormData 分支，话题 id 必须显式附加，否则论坛群里会掉进
+            // General 话题（该话题关闭时 400 TOPIC_CLOSED）。
+            if (messageThreadId) form.append("message_thread_id", String(messageThreadId));
             return fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
               method: "POST",
               body: form,

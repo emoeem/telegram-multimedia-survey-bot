@@ -1,6 +1,7 @@
-import { getBotId, getChatMember, sendMessage } from "./telegram";
+import { getBotId, getChatMember } from "./telegram";
 import type { BotContext, TelegramMessage } from "./types";
 import { REPORT_CHANNEL_CACHE_KEY } from "../services/report-delivery.service";
+import { replyMessage } from "./reply";
 
 /** Global one-shot request: value is the requesting user's id. */
 export const REPORT_CHANNEL_DETECT_REQUEST_KEY = "report-channel-detect-request";
@@ -36,16 +37,16 @@ export async function maybeDetectReportChannel(ctx: BotContext, post: TelegramMe
   try {
     if (!Number.isInteger(requesterId) || !(await botCanManageChannel(ctx.botToken, post.chat.id))) {
       if (Number.isInteger(requesterId)) {
-        await sendMessage(
-          ctx.botToken,
+        await replyMessage(
+          ctx,
           requesterId,
           "⚠️ 频道检测失败：Bot 不是该频道的管理员，请先在频道里把 Bot 添加为管理员。",
         );
       }
     } else {
       await ctx.cache.put(REPORT_CHANNEL_CACHE_KEY, String(post.chat.id));
-      await sendMessage(
-        ctx.botToken,
+      await replyMessage(
+        ctx,
         requesterId,
         ["✅ 已识别报告归档频道", `频道：${post.chat.title ?? String(post.chat.id)}`, `Chat ID：${post.chat.id}`].join(
           "\n",

@@ -153,6 +153,6 @@ describe("plaza bot handler", () => {
     await expect(handlePlazaCallback(ctx, callback("plaza:anon"), 7)).resolves.toBe(true);
 
     expect(mocks.createPlazaPost).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 3, expect.stringContaining("发言太频繁"));
+    expect(mocks.sendMessage).toHaveBeenCalledWith("token", 3, expect.stringContaining("发言太频繁"), undefined);
   });
 });

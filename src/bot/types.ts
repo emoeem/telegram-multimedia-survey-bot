@@ -66,6 +66,15 @@ export interface TelegramUpdate {
 
 export interface BotContext {
   botToken: string;
+  /**
+   * 本条 update 所在的会话，由 router 在分发前填好。
+   *
+   * 论坛群（话题群）里不带 message_thread_id 的消息会落到 General 话题，而该
+   * 话题一旦被关闭，Telegram 直接返回 400 Bad Request: TOPIC_CLOSED。回复本条
+   * update 所在的会话时必须带回话题 id —— 统一走 ./reply.ts 的 replyXxx，不要
+   * 直接调用 ./telegram.ts 的发送函数。
+   */
+  incoming?: { chatId: number; threadId?: number };
   db: D1Database;
   cache?: KVNamespace;
   /** Media KV store; used to serve stored identity card renders. */

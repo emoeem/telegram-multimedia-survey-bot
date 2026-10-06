@@ -1,9 +1,10 @@
-import { answerCallbackQuery, sendMessage, type InlineKeyboardMarkup } from "./telegram";
+import { answerCallbackQuery, type InlineKeyboardMarkup } from "./telegram";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
 import { createPlazaPost, listPlazaPosts, type PlazaPostRecord } from "../db/repositories/plaza-post.repository";
 import { checkRateLimit } from "../services/rate-limit.service";
 import { clearUiSession, replaceUiScreen, setUiMessage } from "../services/ui-session.service";
+import { replyMessage, replyScreen } from "./reply";
 
 /**
  * 广场 (plaza) bot fallback: tree-hole posts live in the chat, while the
@@ -48,8 +49,7 @@ async function screen(
   replyMarkup?: InlineKeyboardMarkup,
   messageId?: number,
 ): Promise<void> {
-  const result = await renderScreen({
-    botToken: ctx.botToken,
+  const result = await replyScreen(ctx, {
     chatId,
     userId,
     screen: screenId,
@@ -141,7 +141,7 @@ async function showTreeholePost(
   }
   const post = items[0];
   if (!post) {
-    await sendMessage(ctx.botToken, chatId, "已经到最后一条了。");
+    await replyMessage(ctx, chatId, "已经到最后一条了。");
     return;
   }
   const author = post.anonymous ? "匿名" : ownerLabel(post.owner);
@@ -185,7 +185,7 @@ export async function handlePlazaCallback(
     // Legacy identity-card gallery callbacks: point at the web plaza.
     if (ctx.origin) {
       await answerCallbackQuery(ctx.botToken, callback.id);
-      await sendMessage(ctx.botToken, chatId, "🧑 个人资料画廊已搬到网页版。", {
+      await replyMessage(ctx, chatId, "🧑 个人资料画廊已搬到网页版。", {
         inline_keyboard: [
           [{ text: "打开个人资料画廊", url: `${ctx.origin}/plaza` }],
           [{ text: "返回主菜单", callback_data: "home:menu" }],
@@ -223,7 +223,7 @@ export async function handlePlazaCallback(
   if (!compose) return false;
   if (data === "plaza:cancel") {
     await clearCompose(ctx, userId);
-    await sendMessage(ctx.botToken, chatId, "已取消树洞投稿。", {
+    await replyMessage(ctx, chatId, "已取消树洞投稿。", {
       inline_keyboard: [[{ text: "⬅️ 返回广场", callback_data: "plaza:list" }]],
     });
     await answerCallbackQuery(ctx.botToken, callback.id);
@@ -238,11 +238,7 @@ export async function handlePlazaCallback(
     const anonymous = data === "plaza:anon";
     const limit = await checkRateLimit(ctx.cache, "plaza-post", String(userId), 5, 3600);
     if (!limit.allowed) {
-      await sendMessage(
-        ctx.botToken,
-        chatId,
-        `发言太频繁啦，请 ${Math.ceil(limit.retryAfterSeconds / 60)} 分钟后再来投稿。`,
-      );
+      await replyMessage(ctx, chatId, `发言太频繁啦，请 ${Math.ceil(limit.retryAfterSeconds / 60)} 分钟后再来投稿。`);
       await answerCallbackQuery(ctx.botToken, callback.id);
       return true;
     }

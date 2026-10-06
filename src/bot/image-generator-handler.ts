@@ -34,6 +34,7 @@ import { visualReportExampleTemplate } from "../visual-template/examples";
 import { midnightReportExampleTemplate, roseReportExampleTemplate } from "../visual-template/examples";
 import { previewTemplate } from "./result-visual-admin-handler";
 import { parseReportGeneratorImport } from "../services/report-generator-import.service";
+import { replyScreen } from "./reply";
 
 type AdminState =
   | { kind: "new"; templateId: number; chatId: number; messageId: number }
@@ -117,8 +118,7 @@ async function render(
   text: string,
   replyMarkup: InlineKeyboardMarkup,
 ): Promise<number> {
-  const result = await renderScreen({
-    botToken: ctx.botToken,
+  const result = await replyScreen(ctx, {
     chatId,
     userId,
     screen,
