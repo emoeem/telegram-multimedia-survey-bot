@@ -6,6 +6,7 @@ import { getUserByTelegramId, upsertUser } from "../db/repositories/user.reposit
 import type { TelegramUser } from "./types";
 import { setUiMessage } from "../services/ui-session.service";
 import { maybeDetectReportChannel } from "./channel-detection";
+import { isGroupChat, isMessageAddressedToBot } from "./chat-addressing";
 import { maybeHandlePublishTargetCommand } from "./publish-target";
 import { replyMessage } from "./reply";
 
@@ -61,6 +62,18 @@ export async function handleTelegramUpdate(update: TelegramUpdate, ctx: BotConte
   }
 
   if (kind === "message" && update.message) {
+    // 群聊准入：只有明确对机器人说话的消息（命令 / @本机器人 / 回复机器人）才继续。
+    // 机器人若是群管理员，Telegram 会把群里的每条消息都送过来，而私聊主菜单的兜底
+    // 渲染会把这些闲聊全部变成群里的菜单刷屏 —— 判断失败时宁可静默丢弃。
+    if (isGroupChat(update.message.chat.type)) {
+      let addressed = false;
+      try {
+        addressed = await isMessageAddressedToBot(ctx, update.message);
+      } catch (error) {
+        console.warn("Group addressing check failed; ignoring message", error);
+      }
+      if (!addressed) return;
+    }
     if (update.message.from) {
       await ensureUser(ctx, update.message.from);
       const user = await getUserByTelegramId(ctx.db, update.message.from.id);

@@ -75,6 +75,7 @@ import { clearAdminInteractionState, handleAdminCallback, handleAdminMessage } f
 import { decryptSurveyAccessCode } from "../core/security";
 import { REPORT_CHANNEL_CACHE_KEY, reportChannelPendingKey } from "../services/report-delivery.service";
 import { botCanManageChannel, REPORT_CHANNEL_DETECT_REQUEST_KEY } from "./channel-detection";
+import { buildGroupUsageHint, BOT_USERNAME_CACHE_KEY, isGroupChat } from "./chat-addressing";
 import type { Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
 import {
@@ -105,7 +106,8 @@ import { replyLongMessage, replyMessage, replyPhoto, replyScreen } from "./reply
 // Kept re-exported for the export worker's dynamic import.
 export { sendResponseReportExport } from "./survey-report";
 
-const botUsernameCacheKey = "telegram-bot-username";
+// 机器人用户名缓存键与 chat-addressing.ts 共用（群聊点名判断也要用同一份身份）。
+const botUsernameCacheKey = BOT_USERNAME_CACHE_KEY;
 const publicSurveySearchKeyPrefix = "public-survey-search:";
 const publicSurveySearchInputKeyPrefix = "public-survey-search-input:";
 
@@ -1170,6 +1172,15 @@ async function showResponseReportTemplates(
 
 export async function handleTelegramMessage(ctx: BotContext, message: TelegramMessage): Promise<void> {
   const text = message.text?.trim();
+
+  // 群聊里唯一的功能是 /set_publish_target（router.ts 已提前处理并返回）。这里再兜一层：
+  // 群消息绝不能落到本函数末尾的 renderUiScreen(home) —— 那等于把私聊主菜单（含
+  // 「网页管理后台」「管理员中心」按钮）贴进公开群。被点名时只回一句提示。
+  if (isGroupChat(message.chat.type)) {
+    await replyMessage(ctx, message.chat.id, await buildGroupUsageHint(ctx));
+    return;
+  }
+
   const userId = message.from?.id;
   const dbUser = userId ? await getUserByTelegramId(ctx.db, userId) : null;
   const dbUserId = dbUser?.id;
@@ -1717,6 +1728,13 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
 
   if (!data || !chatId) {
     await answerCallbackQuery(ctx.botToken, callback.id);
+    return;
+  }
+
+  // 群里可能还留着修复前贴出的主菜单按钮。群聊没有任何合法的回调流程（群里只有
+  // /set_publish_target，且不带按钮），直接回绝，免得旧按钮把私聊界面渲染进公开群。
+  if (isGroupChat(callback.message?.chat.type)) {
+    await answerCallbackQuery(ctx.botToken, callback.id, "请在私聊里使用本机器人");
     return;
   }
 

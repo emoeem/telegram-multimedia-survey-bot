@@ -123,6 +123,28 @@ export async function getBotId(botToken: string): Promise<number> {
   return body.result.id;
 }
 
+/**
+ * Both identity fields in one getMe call. The group addressing gate
+ * (./chat-addressing.ts) needs the id (text_mention entities, replies) *and*
+ * the username (mention entities, /cmd@name), and pays for at most one network
+ * round trip per cache miss when both are missing.
+ */
+export async function getBotIdentity(botToken: string): Promise<{ id?: number; username?: string }> {
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+  const body = (await response.json()) as {
+    ok?: boolean;
+    result?: { id?: number; username?: unknown };
+  };
+  if (!response.ok || !body.ok || !body.result) {
+    throw new Error(`Telegram getMe failed: ${response.status}`);
+  }
+  const { id, username } = body.result;
+  return {
+    ...(typeof id === "number" ? { id } : {}),
+    ...(typeof username === "string" && username.trim() ? { username: username.trim() } : {}),
+  };
+}
+
 export async function getWebhookInfo(botToken: string): Promise<{ url?: string; allowed_updates?: string[] }> {
   const response = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
   const body = (await response.json()) as {

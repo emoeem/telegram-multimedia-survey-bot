@@ -123,6 +123,49 @@ describe("survey message routing", () => {
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it("never renders the private home menu for a group message", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/getMe")) {
+        return new Response(JSON.stringify({ ok: true, result: { id: 777, username: "hnhgggfj_bot" } }), {
+          status: 200,
+        });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const prepare = vi.fn(() => {
+      throw new Error("group chatter must not query the database");
+    });
+    const ctx: BotContext = {
+      botToken: "group-hint-token",
+      db: { prepare } as unknown as D1Database,
+      session: {} as SurveySessionNamespace,
+      builder: {} as SurveyBuilderNamespace,
+      adminIds: [],
+      exportQueue: {} as Queue,
+    };
+
+    await handleTelegramMessage(ctx, {
+      message_id: 3,
+      chat: { id: -1004497177255, type: "supergroup", title: "天地一家大爱盟" },
+      from: { id: 99 },
+      text: "你好",
+    });
+
+    expect(mocks.getUserByTelegramId).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+
+    const sendCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/sendMessage"));
+    expect(sendCalls).toHaveLength(1);
+    const body = JSON.parse(String((sendCalls[0]?.[1] as RequestInit).body));
+    expect(body.text).toContain("/set_publish_target");
+    expect(body.text).toContain("https://t.me/hnhgggfj_bot");
+    // 群里绝不能出现主菜单按钮（「网页管理后台」「管理员中心」等）
+    expect(body.reply_markup).toBeUndefined();
+  });
+
   it("still opens the home screen when stale interaction cleanup fails", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,
@@ -516,9 +559,9 @@ describe("survey message routing", () => {
       userId: 7,
       grantedBy: null,
     });
-    const bodies = fetchMock.mock.calls.map((call) =>
-      JSON.parse(String((call[1] as RequestInit).body)),
-    ) as Array<{ text?: string }>;
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body))) as Array<{
+      text?: string;
+    }>;
     expect(bodies.some((body) => body.text?.includes("体验创作者已开通"))).toBe(true);
     expect(bodies.some((body) => body.text?.includes("2026-11-03"))).toBe(true);
   });
@@ -543,9 +586,9 @@ describe("survey message routing", () => {
       { message_id: 8, chat: { id: 6 }, from: { id: 88 }, text: "/invite CR-7F3K-9Q2M" },
     );
 
-    const bodies = fetchMock.mock.calls.map((call) =>
-      JSON.parse(String((call[1] as RequestInit).body)),
-    ) as Array<{ text?: string }>;
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body))) as Array<{
+      text?: string;
+    }>;
     expect(bodies.some((body) => body.text?.includes("已经用完了"))).toBe(true);
   });
 

@@ -16,6 +16,18 @@ export interface TelegramChat {
   title?: string;
 }
 
+/**
+ * Subset of the Bot API message entity object. Only the fields the group
+ * addressing gate needs are typed; offset/length are UTF-16 code units, the
+ * same indexing `String.prototype.slice` uses.
+ */
+export interface TelegramMessageEntity {
+  type?: string;
+  offset: number;
+  length: number;
+  user?: TelegramUser;
+}
+
 export interface TelegramMediaFile {
   file_id: string;
   file_unique_id: string;
@@ -33,6 +45,17 @@ export interface TelegramMessage {
   from?: TelegramUser;
   /** Forum-topic thread the message was posted in; absent outside topic groups. */
   message_thread_id?: number;
+  /**
+   * Message entities (mentions, bot commands…). Required by the group gate in
+   * ./chat-addressing.ts, which only lets a group message through when it
+   * explicitly addresses the bot.
+   */
+  entities?: TelegramMessageEntity[];
+  /** Set when this message replies to another message; used to spot replies to the bot. */
+  reply_to_message?: {
+    message_id?: number;
+    from?: TelegramUser;
+  };
   forward_from_chat?: {
     id: number;
     type?: string;
