@@ -109,6 +109,36 @@
 - **孤儿媒体清理会删图**：`database-maintenance.service.ts` 每天按 7 天cutoff 删除「没人引用」的 media_assets 行 + KV 字节。引用探针漏了谁，谁的图就会消失——树洞配图与展示区图片（showcase_persons/items）就踩过这个坑，已补进反连接与 `ORPHAN_SWEEP_INDEXES`。加新的图片引用表时**必须同步这三处**：反连接探针、索引清单、（可选的）清理逻辑。新表/新列还会让索引创建失败从而自动停用清理，属于安全降级。
 - **迁移与代码的先后**：0068 加列之前部署新代码，/api/plaza/posts 会因为 SELECT 不存在的列而 500。发布顺序固定为 **先 apply 迁移，再 wrangler deploy**。
 
+## 体验创作者：登录入口与邀请码（2026-10-04）
+
+**背景**：给外部的人开了体验创作者（`creator_trial_grants`，按 Telegram 用户、有到期时间），对方却卡在登录页。根因是登录页第一屏写着「输入管理员密码即可登录，**无需 Telegram 验证或 OAuth**」——那句话只对管理员成立，体验创作者真正的入口是下面那行「使用 Telegram 登录」（`canUseAdminPanel` 放行 admin 或有效体验创作者）。
+
+三处改动：
+
+1. **登录页文案**（`admin/src/routes/LoginPage.tsx`）：改成「管理员用密码登录；体验创作者用下面的『使用 Telegram 登录』」，并读取 `?reason=` 把一次性链接的失败原因显示成人话（link_invalid / no_access）。
+2. **一次性免密登录链接**（新 `src/services/admin-magic-link.service.ts` + `GET /api/admin/auth/link?t=<token>`）：机器人主菜单的「🌐 网页管理后台」按钮直接带上票据，点开即登录 —— 不再需要「开网页 → 点按钮 → 跳 app → 点确认 → 切回浏览器」那套流程。
+   - 30 分钟 TTL、**用掉即废**（唯一性由 `admin_login_consumptions` 主键裁决，KV 没有 CAS）；兑换时**重新**校验后台权限，授权到期/撤销后链接立刻失效；IP 限流 20 次/5 分钟。
+   - 纯 GET + 302 + Set-Cookie，Telegram 内置浏览器里也能用；拿不到 CACHE 时自动退回普通 `/admin`。
+3. **邀请码**（迁移 **0072** `creator_invites` + 机器人 `/invite CR-XXXX-XXXX` + 后台「体验创作者试用」卡片里生成/作废）：管理员发一个码，对方自己在机器人里兑换开通。好处是不用先问出对方的 Telegram 数字 ID、也不用共享密码，而授权仍然落在对方自己的账号上（复用 `grantCreatorTrial`）。码去掉了 0/O/1/I 等易混字符；核销是单条 `UPDATE … WHERE used_count < max_uses AND expires_at > ?`，并发只会有一个拿走名额；生成/作废走 vendor-only 闸门（顾客实例不能自己发体验权限）。
+
+**上线验证（2026-10-04 18:15，生产实测）**：
+
+```
+curl -s -i "$BASE/api/admin/auth/link?t=probe" | head -6
+HTTP/2 302
+location: /admin/login?reason=link_invalid
+cache-control: no-store
+referrer-policy: no-referrer
+```
+
+- `cache-control: no-store` + `referrer-policy: no-referrer` 正是 `bounce()` 设的两条头 → 确认由**新代码**应答（网关的 401 不带这两条）。
+- 同时新资源 `/assets/LoginPage-TBThid8H.js` = 200，说明这次构建的资源已生效。
+- 部署后**第一秒**那次探针曾返回 401（部署传播窗口里仍由旧版本应答，body 为 `{"code":"unauthorized"}`）；一分钟后再打即 302。以后遇到「刚 deploy 完探针不对」，先等一分钟再判定。
+- 线上版本 `7acf4a35-9c44-40f1-b8b2-3c9d6e5abc81`，迁移 0072 ✅。
+
+**尚未跑过的**：成功路径的生产端到端（有效票据 → Set-Cookie → 进后台），需要真人从机器人里点「🌐 网页管理后台」；代码层由 `tests/unit/http/admin-magic-link.test.ts` 的第一条用例覆盖（断言 location=/admin 且 set-cookie 含 admin_session）。
+
+验证：`tests/unit/services/creator-invite.service.test.ts`（生成/规范化/一次性/多用/过期/未知）、`tests/unit/http/admin-magic-link.test.ts`（兑换成功、无权限、已用/过期三种 302）、`tests/unit/services/admin-magic-link.service.test.ts`（一次性与并发只赢一个）、`tests/unit/bot/survey-handler-routing.test.ts`（首页按钮带票据、`/invite` 成功与失败文案）、`tests/unit/services/deployment-role.service.test.ts`（邀请码接口属 vendor-only）。
 ## 生产部署记录（2026-10-03）
 
 - `wrangler login` 重新登录（旧 OAuth 已过期）；生产账号 / D1 `159e8169-a233-4bd7-b3e9-723586f850c2`。

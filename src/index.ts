@@ -9,6 +9,7 @@ import { describePublicDatabaseError, isDatabaseCapacityError } from "./db/error
 import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
+import { handleInternalRenderRequest } from "./http/internal-render";
 import { handleLicenseApiRequest } from "./http/license-api";
 import { handleRemoteApiRequest } from "./http/remote-api";
 import { handleControlApiRequest } from "./http/control-api";
@@ -152,6 +153,12 @@ export interface Env {
   MEDIA?: R2Bucket;
   MEDIA_KV: KVNamespace;
   REPORT_CHANNEL_ID?: string;
+  /**
+   * Self service binding: queue consumers re-enter this worker through it so
+   * browser renders happen in a request context (they die in queue contexts
+   * on constrained accounts). Optional; renders fall back to in-process.
+   */
+  SELF?: Fetcher;
   /** Telegram channel that mirrors published plaza cards and tree-hole posts. */
   PLAZA_CHANNEL_ID?: string;
   COMMUNITY_GROUP_URL?: string;
@@ -274,6 +281,10 @@ export default {
         licenseEnforcement: env.LICENSE_ENFORCEMENT ?? "disabled",
       });
     }
+
+    // Internal endpoints (queue consumers hand browser renders to a request
+    // context); token-authenticated, must be routed before the SPA/API blocks.
+    if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env);
 
     // Admin SPA entry. html_handling="none" means /admin has no directory
     // index, so serve the built index.html explicitly (client-side routing

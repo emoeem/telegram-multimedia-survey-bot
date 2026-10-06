@@ -14,7 +14,7 @@ import {
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { isReportDeliveryMessage, type ReportDeliveryMessage } from "./report-delivery.service";
 import { processReportDeliveryMessage, type ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
-import { publishPublicResponseReport } from "./public-report.service";
+import { publishPublicResponseReport, type PublicReportEnvironment } from "./public-report.service";
 
 export interface ExportWorkerEnvironment {
   DB: D1Database;
@@ -28,6 +28,8 @@ export interface ExportWorkerEnvironment {
   BROWSER?: BrowserWorker;
   MEDIA_KV?: KVNamespace;
   REPORT_CHANNEL_ID?: string;
+  WEBHOOK_SECRET?: string;
+  SELF?: Fetcher;
   TARGET_CHAT_ID?: string;
   TOPIC_ID?: string;
   PUBLICATION_TARGET_CHAT_ID?: string;
@@ -37,6 +39,43 @@ export interface ExportWorkerEnvironment {
 interface PublicReportMessage {
   kind: "public_report";
   responseId: number;
+}
+
+/**
+ * Browser sessions acquired inside queue consumers die within their first few
+ * CDP calls on constrained accounts, while request-context renders keep
+ * working. When PUBLIC_BASE_URL is configured, hand the render+send to the
+ * worker's own internal HTTP endpoint (request context) instead of rendering
+ * here; otherwise fall back to the in-process path.
+ */
+async function publishPublicReportViaRequestContext(
+  env: ExportWorkerEnvironment & PublicReportEnvironment,
+  responseId: number,
+): Promise<{ chatId: number; messageIds: number[]; pages: number }> {
+  if (!env.SELF) {
+    return publishPublicResponseReport(env, responseId);
+  }
+  // The dummy host is required by service-binding fetches; the /internal
+  // path prefix is what the worker's own router matches on.
+  const response = await env.SELF.fetch(`https://internal.internal/internal/render-public-report/${responseId}`, {
+    method: "POST",
+    headers: { "x-internal-token": env.WEBHOOK_SECRET ?? "" },
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: string;
+    chatId?: number;
+    messageIds?: number[];
+    pages?: number;
+  } | null;
+  if (!response.ok || !payload?.ok) {
+    throw new Error(`Internal public-report render failed: ${response.status} ${payload?.error ?? ""}`);
+  }
+  return {
+    chatId: Number(payload.chatId),
+    messageIds: payload.messageIds ?? [],
+    pages: payload.pages ?? 0,
+  };
 }
 
 function isPublicReportMessage(value: unknown): value is PublicReportMessage {
@@ -153,18 +192,25 @@ export async function handleExportQueue(
   for (const message of batch.messages) {
     if (isPublicReportMessage(message.body)) {
       try {
-        const result = await publishPublicResponseReport(env, message.body.responseId);
+        const result = await publishPublicReportViaRequestContext(env, message.body.responseId);
         console.info("Public Telegram report published", { responseId: message.body.responseId, ...result });
         message.ack();
       } catch (error) {
         const terminal = message.attempts >= 3;
-        console.error("Public Telegram report job failed", { responseId: message.body.responseId, attempts: message.attempts, terminal, error });
+        console.error("Public Telegram report job failed", {
+          responseId: message.body.responseId,
+          attempts: message.attempts,
+          terminal,
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        });
         if (terminal) {
           await env.DB.prepare("UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?")
             .bind(new Date().toISOString(), message.body.responseId).run();
           message.ack();
         } else {
-          message.retry({ delaySeconds: Math.min(60, message.attempts * 10) });
+          // New browser acquisitions are account-wide rate limited; retrying
+          // too soon just burns attempts while the limiter is still hot.
+          message.retry({ delaySeconds: 90 * message.attempts });
         }
       }
     } else if (isReportDeliveryMessage(message.body)) {

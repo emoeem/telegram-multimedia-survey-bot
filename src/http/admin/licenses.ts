@@ -16,6 +16,12 @@ import {
   listActiveCreatorTrials,
   revokeCreatorTrial,
 } from "../../db/repositories/creator-trial.repository";
+import { deleteCreatorInvite } from "../../db/repositories/creator-invite.repository";
+import {
+  issueCreatorInvite,
+  listCreatorInvitesForAdmin,
+  validateIssueInput,
+} from "../../services/creator-invite.service";
 import { isLicenseCenter, isVendorOnlyAdminPath } from "../../services/deployment-role.service";
 
 export async function handleAdminLicensesWrite(
@@ -261,6 +267,51 @@ export async function handleAdminLicensesWrite(
       });
       return json({ ok: true });
     }
+  }
+
+  // ---- 体验创作者邀请码 ------------------------------------------------
+  // 发一个码给对方，TA 自己在机器人里 /invite 兑换开通 —— 不用先问出对方的
+  // Telegram 数字 ID，也不用共享任何密码；授权仍然落到 TA 自己的账号上。
+  if (url.pathname === "/api/admin/creator-invites" && request.method === "GET") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理邀请码");
+    return json({ items: await listCreatorInvitesForAdmin(db, 50) });
+  }
+
+  if (url.pathname === "/api/admin/creator-invites" && request.method === "POST") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理邀请码");
+    const input = {
+      days: Number(body.days ?? 30),
+      maxUses: Number(body.maxUses ?? 1),
+      expiresInDays: Number(body.expiresInDays ?? 7),
+      note: typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 60) : null,
+      createdBy: user.id,
+    };
+    const invalid = validateIssueInput(input);
+    if (invalid) return fail(400, "validation_failed", invalid);
+    const invite = await issueCreatorInvite(db, input);
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "trial.invite.create",
+      entityType: "creator_invite",
+      entityId: invite.code,
+      after: { days: invite.days, maxUses: invite.maxUses, expiresAt: invite.expiresAt },
+    });
+    return Response.json({ invite }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  }
+
+  if (url.pathname === "/api/admin/creator-invites/revoke" && request.method === "POST") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理邀请码");
+    const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
+    if (!code) return fail(400, "validation_failed", "缺少邀请码");
+    const removed = await deleteCreatorInvite(db, code);
+    if (!removed) return fail(404, "not_found", "邀请码不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "trial.invite.revoke",
+      entityType: "creator_invite",
+      entityId: code,
+    });
+    return json({ ok: true });
   }
 
   return null;

@@ -16,10 +16,10 @@ import {
   isReportDeliveryMessage,
   nextReportRetryAt,
   REPORT_DELIVERY_MAX_ATTEMPTS,
-  REPORT_CHANNEL_CACHE_KEY,
+  resolveReportChannel,
 } from "./report-delivery.service";
 import { resolveReportTemplate } from "./report/template-resolver";
-import { getSystemSettingValue, loadSystemSettings } from "./system-settings.service";
+import { loadSystemSettings } from "./system-settings.service";
 import { sendDocument, sendMessage, sendPhoto } from "../bot/telegram";
 import { zipSync } from "fflate";
 
@@ -108,15 +108,11 @@ async function deliverReportToChannel(
   env: ReportDeliveryWorkerEnvironment,
   responseId: number,
 ): Promise<DeliveryResult> {
-  const settingsChannel = await getSystemSettingValue(env.DB, "report_channel_id");
-  const cachedChannel = env.CACHE ? await env.CACHE.get(REPORT_CHANNEL_CACHE_KEY) : undefined;
-  const chatId =
-    [settingsChannel, cachedChannel, env.REPORT_CHANNEL_ID]
-      .map((value) => Number(value?.trim()))
-      .find((value) => Number.isInteger(value) && value !== 0) ?? NaN;
-  if (!Number.isInteger(chatId) || chatId === 0) {
+  const resolved = await resolveReportChannel(env);
+  if (!resolved) {
     throw new Error("REPORT_CHANNEL_ID 未配置或无效");
   }
+  const chatId = resolved.chatId;
   if (!env.BROWSER) {
     throw new Error("BROWSER 未配置，无法生成 PDF");
   }
@@ -152,12 +148,36 @@ async function deliverReportToChannel(
     throw new Error(`PDF 超过大小限制（${settings.pdfMaxMb}MB，实际 ${(pdf.byteSize / 1024 / 1024).toFixed(1)}MB）`);
   }
 
+  // Persist the rendered PDF so the public-report publisher can send it to the
+  // publication target without a second browser session (the account's
+  // browser acquisition budget cannot always support one).
+  try {
+    await env.MEDIA_KV?.put(`public-report-pdf:${responseId}`, pdf.bytes, {
+      expirationTtl: 7 * 24 * 3600,
+    });
+  } catch (error) {
+    console.warn("Public report PDF persist failed", {
+      responseId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   // Package the PDF together with the participant's uploaded images into a
   // single zip so the archive channel receives everything in one file.
   const mediaFiles = Object.entries(images)
     .filter(([, url]) => url.startsWith("data:image/"))
     .map(([key, url]) => ({ key, bytes: dataUrlToBytes(url), extension: dataUrlExtension(url) }));
-  const zip = buildReportZip({ responseId, surveyId: response.surveyId, surveyTitle: survey?.title ?? "未知问卷", completedAt, respondent: respondentInfo, profile: snapshot, answers, pdfBytes: pdf.bytes, media: mediaFiles });
+  const zip = buildReportZip({
+    responseId,
+    surveyId: response.surveyId,
+    surveyTitle: survey?.title ?? "未知问卷",
+    completedAt,
+    respondent: respondentInfo,
+    profile: snapshot,
+    answers,
+    pdfBytes: pdf.bytes,
+    media: mediaFiles,
+  });
   const sendZip = zip.byteLength <= 45 * 1024 * 1024;
   const archiveName = sendZip ? `report-${responseId}.zip` : `report-${responseId}.pdf`;
   const archiveBytes = sendZip ? zip : pdf.bytes;
@@ -171,7 +191,9 @@ async function deliverReportToChannel(
     `用户：${respondentInfo ? respondentHtml(respondentInfo) : "匿名"}`,
     `完成时间：${completedAt}`,
     "",
-    sendZip ? `📦 完整归档包：report-${responseId}.zip（报告 / 结果 / 答案 / 图片）` : `📄 报告：report-${responseId}.pdf`,
+    sendZip
+      ? `📦 完整归档包：report-${responseId}.zip（报告 / 结果 / 答案 / 图片）`
+      : `📄 报告：report-${responseId}.pdf`,
   ].join("\n");
   const tags = [`#答卷${responseId}`, `#问卷${response.surveyId}`];
   tags.push(respondentInfo ? `#用户${respondentInfo.telegramUserId}` : "#匿名答卷");
@@ -233,29 +255,61 @@ function dataUrlExtension(url: string): string {
 }
 
 function buildReportZip(input: {
-  responseId: number; surveyId: number; surveyTitle: string; completedAt: string;
+  responseId: number;
+  surveyId: number;
+  surveyTitle: string;
+  completedAt: string;
   respondent: { username: string | null; firstName: string | null; telegramUserId: number } | null;
-  profile: ReturnType<typeof deserializeResultProfile>; answers: Awaited<ReturnType<typeof listAnswersByResponseId>>;
-  pdfBytes: Uint8Array; media: Array<{ key: string; bytes: Uint8Array; extension: string }>;
+  profile: ReturnType<typeof deserializeResultProfile>;
+  answers: Awaited<ReturnType<typeof listAnswersByResponseId>>;
+  pdfBytes: Uint8Array;
+  media: Array<{ key: string; bytes: Uint8Array; extension: string }>;
 }): Uint8Array {
   const files: Record<string, Uint8Array> = {
     "01-report/report.pdf": input.pdfBytes,
     "01-report/result.json": new TextEncoder().encode(JSON.stringify(input.profile, null, 2)),
-    "02-answers/answers.json": new TextEncoder().encode(JSON.stringify(input.answers.map((answer) => ({
-      questionId: answer.questionId, textValue: answer.textValue, numberValue: answer.numberValue, booleanValue: answer.booleanValue,
-      ratingValue: answer.ratingValue, dateValue: answer.dateValue, timeValue: answer.timeValue, jsonValue: answer.jsonValue,
-    })), null, 2)),
+    "02-answers/answers.json": new TextEncoder().encode(
+      JSON.stringify(
+        input.answers.map((answer) => ({
+          questionId: answer.questionId,
+          textValue: answer.textValue,
+          numberValue: answer.numberValue,
+          booleanValue: answer.booleanValue,
+          ratingValue: answer.ratingValue,
+          dateValue: answer.dateValue,
+          timeValue: answer.timeValue,
+          jsonValue: answer.jsonValue,
+        })),
+        null,
+        2,
+      ),
+    ),
   };
   const manifest = {
-    packageVersion: 2, responseId: input.responseId, surveyId: input.surveyId, surveyTitle: input.surveyTitle,
-    completedAt: input.completedAt, respondent: input.respondent ? { username: input.respondent.username, firstName: input.respondent.firstName, telegramUserId: input.respondent.telegramUserId } : null,
+    packageVersion: 2,
+    responseId: input.responseId,
+    surveyId: input.surveyId,
+    surveyTitle: input.surveyTitle,
+    completedAt: input.completedAt,
+    respondent: input.respondent
+      ? {
+          username: input.respondent.username,
+          firstName: input.respondent.firstName,
+          telegramUserId: input.respondent.telegramUserId,
+        }
+      : null,
     files: ["01-report/report.pdf", "01-report/result.json", "02-answers/answers.json"],
   };
   input.media.forEach((item, index) => {
     const safeKey = item.key.replace(/[^A-Za-z0-9._-]+/g, "_");
-    const group = item.key.startsWith("gallery.") ? "03-attachments" : item.key.startsWith("avatar") || item.key.startsWith("portrait") ? "04-profile" : "05-result-assets";
+    const group = item.key.startsWith("gallery.")
+      ? "03-attachments"
+      : item.key.startsWith("avatar") || item.key.startsWith("portrait")
+        ? "04-profile"
+        : "05-result-assets";
     const path = `${group}/${String(index + 1).padStart(2, "0")}-${safeKey}.${item.extension}`;
-    files[path] = item.bytes; manifest.files.push(path);
+    files[path] = item.bytes;
+    manifest.files.push(path);
   });
   files["00-index.json"] = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
   return zipSync(files);

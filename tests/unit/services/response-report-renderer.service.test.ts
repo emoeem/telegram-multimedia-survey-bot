@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   screenshot: vi.fn(),
   pdf: vi.fn(),
   closePage: vi.fn(),
+  evaluate: vi.fn(),
   viewportDpr: 2,
   pageCount: 1,
 }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   mocks.pdf.mockReset();
   mocks.closePage.mockReset();
   mocks.launch.mockReset();
+  mocks.evaluate.mockReset();
   mocks.viewportDpr = 2;
   mocks.pageCount = 1;
   const page = {
@@ -54,7 +56,7 @@ beforeEach(() => {
     setContent: vi.fn(async (html: string) => {
       mocks.pageCount = html.match(/class="page"/g)?.length ?? 1;
     }),
-    evaluate: vi.fn(async (script: string) => {
+    evaluate: mocks.evaluate.mockImplementation(async (script: string) => {
       if (script.includes("const isOverflowing")) {
         new Function(script);
         return mocks.pageCount;
@@ -76,11 +78,11 @@ describe("complete response artifact rendering", () => {
     expect(artifact.pages).toHaveLength(1);
     expect(artifact.pages[0]?.dpr).toBe(1);
     expect(artifact.pages[0]?.byteSize).toBe(4 * 1024 * 1024);
-    expect(mocks.screenshot).toHaveBeenCalledWith({
-      type: "png",
-      clip: { x: 0, y: 0, width: 900, height: 1200 },
-      captureBeyondViewport: true,
-    });
+    // Pages are captured as plain viewport screenshots (Workers Browser
+    // Rendering crashes on captureBeyondViewport) after scrolling the fixed
+    // 900x1200 page into view.
+    expect(mocks.screenshot).toHaveBeenCalledWith({ type: "png", captureBeyondViewport: false });
+    expect(mocks.evaluate).toHaveBeenCalledWith(expect.stringContaining("window.scrollTo(0, 0)"));
   });
 
   it("fails rather than omitting a page above the hard limit", async () => {

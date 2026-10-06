@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   handleBuilderMessage: vi.fn(),
   listMySurveys: vi.fn(),
   hasActiveCreatorTrial: vi.fn(),
+  redeemCreatorInviteForUser: vi.fn(),
 }));
 
 vi.mock("../../../src/db/repositories/user.repository", async (importOriginal) => ({
@@ -32,6 +33,11 @@ vi.mock("../../../src/db/repositories/participant-link.repository", () => ({
   upsertParticipantLink: mocks.upsertParticipantLink,
   linkResponsesToUser: mocks.linkResponsesToUser,
   countResponsesForParticipantKey: mocks.countResponsesForParticipantKey,
+}));
+
+vi.mock("../../../src/services/creator-invite.service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../src/services/creator-invite.service")>()),
+  redeemCreatorInviteForUser: mocks.redeemCreatorInviteForUser,
 }));
 
 vi.mock("../../../src/db/repositories/survey-result-visual-settings.repository", () => ({
@@ -472,6 +478,117 @@ describe("survey message routing", () => {
     expect(buttonTexts).toContain("我的问卷");
     expect(buttonTexts).toContain("管理员中心");
     expect(buttonTexts).not.toContain("创建与导入");
+  });
+
+  // /invite 兑换邀请码：开通的是兑换者自己的账号。
+  it("redeems a creator invite code sent to the bot", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 88,
+      username: "ruofu",
+      firstName: "若芙",
+      systemRole: "participant",
+    });
+    mocks.getActiveResponseByUser.mockResolvedValue(null);
+    mocks.redeemCreatorInviteForUser.mockResolvedValue({
+      ok: true,
+      days: 30,
+      expiresAt: "2026-11-03T00:00:00.000Z",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+        origin: "https://example.com",
+      },
+      { message_id: 7, chat: { id: 6 }, from: { id: 88 }, text: "/invite CR-7F3K-9Q2M" },
+    );
+
+    expect(mocks.redeemCreatorInviteForUser).toHaveBeenCalledWith(expect.anything(), {
+      code: "CR-7F3K-9Q2M",
+      userId: 7,
+      grantedBy: null,
+    });
+    const bodies = fetchMock.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)),
+    ) as Array<{ text?: string }>;
+    expect(bodies.some((body) => body.text?.includes("体验创作者已开通"))).toBe(true);
+    expect(bodies.some((body) => body.text?.includes("2026-11-03"))).toBe(true);
+  });
+
+  it("explains an unusable invite code instead of failing silently", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 88, systemRole: "participant" });
+    mocks.getActiveResponseByUser.mockResolvedValue(null);
+    mocks.redeemCreatorInviteForUser.mockResolvedValue({ ok: false, reason: "exhausted" });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [],
+        exportQueue: {} as Queue,
+        origin: "https://example.com",
+      },
+      { message_id: 8, chat: { id: 6 }, from: { id: 88 }, text: "/invite CR-7F3K-9Q2M" },
+    );
+
+    const bodies = fetchMock.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)),
+    ) as Array<{ text?: string }>;
+    expect(bodies.some((body) => body.text?.includes("已经用完了"))).toBe(true);
+  });
+
+  // 创作者/管理员点「网页管理后台」不应该再去登录页折腾：按钮直接带一次性免密票。
+  it("hands creators a one-time login link instead of the bare panel URL", async () => {
+    mocks.getUserByTelegramId.mockResolvedValue({
+      id: 7,
+      telegramUserId: 99,
+      systemRole: "admin",
+    });
+    mocks.getActiveResponseByUser.mockResolvedValue(null);
+    const cache = {
+      put: vi.fn(async (_key: string, _value: string, _options?: { expirationTtl?: number }) => undefined),
+      get: vi.fn(async (_key: string) => null as string | null),
+      delete: vi.fn(async (_key: string) => undefined),
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleTelegramMessage(
+      {
+        botToken: "token",
+        db: {} as D1Database,
+        session: {} as SurveySessionNamespace,
+        builder: {} as SurveyBuilderNamespace,
+        adminIds: [99],
+        exportQueue: {} as Queue,
+        origin: "https://example.com",
+        cache: cache as unknown as KVNamespace,
+      },
+      { message_id: 6, chat: { id: 6 }, from: { id: 99 }, text: "/help" },
+    );
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as {
+      reply_markup: { inline_keyboard: Array<Array<{ text: string; url?: string }>> };
+    };
+    const panel = body.reply_markup.inline_keyboard.flat().find((button) => button.text === "🌐 网页管理后台");
+    expect(panel?.url).toMatch(/^https:\/\/example\.com\/api\/admin\/auth\/link\?t=[A-Za-z0-9_-]{16,}$/);
+    // 票写进了 CACHE，并且带 TTL。
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(cache.put.mock.calls[0]?.[0]).toMatch(/^admin-magic-link:/);
+    expect(cache.put.mock.calls[0]?.[2]).toMatchObject({ expirationTtl: 1800 });
   });
 
   it("edits the current public survey list message when changing pages", async () => {

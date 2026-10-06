@@ -22,6 +22,7 @@ import {
   getAdminLoginRequest,
   verifyAdminLoginCookie,
 } from "../../services/admin-login.service";
+import { consumeAdminMagicLink } from "../../services/admin-magic-link.service";
 import { getBotUsername } from "../../bot/telegram";
 import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
 import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
@@ -157,6 +158,46 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
         "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+      },
+    });
+  }
+
+  // 一次性免密登录链接：机器人里的「🌐 网页管理后台」按钮点开就是这里。
+  // 纯 GET + 302，不需要前端参与，所以 Telegram 内置浏览器 / 微信 / 任何
+  // WebView 都能用；兑换失败时回登录页并带上原因，让页面给出人话提示。
+  if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/link") {
+    const clientIp =
+      request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
+    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-magic-link", clientIp.slice(0, 100), 20, 300);
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const bounce = (reason: string) =>
+      new Response(null, {
+        status: 302,
+        headers: { Location: `/admin/login?reason=${reason}`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+      });
+    const token = url.searchParams.get("t") ?? "";
+    const magicUserId = await consumeAdminMagicLink(env.DB, env.CACHE, token);
+    if (magicUserId === null) return bounce("link_invalid");
+    const magicUser = await getUserById(env.DB, magicUserId);
+    if (!magicUser) return bounce("link_invalid");
+    // 兑换时再查一次权限：链接还有效但授权已被撤销/到期时不能放行。
+    const magicAdminIds = env.ADMIN_IDS.split(",").map(Number).filter(Number.isFinite);
+    const allowed =
+      magicUser.systemRole === "admin" ||
+      magicAdminIds.includes(magicUser.telegramUserId) ||
+      (await hasActiveCreatorTrial(env.DB, magicUser.id));
+    if (!allowed) return bounce("no_access");
+    const magicEpoch = await loadAdminSessionEpoch(env.DB);
+    const magicSession = await createAdminSessionValue(env.WEBHOOK_SECRET, magicUser.id, magicEpoch);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/admin",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${magicSession}; Path=/; HttpOnly; SameSite=Lax${
+          url.protocol === "https:" ? "; Secure" : ""
+        }; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
       },
     });
   }

@@ -57,6 +57,9 @@ describe("deployment role service", () => {
       "/api/admin/releases",
       "/api/admin/trials",
       "/api/admin/users/42/trial",
+      // 邀请码 = 发放体验权限，和 /users/:id/trial 同类
+      "/api/admin/creator-invites",
+      "/api/admin/creator-invites/revoke",
     ]) {
       expect(isVendorOnlyAdminPath(path)).toBe(true);
     }

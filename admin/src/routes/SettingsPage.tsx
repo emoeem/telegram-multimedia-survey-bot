@@ -176,7 +176,12 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="admin-page-intro"><div><h2>系统设置</h2><p>管理后台外观、报告与媒体运行参数</p></div></div>
+      <div className="admin-page-intro">
+        <div>
+          <h2>系统设置</h2>
+          <p>管理后台外观、报告与媒体运行参数</p>
+        </div>
+      </div>
       <section className="card">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-ink)]">管理员密码</h2>
@@ -184,7 +189,17 @@ export function SettingsPage() {
         </div>
         <div className="mt-4 max-w-xl">
           <Field label="设置新密码" hint="8-256 个字符；留空表示不修改。密码只保存为不可逆哈希。">
-            <input className="input w-full" type="password" value={adminPassword} onChange={(event) => { setAdminPassword(event.target.value); setSaved(false); }} placeholder="输入新的管理员密码" autoComplete="new-password" />
+            <input
+              className="input w-full"
+              type="password"
+              value={adminPassword}
+              onChange={(event) => {
+                setAdminPassword(event.target.value);
+                setSaved(false);
+              }}
+              placeholder="输入新的管理员密码"
+              autoComplete="new-password"
+            />
           </Field>
         </div>
       </section>
@@ -210,7 +225,6 @@ export function SettingsPage() {
         </div>
       </section>
 
-
       <section className="card">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-ink)]">系统设置</h2>
@@ -220,7 +234,10 @@ export function SettingsPage() {
         </div>
 
         <div className="mt-5 grid max-w-3xl gap-x-5 gap-y-4 sm:grid-cols-2">
-          <Field label="报告归档频道 ID" hint="优先级：环境变量 → KV 缓存 → 此处设置">
+          <Field
+            label="报告归档频道 ID"
+            hint="答卷完成后自动打包 ZIP 归档到此频道；优先级：此处设置 → KV 缓存 → 环境变量（也可在控制中心 → 发布目标列表里统一管理）"
+          >
             <input
               className="input w-full"
               value={settings.reportChannelId}

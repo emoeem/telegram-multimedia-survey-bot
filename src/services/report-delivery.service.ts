@@ -7,6 +7,7 @@ import {
   resetReportDeliveryForRetry,
 } from "../db/repositories/report-delivery.repository";
 import type { ReportDelivery } from "../db/schema";
+import { getSystemSettingValue } from "./system-settings.service";
 
 export const REPORT_DELIVERY_MAX_ATTEMPTS = 5;
 
@@ -19,6 +20,38 @@ export function reportChannelPendingKey(userId: number): string {
 
 export function reportDeliveryId(responseId: number, reportVersion: number): string {
   return `response_${responseId}_v${reportVersion}`;
+}
+
+/** Where the archive channel id comes from, in priority order. */
+export type ReportChannelSource = "settings" | "cache" | "env";
+
+export interface ReportChannelEnvironment {
+  DB: D1Database;
+  CACHE?: KVNamespace | null;
+  REPORT_CHANNEL_ID?: string | null;
+}
+
+/**
+ * The single source of truth for「报告归档频道」(the private channel that receives
+ * the ZIP archive): 系统设置 → KV 缓存 → 环境变量. Both the archive delivery worker
+ * and the control-center publication-target list read through here so the admin
+ * list and the delivery path can never disagree about which channel is in use.
+ */
+export async function resolveReportChannel(
+  env: ReportChannelEnvironment,
+): Promise<{ chatId: number; source: ReportChannelSource } | null> {
+  const settingsChannel = await getSystemSettingValue(env.DB, "report_channel_id");
+  const cachedChannel = env.CACHE ? await env.CACHE.get(REPORT_CHANNEL_CACHE_KEY) : undefined;
+  const candidates: Array<{ value: string | null | undefined; source: ReportChannelSource }> = [
+    { value: settingsChannel, source: "settings" },
+    { value: cachedChannel, source: "cache" },
+    { value: env.REPORT_CHANNEL_ID, source: "env" },
+  ];
+  for (const candidate of candidates) {
+    const chatId = Number(candidate.value?.trim());
+    if (Number.isInteger(chatId) && chatId !== 0) return { chatId, source: candidate.source };
+  }
+  return null;
 }
 
 /** Exponential backoff for delivery retries: 1m / 5m / 15m / 1h cap. */

@@ -28,6 +28,8 @@ import {
   upsertParticipantLink,
 } from "../db/repositories/participant-link.repository";
 import { assertCanManageSurvey, canCreateSurvey, canUseAdminPanel, isAdmin } from "../services/permission.service";
+import { createAdminMagicLink } from "../services/admin-magic-link.service";
+import { redeemCreatorInviteForUser } from "../services/creator-invite.service";
 import {
   assertSurveyQuestionsEditable,
   duplicateSurvey,
@@ -239,6 +241,8 @@ async function buildHomeKeyboard(
   userId?: number,
   from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
   submissionBotUrl?: string | null,
+  /** 「网页管理后台」的入口地址；传了就优先用它（一次性免密链接）。 */
+  adminPanelUrl?: string | null,
 ): Promise<InlineKeyboardMarkup> {
   const participantParam =
     webhookSecret && userId
@@ -266,8 +270,11 @@ async function buildHomeKeyboard(
     rows.push([{ text: "📮 投稿机器人", url: submissionBotUrl }]);
   }
   if (creator) {
-    if (origin) {
-      rows.push([{ text: "🌐 网页管理后台", url: `${origin}/admin` }]);
+    // 优先用一次性免密链接（点开即登录）；拿不到时退回普通 /admin，用户还需要
+    // 在登录页点一次「使用 Telegram 登录」。
+    const panelUrl = adminPanelUrl ?? (origin ? `${origin}/admin` : null);
+    if (panelUrl) {
+      rows.push([{ text: "🌐 网页管理后台", url: panelUrl }]);
     }
     rows.push([{ text: "我的问卷", callback_data: "home:my_surveys" }]);
   }
@@ -275,6 +282,89 @@ async function buildHomeKeyboard(
     rows.push([{ text: "管理员中心", callback_data: "admin:home" }]);
   }
   return { inline_keyboard: rows };
+}
+
+/**
+ * 「网页管理后台」入口地址。
+ *
+ * 创作者/管理员点一下就能进：直接在机器人里签发一张一次性免密票（30 分钟、用掉
+ * 即废），链接指向 /api/admin/auth/link 由 Worker 兑换成后台会话。没有 CACHE 或
+ * 签发失败时退回普通 /admin，功能不受影响（只是要多点一次 Telegram 登录）。
+ */
+async function resolveAdminPanelUrl(
+  ctx: BotContext,
+  dbUser: { id: number } | null,
+  creator: boolean,
+): Promise<string | null> {
+  if (!ctx.origin || !creator || !dbUser) return null;
+  if (!ctx.cache) return `${ctx.origin}/admin`;
+  try {
+    const token = await createAdminMagicLink(ctx.cache, dbUser.id);
+    return `${ctx.origin}/api/admin/auth/link?t=${token}`;
+  } catch (error) {
+    console.warn("Admin magic link creation failed", error);
+    return `${ctx.origin}/admin`;
+  }
+}
+
+/**
+ * 兑换体验创作者邀请码。
+ *
+ * 邀请码由管理员在网页后台生成；兑换后授权落在兑换者**自己的** Telegram 身份上，
+ * 所以到期提醒、按人撤销、后台权限判定全都不用变。
+ */
+async function redeemInvite(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  dbUser: { id: number; telegramUserId: number; username: string | null; firstName: string | null } | null,
+  rawCode: string | null,
+): Promise<void> {
+  if (!dbUser) {
+    await replyMessage(ctx, chatId, "请先发送 /start 完成初始化，再兑换邀请码。");
+    return;
+  }
+  if (!rawCode) {
+    await replyMessage(
+      ctx,
+      chatId,
+      "用法：/invite CR-XXXX-XXXX\n\n邀请码由管理员发放；兑换后会开通你自己的体验创作者权限（可创建、发布和管理自己的问卷）。",
+    );
+    return;
+  }
+  const result = await redeemCreatorInviteForUser(ctx.db, {
+    code: rawCode,
+    userId: dbUser.id,
+    grantedBy: null,
+  });
+  if (!result.ok) {
+    const text =
+      result.reason === "expired"
+        ? "⚠️ 这个邀请码已经过期了，请找管理员再要一个。"
+        : result.reason === "exhausted"
+          ? "⚠️ 这个邀请码已经用完了，请找管理员再要一个。"
+          : "⚠️ 邀请码无效，请核对后重试（形如 CR-7F3K-9Q2M）。";
+    await replyMessage(ctx, chatId, text);
+    return;
+  }
+  const expires = result.expiresAt.slice(0, 10);
+  await replyMessage(
+    ctx,
+    chatId,
+    [
+      "🎉 体验创作者已开通",
+      `有效期至：${expires}（${result.days} 天）`,
+      "现在可以创建、发布和管理自己的问卷；主菜单里的「🌐 网页管理后台」点进去就是你的后台。",
+    ].join("\n"),
+  );
+  const who = dbUser.firstName ?? dbUser.username ?? String(dbUser.telegramUserId);
+  for (const adminId of ctx.adminIds) {
+    await replyMessage(
+      ctx,
+      adminId,
+      `🎫 邀请码被兑换\n用户：${who}\nTelegram ID：${dbUser.telegramUserId}\n到期：${expires}`,
+    ).catch(() => undefined);
+  }
 }
 
 async function showHomeMenu(
@@ -300,6 +390,7 @@ async function showHomeMenu(
       userId,
       from,
       ctx.submissionBotUrl,
+      await resolveAdminPanelUrl(ctx, dbUser, creator),
     ),
     ...(messageId === undefined ? {} : { messageId }),
   });
@@ -1166,6 +1257,13 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       return;
     }
 
+    // 体验创作者邀请码：/invite CR-XXXX-XXXX（也支持 /start invite_CR-XXXX-XXXX 深链）
+    const inviteCode = payload?.match(/^invite_(.+)$/)?.[1];
+    if (inviteCode) {
+      await redeemInvite(ctx, message.chat.id, userId, dbUser, inviteCode);
+      return;
+    }
+
     const linkKey = payload?.match(/^link_([A-Za-z0-9_-]{8,64})$/)?.[1];
     if (linkKey) {
       if (!dbUser) {
@@ -1233,6 +1331,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         userId,
         message.from,
         ctx.submissionBotUrl,
+        await resolveAdminPanelUrl(ctx, dbUser, creator),
       ),
     });
     return;
@@ -1283,6 +1382,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         userId,
         message.from,
         ctx.submissionBotUrl,
+        await resolveAdminPanelUrl(ctx, dbUser, creator),
       ),
     });
     return;
@@ -1430,6 +1530,11 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
             userId,
             message.from,
             ctx.submissionBotUrl,
+            await resolveAdminPanelUrl(
+              ctx,
+              dbUser,
+              Boolean(dbUser && (await canCreateSurvey(ctx.db, dbUser, ctx.adminIds))),
+            ),
           ),
         });
         return;
@@ -1443,6 +1548,12 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         return;
       }
     }
+  }
+
+  const inviteCommand = text?.match(/^\/invite(?:@[A-Za-z0-9_]{3,64})?(?:\s+(\S{4,40}))?$/);
+  if (inviteCommand) {
+    await redeemInvite(ctx, message.chat.id, userId, dbUser, inviteCommand[1] ?? null);
+    return;
   }
 
   if (text === "/surveys") {
@@ -1465,6 +1576,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         userId,
         message.from,
         ctx.submissionBotUrl,
+        await resolveAdminPanelUrl(ctx, dbUser, creator),
       ),
     });
     return;
@@ -1586,6 +1698,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       userId,
       message.from,
       ctx.submissionBotUrl,
+      await resolveAdminPanelUrl(ctx, dbUser, creator),
     ),
   });
 }

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   getUserByTelegramId: vi.fn(),
   canCreateSurvey: vi.fn(),
-  upsertDefaultPublicationTarget: vi.fn(),
+  upsertPublicationTargetForChat: vi.fn(),
 }));
 
 vi.mock("../../../src/bot/telegram", () => ({ sendMessage: mocks.sendMessage }));
@@ -20,7 +20,7 @@ vi.mock("../../../src/services/permission.service", async (importOriginal) => ({
 }));
 
 vi.mock("../../../src/db/repositories/publication-target.repository", () => ({
-  upsertDefaultPublicationTarget: mocks.upsertDefaultPublicationTarget,
+  upsertPublicationTargetForChat: mocks.upsertPublicationTargetForChat,
 }));
 
 import { maybeHandlePublishTargetCommand } from "../../../src/bot/publish-target";
@@ -52,21 +52,25 @@ describe("set_publish_target command", () => {
     mocks.sendMessage.mockResolvedValue(undefined);
     mocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 42, systemRole: "participant" });
     mocks.canCreateSurvey.mockResolvedValue(true);
-    mocks.upsertDefaultPublicationTarget.mockResolvedValue({
-      id: 2,
-      name: "测试发布群",
-      chatId: "-1009876543210",
-      threadId: null,
-      enabled: true,
-      isDefault: true,
+    mocks.upsertPublicationTargetForChat.mockResolvedValue({
+      created: true,
+      activeCount: 2,
+      target: {
+        id: 2,
+        name: "测试发布群",
+        chatId: "-1009876543210",
+        threadId: null,
+        enabled: true,
+        isDefault: true,
+      },
     });
   });
 
-  it("binds the group as default publication target when the sender is allowed", async () => {
+  it("adds the group to the fan-out list when the sender is allowed", async () => {
     const handled = await maybeHandlePublishTargetCommand(makeCtx(), groupMessage());
 
     expect(handled).toBe(true);
-    expect(mocks.upsertDefaultPublicationTarget).toHaveBeenCalledWith(expect.anything(), {
+    expect(mocks.upsertPublicationTargetForChat).toHaveBeenCalledWith(expect.anything(), {
       name: "测试发布群",
       chatId: "-1009876543210",
       threadId: null,
@@ -77,12 +81,42 @@ describe("set_publish_target command", () => {
       expect.stringContaining("-1009876543210"),
       undefined,
     );
+    // 回执要说清是「加入」而不是「替换」，并报出当前 fan-out 目标数。
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "token",
+      -1009876543210,
+      expect.stringContaining("已加入公开报告发布目标"),
+      undefined,
+    );
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "token",
+      -1009876543210,
+      expect.stringContaining("当前共有 2 个目标"),
+      undefined,
+    );
+  });
+
+  it("says「已更新」when the group was already a target", async () => {
+    mocks.upsertPublicationTargetForChat.mockResolvedValue({
+      created: false,
+      activeCount: 1,
+      target: { id: 2, name: "测试发布群", chatId: "-1009876543210", threadId: null, enabled: true, isDefault: true },
+    });
+
+    await maybeHandlePublishTargetCommand(makeCtx(), groupMessage());
+
+    expect(mocks.sendMessage).toHaveBeenCalledWith(
+      "token",
+      -1009876543210,
+      expect.stringContaining("已在公开报告发布目标中，已更新"),
+      undefined,
+    );
   });
 
   it("binds the forum topic thread when the command is posted inside one", async () => {
     await maybeHandlePublishTargetCommand(makeCtx(), groupMessage({ message_thread_id: 77 }));
 
-    expect(mocks.upsertDefaultPublicationTarget).toHaveBeenCalledWith(
+    expect(mocks.upsertPublicationTargetForChat).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ threadId: 77 }),
     );
@@ -126,7 +160,7 @@ describe("set_publish_target command", () => {
       groupMessage({ message_thread_id: 77 }),
     );
 
-    expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
+    expect(mocks.upsertPublicationTargetForChat).not.toHaveBeenCalled();
     // 私聊通知属于另一个会话，带上群话题会被 Telegram 拒绝（message thread not found）。
     expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("话题已被关闭"), undefined);
   });
@@ -140,7 +174,7 @@ describe("set_publish_target command", () => {
     );
 
     expect(handled).toBe(true);
-    expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
+    expect(mocks.upsertPublicationTargetForChat).not.toHaveBeenCalled();
     expect(mocks.sendMessage).toHaveBeenCalledWith(
       "token",
       -1009876543210,
@@ -154,7 +188,7 @@ describe("set_publish_target command", () => {
 
     await maybeHandlePublishTargetCommand(makeCtx(), groupMessage());
 
-    expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
+    expect(mocks.upsertPublicationTargetForChat).not.toHaveBeenCalled();
     expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("发布目标设置失败"), undefined);
   });
 
@@ -165,7 +199,7 @@ describe("set_publish_target command", () => {
     );
 
     expect(handled).toBe(true);
-    expect(mocks.upsertDefaultPublicationTarget).not.toHaveBeenCalled();
+    expect(mocks.upsertPublicationTargetForChat).not.toHaveBeenCalled();
     expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("目标群组"), undefined);
   });
 

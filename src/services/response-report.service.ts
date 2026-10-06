@@ -1,4 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
+import { launchBrowser } from "./browser-launch";
 import { buildResponseReportHtmlDocument } from "./response-report/html";
 import type { ResponseReport, ResponseReportRenderResult, ResponseReportRenderedPage } from "./response-report/model";
 import { planResponseReportPages } from "./response-report/pagination";
@@ -100,49 +101,78 @@ async function repaginateRenderedReport(
   return pageCount;
 }
 
-async function capturePngPages(
+export type PngViewportStrategy = "set-viewport" | "probe-fullpage" | "fullpage";
+
+const MINIMAL_PROBE_HTML =
+  '<!doctype html><html><head><meta charset="utf-8"><style>.page{width:900px;height:1200px;overflow:hidden}</style></head><body><section class="page">PROBE</section></body></html>';
+
+function capturePngPages(
   page: Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>,
   pageCount: number,
   startNumber: number,
+  strategy: PngViewportStrategy,
 ): Promise<ResponseReportRenderedPage[]> {
-  const pages: ResponseReportRenderedPage[] = [];
-  for (let localPageNumber = 1; localPageNumber <= pageCount; localPageNumber += 1) {
-    const bytes = new Uint8Array(
-      await page.screenshot({
-        type: "png",
-        clip: { x: 0, y: (localPageNumber - 1) * 1200, width: 900, height: 1200 },
-        captureBeyondViewport: true,
-      }),
-    );
-    const pageNumber = startNumber + localPageNumber - 1;
-    if (bytes.byteLength > HARD_MAX_PAGE_BYTES)
-      throw new Error(`PNG page ${pageNumber} exceeds the 10 MB hard limit after image optimization`);
-    pages.push({
-      number: pageNumber,
-      bytes,
-      byteSize: bytes.byteLength,
-      dpr: 1,
-      width: 900,
-      height: 1200,
-      overTargetSize: bytes.byteLength > TARGET_PAGE_BYTES,
-    });
-  }
-  return pages;
+  return (async () => {
+    const pages: ResponseReportRenderedPage[] = [];
+    for (let localPageNumber = 1; localPageNumber <= pageCount; localPageNumber += 1) {
+      let bytes: Uint8Array;
+      if (strategy !== "set-viewport") {
+        // No Emulation override at all: the document is exactly one 900x1200
+        // .page, so a fullPage screenshot yields the final image directly.
+        const shot = await page.screenshot({ type: "png", fullPage: true });
+        bytes = new Uint8Array(shot);
+      } else {
+        // Workers Browser Rendering kills the target (TargetCloseError)
+        // whenever a screenshot re-rasterizes beyond the viewport
+        // (captureBeyondViewport), so capture each fixed 900x1200 .page by
+        // scrolling it into the viewport and taking a plain viewport
+        // screenshot.
+        await page.evaluate(
+          `(async () => {
+            window.scrollTo(0, ${(localPageNumber - 1) * 1200});
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          })()`,
+        );
+        bytes = new Uint8Array(await page.screenshot({ type: "png", captureBeyondViewport: false }));
+      }
+      const pageNumber = startNumber + localPageNumber - 1;
+      if (bytes.byteLength > HARD_MAX_PAGE_BYTES)
+        throw new Error(`PNG page ${pageNumber} exceeds the 10 MB hard limit after image optimization`);
+      pages.push({
+        number: pageNumber,
+        bytes,
+        byteSize: bytes.byteLength,
+        dpr: 1,
+        width: 900,
+        height: 1200,
+        overTargetSize: bytes.byteLength > TARGET_PAGE_BYTES,
+      });
+    }
+    return pages;
+  })();
 }
 
 async function renderPngReport(
   page: Awaited<ReturnType<Awaited<ReturnType<typeof puppeteer.launch>>["newPage"]>>,
   report: ResponseReport,
   plannedPages: ReturnType<typeof planResponseReportPages>,
+  strategy: PngViewportStrategy,
 ): Promise<ResponseReportRenderResult> {
   const pages: ResponseReportRenderedPage[] = [];
-  for (const plannedPage of plannedPages) {
-    await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 1 });
-    await page.setContent(buildResponseReportHtmlDocument(report, [plannedPage]), { waitUntil: "load" });
+  const plannedIterations =
+    strategy === "probe-fullpage" ? plannedPages.slice(0, 1) : plannedPages;
+  for (const plannedPage of plannedIterations) {
+    if (strategy === "set-viewport") {
+      await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 1 });
+    }
+    await page.setContent(
+      strategy === "probe-fullpage" ? MINIMAL_PROBE_HTML : buildResponseReportHtmlDocument(report, [plannedPage]),
+      { waitUntil: "load" },
+    );
     await waitForResponseReportAssets(page);
     const pageCount = await repaginateRenderedReport(page);
     await assertNoVisualOverflow(page);
-    pages.push(...(await capturePngPages(page, pageCount, pages.length + 1)));
+    pages.push(...(await capturePngPages(page, pageCount, pages.length + 1, strategy)));
   }
   const totalBytes = pages.reduce((sum, item) => sum + item.byteSize, 0);
   return { format: "png", pages, totalBytes, targetTotalBytesExceeded: totalBytes > TARGET_TOTAL_BYTES };
@@ -152,13 +182,14 @@ export async function renderResponseReport(
   browserBinding: BrowserWorker,
   sourceReport: ResponseReport,
   format: "pdf" | "png",
+  viewportStrategy: PngViewportStrategy = "set-viewport",
 ): Promise<ResponseReportRenderResult> {
-  const browser = await puppeteer.launch(browserBinding);
+  const browser = await launchBrowser(browserBinding, { format });
   try {
     const page = await browser.newPage();
     try {
       const pages = planResponseReportPages(sourceReport);
-      if (format === "png") return renderPngReport(page, sourceReport, pages);
+      if (format === "png") return renderPngReport(page, sourceReport, pages, viewportStrategy);
       await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 1 });
       await page.setContent(buildResponseReportHtmlDocument(sourceReport, pages), { waitUntil: "load" });
       await waitForResponseReportAssets(page);

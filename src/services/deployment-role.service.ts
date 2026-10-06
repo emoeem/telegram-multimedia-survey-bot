@@ -86,6 +86,8 @@ const VENDOR_ADMIN_PATHS = new Set(["/api/admin/licenses", "/api/admin/releases"
 export function isVendorOnlyAdminPath(pathname: string): boolean {
   if (VENDOR_ADMIN_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/api/admin/licenses/")) return true;
+  // 邀请码等价于「发放体验权限」，和 /users/:id/trial 同一类，只有授权中心能碰。
+  if (pathname === "/api/admin/creator-invites" || pathname === "/api/admin/creator-invites/revoke") return true;
   if (/^\/api\/admin\/users\/\d+\/trial$/.test(pathname)) return true;
   return false;
 }

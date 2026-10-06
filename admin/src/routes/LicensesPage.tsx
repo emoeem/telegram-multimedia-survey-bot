@@ -3,6 +3,7 @@ import {
   api,
   apiSend,
   fetchDeploymentInfo,
+  type CreatorInviteView,
   type CreatorTrialView,
   type LicenseView,
   type SoftwareReleaseView,
@@ -38,6 +39,7 @@ export function LicensesPage() {
   const licenses = useApi<{ items: LicenseView[] }>(enabled ? "/api/admin/licenses" : null);
   const releases = useApi<{ items: SoftwareReleaseView[] }>(enabled ? "/api/admin/releases" : null);
   const trials = useApi<{ items: CreatorTrialView[] }>(enabled ? "/api/admin/trials" : null);
+  const invites = useApi<{ items: CreatorInviteView[] }>(enabled ? "/api/admin/creator-invites" : null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -57,6 +59,47 @@ export function LicensesPage() {
   // 试用管理表单
   const [trialUserId, setTrialUserId] = useState("");
   const [trialDays, setTrialDays] = useState("30");
+
+  // 邀请码表单
+  const [inviteDays, setInviteDays] = useState("30");
+  const [inviteUses, setInviteUses] = useState("1");
+  const [inviteValidDays, setInviteValidDays] = useState("7");
+  const [inviteNote, setInviteNote] = useState("");
+  const [createdInvite, setCreatedInvite] = useState<string | null>(null);
+
+  const createInvite = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await apiSend<{ invite: CreatorInviteView }>("POST", "/api/admin/creator-invites", {
+        days: Number(inviteDays),
+        maxUses: Number(inviteUses),
+        expiresInDays: Number(inviteValidDays),
+        note: inviteNote.trim() || null,
+      });
+      setCreatedInvite(result.invite.code);
+      setMessage({ kind: "ok", text: "邀请码已生成，发给对方即可" });
+      invites.retry();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "生成失败" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeInvite = async (code: string) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await apiSend("POST", "/api/admin/creator-invites/revoke", { code });
+      setMessage({ kind: "ok", text: "邀请码已作废" });
+      invites.retry();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "作废失败" });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const act = async (path: string, body: Record<string, unknown>, okText: string) => {
     setBusy(true);
@@ -380,6 +423,101 @@ export function LicensesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-6 border-t border-[var(--color-edge-soft)] pt-5">
+          <h3 className="text-sm font-bold">邀请码（对方自己在机器人里兑换）</h3>
+          <p className="muted mt-1 text-xs">
+            生成一个码发给对方，让 TA 在机器人里发 <code>/invite CR-XXXX-XXXX</code> 即可开通 —— 不用先问出对方的
+            Telegram 数字 ID，也不用共享密码；授权仍然落在 TA 自己的账号上。
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--color-muted)]">体验天数</span>
+              <input
+                className="input w-full sm:w-24"
+                type="number"
+                min={1}
+                value={inviteDays}
+                onChange={(event) => setInviteDays(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--color-muted)]">可用次数</span>
+              <input
+                className="input w-full sm:w-24"
+                type="number"
+                min={1}
+                value={inviteUses}
+                onChange={(event) => setInviteUses(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--color-muted)]">码有效期（天）</span>
+              <input
+                className="input w-full sm:w-28"
+                type="number"
+                min={1}
+                value={inviteValidDays}
+                onChange={(event) => setInviteValidDays(event.target.value)}
+              />
+            </label>
+            <label className="grid flex-1 gap-1 text-sm">
+              <span className="text-[var(--color-muted)]">备注（发给谁，可选）</span>
+              <input
+                className="input w-full"
+                value={inviteNote}
+                onChange={(event) => setInviteNote(event.target.value)}
+              />
+            </label>
+            <button className="btn btn-primary" disabled={busy} onClick={() => void createInvite()}>
+              生成邀请码
+            </button>
+          </div>
+          {createdInvite ? (
+            <p className="mt-3 rounded-lg border border-[var(--color-edge)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+              新邀请码：<strong className="font-mono text-base">{createdInvite}</strong> —— 发给她/他，让对方在机器人里发{" "}
+              <code>/invite {createdInvite}</code>
+            </p>
+          ) : null}
+          {(invites.data?.items ?? []).length > 0 ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>邀请码</th>
+                    <th>体验天数</th>
+                    <th>已用/可用</th>
+                    <th>码到期</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(invites.data?.items ?? []).map((invite) => (
+                    <tr key={invite.code}>
+                      <td className="font-mono">{invite.code}</td>
+                      <td>{invite.days} 天</td>
+                      <td>
+                        {invite.usedCount}/{invite.maxUses}
+                      </td>
+                      <td>{formatDateTime(invite.expiresAt)}</td>
+                      <td>{invite.note ?? "—"}</td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          disabled={busy}
+                          onClick={() => void revokeInvite(invite.code)}
+                        >
+                          作废
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

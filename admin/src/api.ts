@@ -184,6 +184,13 @@ export interface PublicationTargetView {
   updatedAt: string;
 }
 
+/** 「报告归档频道 · ZIP」——与公开群共用一张列表，但数据源是 report_channel_id。 */
+export interface PublicationArchiveView {
+  name: string;
+  chatId: string;
+  source: "settings" | "cache" | "env";
+}
+
 export interface DeploymentInfo {
   /** "vendor" = authorization center; "customer" = licensed instance. */
   role: "vendor" | "customer";
@@ -915,6 +922,17 @@ export interface SoftwareReleaseView {
   notes: string | null;
 }
 
+/** 体验创作者邀请码（管理端）。 */
+export interface CreatorInviteView {
+  code: string;
+  days: number;
+  maxUses: number;
+  usedCount: number;
+  expiresAt: string;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface CreatorTrialView {
   userId: number;
   telegramUserId: number;
@@ -1127,16 +1145,7 @@ export function deleteAdminTaskPack(id: number): Promise<{ ok: boolean }> {
 /* ---- Showcase (展示区) management ------------------------------------- */
 
 export type ShowcaseItemKind =
-  | "image"
-  | "article"
-  | "audio"
-  | "video"
-  | "project"
-  | "github"
-  | "website"
-  | "social"
-  | "survey"
-  | "other";
+  "image" | "article" | "audio" | "video" | "project" | "github" | "website" | "social" | "survey" | "other";
 
 export interface ShowcaseAdminItem {
   id: number;
@@ -1230,4 +1239,3 @@ export function deleteShowcaseItem(id: number): Promise<{ ok: boolean }> {
 export function uploadShowcaseMedia(file: File): Promise<{ mediaAssetId: number; url: string }> {
   return apiUpload("/api/admin/showcase/media", file);
 }
-

@@ -26,6 +26,13 @@ REPORT_CHANNEL_ID = "-1004489719605"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 SUBMISSION_BOT_URL = "https://t.me/tougaojiqirbot"
 
+# Browser renders for queue jobs run in a request context via the SELF
+# service binding (queue-context sessions die on constrained accounts).
+# Worker configs without the binding fall back to in-process rendering.
+[[services]]
+binding = "SELF"
+service = "telegram-multimedia-survey-bot"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "telegram-survey-db"

@@ -1,4 +1,5 @@
-import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
+import type { BrowserWorker } from "@cloudflare/puppeteer";
+import { launchBrowser } from "../browser-launch";
 import type { ResultProfileSnapshot } from "../../result/schema";
 import { buildReportViewModel, optimizeReportImagesInPage } from "../html-report-renderer.service";
 import { buildResponsiveReportHtml, type ResponsiveReportMeta } from "./web";
@@ -35,7 +36,7 @@ export async function renderReportPdf(
   options: ReportPdfOptions = {},
   template: ReportTemplateSpec = DEFAULT_REPORT_TEMPLATE,
 ): Promise<ReportPdfResult> {
-  const browser = await puppeteer.launch(browserBinding);
+  const browser = await launchBrowser(browserBinding, { kind: "report-pdf", responseId: meta.reportId });
   try {
     const page = await browser.newPage();
     const maxImageDimension = options.maxImageDimension ?? 1200;

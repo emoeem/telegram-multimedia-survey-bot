@@ -1,6 +1,12 @@
 import { Eye, EyeOff, LoaderCircle, LockKeyhole, Send, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+
+/** 一次性登录链接失败时带回来的原因 → 给用户一句人话。 */
+const LINK_REASON_MESSAGES: Record<string, string> = {
+  link_invalid: "这个登录链接已经用过或已过期（有效期 30 分钟）。请回到机器人里重新点「🌐 网页管理后台」。",
+  no_access: "当前账号没有管理后台权限。如果你在体验创作者名单里，请先用你的 Telegram 账号确认登录。",
+};
 
 /** How often the browser asks whether the bot has confirmed the login. */
 const TELEGRAM_POLL_INTERVAL_MS = 2000;
@@ -15,6 +21,14 @@ export function LoginPage() {
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramHint, setTelegramHint] = useState("");
   const [telegramError, setTelegramError] = useState("");
+
+  // 机器人里的「🌐 网页管理后台」是一次性链接；失败时 Worker 会带 reason 跳回来。
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (!reason) return;
+    setMessage(LINK_REASON_MESSAGES[reason] ?? "登录链接不可用，请重新获取。");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const login = async (event: FormEvent) => {
     event.preventDefault();
@@ -103,7 +117,9 @@ export function LoginPage() {
             <ShieldCheck className="h-6 w-6" />
           </span>
           <h1 className="mt-4 text-xl font-bold tracking-tight">登录管理后台</h1>
-          <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">输入管理员密码即可登录，无需 Telegram 验证或 OAuth。</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-indigo-100">
+            管理员用密码登录；体验创作者用下面的「使用 Telegram 登录」。
+          </p>
         </div>
         <form className="grid gap-4 p-6" onSubmit={login}>
           <label className="grid gap-1.5 text-sm">
