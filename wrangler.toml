@@ -24,8 +24,7 @@ LICENSE_GRACE_SECONDS = "86400"
 DEPLOYMENT_ROLE = "vendor"
 REPORT_CHANNEL_ID = "-1004489719605"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
-# Survey access-code pepper. Set the production value with `wrangler secret put SURVEY_CODE_PEPPER`.
-SURVEY_CODE_PEPPER = "set-via-wrangler-secret"
+# Survey access-code pepper is a Cloudflare Secret; do not define it in [vars].
 SUBMISSION_BOT_URL = "https://t.me/tougaojiqirbot"
 
 # Browser renders for queue jobs run in a request context via the SELF
