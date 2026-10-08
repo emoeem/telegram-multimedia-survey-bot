@@ -165,3 +165,7 @@ Vite 构建提示公共 `esm-*.js` chunk >500KB；ECharts 已动态 import，暂
 3. **没有把 Showcase 强行改成浅色**：沉浸式黑色画布是明确产品设计。
 4. **没有重构 bundler/ECharts**：已有 route lazy loading + ECharts dynamic import，收益不足以抵消风险。
 5. **没有生产部署、migration、secret 操作或 push**：严格遵守“最终报告确认前不要 push、不要动生产”。
+
+## P1 功能增强归档
+
+本轮产品功能增强、Soft Delete/Undo、Showcase cursor、axe CI 门禁、Admin 拆包和 Lighthouse 基线详见 [`docs/round-p1.md`](./round-p1.md)。最终视觉回归为 173/173，通过后未执行生产部署或 push。
