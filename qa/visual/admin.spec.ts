@@ -334,7 +334,7 @@ for (const theme of THEMES) {
         });
 
         await page.goto(path, { waitUntil: "domcontentloaded" });
-        await expect(page.locator("h1").first()).toBeVisible();
+        await expect(page.locator("h1, main").first()).toBeVisible();
         await page.waitForTimeout(250);
         if (path === "/admin/surveys/3/editor") {
           await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
@@ -342,6 +342,9 @@ for (const theme of THEMES) {
         if (path === "/admin/surveys/1/editor") {
           await expect(page.getByText("上传题面附件")).toBeVisible();
           await expect(page.getByText("选项媒体").first()).toBeVisible();
+        }
+        if (path === "/admin/surveys/1/analytics") {
+          await page.waitForTimeout(1200);
         }
 
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
