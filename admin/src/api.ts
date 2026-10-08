@@ -1209,13 +1209,17 @@ export interface ShowcaseAdminPerson {
 
 export interface ShowcaseAdminData {
   persons: ShowcaseAdminPerson[];
-  total: number;
-  publishedTotal: number;
+  /** Legacy offset mode only; cursor mode intentionally omits full-table counts. */
+  total?: number;
+  /** Legacy offset mode only; cursor mode intentionally omits full-table counts. */
+  publishedTotal?: number;
   limit: number;
+  nextCursor: string | null;
 }
 
-export function fetchAdminShowcase(): Promise<ShowcaseAdminData> {
-  return api<ShowcaseAdminData>("/api/admin/showcase");
+export function fetchAdminShowcase(cursor?: string | null, limit = 24): Promise<ShowcaseAdminData> {
+  const query = new URLSearchParams({ cursor: cursor ?? "", limit: String(limit) });
+  return api<ShowcaseAdminData>(`/api/admin/showcase?${query}`);
 }
 
 export function createShowcasePerson(input: Record<string, unknown>): Promise<{ person: ShowcaseAdminPerson | null }> {

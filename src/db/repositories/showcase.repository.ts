@@ -1,4 +1,5 @@
 import type { ShowcaseItem, ShowcaseItemKind, ShowcaseLink, ShowcasePerson, ShowcasePersonWithItems } from "../schema";
+import type { ShowcaseCursorPayload } from "../../services/keyset-cursor.service";
 
 /**
  * Showcase (展示区) persistence.
@@ -240,6 +241,128 @@ export async function listShowcasePersons(
   return {
     persons: personRows.map((row) => ({ ...mapPerson(row), items: itemsByPerson.get(row.id) ?? [] })),
     total: Number(count.results?.[0]?.count ?? 0),
+  };
+}
+
+/**
+ * Keyset page used by the new cursor API. The anchor is (created_at, id), so
+ * every page can seek directly through idx_showcase_persons_public_cursor or
+ * idx_showcase_persons_admin_cursor without OFFSET.
+ */
+export async function listShowcasePersonsLegacyCursor(
+  db: D1Database,
+  options: {
+    publishedOnly?: boolean;
+    limit?: number;
+    cursor?: Pick<ShowcaseCursorPayload, "featureRank" | "sortOrder" | "id"> | null;
+  } = {},
+): Promise<{
+  persons: ShowcasePersonWithItems[];
+  hasMore: boolean;
+  nextCreatedAt: string | null;
+  nextId: number | null;
+  nextFeatureRank: number | null;
+  nextSortOrder: number | null;
+}> {
+  const conditions: string[] = ["deleted_at IS NULL"];
+  const binds: unknown[] = [];
+  if (options.publishedOnly) conditions.push("published = 1");
+  if (options.cursor) {
+    conditions.push(
+      "(feature_rank < ? OR (feature_rank = ? AND (sort_order > ? OR (sort_order = ? AND id > ?))))",
+    );
+    binds.push(
+      options.cursor.featureRank,
+      options.cursor.featureRank,
+      options.cursor.sortOrder,
+      options.cursor.sortOrder,
+      options.cursor.id,
+    );
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const indexHint = options.publishedOnly
+    ? "INDEXED BY idx_showcase_persons_active_feed"
+    : "INDEXED BY idx_showcase_persons_admin_legacy_feed";
+  const limit = Math.min(200, Math.max(1, options.limit ?? 24));
+  const rows = (await db
+    .prepare(
+      `SELECT ${PERSON_COLUMNS} FROM showcase_persons ${indexHint} ${where}
+       ORDER BY feature_rank DESC, sort_order ASC, id ASC
+       LIMIT ?`,
+    )
+    .bind(...binds, limit + 1)
+    .all<ShowcasePersonRow>()) as D1Result<ShowcasePersonRow>;
+  const rawRows = rows.results ?? [];
+  const hasMore = rawRows.length > limit;
+  const personRows = rawRows.slice(0, limit);
+  const last = personRows.at(-1) ?? null;
+  const itemsByPerson = await listItemsByPersonIds(db, personRows.map((row) => row.id));
+  return {
+    persons: personRows.map((row) => ({ ...mapPerson(row), items: itemsByPerson.get(row.id) ?? [] })),
+    hasMore,
+    nextCreatedAt: hasMore && last ? last.created_at : null,
+    nextId: hasMore && last ? last.id : null,
+    nextFeatureRank: hasMore && last ? last.feature_rank : null,
+    nextSortOrder: hasMore && last ? last.sort_order : null,
+  };
+}
+
+export async function listShowcasePersonsCursor(
+  db: D1Database,
+  options: {
+    publishedOnly?: boolean;
+    ownerUserId?: number;
+    limit?: number;
+    cursor?: Pick<ShowcaseCursorPayload, "createdAt" | "id"> | null;
+  } = {},
+): Promise<{
+  persons: ShowcasePersonWithItems[];
+  hasMore: boolean;
+  nextCreatedAt: string | null;
+  nextId: number | null;
+  nextFeatureRank: number | null;
+  nextSortOrder: number | null;
+}> {
+  const conditions: string[] = ["deleted_at IS NULL"];
+  const binds: unknown[] = [];
+  if (options.publishedOnly) conditions.push("published = 1");
+  if (options.ownerUserId !== undefined) {
+    conditions.push("owner_user_id = ?");
+    binds.push(options.ownerUserId);
+  }
+  if (options.cursor) {
+    conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+    binds.push(options.cursor.createdAt, options.cursor.createdAt, options.cursor.id);
+  }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const indexHint = options.publishedOnly
+    ? "INDEXED BY idx_showcase_persons_public_cursor"
+    : "INDEXED BY idx_showcase_persons_admin_cursor_all";
+  const limit = Math.min(200, Math.max(1, options.limit ?? 24));
+  const rows = (await db
+    .prepare(
+      `SELECT ${PERSON_COLUMNS} FROM showcase_persons ${indexHint} ${where}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .bind(...binds, limit + 1)
+    .all<ShowcasePersonRow>()) as D1Result<ShowcasePersonRow>;
+
+  const rawRows = rows.results ?? [];
+  const hasMore = rawRows.length > limit;
+  const personRows = rawRows.slice(0, limit);
+  const last = personRows.at(-1) ?? null;
+  const itemsByPerson = await listItemsByPersonIds(
+    db,
+    personRows.map((row) => row.id),
+  );
+  return {
+    persons: personRows.map((row) => ({ ...mapPerson(row), items: itemsByPerson.get(row.id) ?? [] })),
+    hasMore,
+    nextCreatedAt: hasMore && last ? last.created_at : null,
+    nextId: hasMore && last ? last.id : null,
+    nextFeatureRank: null,
+    nextSortOrder: null,
   };
 }
 

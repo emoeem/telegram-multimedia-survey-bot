@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   listShowcasePersons: vi.fn(),
+  listShowcasePersonsCursor: vi.fn(),
   getPublishedShowcasePersonIdForAsset: vi.fn(),
   getPublishedShowcaseItemById: vi.fn(),
   getMediaAssetById: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../../src/db/repositories/showcase.repository", () => ({
   listShowcasePersons: mocks.listShowcasePersons,
+  listShowcasePersonsCursor: mocks.listShowcasePersonsCursor,
   getPublishedShowcasePersonIdForAsset: mocks.getPublishedShowcasePersonIdForAsset,
   getPublishedShowcaseItemById: mocks.getPublishedShowcaseItemById,
 }));
@@ -26,7 +28,7 @@ import { handleShowcaseApiRequest } from "../../../src/http/showcase-api";
 import type { Env } from "../../../src/index";
 import type { ShowcasePersonWithItems } from "../../../src/db/schema";
 
-const env = { DB: {} as D1Database } as unknown as Env;
+const env = { DB: {} as D1Database, WEBHOOK_SECRET: "local-test-secret" } as unknown as Env;
 
 function person(overrides: Partial<ShowcasePersonWithItems> = {}): ShowcasePersonWithItems {
   return {
@@ -77,6 +79,12 @@ describe("public showcase API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listShowcasePersons.mockResolvedValue({ persons: [person()], total: 1 });
+    mocks.listShowcasePersonsCursor.mockResolvedValue({
+      persons: [person()],
+      hasMore: false,
+      nextCreatedAt: null,
+      nextId: null,
+    });
   });
 
   it("asks the repository for published people only and serves media URLs", async () => {
@@ -125,6 +133,47 @@ describe("public showcase API", () => {
     const body = (await response!.json()) as { limit: number; offset: number };
     expect(body.limit).toBe(100);
     expect(body.offset).toBe(0);
+  });
+
+  it("supports cursor mode and returns an opaque nextCursor", async () => {
+    mocks.listShowcasePersonsCursor.mockResolvedValue({
+      persons: [person({ id: 24, createdAt: "2026-01-02T00:00:00.000Z" })],
+      hasMore: true,
+      nextCreatedAt: "2026-01-02T00:00:00.000Z",
+      nextId: 24,
+    });
+    const response = await handleShowcaseApiRequest(
+      new Request("https://example.test/api/showcase?cursor=&limit=24"),
+      env,
+      new URL("https://example.test/api/showcase?cursor=&limit=24"),
+    );
+    expect(response?.status).toBe(200);
+    expect(mocks.listShowcasePersonsCursor).toHaveBeenCalledWith(expect.anything(), {
+      publishedOnly: true,
+      limit: 24,
+      cursor: null,
+    });
+    const body = (await response!.json()) as { items: unknown[]; nextCursor: string | null };
+    expect(body.items).toHaveLength(1);
+    expect(body.nextCursor).toEqual(expect.any(String));
+  });
+
+  it.each(["0", "201", "abc"])("rejects cursor limit %s", async (limit) => {
+    const response = await handleShowcaseApiRequest(
+      new Request(`https://example.test/api/showcase?cursor=&limit=${limit}`),
+      env,
+      new URL(`https://example.test/api/showcase?cursor=&limit=${limit}`),
+    );
+    expect(response?.status).toBe(400);
+  });
+
+  it("rejects forged and expired cursors at the API boundary", async () => {
+    const response = await handleShowcaseApiRequest(
+      new Request("https://example.test/api/showcase?cursor=forged&limit=24"),
+      env,
+      new URL("https://example.test/api/showcase?cursor=forged&limit=24"),
+    );
+    expect(response?.status).toBe(400);
   });
 
   it("treats blank and non-numeric paging params as absent", async () => {
@@ -207,13 +256,11 @@ describe("public showcase API", () => {
     await expect(response?.json()).resolves.toMatchObject({
       item: { id: 5, personId: 1, title: "长夜将明", descriptionTruncated: false, url: "https://example.com/novel" },
     });
-    const body = (await (
-      await handleShowcaseApiRequest(
-        new Request("https://example.test/api/showcase/items/5"),
-        env,
-        new URL("https://example.test/api/showcase/items/5"),
-      )
-    )!.json()) as { item: { description: string } };
+    const body = (await (await handleShowcaseApiRequest(
+      new Request("https://example.test/api/showcase/items/5"),
+      env,
+      new URL("https://example.test/api/showcase/items/5"),
+    ))!.json()) as { item: { description: string } };
     expect(body.item.description).toHaveLength(600);
   });
 

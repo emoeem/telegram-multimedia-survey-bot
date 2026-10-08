@@ -101,7 +101,11 @@ export function ShowcaseScreen() {
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const indexRef = useRef(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const frameRef = useRef(0);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -112,9 +116,14 @@ export function ShowcaseScreen() {
     let cancelled = false;
     setError(null);
     setPeople(null);
-    fetchShowcase()
+    setNextCursor(null);
+    setLoadMoreError(null);
+    fetchShowcase("", 24)
       .then((feed) => {
-        if (!cancelled) setPeople(feed.items);
+        if (!cancelled) {
+          setPeople(feed.items);
+          setNextCursor(feed.nextCursor);
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -125,11 +134,44 @@ export function ShowcaseScreen() {
     };
   }, [reloadKey]);
 
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const feed = await fetchShowcase(nextCursor, 24);
+      setPeople((current) => (current ? [...current, ...feed.items] : feed.items));
+      setNextCursor(feed.nextCursor);
+    } catch (requestError) {
+      setLoadMoreError(requestError instanceof Error ? requestError.message : "加载下一组失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, nextCursor]);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel || !nextCursor) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { root, rootMargin: "0px 100% 0px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore, nextCursor]);
+
   // Open on ?p=<id> so a shared link lands on the same person.
   useEffect(() => {
     if (!people || people.length === 0) return undefined;
     const requested = Number(new URLSearchParams(window.location.search).get("p"));
     const found = Number.isInteger(requested) && requested > 0 ? people.findIndex((p) => p.id === requested) : -1;
+    if (requested > 0 && found < 0 && nextCursor) {
+      void loadMore();
+      return undefined;
+    }
     const start = found >= 0 ? found : 0;
     indexRef.current = start;
     setIndex(start);
@@ -139,7 +181,7 @@ export function ShowcaseScreen() {
       if (el && el.clientWidth > 0) el.scrollLeft = start * el.clientWidth;
     });
     return () => cancelAnimationFrame(frame);
-  }, [people]);
+  }, [loadMore, nextCursor, people]);
 
   const syncIndex = useCallback(() => {
     const el = scrollerRef.current;
@@ -152,12 +194,16 @@ export function ShowcaseScreen() {
   }, [people]);
 
   const onScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (el && nextCursor && !loadingMore && el.scrollLeft + el.clientWidth >= el.scrollWidth - el.clientWidth * 0.5) {
+      void loadMore();
+    }
     if (frameRef.current) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = 0;
       syncIndex();
     });
-  }, [syncIndex]);
+  }, [loadMore, loadingMore, nextCursor, syncIndex]);
 
   // Haptic tick once a swipe settles — never on every scroll frame.
   useEffect(() => {
@@ -341,6 +387,16 @@ export function ShowcaseScreen() {
                   onFigureClick={onFigureClick}
                 />
               ))}
+              {nextCursor ? (
+                <div ref={loadMoreSentinelRef} className="showcase-load-sentinel" aria-live="polite">
+                  {loadingMore ? <span className="showcase-load-skeleton" aria-hidden="true" /> : null}
+                  {loadMoreError ? (
+                    <button type="button" className="showcase-load-retry" onClick={() => void loadMore()}>
+                      加载失败，点击重试
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <button

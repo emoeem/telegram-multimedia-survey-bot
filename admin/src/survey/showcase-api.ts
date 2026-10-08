@@ -46,6 +46,7 @@ export interface ShowcasePerson {
 export interface ShowcaseFeed {
   items: ShowcasePerson[];
   total: number;
+  nextCursor: string | null;
 }
 
 export const SHOWCASE_ITEM_KIND_LABELS: Record<ShowcaseItemKind, string> = {
@@ -71,8 +72,9 @@ export async function fetchShowcaseItem(itemId: number): Promise<ShowcaseItemDet
   return body.item as ShowcaseItemDetail;
 }
 
-export async function fetchShowcase(): Promise<ShowcaseFeed> {
-  const response = await fetch("/api/showcase?limit=200", { headers: { Accept: "application/json" } });
+export async function fetchShowcase(cursor = "", limit = 24): Promise<ShowcaseFeed> {
+  const query = new URLSearchParams({ cursor, limit: String(limit) });
+  const response = await fetch(`/api/showcase?${query}`, { headers: { Accept: "application/json" } });
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     throw new Error(typeof body.message === "string" ? body.message : "展示区加载失败");
@@ -80,5 +82,6 @@ export async function fetchShowcase(): Promise<ShowcaseFeed> {
   return {
     items: Array.isArray(body.items) ? (body.items as ShowcasePerson[]) : [],
     total: typeof body.total === "number" ? body.total : 0,
+    nextCursor: typeof body.nextCursor === "string" ? body.nextCursor : null,
   };
 }

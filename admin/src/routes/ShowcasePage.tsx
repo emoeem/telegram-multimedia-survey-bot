@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import {
   createShowcaseItem,
@@ -12,12 +12,12 @@ import {
   updateShowcaseItem,
   updateShowcasePerson,
   uploadShowcaseMedia,
+  ApiError,
   type ShowcaseAdminData,
   type ShowcaseAdminItem,
   type ShowcaseAdminPerson,
   type ShowcaseItemKind,
 } from "../api";
-import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
 import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { EmptyPanel, ErrorPanel, Modal, PageHeader, SkeletonPanel } from "../components/ui";
@@ -349,8 +349,49 @@ function ItemRow({
 }
 
 export function ShowcasePage() {
-  const { data, error, retry } = useApi<ShowcaseAdminData>("/api/admin/showcase");
   const { toast } = useDialogs();
+  const [data, setData] = useState<ShowcaseAdminData | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setData(null);
+    setNextCursor(null);
+    void fetchAdminShowcase("", 24)
+      .then((first) => {
+        setData(first);
+        setNextCursor(first.nextCursor);
+      })
+      .catch((requestError) =>
+        setError(
+          requestError instanceof ApiError
+            ? requestError
+            : new ApiError(0, requestError instanceof Error ? requestError.message : "加载展示区失败"),
+        ),
+      );
+  }, []);
+
+  useEffect(() => {
+    retry();
+  }, [retry]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchAdminShowcase(nextCursor, 24);
+      setData((current) =>
+        current ? { ...page, persons: [...current.persons, ...page.persons], nextCursor: page.nextCursor } : page,
+      );
+      setNextCursor(page.nextCursor);
+    } catch (requestError) {
+      toast({ message: requestError instanceof Error ? requestError.message : "加载更多失败", variant: "error" });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const [editing, setEditing] = useState<ShowcaseAdminPerson | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -431,7 +472,9 @@ export function ShowcasePage() {
       ) : (
         <>
           <p className="muted text-sm">
-            共 {data.total} 位 · 已公开 {data.publishedTotal} 位 · 顺序即前台展示顺序
+            已加载 {persons.length} 位
+            {data.total !== undefined ? ` · 共 ${data.total} 位` : " · 滚动继续加载"}
+            {data.publishedTotal !== undefined ? ` · 已公开 ${data.publishedTotal} 位` : ""}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {persons.map((person, position) => (
@@ -521,6 +564,13 @@ export function ShowcasePage() {
               </article>
             ))}
           </div>
+          {nextCursor ? (
+            <div className="flex justify-center pt-1">
+              <button type="button" className="btn" disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? "加载中…" : "加载更多"}
+              </button>
+            </div>
+          ) : null}
         </>
       )}
 

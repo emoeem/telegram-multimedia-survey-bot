@@ -7,6 +7,8 @@ import {
   getShowcaseItemById,
   getShowcasePersonById,
   listShowcasePersons,
+  listShowcasePersonsCursor,
+  listShowcasePersonsLegacyCursor,
   reorderShowcasePersons,
   updateShowcaseItem,
   updateShowcasePerson,
@@ -17,6 +19,7 @@ import {
   toAdminShowcasePerson,
 } from "../../services/showcase.service";
 import { countShowcasePersons } from "../../db/repositories/showcase.repository";
+import { decodeShowcaseCursor, encodeShowcaseCursor } from "../../services/keyset-cursor.service";
 import { storeSurveyAdminMedia } from "./helpers";
 import { ReadContext, WriteContext, writeAudit } from "./helpers";
 
@@ -52,13 +55,62 @@ export async function handleAdminShowcaseRead(url: URL, env: Env, ctx: ReadConte
   if (url.pathname !== "/api/admin/showcase") return null;
   const { isAdmin, fail, json } = ctx;
   if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理展示区");
-  const { persons, total } = await listShowcasePersons(env.DB, { limit: 200 });
+  if (url.searchParams.has("cursor")) {
+    const rawLimit = Number(url.searchParams.get("limit"));
+    if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 200) {
+      return fail(400, "invalid_limit", "limit 必须是 1-200 的整数");
+    }
+    const rawCursor = url.searchParams.get("cursor") ?? "";
+    const cursor = rawCursor ? await decodeShowcaseCursor(env.WEBHOOK_SECRET, rawCursor) : null;
+    if (rawCursor && !cursor) return fail(400, "invalid_cursor", "cursor 无效或已过期，请从第一页重新加载");
+    const page =
+      cursor?.mode === "legacy_feed"
+        ? await listShowcasePersonsLegacyCursor(env.DB, { limit: rawLimit, cursor })
+        : await listShowcasePersonsCursor(env.DB, { limit: rawLimit, cursor });
+    const nextCursor =
+      page.hasMore && page.nextCreatedAt && page.nextId
+        ? await encodeShowcaseCursor(
+            env.WEBHOOK_SECRET,
+            cursor?.mode === "legacy_feed"
+              ? {
+                  mode: "legacy_feed",
+                  createdAt: page.nextCreatedAt,
+                  id: page.nextId,
+                  featureRank: page.nextFeatureRank!,
+                  sortOrder: page.nextSortOrder!,
+                }
+              : {
+                  mode: "created_at",
+                  createdAt: page.nextCreatedAt,
+                  id: page.nextId,
+                },
+          )
+        : null;
+    return json({
+      persons: page.persons.map((person) => toAdminShowcasePerson(person)),
+      limit: rawLimit,
+      nextCursor,
+    });
+  }
+
   const counts = await countShowcasePersons(env.DB);
+  // Legacy offset-free response remains unchanged for cached admin bundles.
+  const { persons, total } = await listShowcasePersons(env.DB, { limit: 200 });
   return json({
     persons: persons.map((person) => toAdminShowcasePerson(person)),
     total,
     publishedTotal: counts.published,
     limit: 200,
+    nextCursor:
+      persons.length && persons.length < total
+        ? await encodeShowcaseCursor(env.WEBHOOK_SECRET, {
+            mode: "legacy_feed",
+            createdAt: persons.at(-1)!.createdAt,
+            id: persons.at(-1)!.id,
+            featureRank: persons.at(-1)!.featureRank,
+            sortOrder: persons.at(-1)!.sortOrder,
+          })
+        : null,
   });
 }
 

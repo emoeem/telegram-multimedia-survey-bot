@@ -14,6 +14,7 @@ import {
   getShowcasePersonById,
   updateShowcaseItem,
   listShowcasePersons,
+  listShowcasePersonsCursor,
   reorderShowcasePersons,
   updateShowcasePerson,
 } from "../../../src/db/repositories/showcase.repository";
@@ -50,6 +51,8 @@ CREATE TABLE showcase_items (
   deleted_at TEXT
 );
 INSERT INTO media_assets (id, asset_scope) VALUES (900, 'survey'), (901, 'survey'), (902, 'survey');
+CREATE INDEX idx_showcase_persons_public_cursor ON showcase_persons(created_at DESC, id DESC) WHERE deleted_at IS NULL AND published = 1;
+CREATE INDEX idx_showcase_persons_admin_cursor_all ON showcase_persons(created_at DESC, id DESC) WHERE deleted_at IS NULL;
 `;
 
 describe.skipIf(!sqliteD1Available)("showcase repository (real SQLite)", () => {
@@ -157,6 +160,23 @@ describe.skipIf(!sqliteD1Available)("showcase repository (real SQLite)", () => {
     expect(updated?.subtitle).toBeNull();
     expect(updated?.tags).toEqual(["插画"]);
     expect(updated?.published).toBe(true);
+  });
+
+  it("paginates 1000 people with keyset cursor without duplicates or omissions", async () => {
+    const db = createSqliteD1(SCHEMA);
+    for (let index = 0; index < 1000; index += 1) {
+      await createShowcasePerson(db, { name: `人物 ${index + 1}`, published: true });
+    }
+    const seen: number[] = [];
+    let cursor: { createdAt: string; id: number } | null = null;
+    for (let pageNumber = 0; pageNumber < 50; pageNumber += 1) {
+      const page = await listShowcasePersonsCursor(db, { publishedOnly: true, limit: 24, cursor });
+      seen.push(...page.persons.map((item) => item.id));
+      if (!page.hasMore) break;
+      cursor = { createdAt: page.nextCreatedAt!, id: page.nextId! };
+    }
+    expect(seen).toHaveLength(1000);
+    expect(new Set(seen).size).toBe(1000);
   });
 
   it("soft-deletes and restores a person with its artwork as one reversible unit", async () => {

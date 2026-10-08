@@ -4,7 +4,10 @@ import {
   getPublishedShowcaseItemById,
   getPublishedShowcasePersonIdForAsset,
   listShowcasePersons,
+  listShowcasePersonsCursor,
+  listShowcasePersonsLegacyCursor,
 } from "../db/repositories/showcase.repository";
+import { decodeShowcaseCursor, encodeShowcaseCursor } from "../services/keyset-cursor.service";
 import { toPublicShowcaseItem, toPublicShowcasePerson } from "../services/showcase.service";
 import { getMediaAssetById } from "../db/repositories/media.repository";
 import { buildMediaResponse } from "../services/media/media-serve.service";
@@ -32,14 +35,72 @@ export async function handleShowcaseApiRequest(request: Request, env: Env, url: 
   if (url.pathname !== "/api/showcase" && !url.pathname.startsWith("/api/showcase/")) return null;
 
   if (request.method === "GET" && url.pathname === "/api/showcase") {
-    // searchParams.get() returns null when the param is absent, and Number(null)
-    // is 0 — without the explicit null check the default page size collapses to 1.
+    const hasCursorParam = url.searchParams.has("cursor");
     const rawLimit = readIntParam(url, "limit");
+
+    if (hasCursorParam) {
+      if (rawLimit === null || rawLimit < 1 || rawLimit > 200) {
+        return fail(400, "invalid_limit", "limit 必须是 1-200 的整数");
+      }
+      const rawCursor = url.searchParams.get("cursor") ?? "";
+      const cursor = rawCursor ? await decodeShowcaseCursor(env.WEBHOOK_SECRET, rawCursor) : null;
+      if (rawCursor && !cursor) return fail(400, "invalid_cursor", "cursor 无效或已过期，请从第一页重新加载");
+      const page =
+        cursor?.mode === "legacy_feed"
+          ? await listShowcasePersonsLegacyCursor(env.DB, {
+              publishedOnly: true,
+              limit: rawLimit,
+              cursor,
+            })
+          : await listShowcasePersonsCursor(env.DB, {
+              publishedOnly: true,
+              limit: rawLimit,
+              cursor,
+            });
+      const nextCursor =
+        page.hasMore && page.nextCreatedAt && page.nextId
+          ? await encodeShowcaseCursor(
+              env.WEBHOOK_SECRET,
+              cursor?.mode === "legacy_feed"
+                ? {
+                    mode: "legacy_feed",
+                    createdAt: page.nextCreatedAt,
+                    id: page.nextId,
+                    featureRank: page.nextFeatureRank!,
+                    sortOrder: page.nextSortOrder!,
+                  }
+                : {
+                    mode: "created_at",
+                    createdAt: page.nextCreatedAt,
+                    id: page.nextId,
+                  },
+            )
+          : null;
+      return json({
+        items: page.persons.map((person) => toPublicShowcasePerson(person)),
+        limit: rawLimit,
+        nextCursor,
+      });
+    }
+
+    // Legacy offset mode remains byte-for-byte compatible for old cached SPAs;
+    // nextCursor is additive and ignored by those clients.
     const rawOffset = readIntParam(url, "offset");
     const limit = rawLimit !== null ? Math.min(200, Math.max(1, rawLimit)) : 100;
     const offset = rawOffset !== null ? Math.max(0, rawOffset) : 0;
     const { persons, total } = await listShowcasePersons(env.DB, { publishedOnly: true, limit, offset });
-    return json({ items: persons.map((person) => toPublicShowcasePerson(person)), total, limit, offset });
+    const last = persons.at(-1);
+    const nextCursor =
+      last && offset + persons.length < total
+        ? await encodeShowcaseCursor(env.WEBHOOK_SECRET, {
+            mode: "legacy_feed",
+            createdAt: last.createdAt,
+            id: last.id,
+            featureRank: last.featureRank,
+            sortOrder: last.sortOrder,
+          })
+        : null;
+    return json({ items: persons.map((person) => toPublicShowcasePerson(person)), total, limit, offset, nextCursor });
   }
 
   // 阅读全文：feed 只带预览，文字作品（文章/小说）在这里取完整正文。
