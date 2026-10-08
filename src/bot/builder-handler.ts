@@ -932,7 +932,7 @@ export async function handleBuilderMessage(ctx: BotContext, message: TelegramMes
         await setSurveyAccessCode(
           ctx.db,
           state.targetSurveyId,
-          await hashSurveyAccessCode(inputText),
+          await hashSurveyAccessCode(inputText, ctx.surveyCodePepper ?? ""),
           await encryptSurveyAccessCode(inputText, ctx.botToken),
         );
       }

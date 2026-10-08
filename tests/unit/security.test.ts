@@ -22,17 +22,26 @@ describe("isWebhookSecretValid", () => {
     expect(isWebhookSecretValid(undefined, "abc123")).toBe(false);
   });
 
-  it("hashes and verifies survey access codes", async () => {
-    const stored = await hashSurveyAccessCode("survey-pass");
+  it("creates salted v2 hashes and verifies them only with the matching pepper", async () => {
+    const stored = await hashSurveyAccessCode("survey-pass", "pepper-one");
 
-    expect(stored).toMatch(/^sha256:[0-9a-f]{64}$/);
-    await expect(verifySurveyAccessCode(stored, "survey-pass")).resolves.toBe(true);
-    await expect(verifySurveyAccessCode(stored, "wrong-pass")).resolves.toBe(false);
+    expect(stored).toMatch(/^sha256v2:[0-9a-f]{32}\$[0-9a-f]{64}$/);
+    await expect(verifySurveyAccessCode(stored, "survey-pass", "pepper-one")).resolves.toBe(true);
+    await expect(verifySurveyAccessCode(stored, "wrong-pass", "pepper-one")).resolves.toBe(false);
+    await expect(verifySurveyAccessCode(stored, "survey-pass", "pepper-two")).resolves.toBe(false);
+
+    const other = await hashSurveyAccessCode("survey-pass", "pepper-two");
+    expect(other).not.toBe(stored);
   });
 
-  it("accepts legacy plaintext survey access codes", async () => {
-    await expect(verifySurveyAccessCode("legacy-pass", "legacy-pass")).resolves.toBe(true);
-    await expect(verifySurveyAccessCode("legacy-pass", "wrong-pass")).resolves.toBe(false);
+  it("keeps sha256 legacy hashes and plaintext values verifiable", async () => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("legacy-hash"));
+    const legacyHash = `sha256:${[...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+
+    await expect(verifySurveyAccessCode(legacyHash, "legacy-hash", "ignored-pepper")).resolves.toBe(true);
+    await expect(verifySurveyAccessCode(legacyHash, "wrong-pass", "ignored-pepper")).resolves.toBe(false);
+    await expect(verifySurveyAccessCode("legacy-pass", "legacy-pass", "ignored-pepper")).resolves.toBe(true);
+    await expect(verifySurveyAccessCode("legacy-pass", "wrong-pass", "ignored-pepper")).resolves.toBe(false);
   });
 
   it("encrypts a viewable copy of a survey access code", async () => {

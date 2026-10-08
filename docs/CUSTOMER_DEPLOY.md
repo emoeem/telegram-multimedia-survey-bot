@@ -123,6 +123,25 @@ CLOUDFLARE_ACCOUNT_ID=xxx CLOUDFLARE_API_TOKEN=xxx \
 node scripts/deploy-customer.mjs --update-existing customer-deployments/<客户>
 ```
 
+### 访问密码升级
+
+新建问卷访问密码使用 `sha256v2:<salt$digest>` 格式，其中每个密码使用独立 16 字节随机 salt，并结合部署级 `SURVEY_CODE_PEPPER` 计算摘要。生产环境必须把 pepper 放在 Cloudflare Secret：
+
+```bash
+pnpm exec wrangler secret put SURVEY_CODE_PEPPER
+```
+
+迁移旧数据前先应用 `0073_survey_access_code_v2.sql`，再在仓库根目录执行：
+
+```bash
+SURVEY_CODE_PEPPER='生产 pepper' \
+pnpm exec node scripts/rehash-survey-access-codes.mjs
+```
+
+脚本会逐条打印升级进度，并统计 v2、明文、旧 `sha256:` 的数量。旧 `sha256:` 是单向摘要，无法从摘要本身恢复原密码；脚本会使用 `BOT_TOKEN` 解密数据库已有的 `access_code_encrypted` 副本并核对旧摘要后再升级。若某条旧摘要没有可验证的明文副本，脚本会跳过并以非零退出码结束，该问卷需要管理员重新设置访问密码后再迁移。
+
+升级期间 `sha256v2:`、`sha256:` 和遗留明文均可验证；只有新建/重新设置的访问密码强制使用 pepper。
+
 升级**不会**重建数据库、不换 Bot Token、不改 Webhook，只替换代码并迁移数据库，客户无感知。
 
 ## 六、安全说明

@@ -173,7 +173,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
     const code = typeof body?.code === "string" ? body.code : "";
-    const valid = await verifySurveyAccessCode(loaded.survey.accessCode, code);
+    const valid = await verifySurveyAccessCode(loaded.survey.accessCode, code, env.SURVEY_CODE_PEPPER ?? "");
     if (!valid) return fail(403, "invalid_access_code", "访问密码错误");
     const grant = await createSurveyAccessGrant(env.WEBHOOK_SECRET, surveyId);
     return json({ ok: true, grant });
@@ -198,7 +198,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (survey.accessCode) {
       const body = (await request.json().catch(() => null)) as { accessCode?: unknown } | null;
       const code = typeof body?.accessCode === "string" ? body.accessCode : "";
-      const valid = await verifySurveyAccessCode(survey.accessCode, code);
+      const valid = await verifySurveyAccessCode(survey.accessCode, code, env.SURVEY_CODE_PEPPER ?? "");
       if (!valid) return fail(403, "invalid_access_code", "访问密码错误");
     }
 

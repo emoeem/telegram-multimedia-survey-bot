@@ -112,7 +112,9 @@ export interface BotContext {
   submissionBotUrl?: string | null;
   /** Community invite shown in the welcome text; defaults to the hosted group. */
   communityGroupUrl?: string | null;
-  licenseServerUrl?: string;
+  /** Only populated on the vendor authorization center; customer instances use null. */
+  licenseServerUrl?: string | null;
+  surveyCodePepper?: string | undefined;
   licenseAdminEnabled?: boolean;
   browser?: BrowserWorker;
   webhookSecret?: string;

@@ -776,6 +776,7 @@ async function deploy(args, values) {
   await fs.mkdir(deploymentDir, { recursive: true });
   const manifestPath = path.join(deploymentDir, "deployment-manifest.json");
   const existingManifest = await readJsonIfExists(manifestPath);
+  const surveyCodePepper = existingManifest?.surveyCodePepperConfigured ? "" : randomBytes(32).toString("hex");
   const pendingLicensePath = path.join(deploymentDir, ".pending-license.json");
   const pendingLicense = await readJsonIfExists(pendingLicensePath);
   let licenseKey =
@@ -847,13 +848,14 @@ async function deploy(args, values) {
   await fs.writeFile(configPath, config, "utf8");
 
   const secretsPath = path.join(deploymentDir, ".customer-secrets.tmp");
-  const secrets = [botToken, licenseKey, webhookSecret, apiToken].filter(Boolean);
+  const secrets = [botToken, licenseKey, webhookSecret, apiToken, surveyCodePepper].filter(Boolean);
   try {
     await writeSecretsFile(secretsPath, {
       BOT_TOKEN: botToken,
       WEBHOOK_SECRET: webhookSecret,
       REMOTE_ACCESS_SECRET: remoteAccessSecret,
       ...(licenseKey ? { LICENSE_KEY: licenseKey } : {}),
+      ...(surveyCodePepper ? { SURVEY_CODE_PEPPER: surveyCodePepper } : {}),
     });
 
     await runCommand(["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath], {
@@ -926,6 +928,7 @@ async function deploy(args, values) {
       // gitignored — this file is the operator's local deployment record.
       adminPassword,
       remoteAccessSecret,
+      surveyCodePepperConfigured: true,
     });
     try {
       await fs.unlink(pendingLicensePath);
@@ -1009,22 +1012,40 @@ async function updateDeployment(args, values) {
     licenseCenterService,
   });
   await fs.writeFile(configPath, config, "utf8");
+  const surveyCodePepper = manifest.surveyCodePepperConfigured ? "" : randomBytes(32).toString("hex");
+  const secretsPath = path.join(deploymentDir, ".customer-secrets.tmp");
 
   console.log(`\n> 更新客户实例：${manifest.workerName}`);
   await runCommand(["wrangler", "d1", "migrations", "apply", "DB", "--remote", "--config", configPath], {
     cwd: args.projectDir,
     dryRun: args.dryRun,
   });
-  await runCommand(["wrangler", "deploy", "--config", configPath, "--keep-vars"], {
-    cwd: args.projectDir,
-    dryRun: args.dryRun,
-  });
-  if (!args.dryRun) {
-    await writeJson(manifestPath, {
-      ...manifest,
-      appVersion: APP_VERSION,
-      updatedAt: new Date().toISOString(),
+  if (surveyCodePepper) {
+    await writeSecretsFile(secretsPath, { SURVEY_CODE_PEPPER: surveyCodePepper });
+  }
+  const deployArgs = ["wrangler", "deploy", "--config", configPath, "--keep-vars"];
+  if (surveyCodePepper) deployArgs.push("--secrets-file", secretsPath);
+  try {
+    await runCommand(deployArgs, {
+      cwd: args.projectDir,
+      dryRun: args.dryRun,
     });
+    if (!args.dryRun) {
+      await writeJson(manifestPath, {
+        ...manifest,
+        appVersion: APP_VERSION,
+        updatedAt: new Date().toISOString(),
+        surveyCodePepperConfigured: true,
+      });
+    }
+  } finally {
+    if (surveyCodePepper) {
+      try {
+        await fs.unlink(secretsPath);
+      } catch {
+        // The temporary secret file may already have been removed.
+      }
+    }
   }
   console.log(`✅ ${manifest.workerName} 已更新到 ${APP_VERSION}（${manifest.workerUrl ?? "地址不变"}）`);
 }
