@@ -80,6 +80,33 @@ export function escapeMetaAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
 
+const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> = {
+  "/plaza": { title: "广场 · 问卷平台", description: "发现公开个人资料、树洞内容与社区问卷。" },
+  "/showcase": { title: "展示区 · 问卷平台", description: "沉浸式浏览创作者的公开个人展览与作品。" },
+  "/trial": { title: "挑战任务 · 问卷平台", description: "参与文字扮演挑战任务，查看成绩与排行榜。" },
+  "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与挑战记录。" },
+  "/auth": { title: "邮箱账号 · 问卷平台", description: "使用邮箱注册、登录或找回问卷平台账号。" },
+};
+
+function servePublicPageWithMeta(env: Env, request: Request, pathname: string): Promise<Response> {
+  const meta = PUBLIC_PAGE_META[pathname] ?? PUBLIC_PAGE_META["/plaza"]!;
+  const origin = new URL(request.url).origin;
+  const title = escapeMetaAttribute(meta.title);
+  const description = escapeMetaAttribute(meta.description);
+  const canonical = escapeMetaAttribute(origin + pathname);
+  const injectHead = [
+    '<meta name="description" content="' + description + '" />',
+    '<meta property="og:type" content="website" />',
+    '<meta property="og:title" content="' + title + '" />',
+    '<meta property="og:description" content="' + description + '" />',
+    '<meta property="og:url" content="' + canonical + '" />',
+    '<meta name="twitter:card" content="summary" />',
+    '<meta name="twitter:title" content="' + title + '" />',
+    '<meta name="twitter:description" content="' + description + '" />',
+  ].join("\n    ");
+  return serveHtmlAsset(env, request, "/survey.html", injectHead);
+}
+
 async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId: number): Promise<Response> {
   let injectHead: string | undefined;
   try {
@@ -379,29 +406,29 @@ export default {
     }
 
     if (url.pathname === "/plaza" || url.pathname.startsWith("/plaza/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
+      return servePublicPageWithMeta(env, request, "/plaza");
     }
 
     // Showcase (展示区): the immersive person gallery shares the survey SPA
     // bundle and picks its screen from the pathname.
     if (url.pathname === "/showcase" || url.pathname.startsWith("/showcase/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
+      return servePublicPageWithMeta(env, request, "/showcase");
     }
 
     // Web task system player page (/trial) shares the survey SPA bundle; the
     // page itself decides between the survey list and the trial screen.
     if (url.pathname === "/trial" || url.pathname.startsWith("/trial/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
+      return servePublicPageWithMeta(env, request, "/trial");
     }
 
     // Email auth pages share the survey SPA bundle as well.
     // "我的" 个人中心 shares the survey SPA bundle as well.
     if (url.pathname === "/me" || url.pathname.startsWith("/me/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
+      return servePublicPageWithMeta(env, request, "/me");
     }
 
     if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
+      return servePublicPageWithMeta(env, request, "/auth");
     }
 
     if (url.pathname.startsWith("/api/me/")) {
