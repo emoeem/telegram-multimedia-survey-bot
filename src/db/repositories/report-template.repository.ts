@@ -7,6 +7,7 @@ interface ReportTemplateRow {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 }
 
 function mapRow(row: ReportTemplateRow): { id: string; name: string; spec: ReportTemplateSpec } {
@@ -22,8 +23,9 @@ export async function listCustomReportTemplates(
 ): Promise<Array<{ id: string; name: string; spec: ReportTemplateSpec }>> {
   const result = await db
     .prepare(
-      `SELECT id, name, spec_json, created_by, created_at, updated_at
+      `SELECT id, name, spec_json, created_by, created_at, updated_at, deleted_at
        FROM report_templates
+       WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, id ASC`,
     )
     .all<ReportTemplateRow>();
@@ -36,8 +38,8 @@ export async function getCustomReportTemplate(
 ): Promise<{ id: string; name: string; spec: ReportTemplateSpec } | null> {
   const row = await db
     .prepare(
-      `SELECT id, name, spec_json, created_by, created_at, updated_at
-       FROM report_templates WHERE id = ? LIMIT 1`,
+      `SELECT id, name, spec_json, created_by, created_at, updated_at, deleted_at
+       FROM report_templates WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
     )
     .bind(id)
     .first<ReportTemplateRow>();
@@ -56,7 +58,8 @@ export async function upsertCustomReportTemplate(
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          spec_json = excluded.spec_json,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         deleted_at = NULL`,
     )
     .bind(input.id, input.name, JSON.stringify(input.spec), input.createdBy, timestamp, timestamp)
     .run();
@@ -65,4 +68,24 @@ export async function upsertCustomReportTemplate(
 export async function deleteCustomReportTemplate(db: D1Database, id: string): Promise<boolean> {
   const result = await db.prepare("DELETE FROM report_templates WHERE id = ?").bind(id).run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function softDeleteCustomReportTemplate(
+  db: D1Database,
+  id: string,
+  now = new Date().toISOString(),
+): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE report_templates SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(now, now, id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+export async function restoreCustomReportTemplate(db: D1Database, id: string): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE report_templates SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
+    .bind(new Date().toISOString(), id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
 }

@@ -8,6 +8,8 @@ import {
   listPlazaPosts,
   listPlazaTopics,
   setPlazaPostStatus,
+  softDeletePlazaPost,
+  restorePlazaPost,
 } from "../../../src/db/repositories/plaza-post.repository";
 import { createSqliteD1, sqliteD1Available } from "../../helpers/sqlite-d1";
 
@@ -34,7 +36,8 @@ CREATE TABLE plaza_posts (
   kind TEXT NOT NULL DEFAULT 'text',
   payload_json TEXT,
   image_asset_id INTEGER,
-  topic TEXT
+  topic TEXT,
+  deleted_at TEXT
 );
 CREATE TABLE plaza_post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +88,16 @@ describe.skipIf(!sqliteD1Available)("plaza post repository (real SQLite)", () =>
     await setPlazaPostStatus(db, firstPostId as number, "removed");
     expect((await listPlazaTopics(db)).find((entry) => entry.topic === "夜话")?.count).toBe(1);
     expect((await listPlazaPosts(db, { limit: 10, offset: 0, view: "published", topic: "夜话" })).total).toBe(1);
+  });
+
+  it("soft-deletes a post from every public view and restores it", async () => {
+    const db = createSqliteD1(SCHEMA);
+    const post = await createPlazaPost(db, { userId: 7, content: "可恢复树洞", anonymous: true, topic: "回收站" });
+    expect(await softDeletePlazaPost(db, post.id, "2026-10-01T00:00:00.000Z")).toBe(true);
+    expect((await listPlazaPosts(db, { limit: 10, offset: 0, view: "published" })).total).toBe(0);
+    expect((await listPlazaTopics(db)).find((item) => item.topic === "回收站")).toBeUndefined();
+    expect(await restorePlazaPost(db, post.id)).toBe(true);
+    expect((await listPlazaPosts(db, { limit: 10, offset: 0, view: "published" })).total).toBe(1);
   });
 
   it("only serves an image while one of its posts is published", async () => {

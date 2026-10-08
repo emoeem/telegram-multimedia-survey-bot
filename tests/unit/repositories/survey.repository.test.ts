@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSurvey, getSurveyById, listSurveysByOwner } from "../../../src/db/repositories/survey.repository";
+import {
+  createSurvey,
+  getSurveyById,
+  listSurveysByOwner,
+  restoreSurvey,
+  softDeleteSurvey,
+} from "../../../src/db/repositories/survey.repository";
 
 interface StatementMock {
   bind: ReturnType<typeof vi.fn>;
@@ -15,7 +21,7 @@ function createD1Mock(input: { firstRow?: unknown; allRows?: unknown[]; lastRowI
     first: vi.fn(async () => input.firstRow ?? null),
     run: vi.fn(async () => ({
       success: true,
-      meta: { last_row_id: input.lastRowId ?? 1 },
+      meta: { last_row_id: input.lastRowId ?? 1, changes: 1 },
     })),
     all: vi.fn(async () => ({ results: input.allRows ?? [] })),
   };
@@ -63,6 +69,14 @@ describe("survey repository", () => {
     const db = createD1Mock({ firstRow: null });
 
     await expect(getSurveyById(db, 123)).resolves.toBeNull();
+  });
+
+  it("soft-deletes and restores without losing the survey row", async () => {
+    const db = createD1Mock({});
+    expect(await softDeleteSurvey(db, 42, "2026-10-01T00:00:00.000Z")).toBe(true);
+    expect(await restoreSurvey(db, 42)).toBe(true);
+    const sql = db.prepare as unknown as ReturnType<typeof vi.fn>;
+    expect(sql).toHaveBeenCalledWith(expect.stringContaining("deleted_at"));
   });
 
   it("lists surveys for an owner", async () => {

@@ -1031,6 +1031,17 @@ export interface PlazaPostListData {
   offset: number;
 }
 
+export interface TrashItem {
+  kind: "survey" | "showcase_person" | "showcase_item" | "plaza_post" | "report_template";
+  id: string;
+  title: string;
+  deletedAt: string;
+}
+
+export function fetchAdminTrash(): Promise<{ items: TrashItem[]; retentionDays: number }> {
+  return api<{ items: TrashItem[]; retentionDays: number }>("/api/admin/trash?limit=100");
+}
+
 export function fetchPlazaPosts(view: "all" | "published", offset: number, limit = 20): Promise<PlazaPostListData> {
   const query = new URLSearchParams({ view, offset: String(offset), limit: String(limit) });
   return api<PlazaPostListData>(`/api/admin/plaza/posts?${query}`);
@@ -1038,6 +1049,14 @@ export function fetchPlazaPosts(view: "all" | "published", offset: number, limit
 
 export function setPlazaPostStatus(id: number, status: "published" | "removed"): Promise<{ ok: boolean }> {
   return apiSend("POST", "/api/admin/plaza/posts/status", { id, status });
+}
+
+export function deletePlazaPost(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", "/api/admin/plaza/posts/" + id);
+}
+
+export function restorePlazaPost(id: number): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/trash", { items: [{ kind: "plaza_post", id }] });
 }
 
 export interface PlazaCommentSummary {
@@ -1214,6 +1233,10 @@ export function deleteShowcasePerson(id: number): Promise<{ ok: boolean }> {
   return apiSend("DELETE", `/api/admin/showcase/persons/${id}`);
 }
 
+export function restoreShowcasePerson(id: number): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/trash", { items: [{ kind: "showcase_person", id }] });
+}
+
 export function reorderShowcasePersons(ids: number[]): Promise<{ ok: boolean }> {
   return apiSend("POST", "/api/admin/showcase/persons/reorder", { ids });
 }
@@ -1234,6 +1257,18 @@ export function updateShowcaseItem(
 
 export function deleteShowcaseItem(id: number): Promise<{ ok: boolean }> {
   return apiSend("DELETE", `/api/admin/showcase/items/${id}`);
+}
+
+export function restoreShowcaseItem(id: number): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/trash", { items: [{ kind: "showcase_item", id }] });
+}
+
+export function deleteReportTemplate(id: string): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", "/api/admin/report-templates/" + encodeURIComponent(id));
+}
+
+export function restoreReportTemplate(id: string): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/admin/trash", { items: [{ kind: "report_template", id }] });
 }
 
 export function uploadShowcaseMedia(file: File): Promise<{ mediaAssetId: number; url: string }> {

@@ -44,7 +44,8 @@ export async function getSurveyPortfolioStatistics(db: D1Database): Promise<Surv
               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS total_completed
        FROM survey_responses
        GROUP BY survey_id
-     ) r ON r.survey_id = s.id`,
+     ) r ON r.survey_id = s.id
+     WHERE s.deleted_at IS NULL`,
     )
     .first<{
       total_surveys: number;
@@ -69,7 +70,9 @@ export async function listSurveyPerformance(
 ): Promise<{ items: SurveyPerformance[]; total: number }> {
   const normalizedSearch = search.trim().slice(0, 80);
   const searchPattern = `%${escapeLikeQuery(normalizedSearch)}%`;
-  const where = normalizedSearch ? "WHERE s.title LIKE ? ESCAPE '\\' OR CAST(s.id AS TEXT) = ?" : "";
+  const where = normalizedSearch
+    ? "WHERE s.deleted_at IS NULL AND (s.title LIKE ? ESCAPE '\\' OR CAST(s.id AS TEXT) = ?)"
+    : "WHERE s.deleted_at IS NULL";
   const bindings = normalizedSearch ? [searchPattern, normalizedSearch, limit, offset] : [limit, offset];
   const result = await db
     .prepare(

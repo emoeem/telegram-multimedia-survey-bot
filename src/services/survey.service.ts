@@ -15,7 +15,9 @@ import {
 } from "../db/repositories/question.repository";
 
 export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
-  const result = await db.prepare("SELECT * FROM surveys WHERE status = 'published' ORDER BY id DESC").all();
+  const result = await db
+    .prepare("SELECT * FROM surveys WHERE status = 'published' AND deleted_at IS NULL ORDER BY id DESC")
+    .all();
 
   return (result.results ?? []).map((row) => {
     const surveyRow = row as Record<string, unknown>;

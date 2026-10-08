@@ -34,6 +34,7 @@ interface ShowcasePersonRow {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 }
 
 interface ShowcaseItemRow {
@@ -49,6 +50,7 @@ interface ShowcaseItemRow {
   featured: number;
   sort_order: number;
   created_at: string;
+  deleted_at: string | null;
 }
 
 export interface ShowcasePersonInput {
@@ -173,10 +175,10 @@ function mapItem(row: ShowcaseItemRow): ShowcaseItem {
 const PERSON_COLUMNS = `id, name, subtitle, description, accent_color, background_from, background_to,
   background_media_id, illustration_media_id, avatar_media_id, background_url, illustration_url,
   tags_json, links_json, survey_id, response_id, owner_user_id, feature_rank, published, sort_order,
-  created_by, created_at, updated_at`;
+  created_by, created_at, updated_at, deleted_at`;
 
 const ITEM_COLUMNS = `id, person_id, title, description, kind, cover_media_id, cover_url, media_asset_id,
-  url, featured, sort_order, created_at`;
+  url, featured, sort_order, created_at, deleted_at`;
 
 /** One query for every item of the page, keyed by person id. */
 async function listItemsByPersonIds(db: D1Database, personIds: number[]): Promise<Map<number, ShowcaseItem[]>> {
@@ -187,9 +189,10 @@ async function listItemsByPersonIds(db: D1Database, personIds: number[]): Promis
       // Every column is table-qualified: json_each also exposes an `id`, so a
       // bare ORDER BY id is an ambiguous-column error at runtime.
       `SELECT i.id, i.person_id, i.title, i.description, i.kind, i.cover_media_id, i.cover_url, i.media_asset_id, i.url,
-              i.featured, i.sort_order, i.created_at
+              i.featured, i.sort_order, i.created_at, i.deleted_at
        FROM showcase_items i
        JOIN json_each(?) AS r ON r.value = i.person_id
+       WHERE i.deleted_at IS NULL
        ORDER BY i.person_id ASC, i.sort_order ASC, i.id ASC`,
     )
     .bind(JSON.stringify(personIds))
@@ -208,6 +211,7 @@ export async function listShowcasePersons(
 ): Promise<{ persons: ShowcasePersonWithItems[]; total: number }> {
   const conditions: string[] = [];
   const binds: unknown[] = [];
+  conditions.push("deleted_at IS NULL");
   if (options.publishedOnly) conditions.push("published = 1");
   if (options.ownerUserId !== undefined) {
     conditions.push("owner_user_id = ?");
@@ -245,7 +249,7 @@ export async function getShowcasePersonByResponseId(
   responseId: number,
 ): Promise<ShowcasePersonWithItems | null> {
   const row = await db
-    .prepare(`SELECT ${PERSON_COLUMNS} FROM showcase_persons WHERE response_id = ? LIMIT 1`)
+    .prepare(`SELECT ${PERSON_COLUMNS} FROM showcase_persons WHERE response_id = ? AND deleted_at IS NULL LIMIT 1`)
     .bind(responseId)
     .first<ShowcasePersonRow>();
   if (!row) return null;
@@ -255,7 +259,7 @@ export async function getShowcasePersonByResponseId(
 
 export async function getShowcasePersonById(db: D1Database, id: number): Promise<ShowcasePersonWithItems | null> {
   const row = await db
-    .prepare(`SELECT ${PERSON_COLUMNS} FROM showcase_persons WHERE id = ? LIMIT 1`)
+    .prepare(`SELECT ${PERSON_COLUMNS} FROM showcase_persons WHERE id = ? AND deleted_at IS NULL LIMIT 1`)
     .bind(id)
     .first<ShowcasePersonRow>();
   if (!row) return null;
@@ -271,10 +275,10 @@ export async function getPublishedShowcaseItemById(
   const row = await db
     .prepare(
       `SELECT i.id, i.person_id, i.title, i.description, i.kind, i.cover_media_id, i.cover_url, i.media_asset_id, i.url,
-              i.featured, i.sort_order, i.created_at
+              i.featured, i.sort_order, i.created_at, i.deleted_at
          FROM showcase_items i
          JOIN showcase_persons p ON p.id = i.person_id
-        WHERE i.id = ? AND p.published = 1
+        WHERE i.id = ? AND i.deleted_at IS NULL AND p.published = 1 AND p.deleted_at IS NULL
         LIMIT 1`,
     )
     .bind(id)
@@ -284,7 +288,7 @@ export async function getPublishedShowcaseItemById(
 
 export async function getShowcaseItemById(db: D1Database, id: number): Promise<ShowcaseItem | null> {
   const row = await db
-    .prepare(`SELECT ${ITEM_COLUMNS} FROM showcase_items WHERE id = ? LIMIT 1`)
+    .prepare(`SELECT ${ITEM_COLUMNS} FROM showcase_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`)
     .bind(id)
     .first<ShowcaseItemRow>();
   return row ? mapItem(row) : null;
@@ -387,6 +391,40 @@ export async function deleteShowcasePerson(db: D1Database, id: number): Promise<
   return Number(result.meta.changes ?? 0) > 0;
 }
 
+export async function softDeleteShowcasePerson(
+  db: D1Database,
+  id: number,
+  now = new Date().toISOString(),
+): Promise<boolean> {
+  const person = await db
+    .prepare("SELECT id FROM showcase_persons WHERE id = ? AND deleted_at IS NULL LIMIT 1")
+    .bind(id)
+    .first();
+  if (!person) return false;
+  await db.batch([
+    db
+      .prepare("UPDATE showcase_persons SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+      .bind(now, now, id),
+    db.prepare("UPDATE showcase_items SET deleted_at = ? WHERE person_id = ? AND deleted_at IS NULL").bind(now, id),
+  ]);
+  return true;
+}
+
+export async function restoreShowcasePerson(db: D1Database, id: number): Promise<boolean> {
+  const person = await db
+    .prepare("SELECT id FROM showcase_persons WHERE id = ? AND deleted_at IS NOT NULL LIMIT 1")
+    .bind(id)
+    .first();
+  if (!person) return false;
+  await db.batch([
+    db
+      .prepare("UPDATE showcase_persons SET deleted_at = NULL, updated_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), id),
+    db.prepare("UPDATE showcase_items SET deleted_at = NULL WHERE person_id = ? AND deleted_at IS NOT NULL").bind(id),
+  ]);
+  return true;
+}
+
 /** Applies a drag-reorder in one batch; ids not listed keep their previous order. */
 export async function reorderShowcasePersons(db: D1Database, orderedIds: number[]): Promise<void> {
   if (orderedIds.length === 0) return;
@@ -459,6 +497,26 @@ export async function deleteShowcaseItem(db: D1Database, id: number): Promise<bo
   return Number(result.meta.changes ?? 0) > 0;
 }
 
+export async function softDeleteShowcaseItem(
+  db: D1Database,
+  id: number,
+  now = new Date().toISOString(),
+): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE showcase_items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(now, id)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
+export async function restoreShowcaseItem(db: D1Database, id: number): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE showcase_items SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL")
+    .bind(id)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
 /**
  * Authorization boundary for /api/showcase/media/:id: an asset is public only
  * while a PUBLISHED person (or one of their items) references it. Unpublishing
@@ -482,7 +540,7 @@ export async function getPublishedShowcasePersonIdForAsset(
       `SELECT p.id personId
        FROM showcase_items i
        JOIN showcase_persons p ON p.id = i.person_id
-       WHERE p.published = 1 AND (i.cover_media_id = ? OR i.media_asset_id = ?)
+       WHERE p.published = 1 AND p.deleted_at IS NULL AND i.deleted_at IS NULL AND (i.cover_media_id = ? OR i.media_asset_id = ?)
        LIMIT 1`,
     )
     .bind(mediaAssetId, mediaAssetId)
@@ -492,8 +550,8 @@ export async function getPublishedShowcasePersonIdForAsset(
 
 export async function countShowcasePersons(db: D1Database): Promise<{ total: number; published: number }> {
   const rows = (await db.batch([
-    db.prepare("SELECT COUNT(*) AS count FROM showcase_persons"),
-    db.prepare("SELECT COUNT(*) AS count FROM showcase_persons WHERE published = 1"),
+    db.prepare("SELECT COUNT(*) AS count FROM showcase_persons WHERE deleted_at IS NULL"),
+    db.prepare("SELECT COUNT(*) AS count FROM showcase_persons WHERE deleted_at IS NULL AND published = 1"),
   ])) as [D1Result<{ count: number }>, D1Result<{ count: number }>];
   return {
     total: Number(rows[0].results?.[0]?.count ?? 0),

@@ -83,16 +83,16 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const [counts, recent, responses, deliveries, recentActions] = (await env.DB.batch([
       env.DB.prepare(
         `SELECT (SELECT COUNT(*) FROM users) users,
-                (SELECT COUNT(*) FROM surveys${ownerClause}) surveys,
-                (SELECT COUNT(*) FROM surveys${ownerClause ? ownerClause + " AND" : " WHERE"} status='published') publishedSurveys,
-                (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id${isAdmin ? "" : " WHERE s.owner_id = ?"}) responses,
+                (SELECT COUNT(*) FROM surveys${ownerClause ? ownerClause + " AND deleted_at IS NULL" : " WHERE deleted_at IS NULL"}) surveys,
+                (SELECT COUNT(*) FROM surveys${ownerClause ? ownerClause + " AND" : " WHERE"} deleted_at IS NULL AND status='published') publishedSurveys,
+                (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id WHERE s.deleted_at IS NULL${isAdmin ? "" : " AND s.owner_id = ?"}) responses,
                 (SELECT COUNT(*) FROM survey_responses r JOIN surveys s ON s.id=r.survey_id
-                 WHERE date(r.started_at, '${DASHBOARD_TZ_OFFSET}') = date('now', '${DASHBOARD_TZ_OFFSET}')${
+                 WHERE s.deleted_at IS NULL AND date(r.started_at, '${DASHBOARD_TZ_OFFSET}') = date('now', '${DASHBOARD_TZ_OFFSET}')${
                    isAdmin ? "" : " AND s.owner_id = ?"
                  }) todayResponses`,
       ).bind(...bind, ...bind, ...bind, ...bind),
       env.DB.prepare(
-        `SELECT s.id,s.title,s.status,s.updated_at updatedAt FROM surveys s${ownerClause} ORDER BY s.updated_at DESC LIMIT 5`,
+        `SELECT s.id,s.title,s.status,s.updated_at updatedAt FROM surveys s${ownerClause ? ownerClause + " AND s.deleted_at IS NULL" : " WHERE s.deleted_at IS NULL"} ORDER BY s.updated_at DESC LIMIT 5`,
       ).bind(...bind),
       env.DB.prepare(
         `SELECT r.id,r.survey_id surveyId,r.status,r.completed_at completedAt,r.updated_at updatedAt,
@@ -101,7 +101,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
          FROM survey_responses r
          JOIN surveys s ON s.id=r.survey_id
          LEFT JOIN users u ON u.id=r.user_id
-         ${isAdmin ? "" : "WHERE s.owner_id = ?"}
+         WHERE s.deleted_at IS NULL${isAdmin ? "" : " AND s.owner_id = ?"}
          ORDER BY r.updated_at DESC LIMIT 5`,
       ).bind(...(isAdmin ? [] : [user.id])),
       env.DB.prepare(
@@ -109,7 +109,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
          FROM report_deliveries rd
          JOIN survey_responses r ON r.id = rd.response_id
          JOIN surveys s ON s.id = r.survey_id
-         ${isAdmin ? "" : "WHERE s.owner_id = ?"}
+         WHERE s.deleted_at IS NULL${isAdmin ? "" : " AND s.owner_id = ?"}
          GROUP BY rd.status`,
       ).bind(...(isAdmin ? [] : [user.id])),
       env.DB.prepare(
@@ -171,7 +171,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const pageSize = Math.min(50, positiveInteger(url.searchParams.get("pageSize"), 20));
     const offset = (page - 1) * pageSize;
 
-    const conditions: string[] = [isAdmin ? "1=1" : "s.owner_id = ?"];
+    const conditions: string[] = ["s.deleted_at IS NULL", ...(isAdmin ? [] : ["s.owner_id = ?"])];
     const binds: unknown[] = [];
     if (!isAdmin) binds.push(user.id);
     if (status) {
@@ -264,7 +264,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
     const offset = (page - 1) * pageSize;
-    const conditions = [isAdmin ? "1=1" : "s.owner_id = ?"];
+    const conditions = ["s.deleted_at IS NULL", ...(isAdmin ? [] : ["s.owner_id = ?"])];
     const binds: unknown[] = isAdmin ? [] : [user.id];
     if (search) {
       conditions.push("(lower(s.title) LIKE ? OR lower(COALESCE(s.description,'')) LIKE ?)");
@@ -282,7 +282,9 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         `SELECT s.id,s.title,s.description,s.status,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
       ).bind(...binds, pageSize, offset),
       env.DB.prepare(`SELECT COUNT(*) count FROM surveys s WHERE ${where}`).bind(...binds),
-      env.DB.prepare(`SELECT status, COUNT(*) count FROM surveys${ownerClause} GROUP BY status`).bind(...summaryBinds),
+      env.DB.prepare(
+        `SELECT status, COUNT(*) count FROM surveys${ownerClause ? ownerClause + " AND deleted_at IS NULL" : " WHERE deleted_at IS NULL"} GROUP BY status`,
+      ).bind(...summaryBinds),
     ])) as [D1Result, D1Result, D1Result];
     const total = Number((count.results?.[0] as { count?: number })?.count ?? 0);
     const statusSummary = { draft: 0, published: 0, closed: 0, archived: 0 };
@@ -990,7 +992,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
   if (match) {
     const id = Number(match[1]);
     const survey = await env.DB.prepare(
-      "SELECT s.*, u.username, u.first_name firstName, COALESCE(m.url, NULL) coverUrl, (SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id AND r.status='completed') completedCount FROM surveys s JOIN users u ON u.id=s.owner_id LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE s.id=?",
+      "SELECT s.*, u.username, u.first_name firstName, COALESCE(m.url, NULL) coverUrl, (SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount, (SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id AND r.status='completed') completedCount FROM surveys s JOIN users u ON u.id=s.owner_id LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE s.id=? AND s.deleted_at IS NULL",
     )
       .bind(id)
       .first<Record<string, unknown>>();

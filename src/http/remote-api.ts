@@ -59,7 +59,9 @@ function json(body: unknown, status: number, headers: Record<string, string>): R
 function pageParams(url: URL): { limit: number; offset: number } {
   const rawLimit = Number(url.searchParams.get("limit") ?? DEFAULT_PAGE_SIZE);
   const rawOffset = Number(url.searchParams.get("offset") ?? 0);
-  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+  const limit = Number.isFinite(rawLimit)
+    ? Math.min(Math.max(Math.trunc(rawLimit), 1), MAX_PAGE_SIZE)
+    : DEFAULT_PAGE_SIZE;
   const offset = Number.isFinite(rawOffset) ? Math.min(Math.max(Math.trunc(rawOffset), 0), 100_000) : 0;
   return { limit, offset };
 }
@@ -96,7 +98,7 @@ export async function handleRemoteApiRequest(request: Request, env: RemoteApiEnv
   if (url.pathname === "/api/remote/summary") {
     const row = await env.DB.prepare(
       `SELECT
-         (SELECT COUNT(*) FROM surveys) AS surveys,
+         (SELECT COUNT(*) FROM surveys WHERE deleted_at IS NULL) AS surveys,
          (SELECT COUNT(*) FROM survey_responses) AS responses,
          (SELECT COUNT(*) FROM survey_responses WHERE status = 'completed') AS completed,
          (SELECT COUNT(*) FROM users) AS users`,
@@ -132,14 +134,16 @@ export async function handleRemoteApiRequest(request: Request, env: RemoteApiEnv
       bindings.push(status);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-    const total = await env.DB.prepare(`SELECT COUNT(*) AS total FROM survey_responses r ${where}`)
+    const total = await env.DB.prepare(
+      `SELECT COUNT(*) AS total FROM survey_responses r JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL ${where}`,
+    )
       .bind(...bindings)
       .first<{ total: number }>();
     const rows = await env.DB.prepare(
       `SELECT r.id, r.survey_id surveyId, r.user_id userId, r.status, r.created_at createdAt,
               r.completed_at completedAt, s.title surveyTitle, u.username, u.first_name firstName
        FROM survey_responses r
-       LEFT JOIN surveys s ON s.id = r.survey_id
+       JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL
        LEFT JOIN users u ON u.id = r.user_id
        ${where}
        ORDER BY r.id DESC LIMIT ? OFFSET ?`,
@@ -155,7 +159,7 @@ export async function handleRemoteApiRequest(request: Request, env: RemoteApiEnv
     const response = await env.DB.prepare(
       `SELECT r.id, r.survey_id surveyId, r.user_id userId, r.status, r.created_at createdAt,
               r.completed_at completedAt, s.title surveyTitle
-       FROM survey_responses r LEFT JOIN surveys s ON s.id = r.survey_id WHERE r.id = ?`,
+       FROM survey_responses r JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL WHERE r.id = ?`,
     )
       .bind(responseId)
       .first<Record<string, unknown>>();

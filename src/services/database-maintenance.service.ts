@@ -3,6 +3,11 @@ import { telegramUpdateDedupCutoff } from "./update-dedup.service";
 export interface DatabaseMaintenanceSummary {
   expiredResponses: number;
   expiredSurveyDrafts: number;
+  expiredDeletedSurveys: number;
+  expiredDeletedShowcasePeople: number;
+  expiredDeletedShowcaseItems: number;
+  expiredDeletedPlazaPosts: number;
+  expiredDeletedReportTemplates: number;
   expiredTemplateDrafts: number;
   expiredGeneratorDrafts: number;
   expiredPreviewAssets: number;
@@ -335,11 +340,7 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
   return (result.results ?? []).map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
 }
 
-async function deleteOrphanMediaAssets(
-  db: D1Database,
-  before: string,
-  shouldStop: () => boolean,
-): Promise<number> {
+async function deleteOrphanMediaAssets(db: D1Database, before: string, shouldStop: () => boolean): Promise<number> {
   const candidates = await findOrphanMediaCandidates(db, before);
   if (candidates.length === 0) return 0;
   const referencedInJson = new Set<number>([
@@ -360,6 +361,7 @@ async function deleteOrphanMediaAssets(
  */
 export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): Promise<DatabaseMaintenanceSummary> {
   const staleResponseBefore = cutoff(30, now);
+  const softDeleteBefore = cutoff(30, now);
   const draftBefore = cutoff(90, now);
   const previewBefore = cutoff(7, now);
   const generatedBefore = cutoff(30, now);
@@ -372,6 +374,11 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
   const summary: DatabaseMaintenanceSummary = {
     expiredResponses: 0,
     expiredSurveyDrafts: 0,
+    expiredDeletedSurveys: 0,
+    expiredDeletedShowcasePeople: 0,
+    expiredDeletedShowcaseItems: 0,
+    expiredDeletedPlazaPosts: 0,
+    expiredDeletedReportTemplates: 0,
     expiredTemplateDrafts: 0,
     expiredGeneratorDrafts: 0,
     expiredPreviewAssets: 0,
@@ -400,6 +407,52 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
        AND updated_at < ?`,
           )
           .bind(staleResponseBefore),
+      );
+    },
+    async () => {
+      // Soft-deleted product content is retained for exactly 30 days. Each step is bounded.
+      summary.expiredDeletedShowcaseItems = await changes(
+        scoped
+          .prepare(
+            `DELETE FROM showcase_items WHERE id IN (SELECT id FROM showcase_items WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT 50)`,
+          )
+          .bind(softDeleteBefore),
+      );
+    },
+    async () => {
+      summary.expiredDeletedShowcasePeople = await changes(
+        scoped
+          .prepare(
+            `DELETE FROM showcase_persons WHERE id IN (SELECT id FROM showcase_persons WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT 50)`,
+          )
+          .bind(softDeleteBefore),
+      );
+    },
+    async () => {
+      summary.expiredDeletedSurveys = await changes(
+        scoped
+          .prepare(
+            `DELETE FROM surveys WHERE id IN (SELECT id FROM surveys WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT 50)`,
+          )
+          .bind(softDeleteBefore),
+      );
+    },
+    async () => {
+      summary.expiredDeletedPlazaPosts = await changes(
+        scoped
+          .prepare(
+            `DELETE FROM plaza_posts WHERE id IN (SELECT id FROM plaza_posts WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT 50)`,
+          )
+          .bind(softDeleteBefore),
+      );
+    },
+    async () => {
+      summary.expiredDeletedReportTemplates = await changes(
+        scoped
+          .prepare(
+            `DELETE FROM report_templates WHERE id IN (SELECT id FROM report_templates WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT 50)`,
+          )
+          .bind(softDeleteBefore),
       );
     },
     async () => {

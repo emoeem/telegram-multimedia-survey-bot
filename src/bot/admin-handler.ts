@@ -534,7 +534,7 @@ async function sendCreatorTrialDetails(ctx: BotContext, chatId: number, internal
     .prepare(
       `SELECT COUNT(*) AS total, SUM(CASE WHEN s.status = 'published' THEN 1 ELSE 0 END) AS published,
             (SELECT COUNT(*) FROM survey_responses r JOIN surveys rs ON rs.id = r.survey_id WHERE rs.owner_id = ?) AS responses
-     FROM surveys s WHERE s.owner_id = ?`,
+     FROM surveys s WHERE s.owner_id = ? AND s.deleted_at IS NULL`,
     )
     .bind(grant.userId, grant.userId)
     .first<{ total: number; published: number | null; responses: number }>();
@@ -614,7 +614,8 @@ async function showAdminSurveyDirectory(
                 SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress
          FROM survey_responses
          GROUP BY survey_id
-       ) r ON r.survey_id = s.id`,
+       ) r ON r.survey_id = s.id
+       WHERE s.deleted_at IS NULL`,
           )
           .first<{ zero_completed: number | null; in_progress: number | null }>()
       : null;

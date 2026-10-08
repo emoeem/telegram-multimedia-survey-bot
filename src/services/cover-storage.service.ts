@@ -15,7 +15,7 @@ export async function migrateDataUrlCoversToKv(db: D1Database, env: { MEDIA_KV: 
       `SELECT m.id, m.url, m.mime_type mimeType, m.file_name fileName,
               m.width, m.height
        FROM media_assets m
-       JOIN surveys s ON s.cover_media_id = m.id
+       JOIN surveys s ON s.cover_media_id = m.id AND s.deleted_at IS NULL
        WHERE m.storage_kind = 'url' AND m.url LIKE 'data:%'`,
     )
     .all<{

@@ -19,6 +19,7 @@ interface FakeDbOptions {
 function createMaintenanceDb(options: FakeDbOptions = {}) {
   const statements: string[] = [];
   const deleted: number[] = [];
+  const runBinds: unknown[][] = [];
   const presentIndexes = new Set(options.indexes ?? []);
   const db = {
     prepare: vi.fn((sql: string) => {
@@ -46,6 +47,7 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
           return { results: [], meta };
         }),
         run: vi.fn(async () => {
+          runBinds.push([...bound]);
           if (sql.startsWith("DELETE FROM media_assets WHERE id = ?")) {
             deleted.push(Number(bound[0]));
           }
@@ -60,7 +62,7 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
       return statement;
     }),
   } as unknown as D1Database;
-  return { db, statements, deleted };
+  return { db, statements, deleted, runBinds };
 }
 
 describe("database maintenance", () => {
@@ -91,6 +93,19 @@ describe("database maintenance", () => {
 
   // 树洞配图与展示区图片只被 plaza_posts / showcase_* 引用。反连接里漏掉它们，
   // 7 天前的图就会被当成孤儿、连同 KV 字节一起删掉，帖子与展示页直接变破图。
+  it("uses the injected clock to expire soft-deleted rows at 30 days", async () => {
+    const { db, statements, runBinds } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+    });
+    const now = Date.parse("2026-08-19T00:00:00.000Z");
+    await runDatabaseMaintenance(db, now);
+    const cutoff = new Date(now - 30 * 86_400_000).toISOString();
+    expect(statements.filter((sql) => sql.includes("deleted_at IS NOT NULL") && sql.includes("LIMIT 50"))).toHaveLength(
+      5,
+    );
+    expect(runBinds.filter((binds) => binds.includes(cutoff)).length).toBeGreaterThanOrEqual(5);
+  });
+
   it("protects plaza and showcase media from the orphan sweep", async () => {
     const { db, statements } = createMaintenanceDb({
       indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
@@ -103,7 +118,11 @@ describe("database maintenance", () => {
     expect(candidateQuery).toContain("showcase_items");
     // 这三个索引同时兼作「相关列是否存在」的探针：列缺失时建索引失败，扫描会自我停用。
     expect(ORPHAN_SWEEP_INDEXES.map((index) => index.name)).toEqual(
-      expect.arrayContaining(["idx_plaza_posts_image_asset", "idx_showcase_persons_illustration_asset", "idx_showcase_items_cover_asset"]),
+      expect.arrayContaining([
+        "idx_plaza_posts_image_asset",
+        "idx_showcase_persons_illustration_asset",
+        "idx_showcase_items_cover_asset",
+      ]),
     );
   });
 

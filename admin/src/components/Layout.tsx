@@ -14,6 +14,7 @@ import {
   Target,
   KeyRound,
   ScrollText,
+  Trash2,
   Settings,
   ServerCog,
   Sprout,
@@ -56,6 +57,7 @@ const NAV_GROUPS = [
     label: "系统",
     items: [
       { to: "/audit", icon: ScrollText, label: "审计" },
+      { to: "/trash", icon: Trash2, label: "回收站" },
       { to: "/licenses", icon: KeyRound, label: "授权" },
       { to: "/control", icon: ServerCog, label: "控制中心" },
       { to: "/settings", icon: Settings, label: "设置" },
@@ -161,6 +163,7 @@ export function Layout() {
     if (path.startsWith("/showcase")) return "展示区";
     if (path.startsWith("/task-packs")) return "挑战任务包";
     if (path.startsWith("/audit")) return "审计日志";
+    if (path.startsWith("/trash")) return "回收站";
     if (path.startsWith("/licenses")) return "授权管理";
     if (path.startsWith("/control")) return "控制中心";
     if (path.startsWith("/login")) return "浏览器登录";
@@ -189,11 +192,7 @@ export function Layout() {
       navigate("/surveys");
       return;
     }
-    if (
-      path.startsWith("/profile-gallery") ||
-      path.startsWith("/plaza") ||
-      path.startsWith("/showcase")
-    ) {
+    if (path.startsWith("/profile-gallery") || path.startsWith("/plaza") || path.startsWith("/showcase")) {
       navigate("/");
       return;
     }
@@ -325,33 +324,44 @@ export function Layout() {
         <main className="admin-main mx-auto w-full min-w-0 flex-1 p-4 sm:p-8">
           <header className="admin-content-header">
             <div className="admin-content-header-inner">
-            <button
-              aria-label="打开菜单"
-              className="btn btn-icon sm:hidden shrink-0"
-              onClick={() => setDrawer(!drawer)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <button
-              aria-label="返回上一页"
-              title="返回上一页"
-              onClick={goBack}
-              className="btn btn-icon shrink-0"
-              style={{ display: isNestedSurveyPage ? undefined : "none" }}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="admin-breadcrumb">
-                <span className="hidden sm:inline">管理后台</span>
-                <span className="hidden sm:inline">/</span>
-                <strong className="truncate">{title}</strong>
+              <button
+                aria-label="打开菜单"
+                className="btn btn-icon sm:hidden shrink-0"
+                onClick={() => setDrawer(!drawer)}
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <button
+                aria-label="返回上一页"
+                title="返回上一页"
+                onClick={goBack}
+                className="btn btn-icon shrink-0"
+                style={{ display: isNestedSurveyPage ? undefined : "none" }}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="admin-breadcrumb">
+                  <span className="hidden sm:inline">管理后台</span>
+                  <span className="hidden sm:inline">/</span>
+                  <strong className="truncate">{title}</strong>
+                </div>
               </div>
-            </div>
-            {environment ? <span className="admin-env-pill hidden sm:inline-flex">{environment === "production" ? "生产环境" : environment}</span> : null}
-            {isCreator ? null : (
-              <button className="btn btn-sm hidden sm:inline-flex" onClick={() => navigate("/settings")} title="系统设置"><Settings className="h-4 w-4" />设置</button>
-            )}
+              {environment ? (
+                <span className="admin-env-pill hidden sm:inline-flex">
+                  {environment === "production" ? "生产环境" : environment}
+                </span>
+              ) : null}
+              {isCreator ? null : (
+                <button
+                  className="btn btn-sm hidden sm:inline-flex"
+                  onClick={() => navigate("/settings")}
+                  title="系统设置"
+                >
+                  <Settings className="h-4 w-4" />
+                  设置
+                </button>
+              )}
             </div>
           </header>
           {/* Scoped to the route: a render error on one page used to replace

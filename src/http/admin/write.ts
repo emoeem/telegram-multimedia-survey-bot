@@ -17,7 +17,11 @@ import {
   saveSystemSetting,
   SYSTEM_SETTING_KEYS,
 } from "../../services/system-settings.service";
-import { hashAdminPassword, isValidAdminPassword, ADMIN_PASSWORD_SETTING_KEY } from "../../services/admin-password.service";
+import {
+  hashAdminPassword,
+  isValidAdminPassword,
+  ADMIN_PASSWORD_SETTING_KEY,
+} from "../../services/admin-password.service";
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
 import { handleAdminEditorWrite } from "./editor";
@@ -75,7 +79,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可修改系统设置");
     const updates: Record<string, string> = {};
     const newAdminPassword = typeof body.admin_password === "string" ? body.admin_password : "";
-    if (body.admin_password !== undefined && !isValidAdminPassword(newAdminPassword)) return fail(400, "validation_failed", "管理员密码长度必须为 8-256 个字符");
+    if (body.admin_password !== undefined && !isValidAdminPassword(newAdminPassword))
+      return fail(400, "validation_failed", "管理员密码长度必须为 8-256 个字符");
     for (const key of SYSTEM_SETTING_KEYS) {
       if (body[key] === undefined) continue;
       const value = String(body[key]).trim();
@@ -350,7 +355,7 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     };
     const changes: string[] = [];
 
-    const surveysSql = `SELECT id, title, description FROM surveys ${since ? "WHERE updated_at >= ?" : ""}`;
+    const surveysSql = `SELECT id, title, description FROM surveys WHERE deleted_at IS NULL${since ? " AND updated_at >= ?" : ""}`;
     const surveysRows =
       (
         await db

@@ -63,10 +63,13 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
         commentCount: item.commentCount,
         // The public feed exposes a display name only: the numeric Telegram id
         // is an internal identifier and has no business on a public page.
-        owner: item.anonymous || !item.owner ? null : {
-          username: item.owner.username,
-          firstName: item.owner.firstName,
-        },
+        owner:
+          item.anonymous || !item.owner
+            ? null
+            : {
+                username: item.owner.username,
+                firstName: item.owner.firstName,
+              },
       })),
       total,
       limit,
@@ -282,9 +285,10 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
         createdAt: comment.createdAt,
         // Anonymous comments carry no owner at all; attributed ones still only
         // expose the display name the UI renders.
-        owner: comment.anonymous || !comment.owner
-          ? null
-          : { username: comment.owner.username, firstName: comment.owner.firstName },
+        owner:
+          comment.anonymous || !comment.owner
+            ? null
+            : { username: comment.owner.username, firstName: comment.owner.firstName },
       })),
       total,
       limit,
@@ -300,7 +304,7 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
     }
     const postId = Number(commentsMatch[1]);
     const post = await env.DB.prepare(
-      "SELECT id, user_id authorUserId FROM plaza_posts WHERE id = ? AND status = 'published' LIMIT 1",
+      "SELECT id, user_id authorUserId FROM plaza_posts WHERE id = ? AND status = 'published' AND deleted_at IS NULL LIMIT 1",
     )
       .bind(postId)
       .first<{ id: number; authorUserId: number }>();

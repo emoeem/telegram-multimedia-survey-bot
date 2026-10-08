@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDialogs } from "../components/Dialogs";
+import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { Plus, X } from "lucide-react";
 import {
   DndContext,
@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, apiSend, type ReportTemplateOption } from "../api";
+import { api, apiSend, deleteReportTemplate, restoreReportTemplate, type ReportTemplateOption } from "../api";
 import { SkeletonPanel } from "../components/ui";
 
 interface SectionDraft {
@@ -46,8 +46,46 @@ interface TemplateDraft {
 
 function TemplateVisualPreview({ template }: { template: ReportTemplateOption }) {
   const layout = template.layout ?? "editorial";
-  const visual = layout === "bento" ? "bento" : layout === "gallery" ? "gallery" : layout === "data" ? "data" : layout === "profile" ? "profile" : layout === "magazine" ? "magazine" : "editorial";
-  return <div className={`template-visual-preview template-layout-${visual}`} aria-label={`${template.name}视觉预览`}><div className="template-preview-top"><span>▦</span><i /><i /><i /></div><div className="template-preview-title" /><div className="template-preview-grid"><span /><span /><span /></div><div className="template-preview-lines"><i /><i /><i /></div>{visual === "gallery" ? <div className="template-preview-gallery"><i /><i /><i /></div> : null}</div>;
+  const visual =
+    layout === "bento"
+      ? "bento"
+      : layout === "gallery"
+        ? "gallery"
+        : layout === "data"
+          ? "data"
+          : layout === "profile"
+            ? "profile"
+            : layout === "magazine"
+              ? "magazine"
+              : "editorial";
+  return (
+    <div className={`template-visual-preview template-layout-${visual}`} aria-label={`${template.name}视觉预览`}>
+      <div className="template-preview-top">
+        <span>▦</span>
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="template-preview-title" />
+      <div className="template-preview-grid">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="template-preview-lines">
+        <i />
+        <i />
+        <i />
+      </div>
+      {visual === "gallery" ? (
+        <div className="template-preview-gallery">
+          <i />
+          <i />
+          <i />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const SECTION_OPTIONS: Array<{ kind: string; label: string }> = [
@@ -198,7 +236,6 @@ function SortableSectionRow({
 
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<ReportTemplateOption[] | null>(null);
-  const { confirm } = useDialogs();
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -294,13 +331,8 @@ export function TemplatesPage() {
   };
 
   const removeTemplate = async (id: string) => {
-    if (!(await confirm({ message: `确定删除自定义模板「${id}」？`, variant: "danger" }))) return;
-    try {
-      await apiSend("DELETE", `/api/admin/report-templates/${encodeURIComponent(id)}`);
-      await reload();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "删除失败");
-    }
+    await deleteReportTemplate(id);
+    await reload();
   };
 
   const updateSection = (index: number, next: SectionDraft) => {
@@ -392,12 +424,17 @@ export function TemplatesPage() {
                     {template.isCustom ? "编辑" : "复制编辑"}
                   </button>
                   {template.isCustom ? (
-                    <button
+                    <DeleteWithUndo
+                      confirmMessage={`删除自定义模板「${template.name}」？保留 30 天，可从回收站恢复。`}
+                      onDelete={() => removeTemplate(template.id)}
+                      onUndo={async () => {
+                        await restoreReportTemplate(template.id);
+                        await reload();
+                      }}
                       className="btn btn-sm text-[var(--color-danger)]"
-                      onClick={() => void removeTemplate(template.id)}
                     >
                       删除
-                    </button>
+                    </DeleteWithUndo>
                   ) : null}
                 </div>
               </div>

@@ -35,6 +35,7 @@ import {
   saveSystemSetting,
 } from "../../services/system-settings.service";
 import { handleControlApiRequest } from "../control-api";
+import { handleAdminTrashRead, handleAdminTrashWrite } from "./trash";
 import {
   configuredDeploymentRole,
   describeDeploymentRoleIssue,
@@ -72,17 +73,31 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     Response.json({ code, message, requestId }, { status, headers: { "Cache-Control": "no-store" } });
 
   if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
-    const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-password-login", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    const clientIp =
+      request.headers.get("CF-Connecting-IP") ??
+      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
+      "unknown";
+    const limiter = await checkAtomicRateLimit(
+      env.DB,
+      env.CACHE,
+      "admin-password-login",
+      clientIp.slice(0, 100),
+      ADMIN_LOGIN_RATE_LIMIT,
+      ADMIN_LOGIN_RATE_WINDOW_SECONDS,
+    );
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
-    const body = await request.json().catch(() => null) as { password?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { password?: unknown } | null;
     const password = typeof body?.password === "string" ? body.password : "";
     const configuredHash = await getSystemSettingValue(env.DB, ADMIN_PASSWORD_SETTING_KEY);
     // Fail closed: a deployment without a configured password must never fall
     // back to a built-in credential. The operator sets the initial hash with
     // `scripts/set-admin-password.mjs` or from the system settings page.
     if (!configuredHash) {
-      return fail(503, "admin_password_not_configured", "管理员密码尚未设置，请运行 scripts/set-admin-password.mjs 初始化后再登录。");
+      return fail(
+        503,
+        "admin_password_not_configured",
+        "管理员密码尚未设置，请运行 scripts/set-admin-password.mjs 初始化后再登录。",
+      );
     }
     const valid = await verifyAdminPassword(password, configuredHash);
     if (!valid) return fail(401, "invalid_password", "管理员密码错误");
@@ -101,14 +116,30 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     }
     const epoch = await loadAdminSessionEpoch(env.DB);
     const session = await createAdminSessionValue(resolveSessionSecret(env), user.id, epoch);
-    return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}` } });
+    return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}`,
+      },
+    });
   }
 
   // Simple Telegram deep-link login. The browser creates a short-lived request;
   // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/telegram/start") {
-    const clientIp = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-login-start", clientIp.slice(0, 100), ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS);
+    const clientIp =
+      request.headers.get("CF-Connecting-IP") ??
+      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
+      "unknown";
+    const limiter = await checkAtomicRateLimit(
+      env.DB,
+      env.CACHE,
+      "admin-login-start",
+      clientIp.slice(0, 100),
+      ADMIN_LOGIN_RATE_LIMIT,
+      ADMIN_LOGIN_RATE_WINDOW_SECONDS,
+    );
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const login = await createAdminLoginRequest(env.CACHE, env.WEBHOOK_SECRET);
     const username = await getBotUsername(env.BOT_TOKEN);
@@ -168,13 +199,19 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // WebView 都能用；兑换失败时回登录页并带上原因，让页面给出人话提示。
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/link") {
     const clientIp =
-      request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ?? "unknown";
+      request.headers.get("CF-Connecting-IP") ??
+      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
+      "unknown";
     const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-magic-link", clientIp.slice(0, 100), 20, 300);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const bounce = (reason: string) =>
       new Response(null, {
         status: 302,
-        headers: { Location: `/admin/login?reason=${reason}`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+        headers: {
+          Location: `/admin/login?reason=${reason}`,
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+        },
       });
     const token = url.searchParams.get("t") ?? "";
     const magicUserId = await consumeAdminMagicLink(env.DB, env.CACHE, token);
@@ -279,6 +316,24 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       telegramUserId: user.telegramUserId,
       firstName: user.firstName,
     });
+  }
+
+  const trashReadResponse = await handleAdminTrashRead(url, env, { user, isAdmin, fail, json });
+  if (trashReadResponse) return trashReadResponse;
+  if (url.pathname === "/api/admin/trash" && (request.method === "POST" || request.method === "DELETE")) {
+    const body = (await request
+      .clone()
+      .json()
+      .catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
+    const trashWriteResponse = await handleAdminTrashWrite(
+      request,
+      url,
+      env,
+      { user, isAdmin, requestId, fail, json },
+      body,
+    );
+    if (trashWriteResponse) return trashWriteResponse;
   }
 
   if (url.pathname.startsWith("/api/control/")) {

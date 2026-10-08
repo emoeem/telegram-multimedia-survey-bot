@@ -20,9 +20,10 @@ export async function loadWeeklyDigest(db: D1Database, now = new Date()): Promis
     .prepare(
       `SELECT
          COUNT(*) AS started,
-         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
-       FROM survey_responses
-       WHERE started_at >= ? AND started_at < ?`,
+         SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed
+       FROM survey_responses r
+       JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL
+       WHERE r.started_at >= ? AND r.started_at < ?`,
     )
     .bind(windowStart, windowEnd)
     .first<{ started: number; completed: number | null }>();
@@ -31,7 +32,7 @@ export async function loadWeeklyDigest(db: D1Database, now = new Date()): Promis
     .prepare(
       `SELECT s.id, s.title, COUNT(r.id) AS completed
        FROM survey_responses r
-       JOIN surveys s ON s.id = r.survey_id
+       JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL
        WHERE r.status = 'completed' AND r.started_at >= ? AND r.started_at < ?
        GROUP BY s.id, s.title
        ORDER BY completed DESC

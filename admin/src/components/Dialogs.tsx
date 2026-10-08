@@ -11,10 +11,17 @@ export interface ConfirmOptions {
   variant?: DialogVariant;
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void | Promise<void>;
+}
+
 export interface ToastOptions {
   message: string;
   variant?: "success" | "error" | "info";
   durationMs?: number;
+  action?: ToastAction;
+  countdownMs?: number;
 }
 
 interface InternalConfirmItem extends ConfirmOptions {
@@ -177,6 +184,16 @@ function ToastStack({ items }: { items: InternalToastItem[] }) {
 
 function ToastItem({ item }: { item: InternalToastItem }) {
   const variant = item.variant ?? "info";
+  const [remainingMs, setRemainingMs] = useState(item.countdownMs ?? 0);
+
+  useEffect(() => {
+    if (!item.countdownMs) return undefined;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setRemainingMs(Math.max(0, item.countdownMs! - (Date.now() - startedAt)));
+    }, 250);
+    return () => clearInterval(timer);
+  }, [item.countdownMs]);
   const Icon = variant === "success" ? CheckCircle2 : variant === "error" ? X : Info;
   // Theme tokens, not `dark:` variants: the dark variant follows the OS scheme
   // while the rest of the app follows the selected DaisyUI theme, so on a
@@ -201,7 +218,17 @@ function ToastItem({ item }: { item: InternalToastItem }) {
       className={`pointer-events-auto flex min-w-[260px] max-w-md items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg ${color}`}
     >
       <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
-      <span className="break-words">{item.message}</span>
+      <span className="min-w-0 flex-1 break-words">{item.message}</span>
+      {item.action ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+          onClick={() => void item.action?.onClick()}
+        >
+          {item.action.label}
+          {item.countdownMs ? ` · ${Math.ceil(remainingMs / 1000)}s` : ""}
+        </button>
+      ) : null}
     </div>
   );
 }

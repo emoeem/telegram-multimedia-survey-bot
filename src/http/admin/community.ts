@@ -1,5 +1,5 @@
 import { setPlazaCommentStatus } from "../../db/repositories/plaza-comment.repository";
-import { setPlazaPostStatus } from "../../db/repositories/plaza-post.repository";
+import { setPlazaPostStatus, softDeletePlazaPost } from "../../db/repositories/plaza-post.repository";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { WriteContext, writeAudit } from "./helpers";
 import { Env } from "../../index";
@@ -55,6 +55,23 @@ export async function handleAdminCommunityWrite(
       after: { published },
     });
     return json({ ok: true, id: responseId, published });
+  }
+
+  const deletePostMatch = url.pathname.match(/^\/api\/admin\/plaza\/posts\/(\d+)$/);
+  if (request.method === "DELETE" && deletePostMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理树洞内容");
+    const postId = Number(deletePostMatch[1]);
+    if (!Number.isInteger(postId) || postId <= 0) return fail(400, "validation_failed", "无效的树洞内容编号");
+    const deleted = await softDeletePlazaPost(db, postId);
+    if (!deleted) return fail(404, "not_found", "树洞内容不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "plaza_post.delete",
+      entityType: "plaza_post",
+      entityId: String(postId),
+      after: { softDeleted: true, retentionDays: 30 },
+    });
+    return json({ ok: true, id: postId });
   }
 
   if (request.method === "POST" && url.pathname === "/api/admin/plaza/posts/status") {

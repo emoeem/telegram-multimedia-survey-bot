@@ -61,14 +61,14 @@ export async function loadPublishedSurveyListStamp(db: D1Database): Promise<stri
     .prepare(
       `SELECT COUNT(*) AS total, COALESCE(MAX(updated_at), '') AS updatedAt
          FROM surveys
-        WHERE status = 'published'`,
+        WHERE status = 'published' AND deleted_at IS NULL`,
     )
     .first<{ total: number; updatedAt: string }>();
   return `${Number(row?.total ?? 0)}:${row?.updatedAt ?? ""}`;
 }
 
 export async function loadPublishedSurveyList(env: Env, q: string): Promise<PublishedSurveyListItem[]> {
-  const conditions = ["s.status = 'published'"];
+  const conditions = ["s.status = 'published'", "s.deleted_at IS NULL"];
   const binds: string[] = [];
   if (q) {
     conditions.push("(lower(s.title) LIKE ? OR lower(COALESCE(s.description,'')) LIKE ?)");

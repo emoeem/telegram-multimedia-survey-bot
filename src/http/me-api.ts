@@ -57,7 +57,9 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
     const showcaseRow =
       myProfileResponseId === null
         ? null
-        : await env.DB.prepare("SELECT id, published FROM showcase_persons WHERE response_id = ? LIMIT 1")
+        : await env.DB.prepare(
+            "SELECT id, published FROM showcase_persons WHERE response_id = ? AND deleted_at IS NULL LIMIT 1",
+          )
             .bind(myProfileResponseId)
             .first<{ id: number; published: number }>();
 

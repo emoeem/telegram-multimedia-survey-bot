@@ -5,6 +5,10 @@ import {
   createShowcasePerson,
   deleteShowcaseItem,
   deleteShowcasePerson,
+  restoreShowcaseItem,
+  restoreShowcasePerson,
+  softDeleteShowcaseItem,
+  softDeleteShowcasePerson,
   getPublishedShowcaseItemById,
   getPublishedShowcasePersonIdForAsset,
   getShowcasePersonById,
@@ -35,14 +39,15 @@ CREATE TABLE showcase_persons (
   survey_id INTEGER, response_id INTEGER, owner_user_id INTEGER,
   feature_rank INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0, created_by INTEGER,
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
 );
 CREATE TABLE showcase_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   person_id INTEGER NOT NULL, title TEXT NOT NULL, description TEXT,
   kind TEXT NOT NULL DEFAULT 'other', cover_media_id INTEGER, cover_url TEXT, media_asset_id INTEGER, url TEXT,
   featured INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  deleted_at TEXT
 );
 INSERT INTO media_assets (id, asset_scope) VALUES (900, 'survey'), (901, 'survey'), (902, 'survey');
 `;
@@ -150,6 +155,27 @@ describe.skipIf(!sqliteD1Available)("showcase repository (real SQLite)", () => {
     expect(updated?.subtitle).toBeNull();
     expect(updated?.tags).toEqual(["插画"]);
     expect(updated?.published).toBe(true);
+  });
+
+  it("soft-deletes and restores a person with its artwork as one reversible unit", async () => {
+    const db = createSqliteD1(SCHEMA);
+    const id = await createShowcasePerson(db, { name: "可恢复", published: true });
+    const itemId = await createShowcaseItem(db, { personId: id, title: "保留作品" });
+    expect(await softDeleteShowcasePerson(db, id, "2026-10-01T00:00:00.000Z")).toBe(true);
+    expect(await listShowcasePersons(db, { publishedOnly: true })).toMatchObject({ total: 0, persons: [] });
+    expect(await getPublishedShowcaseItemById(db, itemId)).toBeNull();
+    expect(await restoreShowcasePerson(db, id)).toBe(true);
+    expect((await listShowcasePersons(db, { publishedOnly: true })).persons[0]?.items[0]?.title).toBe("保留作品");
+  });
+
+  it("soft-deletes one artwork without hiding its parent and restores it", async () => {
+    const db = createSqliteD1(SCHEMA);
+    const id = await createShowcasePerson(db, { name: "人物", published: true });
+    const itemId = await createShowcaseItem(db, { personId: id, title: "单独作品" });
+    expect(await softDeleteShowcaseItem(db, itemId, "2026-10-01T00:00:00.000Z")).toBe(true);
+    expect((await getShowcasePersonById(db, id))?.items).toHaveLength(0);
+    expect(await restoreShowcaseItem(db, itemId)).toBe(true);
+    expect((await getShowcasePersonById(db, id))?.items[0]?.title).toBe("单独作品");
   });
 
   it("reorders in one batch and cascades item deletes", async () => {

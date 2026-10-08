@@ -14,13 +14,7 @@ import {
  */
 
 export type AchievementMetric =
-  | "surveys"
-  | "profiles"
-  | "trialRuns"
-  | "trialCleared"
-  | "trialBestScore"
-  | "plazaPosts"
-  | "plazaComments";
+  "surveys" | "profiles" | "trialRuns" | "trialCleared" | "trialBestScore" | "plazaPosts" | "plazaComments";
 
 export interface AchievementMetrics {
   surveys: number;
@@ -226,7 +220,9 @@ export async function loadAchievementMetrics(db: D1Database, ctx: AchievementCon
   if (typeof ctx.userId === "number" && Number.isInteger(ctx.userId) && ctx.userId > 0) {
     const [postStats, commentStats] = await Promise.all([
       db
-        .prepare("SELECT COUNT(*) AS count FROM plaza_posts WHERE user_id = ? AND status = 'published'")
+        .prepare(
+          "SELECT COUNT(*) AS count FROM plaza_posts WHERE user_id = ? AND status = 'published' AND deleted_at IS NULL",
+        )
         .bind(ctx.userId)
         .first<{ count: number }>(),
       db
@@ -295,9 +291,7 @@ export async function evaluateAchievements(db: D1Database, ctx: AchievementConte
     }
     if (qualifying.size === 0) return [];
 
-    const existingCodes = new Set(
-      (await listParticipantAchievements(db, ctx.participantHash)).map((row) => row.code),
-    );
+    const existingCodes = new Set((await listParticipantAchievements(db, ctx.participantHash)).map((row) => row.code));
     const missing = [...qualifying.entries()]
       .filter(([code]) => !existingCodes.has(code))
       .map(([code, meta]) => ({ code, meta }));

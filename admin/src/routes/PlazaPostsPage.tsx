@@ -2,6 +2,8 @@ import { useState } from "react";
 import {
   fetchAdminPlazaComments,
   fetchPlazaPosts,
+  deletePlazaPost,
+  restorePlazaPost,
   setPlazaCommentStatus,
   setPlazaPostStatus,
   type PlazaCommentSummary,
@@ -9,6 +11,7 @@ import {
 } from "../api";
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
+import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { EmptyPanel, ErrorPanel, PageHeader, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
 
@@ -25,7 +28,15 @@ function commentAuthorLabel(comment: PlazaCommentSummary): string {
   return owner.username ? `@${owner.username}` : owner.firstName || `用户 ${owner.telegramUserId}`;
 }
 
-function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: PlazaPostSummary) => void }) {
+function PostRow({
+  post,
+  onToggle,
+  onDelete,
+}: {
+  post: PlazaPostSummary;
+  onToggle: (post: PlazaPostSummary) => void;
+  onDelete: (post: PlazaPostSummary) => Promise<void>;
+}) {
   const { toast } = useDialogs();
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<PlazaCommentSummary[] | null>(null);
@@ -88,17 +99,30 @@ function PostRow({ post, onToggle }: { post: PlazaPostSummary; onToggle: (post: 
             {post.commentCount}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onToggle(post)}
-          className={
-            post.status === "published"
-              ? "shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-              : "shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
-          }
-        >
-          {post.status === "published" ? "下架" : "恢复展示"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggle(post)}
+            className={
+              post.status === "published"
+                ? "shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                : "shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+            }
+          >
+            {post.status === "published" ? "下架" : "恢复展示"}
+          </button>
+          <DeleteWithUndo
+            confirmMessage={`删除树洞 #${post.id}？内容会进入回收站并保留 30 天。`}
+            onDelete={() => onDelete(post)}
+            onUndo={async () => {
+              await restorePlazaPost(post.id);
+              retry();
+            }}
+            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+          >
+            删除
+          </DeleteWithUndo>
+        </div>
       </div>
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-200">
         {post.content}
@@ -200,6 +224,11 @@ export function PlazaPostsPage() {
     }
   };
 
+  const remove = async (post: PlazaPostSummary) => {
+    await deletePlazaPost(post.id);
+    retry();
+  };
+
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -239,7 +268,7 @@ export function PlazaPostsPage() {
         <>
           <div className="flex flex-col gap-3">
             {data.items.map((post) => (
-              <PostRow key={post.id} post={post} onToggle={toggle} />
+              <PostRow key={post.id} post={post} onToggle={toggle} onDelete={remove} />
             ))}
           </div>
           <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">

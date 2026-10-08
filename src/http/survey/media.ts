@@ -49,20 +49,20 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
         `SELECT s.id FROM surveys s
            JOIN survey_questions q ON q.survey_id = s.id
            JOIN question_media qm ON qm.question_id = q.id
-           WHERE s.status = 'published' AND qm.media_asset_id = ?
+           WHERE s.status = 'published' AND s.deleted_at IS NULL AND qm.media_asset_id = ?
            UNION
            SELECT s.id FROM surveys s
            JOIN survey_questions q ON q.survey_id = s.id
            JOIN question_options o ON o.question_id = q.id
            JOIN option_media om ON om.question_option_id = o.id
-           WHERE s.status = 'published' AND om.media_asset_id = ?`,
+           WHERE s.status = 'published' AND s.deleted_at IS NULL AND om.media_asset_id = ?`,
       )
         .bind(mediaId, mediaId)
         .first<{ id: number }>();
       if (!linked) {
         linked = await env.DB.prepare(
           `SELECT s.id FROM surveys s
-             WHERE s.status = 'published' AND s.cover_media_id = ?`,
+             WHERE s.status = 'published' AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
         )
           .bind(mediaId)
           .first<{ id: number }>();

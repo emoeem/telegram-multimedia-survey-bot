@@ -1,4 +1,4 @@
-import { deleteSurvey, updateSurveyStatus } from "../../db/repositories/survey.repository";
+import { softDeleteSurvey, updateSurveyStatus } from "../../db/repositories/survey.repository";
 import { archiveResponse, deleteResponse, getResponseById } from "../../db/repositories/response.repository";
 import { buildCsv, getExportRows, serializeExport } from "../../services/export.service";
 import { duplicateSurvey, publishSurvey } from "../../services/survey.service";
@@ -204,14 +204,15 @@ export async function handleAdminSurveysWrite(
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
     try {
-      // 管理员可以强制删除任何问卷（含已有答卷）；普通用户保留历史答卷保护。
-      await deleteSurvey(db, surveyId, { force: isAdmin });
+      // 管理员/创作者删除只做软删除：答卷与媒体引用保留 30 天，可从回收站完整恢复。
+      const deleted = await softDeleteSurvey(db, surveyId);
+      if (!deleted) return fail(404, "not_found", "问卷不存在");
       await writeAudit(db, {
         actorUserId: user.id,
         action: "survey.delete",
         entityType: "survey",
         entityId: String(surveyId),
-        before: { status: manageable.survey.status, forced: isAdmin },
+        before: { status: manageable.survey.status, softDeleted: true, retentionDays: 30 },
       });
       return json({ ok: true });
     } catch (error) {

@@ -12,6 +12,7 @@ export interface PlazaPostRecord {
   anonymous: boolean;
   status: "published" | "removed";
   createdAt: string;
+  deletedAt: string | null;
   commentCount: number;
   owner: {
     telegramUserId: number;
@@ -21,7 +22,7 @@ export interface PlazaPostRecord {
 }
 
 const POST_COLUMNS = `p.id, p.user_id, p.content, p.anonymous, p.status, p.created_at,
-    p.kind, p.payload_json, p.image_asset_id, p.topic,
+    p.kind, p.payload_json, p.image_asset_id, p.topic, p.deleted_at,
     (SELECT COUNT(*) FROM plaza_post_comments c WHERE c.post_id = p.id AND c.status = 'published') AS comment_count,
     u.telegram_user_id AS owner_telegram_user_id, u.username AS owner_username, u.first_name AS owner_first_name`;
 
@@ -49,6 +50,7 @@ function mapPlazaPostRow(row: PlazaPostRow): PlazaPostRecord {
     anonymous: Number(row.anonymous ?? 1) === 1,
     status: row.status === "removed" ? "removed" : "published",
     createdAt: String(row.created_at),
+    deletedAt: row.deleted_at === null || row.deleted_at === undefined ? null : String(row.deleted_at),
     commentCount: Number(row.comment_count ?? 0),
     owner:
       ownerTelegramUserId === null || ownerTelegramUserId === undefined
@@ -104,6 +106,7 @@ export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInpu
     status: "published",
     createdAt: now,
     commentCount: 0,
+    deletedAt: null,
     owner: null,
   };
 }
@@ -125,6 +128,7 @@ export interface PlazaPostListPage {
 export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptions): Promise<PlazaPostListPage> {
   const conditions: string[] = [];
   const binds: unknown[] = [];
+  conditions.push("p.deleted_at IS NULL");
   if (options.view === "published") conditions.push("p.status = 'published'");
   if (options.topic) {
     conditions.push("p.topic = ?");
@@ -149,15 +153,12 @@ export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptio
 }
 
 /** 公开流的话题榜：发布中的帖子按话题聚合，热度降序。 */
-export async function listPlazaTopics(
-  db: D1Database,
-  limit = 12,
-): Promise<Array<{ topic: string; count: number }>> {
+export async function listPlazaTopics(db: D1Database, limit = 12): Promise<Array<{ topic: string; count: number }>> {
   const rows = await db
     .prepare(
       `SELECT topic, COUNT(*) AS count, MAX(id) AS latestId
          FROM plaza_posts
-        WHERE status = 'published' AND topic IS NOT NULL AND topic <> ''
+        WHERE deleted_at IS NULL AND status = 'published' AND topic IS NOT NULL AND topic <> ''
         GROUP BY topic
         ORDER BY count DESC, latestId DESC
         LIMIT ?`,
@@ -170,7 +171,9 @@ export async function listPlazaTopics(
 /** 公开读图的唯一授权：图片必须挂在一个发布中的帖子上。 */
 export async function isPublishedPlazaImage(db: D1Database, mediaAssetId: number): Promise<boolean> {
   const row = await db
-    .prepare("SELECT 1 AS found FROM plaza_posts WHERE image_asset_id = ? AND status = 'published' LIMIT 1")
+    .prepare(
+      "SELECT 1 AS found FROM plaza_posts WHERE image_asset_id = ? AND deleted_at IS NULL AND status = 'published' LIMIT 1",
+    )
     .bind(mediaAssetId)
     .first<{ found: number }>();
   return Boolean(row);
@@ -178,7 +181,7 @@ export async function isPublishedPlazaImage(db: D1Database, mediaAssetId: number
 
 export async function getPlazaPostImageAssetId(db: D1Database, postId: number): Promise<number | null> {
   const row = await db
-    .prepare("SELECT image_asset_id AS imageAssetId FROM plaza_posts WHERE id = ? LIMIT 1")
+    .prepare("SELECT image_asset_id AS imageAssetId FROM plaza_posts WHERE id = ? AND deleted_at IS NULL LIMIT 1")
     .bind(postId)
     .first<{ imageAssetId: number | null }>();
   return row?.imageAssetId === null || row?.imageAssetId === undefined ? null : Number(row.imageAssetId);
@@ -189,6 +192,26 @@ export async function detachPlazaPostImage(db: D1Database, postId: number): Prom
   await db.prepare("UPDATE plaza_posts SET image_asset_id = NULL WHERE id = ?").bind(postId).run();
 }
 
+export async function softDeletePlazaPost(
+  db: D1Database,
+  id: number,
+  now = new Date().toISOString(),
+): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE plaza_posts SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(now, id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+export async function restorePlazaPost(db: D1Database, id: number): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE plaza_posts SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL")
+    .bind(id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
 export async function setPlazaPostStatus(
   db: D1Database,
   id: number,
@@ -197,7 +220,9 @@ export async function setPlazaPostStatus(
   const result = await db.prepare(`UPDATE plaza_posts SET status = ? WHERE id = ?`).bind(status, id).run();
   if (!result.meta?.changes) return null;
   const row = await db
-    .prepare(`SELECT ${POST_COLUMNS} FROM plaza_posts p LEFT JOIN users u ON u.id = p.user_id WHERE p.id = ? LIMIT 1`)
+    .prepare(
+      `SELECT ${POST_COLUMNS} FROM plaza_posts p LEFT JOIN users u ON u.id = p.user_id WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1`,
+    )
     .bind(id)
     .first<PlazaPostRow>();
   return row ? mapPlazaPostRow(row) : null;

@@ -1016,7 +1016,7 @@ async function listSurveys(
   const where = search ? "AND (s.title LIKE ? ESCAPE '\\' OR s.description LIKE ? ESCAPE '\\')" : "";
   const countBindings = search ? [`%${escapedSearch}%`, `%${escapedSearch}%`] : [];
   const countRow = await ctx.db
-    .prepare(`SELECT COUNT(*) AS count FROM surveys s WHERE s.status = 'published' ${where}`)
+    .prepare(`SELECT COUNT(*) AS count FROM surveys s WHERE s.status = 'published' AND s.deleted_at IS NULL ${where}`)
     .bind(...countBindings)
     .first<{ count: number }>();
   const total = countRow?.count ?? 0;
@@ -1052,7 +1052,7 @@ async function listSurveys(
             SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count
      FROM surveys s
      LEFT JOIN survey_responses r ON r.survey_id = s.id
-     WHERE s.status = 'published' ${where}
+     WHERE s.status = 'published' AND s.deleted_at IS NULL ${where}
      GROUP BY s.id
      ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,

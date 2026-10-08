@@ -5,6 +5,8 @@ import {
   createShowcasePerson,
   deleteShowcaseItem,
   deleteShowcasePerson,
+  restoreShowcaseItem,
+  restoreShowcasePerson,
   fetchAdminShowcase,
   reorderShowcasePersons,
   updateShowcaseItem,
@@ -17,6 +19,7 @@ import {
 } from "../api";
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
+import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { EmptyPanel, ErrorPanel, Modal, PageHeader, SkeletonPanel } from "../components/ui";
 
 /**
@@ -327,10 +330,19 @@ function ItemRow({
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void save()}>
           保存作品
         </button>
-        <button type="button" className="btn btn-sm btn-danger" disabled={busy} onClick={() => void remove()}>
+        <DeleteWithUndo
+          confirmMessage="删除此作品？作品会保留 30 天，可从回收站恢复。"
+          onDelete={remove}
+          onUndo={async () => {
+            await restoreShowcaseItem(item.id);
+            onRefresh();
+          }}
+          className="btn btn-sm btn-danger"
+          disabled={busy}
+        >
           <Trash2 className="h-4 w-4" />
           删除
-        </button>
+        </DeleteWithUndo>
       </div>
     </div>
   );
@@ -338,7 +350,7 @@ function ItemRow({
 
 export function ShowcasePage() {
   const { data, error, retry } = useApi<ShowcaseAdminData>("/api/admin/showcase");
-  const { confirm, toast } = useDialogs();
+  const { toast } = useDialogs();
   const [editing, setEditing] = useState<ShowcaseAdminPerson | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -377,19 +389,12 @@ export function ShowcasePage() {
   };
 
   const remove = async (person: ShowcaseAdminPerson) => {
-    const ok = await confirm({
-      message: `确定删除展示人物「${person.name}」？其作品条目会一起删除，已上传的图片保留在媒体库。`,
-      variant: "danger",
-      confirmLabel: "删除",
-    });
-    if (!ok) return;
     setBusyId(person.id);
     try {
       await deleteShowcasePerson(person.id);
-      toast({ message: "已删除", variant: "success" });
       retry();
     } catch (err) {
-      showError(err instanceof Error ? err.message : "删除失败");
+      throw new Error(err instanceof Error ? err.message : "删除失败");
     } finally {
       setBusyId(null);
     }
@@ -500,14 +505,18 @@ export function ShowcasePage() {
                   >
                     {person.published ? "下架" : "公开"}
                   </button>
-                  <button
-                    type="button"
+                  <DeleteWithUndo
+                    confirmMessage={`删除展示人物「${person.name}」？其作品会一起进入回收站，保留 30 天。`}
+                    onDelete={() => remove(person)}
+                    onUndo={async () => {
+                      await restoreShowcasePerson(person.id);
+                      retry();
+                    }}
                     className="btn btn-sm btn-danger"
                     disabled={busyId === person.id}
-                    onClick={() => void remove(person)}
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </DeleteWithUndo>
                 </div>
               </article>
             ))}

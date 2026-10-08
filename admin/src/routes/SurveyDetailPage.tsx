@@ -24,6 +24,7 @@ import { apiSend, authHeaders, type ReportTemplateOption, type SurveyAnalyticsDa
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
+import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { formatDateTime } from "../format";
 import { PresetSwatch } from "../survey/theme-ui";
 
@@ -312,28 +313,27 @@ export function SurveyDetailPage() {
             归档
           </button>
         ) : null}
-        <button
+        <DeleteWithUndo
+          confirmMessage={
+            data.responseCount > 0
+              ? "删除该问卷？答卷、答案、媒体和报告会一起保留 30 天，可从回收站完整恢复。"
+              : "删除该问卷？数据会保留 30 天，可从回收站恢复。"
+          }
+          onDelete={async () => {
+            if (!id) return;
+            await apiSend("DELETE", `/api/admin/surveys/${id}`);
+            navigate("/surveys", { replace: true });
+          }}
+          onUndo={async () => {
+            if (!id) return;
+            await apiSend("POST", "/api/admin/trash", { items: [{ kind: "survey", id }] });
+          }}
           className="btn btn-danger"
           disabled={busy || (data.responseCount > 0 && !data.isAdmin)}
-          title={
-            data.responseCount > 0 && !data.isAdmin
-              ? "已有答卷的问卷不能删除，请先归档"
-              : data.responseCount > 0
-                ? "管理员可强制删除（含全部答卷）"
-                : undefined
-          }
-          onClick={() =>
-            void runAction(
-              "delete",
-              data.responseCount > 0
-                ? `确定永久删除该问卷？将同时删除 ${data.responseCount} 份答卷及其答案、媒体和报告，此操作不可恢复！`
-                : "确定永久删除该问卷？此操作不可恢复。",
-            )
-          }
         >
           <Trash2 className="h-4 w-4" />
           删除
-        </button>
+        </DeleteWithUndo>
       </div>
       {data.responseCount > 0 && !data.isAdmin ? (
         <p className="mt-2 text-xs text-[var(--color-muted-soft)]">已有答卷的问卷禁止删除（历史答卷保护）。</p>

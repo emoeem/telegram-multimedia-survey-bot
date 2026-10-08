@@ -21,6 +21,7 @@ interface SurveyRow {
   access_code_encrypted: string | null;
   report_template_id: string | null;
   settings_json: string | null;
+  deleted_at: string | null;
 }
 
 function mapSurvey(row: SurveyRow): Survey {
@@ -99,7 +100,10 @@ export async function createSurvey(
 }
 
 export async function getSurveyById(db: D1Database, id: number): Promise<Survey | null> {
-  const row = await db.prepare("SELECT * FROM surveys WHERE id = ? LIMIT 1").bind(id).first<SurveyRow>();
+  const row = await db
+    .prepare("SELECT * FROM surveys WHERE id = ? AND deleted_at IS NULL LIMIT 1")
+    .bind(id)
+    .first<SurveyRow>();
 
   return row ? mapSurvey(row) : null;
 }
@@ -130,7 +134,7 @@ export async function updateSurveyResponsePolicy(
 
 export async function listSurveysByOwner(db: D1Database, ownerId: number): Promise<Survey[]> {
   const result = await db
-    .prepare("SELECT * FROM surveys WHERE owner_id = ? ORDER BY id DESC")
+    .prepare("SELECT * FROM surveys WHERE owner_id = ? AND deleted_at IS NULL ORDER BY id DESC")
     .bind(ownerId)
     .all<SurveyRow>();
 
@@ -141,7 +145,7 @@ export async function getLatestDraftSurveyByOwner(db: D1Database, ownerId: numbe
   const row = await db
     .prepare(
       `SELECT * FROM surveys
-       WHERE owner_id = ? AND status = 'draft'
+       WHERE owner_id = ? AND status = 'draft' AND deleted_at IS NULL
        ORDER BY updated_at DESC, id DESC
        LIMIT 1`,
     )
@@ -152,7 +156,7 @@ export async function getLatestDraftSurveyByOwner(db: D1Database, ownerId: numbe
 }
 
 export async function listAllSurveys(db: D1Database): Promise<Survey[]> {
-  const result = await db.prepare("SELECT * FROM surveys ORDER BY id DESC").all<SurveyRow>();
+  const result = await db.prepare("SELECT * FROM surveys WHERE deleted_at IS NULL ORDER BY id DESC").all<SurveyRow>();
 
   return (result.results ?? []).map(mapSurvey);
 }
@@ -201,6 +205,23 @@ export async function deleteSurvey(db: D1Database, id: number, options: { force?
     }
   }
   await db.prepare("DELETE FROM surveys WHERE id = ?").bind(id).run();
+}
+
+/** Soft-delete used by the admin recycle bin; internal rollback keeps deleteSurvey hard-delete semantics. */
+export async function softDeleteSurvey(db: D1Database, id: number, now = new Date().toISOString()): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE surveys SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(now, now, id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+export async function restoreSurvey(db: D1Database, id: number): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE surveys SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL")
+    .bind(new Date().toISOString(), id)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
 }
 
 export async function setSurveyAccessCode(

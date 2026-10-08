@@ -213,7 +213,7 @@ export async function listReportDeliveries(
 ): Promise<{ items: ReportDeliveryRowWithSurvey[]; total: number }> {
   const limit = Math.min(50, Math.max(1, input.limit ?? 20));
   const offset = Math.max(0, input.offset ?? 0);
-  const where: string[] = [];
+  const where: string[] = ["s.deleted_at IS NULL"];
   const binds: unknown[] = [];
   if (input.status) {
     where.push("rd.status = ?");

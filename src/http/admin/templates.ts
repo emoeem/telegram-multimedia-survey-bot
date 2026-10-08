@@ -4,7 +4,7 @@ import { buildResponsiveReportHtml } from "../../services/report/web";
 import { WriteContext, writeAudit } from "./helpers";
 import { Env } from "../../index";
 import {
-  deleteCustomReportTemplate,
+  softDeleteCustomReportTemplate,
   upsertCustomReportTemplate,
 } from "../../db/repositories/report-template.repository";
 
@@ -69,7 +69,7 @@ export async function handleAdminTemplatesWrite(
     if (REPORT_TEMPLATES[id]) {
       return fail(400, "validation_failed", "不能删除系统模板");
     }
-    const removed = await deleteCustomReportTemplate(env.DB, id);
+    const removed = await softDeleteCustomReportTemplate(env.DB, id);
     if (!removed) return fail(404, "not_found", "模板不存在");
     await writeAudit(db, {
       actorUserId: user.id,

@@ -2,8 +2,8 @@ import type { Env } from "../../index";
 import {
   createShowcaseItem,
   createShowcasePerson,
-  deleteShowcaseItem,
-  deleteShowcasePerson,
+  softDeleteShowcaseItem,
+  softDeleteShowcasePerson,
   getShowcaseItemById,
   getShowcasePersonById,
   listShowcasePersons,
@@ -81,7 +81,11 @@ export async function handleAdminShowcaseWrite(
     if (!(file instanceof File)) return fail(400, "invalid_upload", "请选择要上传的图片");
     // 图片 / 音频 / 视频都可以是作品本体；文档类仍然拒绝（前台没有查看器）。
     if (!/^(image|audio|video)\//.test(file.type.toLowerCase())) {
-      return fail(400, "invalid_upload", "展示区支持图片、音频或视频文件（PNG/JPG/WebP/GIF、MP3/M4A/WAV、MP4/WebM/MOV）");
+      return fail(
+        400,
+        "invalid_upload",
+        "展示区支持图片、音频或视频文件（PNG/JPG/WebP/GIF、MP3/M4A/WAV、MP4/WebM/MOV）",
+      );
     }
     if (file.size > SHOWCASE_UPLOAD_MAX_BYTES) {
       return fail(413, "upload_too_large", `单张图片不能超过 ${SHOWCASE_UPLOAD_MAX_BYTES / 1024 / 1024}MB`);
@@ -173,7 +177,7 @@ export async function handleAdminShowcaseWrite(
       return json({ ok: true, person: updated ? toAdminShowcasePerson(updated) : null });
     }
     if (request.method === "DELETE") {
-      await deleteShowcasePerson(db, personId);
+      await softDeleteShowcasePerson(db, personId);
       await writeAudit(db, {
         actorUserId: user.id,
         action: "showcase.person.delete",
@@ -248,7 +252,7 @@ export async function handleAdminShowcaseWrite(
       return json({ ok: true, person: person ? toAdminShowcasePerson(person) : null });
     }
     if (request.method === "DELETE") {
-      await deleteShowcaseItem(db, itemId);
+      await softDeleteShowcaseItem(db, itemId);
       await writeAudit(db, {
         actorUserId: user.id,
         action: "showcase.item.delete",

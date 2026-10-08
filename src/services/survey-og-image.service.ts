@@ -33,7 +33,7 @@ export async function loadSurveyShareMeta(db: D1Database, surveyId: number): Pro
               (SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id = s.id) questionCount
        FROM surveys s
        LEFT JOIN media_assets m ON m.id = s.cover_media_id
-       WHERE s.id = ? AND s.status = 'published'
+       WHERE s.id = ? AND s.status = 'published' AND s.deleted_at IS NULL
        LIMIT 1`,
     )
     .bind(surveyId)
