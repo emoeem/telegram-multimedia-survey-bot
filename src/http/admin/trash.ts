@@ -47,7 +47,7 @@ async function withinRetention(db: D1Database, target: TrashTarget, now = Date.n
     .prepare(`SELECT deleted_at FROM ${table} WHERE id = ? LIMIT 1`)
     .bind(target.id)
     .first<{ deleted_at: string | null }>();
-  return Boolean(row?.deleted_at && row.deleted_at >= cutoff);
+  return Boolean(row?.deleted_at && row.deleted_at >= cutoff && row.deleted_at <= new Date(now).toISOString());
 }
 
 export async function handleAdminTrashRead(url: URL, env: Env, ctx: ReadContext): Promise<Response | null> {
