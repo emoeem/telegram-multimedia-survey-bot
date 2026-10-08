@@ -134,7 +134,7 @@ pnpm exec wrangler secret put SURVEY_CODE_PEPPER
 迁移旧数据前先应用 `0073_survey_access_code_v2.sql`，再在仓库根目录执行：
 
 ```bash
-SURVEY_CODE_PEPPER='生产 pepper' \
+SURVEY_CODE_PEPPER='生产 pepper' BOT_TOKEN='客户 Bot Token' \
 pnpm exec node scripts/rehash-survey-access-codes.mjs
 ```
 
