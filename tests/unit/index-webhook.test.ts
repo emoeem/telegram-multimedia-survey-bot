@@ -216,6 +216,41 @@ describe("telegram webhook idempotency wiring", () => {
     });
   });
 
+  it("shares one email-auth IP budget across actions", async () => {
+    const counts = new Map<string, number>();
+    const cache = {
+      get: vi.fn(async (key: string) => String(counts.get(key) ?? 0)),
+      put: vi.fn(async (key: string, value: string) => {
+        counts.set(key, Number(value));
+      }),
+      delete: vi.fn(async () => undefined),
+      list: vi.fn(async () => ({ keys: [], list_complete: true })),
+    } as unknown as KVNamespace;
+    const env = createEnv(cache);
+
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const response = await worker.fetch(
+        new Request("https://example.test/api/auth/email/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "cf-connecting-ip": "198.51.100.7" },
+          body: JSON.stringify({ email: `user-${attempt}@example.com`, password: "short" }),
+        }),
+        env as never,
+      );
+      expect(response.status).toBe(400);
+    }
+
+    const blocked = await worker.fetch(
+      new Request("https://example.test/api/auth/email/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "cf-connecting-ip": "198.51.100.7" },
+        body: JSON.stringify({ email: "another@example.com", password: "short" }),
+      }),
+      env as never,
+    );
+    expect(blocked.status).toBe(429);
+  });
+
   it("rejects a webhook with the wrong secret", async () => {
     const env = createEnv();
     const response = await worker.fetch(

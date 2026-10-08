@@ -229,7 +229,7 @@ async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Pr
       if (scope === "register" || scope === "login" || scope === "reset") {
         const [perEmail, perIp] = await Promise.all([
           limiter.allow(`${scope}|${email}`, 5, 3600),
-          limiter.allow(`${scope}-ip|${clientIp}`, 20, 3600),
+          limiter.allow(`email-auth-ip|${clientIp}`, 20, 3600),
         ]);
         if (!perEmail || !perIp) {
           return Response.json(
