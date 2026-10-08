@@ -1,0 +1,758 @@
+[
+  {
+    "path": "/s/101",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-light-mobile.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-light-mobile.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-light-mobile.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-light-mobile.png"
+  },
+  {
+    "path": "/me",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-light-mobile.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "light",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-light-mobile.png"
+  },
+  {
+    "path": "/s/101",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-light-webview-short.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-light-webview-short.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-light-webview-short.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-light-webview-short.png"
+  },
+  {
+    "path": "/me",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-light-webview-short.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "light",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-light-webview-short.png"
+  },
+  {
+    "path": "/s/101",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-light-desktop.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-light-desktop.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-light-desktop.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-light-desktop.png"
+  },
+  {
+    "path": "/me",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-light-desktop.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "light",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-light-desktop.png"
+  },
+  {
+    "path": "/s/101",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-dark-mobile.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-dark-mobile.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-dark-mobile.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-dark-mobile.png"
+  },
+  {
+    "path": "/me",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-dark-mobile.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "dark",
+    "viewport": {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 844,
+      "innerHeight": 844
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-dark-mobile.png"
+  },
+  {
+    "path": "/s/101",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-dark-webview-short.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-dark-webview-short.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-dark-webview-short.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-dark-webview-short.png"
+  },
+  {
+    "path": "/me",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-dark-webview-short.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "dark",
+    "viewport": {
+      "name": "webview-short",
+      "width": 390,
+      "height": 764
+    },
+    "metrics": {
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 764,
+      "innerHeight": 764
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-dark-webview-short.png"
+  },
+  {
+    "path": "/s/101",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homes_101-dark-desktop.png"
+  },
+  {
+    "path": "/plaza",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 2,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeplaza-dark-desktop.png"
+  },
+  {
+    "path": "/showcase",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 0,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 0,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeshowcase-dark-desktop.png"
+  },
+  {
+    "path": "/trial",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/hometrial-dark-desktop.png"
+  },
+  {
+    "path": "/me",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 1,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeme-dark-desktop.png"
+  },
+  {
+    "path": "/auth",
+    "theme": "dark",
+    "viewport": {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": 0,
+      "smallText": 0,
+      "tinyTargets": 4,
+      "metaViewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+      "bodyHeight": 900,
+      "innerHeight": 900
+    },
+    "errors": [],
+    "file": "/home/emo/code/telegram-bot/docs/ui-audit-2026-10-assets/homeauth-dark-desktop.png"
+  }
+]
