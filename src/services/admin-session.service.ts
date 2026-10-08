@@ -1,7 +1,7 @@
 /**
  * Stateless browser-login for the Web Admin: an admin asks the Telegram bot
  * for a short-lived login link, the link mints a signed 7-day session cookie
- * (HMAC over the webhook secret). No database or KV state required.
+ * (HMAC over the dedicated admin session secret, with a legacy fallback). No database or KV state required.
  */
 
 const encoder = new TextEncoder();
@@ -9,6 +9,16 @@ const decoder = new TextDecoder();
 
 export const ADMIN_SESSION_TTL_SECONDS = 7 * 24 * 3600;
 export const ADMIN_SESSION_COOKIE = "admin_session";
+
+export interface AdminSessionSecretEnv {
+  ADMIN_SESSION_SECRET?: string;
+  WEBHOOK_SECRET: string;
+}
+
+/** Prefer an independent admin-session secret; preserve old deployments by falling back to WEBHOOK_SECRET. */
+export function resolveSessionSecret(env: AdminSessionSecretEnv): string {
+  return env.ADMIN_SESSION_SECRET?.trim() || env.WEBHOOK_SECRET;
+}
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [

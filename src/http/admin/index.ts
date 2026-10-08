@@ -11,6 +11,7 @@ import {
   ADMIN_SESSION_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   createAdminSessionValue,
+  resolveSessionSecret,
   verifyAdminSessionValue,
 } from "../../services/admin-session.service";
 import { createMediaAsset } from "../../db/repositories/media.repository";
@@ -99,7 +100,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       );
     }
     const epoch = await loadAdminSessionEpoch(env.DB);
-    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, user.id, epoch);
+    const session = await createAdminSessionValue(resolveSessionSecret(env), user.id, epoch);
     return new Response(JSON.stringify({ ok: true, redirect: "/admin" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Set-Cookie": `${ADMIN_SESSION_COOKIE}=${session}; Path=/; HttpOnly; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}; Max-Age=${ADMIN_SESSION_TTL_SECONDS}` } });
   }
 
@@ -152,7 +153,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     const consumed = await consumeAdminLoginRequest(env.DB, env.CACHE, id, state.userId);
     if (!consumed) return fail(409, "login_already_used", "这个登录请求已经完成，请重新开始登录。");
     const epoch = await loadAdminSessionEpoch(env.DB);
-    const session = await createAdminSessionValue(env.WEBHOOK_SECRET, target.id, epoch);
+    const session = await createAdminSessionValue(resolveSessionSecret(env), target.id, epoch);
     return new Response(JSON.stringify({ status: "approved", redirect: "/admin" }), {
       headers: {
         "Content-Type": "application/json",
@@ -188,7 +189,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       (await hasActiveCreatorTrial(env.DB, magicUser.id));
     if (!allowed) return bounce("no_access");
     const magicEpoch = await loadAdminSessionEpoch(env.DB);
-    const magicSession = await createAdminSessionValue(env.WEBHOOK_SECRET, magicUser.id, magicEpoch);
+    const magicSession = await createAdminSessionValue(resolveSessionSecret(env), magicUser.id, magicEpoch);
     return new Response(null, {
       status: 302,
       headers: {
@@ -218,7 +219,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
     const sessionUserId = cookie
-      ? await verifyAdminSessionValue(env.WEBHOOK_SECRET, cookie.slice(ADMIN_SESSION_COOKIE.length + 1), epoch)
+      ? await verifyAdminSessionValue(resolveSessionSecret(env), cookie.slice(ADMIN_SESSION_COOKIE.length + 1), epoch)
       : null;
     if (sessionUserId !== null) {
       await saveSystemSetting(env.DB, ADMIN_SESSION_EPOCH_KEY, String(epoch + 1), sessionUserId);
@@ -252,7 +253,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     if (!match) return null;
     const value = match.slice(ADMIN_SESSION_COOKIE.length + 1);
     const epoch = await loadAdminSessionEpoch(env.DB);
-    return verifyAdminSessionValue(env.WEBHOOK_SECRET, value, epoch);
+    return verifyAdminSessionValue(resolveSessionSecret(env), value, epoch);
   })();
   const user = Number.isInteger(telegramId)
     ? await getUserByTelegramId(env.DB, telegramId)

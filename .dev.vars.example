@@ -1,5 +1,7 @@
 BOT_TOKEN = "replace-with-telegram-bot-token"
 WEBHOOK_SECRET = "replace-with-a-long-random-secret"
+ADMIN_SESSION_SECRET = "replace-with-a-long-random-secret"
+SURVEY_CODE_PEPPER = "replace-with-a-long-random-secret"
 ADMIN_IDS = "123456789,987654321"
 
 # 仅本地开发：设置后可用 x-telegram-user-id + x-dev-auth-secret 模拟登录管理后台。

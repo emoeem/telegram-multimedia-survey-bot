@@ -415,6 +415,8 @@ D1 的 Rows Read 是**扫描行数**，不是最终返回行数。因此一个�
 7. 公开只读接口使用带版本/更新时间戳的 KV cache；
 8. cron 从过密的重试节奏调整为 `*/30 * * * *`。
 
+Telegram webhook 的失败路径也明确采用“返回 200、释放幂等 claim、由 30 分钟 recovery driver 负责重试”的设计：Telegram 不再因为网络重投而重复执行用户动作，真正的 report-delivery / result-visual / image-generator 重试由 cron 兜底。
+
 ### 线上验证
 
 修复后的 D1 日级数据明显下降：
@@ -597,6 +599,8 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
 
 - `BOT_TOKEN`；
 - `WEBHOOK_SECRET`；
+- `SURVEY_CODE_PEPPER`（问卷访问密码的新版本哈希 pepper，必须使用 Cloudflare Secret）；
+- `ADMIN_SESSION_SECRET`（管理后台会话 HMAC 密钥；不设置时回退到 `WEBHOOK_SECRET`，生产建议独立设置）；
 - `ADMIN_IDS`；
 - `LICENSE_KEY`；
 - 其他第三方凭据。
