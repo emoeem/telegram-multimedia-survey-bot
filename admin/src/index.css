@@ -582,8 +582,10 @@ input[type="radio"] {
   .survey-icon-btn {
     display: grid;
     place-items: center;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     flex: none;
     border-radius: 999px;
     border: 1px solid var(--survey-card-border, #e7ebf2);
@@ -2545,20 +2547,32 @@ main > header h1 { letter-spacing: -.025em; }
     gap: 6px;
   }
   .showcase-dot {
+    position: relative;
+    display: grid;
+    height: 44px;
+    width: 44px;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .showcase-dot::after {
+    content: "";
+    display: block;
     height: 6px;
     width: 6px;
-    border: 0;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.34);
     transition: width 260ms ease, background 260ms ease;
-    cursor: pointer;
   }
-  .showcase-dot.is-active {
+  .showcase-dot.is-active::after {
     width: 22px;
     background: var(--sc-accent, #ffffff);
   }
   .showcase-cta {
     display: inline-flex;
+    min-height: 44px;
     align-items: center;
     gap: 7px;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -2588,8 +2602,10 @@ main > header h1 { letter-spacing: -.025em; }
   }
   .showcase-icon-btn {
     display: grid;
-    height: 36px;
-    width: 36px;
+    height: 44px;
+    width: 44px;
+    min-height: 44px;
+    min-width: 44px;
     place-items: center;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 999px;
@@ -3325,3 +3341,13 @@ main > header h1 { letter-spacing: -.025em; }
   }
 }
 
+
+@media print {
+  .report-page { color: #111827 !important; background: #fff !important; }
+  .report-page .card { box-shadow: none !important; border-color: #d1d5db !important; break-inside: avoid; }
+  .report-page button, .report-page select, .report-page [aria-label="刷新"] { display: none !important; }
+  .admin-sidebar, .admin-content-header, .toast-stack, .browser-mode-banner { display: none !important; }
+  .admin-main { padding: 0 !important; max-width: none !important; }
+  .report-page .overflow-x-auto { overflow: visible !important; }
+  .report-page table { width: 100% !important; }
+}

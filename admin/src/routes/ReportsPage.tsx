@@ -76,7 +76,7 @@ export function ReportsPage() {
   ) : null;
 
   return (
-    <div className="space-y-5">
+    <div className="report-page space-y-5">
       <div className="admin-page-intro"><div><h2>报告中心</h2><p>跟踪报告生成、归档与失败任务</p></div></div>
       <section className="card">
       <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_260px] items-start">

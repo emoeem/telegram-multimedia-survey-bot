@@ -35,7 +35,7 @@ export function BottomNav() {
             <a
               key={item.href}
               href={item.href}
-              className={`group flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition-all ${
+              className={`group flex min-w-0 flex-1 flex-col items-center gap-0.5 min-h-11 rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
                 active
                   ? "text-[var(--survey-primary)]"
                   : "text-[var(--survey-muted)] hover:text-[var(--survey-heading)]"

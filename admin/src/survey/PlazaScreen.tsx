@@ -266,7 +266,7 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
       <button
         type="button"
         aria-label="关闭大图"
-        className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white"
+        className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white"
         onClick={onClose}
       >
         <X className="h-5 w-5" />

@@ -577,7 +577,7 @@ export function TrialScreen() {
       <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-2xl">
         <div className="flex min-w-0 items-center gap-2">
           {showBack ? (
-            <button type="button" aria-label="返回" className="survey-icon-btn h-8 w-8 shrink-0" onClick={goHome}>
+            <button type="button" aria-label="返回" className="survey-icon-btn shrink-0" onClick={goHome}>
               <ArrowLeft className="h-4 w-4" />
             </button>
           ) : null}

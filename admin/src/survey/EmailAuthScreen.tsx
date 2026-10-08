@@ -86,7 +86,7 @@ export function EmailAuthScreen() {
   };
 
   const inputClass =
-    "mt-1 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]";
+    "mt-1 min-h-11 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]";
 
   return (
     <div
@@ -163,7 +163,7 @@ export function EmailAuthScreen() {
                 type="button"
                 disabled={busy || !email.includes("@")}
                 onClick={() => void requestCode()}
-                className="shrink-0 rounded-[var(--survey-button-radius)] border border-[var(--survey-primary)] px-3 py-2.5 text-xs font-semibold text-[var(--survey-primary)] disabled:opacity-40"
+                className="min-h-11 shrink-0 rounded-[var(--survey-button-radius)] border border-[var(--survey-primary)] px-3 py-2.5 text-xs font-semibold text-[var(--survey-primary)] disabled:opacity-40"
               >
                 {codeSent ? "重新发送" : "发送验证码"}
               </button>
