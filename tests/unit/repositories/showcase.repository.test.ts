@@ -100,8 +100,10 @@ describe.skipIf(!sqliteD1Available)("showcase repository (real SQLite)", () => {
     // Unpublishing is the authorization boundary: the bytes stay in KV, the URL
     // stops resolving.
     expect(await getPublishedShowcasePersonIdForAsset(db, 901)).toBeNull();
+    await softDeleteShowcasePerson(db, id, "2026-10-01T00:00:00.000Z");
+    expect(await getPublishedShowcasePersonIdForAsset(db, 901)).toBeNull();
     expect(await getPublishedShowcasePersonIdForAsset(db, 902)).toBeNull();
-    expect(await getShowcasePersonById(db, id)).not.toBeNull();
+    expect(await getShowcasePersonById(db, id)).toBeNull();
     expect(await getShowcaseItemByIdHelper(db, itemResult)).toBe(true);
   });
 
@@ -166,6 +168,18 @@ describe.skipIf(!sqliteD1Available)("showcase repository (real SQLite)", () => {
     expect(await getPublishedShowcaseItemById(db, itemId)).toBeNull();
     expect(await restoreShowcasePerson(db, id)).toBe(true);
     expect((await listShowcasePersons(db, { publishedOnly: true })).persons[0]?.items[0]?.title).toBe("保留作品");
+  });
+
+  it("does not resurrect an artwork that was already deleted before its parent", async () => {
+    const db = createSqliteD1(SCHEMA);
+    const id = await createShowcasePerson(db, { name: "人物", published: true });
+    const itemId = await createShowcaseItem(db, { personId: id, title: "旧作品" });
+    expect(await softDeleteShowcaseItem(db, itemId, "2026-09-30T00:00:00.000Z")).toBe(true);
+    expect(await softDeleteShowcasePerson(db, id, "2026-10-01T00:00:00.000Z")).toBe(true);
+    expect(await restoreShowcasePerson(db, id)).toBe(true);
+    expect((await getShowcasePersonById(db, id))?.items).toHaveLength(0);
+    expect(await restoreShowcaseItem(db, itemId)).toBe(true);
+    expect((await getShowcasePersonById(db, id))?.items[0]?.title).toBe("旧作品");
   });
 
   it("soft-deletes one artwork without hiding its parent and restores it", async () => {

@@ -412,15 +412,20 @@ export async function softDeleteShowcasePerson(
 
 export async function restoreShowcasePerson(db: D1Database, id: number): Promise<boolean> {
   const person = await db
-    .prepare("SELECT id FROM showcase_persons WHERE id = ? AND deleted_at IS NOT NULL LIMIT 1")
+    .prepare("SELECT id, deleted_at FROM showcase_persons WHERE id = ? AND deleted_at IS NOT NULL LIMIT 1")
     .bind(id)
-    .first();
+    .first<{ id: number; deleted_at: string }>();
   if (!person) return false;
   await db.batch([
     db
       .prepare("UPDATE showcase_persons SET deleted_at = NULL, updated_at = ? WHERE id = ?")
       .bind(new Date().toISOString(), id),
-    db.prepare("UPDATE showcase_items SET deleted_at = NULL WHERE person_id = ? AND deleted_at IS NOT NULL").bind(id),
+    // Only restore children deleted by this parent-delete operation. A work that
+    // was already in the recycle bin before the parent was deleted must remain
+    // deleted after the parent is restored.
+    db
+      .prepare("UPDATE showcase_items SET deleted_at = NULL WHERE person_id = ? AND deleted_at = ?")
+      .bind(id, person.deleted_at),
   ]);
   return true;
 }
@@ -529,7 +534,8 @@ export async function getPublishedShowcasePersonIdForAsset(
   const row = await db
     .prepare(
       `SELECT id personId FROM showcase_persons
-       WHERE published = 1 AND (background_media_id = ? OR illustration_media_id = ? OR avatar_media_id = ?)
+       WHERE published = 1 AND deleted_at IS NULL
+         AND (background_media_id = ? OR illustration_media_id = ? OR avatar_media_id = ?)
        LIMIT 1`,
     )
     .bind(mediaAssetId, mediaAssetId, mediaAssetId)
