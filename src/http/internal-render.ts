@@ -20,6 +20,9 @@ export async function handleInternalRenderRequest(request: Request, env: Env): P
   const renderMatch = url.pathname.match(/^\/internal\/render-public-report\/(\d+)$/);
   if (renderMatch && request.method === "POST") {
     const responseId = Number(matchId(renderMatch));
+    if (!Number.isSafeInteger(responseId)) {
+      return Response.json({ ok: false, error: "invalid_response_id" }, { status: 400 });
+    }
     try {
       const result = await publishPublicResponseReport(env, responseId);
       return Response.json({ ok: true, ...result });

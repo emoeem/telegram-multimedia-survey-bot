@@ -76,6 +76,10 @@ async function serveHtmlAsset(env: Env, request: Request, assetPath: string, inj
  * shares on Telegram and social platforms render a preview card. Failures
  * are non-fatal: the stock page is served without meta tags.
  */
+export function escapeMetaAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+}
+
 async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId: number): Promise<Response> {
   let injectHead: string | undefined;
   try {
@@ -86,13 +90,13 @@ async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId
       const description = meta.description?.slice(0, 120) || `${meta.questionCount} 道题，点击立即填写`;
       injectHead = [
         `<meta property="og:type" content="website" />`,
-        `<meta property="og:title" content="${meta.title.replaceAll('"', "&quot;")}" />`,
-        `<meta property="og:description" content="${description.replaceAll('"', "&quot;")}" />`,
+        `<meta property="og:title" content="${escapeMetaAttribute(meta.title)}" />`,
+        `<meta property="og:description" content="${escapeMetaAttribute(description)}" />`,
         `<meta property="og:image" content="${ogImage}" />`,
         `<meta property="og:url" content="${origin}/s/${surveyId}" />`,
         `<meta name="twitter:card" content="summary_large_image" />`,
-        `<meta name="twitter:title" content="${meta.title.replaceAll('"', "&quot;")}" />`,
-        `<meta name="twitter:description" content="${description.replaceAll('"', "&quot;")}" />`,
+        `<meta name="twitter:title" content="${escapeMetaAttribute(meta.title)}" />`,
+        `<meta name="twitter:description" content="${escapeMetaAttribute(description)}" />`,
         `<meta name="twitter:image" content="${ogImage}" />`,
       ].join("\n    ");
     }
@@ -116,6 +120,8 @@ export interface Env {
   /** Local-dev only: enables the x-telegram-user-id admin login shortcut when
    *  ENVIRONMENT=development and the request presents this shared secret. */
   ADMIN_DEV_AUTH_SECRET?: string;
+  /** Independent HMAC key for browser admin sessions; falls back to WEBHOOK_SECRET for old deployments. */
+  ADMIN_SESSION_SECRET?: string;
   APP_VERSION?: string;
   LICENSE_ENFORCEMENT?: "disabled" | "required";
   LICENSE_SERVER_URL?: string;
@@ -168,6 +174,8 @@ export interface Env {
   /** Transactional email (Resend) for email+password auth. */
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
+  /** Pepper used only for new salted survey access-code hashes. */
+  SURVEY_CODE_PEPPER?: string;
 }
 
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
@@ -284,7 +292,7 @@ async function ensureTelegramCommandMenu(env: Env): Promise<void> {
   try {
     if (await env.CACHE.get(commandMenuCacheKey)) return;
     await syncDefaultBotCommands(env.BOT_TOKEN);
-    await env.CACHE.put(commandMenuCacheKey, "synced");
+    await env.CACHE.put(commandMenuCacheKey, "synced", { expirationTtl: 24 * 3600 });
   } catch (error) {
     console.warn("Telegram command menu sync failed", error);
   }
@@ -512,15 +520,18 @@ export default {
           cache: env.CACHE,
           session: env.SESSION,
           builder: env.BUILDER,
-          adminIds: env.ADMIN_IDS.split(",")
-            .map((value) => Number(value.trim()))
-            .filter((value) => Number.isInteger(value) && value > 0),
+          adminIds: parseAdminIds(env.ADMIN_IDS),
           exportQueue: env.EXPORT_QUEUE,
           mediaKv: env.MEDIA_KV,
           origin: url.origin,
           submissionBotUrl: resolveSubmissionBotUrl(env),
           communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
-          licenseServerUrl: url.origin,
+          // Investigation: the BotContext field is consumed only by vendor-only
+          // bot surfaces; customer licensing/heartbeat uses Env.LICENSE_SERVER_URL
+          // directly in HTTP services. Never advertise a customer Worker as its own
+          // license server, because that makes the origin semantically ambiguous.
+          licenseServerUrl: isLicenseCenter(env) ? url.origin : null,
+          surveyCodePepper: env.SURVEY_CODE_PEPPER,
           // Same single source of truth as the web API: only the authorization
           // center may issue licenses or hand out trial accounts.
           licenseAdminEnabled: isLicenseCenter(env),
@@ -532,8 +543,10 @@ export default {
         return Response.json({ ok: true });
       } catch (error) {
         console.error("Telegram webhook handler failed", error);
-        // Release the claim so a genuine Telegram redelivery can retry an
-        // update that failed before its side effects completed.
+        // Release only defends against an exceptional duplicate delivery path.
+        // Failed retries are driven by the 30-minute recovery cron (report-delivery /
+        // result-visual / image-generator). We intentionally return 200 below so
+        // Telegram stops retrying the user action and cannot execute it twice.
         await dedup.release(update.update_id);
         // The router answers the user itself when a handler fails; only send
         // the generic notice for failures raised before that point.
@@ -631,41 +644,54 @@ export default {
           console.warn("Customer Worker heartbeat failed", error);
         }
       }
-      try {
-        const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
-        if (summary.requeued > 0) {
-          console.info("Requeued pending report deliveries", summary);
-        }
-      } catch (error) {
-        console.error("Report delivery retry driver failed", error);
-      }
-      try {
-        const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
-        if (summary.requeued || summary.failed) console.warn("Recovered stale result visual jobs", summary);
-      } catch (error) {
-        console.error("Result visual job recovery failed", error);
-      }
-      try {
-        const summary = await recoverStaleImageGeneratorJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
-        if (summary.requeued || summary.failed) console.warn("Recovered stale image generator jobs", summary);
-      } catch (error) {
-        console.error("Image generator job recovery failed", error);
-      }
-      try {
-        const migrated = await migrateDataUrlCoversToKv(env.DB, env);
-        if (migrated > 0) {
-          console.info("Migrated data-URL covers into MEDIA_KV", { migrated });
-        }
-      } catch (error) {
-        console.error("Cover KV migration failed", error);
-      }
+      // These recovery jobs touch independent queues/tables. Run them concurrently so
+      // one slow renderer cannot delay the other recovery paths for a full cron tick.
+      await Promise.allSettled([
+        (async () => {
+          try {
+            const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
+            if (summary.requeued > 0) {
+              console.info("Requeued pending report deliveries", summary);
+            }
+          } catch (error) {
+            console.error("Report delivery retry driver failed", error);
+          }
+        })(),
+        (async () => {
+          try {
+            const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+            if (summary.requeued || summary.failed) console.warn("Recovered stale result visual jobs", summary);
+          } catch (error) {
+            console.error("Result visual job recovery failed", error);
+          }
+        })(),
+        (async () => {
+          try {
+            const summary = await recoverStaleImageGeneratorJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+            if (summary.requeued || summary.failed) console.warn("Recovered stale image generator jobs", summary);
+          } catch (error) {
+            console.error("Image generator job recovery failed", error);
+          }
+        })(),
+        (async () => {
+          try {
+            const migrated = await migrateDataUrlCoversToKv(env.DB, env);
+            if (migrated > 0) {
+              console.info("Migrated data-URL covers into MEDIA_KV", { migrated });
+            }
+          } catch (error) {
+            console.error("Cover KV migration failed", error);
+          }
+        })(),
+      ]);
       return;
     }
+    let maintenanceSummary: Awaited<ReturnType<typeof runDatabaseMaintenance>> | null = null;
+    let mediaRetentionSummary: Awaited<ReturnType<typeof retainFinishedResponseMedia>> | null = null;
     try {
-      const summary = await runDatabaseMaintenance(env.DB);
-      console.info("Database maintenance complete", summary);
-      if (summary.truncated) {
-        await notifyMaintenanceBudgetExhausted(env, summary.rowsRead);
+      maintenanceSummary = await runDatabaseMaintenance(env.DB);
+      if (maintenanceSummary.truncated) {
+        await notifyMaintenanceBudgetExhausted(env, maintenanceSummary.rowsRead);
       }
     } catch (error) {
       console.error("Database maintenance failed", error);
@@ -673,12 +699,17 @@ export default {
     try {
       // Rescue attachments of finished responses before the expiry sweep can
       // delete a blob whose previews are still expected to work.
-      const retained = await retainFinishedResponseMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
-      if (retained.scanned > 0) {
-        console.info("Finished response media retained", retained);
-      }
+      mediaRetentionSummary = await retainFinishedResponseMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
     } catch (error) {
       console.error("Response media retention sweep failed", error);
+    }
+    if (maintenanceSummary) {
+      console.info("Database maintenance complete", {
+        ...maintenanceSummary,
+        mediaRetention: mediaRetentionSummary,
+      });
+    } else if (mediaRetentionSummary?.scanned) {
+      console.info("Database maintenance media retention", { mediaRetention: mediaRetentionSummary });
     }
     try {
       const summary = await cleanupExpiredTemporaryMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
@@ -689,9 +720,7 @@ export default {
       console.error("Temporary media cleanup failed", error);
     }
     if (!env.LICENSE_ADMIN_TOKEN) return;
-    const adminIds = env.ADMIN_IDS.split(",")
-      .map((value) => Number(value.trim()))
-      .filter((value) => Number.isInteger(value) && value > 0);
+    const adminIds = parseAdminIds(env.ADMIN_IDS);
     try {
       await sendCreatorTrialExpiryReminders(env.DB, env.CACHE, env.BOT_TOKEN, adminIds);
     } catch (error) {

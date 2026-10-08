@@ -6,6 +6,11 @@ const mocks = vi.hoisted(() => ({
   complete: vi.fn(async () => undefined),
   release: vi.fn(async () => undefined),
   checkDeploymentLicense: vi.fn(async () => ({ allowed: true })),
+  sendCustomerHeartbeat: vi.fn(async () => undefined),
+  retryPendingReportDeliveries: vi.fn(async () => ({ requeued: 0 })),
+  recoverStaleResultVisualJobs: vi.fn(async () => ({ requeued: 0, failed: 0 })),
+  recoverStaleImageGeneratorJobs: vi.fn(async () => ({ requeued: 0, failed: 0 })),
+  migrateDataUrlCoversToKv: vi.fn(async () => 0),
   sendMessage: vi.fn(async () => Response.json({ ok: true })),
   answerCallbackQuery: vi.fn(async () => Response.json({ ok: true })),
 }));
@@ -30,6 +35,22 @@ vi.mock("../../src/services/update-dedup.service", async (importOriginal) => {
 vi.mock("../../src/services/license-client.service", () => ({
   checkDeploymentLicense: mocks.checkDeploymentLicense,
 }));
+vi.mock("../../src/services/customer-control.service", () => ({
+  sendCustomerHeartbeat: mocks.sendCustomerHeartbeat,
+}));
+vi.mock("../../src/services/report-delivery.service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/services/report-delivery.service")>()),
+  retryPendingReportDeliveries: mocks.retryPendingReportDeliveries,
+}));
+vi.mock("../../src/services/result-visual-job-recovery.service", () => ({
+  recoverStaleResultVisualJobs: mocks.recoverStaleResultVisualJobs,
+}));
+vi.mock("../../src/services/image-generator-job-recovery.service", () => ({
+  recoverStaleImageGeneratorJobs: mocks.recoverStaleImageGeneratorJobs,
+}));
+vi.mock("../../src/services/cover-storage.service", () => ({
+  migrateDataUrlCoversToKv: mocks.migrateDataUrlCoversToKv,
+}));
 
 // The result-visual WASM bundle cannot load under vitest; the webhook path
 // never touches it.
@@ -50,7 +71,9 @@ vi.mock("../../src/bot/telegram", async (importOriginal) => {
   };
 });
 
-const worker = (await import("../../src/index")).default;
+const importedIndex = await import("../../src/index");
+const worker = importedIndex.default;
+const { escapeMetaAttribute } = importedIndex;
 
 function createKv(): KVNamespace {
   return {
@@ -83,6 +106,10 @@ function webhookRequest(body: unknown, secret = "webhook-secret"): Request {
 }
 
 describe("telegram webhook idempotency wiring", () => {
+  it("escapes ampersands before quotes in meta attributes", () => {
+    expect(escapeMetaAttribute('A &copy; "quote"')).toBe("A &amp;copy; &quot;quote&quot;");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.claim.mockResolvedValue(true);
@@ -104,6 +131,7 @@ describe("telegram webhook idempotency wiring", () => {
     expect(await response.json()).toEqual({ ok: true });
     expect(mocks.claim).toHaveBeenCalledWith(5001);
     expect(mocks.handleTelegramUpdate).toHaveBeenCalledOnce();
+    expect((mocks.handleTelegramUpdate.mock.calls[0] as unknown[])[1]).toMatchObject({ licenseServerUrl: null });
     expect(mocks.complete).toHaveBeenCalledWith(5001);
     expect(mocks.release).not.toHaveBeenCalled();
   });
@@ -122,7 +150,7 @@ describe("telegram webhook idempotency wiring", () => {
     expect(mocks.complete).not.toHaveBeenCalled();
   });
 
-  it("releases the claim when handling fails so Telegram can retry", async () => {
+  it("releases the claim when handling fails for cron recovery", async () => {
     mocks.handleTelegramUpdate.mockRejectedValue(new Error("boom"));
     const env = createEnv();
 
@@ -134,6 +162,18 @@ describe("telegram webhook idempotency wiring", () => {
     expect(response.status).toBe(200);
     expect(mocks.release).toHaveBeenCalledWith(5003);
     expect(mocks.complete).not.toHaveBeenCalled();
+  });
+
+  it("runs the 30-minute recovery jobs independently when one rejects", async () => {
+    const env = createEnv();
+    mocks.recoverStaleResultVisualJobs.mockRejectedValueOnce(new Error("result visual failed"));
+
+    await worker.scheduled({ cron: "*/30 * * * *" } as ScheduledEvent, env as never);
+
+    expect(mocks.retryPendingReportDeliveries).toHaveBeenCalledOnce();
+    expect(mocks.recoverStaleResultVisualJobs).toHaveBeenCalledOnce();
+    expect(mocks.recoverStaleImageGeneratorJobs).toHaveBeenCalledOnce();
+    expect(mocks.migrateDataUrlCoversToKv).toHaveBeenCalledOnce();
   });
 
   it("rate-limits email registration after five attempts for the same email", async () => {
@@ -174,5 +214,16 @@ describe("telegram webhook idempotency wiring", () => {
       code: "rate_limited",
       message: "请求过于频繁，请稍后再试",
     });
+  });
+
+  it("rejects a webhook with the wrong secret", async () => {
+    const env = createEnv();
+    const response = await worker.fetch(
+      webhookRequest({ update_id: 5004, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }, "nope"),
+      env as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.claim).not.toHaveBeenCalled();
   });
 });
