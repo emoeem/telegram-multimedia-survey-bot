@@ -255,9 +255,9 @@ export function ImportPage() {
             ))}
           </select>
         </div>
-        {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-[var(--color-danger)]">{error}</div> : null}
+        {error ? <div className="mt-3 whitespace-pre-wrap text-sm text-[var(--app-danger)]">{error}</div> : null}
         {issues.length ? (
-          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] p-3 text-sm text-[var(--app-danger)]">
             <div className="font-medium">导入校验失败（{issues.length} 处）</div>
             <ul className="mt-1 max-h-72 list-inside list-disc space-y-1 overflow-auto">
               {issues.map((issue, index) => (
@@ -269,7 +269,7 @@ export function ImportPage() {
                     </>
                   ) : null}
                   {issue.message}
-                  <span className="ml-1 font-mono text-xs text-[var(--color-danger)]">{issue.path}</span>
+                  <span className="ml-1 font-mono text-xs text-[var(--app-danger)]">{issue.path}</span>
                 </li>
               ))}
             </ul>
@@ -293,8 +293,8 @@ export function ImportPage() {
                 />
               ) : null}
               {duplicates.length ? (
-            <div className="mt-4 rounded-lg border border-[var(--color-warning)]/30 bg-[color-mix(in_srgb,var(--color-warning)_8%,var(--surface))] p-3 text-sm">
-              <div className="font-medium text-[var(--color-warning)]">发现同名问卷</div>
+            <div className="mt-4 rounded-lg border border-[var(--app-warning)]/30 bg-[color-mix(in_srgb,var(--app-warning)_8%,var(--surface))] p-3 text-sm">
+              <div className="font-medium text-[var(--app-warning)]">发现同名问卷</div>
               <p className="mt-1 text-[var(--color-muted)]">创建前建议确认是否为重复导入，避免产生两份相同问卷。</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {duplicates.map((item) => (
@@ -348,7 +348,7 @@ export function ImportPage() {
           ) : null}
 
           {summary.warnings.length ? (
-            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] p-3 text-sm text-[var(--color-warning)]">
+            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] p-3 text-sm text-[var(--app-warning)]">
               <div className="flex items-center gap-1.5 font-medium">
                 <AlertTriangle className="h-4 w-4" />
                 自动修复警告
@@ -362,7 +362,7 @@ export function ImportPage() {
           ) : null}
 
           {summary.lowConfidence.length ? (
-            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
+            <div className="mt-4 rounded-lg bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] p-3 text-sm text-[var(--app-danger)]">
               <div className="flex items-center gap-1.5 font-medium">
                 <AlertTriangle className="h-4 w-4" />
                 建议重点检查 {summary.lowConfidence.length}+ 道题（低置信度或警告）
@@ -371,14 +371,14 @@ export function ImportPage() {
                 {summary.lowConfidence.map((question) => (
                   <li key={question.order}>
                     第 {question.order} 题 · {question.title || "（无标题）"}
-                    <span className="ml-1 text-[var(--color-danger)]">
+                    <span className="ml-1 text-[var(--app-danger)]">
                       （题型 {formatConfidence(question.confidence?.type)} · 必答{" "}
                       {formatConfidence(question.confidence?.required)}）
                     </span>
                     {question.warnings.length ? (
                       <ul className="ml-4 list-disc">
                         {question.warnings.map((warning, index) => (
-                          <li key={index} className="text-[var(--color-danger)]">
+                          <li key={index} className="text-[var(--app-danger)]">
                             {warning}
                           </li>
                         ))}

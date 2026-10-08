@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { scanA11y } from "./a11y";
 
 const VIEWPORTS = [
   { width: 390, height: 844 },
@@ -350,6 +351,8 @@ for (const theme of THEMES) {
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         expect(overflow).toBeLessThanOrEqual(1);
         expect(problems).toEqual([]);
+
+        await scanA11y(page, test.info().title);
 
         await expect(page).toHaveScreenshot(
           `admin-${path.replaceAll("/", "_")}${theme === "dark" ? "-dark" : ""}-${viewport.width}x${viewport.height}.png`,

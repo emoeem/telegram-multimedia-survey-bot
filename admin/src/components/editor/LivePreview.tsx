@@ -90,7 +90,7 @@ export function LivePreview({
                     <span>·</span>
                     <span>{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
                     <span>·</span>
-                    <span style={{ color: question.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
+                    <span style={{ color: question.required ? "var(--app-danger)" : "var(--survey-muted)" }}>
                       {question.required ? "必答" : "选答"}
                     </span>
                   </div>

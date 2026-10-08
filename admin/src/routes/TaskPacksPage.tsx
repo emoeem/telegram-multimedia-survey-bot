@@ -582,13 +582,13 @@ export function TaskPacksPage() {
                   className={
                     pack.enabled
                       ? "shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                   }
                 >
                   {pack.enabled ? "已启用" : "已停用"}
                 </span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-700 dark:text-slate-400">
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
                   普通 {pack.normalFloors} 层
                 </span>

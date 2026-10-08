@@ -884,6 +884,7 @@ function SurveySettingsPanel({
           type="button"
           role="switch"
           aria-checked={meta.anonymous}
+          aria-label="匿名填写"
           className="switch"
           data-on={meta.anonymous}
           disabled={disabled}
@@ -900,6 +901,7 @@ function SurveySettingsPanel({
           type="button"
           role="switch"
           aria-checked={meta.allowMultipleResponses}
+          aria-label="允许重复填写"
           className="switch"
           data-on={meta.allowMultipleResponses}
           disabled={disabled}
@@ -1101,9 +1103,9 @@ function ReadOnlyQuestion({ question, index }: { question: EditorData["questions
             className="q-chip"
             style={{
               background: question.required
-                ? "color-mix(in srgb, var(--color-danger) 12%, var(--surface))"
+                ? "color-mix(in srgb, var(--app-danger) 12%, var(--surface))"
                 : "var(--surface-muted)",
-              color: question.required ? "var(--color-danger)" : "var(--color-muted)",
+              color: question.required ? "var(--app-danger)" : "var(--color-muted)",
             }}
           >
             {question.type === "note" ? "非题目" : question.required ? "必答" : "选答"}

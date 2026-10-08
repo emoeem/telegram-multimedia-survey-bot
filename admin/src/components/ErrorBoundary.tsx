@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="grid min-h-dvh place-items-center px-5 py-10">
           <div className="w-full max-w-md rounded-2xl border border-[var(--color-edge)] bg-[var(--surface)] p-6 text-center shadow-lg">
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--color-danger)_15%,var(--surface))] text-[var(--color-danger)]">
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--app-danger)_15%,var(--surface))] text-[var(--app-danger)]">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 <line x1="12" y1="9" x2="12" y2="13" />

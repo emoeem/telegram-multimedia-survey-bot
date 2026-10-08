@@ -56,6 +56,7 @@ export function AuditPage() {
           <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 条操作记录</p>
         </div>
         <select
+          aria-label="审计实体类型筛选"
           className="select"
           value={entityType}
           onChange={(event) => {

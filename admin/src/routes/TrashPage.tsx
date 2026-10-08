@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArchiveRestore, RefreshCw, Trash2 } from "lucide-react";
-import { apiSend, fetchAdminTrash, type TrashItem } from "../api";
+import { ApiError, apiSend, fetchAdminTrash, type TrashItem } from "../api";
 import { useDialogs } from "../components/Dialogs";
 import { EmptyPanel, ErrorPanel, PageHeader, SkeletonPanel } from "../components/ui";
 import { formatDateTime } from "../format";
@@ -16,7 +16,7 @@ const KIND_LABEL: Record<TrashItem["kind"], string> = {
 export function TrashPage() {
   const { toast, confirm } = useDialogs();
   const [items, setItems] = useState<TrashItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +27,11 @@ export function TrashPage() {
       setItems(data.items);
       setSelected(new Set());
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "加载回收站失败");
+      setError(
+        requestError instanceof ApiError
+          ? requestError
+          : new ApiError(0, requestError instanceof Error ? requestError.message : "加载回收站失败"),
+      );
     }
   };
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { scanA11y } from "./a11y";
 
 const GIF_1PX = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
@@ -302,6 +303,8 @@ for (const fixture of FIXTURES) {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow).toBeLessThanOrEqual(1);
       expect(problems).toEqual([]);
+
+      await scanA11y(page, test.info().title);
 
       await expect(page).toHaveScreenshot(`survey-${fixture.id}-${viewport.width}x${viewport.height}.png`, {
         maxDiffPixelRatio: 0.002,

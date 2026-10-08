@@ -319,7 +319,7 @@ describe("handleAdminApi authentication and permissions", () => {
     const { db, sqlLog } = makeDb();
     const response = await handleAdminApi(apiRequest("/api/admin/surveys", { userId: "111" }), makeEnv(db));
     expect(response.status).toBe(200);
-    expect(sqlLog[0]).toContain("1=1");
+    expect(sqlLog[0]).toContain("s.deleted_at IS NULL");
     expect(sqlLog[0]).not.toContain("s.owner_id = ?");
   });
 
@@ -1416,7 +1416,7 @@ describe("handleAdminApi write endpoints", () => {
     expect(archived.status).toBe(200);
   });
 
-  it("blocks non-admin survey deletion when responses exist", async () => {
+  it("soft-deletes owner surveys even when responses exist", async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
     const harness = writableDraftDb({
       responses: 1,
@@ -1427,11 +1427,11 @@ describe("handleAdminApi write endpoints", () => {
       apiRequest("/api/admin/surveys/5", { method: "DELETE", userId: "222" }),
       makeEnv(harness.db),
     );
-    expect(response.status).toBe(400);
-    expect((await response.json()) as { code: string }).toMatchObject({ code: "delete_blocked" });
+    expect(response.status).toBe(200);
+    expect(harness.sqlLog.some((sql) => sql.includes("UPDATE surveys SET deleted_at"))).toBe(true);
   });
 
-  it("lets admins force-delete surveys with responses", async () => {
+  it("lets admins soft-delete surveys with responses", async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const harness = writableDraftDb({ responses: 1 });
     harness.firstOn("FROM surveys WHERE id", surveyRow({ status: "archived" }));
@@ -1440,10 +1440,10 @@ describe("handleAdminApi write endpoints", () => {
       makeEnv(harness.db),
     );
     expect(response.status).toBe(200);
-    expect(harness.sqlLog.some((sql) => sql.includes("DELETE FROM surveys"))).toBe(true);
+    expect(harness.sqlLog.some((sql) => sql.includes("UPDATE surveys SET deleted_at"))).toBe(true);
   });
 
-  it("deletes surveys without responses", async () => {
+  it("soft-deletes surveys without responses", async () => {
     repositoryMocks.getUserByTelegramId.mockResolvedValue(ADMIN);
     const harness = writableDraftDb();
     harness.firstOn("FROM surveys WHERE id", surveyRow({ status: "archived" }));
@@ -1452,7 +1452,7 @@ describe("handleAdminApi write endpoints", () => {
       makeEnv(harness.db),
     );
     expect(response.status).toBe(200);
-    expect(harness.sqlLog.some((sql) => sql.includes("DELETE FROM surveys"))).toBe(true);
+    expect(harness.sqlLog.some((sql) => sql.includes("UPDATE surveys SET deleted_at"))).toBe(true);
   });
 
   it("lists survey versions and restores one as a new draft", async () => {

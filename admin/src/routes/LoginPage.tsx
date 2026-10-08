@@ -145,7 +145,7 @@ export function LoginPage() {
             {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
             {loading ? "登录中…" : "登录管理后台"}
           </button>
-          {message ? <p role="alert" className="text-sm text-[var(--color-danger)]">{message}</p> : null}
+          {message ? <p role="alert" className="text-sm text-[var(--app-danger)]">{message}</p> : null}
           <p className="text-center text-xs text-[var(--color-muted-soft)]">密码可在「系统设置」中修改。</p>
         </form>
         <div className="border-t border-[var(--color-edge-soft)] p-6">
@@ -167,7 +167,7 @@ export function LoginPage() {
             点击后会打开 Telegram 机器人；确认登录必须在 Telegram 机器人里点击「✅ 确认登录」，本页面不能自行完成验证。
           </p>
           {telegramHint ? <p className="mt-2 text-xs text-[var(--color-primary)]">{telegramHint}</p> : null}
-          {telegramError ? <p role="alert" className="mt-2 text-sm text-[var(--color-danger)]">{telegramError}</p> : null}
+          {telegramError ? <p role="alert" className="mt-2 text-sm text-[var(--app-danger)]">{telegramError}</p> : null}
         </div>
       </div>
     </div>

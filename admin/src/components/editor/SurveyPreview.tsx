@@ -356,7 +356,7 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
                         >
                           {QUESTION_TYPE_LABELS[currentQuestion.type] ?? currentQuestion.type}
                         </span>
-                        <span style={{ color: currentQuestion.required ? "var(--color-danger)" : "var(--survey-muted)" }}>
+                        <span style={{ color: currentQuestion.required ? "var(--app-danger)" : "var(--survey-muted)" }}>
                           {currentQuestion.required ? "必答" : "选答"}
                         </span>
                       </div>
@@ -387,7 +387,7 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
                     </>
                   )}
                   {error ? (
-                    <p className="mt-3 text-sm" style={{ color: "var(--color-danger)" }}>
+                    <p className="mt-3 text-sm" style={{ color: "var(--app-danger)" }}>
                       {error}
                     </p>
                   ) : null}

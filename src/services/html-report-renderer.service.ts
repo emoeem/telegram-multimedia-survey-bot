@@ -449,7 +449,32 @@ export function buildResponsiveCompositionReport(
     :root{--report-bg:#f4f6fa;--report-surface:#fff;--report-border:#e5e9f0}
     @media (prefers-color-scheme: dark){:root{--report-bg:#0f172a;--report-surface:#131c2e;--report-border:#26334d}}
     ${responsiveCompositionCss()}
-    .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:.9}
+    .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:1}
+    .report-layout-profile .cover-kicker,
+    .report-layout-profile .bento-overview span,
+    .report-layout-profile .metric-level,
+    .report-layout-profile .tag,
+    .report-layout-profile .chapter-heading span,
+    .report-layout-profile .response-index,
+    .report-layout-profile .editorial-label,
+    .report-layout-profile .editorial-index,
+    .report-layout-profile .verdict-eyebrow,
+    .report-layout-profile .verdict-pillar span,
+    .report-layout-profile .verdict-score > strong,
+    .report-layout-gallery .cover-kicker,
+    .report-layout-gallery .chapter-kicker,
+    .report-layout-gallery .editorial-label,
+    .report-layout-gallery .response-index,
+    .report-layout-gallery .editorial-index,
+    .report-layout-gallery .chapter-heading span,
+    .report-layout-gallery .gallery-composition > header > span,
+    .report-layout-gallery .responses-composition > header > span,
+    .report-layout-gallery .editorial-chapter > header > span,
+    .report-layout-gallery .hero-score > strong,
+    .report-layout-gallery .bento-primary > strong,
+    .report-layout-gallery .verdict-score > strong,
+    .report-layout-gallery .verdict-eyebrow,
+    .report-layout-gallery .verdict-pillar span{color:var(--report-text)!important}
   </style>
   <style>${themeCss(theme)}${sanitizeReportCss(template.css)}</style>
 </head>

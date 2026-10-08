@@ -186,14 +186,14 @@ export function UsersPage() {
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm">
                     <button
-                      className="text-left font-semibold text-[var(--color-info)]"
+                      className="text-left font-semibold text-[var(--app-info)]"
                       onClick={() => void openDetail(item.id)}
                     >
                       {displayName(item)}
                     </button>
                     {item.username ? <span className="ml-1 text-[var(--color-muted)]">@{item.username}</span> : null}
                     {item.bannedAt ? (
-                      <span className="ml-1 rounded-full bg-[color-mix(in_srgb,var(--color-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                      <span className="ml-1 rounded-full bg-[color-mix(in_srgb,var(--app-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--app-danger)]">
                         已封禁
                       </span>
                     ) : null}
@@ -205,7 +205,7 @@ export function UsersPage() {
                       {item.tags.map((value) => (
                         <button
                           key={value}
-                          className="rounded-full bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] hover:text-[var(--color-danger)]"
+                          className="rounded-full bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] hover:text-[var(--app-danger)]"
                           title="点击移除标签"
                           onClick={() => void removeTag(item.id, value)}
                         >
@@ -248,26 +248,26 @@ export function UsersPage() {
               收起
             </button>
           </div>
-          {detailError ? <p className="mt-2 text-sm text-[var(--color-danger)]">{detailError}</p> : null}
+          {detailError ? <p className="mt-2 text-sm text-[var(--app-danger)]">{detailError}</p> : null}
           {detail ? (
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm text-[var(--text-soft)]">
                   注册：{formatDateTime(detail.user.createdAt)}
                   {detail.user.bannedAt ? (
-                    <span className="ml-2 rounded-full bg-[color-mix(in_srgb,var(--color-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                    <span className="ml-2 rounded-full bg-[color-mix(in_srgb,var(--app-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--app-danger)]">
                       已封禁（{formatDateTime(detail.user.bannedAt)}）
                     </span>
                   ) : null}
                 </p>
                 {detail.user.bannedAt && detail.user.banReason ? (
-                  <p className="mt-1 text-sm text-[var(--color-danger)]">封禁原因：{detail.user.banReason}</p>
+                  <p className="mt-1 text-sm text-[var(--app-danger)]">封禁原因：{detail.user.banReason}</p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {detail.tags.map((value) => (
                     <button
                       key={value}
-                      className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] hover:text-[var(--color-danger)]"
+                      className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] hover:text-[var(--app-danger)]"
                       onClick={() => void removeTag(selected, value)}
                     >
                       #{value} <X className="h-3 w-3" />
@@ -318,7 +318,7 @@ export function UsersPage() {
                       {detail.responses.map((response) => (
                         <li key={response.responseId} className="flex items-center justify-between flex-wrap gap-2">
                           <Link
-                            className="text-[var(--color-info)]"
+                            className="text-[var(--app-info)]"
                             to={`/surveys/${response.surveyId}/responses/${response.responseId}`}
                           >
                             {response.surveyTitle} · #{response.responseId}

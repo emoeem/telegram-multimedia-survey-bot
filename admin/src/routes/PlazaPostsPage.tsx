@@ -32,10 +32,12 @@ function PostRow({
   post,
   onToggle,
   onDelete,
+  onRefresh,
 }: {
   post: PlazaPostSummary;
   onToggle: (post: PlazaPostSummary) => void;
   onDelete: (post: PlazaPostSummary) => Promise<void>;
+  onRefresh: () => void;
 }) {
   const { toast } = useDialogs();
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -116,7 +118,7 @@ function PostRow({
             onDelete={() => onDelete(post)}
             onUndo={async () => {
               await restorePlazaPost(post.id);
-              retry();
+              onRefresh();
             }}
             className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
           >
@@ -268,7 +270,7 @@ export function PlazaPostsPage() {
         <>
           <div className="flex flex-col gap-3">
             {data.items.map((post) => (
-              <PostRow key={post.id} post={post} onToggle={toggle} onDelete={remove} />
+              <PostRow key={post.id} post={post} onToggle={toggle} onDelete={remove} onRefresh={retry} />
             ))}
           </div>
           <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">

@@ -33,7 +33,7 @@ export function ResponseMediaPreview({
     };
   }, [media.mediaAssetId, responseId, surveyId]);
 
-  if (error) return <span className="text-xs text-[var(--color-danger)]">{error}</span>;
+  if (error) return <span className="text-xs text-[var(--app-danger)]">{error}</span>;
   if (!url) return <span className="text-xs text-[var(--color-muted-soft)]">媒体加载中…</span>;
 
   const label = media.fileName || `${media.mediaType} #${media.mediaAssetId}`;

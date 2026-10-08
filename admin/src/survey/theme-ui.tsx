@@ -148,6 +148,10 @@ export function themeCssVars(theme: SurveyThemeDto | null): Record<string, strin
     vars["--surface-input"] = DARK_PRESETS.has(theme.preset)
       ? "color-mix(in srgb, var(--color-base-200) 55%, var(--color-base-100))"
       : "var(--color-base-100)";
+    vars["--app-success"] = DARK_PRESETS.has(theme.preset) ? "#86efac" : "#166534";
+    vars["--app-warning"] = DARK_PRESETS.has(theme.preset) ? "#fcd34d" : "#92400e";
+    vars["--app-danger"] = DARK_PRESETS.has(theme.preset) ? "#fca5a5" : "#b91c1c";
+    vars["--app-info"] = DARK_PRESETS.has(theme.preset) ? "#7dd3fc" : "#075985";
 
     // Map the DaisyUI theme library tokens onto the survey surface.
     vars["--survey-primary"] = "var(--color-primary)";

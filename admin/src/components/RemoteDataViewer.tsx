@@ -546,7 +546,7 @@ function UsersPanel({
                           <div className="font-medium">
                             {name}
                             {banned ? (
-                              <span className="ml-1 rounded-full bg-[color-mix(in_srgb,var(--color-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--color-danger)]">
+                              <span className="ml-1 rounded-full bg-[color-mix(in_srgb,var(--app-danger)_12%,var(--surface))] px-2 py-0.5 text-xs text-[var(--app-danger)]">
                                 已封禁
                               </span>
                             ) : null}

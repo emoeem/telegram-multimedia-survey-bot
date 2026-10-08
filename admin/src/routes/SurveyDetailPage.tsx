@@ -242,7 +242,7 @@ export function SurveyDetailPage() {
         <div className="mt-5 rounded-xl border border-[var(--color-edge)] p-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-medium text-[var(--color-muted)] min-w-0 flex-1 truncate">近 {analytics.data.completionTimeBuckets.length} 天完成趋势</div>
-            <Link to={`/surveys/${data.id}/analytics`} className="text-xs text-[var(--color-info)] hover:underline">
+            <Link to={`/surveys/${data.id}/analytics`} className="text-xs text-[var(--app-info)] hover:underline">
               查看详情 →
             </Link>
           </div>
@@ -338,7 +338,7 @@ export function SurveyDetailPage() {
       {data.responseCount > 0 && !data.isAdmin ? (
         <p className="mt-2 text-xs text-[var(--color-muted-soft)]">已有答卷的问卷禁止删除（历史答卷保护）。</p>
       ) : data.responseCount > 0 && data.isAdmin ? (
-        <p className="mt-2 text-xs text-[var(--color-warning)]">
+        <p className="mt-2 text-xs text-[var(--app-warning)]">
           管理员可强制删除该问卷，删除将同时移除 {data.responseCount} 份答卷。
         </p>
       ) : null}
@@ -452,7 +452,7 @@ export function SurveyDetailPage() {
               placeholder="https://…/bgm.mp3"
             />
             {bgmUrl ? (
-              <button className="btn btn-sm text-[var(--color-danger)]" onClick={() => setBgmUrl("")}>
+              <button className="btn btn-sm text-[var(--app-danger)]" onClick={() => setBgmUrl("")}>
                 清除
               </button>
             ) : null}
@@ -469,7 +469,7 @@ export function SurveyDetailPage() {
         </div>
       </div>
 
-      {actionError ? <p className="mt-2 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
+      {actionError ? <p className="mt-2 text-sm text-[var(--app-danger)]">{actionError}</p> : null}
     </section>
 
     {shareOpen ? <ShareSurveyDialog survey={data} onClose={() => setShareOpen(false)} /> : null}

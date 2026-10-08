@@ -248,7 +248,18 @@ export function ResponseDetailPage() {
 
   return (
     <div className="space-y-5">
-      <div className="admin-page-intro"><div><h2>答卷详情</h2><p>{data.survey.title} · #{data.response.id}</p></div><Link className="btn" to={`/surveys/${data.survey.id}/responses`}><ArrowLeft className="h-4 w-4" />返回列表</Link></div>
+      <div className="admin-page-intro">
+        <div>
+          <h2>答卷详情</h2>
+          <p>
+            {data.survey.title} · #{data.response.id}
+          </p>
+        </div>
+        <Link className="btn" to={`/surveys/${data.survey.id}/responses`}>
+          <ArrowLeft className="h-4 w-4" />
+          返回列表
+        </Link>
+      </div>
       <section className="card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -301,7 +312,7 @@ export function ResponseDetailPage() {
           </div>
           <div>
             <span className="text-[var(--color-muted)]">问卷版本：</span>
-            <Link className="text-[var(--color-primary)] hover:underline" to="../../versions">
+            <Link className="text-[var(--color-primary)] underline underline-offset-2" to="../../versions">
               v{data.response.version}
             </Link>
           </div>
@@ -376,10 +387,10 @@ export function ResponseDetailPage() {
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
                     envRisk.score >= 80
-                      ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
+                      ? "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]"
                       : envRisk.score >= 50
-                        ? "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
-                        : "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
+                        ? "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]"
+                        : "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]"
                   }`}
                 >
                   环境一致性 {envRisk.score}%
@@ -393,8 +404,8 @@ export function ResponseDetailPage() {
                     key={signal}
                     className={`rounded-full px-2.5 py-1 ${
                       signal.includes("一致")
-                        ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
-                        : "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
+                        ? "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]"
+                        : "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]"
                     }`}
                   >
                     {signal}
@@ -438,6 +449,7 @@ export function ResponseDetailPage() {
           打开 Web 报告
         </button>
         <select
+          aria-label="报告模板预览"
           className="select sm:w-44"
           value={previewTemplateId}
           onChange={(event) => setPreviewTemplateId(event.target.value)}
@@ -494,7 +506,7 @@ export function ResponseDetailPage() {
           </button>
         ) : null}
         <button
-          className="btn text-[var(--color-danger)]"
+          className="btn text-[var(--app-danger)]"
           disabled={busy || data.response.status === "completed"}
           title={data.response.status === "completed" ? "已完成答卷是永久数据，禁止删除" : undefined}
           onClick={() =>
@@ -506,7 +518,7 @@ export function ResponseDetailPage() {
           <Trash2 className="h-4 w-4" />
           删除
         </button>
-        {actionError ? <span className="text-sm text-[var(--color-danger)]">{actionError}</span> : null}
+        {actionError ? <span className="text-sm text-[var(--app-danger)]">{actionError}</span> : null}
       </div>
 
       <section className="mt-5 space-y-3">

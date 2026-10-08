@@ -257,6 +257,7 @@ export function ResponsesPage() {
             <input
               className="input"
               type="date"
+              aria-label="开始日期"
               value={from}
               onChange={(event) => {
                 setFrom(event.target.value);
@@ -267,6 +268,7 @@ export function ResponsesPage() {
             <input
               className="input"
               type="date"
+              aria-label="结束日期"
               value={to}
               onChange={(event) => {
                 setTo(event.target.value);
@@ -274,6 +276,7 @@ export function ResponsesPage() {
               }}
             />
             <select
+              aria-label="答卷状态筛选"
               className="select"
               value={status}
               onChange={(event) => {
@@ -291,18 +294,18 @@ export function ResponsesPage() {
         </div>
 
         {message ? (
-          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm text-[var(--color-success)]">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] p-3 text-sm text-[var(--app-success)]">
             {message}
           </div>
         ) : null}
         {exportProgress ? (
-          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] p-3 text-sm text-[var(--color-info)]">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] p-3 text-sm text-[var(--app-info)]">
             导出中：{exportProgress.done}/{exportProgress.total} 份已发送
             {exportProgress.failed > 0 ? `（失败 ${exportProgress.failed}）` : ""}
           </div>
         ) : null}
         {actionError ? (
-          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] p-3 text-sm text-[var(--color-danger)]">
+          <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] p-3 text-sm text-[var(--app-danger)]">
             {actionError}
           </div>
         ) : null}
@@ -317,6 +320,7 @@ export function ResponsesPage() {
                       <input
                         type="checkbox"
                         className="h-4 w-4"
+                        aria-label="全选已完成答卷"
                         checked={completedItems.every((item) => selected.has(item.id))}
                         onChange={toggleSelectAllCompleted}
                       />
@@ -339,6 +343,7 @@ export function ResponsesPage() {
                           <input
                             type="checkbox"
                             className="h-4 w-4"
+                            aria-label={`选择答卷 ${item.id}`}
                             checked={selected.has(item.id)}
                             onChange={() => toggleSelect(item.id)}
                           />
@@ -346,7 +351,7 @@ export function ResponsesPage() {
                       </td>
                       <td className="text-sm">
                         <Link
-                          className="font-semibold text-[var(--color-info)]"
+                          className="font-semibold text-[var(--app-info)]"
                           to={`/surveys/${data.survey.id}/responses/${item.id}`}
                         >
                           #{item.id}
@@ -355,7 +360,7 @@ export function ResponsesPage() {
                       <td className="text-sm">
                         {item.respondent ? (
                           <Link
-                            className="font-medium text-[var(--color-info)] hover:underline"
+                            className="font-medium text-[var(--app-info)] hover:underline"
                             to={`/users?user=${item.respondent.userId}`}
                           >
                             {respondentName(item)}
@@ -460,6 +465,7 @@ export function ResponsesPage() {
             <h3 className="font-semibold">报告预览 #{previewResponseId}</h3>
             <div className="flex items-center gap-2">
               <select
+                aria-label="报告预览模板"
                 className="select w-40 text-xs"
                 value={templateId}
                 onChange={(event) => setTemplateId(event.target.value)}

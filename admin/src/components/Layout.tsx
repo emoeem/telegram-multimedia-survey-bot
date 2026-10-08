@@ -258,7 +258,7 @@ export function Layout() {
             ))}
           </nav>
           <div className="mt-4 border-t border-white/5 pt-3">
-            <p className="mb-2 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 sm:hidden lg:block">
+            <p className="mb-2 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-300 sm:hidden lg:block">
               线上体验
             </p>
             <div className="flex flex-col gap-0.5">
@@ -310,7 +310,7 @@ export function Layout() {
               </a>
             </div>
           </div>
-          <div className="mt-4 px-1.5 text-[11px] text-slate-500 sm:hidden lg:block">
+          <div className="mt-4 px-1.5 text-[11px] text-slate-300 sm:hidden lg:block">
             {environment === "production" ? "生产环境" : environment ? "开发 / 预发布环境" : "…"}
           </div>
         </aside>

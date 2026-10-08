@@ -132,7 +132,7 @@ function ConfirmDialogStack({
             <div
               className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
                 danger
-                  ? "bg-[color-mix(in_srgb,var(--color-danger)_15%,var(--surface))] text-[var(--color-danger)]"
+                  ? "bg-[color-mix(in_srgb,var(--app-danger)_15%,var(--surface))] text-[var(--app-danger)]"
                   : "bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--surface))] text-[var(--color-primary)]"
               }`}
             >
@@ -158,7 +158,7 @@ function ConfirmDialogStack({
               onClick={() => onConfirm(top.id, true)}
               className={`flex-1 py-3 text-sm font-bold transition-colors ${
                 danger
-                  ? "text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))]"
+                  ? "text-[var(--app-danger)] hover:bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))]"
                   : "text-[var(--color-primary)] hover:bg-black/5"
               }`}
             >
@@ -200,17 +200,17 @@ function ToastItem({ item }: { item: InternalToastItem }) {
   // "light app on a dark OS" every toast was dark-on-light and vice versa.
   const border =
     variant === "success"
-      ? "border-s-[3px] border-s-[var(--color-success)]"
+      ? "border-s-[3px] border-s-[var(--app-success)]"
       : variant === "error"
-        ? "border-s-[3px] border-s-[var(--color-danger)]"
-        : "border-s-[3px] border-s-[var(--color-info)]";
+        ? "border-s-[3px] border-s-[var(--app-danger)]"
+        : "border-s-[3px] border-s-[var(--app-info)]";
   const color = `border-[var(--color-edge)] bg-[var(--surface)] text-[var(--color-ink)] ${border}`;
   const iconColor =
     variant === "success"
-      ? "text-[var(--color-success)]"
+      ? "text-[var(--app-success)]"
       : variant === "error"
-        ? "text-[var(--color-danger)]"
-        : "text-[var(--color-info)]";
+        ? "text-[var(--app-danger)]"
+        : "text-[var(--app-info)]";
 
   return (
     <div

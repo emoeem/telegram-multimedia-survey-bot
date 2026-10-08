@@ -83,13 +83,13 @@ export function AnalyticsPage() {
             </div>
             <div className="rounded-xl bg-[var(--surface-muted)] p-4">
               <div className="text-sm text-[var(--color-muted)]">已完成</div>
-              <div className="mt-1 text-2xl font-bold font-tabular-nums text-[var(--color-success)]">
+              <div className="mt-1 text-2xl font-bold font-tabular-nums text-[var(--app-success)]">
                 {data.overview.totalCompleted}
               </div>
             </div>
             <div className="rounded-xl bg-[var(--surface-muted)] p-4">
               <div className="text-sm text-[var(--color-muted)]">填写中</div>
-              <div className="mt-1 text-2xl font-bold font-tabular-nums text-[var(--color-info)]">
+              <div className="mt-1 text-2xl font-bold font-tabular-nums text-[var(--app-info)]">
                 {data.statusCounts.in_progress}
               </div>
             </div>

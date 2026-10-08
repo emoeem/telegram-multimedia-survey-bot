@@ -26,6 +26,7 @@
     "release": "node scripts/publish-release.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/puppeteer": "^1.1.0",
     "@cloudflare/workers-types": "^5.20260814.1",
     "@playwright/test": "^1.62.1",

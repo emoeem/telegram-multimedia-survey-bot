@@ -238,6 +238,7 @@ export function QuestionCard({
           {editableNow ? (
             <select
               className="q-type-select"
+              aria-label={`第 ${index + 1} 题类型`}
               value={question.type}
               disabled={!editable}
               onChange={(event) => {
@@ -295,13 +296,13 @@ export function QuestionCard({
             复制
           </button>
           {confirmDelete ? (
-            <span className="flex items-center gap-2 text-xs" style={{ color: "var(--color-danger)" }}>
+            <span className="flex items-center gap-2 text-xs" style={{ color: "var(--app-danger)" }}>
               <span>确认删除？</span>
               <button
                 className="btn btn-sm"
                 style={{
-                  background: "color-mix(in srgb, var(--color-danger) 14%, var(--surface))",
-                  color: "var(--color-danger)",
+                  background: "color-mix(in srgb, var(--app-danger) 14%, var(--surface))",
+                  color: "var(--app-danger)",
                 }}
                 onClick={() => onDelete(question.id)}
               >
@@ -365,7 +366,9 @@ export function QuestionCard({
             }}
           />
           {isNote ? (
-            <span className="q-help">剧情文段不收集答案；可上传插图作配图，之后的题目选项可把答题者跳转到不同文段。</span>
+            <span className="q-help">
+              剧情文段不收集答案；可上传插图作配图，之后的题目选项可把答题者跳转到不同文段。
+            </span>
           ) : null}
         </label>
 
@@ -379,6 +382,7 @@ export function QuestionCard({
               type="button"
               role="switch"
               aria-checked={question.required}
+              aria-label="必答"
               className="switch"
               data-on={question.required}
               disabled={!editableNow}
@@ -392,7 +396,9 @@ export function QuestionCard({
         ) : null}
 
         <div className="q-field">
-          <span className="q-label">{isNote ? "剧情配图 / 附件（可选）" : "题面附件（图片 / 视频 / 音频 / 文件，可选）"}</span>
+          <span className="q-label">
+            {isNote ? "剧情配图 / 附件（可选）" : "题面附件（图片 / 视频 / 音频 / 文件，可选）"}
+          </span>
           {question.media.length ? (
             <div className="flex flex-wrap items-center gap-2">
               {question.media.map((media) => (
@@ -436,7 +442,7 @@ export function QuestionCard({
           ) : null}
           <p className="q-help">附件会在答题页展示给填写者；单选/多选等题型的选项也可以单独配媒体。</p>
           {mediaError ? (
-            <p className="q-help" style={{ color: "var(--color-danger)" }}>
+            <p className="q-help" style={{ color: "var(--app-danger)" }}>
               {mediaError}
             </p>
           ) : null}
@@ -487,6 +493,7 @@ export function QuestionCard({
                   </span>
                   <input
                     className="q-option-input"
+                    aria-label={`第 ${index + 1} 题选项 ${option.label || option.id}`}
                     defaultValue={option.label}
                     key={`option-${option.id}-${option.label}`}
                     disabled={!editableNow}
@@ -552,6 +559,7 @@ export function QuestionCard({
                     <span className="q-branch-label">选择后</span>
                     <select
                       className="q-branch-select"
+                      aria-label={`选项 ${option.label || option.id} 的跳转目标`}
                       value={branchByOption.get(option.id) ?? ""}
                       disabled={!editableNow}
                       onChange={(event) =>

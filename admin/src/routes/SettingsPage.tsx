@@ -316,8 +316,8 @@ export function SettingsPage() {
           <button className="btn btn-primary" disabled={saving} onClick={() => void save()}>
             {saving ? "保存中…" : "保存设置"}
           </button>
-          {saved ? <span className="text-sm text-[var(--color-success)]">已保存</span> : null}
-          {saveError ? <span className="text-sm text-[var(--color-danger)]">{saveError}</span> : null}
+          {saved ? <span className="text-sm text-[var(--app-success)]">已保存</span> : null}
+          {saveError ? <span className="text-sm text-[var(--app-danger)]">{saveError}</span> : null}
         </div>
       </section>
     </div>

@@ -52,17 +52,17 @@ export function DashboardPage() {
 
   const METRICS = [
     { key: "users", label: "用户数量", icon: Users, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-    { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
-    { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
+    { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]" },
+    { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]" },
     { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-    { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]" },
+    { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]" },
   ] as const;
 
   const deliveryItems: Array<{ label: string; value: number; status: string; icon: typeof Package; tint: string }> = [
     { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]" },
-    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]" },
-    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]" },
-    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]" },
+    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]" },
+    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]" },
+    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]" },
   ];
 
   const actionLabels: Record<string, string> = {
@@ -124,7 +124,7 @@ export function DashboardPage() {
                 to={`/reports?status=${status}`}
                 className={`rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
                   label === "失败" && value > 0
-                    ? "border-[color-mix(in_srgb,var(--color-danger)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))]"
+                    ? "border-[color-mix(in_srgb,var(--app-danger)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))]"
                     : "border-edge bg-[var(--surface)]"
                 }`}
               >
@@ -134,7 +134,7 @@ export function DashboardPage() {
                   </span>
                   {label}
                 </div>
-                <div className={`mt-2 text-2xl font-bold font-tabular-nums ${label === "失败" && value > 0 ? "text-[var(--color-danger)]" : ""}`}>
+                <div className={`mt-2 text-2xl font-bold font-tabular-nums ${label === "失败" && value > 0 ? "text-[var(--app-danger)]" : ""}`}>
                   {value}
                 </div>
               </Link>
@@ -157,7 +157,7 @@ export function DashboardPage() {
               <h2>最近问卷</h2>
               <Link className="btn btn-sm" to="/surveys">全部问卷</Link>
             </div>
-            <div className="mt-3 overflow-x-auto">
+            <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近问卷列表">
               <table className="tbl">
                 <tbody>
                   {data.recentSurveys.map((item) => (
@@ -183,7 +183,7 @@ export function DashboardPage() {
               <h2>最近答卷</h2>
               <Link className="btn btn-sm" to="/responses">全部答卷</Link>
             </div>
-            <div className="mt-3 overflow-x-auto">
+            <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近答卷列表">
               <table className="tbl">
                 <thead>
                   <tr>

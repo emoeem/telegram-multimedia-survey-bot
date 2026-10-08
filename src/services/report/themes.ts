@@ -89,7 +89,10 @@ function makeDaisyTheme(id: (typeof DAISY_THEME_IDS)[number]): ReportThemeDefini
       overlay: elevated,
       text,
       secondary: dim(text, 78),
-      muted: dim(text, 62),
+      // Keep report secondary text opaque and close enough to the primary text
+      // color to meet WCAG AA on the theme surface; the old 62% transparent
+      // mix failed contrast on several DaisyUI dark/light presets.
+      muted: `color-mix(in srgb, ${text} 78%, ${bg})`,
       border: elevated,
       primary,
       accent,
@@ -114,7 +117,7 @@ export const reportThemes: Record<ReportTheme, ReportThemeDefinition> = {
       overlay: "#9ca0b0",
       text: "#4c4f69",
       secondary: "#5c5f77",
-      muted: "#7c7f93",
+      muted: "color-mix(in srgb, #4c4f69 85%, #eff1f5)",
       border: "#bcc0cc",
       primary: "#8839ef",
       accent: "#1e66f5",
@@ -223,7 +226,7 @@ export const reportThemes: Record<ReportTheme, ReportThemeDefinition> = {
       overlay: "#6272a4",
       text: "#f8f8f2",
       secondary: "#d6d6d0",
-      muted: "#a4a5ae",
+      muted: "color-mix(in srgb, #f8f8f2 78%, #282a36)",
       border: "#6272a4",
       primary: "#bd93f9",
       accent: "#8be9fd",

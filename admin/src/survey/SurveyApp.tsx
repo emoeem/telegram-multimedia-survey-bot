@@ -214,7 +214,7 @@ function SurveyListPage() {
   if (error) {
     return shell(
       <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <p className="text-[var(--color-danger)]">{error}</p>
+        <p className="text-[var(--app-danger)]">{error}</p>
         <button
           type="button"
           className="survey-card mt-5 w-full py-3 text-sm font-semibold text-[var(--survey-heading)]"
@@ -485,7 +485,7 @@ function TelegramLinkCard() {
           <p className="mt-2 text-[11px] leading-5 text-[var(--survey-muted)]">
             打开 Telegram 后点击「开始」即完成绑定，再回到本页点「检查状态」。
           </p>
-          {error ? <p className="mt-2 text-xs text-[var(--color-danger)]">{error}</p> : null}
+          {error ? <p className="mt-2 text-xs text-[var(--app-danger)]">{error}</p> : null}
         </>
       )}
     </div>
@@ -1017,7 +1017,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
           className="input mt-4 min-h-36 w-full"
         />
         {maxLengthAttr ? (
-          <p className={`mt-1 text-right text-[11px] ${currentLength > maxLengthAttr ? "text-[var(--color-danger)]" : "text-[var(--survey-muted)]"}`}>
+          <p className={`mt-1 text-right text-[11px] ${currentLength > maxLengthAttr ? "text-[var(--app-danger)]" : "text-[var(--survey-muted)]"}`}>
             {currentLength}/{maxLengthAttr}
           </p>
         ) : null}
@@ -1088,7 +1088,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
     return (
       <div className="mt-4">
         {mediaAnswer ? (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--color-success)]">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--app-success)]">
             <span className="flex min-w-0 items-center gap-3">
               {question.type === "image" ? (
                 <img
@@ -1104,7 +1104,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
             </span>
             <button
               type="button"
-              className="shrink-0 font-medium text-[var(--color-success)] underline"
+              className="shrink-0 font-medium text-[var(--app-success)] underline"
               disabled={disabled}
               onClick={() => onChange(null)}
             >
@@ -1205,7 +1205,7 @@ function AccessScreen({
           className="input mt-5 w-full text-center"
           autoFocus
         />
-        {error ? <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p> : null}
+        {error ? <p className="mt-2 text-sm text-[var(--app-danger)]">{error}</p> : null}
         <button
           type="button"
           disabled={busy}
@@ -1553,7 +1553,7 @@ export function SurveyApp() {
         style={{ ...earlyVars, ...earlyBackground }}
       >
         <div className="mx-auto max-w-xl px-5 py-16 text-center">
-          <p className="text-[var(--color-danger)]">{screen.message}</p>
+          <p className="text-[var(--app-danger)]">{screen.message}</p>
           <div className="mt-6 flex flex-col items-center gap-3">
             <button type="button" className="btn btn-primary px-8" onClick={() => setRetryKey((key) => key + 1)}>
               <RefreshCw className="h-4 w-4" />
@@ -1918,7 +1918,7 @@ export function SurveyApp() {
                 </div>
               </>
             )}
-            {error ? <p className="mt-4 text-sm font-medium text-[var(--color-danger)]">{error}</p> : null}
+            {error ? <p className="mt-4 text-sm font-medium text-[var(--app-danger)]">{error}</p> : null}
           </div>
           {isLast ? (
             <>

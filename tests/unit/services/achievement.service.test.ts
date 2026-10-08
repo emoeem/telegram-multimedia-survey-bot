@@ -27,7 +27,8 @@ CREATE TABLE task_runs (
 CREATE TABLE plaza_posts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'published'
+  status TEXT NOT NULL DEFAULT 'published',
+  deleted_at TEXT
 );
 CREATE TABLE plaza_post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

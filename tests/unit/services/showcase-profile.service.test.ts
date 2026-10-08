@@ -16,6 +16,7 @@ CREATE TABLE showcase_persons (
   survey_id INTEGER, response_id INTEGER, owner_user_id INTEGER,
   feature_rank INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0, created_by INTEGER,
+  deleted_at TEXT,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE showcase_items (
@@ -23,7 +24,7 @@ CREATE TABLE showcase_items (
   person_id INTEGER NOT NULL, title TEXT NOT NULL, description TEXT,
   kind TEXT NOT NULL DEFAULT 'other', cover_media_id INTEGER, cover_url TEXT, media_asset_id INTEGER, url TEXT,
   featured INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL, deleted_at TEXT
 );
 CREATE UNIQUE INDEX idx_showcase_persons_response
   ON showcase_persons(response_id) WHERE response_id IS NOT NULL;

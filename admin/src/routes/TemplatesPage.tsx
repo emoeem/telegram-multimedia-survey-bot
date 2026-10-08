@@ -227,7 +227,7 @@ function SortableSectionRow({
           </option>
         ))}
       </select>
-      <button type="button" className="btn btn-sm text-[var(--color-danger)]" onClick={() => onRemove(index)}>
+      <button type="button" className="btn btn-sm text-[var(--app-danger)]" onClick={() => onRemove(index)}>
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -361,7 +361,7 @@ export function TemplatesPage() {
   if (error && !draft) {
     return (
       <section className="card">
-        <p className="text-sm text-[var(--color-danger)]">{error}</p>
+        <p className="text-sm text-[var(--app-danger)]">{error}</p>
         <button
           className="btn mt-3"
           onClick={() => {
@@ -431,7 +431,7 @@ export function TemplatesPage() {
                         await restoreReportTemplate(template.id);
                         await reload();
                       }}
-                      className="btn btn-sm text-[var(--color-danger)]"
+                      className="btn btn-sm text-[var(--app-danger)]"
                     >
                       删除
                     </DeleteWithUndo>
@@ -465,7 +465,7 @@ export function TemplatesPage() {
               </button>
             </div>
           </div>
-          {error ? <p className="mt-2 text-sm text-[var(--color-danger)]">{error}</p> : null}
+          {error ? <p className="mt-2 text-sm text-[var(--app-danger)]">{error}</p> : null}
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="space-y-3">

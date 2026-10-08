@@ -30,9 +30,34 @@
 .report-layout-bento .composition-region{gap:18px}.report-layout-bento .featured-insight{border:1px solid var(--report-border);border-radius:18px;background:var(--report-surface);margin:36px 0 8px;padding:48px 40px}.report-layout-bento .quote-list{grid-template-columns:1fr}.report-layout-bento .selected-quote{padding:24px 0;border-top:1px solid var(--report-border)}.report-layout-bento .transcript-item,.report-layout-bento .editorial-answer{border-top:1px solid var(--report-border)}
 html .report-layout-gallery{--report-bg:#0a0a0c;--report-surface:#141417;--report-border:#26262b}.report-layout-gallery .hero{min-height:0;display:block;text-align:center;padding:56px 0 48px;border:0}.report-layout-gallery .hero h1{font-size:44px;letter-spacing:.04em}.report-layout-gallery .hero-score{border-left:0;text-align:center;padding:0;margin-top:24px}.report-layout-gallery .hero-score strong{font-size:64px}.report-layout-gallery .report-cover{min-height:58vh;border:0}.report-layout-gallery .gallery-item img{border-radius:6px}.report-layout-gallery .gallery-item figcaption{text-align:center;font-size:13px;letter-spacing:.06em}.report-layout-gallery .featured-insight{max-width:880px;padding:72px 24px}.report-layout-gallery .featured-insight blockquote{font-size:32px;font-weight:300;line-height:1.62;letter-spacing:.01em}.report-layout-gallery .editorial-copy h3{letter-spacing:.03em}.report-layout-gallery .editorial-copy p{font-size:17px;line-height:1.9;color:var(--report-text-secondary)}.report-layout-gallery .compact-answer{background:transparent;border-radius:4px}.report-layout-gallery .response-index,.report-layout-gallery .editorial-label{letter-spacing:.18em}.report-layout-gallery .final-verdict{min-height:0;padding:64px 0;border-top:1px solid var(--report-border)}.report-layout-gallery .final-verdict h2{font-size:40px}@media (min-width:961px){.report-layout-gallery .compact-answer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}}
 .report-layout-profile .hero{min-height:0;grid-template-columns:200px minmax(0,1fr) 200px;align-items:center;gap:34px;padding:44px 0;border-top:2px solid var(--report-accent);border-bottom:2px solid var(--report-accent)}.report-layout-profile .hero-avatar{position:static;width:160px;height:160px;border-radius:10px;border:2px solid var(--report-accent)}.report-layout-profile .hero h1{font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em;font-size:34px}.report-layout-profile .hero-score{border-left:2px solid var(--report-accent);padding-left:26px;text-align:left}.report-layout-profile .report-cover{min-height:56vh;border-top:2px solid var(--report-accent);border-bottom:2px solid var(--report-accent)}
-    .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:.9}
+    .report-watermark{margin-top:18px;padding-top:16px;border-top:1px dashed var(--report-border);font-size:12px;color:var(--report-text-muted);text-align:center;letter-spacing:.02em;opacity:1}
+    .report-layout-profile .cover-kicker,
+    .report-layout-profile .bento-overview span,
+    .report-layout-profile .metric-level,
+    .report-layout-profile .tag,
+    .report-layout-profile .chapter-heading span,
+    .report-layout-profile .response-index,
+    .report-layout-profile .editorial-label,
+    .report-layout-profile .editorial-index,
+    .report-layout-profile .verdict-eyebrow,
+    .report-layout-profile .verdict-pillar span,
+    .report-layout-profile .verdict-score > strong,
+    .report-layout-gallery .cover-kicker,
+    .report-layout-gallery .chapter-kicker,
+    .report-layout-gallery .editorial-label,
+    .report-layout-gallery .response-index,
+    .report-layout-gallery .editorial-index,
+    .report-layout-gallery .chapter-heading span,
+    .report-layout-gallery .gallery-composition > header > span,
+    .report-layout-gallery .responses-composition > header > span,
+    .report-layout-gallery .editorial-chapter > header > span,
+    .report-layout-gallery .hero-score > strong,
+    .report-layout-gallery .bento-primary > strong,
+    .report-layout-gallery .verdict-score > strong,
+    .report-layout-gallery .verdict-eyebrow,
+    .report-layout-gallery .verdict-pillar span{color:var(--report-text)!important}
   </style>
-  <style>:root{--report-bg:#eff1f5;--report-bg-secondary:#e6e9ef;--report-surface:#dce0e8;--report-surface-elevated:#ccd0da;--report-overlay:#9ca0b0;--report-text:#4c4f69;--report-text-secondary:#5c5f77;--report-text-muted:#7c7f93;--report-border:#bcc0cc;--report-primary:#8839ef;--report-secondary:#5c5f77;--report-accent:#1e66f5;--report-accent-secondary:#8839ef;--report-success:#40a02b;--report-warning:#df8e1d;--report-danger:#d20f39;--report-info:#04a5e5;--chart-1:#8839ef;--chart-2:#1e66f5;--chart-3:#04a5e5;--chart-4:#179299;--chart-5:#40a02b;--chart-6:#df8e1d;}</style>
+  <style>:root{--report-bg:#eff1f5;--report-bg-secondary:#e6e9ef;--report-surface:#dce0e8;--report-surface-elevated:#ccd0da;--report-overlay:#9ca0b0;--report-text:#4c4f69;--report-text-secondary:#5c5f77;--report-text-muted:color-mix(in srgb, #4c4f69 85%, #eff1f5);--report-border:#bcc0cc;--report-primary:#8839ef;--report-secondary:#5c5f77;--report-accent:#1e66f5;--report-accent-secondary:#8839ef;--report-success:#40a02b;--report-warning:#df8e1d;--report-danger:#d20f39;--report-info:#04a5e5;--chart-1:#8839ef;--chart-2:#1e66f5;--chart-3:#04a5e5;--chart-4:#179299;--chart-5:#40a02b;--chart-6:#df8e1d;}[data-report-mode="light"].report-layout-editorial{--report-bg:#f8fafc;--report-surface:#ffffff;--report-border:#dbe3ec;--report-accent:#2563eb}[data-report-mode="dark"].report-layout-editorial{--report-bg:#111827;--report-surface:#172033;--report-border:#334155;--report-accent:#93c5fd}.report-layout-editorial .page{max-width:820px}.report-layout-editorial .hero{min-height:320px;padding:64px 0 52px;border-bottom:1px solid var(--report-border)}.report-layout-editorial .hero h1{font-size:48px;max-width:680px}.report-layout-editorial .report-section,.report-layout-editorial .responses-composition,.report-layout-editorial .gallery-composition{background:transparent;border:0;border-radius:0;box-shadow:none;padding:34px 0;border-top:1px solid var(--report-border)}.report-layout-editorial .report-section h2,.report-layout-editorial .chapter-heading h2{font-size:24px}.report-layout-editorial .score-card,.report-layout-editorial .compact-answer{background:transparent;border:0;border-top:1px solid var(--report-border);border-radius:0;padding:18px 0}.report-layout-editorial .gallery{grid-template-columns:repeat(2,1fr)}.report-layout-editorial .gallery-item img{border-radius:0;height:300px}@media(max-width:480px){.report-layout-editorial .hero h1{font-size:36px}.report-layout-editorial .gallery{grid-template-columns:1fr}}</style>
 </head>
 <body>
   <div class="report-layout-editorial density-airy" data-report-layout="editorial" data-report-theme="catppuccin-latte" data-report-mode="light">
@@ -41,15 +66,15 @@ html .report-layout-gallery{--report-bg:#0a0a0c;--report-surface:#141417;--repor
 <rect width="420" height="300" x="0" y="0" fill="none"></rect>
 <path d="M210 156M210 132L187.2 148.6L195.9 175.4L224.1 175.4L232.8 148.6L210 132M210 108L164.3 141.2L181.8 194.8L238.2 194.8L255.7 141.2L210 108M210 84L141.5 133.8L167.7 214.2L252.3 214.2L278.5 133.8L210 84M210 60L118.7 126.3L153.6 233.7L266.4 233.7L301.3 126.3L210 60" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr0-cls-0"></path>
 <path d="M210.5 156L210.5 60" fill="none" pointer-events="visible" stroke="#bcc0cc" stroke-linecap="round" class="zr0-cls-0"></path>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="-5.5" transform="translate(210 45)" fill="#7c7f93">服从</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="-5.5" transform="translate(210 45)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">服从</text>
 <path d="M210 156L118.7 126.3" fill="none" pointer-events="visible" stroke="#bcc0cc" stroke-linecap="round" class="zr0-cls-0"></path>
-<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(104.4327 121.6991)" fill="#7c7f93">欲望</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(104.4327 121.6991)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">欲望</text>
 <path d="M210 156L153.6 233.7" fill="none" pointer-events="visible" stroke="#bcc0cc" stroke-linecap="round" class="zr0-cls-0"></path>
-<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(144.7558 245.8009)" fill="#7c7f93">反叛</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(144.7558 245.8009)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">反叛</text>
 <path d="M210 156L266.4 233.7" fill="none" pointer-events="visible" stroke="#bcc0cc" stroke-linecap="round" class="zr0-cls-0"></path>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(275.2442 245.8009)" fill="#7c7f93">信任</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(275.2442 245.8009)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">信任</text>
 <path d="M210 156L301.3 126.3" fill="none" pointer-events="visible" stroke="#bcc0cc" stroke-linecap="round" class="zr0-cls-0"></path>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(315.5673 121.6991)" fill="#7c7f93">幻想</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(315.5673 121.6991)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">幻想</text>
 <path d="M210 73.4L142.4 134L188.6 185.5L244.4 203.4L282.1 132.6L210 73.4" fill="none" pointer-events="visible" stroke="#1e66f5" stroke-width="2" stroke-linejoin="round" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr0-cls-1"></path>
 <path d="M210 73.4L142.4 134L188.6 185.5L244.4 203.4L282.1 132.6L210 73.4Z" fill="#1e66f547" fill-opacity="0.7" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr0-cls-2"></path>
 <style ><![CDATA[
@@ -69,33 +94,33 @@ fill:rgba(33,112,255,0.2784313725490196);
 </style>
 </svg></article><article class="bento-tile bento-bars"><span>CORE DIMENSIONS</span><div class="bars"><div class="bars-chart"><svg class="bar-chart" width="460" height="300" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 460 300">
 <rect width="460" height="300" x="0" y="0" fill="none"></rect>
-<path d="M67.5 8L67.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<path d="M137.5 8L137.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<path d="M208.5 8L208.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<path d="M278.5 8L278.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<path d="M349.5 8L349.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<path d="M420.5 8L420.5 273" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(59 34.5)" fill="#4c4f69">服从度</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(59 87.5)" fill="#4c4f69">欲望指数</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(59 140.5)" fill="#4c4f69">反抗倾向</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(59 193.5)" fill="#4c4f69">信任值</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(59 246.5)" fill="#4c4f69">幻想指数</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(67 281)" fill="#7c7f93">0</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(137.552 281)" fill="#7c7f93">20</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(208.104 281)" fill="#7c7f93">40</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(278.656 281)" fill="#7c7f93">60</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(349.208 281)" fill="#7c7f93">80</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(419.76 281)" fill="#7c7f93">100</text>
-<path d="M67 19.9L364.4 19.9A6 6 0 0 1 370.4 25.9L370.4 43.1A6 6 0 0 1 364.4 49.1L67 49.1L67 19.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<path d="M67 72.9L322 72.9A6 6 0 0 1 328 78.9L328 96.1A6 6 0 0 1 322 102.1L67 102.1L67 72.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<path d="M67 125.9L195 125.9A6 6 0 0 1 201 131.9L201 149.1A6 6 0 0 1 195 155.1L67 155.1L67 125.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<path d="M67 178.9L276.2 178.9A6 6 0 0 1 282.2 184.9L282.2 202.1A6 6 0 0 1 276.2 208.1L67 208.1L67 178.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<path d="M67 231.9L339.7 231.9A6 6 0 0 1 345.7 237.9L345.7 255.1A6 6 0 0 1 339.7 261.1L67 261.1L67 231.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="4" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(375.3736 34.5)" fill="#7c7f93">86</text>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(333.0424 87.5)" fill="#7c7f93">74</text>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(206.0488 140.5)" fill="#7c7f93">38</text>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(287.1836 193.5)" fill="#7c7f93">61</text>
-<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(350.6804 246.5)" fill="#7c7f93">79</text>
+<path d="M100.5 12L100.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<path d="M164.5 12L164.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<path d="M228.5 12L228.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<path d="M292.5 12L292.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<path d="M356.5 12L356.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<path d="M420.5 12L420.5 281" fill="none" pointer-events="visible" stroke="#bcc0cc" class="zr1-cls-3"></path>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(92 38.9)" fill="#4c4f69">服从度</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(92 92.7)" fill="#4c4f69">欲望指数</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(92 146.5)" fill="#4c4f69">反抗倾向</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(92 200.3)" fill="#4c4f69">信任值</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(92 254.1)" fill="#4c4f69">幻想指数</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(100 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">0</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(164 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">20</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(228 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">40</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(292 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">60</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(356 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">80</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" y="5.5" transform="translate(420 289)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">100</text>
+<path d="M100 24.1L369.2 24.1A6 6 0 0 1 375.2 30.1L375.2 47.7A6 6 0 0 1 369.2 53.7L100 53.7L100 24.1Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M100 77.9L330.8 77.9A6 6 0 0 1 336.8 83.9L336.8 101.5A6 6 0 0 1 330.8 107.5L100 107.5L100 77.9Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M100 131.7L215.6 131.7A6 6 0 0 1 221.6 137.7L221.6 155.3A6 6 0 0 1 215.6 161.3L100 161.3L100 131.7Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M100 185.5L289.2 185.5A6 6 0 0 1 295.2 191.5L295.2 209.1A6 6 0 0 1 289.2 215.1L100 215.1L100 185.5Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M100 239.3L346.8 239.3A6 6 0 0 1 352.8 245.3L352.8 262.9A6 6 0 0 1 346.8 268.9L100 268.9L100 239.3Z" fill="#1e66f5" ecmeta_series_index="0" ecmeta_data_index="4" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(380.2 38.9)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">86</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(341.8 92.7)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">74</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(226.6 146.5)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">38</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(300.2 200.3)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">61</text>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:-apple-system, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;" transform="translate(357.8 254.1)" fill="color-mix(in srgb, #4c4f69 85%, #eff1f5)">79</text>
 <style ><![CDATA[
 .zr1-cls-3:hover {
 pointer-events:none;

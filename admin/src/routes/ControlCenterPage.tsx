@@ -297,19 +297,19 @@ export function ControlCenterPage() {
             label: "在线",
             value: stats.online,
             Icon: CheckCircle2,
-            tint: "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]",
+            tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]",
           },
           {
             label: "需要处理",
             value: stats.attention,
             Icon: CircleAlert,
-            tint: "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]",
+            tint: "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]",
           },
           {
             label: "部署任务",
             value: stats.deploying,
             Icon: Activity,
-            tint: "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]",
+            tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]",
           },
           {
             label: "发布目标",
@@ -482,7 +482,7 @@ export function ControlCenterPage() {
           </button>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-[color-mix(in_srgb,var(--color-info)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-info)_6%,var(--surface))] p-4">
+          <div className="rounded-xl border border-[color-mix(in_srgb,var(--app-info)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-info)_6%,var(--surface))] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2 font-medium">

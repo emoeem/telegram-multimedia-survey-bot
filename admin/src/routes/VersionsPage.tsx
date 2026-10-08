@@ -137,7 +137,7 @@ export function VersionsPage() {
         {diff ? (
           <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div>
-              <p className="font-medium text-[var(--color-success)]">新增（{diff.diff.added.length}）</p>
+              <p className="font-medium text-[var(--app-success)]">新增（{diff.diff.added.length}）</p>
               <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
                 {diff.diff.added.map((title) => (
                   <li key={title}>{title}</li>
@@ -145,7 +145,7 @@ export function VersionsPage() {
               </ul>
             </div>
             <div>
-              <p className="font-medium text-[var(--color-danger)]">删除（{diff.diff.removed.length}）</p>
+              <p className="font-medium text-[var(--app-danger)]">删除（{diff.diff.removed.length}）</p>
               <ul className="mt-1 list-inside list-disc text-[var(--text-soft)]">
                 {diff.diff.removed.map((title) => (
                   <li key={title}>{title}</li>
@@ -153,7 +153,7 @@ export function VersionsPage() {
               </ul>
             </div>
             <div>
-              <p className="font-medium text-[var(--color-warning)]">修改（{diff.diff.changed.length}）</p>
+              <p className="font-medium text-[var(--app-warning)]">修改（{diff.diff.changed.length}）</p>
               <ul className="mt-1 space-y-1 text-[var(--text-soft)]">
                 {diff.diff.changed.map((item) => (
                   <li key={item.id}>
@@ -167,7 +167,7 @@ export function VersionsPage() {
         ) : null}
       </div>
 
-      {actionError ? <p className="mt-3 text-sm text-[var(--color-danger)]">{actionError}</p> : null}
+      {actionError ? <p className="mt-3 text-sm text-[var(--app-danger)]">{actionError}</p> : null}
     </section>
   );
 }

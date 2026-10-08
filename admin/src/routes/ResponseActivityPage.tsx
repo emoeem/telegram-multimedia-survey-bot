@@ -194,7 +194,7 @@ export function ResponseActivityPage() {
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
                   <td className="text-sm">
                     <Link
-                      className="font-semibold text-[var(--color-info)]"
+                      className="font-semibold text-[var(--app-info)]"
                       to={`/surveys/${item.surveyId}/responses/${item.id}`}
                     >
                       #{item.id}
@@ -206,13 +206,13 @@ export function ResponseActivityPage() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs ${
                         item.status === "completed"
-                          ? "bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] text-[var(--color-success)]"
+                          ? "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]"
                           : item.status === "in_progress"
-                            ? "bg-[color-mix(in_srgb,var(--color-info)_12%,var(--surface))] text-[var(--color-info)]"
+                            ? "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]"
                             : item.status === "abandoned"
-                              ? "bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--surface))] text-[var(--color-warning)]"
+                              ? "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]"
                               : item.status === "cancelled"
-                                ? "bg-[color-mix(in_srgb,var(--color-danger)_10%,var(--surface))] text-[var(--color-danger)]"
+                                ? "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]"
                                 : "bg-[var(--surface-muted)] text-[var(--color-muted)]"
                       }`}
                     >

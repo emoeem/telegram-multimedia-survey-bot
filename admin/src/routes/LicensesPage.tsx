@@ -308,8 +308,8 @@ export function LicensesPage() {
           {busy ? "处理中…" : "签发授权"}
         </button>
         {createdKey ? (
-          <div className="mt-3 rounded-xl border border-[color-mix(in_srgb,var(--color-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--surface))] p-3 text-sm">
-            <p className="font-medium text-[var(--color-success)]">授权密钥（仅显示一次，请立即复制）：</p>
+          <div className="mt-3 rounded-xl border border-[color-mix(in_srgb,var(--app-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] p-3 text-sm">
+            <p className="font-medium text-[var(--app-success)]">授权密钥（仅显示一次，请立即复制）：</p>
             <code className="code mt-1 block break-all">{createdKey}</code>
           </div>
         ) : null}

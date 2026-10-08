@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { scanA11y } from "./a11y";
 
 const TEMPLATES = [
   { id: "classic", name: "经典报告" },
@@ -37,6 +38,8 @@ for (const template of TEMPLATES) {
       expect(overflow).toBeLessThanOrEqual(1);
       expect(problems).toEqual([]);
 
+      await scanA11y(page, test.info().title);
+
       await expect(page).toHaveScreenshot(`report-${template.id}-${viewport.width}x${viewport.height}.png`, {
         maxDiffPixelRatio: 0.002,
       });
@@ -74,6 +77,8 @@ for (const template of TEMPLATES) {
       expect(regionColumns).not.toContain(" ");
     }
     expect(problems).toEqual([]);
+
+    await scanA11y(page, test.info().title);
 
     await expect(page).toHaveScreenshot(`report-${template.id}-print-A4.png`, { maxDiffPixelRatio: 0.002 });
   });
