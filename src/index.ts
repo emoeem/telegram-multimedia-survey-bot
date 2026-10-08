@@ -42,6 +42,7 @@ import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-d
 import { loadSystemSettings } from "./services/system-settings.service";
 import { sendMessage } from "./bot/telegram";
 import { createUpdateDedupStore } from "./services/update-dedup.service";
+import { createKVRateLimiter } from "./services/rate-limit.service";
 import { withQueueMetrics, withRequestMetrics } from "./observability/metrics";
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
@@ -207,8 +208,53 @@ async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Pro
  * API failure now returns JSON the client can explain, with 503 for a database
  * capacity problem so retrying clients back off differently than on a bug.
  */
-async function guardApiResponse(run: () => Promise<Response | null>): Promise<Response> {
+async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
+  const limiter = createKVRateLimiter(env.CACHE);
+  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+
+  if (request.method === "POST" && url.pathname.startsWith("/api/auth/email/")) {
+    const body = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (email) {
+      let scope = url.pathname.slice("/api/auth/email/".length);
+      if (scope === "request-code") scope = body?.purpose === "reset" ? "reset" : "register";
+      if (scope === "register" || scope === "login" || scope === "reset") {
+        const [perEmail, perIp] = await Promise.all([
+          limiter.allow(`${scope}|${email}`, 5, 3600),
+          limiter.allow(`${scope}-ip|${clientIp}`, 20, 3600),
+        ]);
+        if (!perEmail || !perIp) {
+          return Response.json(
+            { ok: false, code: "rate_limited", message: "请求过于频繁，请稍后再试" },
+            { status: 429, headers: { "Cache-Control": "no-store" } },
+          );
+        }
+      }
+    }
+  }
+
+  if (request.method === "POST" && /^\/api\/survey\/\d+\/responses\/\d+\/answers$/.test(url.pathname)) {
+    const allowed = await limiter.allow(`answers|${clientIp}`, 20, 60);
+    if (!allowed) {
+      return Response.json(
+        { ok: false, code: "rate_limited", message: "请求过于频繁，请稍后再试" },
+        { status: 429, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+
+  return null;
+}
+
+async function guardApiResponse(
+  request: Request,
+  env: Env,
+  url: URL,
+  run: () => Promise<Response | null>,
+): Promise<Response> {
   try {
+    const rateLimitResponse = await applyPublicApiRateLimit(request, env, url);
+    if (rateLimitResponse) return rateLimitResponse;
     // Same JSON error shape as every other API failure: the SPAs parse a body
     // and fall back to a bare "请求失败（HTTP 404）" for anything else.
     return (
@@ -351,31 +397,31 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/me/")) {
-      return guardApiResponse(() => handleMeApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleMeApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/plaza/")) {
-      return guardApiResponse(() => handlePlazaApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handlePlazaApiRequest(request, env, url));
     }
 
     if (url.pathname === "/api/showcase" || url.pathname.startsWith("/api/showcase/")) {
-      return guardApiResponse(() => handleShowcaseApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleShowcaseApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
-      return guardApiResponse(() => handleSurveyApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleSurveyApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
-      return guardApiResponse(() => handleReportRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleReportRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/auth/email/")) {
-      return guardApiResponse(() => handleEmailAuthApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleEmailAuthApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/trial/")) {
-      return guardApiResponse(() => handleTrialApiRequest(request, env, url));
+      return guardApiResponse(request, env, url, () => handleTrialApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/control/customer/") || url.pathname.startsWith("/api/control/runner/")) {

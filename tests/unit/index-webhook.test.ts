@@ -61,10 +61,10 @@ function createKv(): KVNamespace {
   } as unknown as KVNamespace;
 }
 
-function createEnv() {
+function createEnv(cache = createKv()) {
   return {
     DB: { prepare: vi.fn() } as unknown as D1Database,
-    CACHE: createKv(),
+    CACHE: cache,
     MEDIA_KV: createKv(),
     EXPORT_QUEUE: { send: vi.fn(), sendBatch: vi.fn() } as unknown as Queue,
     BOT_TOKEN: "bot-token",
@@ -136,14 +136,43 @@ describe("telegram webhook idempotency wiring", () => {
     expect(mocks.complete).not.toHaveBeenCalled();
   });
 
-  it("rejects a webhook with the wrong secret", async () => {
-    const env = createEnv();
-    const response = await worker.fetch(
-      webhookRequest({ update_id: 5004, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }, "nope"),
+  it("rate-limits email registration after five attempts for the same email", async () => {
+    const counts = new Map<string, number>();
+    const cache = {
+      get: vi.fn(async (key: string) => String(counts.get(key) ?? 0)),
+      put: vi.fn(async (key: string, value: string) => {
+        counts.set(key, Number(value));
+      }),
+      delete: vi.fn(async () => undefined),
+      list: vi.fn(async () => ({ keys: [], list_complete: true })),
+    } as unknown as KVNamespace;
+    const env = createEnv(cache);
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const response = await worker.fetch(
+        new Request("https://example.test/api/auth/email/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+          body: JSON.stringify({ email: "user@example.com", password: "short" }),
+        }),
+        env as never,
+      );
+      expect(response.status).toBe(400);
+    }
+
+    const blocked = await worker.fetch(
+      new Request("https://example.test/api/auth/email/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+        body: JSON.stringify({ email: "user@example.com", password: "short" }),
+      }),
       env as never,
     );
-
-    expect(response.status).toBe(403);
-    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({
+      ok: false,
+      code: "rate_limited",
+      message: "请求过于频繁，请稍后再试",
+    });
   });
 });

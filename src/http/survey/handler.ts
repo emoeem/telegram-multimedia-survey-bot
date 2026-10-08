@@ -318,14 +318,6 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
   }
 
   if (request.method === "POST" && responseRest === "/answers") {
-    const limiter = await checkRateLimit(
-      env.CACHE,
-      "answer",
-      request.headers.get("cf-connecting-ip") ?? "unknown",
-      120,
-      60,
-    );
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const loaded = await loadPublishedSurvey(env, surveyId);
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);

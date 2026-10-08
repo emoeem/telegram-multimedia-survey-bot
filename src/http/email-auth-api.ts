@@ -1,7 +1,6 @@
 import type { Env } from "../index";
 import { fail, json } from "./survey-api";
 import { sendEmail } from "../services/email.service";
-import { checkRateLimit } from "../services/rate-limit.service";
 import {
   createEmailAccount,
   getEmailAccountByEmail,
@@ -47,29 +46,6 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!isValidEmail(email)) return fail(400, "validation_failed", "邮箱格式不正确");
-
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  const [perAccount, perIp] = await Promise.all(
-    codeStore
-      ? [
-          checkRateLimit(codeStore, "email-auth", `${ip}:${email}`, 10, 3600),
-          // A per-IP ceiling so rotating the email address cannot mint an
-          // unlimited number of verification emails from one host.
-          checkRateLimit(codeStore, "email-auth-ip", ip, 30, 3600),
-        ]
-      : [
-          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
-          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
-        ],
-  );
-  const blocked = [perAccount, perIp].filter((result) => !result.allowed);
-  if (blocked.length > 0) {
-    const retryAfterSeconds = Math.max(...blocked.map((result) => result.retryAfterSeconds));
-    return Response.json(
-      { code: "rate_limited", message: `操作太频繁，请 ${Math.ceil(retryAfterSeconds / 60)} 分钟后再试` },
-      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
-    );
-  }
 
   if (url.pathname === "/api/auth/email/request-code") {
     const purpose = body?.purpose === "reset" ? "reset" : "register";

@@ -1,12 +1,83 @@
 /**
- * Coarse fixed-window rate limiting backed by the existing CACHE KV namespace.
+ * Public API abuse damping.
  *
- * KV is eventually consistent, so a determined attacker can slightly exceed
- * the budget across PoPs; this is deliberate abuse damping for the public
- * survey endpoints, not an exact quota. Keys are per bucket+identity and the
- * counter expires with the window, so no cleanup job is needed.
+ * The new interface hashes the subject before it becomes part of a KV key, so
+ * raw email addresses and IPs never become persistent KV key material. KV is
+ * eventually consistent and the counter uses get-then-put because this bot's
+ * current concurrency does not justify a more expensive atomic backend here.
  */
-const RATE_LIMIT_PREFIX = "rl:v1";
+const RATE_LIMIT_PREFIX = "ratelimit:v1";
+
+export interface RateLimiter {
+  /** 未超限返回 true，并已记录本次请求；超限返回 false。 */
+  allow(key: string, limit: number, windowSeconds: number): Promise<boolean>;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function subjectHash(subject: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(subject));
+  return bytesToHex(new Uint8Array(digest)).slice(0, 16);
+}
+
+export function createKVRateLimiter(cache: KVNamespace): RateLimiter {
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      if (limit <= 0 || windowSeconds <= 0) return false;
+
+      try {
+        const separator = key.indexOf("|");
+        const scope = separator >= 0 ? key.slice(0, separator) : key;
+        const subject = separator >= 0 ? key.slice(separator + 1) : key;
+        const hashed = await subjectHash(subject);
+        const kvKey = `${RATE_LIMIT_PREFIX}:${scope}:${hashed}`;
+        const current = Number((await cache.get(kvKey)) ?? "0");
+        if (!Number.isFinite(current) || current < 0) {
+          console.warn("Public API rate limiter counter was invalid; allowing request", { kvKey });
+          return true;
+        }
+        if (current >= limit) return false;
+
+        // This is intentionally get-then-put rather than D1-backed atomic
+        // increment: public API concurrency is currently low enough that the
+        // simpler KV path is the better availability/cost trade-off.
+        await cache.put(kvKey, String(current + 1), { expirationTtl: windowSeconds });
+        return true;
+      } catch (error) {
+        // Rate limiting must never become an availability dependency. A KV
+        // outage therefore fails open and leaves an auditable warning.
+        console.warn("Public API rate limiter unavailable; allowing request", error);
+        return true;
+      }
+    },
+  };
+}
+
+export function createMemoryRateLimiter(): RateLimiter {
+  const windows = new Map<string, { count: number; expiresAt: number }>();
+
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      const now = Date.now();
+      const current = windows.get(key);
+      if (!current || current.expiresAt <= now) {
+        windows.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
+        return true;
+      }
+      if (current.count >= limit) return false;
+      current.count += 1;
+      return true;
+    },
+  };
+}
+
+/**
+ * Legacy fixed-window limiter kept for existing endpoint-specific abuse
+ * damping. New high-value public API guards should use RateLimiter above.
+ */
+const LEGACY_RATE_LIMIT_PREFIX = "rl:v1";
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -23,19 +94,14 @@ export async function checkRateLimit(
   now = Date.now(),
 ): Promise<RateLimitResult> {
   const windowIndex = Math.floor(now / (windowSeconds * 1000));
-  const key = `${RATE_LIMIT_PREFIX}:${bucket}:${identity}:${windowIndex}`;
+  const key = `${LEGACY_RATE_LIMIT_PREFIX}:${bucket}:${identity}:${windowIndex}`;
   const retryAfterSeconds = Math.max(1, Math.ceil(((windowIndex + 1) * windowSeconds * 1000 - now) / 1000));
-  // A deployment without the CACHE binding must still be able to answer
-  // surveys: the limiter is abuse damping, not an authorization gate, so it
-  // degrades to "allow" instead of throwing a TypeError on every write.
   if (!cache) return { allowed: true, retryAfterSeconds };
 
   const current = Number((await cache.get(key)) ?? "0");
   if (Number.isFinite(current) && current >= limit) {
     return { allowed: false, retryAfterSeconds };
   }
-  // expirationTtl rounds up to 120s minimum on KV; the window key changes
-  // every windowSeconds so stale counters never gate later windows.
   await cache.put(key, String(current + 1), {
     expirationTtl: Math.max(120, windowSeconds * 2),
   });
@@ -54,12 +120,6 @@ export function rateLimitResponse(retryAfterSeconds: number): Response {
 
 /**
  * Atomic fixed-window rate limiter backed by the `rate_limits` D1 table.
- *
- * Unlike {@link checkRateLimit}, the counter is incremented in a single
- * `INSERT ... ON CONFLICT DO UPDATE ... RETURNING count` statement, so N
- * concurrent requests cannot all observe the same pre-increment value and
- * bypass the budget. Use this for brute-force-sensitive endpoints (login,
- * access codes); the KV limiter stays for coarse abuse damping.
  */
 export async function checkAtomicRateLimit(
   db: D1Database,
@@ -94,10 +154,6 @@ export async function checkAtomicRateLimit(
     const count = Number(result?.count ?? 1);
     return { allowed: count <= limit, retryAfterSeconds };
   } catch (error) {
-    // The rate_limits table arrives in migration 0056; a Worker can reach
-    // production before the migration. Fall back to the KV limiter (best
-    // effort, eventually consistent) instead of either dropping the limit or
-    // failing the request.
     console.warn("Atomic rate limit unavailable; falling back to KV", { bucket, error });
     return checkRateLimit(cache, bucket, identity, limit, windowSeconds, now);
   }
