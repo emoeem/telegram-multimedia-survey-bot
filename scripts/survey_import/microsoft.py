@@ -311,7 +311,10 @@ def _choice_question_type(
         choices.append("其他")
 
     choice_type = question_info.get("ChoiceType")
-    multi = bool(question.get("allowMultipleValues")) or choice_type == 3
+    # Real forms mark multi-select with question_info ChoiceType 2 (verified
+    # against public definitions); allowMultipleValues stays null there.
+    # ChoiceType 3 is kept as a tolerated legacy variant.
+    multi = bool(question.get("allowMultipleValues")) or choice_type in (2, 3)
     if not multi:
         yes_no_hits = [
             choice

@@ -94,6 +94,24 @@ SAMPLE_FORM_DEFINITION = {
             ),
         },
         {
+            "id": "q2b",
+            "type": "Question.Choice",
+            "title": "真实多选（ChoiceType 2）",
+            "required": False,
+            "order": 2500500,
+            "questionInfo": json.dumps(
+                {
+                    "Choices": [
+                        {"Description": "甲"},
+                        {"Description": "乙"},
+                        {"Description": "丙"},
+                    ],
+                    "ChoiceType": 2,
+                    "AllowOtherAnswer": False,
+                }
+            ),
+        },
+        {
             "id": "q3",
             "type": "Question.Choice",
             "title": "是否满意？",
@@ -379,6 +397,9 @@ class FormsExtractionTests(unittest.TestCase):
         self.assertEqual(questions["q1"]["media"][0]["url"], "https://example.invalid/img.png")
 
         self.assertEqual(questions["q2"]["type"], "multiple")
+        # Real public forms mark multi-select with ChoiceType 2 while
+        # allowMultipleValues stays null.
+        self.assertEqual(questions["q2b"]["type"], "multiple")
         self.assertEqual(
             [option["value"] for option in questions["q2"]["options"]],
             ["红", "蓝", "绿", "其他"],
@@ -421,7 +442,7 @@ class FormsExtractionTests(unittest.TestCase):
                         output_dir=Path(temp_dir),
                     )
                     self.assertEqual(result.source_kind, "microsoft_forms")
-                    self.assertEqual(result.question_count, 5)
+                    self.assertEqual(result.question_count, 6)
                     self.assertEqual(result.title, "测试问卷")
                     self.assertTrue(result.output_path.is_file())
                     saved = json.loads(result.output_path.read_text(encoding="utf-8"))

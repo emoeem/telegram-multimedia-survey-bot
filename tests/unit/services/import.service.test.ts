@@ -677,3 +677,168 @@ describe("import service", () => {
     expect(batch).toHaveBeenCalledOnce();
   });
 });
+
+describe("import service · jump conditions", () => {
+  /** D1 mock that also answers the two id lookups the condition remap runs. */
+  function createConditionAwareD1Mock(): { db: D1Database; batched: Array<{ sql: string; bindings: unknown[] }> } {
+    const batched: Array<{ sql: string; bindings: unknown[] }> = [];
+    const prepare = (sql: string) => {
+      const statement = {
+        sql,
+        bindings: [] as unknown[],
+        bind(...bindings: unknown[]) {
+          statement.bindings = bindings;
+          return statement;
+        },
+        run: async () => ({ success: true, meta: { last_row_id: 300 } }),
+        all: async () => {
+          if (sql.includes('FROM survey_questions WHERE survey_id')) {
+            return { results: [{ id: 101, order: 0 }, { id: 102, order: 1 }, { id: 103, order: 2 }] };
+          }
+          return {
+            results: [
+              { id: 501, question_order: 0, option_order: 0 },
+              { id: 502, question_order: 0, option_order: 1 },
+              { id: 503, question_order: 1, option_order: 0 },
+              { id: 504, question_order: 1, option_order: 1 },
+            ],
+          };
+        },
+      };
+      return statement;
+    };
+    return {
+      db: {
+        prepare,
+        batch: async (statements: Array<{ sql: string; bindings: unknown[] }>) => {
+          batched.push(...statements);
+          return [];
+        },
+      } as unknown as D1Database,
+      batched,
+    };
+  }
+
+  it("keeps valid jump conditions through parse and validation", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带跳转",
+          questions: [
+            {
+              id: "qa",
+              type: "single",
+              title: "第一题",
+              options: [
+                { id: "qa_o1", label: "去第三题", value: "去第三题", media: [] },
+                { id: "qa_o2", label: "顺序继续", value: "顺序继续", media: [] },
+              ],
+            },
+            {
+              id: "qb",
+              type: "single",
+              title: "第二题",
+              options: [
+                { id: "qb_o1", label: "甲", value: "甲", media: [] },
+                { id: "qb_o2", label: "乙", value: "乙", media: [] },
+              ],
+            },
+            {
+              id: "qc",
+              type: "text",
+              title: "第三题",
+              options: [],
+              condition: {
+                kind: "option_equals",
+                answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qd" }],
+              },
+            },
+            { id: "qd", type: "text", title: "第四题", options: [] },
+          ],
+        },
+      }),
+    );
+    expect(parsed.questions[2]?.condition).toEqual({
+      kind: "option_equals",
+      answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qd" }],
+    });
+  });
+
+  it("rejects conditions referencing unknown questions", () => {
+    expect(() =>
+      parseImportedSurvey(
+        JSON.stringify({
+          schema_version: 1,
+          survey: {
+            title: "坏跳转",
+            questions: [
+              {
+                id: "qa",
+                type: "single",
+                title: "第一题",
+                options: [
+                  { id: "qa_o1", label: "甲", value: "甲", media: [] },
+                  { id: "qa_o2", label: "乙", value: "乙", media: [] },
+                ],
+                condition: { kind: "option_equals", rules: [{ optionId: "qa_o1", targetQuestionId: "ghost" }] },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toThrow(ImportValidationError);
+  });
+
+  it("remaps condition source ids to numeric row ids on save", async () => {
+    const { db, batched } = createConditionAwareD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "带跳转落库",
+      questions: [
+        {
+          id: "qa",
+          type: "single",
+          title: "第一题",
+          options: [
+            { id: "qa_o1", label: "跳去第三题", value: "跳去第三题", media: [] },
+            { id: "qa_o2", label: "顺序继续", value: "顺序继续", media: [] },
+          ],
+        },
+        {
+          id: "qb",
+          type: "single",
+          title: "第二题",
+          options: [
+            { id: "qb_o1", label: "甲", value: "甲", media: [] },
+            { id: "qb_o2", label: "乙", value: "乙", media: [] },
+          ],
+          condition: {
+            kind: "option_equals",
+            rules: [{ optionId: "qb_o2", targetQuestionId: "qc" }],
+            answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qc" }],
+          },
+        },
+        { id: "qc", type: "text", title: "第三题", options: [] },
+      ],
+    });
+
+    const update = batched.find((statement) => statement.sql.includes("condition_json"));
+    expect(update).toBeDefined();
+    const [conditionJson, skipTo] = update!.bindings as [string, number];
+    expect(JSON.parse(conditionJson)).toEqual({
+      kind: "option_equals",
+      rules: [{ optionId: 504, targetQuestionId: 103 }],
+      answerRules: [{ questionId: 101, equals: 501, targetQuestionId: 103 }],
+    });
+    expect(skipTo).toBe(103);
+  });
+
+  it("skips the remap entirely when no question carries a condition", async () => {
+    const { db, batched } = createConditionAwareD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "普通导入",
+      questions: [{ type: "text", title: "问题" }],
+    });
+    expect(batched.find((statement) => statement.sql.includes("condition_json"))).toBeUndefined();
+  });
+});

@@ -204,3 +204,129 @@ describe("fetchMicrosoftFormsSurveyJson", () => {
     expect(cover?.width).toBe(1600);
   });
 });
+
+/**
+ * Multi-select detection mirrors real public forms: allowMultipleValues stays
+ * null there and questionInfo.ChoiceType 2 marks multi-select (ChoiceType 1 is
+ * single). Branching (mfpBranchingData) is best-effort — see
+ * convertFormsBranching for the exact contract.
+ */
+describe("fetchMicrosoftFormsSurveyJson · choice types and branching", () => {
+  interface ConvertedQuestion {
+    id: string;
+    type: string;
+    options: Array<{ value: string }>;
+    condition?: { kind: string; rules: Array<{ optionId: string; targetQuestionId: string }> };
+  }
+  interface ConvertedSurvey {
+    survey: { questions: ConvertedQuestion[]; metadata: { warnings?: string[] } };
+  }
+
+  async function convert(definition: Record<string, unknown>): Promise<ConvertedSurvey> {
+    const page = formsPage("https://forms.cloud.microsoft/formapi/api/form");
+    stubFetch({
+      "https://forms.office.com/r/convert": { status: 200, body: page },
+      "https://forms.cloud.microsoft/formapi/api/form": { status: 200, body: JSON.stringify(definition) },
+    });
+    return JSON.parse(await fetchMicrosoftFormsSurveyJson("https://forms.office.com/r/convert")) as ConvertedSurvey;
+  }
+
+  const choiceQuestion = (id: string, title: string, choiceType: number, descriptions: string[]) => ({
+    id,
+    type: "Question.Choice",
+    title,
+    required: false,
+    order: 1000500,
+    questionInfo: JSON.stringify({
+      Choices: descriptions.map((description) => ({ Description: description })),
+      ChoiceType: choiceType,
+      AllowOtherAnswer: false,
+    }),
+  });
+
+  it("imports real-form multi-select (ChoiceType 2, allowMultipleValues null) as multiple", async () => {
+    const survey = await convert({
+      id: "form-real",
+      title: "真实表单",
+      questions: [
+        choiceQuestion("rq1", "多选题", 2, ["A", "B", "C"]),
+        choiceQuestion("rq2", "单选题", 1, ["红", "蓝"]),
+      ],
+    });
+    const byId = new Map(survey.survey.questions.map((question) => [question.id, question]));
+    expect(byId.get("rq1")?.type).toBe("multiple");
+    expect(byId.get("rq1")?.options).toHaveLength(3);
+    expect(byId.get("rq2")?.type).toBe("single");
+  });
+
+  it("imports forms without branching without conditions or warnings", async () => {
+    const survey = await convert({
+      id: "form-nobranch",
+      title: "无跳转",
+      mfpBranchingData: null,
+      questions: [choiceQuestion("nq1", "单选", 1, ["是", "否"])],
+    });
+    expect(survey.survey.questions[0]?.condition).toBeUndefined();
+    expect(survey.survey.metadata.warnings ?? []).toEqual([]);
+  });
+
+  it("converts branching rules into option jump conditions", async () => {
+    const survey = await convert({
+      id: "form-branch",
+      title: "带跳转",
+      mfpBranchingData: JSON.stringify({ bq1: { "1": "bq3", "2": "bq2" } }),
+      questions: [
+        choiceQuestion("bq1", "第一题", 1, ["走A线", "走B线"]),
+        choiceQuestion("bq2", "B线", 1, ["继续", "算了"]),
+        choiceQuestion("bq3", "A线", 1, ["继续", "算了"]),
+      ],
+    });
+    const byId = new Map(survey.survey.questions.map((question) => [question.id, question]));
+    expect(byId.get("bq1")?.condition).toEqual({
+      kind: "option_equals",
+      rules: [
+        { optionId: "bq1_o1", targetQuestionId: "bq3" },
+        { optionId: "bq1_o2", targetQuestionId: "bq2" },
+      ],
+    });
+    expect(survey.survey.metadata.warnings ?? []).toEqual([]);
+  });
+
+  it("warns instead of guessing when branching cannot be mapped", async () => {
+    const survey = await convert({
+      id: "form-branch-warn",
+      title: "跳转告警",
+      // "end" targets are not expressible, "0" is out of range, "bq1" is a
+      // backward target the runtime cannot honour.
+      mfpBranchingData: JSON.stringify({
+        wq1: { "1": "end", "2": "wq2", "0": "wq2" },
+        wq2: { "1": "wq1" },
+      }),
+      questions: [
+        choiceQuestion("wq1", "第一题", 1, ["结束", "继续"]),
+        choiceQuestion("wq2", "第二题", 1, ["回头", "继续"]),
+      ],
+    });
+    const byId = new Map(survey.survey.questions.map((question) => [question.id, question]));
+    expect(byId.get("wq1")?.condition).toEqual({
+      kind: "option_equals",
+      rules: [{ optionId: "wq1_o2", targetQuestionId: "wq2" }],
+    });
+    expect(byId.get("wq2")?.condition).toBeUndefined();
+    const warnings = survey.survey.metadata.warnings ?? [];
+    expect(warnings.join("\n")).toContain("结束表单");
+    expect(warnings.join("\n")).toContain("向后跳转");
+    expect(warnings.join("\n")).toContain("无法对应的选项");
+  });
+
+  it("warns when the branching payload cannot be parsed", async () => {
+    const survey = await convert({
+      id: "form-branch-bad",
+      title: "坏跳转数据",
+      mfpBranchingData: "{not-json",
+      questions: [choiceQuestion("pq1", "单选", 1, ["是", "否"])],
+    });
+    expect(survey.survey.questions[0]?.condition).toBeUndefined();
+    expect((survey.survey.metadata.warnings ?? []).join("\n")).toContain("无法解析");
+  });
+});

@@ -25,12 +25,16 @@ export interface ImportedMedia {
 }
 
 export interface ImportedOption {
+  /** Source-format option id (e.g. "q3_o2"), referenced by jump rules. */
+  id?: string;
   label: string;
   value: string;
   media: ImportedMedia[];
 }
 
 export interface ImportedQuestion {
+  /** Source-format question id (e.g. "q3"), referenced by jump rules. */
+  id?: string;
   type: QuestionType;
   title: string;
   description?: string;
@@ -39,6 +43,12 @@ export interface ImportedQuestion {
   options?: ImportedOption[];
   media?: ImportedMedia[];
   settings?: Record<string, unknown>;
+  /**
+   * Jump rules in the runtime condition shape but with source ids (see
+   * SurveyCondition). Validated against the survey's own ids and remapped to
+   * numeric row ids on save.
+   */
+  condition?: Record<string, unknown>;
   /** Parser-produced per-question warnings (e.g. layout/association issues). */
   warnings?: string[];
   /** Parser confidence for type/required detection; surfaced in import preview. */
@@ -259,8 +269,10 @@ function normalizeOptions(value: unknown): ImportedOption[] {
     if (seen.has(key)) return [];
     seen.add(key);
     const rawValue = nonEmptyString(raw["value"], raw["text"], raw["label"]) ?? label;
+    const optionId = nonEmptyString(raw["id"]);
     return [
       {
+        ...(optionId ? { id: optionId } : {}),
         label,
         value: cleanImportText(rawValue) || label,
         media: normalizeMediaList(raw["media"]),
@@ -277,13 +289,18 @@ function normalizeQuestions(value: unknown): ImportedQuestion[] {
   return value.map((question): ImportedQuestion => {
     const raw = question && typeof question === "object" ? (question as Record<string, unknown>) : {};
     const required = raw["required"];
+    const questionId = nonEmptyString(raw["id"], raw["question_id"]);
     const importedQuestion: ImportedQuestion = {
+      ...(questionId ? { id: questionId } : {}),
       type: normalizeQuestionType(raw["type"]),
       title: cleanImportText(nonEmptyString(raw["title"]) ?? "") || "",
       required: typeof required === "boolean" || required === null ? required : true,
       options: normalizeOptions(raw["options"]),
       media: normalizeMediaList(raw["media"]),
     };
+    if (raw["condition"] && typeof raw["condition"] === "object" && !Array.isArray(raw["condition"])) {
+      importedQuestion.condition = raw["condition"] as Record<string, unknown>;
+    }
     const warnings = raw["warnings"];
     if (Array.isArray(warnings)) {
       const strings = warnings.filter((item): item is string => typeof item === "string");
@@ -914,5 +931,160 @@ export async function saveImportedSurvey(
     throw error;
   }
 
+  // Jump conditions reference source-format ids; now that real rows exist,
+  // remap them to numeric row ids. Runs after the main batch so the rows are
+  // visible; a failure here aborts the import the same way the batch above
+  // does (core rows are deleted, endpoint reports the failure).
+  const conditioned = resolvedSurvey.questions
+    .map((question, order) => ({ question, order }))
+    .filter((entry) => entry.question.condition);
+  if (conditioned.length > 0) {
+    try {
+      const questionOrderOfSource = new Map<string, number>();
+      resolvedSurvey.questions.forEach((question, index) => {
+        if (question.id) questionOrderOfSource.set(question.id, index);
+      });
+      const questionIdRows = await db
+        .prepare(`SELECT id, "order" FROM survey_questions WHERE survey_id = ?`)
+        .bind(created.id)
+        .all<{ id: number; order: number }>();
+      const questionIdByOrder = new Map(questionIdRows.results.map((row) => [row.order, row.id]));
+      const optionIdRows = await db
+        .prepare(
+          `SELECT o.id AS id, q."order" AS question_order, o."order" AS option_order
+           FROM question_options o
+           JOIN survey_questions q ON q.id = o.question_id
+           WHERE q.survey_id = ?`,
+        )
+        .bind(created.id)
+        .all<{ id: number; question_order: number; option_order: number }>();
+      const optionIdByPosition = new Map(
+        optionIdRows.results.map((row) => [`${row.question_order}:${row.option_order}`, row.id]),
+      );
+      // Source option id -> question/option position across the whole survey
+      // (answerRules.equals references the ruled question's options).
+      const optionPositionBySource = new Map<string, { questionOrder: number; optionOrder: number }>();
+      resolvedSurvey.questions.forEach((entry, questionOrder) => {
+        (entry.options ?? []).forEach((option, optionOrder) => {
+          if (option.id) optionPositionBySource.set(option.id, { questionOrder, optionOrder });
+        });
+      });
+
+      const conditionStatements: D1PreparedStatement[] = [];
+      for (const { question, order } of conditioned) {
+        const remapped = remapImportedCondition(
+          question,
+          order,
+          questionOrderOfSource,
+          questionIdByOrder,
+          optionIdByPosition,
+          optionPositionBySource,
+        );
+        if (!remapped) continue;
+        conditionStatements.push(
+          db
+            .prepare(
+              `UPDATE survey_questions SET condition_json = ?, skip_to_question_id = ?, updated_at = ? WHERE id = ?`,
+            )
+            .bind(remapped.conditionJson, remapped.skipToQuestionId, timestamp, remapped.questionId),
+        );
+      }
+      if (conditionStatements.length > 0) {
+        await db.batch(conditionStatements);
+      }
+    } catch (error) {
+      await deleteSurvey(db, created.id);
+      throw error;
+    }
+  }
+
   return created.id;
+}
+
+/**
+ * Rewrites one imported question's condition (source ids) onto numeric row
+ * ids. Returns null when nothing resolvable remains. Mirrors the drops done
+ * by legacyToUnified's mapCondition so validated imports never fail here:
+ * unknown options/questions and backward targets are skipped.
+ */
+function remapImportedCondition(
+  question: ImportedQuestion,
+  order: number,
+  questionOrderOfSource: Map<string, number>,
+  questionIdByOrder: Map<number, number>,
+  optionIdByPosition: Map<string, number>,
+  optionPositionBySource: Map<string, { questionOrder: number; optionOrder: number }>,
+): { questionId: number; conditionJson: string; skipToQuestionId: number | null } | null {
+  const condition = question.condition;
+  if (!condition) return null;
+  const numericQuestionId = questionIdByOrder.get(order);
+  if (numericQuestionId === undefined) return null;
+
+  const numericIdOfSource = (sourceId: unknown): number | null => {
+    const sourceOrder = questionOrderOfSource.get(String(sourceId));
+    if (sourceOrder === undefined) return null;
+    return questionIdByOrder.get(sourceOrder) ?? null;
+  };
+  // Jump targets are forward-only at runtime (engine.forwardTarget ignores
+  // anything at or before the current question), so skip non-forward targets.
+  const forwardTargetOfSource = (sourceId: unknown): number | null => {
+    const sourceOrder = questionOrderOfSource.get(String(sourceId));
+    if (sourceOrder === undefined || sourceOrder <= order) return null;
+    return questionIdByOrder.get(sourceOrder) ?? null;
+  };
+  // answerRules.equals may reference an option of the RULED question (often a
+  // question before this one), so option positions are resolved across the
+  // whole survey, not just this question's options.
+  const numericOptionIdOfSource = (sourceId: unknown): number | null => {
+    const position = optionPositionBySource.get(String(sourceId));
+    if (!position) return null;
+    return optionIdByPosition.get(`${position.questionOrder}:${position.optionOrder}`) ?? null;
+  };
+
+  const rules: Array<{ optionId: number; targetQuestionId: number }> = [];
+  for (const rule of Array.isArray(condition.rules) ? condition.rules : []) {
+    if (!rule || typeof rule !== "object") continue;
+    const entry = rule as Record<string, unknown>;
+    const optionNumericId = numericOptionIdOfSource(entry.optionId);
+    const targetQuestionId = forwardTargetOfSource(entry.targetQuestionId);
+    if (optionNumericId !== null && targetQuestionId !== null) {
+      rules.push({ optionId: optionNumericId, targetQuestionId });
+    }
+  }
+  // Legacy single-rule shape (optionId + targetQuestionId).
+  if (rules.length === 0 && condition.optionId !== undefined) {
+    const optionNumericId = numericOptionIdOfSource(condition.optionId);
+    const targetQuestionId = forwardTargetOfSource(condition.targetQuestionId);
+    if (optionNumericId !== null && targetQuestionId !== null) {
+      rules.push({ optionId: optionNumericId, targetQuestionId });
+    }
+  }
+
+  const answerRules: Array<{ questionId: number; equals: number; targetQuestionId: number }> = [];
+  for (const rule of Array.isArray(condition.answerRules) ? condition.answerRules : []) {
+    if (!rule || typeof rule !== "object") continue;
+    const entry = rule as Record<string, unknown>;
+    const ruledQuestionId = numericIdOfSource(entry.questionId);
+    const targetQuestionId = forwardTargetOfSource(entry.targetQuestionId);
+    if (ruledQuestionId === null || targetQuestionId === null) continue;
+    // Source-format equals references the ruled question's option id; numeric
+    // values pass through (authoring against an already-imported survey).
+    const equals = numericOptionIdOfSource(entry.equals) ?? Number(entry.equals);
+    if (!Number.isInteger(equals) || (equals as number) <= 0) continue;
+    answerRules.push({ questionId: ruledQuestionId, equals: equals as number, targetQuestionId });
+  }
+  if (rules.length === 0 && answerRules.length === 0) return null;
+
+  return {
+    questionId: numericQuestionId,
+    conditionJson: JSON.stringify({
+      kind: "option_equals",
+      ...(rules.length ? { rules } : {}),
+      ...(answerRules.length ? { answerRules } : {}),
+    }),
+    // Legacy single-rule consumers read skip_to_question_id; mirror the
+    // editor's parseConditionInput behaviour of pointing it at the first
+    // rule's target.
+    skipToQuestionId: rules[0]?.targetQuestionId ?? null,
+  };
 }

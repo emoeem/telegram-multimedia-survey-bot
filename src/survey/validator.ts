@@ -41,7 +41,8 @@ export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
     return issues;
   }
 
-  data.survey.questions.forEach((question, index) => {
+  const surveyQuestions = data.survey.questions;
+  surveyQuestions.forEach((question, index) => {
     const path = `$.survey.questions[${index}]`;
 
     if (!question || typeof question !== "object") {
@@ -99,7 +100,107 @@ export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
         }
       }
     }
+
+    issues.push(...validateQuestionCondition(question, index, surveyQuestions));
   });
+
+  return issues;
+}
+
+/**
+ * Validates jump conditions on a question. Ids may be authoring slugs
+ * (UnifiedSurveyImport) or numeric row ids (post-import snapshots); both
+ * compare by string form. Jump targets are forward-only, matching the
+ * engine, so a typo can never send a participant backwards.
+ */
+function validateQuestionCondition(
+  question: UnifiedSurveyImport["survey"]["questions"][number],
+  index: number,
+  questions: UnifiedSurveyImport["survey"]["questions"],
+): ValidationIssue[] {
+  const condition = (question as { condition?: unknown }).condition;
+  if (condition === undefined || condition === null) return [];
+  const path = `$.survey.questions[${index}].condition`;
+  if (typeof condition !== "object" || Array.isArray(condition)) {
+    return [{ path, message: "condition must be an object" }];
+  }
+
+  const issues: ValidationIssue[] = [];
+  const raw = condition as Record<string, unknown>;
+  const optionIds = new Set((question.options ?? []).map((option) => String(option?.id)));
+  const indexOfId = new Map(questions.map((entry, position) => [String(entry?.id), position]));
+  const optionIdsByQuestion = new Map(
+    questions.map((entry) => [
+      String(entry?.id),
+      new Set((entry?.options ?? []).map((option) => String(option?.id))),
+    ]),
+  );
+
+  const checkTarget = (value: unknown, targetPath: string): void => {
+    const key = String(value);
+    const targetIndex = indexOfId.get(key);
+    if (targetIndex === undefined) {
+      issues.push({ path: targetPath, message: "jump target must reference a question id in this survey" });
+    } else if (targetIndex <= index) {
+      issues.push({ path: targetPath, message: "jump targets are forward-only" });
+    }
+  };
+
+  if (Array.isArray(raw.rules)) {
+    raw.rules.forEach((rule, ruleIndex) => {
+      const rulePath = `${path}.rules[${ruleIndex}]`;
+      if (!rule || typeof rule !== "object") {
+        issues.push({ path: rulePath, message: "rule must be an object" });
+        return;
+      }
+      const entry = rule as Record<string, unknown>;
+      if (!optionIds.has(String(entry.optionId))) {
+        issues.push({ path: `${rulePath}.optionId`, message: "optionId must reference an option of this question" });
+      }
+      checkTarget(entry.targetQuestionId, `${rulePath}.targetQuestionId`);
+    });
+  } else if (raw.optionId !== undefined) {
+    if (!optionIds.has(String(raw.optionId))) {
+      issues.push({ path: `${path}.optionId`, message: "optionId must reference an option of this question" });
+    }
+  }
+
+  if (raw.skipToQuestionId !== undefined && raw.skipToQuestionId !== null) {
+    checkTarget(raw.skipToQuestionId, `${path}.skipToQuestionId`);
+  }
+
+  if (raw.answerRules !== undefined) {
+    if (!Array.isArray(raw.answerRules)) {
+      issues.push({ path: `${path}.answerRules`, message: "answerRules must be an array" });
+    } else {
+      raw.answerRules.forEach((rule, ruleIndex) => {
+        const rulePath = `${path}.answerRules[${ruleIndex}]`;
+        if (!rule || typeof rule !== "object") {
+          issues.push({ path: rulePath, message: "answerRule must be an object" });
+          return;
+        }
+        const entry = rule as Record<string, unknown>;
+        if (indexOfId.get(String(entry.questionId)) === undefined) {
+          issues.push({ path: `${rulePath}.questionId`, message: "questionId must reference a question in this survey" });
+        }
+        // equals is the matched answer: a numeric option id, or (import
+        // format) an option id of the referenced question.
+        const equalsValid =
+          entry.equals !== undefined &&
+          (Number.isFinite(Number(entry.equals)) && Number(entry.equals) > 0
+            ? true
+            : typeof entry.equals === "string" &&
+              (optionIdsByQuestion.get(String(entry.questionId))?.has(entry.equals) ?? false));
+        if (!equalsValid) {
+          issues.push({
+            path: `${rulePath}.equals`,
+            message: "equals must be a positive number or an option id of the referenced question",
+          });
+        }
+        checkTarget(entry.targetQuestionId, `${rulePath}.targetQuestionId`);
+      });
+    }
+  }
 
   return issues;
 }

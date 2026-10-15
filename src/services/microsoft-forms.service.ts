@@ -152,6 +152,8 @@ interface FormsDefinition {
   questions?: unknown[];
   descriptiveQuestions?: unknown[];
   predefinedResponses?: unknown;
+  /** Branching ("跳转到特定问题") rules; a JSON string or object, null when unset. */
+  mfpBranchingData?: unknown;
 }
 
 interface FormsImagePart {
@@ -236,7 +238,10 @@ function convertQuestion(
     }
 
     const choiceType = questionInfo.ChoiceType;
-    const multi = question.allowMultipleValues === true || choiceType === 3;
+    // Real forms mark multi-select with questionInfo.ChoiceType 2 (verified
+    // against public definitions); allowMultipleValues stays null there.
+    // ChoiceType 3 is kept as a tolerated legacy variant.
+    const multi = question.allowMultipleValues === true || choiceType === 2 || choiceType === 3;
     if (!multi) {
       const normalized = new Set(choices.map((choice) => choice.trim().toLowerCase()));
       const yesNoHits = choices.filter((choice) => YES_NO_VALUES.has(choice.trim().toLowerCase()));
@@ -333,6 +338,105 @@ function convertQuestion(
   return result;
 }
 
+const FORMS_END_TARGETS = new Set(["end", "formend", "endofform", "finish", "submit", "thanks"]);
+
+interface OptionJumpCondition {
+  kind: "option_equals";
+  rules: Array<{ optionId: string; targetQuestionId: string }>;
+}
+
+/**
+ * Best-effort conversion of the form's branching data ("跳转到特定问题") into
+ * per-question option jump rules. Microsoft does not document the payload and
+ * the field is null for forms without branching, so this stays defensive:
+ * only mappings that reference questions and choices that exist in THIS form
+ * are converted, and everything else (end-of-form targets, backward targets —
+ * the runtime engine only jumps forward — unknown shapes) is reported as an
+ * import warning instead of being silently dropped or guessed at.
+ */
+function convertFormsBranching(
+  raw: unknown,
+  orderedQuestionIds: string[],
+  optionCountByQuestionId: Map<string, number>,
+): { conditions: Map<string, OptionJumpCondition>; warnings: string[] } {
+  const conditions = new Map<string, OptionJumpCondition>();
+  const warnings = new Set<string>();
+
+  if (raw === null || raw === undefined || raw === "") {
+    return { conditions, warnings: [] };
+  }
+
+  let data: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      warnings.add("原表单配置了跳转逻辑，但数据无法解析，请在编辑器中手动设置选项跳转。");
+      return { conditions, warnings: [...warnings] };
+    }
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    warnings.add("原表单配置了跳转逻辑，但格式无法识别，请在编辑器中手动设置选项跳转。");
+    return { conditions, warnings: [...warnings] };
+  }
+
+  let unmappableTargets = 0;
+  let backwardTargets = 0;
+  let unknownChoices = 0;
+  const orderOf = new Map(orderedQuestionIds.map((id, index) => [id, index]));
+
+  for (const [sourceQuestionId, mapping] of Object.entries(data as Record<string, unknown>)) {
+    if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) continue;
+    const sourceOrder = orderOf.get(sourceQuestionId);
+    if (sourceOrder === undefined) continue; // descriptive sections etc. — silently ignorable
+    const optionCount = optionCountByQuestionId.get(sourceQuestionId) ?? 0;
+    const rules: Array<{ optionId: string; targetQuestionId: string }> = [];
+    for (const [choiceKey, rawTarget] of Object.entries(mapping as Record<string, unknown>)) {
+      const choiceIndex = Number(choiceKey);
+      if (!Number.isInteger(choiceIndex) || choiceIndex < 1 || choiceIndex > optionCount) {
+        unknownChoices += 1;
+        continue;
+      }
+      if (typeof rawTarget !== "string" || !rawTarget) {
+        unmappableTargets += 1;
+        continue;
+      }
+      if (FORMS_END_TARGETS.has(rawTarget.trim().toLowerCase())) {
+        unmappableTargets += 1;
+        continue;
+      }
+      const targetOrder = orderOf.get(rawTarget);
+      if (targetOrder === undefined) {
+        unmappableTargets += 1;
+        continue;
+      }
+      if (targetOrder <= sourceOrder) {
+        backwardTargets += 1;
+        continue;
+      }
+      rules.push({ optionId: `${sourceQuestionId}_o${choiceIndex}`, targetQuestionId: rawTarget });
+    }
+    if (rules.length) {
+      conditions.set(sourceQuestionId, { kind: "option_equals", rules });
+    }
+  }
+
+  if (unmappableTargets > 0) {
+    warnings.add(
+      `原表单跳转逻辑中有 ${unmappableTargets} 处目标无法自动映射（如「结束表单」），请在编辑器中手动检查相关选项跳转。`,
+    );
+  }
+  if (backwardTargets > 0) {
+    warnings.add(
+      `原表单跳转逻辑中有 ${backwardTargets} 处跳回之前题目的设置，本系统仅支持向后跳转，已忽略；如需类似效果请重新组织题目顺序。`,
+    );
+  }
+  if (unknownChoices > 0) {
+    warnings.add(`原表单跳转逻辑中有 ${unknownChoices} 处引用了无法对应的选项，已忽略，请在编辑器中手动检查。`);
+  }
+  return { conditions, warnings: [...warnings] };
+}
+
 function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
   const title = cleanText(data.title) || "Imported Survey";
   const description = cleanText(data.description) || "Imported from Microsoft Forms";
@@ -400,11 +504,25 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
     return convertQuestion(raw, index, currentPage);
   });
 
+  // Branching ("跳转到特定问题") → per-question option jump rules.
+  const branching = convertFormsBranching(
+    data.mfpBranchingData,
+    surveyQuestions.map((question) => question.id),
+    new Map(
+      surveyQuestions.map((question) => [question.id, question.options.length] as const),
+    ),
+  );
+  for (const [questionId, condition] of branching.conditions) {
+    const question = surveyQuestions.find((item) => item.id === questionId);
+    if (question) question.condition = condition;
+  }
+
   const warnings = surveyQuestions.flatMap((question) =>
     Array.isArray((question as unknown as Record<string, unknown>).warnings)
       ? ((question as unknown as Record<string, unknown>).warnings as unknown[] as string[])
       : [],
   );
+  warnings.push(...branching.warnings);
 
   return {
     schema_version: 1,

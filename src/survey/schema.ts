@@ -58,6 +58,27 @@ export interface SurveyValidation {
   max_size_mb?: number;
 }
 
+/**
+ * Jump rules carried through the import format. Ids are authoring-time string
+ * ids (question/option ids as they appear in the same JSON); import remaps
+ * them to numeric row ids on save. Mirrors the runtime condition_json shape
+ * (see src/survey/engine.ts), with one import-format extension: answerRules
+ * `equals` may reference an option id of the ruled question instead of a
+ * numeric option id.
+ */
+export interface SurveyCondition {
+  kind?: "option_equals";
+  /** Legacy single-rule shape (first matching option jumps). */
+  optionId?: string;
+  targetQuestionId?: string;
+  /** Explicit fallback jump when no rule matches. */
+  skipToQuestionId?: string | null;
+  /** Option-driven jumps: selecting the option continues at the target. */
+  rules?: Array<{ optionId: string; targetQuestionId: string }>;
+  /** State-driven jumps evaluated against accumulated answers. */
+  answerRules?: Array<{ questionId: string; equals: number | string; targetQuestionId: string }>;
+}
+
 export interface SurveyQuestion {
   id: string;
   type: SurveyQuestionType;
@@ -69,6 +90,7 @@ export interface SurveyQuestion {
   options: SurveyOption[];
   media: SurveyMedia[];
   validation?: SurveyValidation;
+  condition?: SurveyCondition;
   settings?: Record<string, unknown>;
   help_text?: string;
   placeholder?: string;
