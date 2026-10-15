@@ -79,15 +79,21 @@ export function createSqliteD1(schema: string): D1Database {
     batch: async (statements: D1PreparedStatement[]) =>
       // Real D1 batch returns per-statement meta (including changes) for write
       // statements and rows for reads. The shim's run() carries the write
-      // meta while all() hardcodes changes: 0, so route writes through run() —
-      // otherwise INSERT OR IGNORE idempotence checks ("was this the call that
-      // actually unlocked it?") always read false under the shim.
+      // meta while all() hardcodes changes: 0, so route plain writes through
+      // run() — otherwise INSERT OR IGNORE idempotence checks ("was this the
+      // call that actually unlocked it?") always read false under the shim.
+      //
+      // `INSERT/UPDATE ... RETURNING` is the exception: on real D1 its batch
+      // result carries the returned rows (the atomic rate limiter reads its
+      // count from there), so it must go through all() or the limiter looks
+      // like it never counts anything.
       Promise.all(
-        statements.map((item) =>
-          /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test((item as { sql?: string }).sql ?? "")
-            ? item.run()
-            : item.all(),
-        ),
+        statements.map((item) => {
+          const sql = (item as { sql?: string }).sql ?? "";
+          const isWrite = /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql);
+          if (isWrite && !/\bRETURNING\b/i.test(sql)) return item.run();
+          return item.all();
+        }),
       ),
     exec: async (query: string) => {
       db.exec(query);

@@ -39,6 +39,28 @@ cron（`*/30 * * * *`）里，`retainFinishedResponseMedia` 会先于
 
 - `GET /report/:id?t=<token>`：响应式单页（移动端优先，深色模式，图片懒加载，
   长文本/得分/雷达/回答明细），服务端渲染，无需额外前端包
+- `GET /report/:id.pdf?t=<token>`：**参与者自助下载 PDF**（2026-10-15 新增）。
+  优先复用归档队列写入 KV 的 `public-report-pdf:<id>`（7 天）——绝大多数下载零
+  浏览器开销；缓存过期/缺失时按需 `renderReportPdf` 一次并写回同一个键（同一份
+  报告 7 天内最多渲染一次）。无 `BROWSER` 绑定的部署形态或渲染失败时 302 回退到
+  HTML 报告页。响应为 `Content-Disposition: attachment`。生产实测：KV 中已有 35
+  份归档 PDF，即"提交后一段时间内下载"几乎全部命中缓存。
+  每日限额：**每身份 3 次 + 每 IP 12 次**（后备闸门防轮换密钥绕过；两道闸门在同一次
+  `db.batch` 计数，1 往返 2 行写）。超限返回 429 落地页（说明限额 + 在线查看入口）。
+  额度只在令牌与归属校验之后消耗；D1 不可用回落 KV 限流器，KV 也失败则放行（限流器
+  故障不该拦住用户下载自己的报告）。生产已验证 D1 原子限流端到端生效（探针并发打点，
+  计数到 120 后返回 429）。
+- **网页报告内的下载按钮**：由 `injectReportDownloadAction` 在 report-api 层注入，
+  不进入 `buildResponsiveReportHtml` —— 同一个 builder 还产出 PDF、归档副本、
+  模板预览与视觉回归快照，交互控件绝不能混入；打印样式里再隐藏一次作为保险。
+- `GET /api/me/reports`：**「我的报告」列表**（2026-10-15 新增）。按服务端解析的
+  参与者身份（`participantHash`）列出 `completed`/`archived` 答卷，为每条现铸
+  30 天 token（HMAC 无状态，无存储成本）；被作者删除的问卷连同报告一并下架。
+  「我的」页面 (`/me`) 与完成页据此提供持久入口——此前报告链接只在完成页出现
+  一次，离开即遗失（用户反馈"填完之后无法查看自己的报告"）。
+- **归档消息里的「用户：」按 Telegram 用户 ID 生成 mention**（`tg://user?id=`），
+  不再拼 `https://t.me/<username>`：用户改名或放弃用户名后旧链接就是 404（运营实际
+  观察到"点了完全找不到人"）；用户名仅作展示文本，改名不影响点击。
 - `GET /api/report/media/:id?t=<token>&rid=<id>`：报告媒体代理（按答卷归属鉴权）
 - PDF 与 Web Report 共用同一份 `ReportViewModel` 与同一套 HTML 模板
 - 图片解析同源：Web 报告与 PDF/归档都从 `collectReportImageEntries`
@@ -61,6 +83,12 @@ cron（`*/30 * * * *`）里，`retainFinishedResponseMedia` 会先于
 ```bash
 pnpm typecheck && pnpm test && pnpm lint
 ```
+
+自助报告入口的回归测试在 `tests/unit/http/report-flow.integration.test.ts`（真实
+SQLite + 全量 migration 建库，跑真实处理器）：完成答卷 + 提交时铸的 token 能打开
+报告页；`/api/me/reports` 只列出本人答卷、返回的 token 可直接打开报告、他人 key 看
+不到、无身份 401；PDF 走 KV 缓存返回 `application/pdf`；无缓存且无 BROWSER 时 302
+回退 HTML；下载按钮只注入网页报告（含打印隐藏样式）。
 
 > 相关结构重构（admin API 与 bot survey handler 拆分）见
 > [`docs/MODULARIZATION.md`](./MODULARIZATION.md)。

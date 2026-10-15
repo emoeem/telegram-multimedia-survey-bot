@@ -1,6 +1,9 @@
 import type { Env } from "../../index";
 import type { QuestionType } from "../../db/schema";
-import { getMediaAssetById } from "../../db/repositories/media.repository";
+import {
+  getMediaAssetByIdStatement,
+  mapMediaAssetStatement,
+} from "../../db/repositories/media.repository";
 import { getQuestionById } from "../../db/repositories/question.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
 import {
@@ -12,7 +15,7 @@ import { KVMediaStore } from "../../services/media/temporary-media-store";
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
-import { loadPublishedSurvey } from "./catalog";
+import { getSurveyByIdStatement, mapSurveyStatementResult } from "../../db/repositories/survey.repository";
 import { mediaPublicUrl } from "./presentation";
 import { resolveParticipant } from "./participant";
 
@@ -31,42 +34,92 @@ export function temporaryStore(env: Env): KVMediaStore {
 }
 
 /**
+ * How long the edge (`caches.default`) may hold a survey-scope media response.
+ *
+ * Deliberately much shorter than the browser TTL: the browser copy is keyed by
+ * an immutable asset id (a replacement upload gets a new id), but the *edge*
+ * entry is keyed by URL alone and would keep serving an asset after its survey
+ * was closed, archived or its media detached. A day bounds that exposure while
+ * still absorbing the repeat-view traffic of a story survey's scene images,
+ * sprites and BGM — each of which used to pay two or three D1 round trips and,
+ * for Telegram-hosted assets, a live Bot API download on every cache-expired
+ * view. No active purge is wired into close/archive; the honest trade-off is
+ * documented instead: a detached asset can remain fetchable at the edge for up
+ * to a day, which is strictly narrower than the year-long copies already held
+ * by every browser that loaded it.
+ */
+const MEDIA_EDGE_CACHE_TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * The Workers Cache API (`caches.default`). Typed indirectly because the
+ * enabled lib set also brings in the standard `CacheStorage`, which has no
+ * `default` property; on the Workers runtime it is the edge cache. Returns
+ * null where the global is absent (unit tests run in plain Node).
+ */
+function edgeCache(): Cache | null {
+  try {
+    const cache = (caches as unknown as { default?: Cache }).default;
+    return cache ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Public media endpoint for survey and response assets.
  *
  * Authorization is scope-based: published survey assets are public, response
  * assets are readable only by the participant who owns the response, and
  * everything else (templates, generated results, identity cards) is refused.
+ *
+ * Cost shape: survey-scope assets cost ONE D1 round trip (asset row plus the
+ * published-linkage checks in a single batch) and then nothing at all — an
+ * edge-cached repeat view returns before the database is touched. Response
+ * scope keeps its per-request participant resolution.
  */
 export async function serveSurveyMedia(request: Request, env: Env, mediaId: number): Promise<Response> {
-  const asset = await getMediaAssetById(env.DB, mediaId);
+  // The edge copy is keyed by URL and only ever contains identity-independent,
+  // survey-scope responses, so a hit needs no authorization and no database.
+  // Misses fall through to the full auth path below.
+  if (request.method === "GET") {
+    try {
+      const cached = await edgeCache()?.match(request);
+      if (cached) return cached;
+    } catch {
+      // A broken edge cache must not break media serving.
+    }
+  }
+
+  const [assetResult, linkedResult] = await env.DB.batch([
+    getMediaAssetByIdStatement(env.DB, mediaId),
+    // One statement covers both linkage shapes: attached to a published
+    // survey's question/option media, or serving as its cover. The two queries
+    // used to run sequentially as a primary/fallback pair, which doubled the
+    // round trips of every not-yet-cached asset.
+    env.DB.prepare(
+      `SELECT 1 AS linked FROM surveys s
+         JOIN survey_questions q ON q.survey_id = s.id
+         JOIN question_media qm ON qm.question_id = q.id
+        WHERE s.status = 'published' AND s.deleted_at IS NULL AND qm.media_asset_id = ?
+      UNION
+      SELECT 1 AS linked FROM surveys s
+         JOIN survey_questions q ON q.survey_id = s.id
+         JOIN question_options o ON o.question_id = q.id
+         JOIN option_media om ON om.question_option_id = o.id
+        WHERE s.status = 'published' AND s.deleted_at IS NULL AND om.media_asset_id = ?
+      UNION
+      SELECT 1 AS linked FROM surveys s
+        WHERE s.status = 'published' AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
+    ).bind(mediaId, mediaId, mediaId),
+  ]);
+  const asset = mapMediaAssetStatement(assetResult);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");
 
   if (asset.scope === "survey") {
     // Admin-uploaded temporary media (e.g. background music) is allowed
     // before it is attached to any published question/option.
     if (asset.storageKind !== "temporary") {
-      let linked = await env.DB.prepare(
-        `SELECT s.id FROM surveys s
-           JOIN survey_questions q ON q.survey_id = s.id
-           JOIN question_media qm ON qm.question_id = q.id
-           WHERE s.status = 'published' AND s.deleted_at IS NULL AND qm.media_asset_id = ?
-           UNION
-           SELECT s.id FROM surveys s
-           JOIN survey_questions q ON q.survey_id = s.id
-           JOIN question_options o ON o.question_id = q.id
-           JOIN option_media om ON om.question_option_id = o.id
-           WHERE s.status = 'published' AND s.deleted_at IS NULL AND om.media_asset_id = ?`,
-      )
-        .bind(mediaId, mediaId)
-        .first<{ id: number }>();
-      if (!linked) {
-        linked = await env.DB.prepare(
-          `SELECT s.id FROM surveys s
-             WHERE s.status = 'published' AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
-        )
-          .bind(mediaId)
-          .first<{ id: number }>();
-      }
+      const linked = ((linkedResult?.results ?? []) as unknown[]).length > 0;
       if (!linked) return fail(404, "media_not_found", "媒体不属于已发布问卷");
     }
   } else if (asset.scope === "response") {
@@ -76,8 +129,8 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
       `SELECT r.id FROM survey_responses r
          JOIN answers a ON a.response_id = r.id
          JOIN answer_media am ON am.answer_id = a.id
-         WHERE am.media_asset_id = ? AND r.participant_hash = ?
-         LIMIT 1`,
+        WHERE am.media_asset_id = ? AND r.participant_hash = ?
+        LIMIT 1`,
     )
       .bind(mediaId, participant.participantHash)
       .first<{ id: number }>();
@@ -89,6 +142,25 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
   const mediaResponse = await buildMediaResponse(env, asset);
   if (!mediaResponse) {
     return fail(404, "media_unavailable", "媒体不可用");
+  }
+  // Survey-scope bytes are immutable and identity-independent: keep a bounded
+  // copy at the edge so the next respondent at this colo skips the database
+  // (and, for Telegram-hosted assets, the Bot API download) entirely. The
+  // client still receives the year-long immutable policy; the edge copy trades
+  // a shorter TTL for a bounded staleness window after unpublish/close.
+  // Response-scope and internal assets are personal or private and never enter
+  // the shared cache.
+  if (asset.scope === "survey" && request.method === "GET" && mediaResponse.status === 200) {
+    const cache = edgeCache();
+    if (cache) {
+      try {
+        const edgeHeaders = new Headers(mediaResponse.headers);
+        edgeHeaders.set("Cache-Control", `public, max-age=${MEDIA_EDGE_CACHE_TTL_SECONDS}`);
+        await cache.put(request, new Response(mediaResponse.clone().body, { headers: edgeHeaders }));
+      } catch (error) {
+        console.warn("Media edge cache put failed", { mediaId, error });
+      }
+    }
   }
   return mediaResponse;
 }
@@ -103,8 +175,14 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
  * response.
  */
 export async function handleSurveyMediaUpload(request: Request, env: Env, surveyId: number): Promise<Response> {
-  const loaded = await loadPublishedSurvey(env, surveyId);
-  if (loaded instanceof Response) return loaded;
+  // Only the publication check is needed here (the question row is read
+  // separately below), so this reads the survey row alone: no flow cache, no
+  // questions/options read.
+  const [surveyRowResult] = await env.DB.batch([getSurveyByIdStatement(env.DB, surveyId)]);
+  const survey = mapSurveyStatementResult(surveyRowResult);
+  if (!survey || survey.status !== "published") {
+    return fail(404, "survey_unavailable", "问卷不存在或未发布");
+  }
   const participant = await resolveParticipant(request, env);
   if (participant instanceof Response) return participant;
   const response = await env.DB.prepare(

@@ -36,6 +36,17 @@ function servedContentType(mimeType: string | null): string {
  * Response uploads are someone's personal data and keep the short TTLs they
  * had: private for the temporary store, short public for the durable branches.
  */
+/**
+ * The one cache-policy function for every storage branch. A media asset is
+ * addressed by its id and never overwritten in place — a replacement upload
+ * gets a new id — so *survey*-scope bytes are immutable no matter where they
+ * live (KV blob, R2 object, Telegram file, inline data URL). The branches used
+ * to disagree: the KV path served the immutable policy while the R2, Telegram
+ * and data-URL paths hardcoded `max-age=300`, so the same survey illustration
+ * re-downloaded every five minutes whenever its bytes happened to sit on
+ * Telegram instead of KV. Response-scope uploads stay private/short-lived and
+ * internal scopes keep the conservative default.
+ */
 function mediaCacheControl(asset: MediaAsset): string {
   if (asset.scope === "survey") return "public, max-age=31536000, immutable";
   return asset.storageKind === "temporary" ? "private, no-store" : "public, max-age=300";
@@ -67,7 +78,7 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
       }
       const headers = new Headers();
       headers.set("Content-Type", servedContentType(decoded.mimeType));
-      secureHeaders(headers, "public, max-age=300");
+      secureHeaders(headers, mediaCacheControl(asset));
       const filename = asset.fileName ? asset.fileName.replace(/[\r\n"]/g, "_") : "download";
       headers.set(
         "Content-Disposition",
@@ -111,7 +122,7 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
     if (!storageKey || !env.MEDIA) return null;
     const headers = new Headers();
     headers.set("Content-Type", servedContentType(asset.mimeType));
-    secureHeaders(headers, "public, max-age=300");
+    secureHeaders(headers, mediaCacheControl(asset));
     const r2Filename = asset.fileName ? asset.fileName.replace(/[\r\n"]/g, "_") : "download";
     headers.set(
       "Content-Disposition",
@@ -133,7 +144,7 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
         telegramHeaders.set("Content-Disposition", "attachment");
       }
       return new Response(new Uint8Array(downloaded.data).buffer, {
-        headers: secureHeaders(telegramHeaders, "public, max-age=300"),
+        headers: secureHeaders(telegramHeaders, mediaCacheControl(asset)),
       });
     } catch {
       return null;

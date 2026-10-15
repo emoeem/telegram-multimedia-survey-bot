@@ -14,9 +14,11 @@ import {
   coinApi,
   createMyShowcase,
   fetchMyOverview,
+  fetchMyReports,
   markAchievementsSeen,
   type CoinOverview,
   type MyOverview,
+  type MyReportItem,
 } from "./api";
 import { safeGet } from "./storage";
 import { closeWebApp } from "./navigation";
@@ -86,6 +88,69 @@ function CoinCard() {
           投稿中心
         </a>
       </div>
+    </section>
+  );
+}
+
+/**
+ * 「我的报告」：已完成答卷的报告入口。
+ *
+ * 完成页带 token 的报告链接是一次性的——离开之后就找不回来了，用户明确反馈
+ * 「填完之后无法查看自己的报告」。这里按参与者身份列出全部已完成答卷，服务端
+ * 为每条现铸 30 天 token；匿名浏览器身份也适用（身份就是本机保存的 key）。
+ * 与金币卡一样独立取数：报告接口出错不影响「我的」其他区块。
+ */
+function ReportList() {
+  const [reports, setReports] = useState<MyReportItem[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMyReports()
+      .then((data) => {
+        if (!cancelled) setReports(data.reports);
+      })
+      .catch(() => {
+        if (!cancelled) setReports([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 没有报告（或接口不可用）时不占版面：数据总览里的「已完成问卷」已经说了数量。
+  if (!reports || reports.length === 0) return null;
+
+  return (
+    <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
+        <FileCheck2 className="h-3.5 w-3.5" />
+        我的报告
+        <span className="font-normal">（{reports.length}）</span>
+      </p>
+      <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
+        {reports.map((report) => (
+          <li key={report.responseId} className="flex items-center gap-2 py-2.5">
+            <a href={report.reportUrl} className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
+                  {report.title}
+                </span>
+                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                  {report.completedAt ? `${report.completedAt.slice(0, 10)} 完成` : "已完成"}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+            </a>
+            <a
+              href={report.pdfUrl}
+              download
+              className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
+            >
+              下载 PDF
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -208,6 +273,8 @@ export function MyScreen() {
             </section>
 
             <CoinCard />
+
+            <ReportList />
 
             {/* 数据总览 */}
             <section className="grid grid-cols-2 gap-3">

@@ -1,10 +1,17 @@
 import type { Env } from "../../index";
 import type { Survey } from "../../db/schema";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
-import { getSurveyFlow } from "../../services/question.service";
-import { loadSystemSettings } from "../../services/system-settings.service";
+import type { SystemSettings } from "../../services/system-settings.service";
+import { loadSystemSettings, settingsFromRows } from "../../services/system-settings.service";
 import { resolveSubmissionBotUrl } from "../../services/contact-links.service";
 import { normalizeStoredSurveyTheme } from "../../survey/theme";
+import {
+  listOptionsForSurveyStatement,
+  listQuestionsBySurveyStatement,
+  mapOptionRows,
+  mapQuestionRows,
+} from "../../db/repositories/question.repository";
+import { buildSurveyFlow } from "../../survey/engine";
 import {
   SURVEY_DEFINITION_CACHE_TTL_SECONDS,
   SURVEY_DEFINITION_CACHE_VERSION,
@@ -19,15 +26,22 @@ import { resolveParticipant } from "./participant";
  * version + updated_at, which every mutating path bumps. Details that are NOT
  * visitor-independent — the submission-bot link and the gallery publish flag —
  * are applied after the cache read so they can change without invalidating it.
+ *
+ * `system` may carry settings already read in the caller's own batch; when it
+ * is absent (older callers) they are loaded here. On a cache miss the cold
+ * path runs questions, options, pages and the two media joins as one batch —
+ * the sequential version cost four round trips before the first visitor after
+ * an edit could read anything.
  */
 export async function loadSurveyDefinition(
   env: Env,
   request: Request,
   survey: Survey,
   accessGranted: boolean,
+  system?: SystemSettings,
 ): Promise<Record<string, unknown>> {
-  const system = await loadSystemSettings(env.DB);
-  const gallerySurveyId = Number(system.profileGallerySurveyId);
+  const settings = system ?? (await loadSystemSettings(env.DB));
+  const gallerySurveyId = Number(settings.profileGallerySurveyId);
   const isGallerySurvey = Number.isInteger(gallerySurveyId) && gallerySurveyId > 0 && gallerySurveyId === survey.id;
 
   // Access-protected surveys withhold their content (questions, options, media,
@@ -61,15 +75,23 @@ export async function loadSurveyDefinition(
   const cacheKey = `survey-definition:${SURVEY_DEFINITION_CACHE_VERSION}:${survey.id}:${survey.version}:${survey.updatedAt}`;
   let definition = await readCachedJson<Record<string, unknown>>(env.CACHE, cacheKey);
   if (!definition) {
-    const flow = await getSurveyFlow(env.DB, survey.id);
-    const pages = await env.DB.prepare(
-      `SELECT id, title, description, "order"
-         FROM survey_pages
-         WHERE survey_id = ?
-         ORDER BY "order" ASC, id ASC`,
-    )
-      .bind(survey.id)
-      .all<{ id: number; title: string | null; description: string | null; order: number }>();
+    // Cold path: questions, options, pages and the two media joins are all
+    // independent reads — one batch instead of four sequential round trips.
+    const [questionsResult, optionsResult, pages] = (await env.DB.batch([
+      listQuestionsBySurveyStatement(env.DB, survey.id),
+      listOptionsForSurveyStatement(env.DB, survey.id),
+      env.DB.prepare(
+        `SELECT id, title, description, "order"
+           FROM survey_pages
+          WHERE survey_id = ?
+          ORDER BY "order" ASC, id ASC`,
+      ).bind(survey.id),
+    ])) as [
+      D1Result<unknown>,
+      D1Result<unknown>,
+      D1Result<{ id: number; title: string | null; description: string | null; order: number }>,
+    ];
+    const flow = buildSurveyFlow(mapQuestionRows(questionsResult), mapOptionRows(optionsResult));
 
     const questions: unknown[] = [];
     const questionIds = flow.questions.map((question) => question.id);

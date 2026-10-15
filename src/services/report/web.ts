@@ -260,6 +260,23 @@ export interface ResponsiveReportMeta {
   watermark?: string;
 }
 
+/**
+ * 在渲染好的网页报告里注入悬浮的「下载 PDF」按钮。
+ *
+ * 刻意不做进 {@link buildResponsiveReportHtml}：同一个 builder 还产出 PDF、
+ * 归档副本、模板预览与视觉回归快照，交互控件绝不能混进那些产物。打印样式里
+ * 再隐藏一次作为第二道保险（万一有人走浏览器打印而非下载接口）。
+ */
+export function injectReportDownloadAction(html: string, downloadUrl: string): string {
+  const safeUrl = escapeHtml(downloadUrl);
+  const style =
+    "<style>.report-download{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:40;display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border-radius:999px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;text-decoration:none;box-shadow:0 12px 28px -12px rgba(2,6,23,.55)}@media print{.report-download{display:none !important}}</style>";
+  const action = `<a class="report-download" href="${safeUrl}" download>⬇︎ 下载 PDF</a>`;
+  return html.includes("</body>")
+    ? html.replace("</body>", `${style}${action}</body>`)
+    : `${html}${style}${action}`;
+}
+
 function baseCss(): string {
   return `*{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif}

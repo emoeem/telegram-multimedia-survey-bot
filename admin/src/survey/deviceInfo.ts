@@ -1,20 +1,47 @@
-import FingerprintJS from "@fingerprintjs/fingerprintjs";
+import { safeGet, safeSet } from "./storage";
+
+/**
+ * How long the first request may wait for the fingerprint to be ready.
+ *
+ * The full FingerprintJS probe (canvas/WebGL/audio/font enumeration) costs
+ * real CPU on low-end phones — hundreds of milliseconds — and it used to sit
+ * *in front of* the very first survey request, because every API call awaited
+ * `surveyDeviceHeaders()`. The fingerprint is abuse-analytics metadata, not
+ * something a respondent waits on: it now computes in the background (module
+ * init kicks it off, the vendor chunk loads dynamically) and the request path
+ * only waits this bounded slice for it. Afterwards it is cached in
+ * localStorage — a device's visitorId is stable — so repeat visits attach it
+ * to every request for free, and the probe cost is paid once per device.
+ */
+const FINGERPRINT_WAIT_MS = 150;
+
+const FINGERPRINT_STORAGE_KEY = "webDeviceFingerprint";
 
 let fingerprintPromise: Promise<string> | null = null;
 let fingerprint = "";
 
 /**
- * Best-effort device fingerprint (FingerprintJS). Failures fall back to an
- * empty string so identity capture never blocks survey filling.
+ * Best-effort device fingerprint (FingerprintJS). The vendor chunk loads
+ * dynamically so it stays out of the first-screen dependency graph; failures
+ * fall back to an empty string so identity capture never blocks survey
+ * filling. The visitorId is stable per device+browser, so it is cached in
+ * localStorage and the probe runs at most once per device.
  */
 export function getDeviceFingerprint(): Promise<string> {
   if (fingerprint) return Promise.resolve(fingerprint);
   if (!fingerprintPromise) {
     fingerprintPromise = (async () => {
+      const stored = safeGet(FINGERPRINT_STORAGE_KEY);
+      if (stored) {
+        fingerprint = stored;
+        return fingerprint;
+      }
       try {
+        const { default: FingerprintJS } = await import("@fingerprintjs/fingerprintjs");
         const agent = await FingerprintJS.load();
         const result = await agent.get();
         fingerprint = result.visitorId;
+        safeSet(FINGERPRINT_STORAGE_KEY, fingerprint);
       } catch {
         fingerprint = "";
       }
@@ -22,6 +49,38 @@ export function getDeviceFingerprint(): Promise<string> {
     })();
   }
   return fingerprintPromise;
+}
+
+/**
+ * Starts the fingerprint computation in the background. Called once at app
+ * bootstrap: by the time the participant answers the first question it is
+ * ready, and every subsequent save carries it — without the first survey
+ * request ever waiting on the full probe.
+ */
+export function warmDeviceFingerprint(): void {
+  void getDeviceFingerprint();
+}
+
+/** Resolves to the fingerprint once ready, or to "" after the bounded wait. */
+async function fingerprintBounded(): Promise<string> {
+  if (fingerprint) return fingerprint;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(""), FINGERPRINT_WAIT_MS);
+  });
+  try {
+    return await Promise.race([getDeviceFingerprint(), timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export async function surveyDeviceHeaders(): Promise<Record<string, string>> {
+  const fingerprint = await fingerprintBounded();
+  return {
+    ...(fingerprint ? { "x-device-fingerprint": fingerprint } : {}),
+    "x-browser-info": getBrowserInfo(),
+  };
 }
 
 /** Sensitive query params that must never be recorded into browser info. */
@@ -123,12 +182,4 @@ export function getBrowserInfo(): string {
     query: safeQuery(),
   });
   return browserInfoCache;
-}
-
-export async function surveyDeviceHeaders(): Promise<Record<string, string>> {
-  const fingerprint = await getDeviceFingerprint();
-  return {
-    ...(fingerprint ? { "x-device-fingerprint": fingerprint } : {}),
-    "x-browser-info": getBrowserInfo(),
-  };
 }

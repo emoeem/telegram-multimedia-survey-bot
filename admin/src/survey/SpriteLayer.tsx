@@ -1,21 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-/** The subset of the Network Information API this component consults. */
-interface NetworkInformationLike {
-  saveData?: boolean;
-  effectiveType?: string;
-}
-
-/**
- * True when pre-downloading a few hundred KB would be a bad trade: the visitor
- * asked to save data, or the browser reports a connection slower than 4G.
- */
-function shouldSkipPreload(): boolean {
-  const connection = (navigator as Navigator & { connection?: NetworkInformationLike }).connection;
-  if (!connection) return false;
-  if (connection.saveData) return true;
-  return Boolean(connection.effectiveType && connection.effectiveType !== "4g");
-}
+import { shouldSkipPreload } from "./media-preload";
 
 /**
  * 视觉小说式「立ち絵」层：把当前节点的角色立绘贴在场景里。

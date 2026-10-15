@@ -48,7 +48,20 @@ export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
 };
 
 export async function loadSystemSettings(db: D1Database): Promise<SystemSettings> {
-  const stored = await listSystemSettings(db);
+  const rows = (await db.prepare("SELECT key, value FROM system_settings ORDER BY key ASC").all()).results as Array<{
+    key: string;
+    value: string;
+  }>;
+  return settingsFromRows(rows);
+}
+
+/**
+ * Builds the settings projection from raw (key, value) rows. Split from
+ * {@link loadSystemSettings} so a caller that already read the rows inside its
+ * own batch (the public definition handler) skips the extra round trip.
+ */
+export function settingsFromRows(rows: Array<{ key: string; value: string }>): SystemSettings {
+  const stored = Object.fromEntries(rows.map((row) => [row.key, row.value]));
   const number = (key: string, fallback: number): number => {
     const value = Number(stored[key]);
     return Number.isFinite(value) && value > 0 ? value : fallback;

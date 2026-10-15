@@ -33,8 +33,11 @@ export interface Participant {
  * playing challenges through the web APIs with its mini-app initData, a
  * participant token, an email session or a linked browser key. Admins stay
  * exempt, matching the bot's own check.
+ *
+ * Exported for the folded path in handler.ts, where the link/ban row arrives
+ * inside the main request batch instead of a dedicated round trip.
  */
-function bannedResponse(
+export function bannedResponse(
   env: Env,
   user: { bannedAt: string | null; telegramUserId: number | null },
 ): Response | null {

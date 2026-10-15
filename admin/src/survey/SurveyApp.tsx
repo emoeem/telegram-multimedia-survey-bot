@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialogs } from "../components/Dialogs";
 import type { FocusEvent } from "react";
 import {
@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   Coins,
+  Download,
   Home,
   Lock,
   MailCheck,
@@ -21,15 +22,9 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { EmailAuthScreen } from "./EmailAuthScreen";
 import { SpriteLayer } from "./SpriteLayer";
 import { closeWebApp } from "./navigation";
 import { resolveBgmUrl, resolveSprite } from "../../../src/survey/theme";
-import { MyScreen } from "./MyScreen";
-import { CoinGateScreen, CoinsScreen, GachaScreen, SubmissionsScreen } from "./CoinCenter";
-import { PlazaScreen } from "./PlazaScreen";
-import { ShowcaseScreen } from "./ShowcaseScreen";
-import { TrialScreen } from "./TrialScreen";
 import { BottomNav } from "./BottomNav";
 import {
   isValidPresetId,
@@ -54,6 +49,7 @@ import {
   getParticipantKey,
   hasTelegramIdentity,
   type ParticipantLinkStatus,
+  type StartResponseDto,
   type SurveyListItem,
   type SurveyThemeDto,
   type SurveyDto,
@@ -66,6 +62,40 @@ import {
   verifyAccessCode,
 } from "./api";
 import { safeGet, safeSet } from "./storage";
+import { AnswerSaveQueue } from "./save-queue";
+import { collectQuestionImageUrls, preloadImages } from "./media-preload";
+
+/**
+ * 非答题界面的按需加载。
+ *
+ * 这些屏幕（金币经济、广场、展示区、挑战、我的、邮箱登录）共用问卷 SPA 的
+ * 入口，但都不是「打开问卷 → 答第一题」路径上的东西：此前静态 import 把
+ * ~3600 行界面塞进首屏关键依赖图，答题者要为用不到的代码付下载与解析时间。
+ * 全部改为路由命中时动态加载；金币门（CoinGateScreen）同样按需——它是
+ * 受限问卷的入口屏，短暂 fallback 无碍。
+ */
+const PlazaScreen = lazy(() => import("./PlazaScreen").then((m) => ({ default: m.PlazaScreen })));
+const MyScreen = lazy(() => import("./MyScreen").then((m) => ({ default: m.MyScreen })));
+const CoinsScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinsScreen })));
+const GachaScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.GachaScreen })));
+const SubmissionsScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.SubmissionsScreen })));
+const CoinGateScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinGateScreen })));
+const ShowcaseScreen = lazy(() => import("./ShowcaseScreen").then((m) => ({ default: m.ShowcaseScreen })));
+const TrialScreen = lazy(() => import("./TrialScreen").then((m) => ({ default: m.TrialScreen })));
+const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
+
+/** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
+function LazyScreen({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-dvh place-items-center text-sm text-[var(--color-muted)]">加载中…</div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 const COMPLETED_SURVEYS_KEY = "surveyCompletedIds:v1";
 
@@ -94,6 +124,7 @@ function botHandleFromUrl(url: string | null): string {
   return match ? `@${match[1]}` : "投稿机器人";
 }
 import { identityHeaders } from "./api";
+
 import {
   configureSfx,
   playSfx,
@@ -130,6 +161,8 @@ type Screen =
       kind: "done";
       survey: SurveyDto;
       reportUrl?: string;
+      /** 报告 PDF 直链（与 reportUrl 同 token），完成页的「下载报告」用。 */
+      reportPdfUrl?: string;
       profileUrl?: string;
       /** 提交那一刻新解锁的徽章（服务端判定），用于在完成页做一次庆祝。 */
       newAchievements?: UnlockedAchievement[];
@@ -627,6 +660,39 @@ function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | unde
   return null;
 }
 
+/**
+ * 公开问卷媒体（题面/选项配图）直接走 URL：/api/survey/media/:id 对 survey
+ * 范围资产不需要任何身份头，原生 `<img src>` 因此能用上浏览器 HTTP 缓存
+ * （survey 资产是一年 immutable）、渐进解码和 `new Image()` 预热——旧实现的
+ * `fetch → blob → objectURL` 三件套把这些全绕开了，还把参与者的 Telegram
+ * initData 发给一个不需要它的端点。答卷上传预览（response 范围）仍走下面的
+ * `AuthenticatedMedia`。
+ */
+function PublicImage({ url, alt, cover }: { url: string; alt?: string; cover?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        className={`grid place-items-center rounded-lg bg-[var(--surface-muted)] text-xs text-[var(--color-muted-soft)] ${
+          cover ? "absolute inset-0" : "h-24"
+        }`}
+      >
+        图片加载失败
+      </div>
+    );
+  }
+  return (
+    <img
+      className={cover ? "absolute inset-0 h-full w-full object-cover" : "w-full rounded-lg"}
+      src={url}
+      alt={alt ?? ""}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function MediaBlock({
   urls,
   type,
@@ -638,35 +704,41 @@ function MediaBlock({
 }) {
   if (urls.length === 0) return null;
   if (cover) {
-    return (
-      <AuthenticatedMedia key={urls[0]?.url ?? 0} url={urls[0]!.url} alt={urls[0]!.alt} kind="image" cover />
-    );
+    return <PublicImage key={urls[0]?.url ?? 0} url={urls[0]!.url} alt={urls[0]!.alt} cover />;
   }
   return (
     <div className="mt-3 grid gap-2">
       {urls.map((media, index) => {
         if (type === "video") {
-          return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="video" />;
+          return <video key={index} className="w-full rounded-lg bg-black" src={media.url} controls preload="metadata" />;
         }
         if (type === "audio") {
-          return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="audio" />;
+          return <audio key={index} className="w-full" src={media.url} controls preload="none" />;
         }
-        return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="image" />;
+        return <PublicImage key={index} url={media.url} alt={media.alt} />;
       })}
     </div>
   );
 }
 
+/**
+ * 私有媒体的加载通道（答卷上传预览等 response 范围资产）：这些请求必须携带
+ * 参与者身份头，`<img src>` 做不到，所以保留 `fetch → blob → objectURL`。
+ * 公开问卷媒体不要走这里——用 MediaBlock / PublicImage 的原生 URL 通道。
+ */
 function AuthenticatedMedia({
   url,
   kind,
   cover,
   alt,
+  className,
 }: {
   url: string;
   kind: "image" | "video" | "audio";
   cover?: boolean;
   alt?: string;
+  /** 覆盖非 cover 图片的默认样式（缩略图等场景）。 */
+  className?: string;
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -711,7 +783,7 @@ function AuthenticatedMedia({
   }
   return (
     <img
-      className={cover ? "absolute inset-0 h-full w-full object-cover" : "w-full rounded-lg"}
+      className={cover ? "absolute inset-0 h-full w-full object-cover" : (className ?? "w-full rounded-lg")}
       src={objectUrl}
       alt={alt ?? ""}
       loading="lazy"
@@ -1237,14 +1309,17 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
           <div className="flex items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] px-4 py-3 text-sm text-[var(--app-success)]">
             <span className="flex min-w-0 items-center gap-3">
               {question.type === "image" ? (
-                <img
-                  src={`/api/survey/media/${mediaAnswer.mediaAssetId}`}
-                  alt=""
-                  className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                />
+                // 答卷上传是 response 范围的私有媒体：必须带身份头请求
+                // （AuthenticatedMedia 的 blob 通道）。之前的裸 <img> 拿不到
+                // 授权，缩略图一直是 403 后被 onError 静默藏掉的。
+                <span className="h-14 w-14 shrink-0 overflow-hidden rounded-lg">
+                  <AuthenticatedMedia
+                    url={`/api/survey/media/${mediaAnswer.mediaAssetId}`}
+                    alt=""
+                    kind="image"
+                    className="h-14 w-14 object-cover"
+                  />
+                </span>
               ) : null}
               <span className="min-w-0 truncate">已上传{question.type === "image" ? "图片" : "文件"}（#{mediaAnswer.mediaAssetId}）</span>
             </span>
@@ -1375,32 +1450,64 @@ function AccessScreen({
 export function SurveyApp() {
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
   if (window.location.pathname === "/plaza" || window.location.pathname.startsWith("/plaza/")) {
-    return <PlazaScreen />;
+    return (
+      <LazyScreen>
+        <PlazaScreen />
+      </LazyScreen>
+    );
   }
   // "我的" 个人中心.
   if (window.location.pathname === "/me" || window.location.pathname.startsWith("/me/")) {
-    return <MyScreen />;
+    return (
+      <LazyScreen>
+        <MyScreen />
+      </LazyScreen>
+    );
   }
   if (window.location.pathname === "/coins" || window.location.pathname.startsWith("/coins/")) {
-    return <CoinsScreen />;
+    return (
+      <LazyScreen>
+        <CoinsScreen />
+      </LazyScreen>
+    );
   }
   if (window.location.pathname === "/gacha" || window.location.pathname.startsWith("/gacha/")) {
-    return <GachaScreen />;
+    return (
+      <LazyScreen>
+        <GachaScreen />
+      </LazyScreen>
+    );
   }
   if (window.location.pathname === "/submissions" || window.location.pathname.startsWith("/submissions/")) {
-    return <SubmissionsScreen />;
+    return (
+      <LazyScreen>
+        <SubmissionsScreen />
+      </LazyScreen>
+    );
   }
   // The showcase ("展示区") is the immersive person gallery.
   if (window.location.pathname === "/showcase" || window.location.pathname.startsWith("/showcase/")) {
-    return <ShowcaseScreen />;
+    return (
+      <LazyScreen>
+        <ShowcaseScreen />
+      </LazyScreen>
+    );
   }
   // The web task system ("/trial") also shares the SPA bundle.
   if (window.location.pathname === "/trial" || window.location.pathname.startsWith("/trial/")) {
-    return <TrialScreen />;
+    return (
+      <LazyScreen>
+        <TrialScreen />
+      </LazyScreen>
+    );
   }
   // Email account login/registration for visitors without Telegram.
   if (window.location.pathname === "/auth" || window.location.pathname.startsWith("/auth/")) {
-    return <EmailAuthScreen />;
+    return (
+      <LazyScreen>
+        <EmailAuthScreen />
+      </LazyScreen>
+    );
   }
   const surveyId = useMemo(() => surveyIdFromPath(), []);
   const { toast, confirm } = useDialogs();
@@ -1424,6 +1531,9 @@ export function SurveyApp() {
   const [viewportShrunk, setViewportShrunk] = useState(false);
   const [userThemePreset, setUserThemePreset] = useState<string | null>(null);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  // 乐观保存队列的状态镜像（仅供界面指示，不参与逻辑判断）。
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [failedSaveQuestion, setFailedSaveQuestion] = useState<number | null>(null);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -1440,6 +1550,37 @@ export function SurveyApp() {
       viewport.removeEventListener("scroll", sync);
     };
   }, []);
+
+  // 答案保存队列：翻题不再等待保存往返，答案由队列按作答顺序串行落库。
+  // sender 通过 ref 读取当前答卷标识（beginFilling 在拿到 responseId 后写入），
+  // 避免闭包捕获过期的 screen 快照。
+  const activeResponseRef = useRef<{ surveyId: number; responseId: number } | null>(null);
+  const saveQueueRef = useRef<AnswerSaveQueue | null>(null);
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = new AnswerSaveQueue(
+      async (task) => {
+        const active = activeResponseRef.current;
+        if (!active) throw new Error("response_not_ready");
+        await saveAnswer(active.surveyId, active.responseId, task.questionId, task.value as AnswerValue);
+      },
+      {
+        onPendingChange: setPendingSaves,
+        onFailureChange: setFailedSaveQuestion,
+      },
+    );
+  }
+  const saveQueue = saveQueueRef.current;
+
+  // 离开页面（关闭标签页 / Mini App 返回 / 刷新）时把还在队列里的答案冲出去。
+  // saveAnswer 带 keepalive，在途请求可以在文档卸载后继续送达；尽力而为，
+  // 失败的答案仍留在服务端上次成功保存的状态。
+  useEffect(() => {
+    const flushOnHide = () => {
+      if (saveQueue.hasUnsaved) void saveQueue.flushSaves();
+    };
+    window.addEventListener("pagehide", flushOnHide);
+    return () => window.removeEventListener("pagehide", flushOnHide);
+  }, [saveQueue]);
 
   const isEditableTarget = (target: EventTarget | null): boolean =>
     target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -1509,6 +1650,14 @@ export function SurveyApp() {
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
     let cancelled = false;
+    // 定义与开卷并行发射：两者互不依赖，服务端 /responses 自带密码、金币和
+    // 次数校验，并行不会绕过任何门。受门禁的问卷这次开卷会收到 403/402 ——
+    // 正是 access / coin-gate 屏要接管的信号，预检结果就地作废（验证通过后
+    // 的 beginFilling 会带凭据重新开卷）。
+    const preflight: Promise<StartResponseDto | null> = startResponse(surveyId).then(
+      (started) => started,
+      () => null,
+    );
     fetchSurvey(surveyId)
       .then((survey) => {
         if (cancelled) return;
@@ -1518,7 +1667,7 @@ export function SurveyApp() {
           setScreen({ kind: "access", survey });
         } else {
           setScreen({ kind: "filling", survey, responseId: 0, currentQuestionId: null, answers: {} });
-          void beginFilling(survey, undefined, () => cancelled);
+          void beginFilling(survey, undefined, () => cancelled, preflight);
         }
       })
       .catch((err) => {
@@ -1533,11 +1682,26 @@ export function SurveyApp() {
   }, [surveyId, retryKey]);
 
   const beginFilling = useCallback(
-    async (survey: SurveyDto, accessCode: string | undefined, isCancelled: () => boolean = () => false) => {
+    async (
+      survey: SurveyDto,
+      accessCode: string | undefined,
+      isCancelled: () => boolean = () => false,
+      preflight?: Promise<StartResponseDto | null>,
+    ) => {
       try {
         if (accessCode) accessCodeRef.current = accessCode;
-        const started = await startResponse(survey.id, accessCode);
+        // 新的填写会话开始：丢掉上一个会话遗留的队列任务与失败标记
+        // （旧答卷仍停在服务端最后成功保存的状态，等价于直接关掉页面）。
+        saveQueue.reset();
+        // 首屏路径复用加载 effect 已并行发出的开卷结果；预检失败（含门禁
+        // 403/402）或验证后路径则现开一次。
+        let started = preflight ? await preflight : null;
         if (isCancelled()) return;
+        if (!started) {
+          started = await startResponse(survey.id, accessCode);
+          if (isCancelled()) return;
+        }
+        activeResponseRef.current = { surveyId: survey.id, responseId: started.responseId };
         setPublishToGallery(false);
         setGalleryCoverMediaId(null);
         setGalleryShowUsername(false);
@@ -1545,7 +1709,11 @@ export function SurveyApp() {
         // compact shape). Normalize to the in-memory shape the fill flow uses:
         // a bare option id. Without this, resumed selections don't render and
         // option-driven jumps can't fire on the replayed path.
-        const restored = started.resumed ? (await fetchAnswers(survey.id, started.responseId)).answers : {};
+        // 服务端在续答命中时直接带回答案（answers 字段）；旧部署没有该字段，
+        // 回退到单独的 GET /responses 请求。
+        const restored = started.resumed
+          ? (started.answers ?? (await fetchAnswers(survey.id, started.responseId)).answers)
+          : {};
         const resumeAnswers: Record<number, AnswerValue> = {};
         for (const question of survey.questions) {
           const value = restored[String(question.id)];
@@ -1590,7 +1758,7 @@ export function SurveyApp() {
         if (!isCancelled()) setScreen({ kind: "error", message: err instanceof Error ? err.message : "无法开始问卷" });
       }
     },
-    [],
+    [saveQueue],
   );
 
   const onVerified = useCallback(
@@ -1617,7 +1785,15 @@ export function SurveyApp() {
     setAnswers((current) => ({ ...current, [questionId]: value }));
   }, []);
 
-  const persistCurrent = useCallback(
+  /**
+   * 校验当前题并把答案交给保存队列（乐观导航）。
+   *
+   * 返回 true 表示可以立即切换题目：答案已入队（或本来就没有要存的值）。
+   * 队列按作答顺序串行落库，失败会保留并提示，不会静默丢弃——所以这里不再
+   * 等待网络往返。唯一的同步例外是答卷尚未创建（responseId=0 的过渡帧）：
+   * 此时退回旧的阻塞保存，避免把第一题的答案丢在队列里。
+   */
+  const stageCurrent = useCallback(
     async (survey: SurveyDto, responseId: number): Promise<boolean> => {
       const question = survey.questions[index];
       if (!question) return true;
@@ -1628,56 +1804,52 @@ export function SurveyApp() {
         return false;
       }
       if (value === undefined || value === null) return true;
-      try {
-        await saveAnswer(survey.id, responseId, question.id, value);
-        setError(null);
-        return true;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "保存失败");
-        return false;
+      if (responseId <= 0) {
+        try {
+          await saveAnswer(survey.id, responseId, question.id, value);
+          setError(null);
+          return true;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "保存失败");
+          return false;
+        }
       }
+      saveQueue.enqueue({ questionId: question.id, value });
+      setError(null);
+      return true;
     },
-    [answers, index],
+    [answers, index, saveQueue],
   );
 
   const goNext = useCallback(async () => {
     if (screen.kind !== "filling") return;
-    setBusy(true);
-    try {
-      const saved = await persistCurrent(screen.survey, screen.responseId);
-      if (!saved) return;
-      const next = nextIndex(screen.survey.questions, index, answers);
-      if (next >= screen.survey.questions.length) {
-        playSfx("transition");
-        setScreen({ kind: "done", survey: screen.survey });
-        return;
-      }
-      // 同一页里推进 = 翻过一段文字（page）；跨页 = 换了场景（transition）。
-      // 两者互斥，不会同时响，避免一次点击叠两个声音。
-      const current = screen.survey.questions[index];
-      const target = screen.survey.questions[next];
-      const pageChanged = Boolean(current && target && current.pageId !== target.pageId);
-      playSfx(pageChanged ? "transition" : "page");
-      setBackStack((stack) => [...stack, index]);
-      setIndex(next);
-    } finally {
-      setBusy(false);
+    const staged = await stageCurrent(screen.survey, screen.responseId);
+    if (!staged) return;
+    const next = nextIndex(screen.survey.questions, index, answers);
+    if (next >= screen.survey.questions.length) {
+      playSfx("transition");
+      setScreen({ kind: "done", survey: screen.survey });
+      return;
     }
-  }, [answers, index, persistCurrent, screen]);
+    // 同一页里推进 = 翻过一段文字（page）；跨页 = 换了场景（transition）。
+    // 两者互斥，不会同时响，避免一次点击叠两个声音。
+    const current = screen.survey.questions[index];
+    const target = screen.survey.questions[next];
+    const pageChanged = Boolean(current && target && current.pageId !== target.pageId);
+    playSfx(pageChanged ? "transition" : "page");
+    setBackStack((stack) => [...stack, index]);
+    setIndex(next);
+  }, [answers, index, screen, stageCurrent]);
 
   const goBack = useCallback(async () => {
     if (screen.kind !== "filling") return;
     playSfx("cancel");
-    // 往回翻也要把当前题先落库：不阻塞校验（回退是导航意图，不是提交意图），
-    // 保存失败也照常返回——答案仍在本地 state，不会打断用户。
+    // 往回翻也要把当前题落库，但不阻塞导航：答案入队（失败仍保留在队列里，
+    // 本地 state 不受影响；续答时会再次保存）。答卷尚未创建时无事可存。
     const question = screen.survey.questions[index];
     const value = question ? answers[question.id] : undefined;
     if (question && value !== undefined && value !== null && screen.responseId > 0) {
-      try {
-        await saveAnswer(screen.survey.id, screen.responseId, question.id, value);
-      } catch {
-        // 本地已持有该答案；续答时会再次保存
-      }
+      saveQueue.enqueue({ questionId: question.id, value });
     }
     // 按走过的路径回退；栈为空（如服务端恢复点与重放不一致）才退回线性顺序。
     setIndex((current) => {
@@ -1686,14 +1858,24 @@ export function SurveyApp() {
     });
     setBackStack((stack) => stack.slice(0, -1));
     setError(null);
-  }, [answers, backStack, index, screen]);
+  }, [answers, backStack, index, saveQueue, screen]);
 
   const submit = useCallback(async () => {
     if (screen.kind !== "filling") return;
+    const staged = await stageCurrent(screen.survey, screen.responseId);
+    if (!staged) return;
     setBusy(true);
     try {
-      const saved = await persistCurrent(screen.survey, screen.responseId);
-      if (!saved) return;
+      // 提交前必须等队列完全落库：服务端 submit 从数据库重读全部答案做必答
+      // 检查，队列里还有东西就意味着数据库不是最终状态。flushSaves 会先把
+      // 失败条目重发一遍；仍失败则拦下提交，横幅上可以重试。
+      if (screen.responseId > 0) {
+        const flushed = await saveQueue.flushSaves();
+        if (!flushed) {
+          setError("有答案没能保存成功，请点击「重试保存」后再提交");
+          return;
+        }
+      }
       try {
         const result = await submitResponse(screen.survey.id, screen.responseId, {
           publishToGallery,
@@ -1709,6 +1891,7 @@ export function SurveyApp() {
             kind: "done",
             survey: screen.survey,
             reportUrl: result.reportUrl,
+            reportPdfUrl: result.reportPdfUrl,
             // 已发布画廊时带上资料卡深链，落点从 feed 顶部改为"我的卡片"。
             profileUrl: publishToGallery ? `/plaza/profile/${screen.responseId}` : undefined,
             newAchievements: result.newAchievements?.length ? result.newAchievements : undefined,
@@ -1731,7 +1914,26 @@ export function SurveyApp() {
     } finally {
       setBusy(false);
     }
-  }, [galleryCoverMediaId, galleryShowUsername, persistCurrent, publishToGallery, publishToTelegram, screen]);
+  }, [galleryCoverMediaId, galleryShowUsername, publishToGallery, publishToTelegram, saveQueue, screen, stageCurrent]);
+
+  /** 保存失败横幅上的手动重试：重发全部失败条目，成功即撤下横幅。 */
+  const retryFailedSaves = useCallback(() => {
+    void saveQueue.flushSaves();
+  }, [saveQueue]);
+
+  // 下一题媒体预热：答题者阅读当前题的空档里，把下一题（按跳题规则算出的
+  // 真实后继）的公开题面/选项图拉进浏览器缓存，翻题时图片零等待。弱网与
+  // 省流量模式跳过；只预热公开的定义媒体，答卷上传预览绝不在此列。
+  useEffect(() => {
+    if (screen.kind !== "filling") return;
+    const questions = screen.survey.questions;
+    const next = nextIndex(questions, index, answers);
+    if (next <= index || next >= questions.length) return;
+    const urls = collectQuestionImageUrls(questions[next]!);
+    if (urls.length === 0) return;
+    const timer = window.setTimeout(() => preloadImages(urls), 400);
+    return () => window.clearTimeout(timer);
+  }, [answers, index, screen]);
 
   // 退出前确认：填卷进行中直接关掉会丢掉未保存的输入。
   const exitFillingWithConfirm = useCallback(async () => {
@@ -1751,11 +1953,14 @@ export function SurveyApp() {
     }
     if (await confirm({ message: "确定要退出问卷吗？尚未提交的回答将丢失。", variant: "danger" })) {
       playSfx("confirm");
+      // 尽力把还在队列里的答案冲出去：saveAnswer 带 keepalive，离开页面后
+      // 在途请求仍会送达服务端；已保存到最后一题的进度可以续答恢复。
+      if (saveQueue.hasUnsaved) void saveQueue.flushSaves();
       closeSurveyPage();
     } else {
       playSfx("cancel");
     }
-  }, [answers, confirm, screen.kind]);
+  }, [answers, confirm, saveQueue, screen.kind]);
 
   if (!Number.isFinite(surveyId)) {
     return <SurveyListPage />;
@@ -1805,20 +2010,22 @@ export function SurveyApp() {
   }
   if (screen.kind === "coin-gate") {
     return (
-      <CoinGateScreen
-        surveyId={screen.survey.id}
-        title={screen.survey.title}
-        description={screen.survey.description}
-        price={screen.survey.coinUnlock?.price ?? 0}
-        onUnlocked={() => {
-          // 解锁成功：重取定义（此时服务端已放行内容；密码问卷接着走密码门）。
-          accessCodeRef.current = undefined;
-          setRetryKey((key) => key + 1);
-        }}
-        onSkip={() => {
-          window.location.href = "/s";
-        }}
-      />
+      <LazyScreen>
+        <CoinGateScreen
+          surveyId={screen.survey.id}
+          title={screen.survey.title}
+          description={screen.survey.description}
+          price={screen.survey.coinUnlock?.price ?? 0}
+          onUnlocked={() => {
+            // 解锁成功：重取定义（此时服务端已放行内容；密码问卷接着走密码门）。
+            accessCodeRef.current = undefined;
+            setRetryKey((key) => key + 1);
+          }}
+          onSkip={() => {
+            window.location.href = "/s";
+          }}
+        />
+      </LazyScreen>
     );
   }
   if (screen.kind === "access") {
@@ -1866,10 +2073,20 @@ export function SurveyApp() {
           {completion?.message ?? "感谢你的参与，你的回答已记录。"}
         </p>
         {screen.reportUrl ? (
-          <a className="btn btn-primary mt-5 px-8" href={screen.reportUrl}>
-            <CheckCircle2 className="h-4 w-4" />
-            查看我的报告
-          </a>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <a className="btn btn-primary px-7" href={screen.reportUrl}>
+              <CheckCircle2 className="h-4 w-4" />
+              查看我的报告
+            </a>
+            {/* 下载按钮：PDF 直链（同 token）。用户明确要「填完之后可以下载
+                自己的报告」，而报告页本身只有阅读界面。 */}
+            {screen.reportPdfUrl ? (
+              <a className="btn px-6" href={screen.reportPdfUrl} download>
+                <Download className="h-4 w-4" />
+                下载 PDF
+              </a>
+            ) : null}
+          </div>
         ) : null}
         {screen.newAchievements?.length ? (
           <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
@@ -2187,6 +2404,21 @@ export function SurveyApp() {
               </>
             )}
             {error ? <p className="mt-4 text-sm font-medium text-[var(--app-danger)]">{error}</p> : null}
+            {failedSaveQuestion !== null ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3.5 py-2.5">
+                <span className="text-xs leading-5 text-[var(--survey-body)]">
+                  第 {failedSaveQuestion} 题的答案没能保存上，提交前需要重试；重新作答该题也可以。
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-xs shrink-0"
+                  style={{ backgroundColor: "var(--survey-card-bg)", borderColor: "var(--survey-card-border)" }}
+                  onClick={retryFailedSaves}
+                >
+                  重试保存
+                </button>
+              </div>
+            ) : null}
           </div>
           {isLast ? (
             <>
@@ -2267,7 +2499,8 @@ export function SurveyApp() {
                 style={{ borderRadius: "var(--survey-button-radius, 12px)" }}
               >
                 {busy ? (
-                  "保存中…"
+                  // busy 现在只覆盖提交（翻题不再等保存往返）。
+                  "提交中…"
                 ) : isLast ? (
                   <>
                     <Check className="h-4 w-4" />
@@ -2286,6 +2519,11 @@ export function SurveyApp() {
                 )}
               </button>
             </div>
+            {pendingSaves > 0 && !busy ? (
+              <p className="mt-1 text-center text-[11px] text-[var(--survey-muted)]" aria-live="polite">
+                正在同步答案…
+              </p>
+            ) : null}
           </div>
         </nav>
         {bgmUrl ? <BgmPlayer url={bgmUrl} /> : null}

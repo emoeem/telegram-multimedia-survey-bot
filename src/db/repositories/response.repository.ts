@@ -286,6 +286,32 @@ export async function listAnswersByResponseId(db: D1Database, responseId: number
   return (result.results ?? []).map(mapAnswer);
 }
 
+/**
+ * The answers of a participant's in-progress response to one survey, as a
+ * statement for the start-response batch. `POST /responses` returns them
+ * inline when it resumes the response, so the client no longer needs a second
+ * round trip to GET /responses before it can render the resumed question.
+ */
+export function listAnswersForInProgressResponseStatement(
+  db: D1Database,
+  surveyId: number,
+  participantHash: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `SELECT a.* FROM answers a
+         JOIN survey_responses r ON r.id = a.response_id
+        WHERE r.survey_id = ? AND r.participant_hash = ? AND r.status = 'in_progress'
+        ORDER BY a.id ASC`,
+    )
+    .bind(surveyId, participantHash);
+}
+
+/** Reads the rows of {@link listAnswersForInProgressResponseStatement}. */
+export function mapAnswerRows(result: D1Result<unknown> | undefined): Answer[] {
+  return ((result?.results ?? []) as AnswerRow[]).map(mapAnswer);
+}
+
 /** Batch variant for list pages; keeps the gallery feed at one query instead
  *  of one per response (json_each stays a single bind regardless of count). */
 export async function listAnswersByResponseIds(db: D1Database, responseIds: number[]): Promise<Answer[]> {

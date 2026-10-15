@@ -306,6 +306,20 @@ export function fetchMyOverview(): Promise<MyOverview> {
   return request<MyOverview>("/api/me/overview");
 }
 
+/** 「我的报告」列表项：服务端为每条已完成答卷现铸 30 天报告 token。 */
+export interface MyReportItem {
+  responseId: number;
+  surveyId: number;
+  title: string;
+  completedAt: string | null;
+  reportUrl: string;
+  pdfUrl: string;
+}
+
+export function fetchMyReports(): Promise<{ reports: MyReportItem[] }> {
+  return request<{ reports: MyReportItem[] }>("/api/me/reports");
+}
+
 /** 用当前资料卡生成/取回展示页草稿（草稿需管理员审核后公开）。 */
 export function createMyShowcase(): Promise<{
   showcase: { personId: number; created: boolean; published: boolean; url: string };
@@ -344,6 +358,11 @@ export interface StartResponseDto {
   currentQuestionId: number | null;
   status: string;
   resumed: boolean;
+  /**
+   * 续答命中时服务端直接带回的已答答案（省掉单独的 GET /responses 往返）；
+   * 旧部署没有该字段，客户端回退到单独请求。
+   */
+  answers?: Record<string, AnswerValue>;
 }
 
 export function startResponse(surveyId: number, accessCode?: string): Promise<StartResponseDto> {
@@ -374,13 +393,17 @@ export function saveAnswer(
   questionId: number,
   value: AnswerValue,
 ): Promise<{ ok: boolean }> {
-  // Retried: an idempotent upsert of the participant's own answer, so a
-  // re-send is free and the alternative is a blocked "下一题" button.
+  // Retried: an idempotent upsert of the participant's own answer, so a re-send
+  // is free and the alternative is a blocked "下一题" button. `keepalive` lets
+  // the save that is in flight when the tab closes (or the Mini App navigates
+  // away) finish server-side — the optimistic save queue fires exactly such
+  // requests from its pagehide flush.
   return request<{ ok: boolean }>(
     `/api/survey/${surveyId}/responses/${responseId}/answers`,
     {
       method: "POST",
       body: JSON.stringify({ questionId, value }),
+      keepalive: true,
     },
     { retries: 2 },
   );
@@ -400,6 +423,8 @@ export function submitResponse(
   ok: boolean;
   completed: boolean;
   reportUrl?: string;
+  /** 报告 PDF 下载地址（服务端用同一 token 派生；完成页的「下载报告」按钮使用）。 */
+  reportPdfUrl?: string;
   galleryPublished?: boolean;
   telegramPublicationQueued?: boolean;
   newAchievements?: UnlockedAchievement[];
@@ -412,6 +437,7 @@ export function submitResponse(
     ok: boolean;
     completed: boolean;
     reportUrl?: string;
+    reportPdfUrl?: string;
     galleryPublished?: boolean;
     newAchievements?: UnlockedAchievement[];
   }>(

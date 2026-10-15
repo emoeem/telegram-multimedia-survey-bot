@@ -119,6 +119,22 @@ export async function getMediaAssetById(db: D1Database, id: number): Promise<Med
 }
 
 /**
+ * The asset lookup as a statement, for callers that need it inside a
+ * `db.batch()` — the media endpoint runs it together with the published-survey
+ * linkage check so one media request costs one round trip instead of two or
+ * three sequential ones.
+ */
+export function getMediaAssetByIdStatement(db: D1Database, id: number): D1PreparedStatement {
+  return db.prepare("SELECT * FROM media_assets WHERE id = ? LIMIT 1").bind(id);
+}
+
+/** Turns the first result of {@link getMediaAssetByIdStatement} into an asset. */
+export function mapMediaAssetStatement(result: D1Result<unknown> | undefined): MediaAsset | null {
+  const row = (result?.results ?? [])[0] as MediaAssetRow | undefined;
+  return row ? mapMediaAsset(row) : null;
+}
+
+/**
  * Loads many media assets in batched `IN (...)` queries.
  *
  * Report rendering resolves every image of a profile; doing that one

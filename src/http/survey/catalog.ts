@@ -15,6 +15,7 @@ import type { getSurveyFlow } from "../../services/question.service";
 import { buildSurveyFlow, type SurveyFlow } from "../../survey/engine";
 import { normalizeStoredSurveyTheme } from "../../survey/theme";
 import { fail } from "../api-response";
+import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
 import { mediaPublicUrl, parseSettings } from "./presentation";
 import { resolveListCoinPrices } from "../../services/coin/unlock.service";
 
@@ -64,6 +65,78 @@ export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
  */
 export const SURVEY_DEFINITION_CACHE_VERSION = "v2";
 export const SURVEY_DEFINITION_CACHE_TTL_SECONDS = 60 * 60;
+
+/**
+ * The published *flow* (questions + options as the engine consumes them) is
+ * visitor-independent and immutable per survey version, exactly like the
+ * definition projection above — but unlike the definition it is read on every
+ * answer save: the /responses batch pulls the whole question list each time a
+ * respondent clicks "next". For a 70-question story survey that is hundreds of
+ * D1 rows burned per click.
+ *
+ * The key carries only the survey id and the version stamp lives *inside* the
+ * payload. A request fires this read in parallel with its own D1 batch and
+ * then validates the payload against the survey row it just read (the row is
+ * always fresh, so the comparison is authoritative): match → the KV flow is
+ * used; mismatch (first request after an edit) or miss → the database is read
+ * once and the fresh stamp is written back, so later requests hit again. The
+ * earlier design put the stamp in the key, which forced the KV read to happen
+ * *after* the row was read — one extra sequential hop on the answer path
+ * (measured ~100ms from the Hong Kong edge).
+ *
+ * Safety rests on the same assumption as the definition cache: every mutating
+ * path touches `version` or `updated_at` (question/option/page edits call
+ * `touchSurvey`, publish/close/archive bump `version`), and a stamp mismatch is
+ * detected on the very next request — so a path that forgets the touch degrades
+ * to that path's own staleness, not to an indefinitely stale flow.
+ */
+export const SURVEY_FLOW_CACHE_VERSION = "v2";
+export const SURVEY_FLOW_CACHE_TTL_SECONDS = 60 * 60;
+
+/** Payload of the flow cache: the flow plus the stamp it was built from. */
+interface CachedSurveyFlow {
+  version: number;
+  updatedAt: string;
+  flow: SurveyFlow;
+}
+
+/** The KV key for a survey's cached flow (id only; the stamp is validated from the payload). */
+export function publishedFlowCacheKey(surveyId: number): string {
+  return `published-flow:${SURVEY_FLOW_CACHE_VERSION}:${surveyId}`;
+}
+
+/**
+ * Starts the flow-cache read without awaiting it. Callers run the returned
+ * promise in parallel with their own D1 work and hand it to
+ * {@link resolvePublishedFlow} once the survey row is in hand.
+ */
+export function beginPublishedFlowRead(env: Env, surveyId: number): Promise<CachedSurveyFlow | null> {
+  return readCachedJson<CachedSurveyFlow>(env.CACHE, publishedFlowCacheKey(surveyId));
+}
+
+/**
+ * The flow of a published survey: the (already running) cache read when its
+ * stamp matches the freshly-read row, otherwise a database read followed by a
+ * cache write.
+ */
+export async function resolvePublishedFlow(
+  env: Env,
+  survey: { id: number; version: number; updatedAt: string },
+  cacheRead: Promise<CachedSurveyFlow | null>,
+): Promise<SurveyFlow> {
+  const cached = await cacheRead;
+  if (cached && cached.version === survey.version && cached.updatedAt === survey.updatedAt) {
+    return cached.flow;
+  }
+  const [questionsResult, optionsResult] = await env.DB.batch([
+    listQuestionsBySurveyStatement(env.DB, survey.id),
+    listOptionsForSurveyStatement(env.DB, survey.id),
+  ]);
+  const flow = buildSurveyFlow(mapQuestionRows(questionsResult), mapOptionRows(optionsResult));
+  const payload: CachedSurveyFlow = { version: survey.version, updatedAt: survey.updatedAt, flow };
+  await writeCachedJson(env.CACHE, publishedFlowCacheKey(survey.id), payload, SURVEY_FLOW_CACHE_TTL_SECONDS);
+  return flow;
+}
 
 export const PARTICIPANT_LINK_BOT_USERNAME_CACHE_KEY = "participant-link-bot-username";
 
@@ -221,4 +294,30 @@ export async function loadPublishedSurvey(
 > {
   const results = await env.DB.batch(publishedSurveyStatements(env.DB, surveyId));
   return readPublishedSurveyResults(results);
+}
+
+/**
+ * The published survey with its flow, where the flow comes from the parallel
+ * edge KV read when its stamp matches the freshly-read survey row
+ * (see {@link beginPublishedFlowRead}). {@link surveyResult} is the already-read
+ * survey row (statement index 0 of {@link publishedSurveyStatements}).
+ *
+ * Convenience wrapper for callers whose flow use is deferred (submit, media
+ * upload): it fires the cache read immediately, so it still overlaps with the
+ * caller's own awaited D1 work where possible.
+ */
+export async function readPublishedSurveyWithCachedFlow(
+  env: Env,
+  surveyId: number,
+  surveyResult: D1Result<unknown> | undefined,
+): Promise<{
+  survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>;
+  flow: Awaited<ReturnType<typeof getSurveyFlow>>;
+} | Response> {
+  const cacheRead = beginPublishedFlowRead(env, surveyId);
+  const survey = mapSurveyStatementResult(surveyResult);
+  if (!survey || survey.status !== "published") {
+    return fail(404, "survey_unavailable", "问卷不存在或未发布");
+  }
+  return { survey, flow: await resolvePublishedFlow(env, survey, cacheRead) };
 }

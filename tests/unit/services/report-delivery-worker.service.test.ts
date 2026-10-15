@@ -89,20 +89,23 @@ function makeDb(responseStatus = "completed") {
             };
           }
           if (sql.includes("users")) {
+            // SELECT * FROM users → 真实列名（snake_case）；mapUser 读的是
+            // telegram_user_id，驼峰写的 fixture 会让 telegramUserId 变成
+            // undefined（归档消息里的用户 mention 依赖它）。
             return {
               id: 7,
-              telegramUserId: 123,
+              telegram_user_id: 123,
               username: "alice",
-              firstName: null,
-              lastName: null,
-              languageCode: null,
-              systemRole: "participant",
-              botStartedAt: null,
-              bannedAt: null,
-              bannedBy: null,
-              banReason: null,
-              createdAt: "",
-              updatedAt: "",
+              first_name: null,
+              last_name: null,
+              language_code: null,
+              system_role: "participant",
+              bot_started_at: null,
+              banned_at: null,
+              banned_by: null,
+              ban_reason: null,
+              created_at: "",
+              updated_at: "",
             };
           }
           if (sql.includes("surveys")) {
@@ -181,7 +184,9 @@ describe("report delivery worker", () => {
       "report-42.zip",
       expect.any(Uint8Array),
       "application/zip",
-      expect.stringContaining('<a href="https://t.me/alice">@alice</a>'),
+      // 归档消息里的用户必须按 Telegram 用户 ID 生成 mention：用户名可以随时改，
+      // 按用户名的 t.me 链接在改名后就是 404（运营实际观察到点了找不到人）。
+      expect.stringContaining('<a href="tg://user?id=123">@alice</a>'),
       "HTML",
     );
     expect(String(mocks.sendDocument.mock.calls[0]?.[5] ?? "")).toContain("#答卷42");

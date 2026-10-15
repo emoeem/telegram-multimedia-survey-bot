@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { handleSurveyApiRequest } from "../../../src/http/survey-api";
 import type { Env } from "../../../src/index";
@@ -119,8 +119,17 @@ function makeDb(overrides: Record<string, unknown> = {}) {
         statement.run.mockResolvedValue({ success: true, meta: { last_row_id: 42 } });
       } else if (sql.includes("INSERT INTO media_assets")) {
         statement.run.mockResolvedValue({ success: true, meta: { last_row_id: 77 } });
-      } else if (sql.includes("SELECT id, status FROM survey_responses")) {
+      } else if (sql.includes("FROM survey_responses") && sql.includes("status = 'in_progress'") && sql.includes("SELECT id, status")) {
         statement.first.mockResolvedValue(overrides.inProgressResponse ?? { id: 42, status: "in_progress" });
+      } else if (sql.includes("current_question_id currentQuestionId")) {
+        // Resume lookup: no in-progress response unless a test asks for one.
+        statement.first.mockResolvedValue(overrides.activeResponse ?? null);
+      } else if (sql.includes("SELECT a.* FROM answers a")) {
+        // Resume answers, folded into the start-response batch.
+        statement.all.mockResolvedValue({ results: overrides.resumeAnswers ?? [] });
+      } else if (sql.includes("FROM participant_links pl")) {
+        // Folding of the anonymous participant's link/ban lookup into /answers.
+        statement.first.mockResolvedValue(overrides.participantLink ?? null);
       } else if (sql.includes("SELECT * FROM answers")) {
         statement.all.mockResolvedValue({ results: overrides.answers ?? [] });
       } else if (sql.includes("SELECT id FROM answers")) {
@@ -129,26 +138,28 @@ function makeDb(overrides: Record<string, unknown> = {}) {
         statement.first.mockResolvedValue(overrides.ownedResponse ?? { id: 42 });
       } else if (sql.includes("SELECT * FROM media_assets")) {
         statement.first.mockResolvedValue(
-          overrides.mediaAsset ?? {
-            id: 77,
-            asset_scope: "response",
-            media_type: "photo",
-            telegram_file_id: null,
-            telegram_file_unique_id: null,
-            url: null,
-            storage_kind: "temporary",
-            storage_key: "media:temp:42:key",
-            expires_at: null,
-            mime_type: "image/png",
-            file_name: "photo.png",
-            file_size: 3,
-            width: null,
-            height: null,
-            duration: null,
-            r2_key: null,
-            created_at: "",
-            updated_at: "",
-          },
+          "mediaAsset" in overrides
+            ? overrides.mediaAsset
+            : {
+                id: 77,
+                asset_scope: "response",
+                media_type: "photo",
+                telegram_file_id: null,
+                telegram_file_unique_id: null,
+                url: null,
+                storage_kind: "temporary",
+                storage_key: "media:temp:42:key",
+                expires_at: null,
+                mime_type: "image/png",
+                file_name: "photo.png",
+                file_size: 3,
+                width: null,
+                height: null,
+                duration: null,
+                r2_key: null,
+                created_at: "",
+                updated_at: "",
+              },
         );
       } else if (sql.includes("SELECT * FROM report_deliveries")) {
         statement.first.mockResolvedValue(
@@ -204,6 +215,8 @@ function makeEnv(db: D1Database, extra: Partial<Env> = {}): Env {
     DB: db,
     BOT_TOKEN: "token",
     WEBHOOK_SECRET: "webhook-secret",
+    // Always present in real deployments; several ban/admin checks split it.
+    ADMIN_IDS: "",
     MEDIA_KV: {
       put: vi.fn(async () => {}),
       get: vi.fn(async () => null),
@@ -397,6 +410,89 @@ describe("web survey API", () => {
     expect(body.resumed).toBe(false);
   });
 
+  it("returns the saved answers inline when the start request resumes a response", async () => {
+    // The client used to need a second GET /responses round trip before it could
+    // render the question the participant had stopped on; the answers now ride
+    // along with the resume the batch was already reading.
+    const db = makeDb({
+      activeResponse: { id: 42, currentQuestionId: 10, status: "in_progress" },
+      resumeAnswers: [
+        {
+          id: 55,
+          response_id: 42,
+          question_id: 10,
+          text_value: null,
+          number_value: null,
+          boolean_value: null,
+          rating_value: null,
+          date_value: null,
+          time_value: null,
+          json_value: JSON.stringify([101]),
+          created_at: "",
+          updated_at: "",
+        },
+      ],
+    });
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/1/responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        body: JSON.stringify({}),
+      }),
+      makeEnv(db),
+      new URL("https://worker.test/api/survey/1/responses"),
+    );
+
+    expect(response?.status).toBe(200);
+    const body = (await response?.json()) as {
+      responseId: number;
+      resumed: boolean;
+      answers: Record<string, unknown>;
+    };
+    expect(body.resumed).toBe(true);
+    expect(body.responseId).toBe(42);
+    expect(body.answers).toEqual({ "10": [101] });
+  });
+
+  it("refuses an answer save from a banned linked account (folded ban check)", async () => {
+    // The anonymous-key path checks the participant_links row inside the main
+    // batch; a linked account that has been banned must still be refused there,
+    // exactly like resolveParticipant refuses it on every other endpoint.
+    const db = makeDb({
+      participantLink: { userId: 7, bannedAt: "2026-09-01T00:00:00.000Z", telegramUserId: 12345 },
+    });
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/1/responses/42/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        body: JSON.stringify({ questionId: 10, value: [101, 102] }),
+      }),
+      makeEnv(db),
+      new URL("https://worker.test/api/survey/1/responses/42/answers"),
+    );
+
+    expect(response?.status).toBe(403);
+    const body = (await response?.json()) as { code?: string };
+    expect(body.code).toBe("account_banned");
+  });
+
+  it("accepts an answer save from a linked account that is not banned", async () => {
+    const db = makeDb({
+      participantLink: { userId: 7, bannedAt: null, telegramUserId: 12345 },
+    });
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/1/responses/42/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        body: JSON.stringify({ questionId: 10, value: [101, 102] }),
+      }),
+      makeEnv(db),
+      new URL("https://worker.test/api/survey/1/responses/42/answers"),
+    );
+
+    expect(response?.status).toBe(200);
+  });
+
   it("saves a multiple-choice answer", async () => {
     const db = makeDb();
     const response = await handleSurveyApiRequest(
@@ -539,5 +635,112 @@ describe("web survey API", () => {
 
     expect(response?.status).toBe(200);
     expect(kvGet).toHaveBeenCalledWith("media:temp:42:key", "arrayBuffer");
+  });
+});
+
+describe("web survey media endpoint edge cache", () => {
+  /** 可编程的 caches.default 替身：按 pathname 存取 Response。 */
+  function stubEdgeCache() {
+    const store = new Map<string, Response>();
+    const cache = {
+      match: vi.fn(async (request: Request) => store.get(new URL(request.url).pathname)),
+      put: vi.fn(async (request: Request, response: Response) => {
+        const body = await response.arrayBuffer();
+        store.set(
+          new URL(request.url).pathname,
+          new Response(body, { status: response.status, headers: response.headers }),
+        );
+      }),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    return { cache, store };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("serves survey-scope media through the edge cache: first view fills it, repeat views skip D1", async () => {
+    const { cache, store } = stubEdgeCache();
+    const db = makeDb({
+      mediaAsset: {
+        id: 77,
+        asset_scope: "survey",
+        media_type: "audio",
+        telegram_file_id: null,
+        telegram_file_unique_id: null,
+        url: null,
+        storage_kind: "temporary",
+        storage_key: "media:survey:bgm",
+        expires_at: null,
+        mime_type: "audio/mpeg",
+        file_name: "bgm.mp3",
+        file_size: 3,
+        width: null,
+        height: null,
+        duration: null,
+        r2_key: null,
+        created_at: "",
+        updated_at: "",
+      },
+    });
+    const env = makeEnv(db, {
+      MEDIA_KV: { put: vi.fn(async () => {}), get: vi.fn(async () => new ArrayBuffer(3)) } as unknown as KVNamespace,
+    });
+    const batchSpy = db.batch as ReturnType<typeof vi.fn>;
+
+    const first = await handleSurveyApiRequest(
+      request("/api/survey/media/77"),
+      env,
+      new URL("https://worker.test/api/survey/media/77"),
+    );
+    expect(first?.status).toBe(200);
+    // 客户端拿到的是完整 immutable 策略；边缘副本才是短 TTL。
+    expect(first?.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    const putArgs = cache.put.mock.calls[0] as [Request, Response];
+    expect(putArgs[1].headers.get("Cache-Control")).toBe("public, max-age=86400");
+
+    // 命中后不再触数据库：清空计数后重放同一请求。
+    batchSpy.mockClear();
+    const second = await handleSurveyApiRequest(
+      request("/api/survey/media/77"),
+      env,
+      new URL("https://worker.test/api/survey/media/77"),
+    );
+    expect(second?.status).toBe(200);
+    expect(second?.headers.get("Cache-Control")).toBe("public, max-age=86400");
+    expect(batchSpy).not.toHaveBeenCalled();
+    expect(store.size).toBe(1);
+  });
+
+  it("never caches response-scope (private) media", async () => {
+    const { cache } = stubEdgeCache();
+    const db = makeDb();
+    const kvGet = vi.fn(async (_key: string) => new Uint8Array([1, 2, 3]).buffer as ArrayBuffer);
+    const env = makeEnv(db, {
+      MEDIA_KV: { put: vi.fn(async () => {}), get: kvGet } as unknown as KVNamespace,
+    });
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/media/77", { headers: { "x-participant-key": "participant-abc-123" } }),
+      env,
+      new URL("https://worker.test/api/survey/media/77"),
+    );
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("does not cache authorization failures or unknown assets", async () => {
+    const { cache } = stubEdgeCache();
+    const db = makeDb({ mediaAsset: null });
+    const env = makeEnv(db);
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/media/999"),
+      env,
+      new URL("https://worker.test/api/survey/media/999"),
+    );
+    expect(response?.status).toBe(404);
+    expect(cache.put).not.toHaveBeenCalled();
   });
 });

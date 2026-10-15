@@ -43,11 +43,22 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/**
+ * 归档消息里的「用户：」必须按 **Telegram 用户 ID** 生成 mention，而不是按用户名
+ * 拼 `https://t.me/<username>`。
+ *
+ * 之前的写法在用户改名（或放弃用户名）之后就指向一个 404 的 t.me 链接——归档频道
+ * 里的旧消息是历史记录，填卷人却再也点不到自己（运营实际观察到：点了完全找不到人）。
+ * `tg://user?id=` 由 Telegram 按 ID 解析，用户名怎么变都能打开对应的人；用户名只
+ * 作为展示文本。没有用户名时展示姓名/ID，链接仍然可用。
+ */
 function respondentHtml(info: { username: string | null; firstName: string | null; telegramUserId: number }): string {
-  if (info.username) {
-    return `<a href="https://t.me/${escapeHtml(info.username)}">@${escapeHtml(info.username)}</a>`;
-  }
-  return `<a href="tg://openmessage?user_id=${info.telegramUserId}">用户 ${info.telegramUserId}</a>`;
+  const label = info.username
+    ? `@${info.username}`
+    : info.firstName
+      ? info.firstName
+      : `用户 ${info.telegramUserId}`;
+  return `<a href="tg://user?id=${info.telegramUserId}">${escapeHtml(label)}</a>`;
 }
 
 function messageIdFromResponse(response: Response): Promise<number> {
