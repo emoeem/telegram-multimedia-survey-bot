@@ -4,7 +4,7 @@ import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service
 import { getSurveyFlow } from "../../services/question.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { resolveSubmissionBotUrl } from "../../services/contact-links.service";
-import { normalizeSurveyTheme } from "../../survey/theme";
+import { normalizeStoredSurveyTheme } from "../../survey/theme";
 import {
   SURVEY_DEFINITION_CACHE_TTL_SECONDS,
   SURVEY_DEFINITION_CACHE_VERSION,
@@ -43,7 +43,7 @@ export async function loadSurveyDefinition(
       anonymous: survey.anonymous,
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
-      theme: normalizeSurveyTheme(parseSettings(survey.settingsJson)),
+      theme: normalizeStoredSurveyTheme(parseSettings(survey.settingsJson)),
       communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       pages: [],
       questions: [],
@@ -73,22 +73,22 @@ export async function loadSurveyDefinition(
 
     const questions: unknown[] = [];
     const questionIds = flow.questions.map((question) => question.id);
-    const optionMediaByOption = new Map<number, Array<{ mediaAssetId: number }>>();
-    const questionMediaByQuestion = new Map<number, Array<{ mediaAssetId: number }>>();
+    const optionMediaByOption = new Map<number, Array<{ mediaAssetId: number; altText: string | null }>>();
+    const questionMediaByQuestion = new Map<number, Array<{ mediaAssetId: number; altText: string | null }>>();
     if (questionIds.length > 0) {
       // json_each keeps this at a single bind regardless of question count;
       // D1 rejects queries with more than 100 bound variables.
       const questionIdsJson = JSON.stringify(questionIds);
       const [questionMedia, optionMedia] = (await env.DB.batch([
         env.DB.prepare(
-          `SELECT qm.question_id questionId, m.id mediaAssetId
+          `SELECT qm.question_id questionId, m.id mediaAssetId, m.alt_text altText
            FROM question_media qm
            JOIN media_assets m ON m.id = qm.media_asset_id
            JOIN json_each(?) AS q ON q.value = qm.question_id
            ORDER BY qm.sort_order ASC, qm.id ASC`,
         ).bind(questionIdsJson),
         env.DB.prepare(
-          `SELECT om.question_option_id optionId, m.id mediaAssetId
+          `SELECT om.question_option_id optionId, m.id mediaAssetId, m.alt_text altText
            FROM option_media om
            JOIN media_assets m ON m.id = om.media_asset_id
            JOIN question_options o ON o.id = om.question_option_id
@@ -96,17 +96,17 @@ export async function loadSurveyDefinition(
            ORDER BY om.sort_order ASC, om.id ASC`,
         ).bind(questionIdsJson),
       ])) as [
-        D1Result<{ questionId: number; mediaAssetId: number }>,
-        D1Result<{ optionId: number; mediaAssetId: number }>,
+        D1Result<{ questionId: number; mediaAssetId: number; altText: string | null }>,
+        D1Result<{ optionId: number; mediaAssetId: number; altText: string | null }>,
       ];
       for (const row of questionMedia.results ?? []) {
         const list = questionMediaByQuestion.get(row.questionId) ?? [];
-        list.push({ mediaAssetId: row.mediaAssetId });
+        list.push({ mediaAssetId: row.mediaAssetId, altText: row.altText });
         questionMediaByQuestion.set(row.questionId, list);
       }
       for (const row of optionMedia.results ?? []) {
         const list = optionMediaByOption.get(row.optionId) ?? [];
-        list.push({ mediaAssetId: row.mediaAssetId });
+        list.push({ mediaAssetId: row.mediaAssetId, altText: row.altText });
         optionMediaByOption.set(row.optionId, list);
       }
     }
@@ -132,7 +132,7 @@ export async function loadSurveyDefinition(
       anonymous: survey.anonymous,
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
-      theme: normalizeSurveyTheme(parseSettings(survey.settingsJson)),
+      theme: normalizeStoredSurveyTheme(parseSettings(survey.settingsJson)),
       communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       pages: (pages.results ?? []).map((page) => ({
         id: page.id,

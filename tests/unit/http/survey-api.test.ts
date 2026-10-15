@@ -86,7 +86,7 @@ function makeDb(overrides: Record<string, unknown> = {}) {
             updated_at: "2026-08-22T00:00:00.000Z",
           },
         );
-      } else if (sql.includes("SELECT * FROM question_options")) {
+      } else if (sql.includes("FROM question_options")) {
         statement.all.mockResolvedValue({
           results: overrides.options ?? [
             {
@@ -180,7 +180,21 @@ function makeDb(overrides: Record<string, unknown> = {}) {
       }
       return statement;
     }),
-    batch: vi.fn(async () => [{ results: [] }, { results: [] }]),
+    // Batched statements must behave like the same statements executed one by
+    // one: the survey API now reads a whole request's rows — and stamps its
+    // abuse counter — in a single `db.batch()`, so a canned batch result would
+    // hide every read behind it. `all()` wins when the SQL declares rows,
+    // otherwise the configured single row is wrapped the way D1 does it.
+    batch: vi.fn(async (statements: Array<{ all: () => Promise<unknown>; first: () => Promise<unknown> }>) =>
+      Promise.all(
+        statements.map(async (statement) => {
+          const all = (await statement.all()) as { results?: unknown[] } | undefined;
+          if (all?.results?.length) return all;
+          const first = await statement.first();
+          return first === null || first === undefined ? { results: [] } : { results: [first] };
+        }),
+      ),
+    ),
   } as unknown as D1Database;
   return db;
 }

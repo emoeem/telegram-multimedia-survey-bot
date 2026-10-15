@@ -74,15 +74,32 @@ pnpm customer:deploy
 - `admin-id`：客户管理员 Telegram ID（可多个，逗号分隔）
 - `license-key`：第 1 步签发的授权密钥
 - `license-server-url`：你的授权中心地址（默认已填好）
+- `--console-origin`：**允许读取该实例的后台页面源**（逗号分隔）。控制台的「客户数据」是
+  浏览器**直连**客户实例读的，而 CORS 比的是**页面的源**，不是请求落在哪个主机上。
+  只列授权中心地址时，一旦你在别的域名上打开后台（例如 `PUBLIC_ORIGIN` 指到的国内中继
+  域名），浏览器会把响应拦掉，控制台只能报"无法连接客户实例"——看起来像实例掉线，
+  其实实例好得很。所以要把后台可能被打开的每个源都写上，例如：
+
+  ```bash
+  --console-origin "https://<你的 worker>.workers.dev,https://emoemok.top,https://emoe.eu.cc"
+  ```
+
+  省略时保持旧行为：只信授权中心自己的地址。该值会记进
+  `deployment-manifest.json`，升级时自动沿用（也可在客户端 `wrangler.toml` 的
+  `[vars] REMOTE_ACCESS_ORIGINS` 手工调整后重新部署）。
 
 脚本会自动完成：
 
 1. 创建该客户专用的 D1 / KV / Queue / R2；
-2. 生成独立 `wrangler.toml`（含 `ADMIN_IDS`、`INSTALLATION_ID`、授权中心地址）；
+2. 生成独立 `wrangler.toml`（含 `ADMIN_IDS`、`INSTALLATION_ID`、授权中心地址、控制台源）；
 3. 把 `BOT_TOKEN`、`WEBHOOK_SECRET`、`LICENSE_KEY` 写入 Cloudflare Secret（不进代码）；
 4. 执行数据库迁移并部署 Worker；
 5. 自动设置 Telegram Webhook 和命令菜单；
 6. 在 `customer-deployments/<客户>/deployment-manifest.json` 保存部署清单（升级时复用）。
+
+> 客户自定义账号交付注意：若客户账号从未进过 Cloudflare 的 Workers 页面，是没有
+> `workers.dev` 子域的（API 会报 `You do not have a workers.dev subdomain`），
+> 先用 `PUT /accounts/{account_id}/workers/subdomain` 注册一个再部署。
 
 部署后让客户管理员发 `/start`，普通用户发 `/surveys` 即可使用。
 

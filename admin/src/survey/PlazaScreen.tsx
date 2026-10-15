@@ -10,6 +10,7 @@ import {
   useResolvedPreset,
 } from "./theme-ui";
 import { BottomNav } from "./BottomNav";
+import { closeWebApp } from "./navigation";
 import {
   botHandleFromUrl,
   createPlazaPost,
@@ -31,14 +32,6 @@ type Tab = "treehole" | "profiles";
 
 const PAGE_SIZE = 10;
 
-function closePlaza(): void {
-  if (window.Telegram?.WebApp?.close) {
-    window.Telegram.WebApp.close();
-    return;
-  }
-  window.close();
-  if (window.history.length > 1) window.history.back();
-}
 
 function formatDay(iso: string): string {
   return iso.slice(0, 10);
@@ -703,7 +696,7 @@ export function PlazaScreen() {
                 >
                   <Palette className="h-4 w-4" />
                 </button>
-                <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={closePlaza}>
+                <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
                   <X className="h-4 w-4" />
                 </button>
               </div>

@@ -5,6 +5,15 @@ compatibility_date = "2026-08-14"
 minify = true
 workers_dev = true
 preview_urls = false
+# workers.dev is SNI-blocked in mainland China, so the same Worker is also
+# served on this custom domain. workers_dev stays enabled on purpose: the
+# Telegram webhook keeps pointing at it (ensureWebhookAllowsChannelPosts in
+# src/index.ts only rewrites the webhook to the origin a request arrived on,
+# and only Telegram ever calls /telegram/webhook), which keeps bot delivery
+# independent of whatever this domain's DNS is doing.
+routes = [
+  { pattern = "emoe.eu.cc", custom_domain = true }
+]
 
 [[rules]]
 type = "Data"
@@ -26,6 +35,18 @@ REPORT_CHANNEL_ID = "-1004489719605"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 # Survey access-code pepper is a Cloudflare Secret; do not define it in [vars].
 SUBMISSION_BOT_URL = "https://t.me/tougaojiqirbot"
+# Canonical origin for user-facing links (Telegram buttons, admin login deep
+# link, og: metadata). The webhook deliberately keeps arriving on the
+# workers.dev hostname, so without this pin the bot would keep handing users
+# the SNI-blocked hostname instead of the custom domain. Points at the
+# mainland relay domain so those links resolve for domestic users too; see
+# docs/CN_ACCESS_VERCEL_RELAY.md.
+PUBLIC_ORIGIN = "https://emoemok.top"
+# RELAY_SECRET is a Cloudflare Secret (`wrangler secret put RELAY_SECRET`), not
+# a [vars] entry: it is the shared secret the China relay proves itself with,
+# and anyone holding it can forge the visitor address. Unset = requests are
+# judged by their peer address, i.e. the pre-relay behaviour.
+# See docs/CN_ACCESS_VERCEL_RELAY.md.
 
 # Browser renders for queue jobs run in a request context via the SELF
 # service binding (queue-context sessions die on constrained accounts).

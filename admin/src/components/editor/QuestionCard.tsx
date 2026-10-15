@@ -216,7 +216,19 @@ export function QuestionCard({
     const rules = question.options
       .filter((option) => next.has(option.id))
       .map((option) => ({ optionId: option.id, targetQuestionId: next.get(option.id)! }));
-    const condition = rules.length ? { kind: "option_equals", rules } : null;
+    // answerRules (state-driven jumps) are authored outside this UI — e.g. by
+    // JSON import; committing option rules must not drop them (and clearing
+    // the last option rule must not drop them either).
+    const savedAnswerRules = (question.condition as { answerRules?: unknown } | null)?.answerRules;
+    const hasAnswerRules = Array.isArray(savedAnswerRules) && savedAnswerRules.length > 0;
+    const condition =
+      rules.length || hasAnswerRules
+        ? {
+            kind: "option_equals",
+            ...(rules.length ? { rules } : {}),
+            ...(hasAnswerRules ? { answerRules: savedAnswerRules } : {}),
+          }
+        : null;
     onLocalChange(question.id, { condition });
     onFieldCommit(question.id, { condition }, "跳转规则");
   };

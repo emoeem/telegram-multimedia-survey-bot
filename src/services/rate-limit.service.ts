@@ -130,31 +130,71 @@ export async function checkAtomicRateLimit(
   windowSeconds: number,
   now = Date.now(),
 ): Promise<RateLimitResult> {
-  const windowIndex = Math.floor(now / (windowSeconds * 1000));
-  const windowStart = windowIndex * windowSeconds * 1000;
-  const key = `${bucket}:${identity}`;
-  const retryAfterSeconds = Math.max(1, Math.ceil((windowStart + windowSeconds * 1000 - now) / 1000));
-
+  const { retryAfterSeconds } = atomicRateLimitWindow(bucket, identity, windowSeconds, now);
   try {
-    const result = await db
-      .prepare(
-        `INSERT INTO rate_limits (key, count, window_start)
-         VALUES (?, 1, ?)
-         ON CONFLICT(key) DO UPDATE SET
-           count = CASE
-             WHEN rate_limits.window_start = excluded.window_start THEN rate_limits.count + 1
-             ELSE 1
-           END,
-           window_start = excluded.window_start
-         RETURNING count`,
-      )
-      .bind(key, windowStart)
-      .first<{ count: number }>();
-
-    const count = Number(result?.count ?? 1);
-    return { allowed: count <= limit, retryAfterSeconds };
+    const result = await buildAtomicRateLimitStatement(db, bucket, identity, windowSeconds, now).first<{
+      count: number;
+    }>();
+    return { allowed: atomicRateLimitCount(result) <= limit, retryAfterSeconds };
   } catch (error) {
     console.warn("Atomic rate limit unavailable; falling back to KV", { bucket, error });
     return checkRateLimit(cache, bucket, identity, limit, windowSeconds, now);
   }
+}
+
+/** Fixed-window bookkeeping (key, bounds and Retry-After) for one rate-limit subject. */
+export function atomicRateLimitWindow(
+  bucket: string,
+  identity: string,
+  windowSeconds: number,
+  now = Date.now(),
+): { key: string; windowStart: number; retryAfterSeconds: number } {
+  const windowIndex = Math.floor(now / (windowSeconds * 1000));
+  const windowStart = windowIndex * windowSeconds * 1000;
+  return {
+    key: `${bucket}:${identity}`,
+    windowStart,
+    retryAfterSeconds: Math.max(1, Math.ceil((windowStart + windowSeconds * 1000 - now) / 1000)),
+  };
+}
+
+/**
+ * The counter increment as a prepared statement, so a caller that is about to
+ * write the thing being limited can carry the limiter inside its own
+ * `db.batch()` instead of paying another round trip to the database's region.
+ * Read the resulting count with {@link atomicRateLimitCount}, and only run the
+ * write when it is within the limit.
+ */
+export function buildAtomicRateLimitStatement(
+  db: D1Database,
+  bucket: string,
+  identity: string,
+  windowSeconds: number,
+  now = Date.now(),
+): D1PreparedStatement {
+  const { key, windowStart } = atomicRateLimitWindow(bucket, identity, windowSeconds, now);
+  return db
+    .prepare(
+      `INSERT INTO rate_limits (key, count, window_start)
+       VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE
+           WHEN rate_limits.window_start = excluded.window_start THEN rate_limits.count + 1
+           ELSE 1
+         END,
+         window_start = excluded.window_start
+       RETURNING count`,
+    )
+    .bind(key, windowStart);
+}
+
+/** The count produced by {@link buildAtomicRateLimitStatement}, however it was executed. */
+export function atomicRateLimitCount(result: { count?: unknown } | null | undefined): number {
+  const count = Number(result?.count ?? 1);
+  return Number.isFinite(count) && count > 0 ? count : 1;
+}
+
+/** The count of a {@link buildAtomicRateLimitStatement} that ran inside a `db.batch()`. */
+export function readAtomicRateLimitCountFromBatch(result: D1Result<unknown> | undefined): number {
+  return atomicRateLimitCount(((result?.results ?? []) as Array<{ count?: unknown }>)[0]);
 }

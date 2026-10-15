@@ -57,6 +57,9 @@ export function SurveyDetailPage() {
   const [preset, setPreset] = useState("");
   const [customJson, setCustomJson] = useState("");
   const [bgmUrl, setBgmUrl] = useState("");
+  // theme.audio 里除 url 以外的键（如 byPage）——编辑器没有各自的输入框，
+  // 保存时必须原样带回，否则一次主题保存就会清掉分线 BGM 配置。
+  const [audioExtra, setAudioExtra] = useState<Record<string, unknown>>({});
   const [completionMessage, setCompletionMessage] = useState("");
   const [completionRedirect, setCompletionRedirect] = useState("");
   const [completionRestart, setCompletionRestart] = useState(false);
@@ -81,6 +84,12 @@ export function SurveyDetailPage() {
       // custom tokens in the JSON area.
       const { preset: _preset, audio, completion, ...custom } = data.theme;
       setCustomJson(Object.keys(custom).length ? JSON.stringify(custom, null, 2) : "");
+      if (audio) {
+        const { url: _url, ...rest } = audio;
+        setAudioExtra(rest as Record<string, unknown>);
+      } else {
+        setAudioExtra({});
+      }
       setBgmUrl(audio?.url ?? "");
       setCompletionMessage(completion?.message ?? "");
       setCompletionRedirect(completion?.redirectUrl ?? "");
@@ -88,6 +97,7 @@ export function SurveyDetailPage() {
     } else {
       setCustomJson("");
       setBgmUrl("");
+      setAudioExtra({});
       setCompletionMessage("");
       setCompletionRedirect("");
       setCompletionRestart(false);
@@ -141,7 +151,9 @@ export function SurveyDetailPage() {
       const theme: Record<string, unknown> = {};
       if (!clear) {
         if (preset) theme.preset = preset;
-        if (bgmUrl.trim()) theme.audio = { url: bgmUrl.trim() };
+        const audio: Record<string, unknown> = { ...audioExtra };
+        if (bgmUrl.trim()) audio.url = bgmUrl.trim();
+        if (Object.keys(audio).length) theme.audio = audio;
         const completion: Record<string, unknown> = {};
         if (completionMessage.trim()) completion.message = completionMessage.trim();
         if (completionRedirect.trim()) completion.redirectUrl = completionRedirect.trim();
@@ -427,6 +439,23 @@ export function SurveyDetailPage() {
           <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
             上传音频文件，或粘贴直链（mp3/m4a/ogg；网易云等平台的外链需真实可访问）。
           </p>
+          {(() => {
+            const byPage = audioExtra.byPage as Record<string, string> | undefined;
+            if (!byPage || !Object.keys(byPage).length) return null;
+            return (
+              <div className="mt-2 rounded-md bg-[var(--surface-muted)] p-2 text-xs text-[var(--color-muted-soft)]">
+                <div>已配置按页 BGM（分线剧情用，保存时自动保留）：</div>
+                <ul className="mt-1 space-y-0.5">
+                  {Object.entries(byPage).map(([pageOrder, url]) => (
+                    <li key={pageOrder} className="truncate">
+                      第 {Number(pageOrder) + 1} 页 → {url}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-1">调整按页曲目需经 JSON 导入；此处清空默认曲不会影响它们。</div>
+              </div>
+            );
+          })()}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               ref={bgmFileRef}

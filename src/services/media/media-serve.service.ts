@@ -23,6 +23,25 @@ function servedContentType(mimeType: string | null): string {
 }
 
 /**
+ * How long a client — and any cache in front of it — may keep an asset.
+ *
+ * Survey assets (question and option images, theme backgrounds, per-page music,
+ * sprites) are immutable: an upload is never overwritten in place, a
+ * replacement gets a new asset id, so the URL identifies the bytes for good.
+ * The five-minute TTL it used to carry made every respondent re-download the
+ * same 1.4MB background track a few questions into a survey, and left the relay
+ * in front of the Worker nothing to hold on to. On a cross-border mobile link
+ * that re-download *is* the wait a respondent notices between questions.
+ *
+ * Response uploads are someone's personal data and keep the short TTLs they
+ * had: private for the temporary store, short public for the durable branches.
+ */
+function mediaCacheControl(asset: MediaAsset): string {
+  if (asset.scope === "survey") return "public, max-age=31536000, immutable";
+  return asset.storageKind === "temporary" ? "private, no-store" : "public, max-age=300";
+}
+
+/**
  * Streams an asset's bytes from its declared storage provider. Returns null
  * when the provider cannot serve it (missing config or unknown kind); callers
  * translate null into their own 404/503 response.
@@ -78,13 +97,12 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
     if (asset.mimeType && isActiveContentMime(asset.mimeType)) {
       headers.set("Content-Disposition", "attachment");
     }
-    // Survey-scope assets are the survey's own content (question/option
-    // attachments): every respondent re-downloads them otherwise, so let
-    // browsers and the edge cache them like the R2/Telegram kinds. Assets are
-    // never overwritten in place (a new upload gets a new id), so a short
-    // max-age cannot serve a replaced blob. Response-scope uploads are
-    // personal data and stay uncacheable.
-    secureHeaders(headers, asset.scope === "survey" ? "public, max-age=300" : "private, no-store");
+    // Survey-scope assets are the survey's own content: every respondent
+    // re-downloads them otherwise, so let browsers and the edge cache them like
+    // the R2/Telegram kinds. Assets are never overwritten in place (a new
+    // upload gets a new id), so the long TTL cannot serve a replaced blob.
+    // Response-scope uploads are personal data and stay uncacheable.
+    secureHeaders(headers, mediaCacheControl(asset));
     return new Response(new Uint8Array(data).buffer, { headers });
   }
 

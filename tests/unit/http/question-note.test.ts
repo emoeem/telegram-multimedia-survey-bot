@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Env } from "../../../src/index";
 import { validateQuestionPayload } from "../../../src/http/admin/helpers";
-import { saveWebAnswer } from "../../../src/http/survey/answers";
+import { planWebAnswer } from "../../../src/http/survey/answers";
 
 describe("note（剧情文段）question payload", () => {
   it("creates without a title and forces non-required", () => {
@@ -55,8 +55,10 @@ describe("note answers", () => {
       createdAt: "",
       updatedAt: "",
       options: [],
-    } as unknown as Parameters<typeof saveWebAnswer>[2];
-    // The note branch returns before touching the DB, so a stub env suffices.
-    await expect(saveWebAnswer({} as Env, 1, question, { anything: true })).resolves.toBeNull();
+    } as unknown as Parameters<typeof planWebAnswer>[2];
+    // The note branch returns before touching the DB, so a stub env suffices —
+    // and it must plan no writes at all, or advancing through a narrative node
+    // would cost a database round trip.
+    await expect(planWebAnswer({} as Env, 1, question, { anything: true })).resolves.toEqual({ statements: [] });
   });
 });

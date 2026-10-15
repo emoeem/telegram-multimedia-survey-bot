@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { MediaAsset } from "../../../src/db/schema";
 import { buildMediaResponse, type MediaServeEnv } from "../../../src/services/media/media-serve.service";
 
-// KV 媒体的缓存策略：survey 作用域（题面/选项配图）是问卷内容，允许浏览器与
-// 边缘短缓存；response 作用域（答题者上传）是个人数据，必须保持不可缓存。
+// KV 媒体的缓存策略：survey 作用域（题面/选项配图、主题背景与音乐、立绘）是问卷
+// 内容，按 asset id 寻址且永不原地覆盖，所以对浏览器与边缘都是长缓存不可变资源——
+// 短 TTL 会让国内弱网参与者每隔几分钟重新下载同一首 BGM；response 作用域（答题者
+// 上传）是个人数据，必须保持不可缓存。
 function makeAsset(overrides: Partial<MediaAsset>): MediaAsset {
   return {
     id: 1,
@@ -39,10 +41,10 @@ const env = {
 } as unknown as MediaServeEnv;
 
 describe("KV media cache-control", () => {
-  it("caches survey-scope attachments publicly for a short window", async () => {
+  it("caches survey-scope attachments as immutable for a year", async () => {
     const response = await buildMediaResponse(env, makeAsset({}));
     expect(response).not.toBeNull();
-    expect(response?.headers.get("Cache-Control")).toBe("public, max-age=300");
+    expect(response?.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("keeps response-scope uploads uncacheable", async () => {

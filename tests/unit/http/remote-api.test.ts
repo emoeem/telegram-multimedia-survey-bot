@@ -110,6 +110,30 @@ describe("remote read-only API", () => {
     expect(response?.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
+  it("accepts every configured console origin and only those", async () => {
+    // The console is served from the center's own hostname *and* from whichever
+    // domain the bot hands admins. CORS compares the page's origin, so pinning
+    // only LICENSE_SERVER_URL breaks the panel the moment an admin opens it on
+    // the relay domain — and the browser can only report that as "cannot reach
+    // the instance".
+    const consoleEnv = { ...env(), REMOTE_ACCESS_ORIGINS: `${CENTER}, https://emoemok.top/admin` };
+    for (const origin of [CENTER, "https://emoemok.top"]) {
+      const response = await handleRemoteApiRequest(
+        request("/api/remote/summary", { method: "OPTIONS", headers: { Origin: origin } }),
+        consoleEnv,
+      );
+      expect(response?.status).toBe(204);
+      expect(response?.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+    }
+    for (const origin of ["https://emoe.eu.cc", "https://evil.example.com", "http://emoemok.top"]) {
+      const response = await handleRemoteApiRequest(
+        request("/api/remote/summary", { method: "OPTIONS", headers: { Origin: origin } }),
+        consoleEnv,
+      );
+      expect(response?.headers.get("Access-Control-Allow-Origin"), origin).toBeNull();
+    }
+  });
+
   it("serves data for a valid token and marks it no-store", async () => {
     const db = makeDb({ surveys: 3, responses: 9, completed: 7, users: 4 });
     const response = await handleRemoteApiRequest(

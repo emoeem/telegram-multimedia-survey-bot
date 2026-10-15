@@ -1,0 +1,173 @@
+{
+ "licence": "CC BY 4.0",
+ "licence_url": "https://maou.audio/rule/",
+ "artist": "森田交一 (Koichi Morita)",
+ "credit": "魔王魂 (maou.audio)",
+ "source_site": "https://maou.audio/category/se/",
+ "mastering": {
+  "target_true_peak_db": -3.0,
+  "codec": "libmp3lame -b:a 96k"
+ },
+ "tracks": [
+  {
+   "out": "sfx-select.mp3",
+   "cue": "select",
+   "source_title": "システム26",
+   "source_note": "決定音。（0.131s，全池最短的「決定音」，频谱是一条明亮短促的宽带脉冲）",
+   "page": "https://maou.audio/se_system26/",
+   "mp3": "https://maou.audio/sound/se/maou_se_system26.mp3",
+   "used_for": "选项被按下的轻点反馈（不抢戏，所以取全池最短的一条）",
+   "artist": "森田交一 (Koichi Morita)",
+   "credit": "魔王魂 (maou.audio)",
+   "licence": "CC BY 4.0",
+   "licence_url": "https://maou.audio/rule/",
+   "source_meta": {
+    "duration": 0.131,
+    "kbps": 160,
+    "sample_rate": 44100,
+    "channels": 2
+   },
+   "gain_applied_db": -1.7,
+   "mastered": {
+    "duration": 0.116,
+    "kbps": 155,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bytes": 2238
+   },
+   "loudness": {
+    "lufs": -70.0,
+    "lra": 0.0,
+    "true_peak_db": -2.4
+   }
+  },
+  {
+   "out": "sfx-confirm.mp3",
+   "cue": "confirm",
+   "source_title": "システム44",
+   "source_note": "決定音。（0.444s，瞬态锐利、衰减干净，频谱呈单次宽带爆发）",
+   "page": "https://maou.audio/se_system44/",
+   "mp3": "https://maou.audio/sound/se/maou_se_system44.mp3",
+   "used_for": "提交问卷 / 确认退出 / 结局确认——不可逆动作的确认音",
+   "artist": "森田交一 (Koichi Morita)",
+   "credit": "魔王魂 (maou.audio)",
+   "licence": "CC BY 4.0",
+   "licence_url": "https://maou.audio/rule/",
+   "source_meta": {
+    "duration": 0.444,
+    "kbps": 160,
+    "sample_rate": 44100,
+    "channels": 2
+   },
+   "gain_applied_db": -8.3,
+   "mastered": {
+    "duration": 0.429,
+    "kbps": 112,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bytes": 5999
+   },
+   "loudness": {
+    "lufs": -22.6,
+    "lra": 0.0,
+    "true_peak_db": -5.3
+   }
+  },
+  {
+   "out": "sfx-cancel.mp3",
+   "cue": "cancel",
+   "source_title": "システム18",
+   "source_note": "キャンセル音。（0.287s，作者明确标注为取消音，衰减极快）",
+   "page": "https://maou.audio/se_system18/",
+   "mp3": "https://maou.audio/sound/se/maou_se_system18.mp3",
+   "used_for": "返回上一题 / 取消退出 / 关闭弹窗",
+   "artist": "森田交一 (Koichi Morita)",
+   "credit": "魔王魂 (maou.audio)",
+   "licence": "CC BY 4.0",
+   "licence_url": "https://maou.audio/rule/",
+   "source_meta": {
+    "duration": 0.287,
+    "kbps": 160,
+    "sample_rate": 44100,
+    "channels": 2
+   },
+   "gain_applied_db": -2.0,
+   "mastered": {
+    "duration": 0.272,
+    "kbps": 121,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bytes": 4119
+   },
+   "loudness": {
+    "lufs": -70.0,
+    "lra": 0.0,
+    "true_peak_db": -3.5
+   }
+  },
+  {
+   "out": "sfx-page.mp3",
+   "cue": "page",
+   "source_title": "紙01",
+   "source_note": "紙をめくる音。（1.176s，频谱为两段宽带噪声，即两下翻纸）",
+   "page": "https://maou.audio/se_sound_paper01/",
+   "mp3": "https://maou.audio/sound/se/maou_se_sound_paper01.mp3",
+   "used_for": "推进到下一段剧情 / 下一页",
+   "artist": "森田交一 (Koichi Morita)",
+   "credit": "魔王魂 (maou.audio)",
+   "licence": "CC BY 4.0",
+   "licence_url": "https://maou.audio/rule/",
+   "source_meta": {
+    "duration": 1.175,
+    "kbps": 160,
+    "sample_rate": 44100,
+    "channels": 2
+   },
+   "gain_applied_db": 0.9,
+   "mastered": {
+    "duration": 1.116,
+    "kbps": 101,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bytes": 14150
+   },
+   "loudness": {
+    "lufs": -21.7,
+    "lra": 0.0,
+    "true_peak_db": -3.4
+   }
+  },
+  {
+   "out": "sfx-transition.mp3",
+   "cue": "transition",
+   "source_title": "スイッチ01",
+   "source_note": "スイッチ音。（0.549s，全池最轻的一条：RMS −26.8dB，切换类语义）",
+   "page": "https://maou.audio/se_sound_switch01/",
+   "mp3": "https://maou.audio/sound/se/maou_se_sound_switch01.mp3",
+   "used_for": "页/场景切换（含进入结局）——最轻，避免每次换页都「啪」一下",
+   "artist": "森田交一 (Koichi Morita)",
+   "credit": "魔王魂 (maou.audio)",
+   "licence": "CC BY 4.0",
+   "licence_url": "https://maou.audio/rule/",
+   "source_meta": {
+    "duration": 0.548,
+    "kbps": 160,
+    "sample_rate": 44100,
+    "channels": 2
+   },
+   "gain_applied_db": -2.9,
+   "mastered": {
+    "duration": 0.519,
+    "kbps": 107,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bytes": 6940
+   },
+   "loudness": {
+    "lufs": -22.4,
+    "lra": 0.0,
+    "true_peak_db": -3.3
+   }
+  }
+ ]
+}

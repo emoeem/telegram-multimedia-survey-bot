@@ -7,6 +7,7 @@ import { useDialogs } from "../components/Dialogs";
 import { loadGlobalPreset, saveGlobalPreset, themeBackgroundStyle, themeCssVars, ThemePickerSheet, useResolvedPreset } from "./theme-ui";
 import { createTrialShare } from "./plaza-api";
 import { BottomNav } from "./BottomNav";
+import { closeWebApp } from "./navigation";
 import {
   fetchTrialActiveRun,
   fetchTrialHistory,
@@ -70,18 +71,6 @@ const SHOP_PRICES: Record<string, number> = Object.fromEntries(
   TRIAL_SHOP_CONFIG.items.map((item) => [item.kind, item.price]),
 );
 
-function closeTrialPage(): void {
-  if (window.Telegram?.WebApp?.close) {
-    window.Telegram.WebApp.close();
-    return;
-  }
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  // Standalone tab (deep link / browser preview): go back to the survey hub.
-  window.location.replace("/s");
-}
 
 function formatDayTime(iso: string): string {
   if (!iso) return "";
@@ -601,7 +590,7 @@ export function TrialScreen() {
             aria-label="退出挑战"
             title="退出挑战"
             className="survey-icon-btn"
-            onClick={closeTrialPage}
+            onClick={() => closeWebApp()}
           >
             <X className="h-4 w-4" />
           </button>
@@ -661,7 +650,7 @@ export function TrialScreen() {
           </button>
           <button
             type="button"
-            onClick={closeTrialPage}
+            onClick={() => closeWebApp()}
             className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-medium text-[var(--survey-muted)]"
           >
             离开

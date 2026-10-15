@@ -20,6 +20,7 @@ import { checkRateLimit } from "../services/rate-limit.service";
 import { evaluateAchievements, serializeUnlockedAchievements } from "../services/achievement.service";
 import { loadSystemSettings } from "../services/system-settings.service";
 import { resolveSubmissionBotUrl } from "../services/contact-links.service";
+import { resolvePublicOrigin } from "../services/public-origin.service";
 import {
   getPublishedGalleryMedia,
   listProfileGalleryItems,
@@ -343,7 +344,7 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
         authorTelegramUserId: Number(author.telegram_user_id),
         commenterTelegramUserId: participant.telegramUserId ?? 0,
         commentContent: content,
-        origin: url.origin,
+        origin: resolvePublicOrigin(env, url.origin),
       });
     }
     // The optimistic UI appends this payload verbatim: an attributed comment

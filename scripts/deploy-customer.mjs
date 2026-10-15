@@ -48,6 +48,7 @@ function parseArgs(argv) {
     "admin-id",
     "license-key",
     "license-server-url",
+    "console-origin",
     "worker-name",
     "account-id",
     "api-token",
@@ -109,6 +110,10 @@ Windows 客户部署工具
   --admin-id <ID[,ID...]>      管理员 Telegram 数字 ID
   --license-key <密钥>         厂商发放的软件授权密钥
   --license-server-url <URL>   授权中心地址
+  --console-origin <源[,源]>   允许只读读取本实例的后台页面源（多个用逗号分隔）。
+                               默认只有授权中心地址；后台若也挂在别的域名
+                               （例如国内中继域名）上，必须把它一并列出，
+                               否则控制台的「客户数据」会报连不上实例。
   --worker-name <名称>         Cloudflare Worker 名称
   --account-id <ID>            Cloudflare Account ID
   --api-token <Token>          Cloudflare API Token（建议使用环境变量）
@@ -139,6 +144,27 @@ function makeSlug(customerName) {
   const base = normalizeName(customerName) || "customer";
   const suffix = createHash("sha256").update(customerName).digest("hex").slice(0, 8);
   return `survey-${base.slice(0, 32)}-${suffix}`;
+}
+
+/**
+ * Origins the vendor console may be opened on when reading this instance.
+ *
+ * Explicit `--console-origin` wins, then whatever the deployment already records
+ * (its config or its manifest, so an upgrade keeps what was verified), and an
+ * empty list means "omit the variable": the instance then accepts only the
+ * authorization center's address, the behaviour every deployment had before
+ * this flag existed.
+ */
+function parseConsoleOrigins(values, recorded = "") {
+  const explicit = values["console-origin"]?.trim() ?? "";
+  return [
+    ...new Set(
+      (explicit || recorded)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function validateWorkerName(workerName) {
@@ -555,6 +581,7 @@ function buildWranglerConfig({
   workerName,
   adminIds,
   licenseServerUrl,
+  consoleOrigins = [],
   installationId,
   resources,
   accountId,
@@ -597,6 +624,11 @@ function buildWranglerConfig({
     // third parties with a product the customer only licensed).
     `DEPLOYMENT_ROLE = ${tomlString("customer")}`,
     `ADMIN_IDS = ${tomlString(adminIds)}`,
+    // The console reads this instance directly from the vendor's browser, and
+    // CORS matches the *page's* origin: listing only LICENSE_SERVER_URL breaks
+    // "客户数据" the moment an admin opens the console on any other host the
+    // center is reachable at (the mainland relay domain, for instance).
+    ...(consoleOrigins.length > 0 ? [`REMOTE_ACCESS_ORIGINS = ${tomlString(consoleOrigins.join(","))}`] : []),
     "",
     "[[d1_databases]]",
     `binding = ${tomlString("DB")}`,
@@ -776,6 +808,10 @@ async function deploy(args, values) {
   await fs.mkdir(deploymentDir, { recursive: true });
   const manifestPath = path.join(deploymentDir, "deployment-manifest.json");
   const existingManifest = await readJsonIfExists(manifestPath);
+  const consoleOrigins = parseConsoleOrigins(
+    values,
+    Array.isArray(existingManifest?.consoleOrigins) ? existingManifest.consoleOrigins.join(",") : "",
+  );
   const surveyCodePepper = existingManifest?.surveyCodePepperConfigured ? "" : randomBytes(32).toString("hex");
   const pendingLicensePath = path.join(deploymentDir, ".pending-license.json");
   const pendingLicense = await readJsonIfExists(pendingLicensePath);
@@ -840,6 +876,7 @@ async function deploy(args, values) {
     workerName,
     adminIds,
     licenseServerUrl,
+    consoleOrigins,
     installationId,
     resources,
     accountId,
@@ -929,6 +966,10 @@ async function deploy(args, values) {
       adminPassword,
       remoteAccessSecret,
       surveyCodePepperConfigured: true,
+      // Reused by `--update-existing` so a later upgrade keeps the console
+      // origins the panel was verified against instead of silently reverting to
+      // "the center's own address only".
+      ...(consoleOrigins.length > 0 ? { consoleOrigins } : {}),
     });
     try {
       await fs.unlink(pendingLicensePath);
@@ -989,6 +1030,15 @@ async function updateDeployment(args, values) {
   const adminIds = readTomlValue(existingConfig, "ADMIN_IDS");
   const licenseServerUrl = readTomlValue(existingConfig, "LICENSE_SERVER_URL") || DEFAULT_LICENSE_SERVER_URL;
   const installationId = readTomlValue(existingConfig, "INSTALLATION_ID") || manifest.installationId || "";
+  // The config is authoritative: an operator may have set the console origins
+  // by hand there, and an upgrade must not silently drop them (the deploy uses
+  // --keep-vars, so a variable missing from the new config would survive
+  // remotely while the file no longer documents it).
+  const consoleOrigins = parseConsoleOrigins(
+    values,
+    readTomlValue(existingConfig, "REMOTE_ACCESS_ORIGINS") ||
+      (Array.isArray(manifest.consoleOrigins) ? manifest.consoleOrigins.join(",") : ""),
+  );
   // Prefer explicit flags, then the account recorded at deploy time. Reading
   // only the environment meant a runner updating a cross-account customer
   // silently deployed it into the VENDOR's account instead.
@@ -1006,6 +1056,7 @@ async function updateDeployment(args, values) {
     workerName: manifest.workerName,
     adminIds,
     licenseServerUrl,
+    consoleOrigins,
     installationId,
     resources: manifest.resources,
     accountId,
@@ -1036,6 +1087,7 @@ async function updateDeployment(args, values) {
         appVersion: APP_VERSION,
         updatedAt: new Date().toISOString(),
         surveyCodePepperConfigured: true,
+        ...(consoleOrigins.length > 0 ? { consoleOrigins } : {}),
       });
     }
   } finally {

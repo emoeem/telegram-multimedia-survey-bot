@@ -419,16 +419,21 @@ interface AnswerValues {
   jsonValue?: string | null;
 }
 
-async function upsertAnswerValues(
+/**
+ * The answer-row upsert as a prepared statement.
+ *
+ * Callers that touch the same answer more than once (`answer_options`,
+ * `answer_media`) address the row by `(response_id, question_id)` in a
+ * subquery instead of reading its id back first: the id costs a round trip of
+ * its own, and inside a `db.batch()` the follow-up statements cannot depend on
+ * a previous statement's result anyway.
+ */
+function upsertAnswerStatement(
   db: D1Database,
-  input: {
-    responseId: number;
-    questionId: number;
-    values: AnswerValues;
-  },
-): Promise<number> {
+  input: { responseId: number; questionId: number; values: AnswerValues },
+): D1PreparedStatement {
   const timestamp = nowIso();
-  await db
+  return db
     .prepare(
       `INSERT INTO answers (
         response_id, question_id, text_value, number_value,
@@ -461,8 +466,117 @@ async function upsertAnswerValues(
       input.values.jsonValue ?? null,
       timestamp,
       timestamp,
-    )
-    .run();
+    );
+}
+
+/** Single-statement saves (text/number/date/time/json) for the batched answer path. */
+export function upsertAnswerValueStatement(
+  db: D1Database,
+  input: { responseId: number; questionId: number; values: AnswerValues },
+): D1PreparedStatement {
+  return upsertAnswerStatement(db, input);
+}
+
+/** Statements that detach every option/media link of one answer and drop the answer row. */
+export function clearAnswerStatements(
+  db: D1Database,
+  responseId: number,
+  questionId: number,
+): D1PreparedStatement[] {
+  const scope = "SELECT id FROM answers WHERE response_id = ? AND question_id = ?";
+  const scopeBinds = [responseId, questionId];
+  return [
+    db.prepare(`DELETE FROM answer_media WHERE answer_id IN (${scope})`).bind(...scopeBinds),
+    db.prepare(`DELETE FROM answer_options WHERE answer_id IN (${scope})`).bind(...scopeBinds),
+    db.prepare("DELETE FROM answers WHERE response_id = ? AND question_id = ?").bind(...scopeBinds),
+  ];
+}
+
+/**
+ * Statements of an option answer (single/yes_no/rating/multiple): the answer
+ * row, then its option links rebuilt from the submitted selection.
+ *
+ * `json_value` and `answer_options` must agree — statistics and exports read
+ * them separately — so the clear and the re-insert ride in one immutable group
+ * with the upsert and commit as a unit.
+ */
+export function optionAnswerStatements(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    selectedOptionIds: number[];
+    booleanValue?: boolean | null;
+    ratingValue?: number | null;
+  },
+): D1PreparedStatement[] {
+  const selectedOptionIds = [...new Set(input.selectedOptionIds)];
+  const timestamp = nowIso();
+  return [
+    upsertAnswerStatement(db, {
+      responseId: input.responseId,
+      questionId: input.questionId,
+      values: {
+        ...(input.booleanValue !== undefined ? { booleanValue: input.booleanValue } : {}),
+        ...(input.ratingValue !== undefined ? { ratingValue: input.ratingValue } : {}),
+        jsonValue: JSON.stringify(selectedOptionIds),
+      },
+    }),
+    db
+      .prepare(
+        `DELETE FROM answer_options WHERE answer_id IN (
+           SELECT id FROM answers WHERE response_id = ? AND question_id = ?
+         )`,
+      )
+      .bind(input.responseId, input.questionId),
+    ...selectedOptionIds.map((optionId) =>
+      db
+        .prepare(
+          `INSERT INTO answer_options (answer_id, question_option_id, created_at)
+           SELECT id, ?, ? FROM answers WHERE response_id = ? AND question_id = ?`,
+        )
+        .bind(optionId, timestamp, input.responseId, input.questionId),
+    ),
+  ];
+}
+
+/** Statements of a media answer: the answer row plus its single media link. */
+export function mediaAnswerStatements(
+  db: D1Database,
+  input: { responseId: number; questionId: number; mediaAssetId: number },
+): D1PreparedStatement[] {
+  const timestamp = nowIso();
+  return [
+    upsertAnswerStatement(db, {
+      responseId: input.responseId,
+      questionId: input.questionId,
+      values: { jsonValue: JSON.stringify({ mediaAssetId: input.mediaAssetId }) },
+    }),
+    db
+      .prepare(
+        `DELETE FROM answer_media WHERE answer_id IN (
+           SELECT id FROM answers WHERE response_id = ? AND question_id = ?
+         )`,
+      )
+      .bind(input.responseId, input.questionId),
+    db
+      .prepare(
+        `INSERT INTO answer_media (answer_id, media_asset_id, sort_order, created_at)
+         SELECT id, ?, 0, ? FROM answers WHERE response_id = ? AND question_id = ?`,
+      )
+      .bind(input.mediaAssetId, timestamp, input.responseId, input.questionId),
+  ];
+}
+
+async function upsertAnswerValues(
+  db: D1Database,
+  input: {
+    responseId: number;
+    questionId: number;
+    values: AnswerValues;
+  },
+): Promise<number> {
+  await upsertAnswerStatement(db, input).run();
 
   const answer = await db
     .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
@@ -556,33 +670,8 @@ export async function upsertOptionAnswer(
     ratingValue?: number | null;
   },
 ): Promise<void> {
-  const timestamp = nowIso();
-  const answerId = await upsertAnswerValues(db, {
-    responseId: input.responseId,
-    questionId: input.questionId,
-    values: {
-      ...(input.booleanValue !== undefined ? { booleanValue: input.booleanValue } : {}),
-      ...(input.ratingValue !== undefined ? { ratingValue: input.ratingValue } : {}),
-      jsonValue: JSON.stringify(input.selectedOptionIds),
-    },
-  });
-
-  // The clear and the re-insert must be one atomic group: running them as two
-  // statements could leave `answers.json_value` listing options while
-  // `answer_options` was already emptied, which statistics and exports read
-  // differently. A D1 batch commits as a unit.
-  await db.batch([
-    db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answerId),
-    ...input.selectedOptionIds.map((optionId) =>
-      db
-        .prepare(
-          `INSERT INTO answer_options (
-              answer_id, question_option_id, created_at
-            ) VALUES (?, ?, ?)`,
-        )
-        .bind(answerId, optionId, timestamp),
-    ),
-  ]);
+  // One batch, one round trip: see optionAnswerStatements.
+  await db.batch(optionAnswerStatements(db, input));
 }
 
 export async function upsertMediaAnswer(

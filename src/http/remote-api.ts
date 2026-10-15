@@ -20,28 +20,63 @@ export interface RemoteApiEnv {
   INSTALLATION_ID?: string;
   /** Shared with the center; signs the short-lived read tokens. */
   REMOTE_ACCESS_SECRET?: string;
-  /** The center's own origin, the only one allowed by CORS. */
+  /** The center's own address; its origin is trusted when no list is configured. */
   LICENSE_SERVER_URL?: string;
+  /**
+   * Every origin the vendor console is opened on, comma separated.
+   *
+   * CORS matches the origin of the **page**, not the host the request lands on,
+   * and the console is reachable on more than one: the center's own
+   * `<account>.workers.dev` hostname plus whichever domain the bot hands admins
+   * (`PUBLIC_ORIGIN` on the center — the mainland relay domain, for instance).
+   * Trusting only `LICENSE_SERVER_URL` therefore fails as soon as an admin
+   * opens the console anywhere else, and the browser can only report it as
+   * "cannot reach the instance", which points at the wrong thing entirely.
+   *
+   * Unset keeps the previous behaviour: `LICENSE_SERVER_URL`'s origin only.
+   */
+  REMOTE_ACCESS_ORIGINS?: string;
 }
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 25;
 
-function centerOrigin(env: RemoteApiEnv): string {
+/** A configured value reduced to a bare origin, or "" when it is unusable. */
+function normalizeOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
   try {
-    return new URL(env.LICENSE_SERVER_URL ?? "").origin;
+    const url = new URL(trimmed);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : "";
   } catch {
     return "";
   }
 }
 
+function centerOrigin(env: RemoteApiEnv): string {
+  return normalizeOrigin(env.LICENSE_SERVER_URL ?? "");
+}
+
+/** Origins whose pages may read this instance's data. */
+export function allowedConsoleOrigins(env: RemoteApiEnv): string[] {
+  const configured = (env.REMOTE_ACCESS_ORIGINS ?? "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter((origin) => origin !== "");
+  if (configured.length > 0) return configured;
+  const center = centerOrigin(env);
+  return center ? [center] : [];
+}
+
 function corsHeaders(request: Request, env: RemoteApiEnv): Record<string, string> {
   const origin = request.headers.get("Origin") ?? "";
-  const allowed = centerOrigin(env);
-  // Never fall back to `*`: this endpoint exposes customer data.
-  if (!allowed || origin !== allowed) return {};
+  const allowed = allowedConsoleOrigins(env);
+  // Never fall back to `*`: this endpoint exposes customer data. Echo back the
+  // caller's own origin, so one instance allows several console hosts without
+  // ever widening the response to an origin that was not configured.
+  if (!origin || !allowed.includes(origin)) return {};
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "600",

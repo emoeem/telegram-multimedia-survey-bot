@@ -1,0 +1,17 @@
+# 中继项目的构建根目录是 cn-relay/（Vercel 项目的 Root Directory 设为 cn-relay），
+# 仓库其余部分与它无关。而 blog-source-migrate/（嵌套仓库）、scripts/、tg-archive/、
+# qa/ 等目录体积很大：不忽略它们时 `vercel deploy` 要上传 166MB，忽略后只有几 MB。
+# Vercel 的 Git 构建不受此文件影响——它只看 Root Directory。
+/blog-source-migrate/
+/scripts/
+/tg-archive/
+/qa/
+/delivery/
+/.venv/
+/.pdf-tools-venv/
+/.backup/
+/.wrangler-home/
+/.npm/
+/.pytest_cache/
+/test-results/
+/playwright-report/

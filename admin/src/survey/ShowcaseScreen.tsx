@@ -346,7 +346,7 @@ export function ShowcaseScreen() {
             >
               <Palette className="h-4 w-4" />
             </button>
-            <button type="button" className="showcase-icon-btn" aria-label="关闭" onClick={closeWebApp}>
+            <button type="button" className="showcase-icon-btn" aria-label="关闭" onClick={() => closeWebApp()}>
               <X className="h-4 w-4" />
             </button>
           </div>

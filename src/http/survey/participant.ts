@@ -6,6 +6,7 @@ import { getUserById, getUserByTelegramId, upsertUser } from "../../db/repositor
 import { getEmailAccountById } from "../../db/repositories/email-account.repository";
 import { verifyEmailSessionToken } from "../../services/email-auth.service";
 import { getParticipantLink, participantHashForKey } from "../../db/repositories/participant-link.repository";
+import { RELAY_OBSCURED_GEO_KEYS, type ClientIdentity } from "../../services/client-identity.service";
 import { fail } from "../api-response";
 
 export const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
@@ -187,8 +188,14 @@ export function sanitizeHeader(value: string | null, maxLength: number): string 
 /**
  * Merges Cloudflare request geo metadata and referrer into the client-provided
  * browser info JSON so anonymous web responses show more useful context.
+ *
+ * `identity` decides which geo fields are believable. Cloudflare describes the
+ * *peer* it saw, which behind the mainland-China relay is the relay's own POP
+ * (Hong Kong/Singapore) rather than the respondent: keeping those fields would
+ * file a Guangdong visitor under `HK` and turn the consistency check below into
+ * a false "environment mismatch" for every domestic answer.
  */
-export function enrichBrowserInfo(raw: string | null, request: Request): string {
+export function enrichBrowserInfo(raw: string | null, request: Request, identity: ClientIdentity): string {
   let info: Record<string, unknown> = {};
   if (raw) {
     try {
@@ -208,7 +215,16 @@ export function enrichBrowserInfo(raw: string | null, request: Request): string 
       geo[key] = String(value);
     }
   }
+  if (identity.relayed) {
+    info.viaRelay = true;
+    for (const key of RELAY_OBSCURED_GEO_KEYS) delete geo[key];
+    if (identity.country) geo.country = identity.country;
+    else delete geo.country;
+  }
+  // `geo` is edge-observed; a client-supplied copy must never survive, or a
+  // respondent could hand themselves a country that matches their timezone.
   if (Object.keys(geo).length) info.geo = geo;
+  else delete info.geo;
   if (!info.referrer) {
     const referer = request.headers.get("referer") ?? request.headers.get("referrer");
     if (referer) info.referrer = referer.replace(/[\r\n]/g, "").slice(0, 500);

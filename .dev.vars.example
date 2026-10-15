@@ -31,3 +31,14 @@ REPORT_CHANNEL_ID = ""
 # 广场同步频道：发布到画廊的资料卡、树洞新投稿会自动转发到该频道。
 # 同样把 Bot 添加为频道管理员后填入频道 ID；也可以在后台「设置」里配置。
 PLAZA_CHANNEL_ID = ""
+
+# 面向用户的绝对链接使用哪个 origin（Telegram 按钮、后台登录直链、og: 元数据）。
+# 留空则回退为「请求到达时的 origin」，本地开发和单域名部署保持留空即可；
+# 只有当 webhook 落在 workers.dev、而用户必须走自定义域名时才需要钉住。
+PUBLIC_ORIGIN = ""
+
+# 中国大陆中继（cn-relay/）用来证明自己身份的共享密钥，形如
+# `openssl rand -hex 32`。中继会在 x-relay-token 里带上它，Worker 校验通过后才
+# 采信中继转发的访客真实 IP 与国家；不配置则一律按对端 IP 判定（改造前的行为）。
+# 生产环境用 `wrangler secret put RELAY_SECRET` 写入，不要写进 wrangler.toml。
+RELAY_SECRET = ""

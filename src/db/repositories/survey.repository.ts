@@ -108,6 +108,22 @@ export async function getSurveyById(db: D1Database, id: number): Promise<Survey 
   return row ? mapSurvey(row) : null;
 }
 
+/**
+ * Statement form of {@link getSurveyById} for callers that read the survey
+ * together with its flow and want the whole set in one D1 round trip: every
+ * statement in a `db.batch()` travels in a single request, while each
+ * standalone query costs its own round trip to the database's region.
+ */
+export function getSurveyByIdStatement(db: D1Database, id: number): D1PreparedStatement {
+  return db.prepare("SELECT * FROM surveys WHERE id = ? AND deleted_at IS NULL LIMIT 1").bind(id);
+}
+
+/** Reads the row {@link getSurveyByIdStatement} selected out of a batch result. */
+export function mapSurveyStatementResult(result: D1Result<unknown> | undefined): Survey | null {
+  const row = (result?.results ?? [])[0] as SurveyRow | undefined;
+  return row ? mapSurvey(row) : null;
+}
+
 export async function updateSurveyResponsePolicy(
   db: D1Database,
   surveyId: number,

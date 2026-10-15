@@ -75,6 +75,43 @@ export async function listQuestionsBySurvey(db: D1Database, surveyId: number): P
   return (result.results ?? []).map(mapQuestion);
 }
 
+/**
+ * Statement forms of the two flow reads, for callers that fetch a survey's
+ * whole definition — and, on the answer path, the in-progress response — in one
+ * `db.batch()` round trip instead of one round trip per query.
+ *
+ * The options read joins the questions table rather than binding a list of
+ * question ids: a survey's question count is unbounded (D1 rejects a statement
+ * with more than ~100 bound parameters), and the join lets both flow reads be
+ * prepared before either result is known, which a batch requires.
+ */
+export function listQuestionsBySurveyStatement(db: D1Database, surveyId: number): D1PreparedStatement {
+  return db
+    .prepare('SELECT * FROM survey_questions WHERE survey_id = ? ORDER BY "order" ASC, id ASC')
+    .bind(surveyId);
+}
+
+export function listOptionsForSurveyStatement(db: D1Database, surveyId: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `SELECT o.* FROM question_options o
+         JOIN survey_questions q ON q.id = o.question_id
+        WHERE q.survey_id = ?
+        ORDER BY o.question_id ASC, o."order" ASC, o.id ASC`,
+    )
+    .bind(surveyId);
+}
+
+/** Reads the questions {@link listQuestionsBySurveyStatement} selected out of a batch result. */
+export function mapQuestionRows(result: D1Result<unknown> | undefined): SurveyQuestion[] {
+  return ((result?.results ?? []) as QuestionRow[]).map(mapQuestion);
+}
+
+/** Reads the options {@link listOptionsForSurveyStatement} selected out of a batch result. */
+export function mapOptionRows(result: D1Result<unknown> | undefined): QuestionOption[] {
+  return ((result?.results ?? []) as QuestionOptionRow[]).map(mapOption);
+}
+
 export async function listOptionsForQuestions(db: D1Database, questionIds: number[]): Promise<QuestionOption[]> {
   const uniqueQuestionIds = [...new Set(questionIds)];
   if (uniqueQuestionIds.length === 0) {

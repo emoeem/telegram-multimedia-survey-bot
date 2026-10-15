@@ -758,6 +758,8 @@ export interface EditorData {
   };
   questions: EditorQuestion[];
   pages: Array<{ id: number; title: string | null; description: string | null; order: number }>;
+  /** 作者侧金币解锁配置（缺行 = 免费问卷，由服务端补默认值）。 */
+  coinAccess?: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
 }
 
 export interface UserDirectoryItem {

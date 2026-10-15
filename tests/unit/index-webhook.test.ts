@@ -136,6 +136,32 @@ describe("telegram webhook idempotency wiring", () => {
     expect(mocks.release).not.toHaveBeenCalled();
   });
 
+  it("pins bot links to PUBLIC_ORIGIN instead of the hostname the webhook arrived on", async () => {
+    // The webhook deliberately keeps arriving on workers.dev (delivery must not
+    // depend on a custom domain's DNS), so links built from request.url would
+    // hand users the SNI-blocked hostname. PUBLIC_ORIGIN is what fixes that.
+    const env = { ...createEnv(), PUBLIC_ORIGIN: "https://emoe.eu.cc/" };
+    await worker.fetch(
+      webhookRequest({ update_id: 5010, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }),
+      env as never,
+    );
+
+    const context = (mocks.handleTelegramUpdate.mock.calls[0] as unknown[])[1] as { origin?: string };
+    expect(context.origin).toBe("https://emoe.eu.cc");
+  });
+
+  it("falls back to the request origin when PUBLIC_ORIGIN is unset", async () => {
+    // Single-hostname deployments and `wrangler dev` must be unaffected.
+    const env = createEnv();
+    await worker.fetch(
+      webhookRequest({ update_id: 5011, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }),
+      env as never,
+    );
+
+    const context = (mocks.handleTelegramUpdate.mock.calls[0] as unknown[])[1] as { origin?: string };
+    expect(context.origin).toBe("https://example.test");
+  });
+
   it("skips a duplicate delivery without re-running side effects", async () => {
     mocks.claim.mockResolvedValue(false);
     const env = createEnv();
@@ -254,7 +280,10 @@ describe("telegram webhook idempotency wiring", () => {
   it("rejects a webhook with the wrong secret", async () => {
     const env = createEnv();
     const response = await worker.fetch(
-      webhookRequest({ update_id: 5004, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }, "nope"),
+      webhookRequest(
+        { update_id: 5004, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } },
+        "nope",
+      ),
       env as never,
     );
 

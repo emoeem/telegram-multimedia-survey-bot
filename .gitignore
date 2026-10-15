@@ -15,3 +15,16 @@ customer-deployments/
 .license-admin.env
 .pending-license.json
 .customer-secrets.tmp
+qa/.media-cache/
+.vercel
+
+# 素材下载/解包缓存（体积大，可由脚本重新生成）
+scripts/galgame/.sprite-raw/
+scripts/galgame/.sprite-cache/
+scripts/galgame/.bgm-cache/
+scripts/galgame/.se-cache/
+scripts/galgame/.se-raw/
+# QA 运行产物（截图、页面转储、几何数据）
+qa/artifacts/
+# 交付目录中的递归副本（误拷贝，不纳入版本库；delivery 其余内容已被跟踪）
+delivery/*/delivery/

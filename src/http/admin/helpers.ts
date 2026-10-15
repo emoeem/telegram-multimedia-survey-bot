@@ -269,7 +269,7 @@ export function normalizeQuestionCondition(
       }
       rules.push({ optionId, targetQuestionId });
     }
-  } else {
+  } else if (value.optionId !== undefined || value.targetQuestionId !== undefined) {
     const optionId = Number(value.optionId);
     const targetQuestionId = Number(value.targetQuestionId);
     if (!Number.isInteger(optionId) || optionId <= 0 || !Number.isInteger(targetQuestionId) || targetQuestionId <= 0) {
@@ -277,12 +277,40 @@ export function normalizeQuestionCondition(
     }
     rules.push({ optionId, targetQuestionId });
   }
-  if (rules.length === 0) {
+  // answerRules are state-driven jumps evaluated against accumulated answers
+  // (also on note questions). The editor UI does not author them yet, but any
+  // stored condition must round-trip through a save instead of being dropped.
+  const answerRules: Array<{ questionId: number; equals: number; targetQuestionId: number }> = [];
+  if (value.answerRules !== undefined) {
+    if (!Array.isArray(value.answerRules)) return { error: "answerRules 必须是对象数组" };
+    for (const item of value.answerRules) {
+      if (!isRecord(item)) return { error: "answerRules 必须是对象数组" };
+      const questionId = Number(item.questionId);
+      const equals = Number(item.equals);
+      const targetQuestionId = Number(item.targetQuestionId);
+      if (
+        !Number.isInteger(questionId) ||
+        questionId <= 0 ||
+        !Number.isInteger(equals) ||
+        equals <= 0 ||
+        !Number.isInteger(targetQuestionId) ||
+        targetQuestionId <= 0
+      ) {
+        return { error: "answerRules 中的 questionId / equals / targetQuestionId 必须是正整数" };
+      }
+      answerRules.push({ questionId, equals, targetQuestionId });
+    }
+  }
+  if (rules.length === 0 && answerRules.length === 0) {
     return { conditionJson: null, skipToQuestionId: null };
   }
   return {
-    conditionJson: JSON.stringify({ kind: "option_equals", rules }),
-    skipToQuestionId: rules[0]!.targetQuestionId,
+    conditionJson: JSON.stringify({
+      kind: "option_equals",
+      ...(rules.length ? { rules } : {}),
+      ...(answerRules.length ? { answerRules } : {}),
+    }),
+    skipToQuestionId: rules[0]?.targetQuestionId ?? null,
   };
 }
 

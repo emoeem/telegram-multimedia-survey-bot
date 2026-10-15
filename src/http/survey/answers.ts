@@ -1,68 +1,75 @@
 import type { Env } from "../../index";
 import type { Answer, QuestionType, SurveyQuestion } from "../../db/schema";
+import { getMediaAssetById } from "../../db/repositories/media.repository";
 import {
-  createAnswerMedia,
-  getMediaAssetById,
-} from "../../db/repositories/media.repository";
-import {
-  upsertDateAnswer,
-  upsertJsonAnswer,
-  upsertMediaAnswer,
-  upsertNumberAnswer,
-  upsertOptionAnswer,
-  upsertTextAnswer,
-  upsertTimeAnswer,
+  clearAnswerStatements,
+  mediaAnswerStatements,
+  optionAnswerStatements,
+  upsertAnswerValueStatement,
 } from "../../db/repositories/response.repository";
-import { getSurveyFlow } from "../../services/question.service";
-import { getFirstQuestion, getNextQuestionAfterOption } from "../../survey/engine";
+import type { getSurveyFlow } from "../../services/question.service";
+import { getFirstQuestion, getNextQuestionAfterAnswers } from "../../survey/engine";
 import { getMatrixColumns } from "../../survey/question-presentation";
 import { fail } from "../api-response";
 
 type FlowQuestion = Awaited<ReturnType<typeof getSurveyFlow>>["questions"][number];
 
-/** Persists one web answer exactly as the bot handlers do (same upserts). */
-export async function saveWebAnswer(
+/**
+ * The writes one answer needs, or the error response that replaces them.
+ *
+ * Answers are *planned* rather than written here because the caller runs the
+ * whole interaction as a single `db.batch()` — the answer's own statements
+ * together with the response's current-question update. Each standalone
+ * statement costs a round trip to the database's region (~90ms from the Hong
+ * Kong edge), and "next question" is the interaction a respondent performs
+ * once per question, so its write path must not cost five of them.
+ */
+export type AnswerWritePlan = { statements: D1PreparedStatement[] } | { error: Response };
+
+/** Plans the writes for one web answer, using the same upserts as the bot. */
+export async function planWebAnswer(
   env: Env,
   responseId: number,
   question: FlowQuestion,
   value: unknown,
-): Promise<Response | null> {
+): Promise<AnswerWritePlan> {
   const type = question.type as QuestionType;
   // 剧情文段不收集答案；正常流程客户端不会为它发请求，这里兜底为成功，
   // 让"必答检查/续答重放"等路径不会因叙述节点而失败。
-  if (type === "note") return null;
+  if (type === "note") return { statements: [] };
   if (type === "single" || type === "yes_no" || type === "rating") {
     const optionId = Number(value);
     if (!Number.isInteger(optionId) || !question.options.some((option) => option.id === optionId)) {
-      return fail(400, "invalid_answer", "选项无效");
+      return { error: fail(400, "invalid_answer", "选项无效") };
     }
-    await upsertOptionAnswer(env.DB, {
-      responseId,
-      questionId: question.id,
-      selectedOptionIds: [optionId],
-      ...(type === "yes_no" ? { booleanValue: question.options[0]?.id === optionId } : {}),
-      ...(type === "rating" ? { ratingValue: ratingOptionValue(question, optionId) } : {}),
-    });
-    return null;
+    return {
+      statements: optionAnswerStatements(env.DB, {
+        responseId,
+        questionId: question.id,
+        selectedOptionIds: [optionId],
+        ...(type === "yes_no" ? { booleanValue: question.options[0]?.id === optionId } : {}),
+        ...(type === "rating" ? { ratingValue: ratingOptionValue(question, optionId) } : {}),
+      }),
+    };
   }
 
   if (type === "multiple") {
     if (!Array.isArray(value) || value.some((entry) => !Number.isInteger(Number(entry)))) {
-      return fail(400, "invalid_answer", "多选答案必须是选项 ID 数组");
+      return { error: fail(400, "invalid_answer", "多选答案必须是选项 ID 数组") };
     }
     const selectedOptionIds = value
       .map(Number)
       .filter((optionId) => question.options.some((option) => option.id === optionId));
     if (selectedOptionIds.length === 0) {
-      await deleteWebAnswer(env.DB, responseId, question.id);
-    } else {
-      await upsertOptionAnswer(env.DB, {
+      return { statements: clearAnswerStatements(env.DB, responseId, question.id) };
+    }
+    return {
+      statements: optionAnswerStatements(env.DB, {
         responseId,
         questionId: question.id,
         selectedOptionIds,
-      });
-    }
-    return null;
+      }),
+    };
   }
 
   if (type === "matrix") {
@@ -75,51 +82,81 @@ export async function saveWebAnswer(
       if (raw === undefined || raw === null) continue;
       const columnIndex = Number(raw);
       if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex >= columns.length) {
-        return fail(400, "invalid_answer", `矩阵题 ${row.label} 的列无效`);
+        return { error: fail(400, "invalid_answer", `矩阵题 ${row.label} 的列无效`) };
       }
       normalized[String(row.id)] = columnIndex;
     }
     if (Object.keys(normalized).length === 0) {
-      await deleteWebAnswer(env.DB, responseId, question.id);
-    } else {
-      await upsertJsonAnswer(env.DB, {
-        responseId,
-        questionId: question.id,
-        jsonValue: JSON.stringify({ kind: "matrix", selections: normalized }),
-      });
+      return { statements: clearAnswerStatements(env.DB, responseId, question.id) };
     }
-    return null;
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { jsonValue: JSON.stringify({ kind: "matrix", selections: normalized }) },
+        }),
+      ],
+    };
   }
 
   if (type === "text" || type === "long_text") {
-    if (typeof value !== "string") return fail(400, "invalid_answer", "文本答案必须是字符串");
-    await upsertTextAnswer(env.DB, { responseId, questionId: question.id, textValue: value });
-    return null;
+    if (typeof value !== "string") return { error: fail(400, "invalid_answer", "文本答案必须是字符串") };
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { textValue: value },
+        }),
+      ],
+    };
   }
 
   if (type === "number") {
     const numberValue = Number(value);
     if (typeof value !== "number" || !Number.isFinite(numberValue)) {
-      return fail(400, "invalid_answer", "数字答案必须是数字");
+      return { error: fail(400, "invalid_answer", "数字答案必须是数字") };
     }
-    await upsertNumberAnswer(env.DB, { responseId, questionId: question.id, numberValue });
-    return null;
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { numberValue },
+        }),
+      ],
+    };
   }
 
   if (type === "date") {
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return fail(400, "invalid_answer", "日期格式必须为 YYYY-MM-DD");
+      return { error: fail(400, "invalid_answer", "日期格式必须为 YYYY-MM-DD") };
     }
-    await upsertDateAnswer(env.DB, { responseId, questionId: question.id, dateValue: value });
-    return null;
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { dateValue: value },
+        }),
+      ],
+    };
   }
 
   if (type === "time") {
     if (typeof value !== "string" || !/^\d{2}:\d{2}$/.test(value)) {
-      return fail(400, "invalid_answer", "时间格式必须为 HH:MM");
+      return { error: fail(400, "invalid_answer", "时间格式必须为 HH:MM") };
     }
-    await upsertTimeAnswer(env.DB, { responseId, questionId: question.id, timeValue: value });
-    return null;
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { timeValue: value },
+        }),
+      ],
+    };
   }
 
   if (type === "image" || type === "video" || type === "audio" || type === "file") {
@@ -128,47 +165,34 @@ export async function saveWebAnswer(
         ? Number((value as { mediaAssetId?: unknown }).mediaAssetId)
         : Number(value);
     if (!Number.isInteger(mediaAssetId) || mediaAssetId <= 0) {
-      return fail(400, "invalid_answer", "媒体答案无效");
+      return { error: fail(400, "invalid_answer", "媒体答案无效") };
     }
     const asset = await getMediaAssetById(env.DB, mediaAssetId);
     if (!asset || asset.scope !== "response") {
-      return fail(404, "media_not_found", "媒体不存在");
+      return { error: fail(404, "media_not_found", "媒体不存在") };
     }
     // Ownership: response media is stored under "media:temp:<responseId>:…";
     // refuse assets uploaded for a different response so a participant cannot
     // attach (and thereby read) someone else's upload by enumerating ids.
     if (!asset.storageKey?.startsWith(`media:temp:${responseId}:`)) {
-      return fail(403, "media_forbidden", "媒体不属于当前答卷");
+      return { error: fail(403, "media_forbidden", "媒体不属于当前答卷") };
     }
-    const answerId = await upsertMediaAnswer(env.DB, {
-      responseId,
-      questionId: question.id,
-      mediaAssetId,
-    });
-    await createAnswerMedia(env.DB, { answerId, mediaAssetId });
-    return null;
+    return {
+      statements: mediaAnswerStatements(env.DB, {
+        responseId,
+        questionId: question.id,
+        mediaAssetId,
+      }),
+    };
   }
 
-  return fail(400, "unsupported_type", `不支持的题型：${type}`);
+  return { error: fail(400, "unsupported_type", `不支持的题型：${type}`) };
 }
 
 function ratingOptionValue(question: FlowQuestion, optionId: number): number | null {
   const option = question.options.find((item) => item.id === optionId);
   const candidate = Number(option?.value ?? option?.label ?? optionId);
   return Number.isFinite(candidate) ? candidate : null;
-}
-
-export async function deleteWebAnswer(db: D1Database, responseId: number, questionId: number): Promise<void> {
-  const answer = await db
-    .prepare("SELECT id FROM answers WHERE response_id = ? AND question_id = ? LIMIT 1")
-    .bind(responseId, questionId)
-    .first<{ id: number }>();
-  if (!answer) return;
-  await db.batch([
-    db.prepare("DELETE FROM answer_media WHERE answer_id = ?").bind(answer.id),
-    db.prepare("DELETE FROM answer_options WHERE answer_id = ?").bind(answer.id),
-    db.prepare("DELETE FROM answers WHERE id = ?").bind(answer.id),
-  ]);
 }
 
 /**
@@ -180,6 +204,14 @@ export function findMissingRequiredQuestion(
   answersByQuestion: Map<number, Answer>,
 ): SurveyQuestion | null {
   const visited = new Set<number>();
+  // answerRules jump on accumulated answers, so the walker needs every
+  // answered question's raw value (option id for single-type questions).
+  const valueById = new Map<number, unknown>();
+  const flowById = new Map(flowQuestions.map((question) => [question.id, question]));
+  for (const [questionId, answer] of answersByQuestion) {
+    const question = flowById.get(questionId);
+    if (question) valueById.set(questionId, selectedWebOptionId(question, answer));
+  }
   let current = getFirstQuestion({ questions: flowQuestions });
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
@@ -188,7 +220,7 @@ export function findMissingRequiredQuestion(
       return current;
     }
     const selectedOptionId = selectedWebOptionId(current, answer);
-    current = getNextQuestionAfterOption({ questions: flowQuestions }, current.id, selectedOptionId);
+    current = getNextQuestionAfterAnswers({ questions: flowQuestions }, current.id, selectedOptionId, valueById);
   }
   return null;
 }

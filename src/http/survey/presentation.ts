@@ -5,6 +5,12 @@ export function mediaPublicUrl(mediaId: number): string {
   return `/api/survey/media/${mediaId}`;
 }
 
+/** Media entry as the web player consumes it: a URL plus optional alt text. */
+function mediaView(entry: { mediaAssetId: number; altText?: string | null }): Record<string, unknown> {
+  const alt = (entry.altText ?? "").trim();
+  return alt ? { url: mediaPublicUrl(entry.mediaAssetId), alt } : { url: mediaPublicUrl(entry.mediaAssetId) };
+}
+
 export function parseValidation(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
@@ -22,8 +28,8 @@ export function parseSettings(value: string | null): Record<string, unknown> | n
 /** Projects a stored question into the shape the web player consumes. */
 export function questionView(
   question: SurveyQuestion,
-  options: Array<{ id: number; label: string; media: Array<{ mediaAssetId: number }> }>,
-  questionMedia: Array<{ mediaAssetId: number }>,
+  options: Array<{ id: number; label: string; media: Array<{ mediaAssetId: number; altText?: string | null }> }>,
+  questionMedia: Array<{ mediaAssetId: number; altText?: string | null }>,
 ): Record<string, unknown> {
   return {
     id: question.id,
@@ -37,11 +43,11 @@ export function questionView(
     settings: parseSettings(question.settingsJson),
     condition: parseValidation(question.conditionJson),
     skipToQuestionId: question.skipToQuestionId,
-    media: questionMedia.map((entry) => ({ url: mediaPublicUrl(entry.mediaAssetId) })),
+    media: questionMedia.map(mediaView),
     options: options.map((option) => ({
       id: option.id,
       label: option.label,
-      media: option.media.map((entry) => ({ url: mediaPublicUrl(entry.mediaAssetId) })),
+      media: option.media.map(mediaView),
     })),
   };
 }

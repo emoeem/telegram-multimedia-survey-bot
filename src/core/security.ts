@@ -15,11 +15,21 @@ function constantTimeTextEquals(expected: string, actual: string): boolean {
   return diff === 0;
 }
 
-export function isWebhookSecretValid(expected: string | undefined, actual: string | null): boolean {
+/**
+ * Constant-time comparison of a shared secret, used for the Telegram webhook
+ * header and for the mainland-China relay's `x-relay-token`. A missing
+ * expectation disables the check entirely, so a deployment that never
+ * configures the secret keeps its previous behaviour.
+ */
+export function isSharedSecretValid(expected: string | undefined, actual: string | null): boolean {
   if (!expected || !actual) {
     return false;
   }
   return constantTimeTextEquals(expected, actual);
+}
+
+export function isWebhookSecretValid(expected: string | undefined, actual: string | null): boolean {
+  return isSharedSecretValid(expected, actual);
 }
 
 function bytesToHex(bytes: Uint8Array): string {

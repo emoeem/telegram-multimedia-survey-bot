@@ -50,8 +50,18 @@ async function withinRetention(db: D1Database, target: TrashTarget, now = Date.n
   return Boolean(row?.deleted_at && row.deleted_at >= cutoff && row.deleted_at <= new Date(now).toISOString());
 }
 
-export async function handleAdminTrashRead(url: URL, env: Env, ctx: ReadContext): Promise<Response | null> {
+export async function handleAdminTrashRead(
+  request: Request,
+  url: URL,
+  env: Env,
+  ctx: ReadContext,
+): Promise<Response | null> {
   if (url.pathname !== "/api/admin/trash") return null;
+  // Only reads belong to this handler. Without the method guard a
+  // `POST`/`DELETE` to the same path was answered with the trash list (HTTP
+  // 200) before the write handler could run, so restore and permanent delete
+  // silently did nothing while the UI reported success.
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
   if (!ctx.isAdmin) return ctx.fail(403, "forbidden", "仅管理员可使用回收站");
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
   return ctx.json({ items: await listTrash(env.DB, Date.now(), limit), retentionDays: 30 });

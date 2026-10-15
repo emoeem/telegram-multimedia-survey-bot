@@ -89,7 +89,7 @@ describe("response repository", () => {
   });
 
   it("replaces option relations and writes normalized answer_options rows", async () => {
-    const { db, statements, batch } = createD1Mock();
+    const { db, batch } = createD1Mock();
 
     await upsertOptionAnswer(db, {
       responseId: 7,
@@ -97,22 +97,27 @@ describe("response repository", () => {
       selectedOptionIds: [101, 102],
     });
 
-    // The clear and the re-insert ship as ONE batch, so the delete is the first
-    // statement of that batch rather than a standalone write. Split across two
-    // statements, a failure in between left `answers.json_value` listing
+    // The answer row, the clear and the re-inserts ship as ONE batch: the
+    // answer id is addressed through a (response_id, question_id) subquery
+    // instead of being read back first, because that read costs a round trip of
+    // its own and a batch cannot depend on an earlier statement's result. Split
+    // across statements, a failure in between left `answers.json_value` listing
     // options while `answer_options` had already been emptied.
     const batchStatements = batch.mock.calls[0]?.[0] as CapturedStatement[];
-    expect(batchStatements).toHaveLength(3);
-    const [deleteStatement, ...insertedOptions] = batchStatements;
+    expect(batchStatements).toHaveLength(4);
+    const [answerUpsert, deleteStatement, ...insertedOptions] = batchStatements;
+    expect(answerUpsert?.sql).toContain("INSERT INTO answers");
+    expect(answerUpsert?.bindings[8]).toBe("[101,102]");
     expect(deleteStatement?.sql).toContain("DELETE FROM answer_options");
-    expect(deleteStatement?.bindings).toEqual([91]);
-    expect(insertedOptions.map((statement) => statement.bindings.slice(0, 2))).toEqual([
-      [91, 101],
-      [91, 102],
-    ]);
-
-    const answerInsert = statements.find((statement) => statement.sql.includes("INSERT INTO answers"));
-    expect(answerInsert?.bindings[8]).toBe("[101,102]");
+    expect(deleteStatement?.bindings).toEqual([7, 8]);
+    expect(insertedOptions).toHaveLength(2);
+    for (const statement of insertedOptions) {
+      expect(statement.sql).toContain("INSERT INTO answer_options");
+      expect(statement.sql).toContain("SELECT id, ?, ? FROM answers");
+      expect(statement.bindings).toHaveLength(4);
+    }
+    expect(insertedOptions.map((statement) => statement.bindings[0])).toEqual([101, 102]);
+    expect(insertedOptions[0]?.bindings.slice(2)).toEqual([7, 8]);
   });
 
   it("stores number, date, and time answers in their dedicated columns", async () => {
