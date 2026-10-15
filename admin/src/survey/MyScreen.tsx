@@ -10,21 +10,84 @@ import {
   ThemePickerSheet,
   useResolvedPreset,
 } from "./theme-ui";
-import { createMyShowcase, fetchMyOverview, markAchievementsSeen, type MyOverview } from "./api";
+import {
+  coinApi,
+  createMyShowcase,
+  fetchMyOverview,
+  markAchievementsSeen,
+  type CoinOverview,
+  type MyOverview,
+} from "./api";
 import { safeGet } from "./storage";
+import { closeWebApp } from "./navigation";
 
-function closeMyPage(): void {
-  const w = window as Window & { Telegram?: { WebApp?: { close?: () => void } } };
-  if (w.Telegram?.WebApp?.close) {
-    w.Telegram.WebApp.close();
-    return;
-  }
-  window.close();
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  window.location.href = "/s";
+
+/** 金币卡片（独立取数：金币服务不可用时不影响「我的」其他区块）。 */
+function CoinCard() {
+  const [overview, setOverview] = useState<CoinOverview | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = () => {
+    coinApi
+      .overview()
+      .then(setOverview)
+      .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    reload();
+  }, []);
+
+  const doCheckin = async () => {
+    setBusy(true);
+    try {
+      await coinApi.checkin();
+      reload();
+    } catch {
+      // 重复签到等错误静默；余额刷新即为反馈。
+      reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="coin-balance-card">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">我的金币</p>
+          <p className="mt-0.5 text-3xl font-black text-white">
+            {overview ? overview.balance : "—"}
+            <span className="ml-1.5 text-xs font-bold text-white/80">金币</span>
+          </p>
+          {overview ? (
+            <p className="mt-0.5 text-[11px] text-white/70">
+              连续签到 {overview.checkin.streak} 天 · 累计获得 {overview.totalEarned}
+            </p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="coin-checkin-btn"
+          disabled={busy || Boolean(overview?.checkin.checkedInToday)}
+          onClick={() => void doCheckin()}
+        >
+          {overview?.checkin.checkedInToday ? "已签到" : busy ? "…" : "签到"}
+        </button>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <a className="coin-entry-compact" href="/coins">
+          明细 / 任务
+        </a>
+        <a className="coin-entry-compact" href="/gacha">
+          报告抽卡
+        </a>
+        <a className="coin-entry-compact" href="/submissions">
+          投稿中心
+        </a>
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -102,7 +165,7 @@ export function MyScreen() {
             >
               <Palette className="h-4 w-4" />
             </button>
-            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={closeMyPage}>
+            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -143,6 +206,8 @@ export function MyScreen() {
                 {overview.identity.telegram ? "已认证" : "未绑定"}
               </span>
             </section>
+
+            <CoinCard />
 
             {/* 数据总览 */}
             <section className="grid grid-cols-2 gap-3">

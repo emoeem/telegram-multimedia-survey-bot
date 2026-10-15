@@ -18,6 +18,7 @@ import { handleAdminApi } from "./http/admin-api";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
 import { handleMeApiRequest } from "./http/me-api";
+import { handleCoinApiRequest } from "./http/coin-api";
 import { handleShowcaseApiRequest } from "./http/showcase-api";
 import { handleTrialApiRequest } from "./http/trial-api";
 import { handleEmailAuthApiRequest } from "./http/email-auth-api";
@@ -27,14 +28,13 @@ import { isLicenseCenter } from "./services/deployment-role.service";
 import { handleExportQueue } from "./services/export-worker.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
 import { runDatabaseMaintenance } from "./services/database-maintenance.service";
-import {
-  cleanupExpiredTemporaryMedia,
-  retainFinishedResponseMedia,
-} from "./services/media/temporary-media.service";
+import { cleanupExpiredTemporaryMedia, retainFinishedResponseMedia } from "./services/media/temporary-media.service";
 import { KVMediaStore } from "./services/media/temporary-media-store";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
 import { resolveSubmissionBotUrl } from "./services/contact-links.service";
+import { resolvePublicOrigin } from "./services/public-origin.service";
+import { resolveClientIdentity } from "./services/client-identity.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { recoverStaleImageGeneratorJobs } from "./services/image-generator-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
@@ -72,6 +72,40 @@ async function serveHtmlAsset(env: Env, request: Request, assetPath: string, inj
 }
 
 /**
+ * Content-hashed build output under `/assets/`, as Vite names it
+ * (`survey-CM53e1qv.js`): the hash *is* the file's content, so the bytes behind
+ * a given URL never change.
+ */
+const HASHED_ASSET_PATTERN = /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/;
+
+/**
+ * Serves a static build asset, with a long cache lifetime for hashed files.
+ *
+ * The assets binding answers with `cache-control: public, max-age=0,
+ * must-revalidate` for everything, so a returning visitor revalidates every
+ * chunk — ten round trips before the survey app boots, each of which is
+ * hundreds of milliseconds from a mainland mobile link, and any one of them
+ * failing leaves the participant on a blank page. A hashed filename cannot go
+ * stale, so it is served as immutable instead; unhashed paths (`sw.js`,
+ * `manifest.webmanifest`, the icons) deliberately keep the binding's policy so
+ * they still update.
+ */
+async function serveStaticAsset(env: Env, request: Request): Promise<Response> {
+  const response = await env.ASSETS.fetch(request);
+  const pathname = new URL(request.url).pathname;
+  if (!response.ok || !pathname.startsWith("/assets/") || !HASHED_ASSET_PATTERN.test(pathname)) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
  * Injects Open Graph / Twitter meta tags into the public survey page so
  * shares on Telegram and social platforms render a preview card. Failures
  * are non-fatal: the stock page is served without meta tags.
@@ -85,12 +119,15 @@ const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> =
   "/showcase": { title: "展示区 · 问卷平台", description: "沉浸式浏览创作者的公开个人展览与作品。" },
   "/trial": { title: "挑战任务 · 问卷平台", description: "参与文字扮演挑战任务，查看成绩与排行榜。" },
   "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与挑战记录。" },
+  "/coins": { title: "我的金币 · 问卷平台", description: "每日签到、挑战任务与金币收支明细。" },
+  "/gacha": { title: "报告抽卡 · 问卷平台", description: "用金币抽取其他用户主动公开并授权的报告与内容。" },
+  "/submissions": { title: "投稿中心 · 问卷平台", description: "投稿原创内容获取金币奖励，并参与报告抽卡生态。" },
   "/auth": { title: "邮箱账号 · 问卷平台", description: "使用邮箱注册、登录或找回问卷平台账号。" },
 };
 
 function servePublicPageWithMeta(env: Env, request: Request, pathname: string): Promise<Response> {
   const meta = PUBLIC_PAGE_META[pathname] ?? PUBLIC_PAGE_META["/plaza"]!;
-  const origin = new URL(request.url).origin;
+  const origin = resolvePublicOrigin(env, new URL(request.url).origin);
   const title = escapeMetaAttribute(meta.title);
   const description = escapeMetaAttribute(meta.description);
   const canonical = escapeMetaAttribute(origin + pathname);
@@ -112,7 +149,7 @@ async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId
   try {
     const meta = await loadSurveyShareMeta(env.DB, surveyId);
     if (meta) {
-      const origin = new URL(request.url).origin;
+      const origin = resolvePublicOrigin(env, new URL(request.url).origin);
       const ogImage = `${origin}/s/${surveyId}/og.png`;
       const description = meta.description?.slice(0, 120) || `${meta.questionCount} 道题，点击立即填写`;
       injectHead = [
@@ -150,6 +187,17 @@ export interface Env {
   /** Independent HMAC key for browser admin sessions; falls back to WEBHOOK_SECRET for old deployments. */
   ADMIN_SESSION_SECRET?: string;
   APP_VERSION?: string;
+  /**
+   * Canonical origin for every user-facing absolute URL (Telegram buttons, the
+   * admin login deep link, `og:` metadata). A Worker answers on its
+   * `*.workers.dev` hostname and every bound custom domain at once, and the
+   * Telegram webhook deliberately keeps arriving on `workers.dev` so bot
+   * delivery never depends on a custom domain's DNS state — which means links
+   * built from `request.url` would keep handing users the SNI-blocked
+   * hostname. Unset falls back to the request origin, so `wrangler dev` and
+   * single-hostname deployments are unaffected.
+   */
+  PUBLIC_ORIGIN?: string;
   LICENSE_ENFORCEMENT?: "disabled" | "required";
   LICENSE_SERVER_URL?: string;
   /**
@@ -170,6 +218,13 @@ export interface Env {
    * Worker in the same account — edge error 1042).
    */
   REMOTE_ACCESS_SECRET?: string;
+  /**
+   * Origins allowed to read `/api/remote/*` (comma separated). Unset trusts only
+   * the authorization center's own address; a console reached on any other
+   * domain must be listed, because CORS matches the page's origin. See
+   * `src/http/remote-api.ts`.
+   */
+  REMOTE_ACCESS_ORIGINS?: string;
   /** Shared secret used only to encrypt deployment task credentials at rest. */
   CONTROL_PLANE_RUNNER_SECRET?: string;
   WORKER_NAME?: string;
@@ -183,6 +238,15 @@ export interface Env {
   TOPIC_ID?: string;
   PUBLICATION_TARGET_CHAT_ID?: string;
   PUBLICATION_TARGET_THREAD_ID?: string;
+  /**
+   * Shared secret the mainland-China relay presents in `x-relay-token` (see
+   * `cn-relay/` and docs/CN_ACCESS_VERCEL_RELAY.md, `wrangler secret put
+   * RELAY_SECRET`). While it matches, the visitor identity headers that relay
+   * forwards are trusted for rate limits and geo, so domestic visitors do not
+   * share one rate-limit bucket. Unset = every request keeps being judged by
+   * the peer address, exactly as before.
+   */
+  RELAY_SECRET?: string;
   /** Optional R2 bucket; media storage falls back to MEDIA_KV when unset. */
   MEDIA?: R2Bucket;
   MEDIA_KV: KVNamespace;
@@ -245,10 +309,13 @@ async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Pro
  */
 async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
   const limiter = createKVRateLimiter(env.CACHE);
-  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const clientIp = resolveClientIdentity(request, env).ip;
 
   if (request.method === "POST" && url.pathname.startsWith("/api/auth/email/")) {
-    const body = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await request
+      .clone()
+      .json()
+      .catch(() => null)) as Record<string, unknown> | null;
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
     if (email) {
       let scope = url.pathname.slice("/api/auth/email/".length);
@@ -268,15 +335,10 @@ async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Pr
     }
   }
 
-  if (request.method === "POST" && /^\/api\/survey\/\d+\/responses\/\d+\/answers$/.test(url.pathname)) {
-    const allowed = await limiter.allow(`answers|${clientIp}`, 20, 60);
-    if (!allowed) {
-      return Response.json(
-        { ok: false, code: "rate_limited", message: "请求过于频繁，请稍后再试" },
-        { status: 429, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-  }
+  // Answer saves are damped inside their own handler instead
+  // (src/http/survey/handler.ts): its limiter is a row in the same D1 batch as
+  // the response read, which keeps the endpoint free of a KV round trip on the
+  // one interaction a respondent repeats for every question.
 
   return null;
 }
@@ -352,264 +414,285 @@ export default {
     // D1 rows read and KV/queue/Telegram call counts). Instrumented bindings
     // also make the request's own D1 query budget visible in production.
     return withRequestMetrics(request, env, async (env, metrics) => {
-    const url = new URL(request.url);
+      const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({
-        ok: true,
-        environment: env.ENVIRONMENT,
-        version: env.APP_VERSION ?? "unknown",
-        licenseEnforcement: env.LICENSE_ENFORCEMENT ?? "disabled",
-      });
-    }
-
-    // Internal endpoints (queue consumers hand browser renders to a request
-    // context); token-authenticated, must be routed before the SPA/API blocks.
-    if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env);
-
-    // Admin SPA entry. html_handling="none" means /admin has no directory
-    // index, so serve the built index.html explicitly (client-side routing
-    // handles every /admin/* view).
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-      return serveHtmlAsset(env, request, "/index.html");
-    }
-
-    if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env);
-
-    // Web survey entry: /s/:id renders the public survey page; the page
-    // itself talks to /api/survey/* for the definition and answers.
-    const surveyPageMatch = url.pathname.match(/^\/s\/(\d+)$/);
-    const ogImageMatch = url.pathname.match(/^\/s\/(\d+)\/og\.png$/);
-    if (ogImageMatch) {
-      const surveyId = Number(ogImageMatch[1]);
-      try {
-        const meta = await loadSurveyShareMeta(env.DB, surveyId);
-        if (!meta) return new Response("Not Found", { status: 404 });
-        const bytes = await getSurveyOgImage(env, meta, url.origin);
-        if (!bytes) return new Response("Not Found", { status: 404 });
-        return new Response(bytes, {
-          headers: {
-            "Content-Type": "image/png",
-            "Cache-Control": "public, max-age=600",
-          },
+      if (request.method === "GET" && url.pathname === "/health") {
+        return Response.json({
+          ok: true,
+          environment: env.ENVIRONMENT,
+          version: env.APP_VERSION ?? "unknown",
+          licenseEnforcement: env.LICENSE_ENFORCEMENT ?? "disabled",
         });
-      } catch (error) {
-        console.error("OG image rendering failed", error);
-        return new Response("Rendering unavailable", { status: 503 });
-      }
-    }
-    if (surveyPageMatch) {
-      return serveSurveyPageWithShareMeta(env, request, Number(surveyPageMatch[1]));
-    }
-    if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
-      return serveHtmlAsset(env, request, "/survey.html");
-    }
-
-    if (url.pathname === "/plaza" || url.pathname.startsWith("/plaza/")) {
-      return servePublicPageWithMeta(env, request, "/plaza");
-    }
-
-    // Showcase (展示区): the immersive person gallery shares the survey SPA
-    // bundle and picks its screen from the pathname.
-    if (url.pathname === "/showcase" || url.pathname.startsWith("/showcase/")) {
-      return servePublicPageWithMeta(env, request, "/showcase");
-    }
-
-    // Web task system player page (/trial) shares the survey SPA bundle; the
-    // page itself decides between the survey list and the trial screen.
-    if (url.pathname === "/trial" || url.pathname.startsWith("/trial/")) {
-      return servePublicPageWithMeta(env, request, "/trial");
-    }
-
-    // Email auth pages share the survey SPA bundle as well.
-    // "我的" 个人中心 shares the survey SPA bundle as well.
-    if (url.pathname === "/me" || url.pathname.startsWith("/me/")) {
-      return servePublicPageWithMeta(env, request, "/me");
-    }
-
-    if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
-      return servePublicPageWithMeta(env, request, "/auth");
-    }
-
-    if (url.pathname.startsWith("/api/me/")) {
-      return guardApiResponse(request, env, url, () => handleMeApiRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/plaza/")) {
-      return guardApiResponse(request, env, url, () => handlePlazaApiRequest(request, env, url));
-    }
-
-    if (url.pathname === "/api/showcase" || url.pathname.startsWith("/api/showcase/")) {
-      return guardApiResponse(request, env, url, () => handleShowcaseApiRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
-      return guardApiResponse(request, env, url, () => handleSurveyApiRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
-      return guardApiResponse(request, env, url, () => handleReportRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/auth/email/")) {
-      return guardApiResponse(request, env, url, () => handleEmailAuthApiRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/trial/")) {
-      return guardApiResponse(request, env, url, () => handleTrialApiRequest(request, env, url));
-    }
-
-    if (url.pathname.startsWith("/api/control/customer/") || url.pathname.startsWith("/api/control/runner/")) {
-      const controlResponse = await handleControlApiRequest(request, env, { isAdmin: false, userId: null });
-      if (controlResponse) return controlResponse;
-    }
-    if (url.pathname.startsWith("/api/control/")) return handleAdminApi(request, env);
-
-    const licenseApiResponse = await handleLicenseApiRequest(
-      request,
-      env.DB,
-      env.LICENSE_ADMIN_TOKEN,
-      env.DEPLOYMENT_ROLE,
-    );
-    if (licenseApiResponse) {
-      return licenseApiResponse;
-    }
-
-    const remoteApiResponse = await handleRemoteApiRequest(request, env);
-    if (remoteApiResponse) {
-      return remoteApiResponse;
-    }
-
-    if (request.method === "POST" && url.pathname === "/telegram/webhook") {
-      const secretHeader = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-
-      if (!isWebhookSecretValid(env.WEBHOOK_SECRET, secretHeader)) {
-        return new Response("Unauthorized", { status: 403 });
       }
 
-      await ensureWebhookAllowsChannelPosts(env, url.origin);
+      // Internal endpoints (queue consumers hand browser renders to a request
+      // context); token-authenticated, must be routed before the SPA/API blocks.
+      if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env);
 
-      const deploymentLicense = await checkDeploymentLicense(env);
-      if (!deploymentLicense.allowed) {
-        console.error("Deployment license rejected", deploymentLicense.code, deploymentLicense.message);
-        return Response.json(
-          {
-            ok: false,
-            error: "license_unavailable",
-            code: deploymentLicense.code,
-          },
-          {
-            status: 503,
+      // Admin SPA entry. html_handling="none" means /admin has no directory
+      // index, so serve the built index.html explicitly (client-side routing
+      // handles every /admin/* view).
+      if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+        return serveHtmlAsset(env, request, "/index.html");
+      }
+
+      if (url.pathname.startsWith("/api/admin/")) return handleAdminApi(request, env);
+
+      // Web survey entry: /s/:id renders the public survey page; the page
+      // itself talks to /api/survey/* for the definition and answers.
+      const surveyPageMatch = url.pathname.match(/^\/s\/(\d+)$/);
+      const ogImageMatch = url.pathname.match(/^\/s\/(\d+)\/og\.png$/);
+      if (ogImageMatch) {
+        const surveyId = Number(ogImageMatch[1]);
+        try {
+          const meta = await loadSurveyShareMeta(env.DB, surveyId);
+          if (!meta) return new Response("Not Found", { status: 404 });
+          const bytes = await getSurveyOgImage(env, meta, resolvePublicOrigin(env, url.origin));
+          if (!bytes) return new Response("Not Found", { status: 404 });
+          return new Response(bytes, {
             headers: {
-              "Cache-Control": "no-store",
-              "Retry-After": "3600",
+              "Content-Type": "image/png",
+              "Cache-Control": "public, max-age=600",
             },
-          },
-        );
-      }
-
-      let body: unknown;
-      try {
-        body = await request.json();
-      } catch {
-        return new Response("Bad Request", { status: 400 });
-      }
-
-      const update = parseTelegramUpdate(body);
-      if (!update) {
-        return new Response("Bad Request", { status: 400 });
-      }
-
-      // Idempotency: Telegram redelivers an update when our answer was slow or
-      // lost. Claim it before doing any work so a redelivery of a completed
-      // create/answer/submit/publish/export/reward action is skipped instead
-      // of running its side effects twice.
-      const dedup = createUpdateDedupStore(env.DB);
-      if (!(await dedup.claim(update.update_id))) {
-        metrics.recordDuplicateUpdate();
-        console.info("Duplicate Telegram update skipped", { updateId: update.update_id });
-        return Response.json({ ok: true, duplicate: true });
-      }
-
-      await ensureTelegramCommandMenu(env);
-
-      console.log("Telegram update received", {
-        updateId: update.update_id,
-        kind: update.message ? "message" : "callback",
-        userId: update.message?.from?.id ?? update.callback_query?.from?.id,
-        chatId: update.message?.chat?.id ?? update.callback_query?.message?.chat.id,
-      });
-
-      try {
-        const context: BotContext = {
-          botToken: env.BOT_TOKEN,
-          db: env.DB,
-          cache: env.CACHE,
-          session: env.SESSION,
-          builder: env.BUILDER,
-          adminIds: parseAdminIds(env.ADMIN_IDS),
-          exportQueue: env.EXPORT_QUEUE,
-          mediaKv: env.MEDIA_KV,
-          origin: url.origin,
-          submissionBotUrl: resolveSubmissionBotUrl(env),
-          communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
-          // Investigation: the BotContext field is consumed only by vendor-only
-          // bot surfaces; customer licensing/heartbeat uses Env.LICENSE_SERVER_URL
-          // directly in HTTP services. Never advertise a customer Worker as its own
-          // license server, because that makes the origin semantically ambiguous.
-          licenseServerUrl: isLicenseCenter(env) ? url.origin : null,
-          surveyCodePepper: env.SURVEY_CODE_PEPPER,
-          // Same single source of truth as the web API: only the authorization
-          // center may issue licenses or hand out trial accounts.
-          licenseAdminEnabled: isLicenseCenter(env),
-          browser: env.BROWSER,
-          webhookSecret: env.WEBHOOK_SECRET,
-        };
-        await handleTelegramUpdate(update, context);
-        await dedup.complete(update.update_id);
-        return Response.json({ ok: true });
-      } catch (error) {
-        console.error("Telegram webhook handler failed", error);
-        // Release only defends against an exceptional duplicate delivery path.
-        // Failed retries are driven by the 30-minute recovery cron (report-delivery /
-        // result-visual / image-generator). We intentionally return 200 below so
-        // Telegram stops retrying the user action and cannot execute it twice.
-        await dedup.release(update.update_id);
-        // The router answers the user itself when a handler fails; only send
-        // the generic notice for failures raised before that point.
-        if (!isTelegramUpdateHandledError(error)) {
-          // A silent failure reads as "the bot is dead" and leaves the chat's
-          // loading spinner running, so always answer the user when possible.
-          try {
-            const callback = update.callback_query;
-            const chatId = update.message?.chat?.id ?? callback?.message?.chat.id;
-            if (typeof chatId === "number") {
-              if (callback) {
-                await answerCallbackQuery(env.BOT_TOKEN, callback.id, "服务暂时不可用，请稍后再试");
-              }
-              await sendMessage(
-                env.BOT_TOKEN,
-                chatId,
-                isDatabaseCapacityError(error)
-                  ? "⚠️ 数据库今日查询额度已用尽，暂时无法处理操作，请稍后再试。"
-                  : "😥 服务暂时出了点小问题，请稍后再试。",
-              );
-            }
-          } catch (notifyError) {
-            console.warn("Telegram failure notice failed", notifyError);
-          }
+          });
+        } catch (error) {
+          console.error("OG image rendering failed", error);
+          return new Response("Rendering unavailable", { status: 503 });
         }
-        return Response.json({ ok: false }, { status: 200 });
       }
-    }
+      if (surveyPageMatch) {
+        return serveSurveyPageWithShareMeta(env, request, Number(surveyPageMatch[1]));
+      }
+      if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
+        return serveHtmlAsset(env, request, "/survey.html");
+      }
 
-    // Admin SPA fallback: any path that isn't a known static asset extension
-    // and wasn't matched by a business route above should render the admin
-    // index.html so React Router handles client-side routing for /surveys,
-    // /reports, /settings and friends.
-    const ext = url.pathname.split(".").pop()?.toLowerCase();
-    const isStaticAsset = Boolean(
-      ext &&
+      if (url.pathname === "/plaza" || url.pathname.startsWith("/plaza/")) {
+        return servePublicPageWithMeta(env, request, "/plaza");
+      }
+
+      // Showcase (展示区): the immersive person gallery shares the survey SPA
+      // bundle and picks its screen from the pathname.
+      if (url.pathname === "/showcase" || url.pathname.startsWith("/showcase/")) {
+        return servePublicPageWithMeta(env, request, "/showcase");
+      }
+
+      // Web task system player page (/trial) shares the survey SPA bundle; the
+      // page itself decides between the survey list and the trial screen.
+      if (url.pathname === "/trial" || url.pathname.startsWith("/trial/")) {
+        return servePublicPageWithMeta(env, request, "/trial");
+      }
+
+      // Email auth pages share the survey SPA bundle as well.
+      // "我的" 个人中心 shares the survey SPA bundle as well.
+      if (url.pathname === "/me" || url.pathname.startsWith("/me/")) {
+        return servePublicPageWithMeta(env, request, "/me");
+      }
+
+      // 金币经济三屏（余额/签到/挑战、报告抽卡、投稿中心）与 /me 同属问卷
+      // SPA bundle，由路径决定渲染哪一屏。
+      if (
+        url.pathname === "/coins" ||
+        url.pathname.startsWith("/coins/") ||
+        url.pathname === "/gacha" ||
+        url.pathname.startsWith("/gacha/") ||
+        url.pathname === "/submissions" ||
+        url.pathname.startsWith("/submissions/")
+      ) {
+        return servePublicPageWithMeta(env, request, url.pathname.startsWith("/gacha") ? "/gacha" : url.pathname.startsWith("/submissions") ? "/submissions" : "/coins");
+      }
+
+      if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
+        return servePublicPageWithMeta(env, request, "/auth");
+      }
+
+      if (url.pathname.startsWith("/api/me/")) {
+        return guardApiResponse(request, env, url, () => handleMeApiRequest(request, env, url));
+      }
+
+      if (
+        url.pathname.startsWith("/api/coins/") ||
+        url.pathname.startsWith("/api/gacha/") ||
+        url.pathname.startsWith("/api/submissions")
+      ) {
+        return guardApiResponse(request, env, url, () => handleCoinApiRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/plaza/")) {
+        return guardApiResponse(request, env, url, () => handlePlazaApiRequest(request, env, url));
+      }
+
+      if (url.pathname === "/api/showcase" || url.pathname.startsWith("/api/showcase/")) {
+        return guardApiResponse(request, env, url, () => handleShowcaseApiRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/survey/") || url.pathname === "/api/surveys") {
+        return guardApiResponse(request, env, url, () => handleSurveyApiRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
+        return guardApiResponse(request, env, url, () => handleReportRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/auth/email/")) {
+        return guardApiResponse(request, env, url, () => handleEmailAuthApiRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/trial/")) {
+        return guardApiResponse(request, env, url, () => handleTrialApiRequest(request, env, url));
+      }
+
+      if (url.pathname.startsWith("/api/control/customer/") || url.pathname.startsWith("/api/control/runner/")) {
+        const controlResponse = await handleControlApiRequest(request, env, { isAdmin: false, userId: null });
+        if (controlResponse) return controlResponse;
+      }
+      if (url.pathname.startsWith("/api/control/")) return handleAdminApi(request, env);
+
+      const licenseApiResponse = await handleLicenseApiRequest(
+        request,
+        env.DB,
+        env.LICENSE_ADMIN_TOKEN,
+        env.DEPLOYMENT_ROLE,
+      );
+      if (licenseApiResponse) {
+        return licenseApiResponse;
+      }
+
+      const remoteApiResponse = await handleRemoteApiRequest(request, env);
+      if (remoteApiResponse) {
+        return remoteApiResponse;
+      }
+
+      if (request.method === "POST" && url.pathname === "/telegram/webhook") {
+        const secretHeader = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+
+        if (!isWebhookSecretValid(env.WEBHOOK_SECRET, secretHeader)) {
+          return new Response("Unauthorized", { status: 403 });
+        }
+
+        await ensureWebhookAllowsChannelPosts(env, url.origin);
+
+        const deploymentLicense = await checkDeploymentLicense(env);
+        if (!deploymentLicense.allowed) {
+          console.error("Deployment license rejected", deploymentLicense.code, deploymentLicense.message);
+          return Response.json(
+            {
+              ok: false,
+              error: "license_unavailable",
+              code: deploymentLicense.code,
+            },
+            {
+              status: 503,
+              headers: {
+                "Cache-Control": "no-store",
+                "Retry-After": "3600",
+              },
+            },
+          );
+        }
+
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return new Response("Bad Request", { status: 400 });
+        }
+
+        const update = parseTelegramUpdate(body);
+        if (!update) {
+          return new Response("Bad Request", { status: 400 });
+        }
+
+        // Idempotency: Telegram redelivers an update when our answer was slow or
+        // lost. Claim it before doing any work so a redelivery of a completed
+        // create/answer/submit/publish/export/reward action is skipped instead
+        // of running its side effects twice.
+        const dedup = createUpdateDedupStore(env.DB);
+        if (!(await dedup.claim(update.update_id))) {
+          metrics.recordDuplicateUpdate();
+          console.info("Duplicate Telegram update skipped", { updateId: update.update_id });
+          return Response.json({ ok: true, duplicate: true });
+        }
+
+        await ensureTelegramCommandMenu(env);
+
+        console.log("Telegram update received", {
+          updateId: update.update_id,
+          kind: update.message ? "message" : "callback",
+          userId: update.message?.from?.id ?? update.callback_query?.from?.id,
+          chatId: update.message?.chat?.id ?? update.callback_query?.message?.chat.id,
+        });
+
+        try {
+          const context: BotContext = {
+            botToken: env.BOT_TOKEN,
+            db: env.DB,
+            cache: env.CACHE,
+            session: env.SESSION,
+            builder: env.BUILDER,
+            adminIds: parseAdminIds(env.ADMIN_IDS),
+            exportQueue: env.EXPORT_QUEUE,
+            mediaKv: env.MEDIA_KV,
+            origin: resolvePublicOrigin(env, url.origin),
+            submissionBotUrl: resolveSubmissionBotUrl(env),
+            communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
+            // Investigation: the BotContext field is consumed only by vendor-only
+            // bot surfaces; customer licensing/heartbeat uses Env.LICENSE_SERVER_URL
+            // directly in HTTP services. Never advertise a customer Worker as its own
+            // license server, because that makes the origin semantically ambiguous.
+            licenseServerUrl: isLicenseCenter(env) ? url.origin : null,
+            surveyCodePepper: env.SURVEY_CODE_PEPPER,
+            // Same single source of truth as the web API: only the authorization
+            // center may issue licenses or hand out trial accounts.
+            licenseAdminEnabled: isLicenseCenter(env),
+            browser: env.BROWSER,
+            webhookSecret: env.WEBHOOK_SECRET,
+          };
+          await handleTelegramUpdate(update, context);
+          await dedup.complete(update.update_id);
+          return Response.json({ ok: true });
+        } catch (error) {
+          console.error("Telegram webhook handler failed", error);
+          // Release only defends against an exceptional duplicate delivery path.
+          // Failed retries are driven by the 30-minute recovery cron (report-delivery /
+          // result-visual / image-generator). We intentionally return 200 below so
+          // Telegram stops retrying the user action and cannot execute it twice.
+          await dedup.release(update.update_id);
+          // The router answers the user itself when a handler fails; only send
+          // the generic notice for failures raised before that point.
+          if (!isTelegramUpdateHandledError(error)) {
+            // A silent failure reads as "the bot is dead" and leaves the chat's
+            // loading spinner running, so always answer the user when possible.
+            try {
+              const callback = update.callback_query;
+              const chatId = update.message?.chat?.id ?? callback?.message?.chat.id;
+              if (typeof chatId === "number") {
+                if (callback) {
+                  await answerCallbackQuery(env.BOT_TOKEN, callback.id, "服务暂时不可用，请稍后再试");
+                }
+                await sendMessage(
+                  env.BOT_TOKEN,
+                  chatId,
+                  isDatabaseCapacityError(error)
+                    ? "⚠️ 数据库今日查询额度已用尽，暂时无法处理操作，请稍后再试。"
+                    : "😥 服务暂时出了点小问题，请稍后再试。",
+                );
+              }
+            } catch (notifyError) {
+              console.warn("Telegram failure notice failed", notifyError);
+            }
+          }
+          return Response.json({ ok: false }, { status: 200 });
+        }
+      }
+
+      // Admin SPA fallback: any path that isn't a known static asset extension
+      // and wasn't matched by a business route above should render the admin
+      // index.html so React Router handles client-side routing for /surveys,
+      // /reports, /settings and friends.
+      const ext = url.pathname.split(".").pop()?.toLowerCase();
+      const isStaticAsset = Boolean(
+        ext &&
         [
           "html",
           "js",
@@ -633,11 +716,11 @@ export default {
           "webmanifest",
           "json",
         ].includes(ext),
-    );
-    if (!isStaticAsset) {
-      return serveHtmlAsset(env, request, "/index.html");
-    }
-    return env.ASSETS.fetch(request);
+      );
+      if (!isStaticAsset) {
+        return serveHtmlAsset(env, request, "/index.html");
+      }
+      return serveStaticAsset(env, request);
     });
   },
 

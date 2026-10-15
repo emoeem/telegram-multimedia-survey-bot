@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Coins,
   Home,
   Lock,
   MailCheck,
@@ -21,7 +22,11 @@ import {
   X,
 } from "lucide-react";
 import { EmailAuthScreen } from "./EmailAuthScreen";
+import { SpriteLayer } from "./SpriteLayer";
+import { closeWebApp } from "./navigation";
+import { resolveBgmUrl, resolveSprite } from "../../../src/survey/theme";
 import { MyScreen } from "./MyScreen";
+import { CoinGateScreen, CoinsScreen, GachaScreen, SubmissionsScreen } from "./CoinCenter";
 import { PlazaScreen } from "./PlazaScreen";
 import { ShowcaseScreen } from "./ShowcaseScreen";
 import { TrialScreen } from "./TrialScreen";
@@ -41,6 +46,7 @@ import {
 import {
   type AnswerValue,
   fetchAnswers,
+  coinApi,
   fetchSurvey,
   fetchSurveyList,
   fetchParticipantLinkStartUrl,
@@ -88,6 +94,15 @@ function botHandleFromUrl(url: string | null): string {
   return match ? `@${match[1]}` : "投稿机器人";
 }
 import { identityHeaders } from "./api";
+import {
+  configureSfx,
+  playSfx,
+  preloadSfx,
+  registerSfxMusic,
+  setSfxEnabled,
+  sfxEnabled,
+  subscribeSfxEnabled,
+} from "./sfx";
 
 declare global {
   interface Window {
@@ -103,6 +118,7 @@ type Screen =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "access"; survey: SurveyDto }
+  | { kind: "coin-gate"; survey: SurveyDto }
   | {
       kind: "filling";
       survey: SurveyDto;
@@ -125,24 +141,18 @@ function surveyIdFromPath(): number {
 }
 
 function closeSurveyPage(): void {
-  // Inside the Telegram WebView we close the mini app directly; in a normal
-  // browser we close the tab and fall back to the survey home page.
-  if (window.Telegram?.WebApp?.close) {
-    window.Telegram.WebApp.close();
-    return;
-  }
-  window.close();
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  window.location.href = "/s";
+  // Leaving is delegated to the shared helper: it only lets the Telegram bridge
+  // take over when the page really runs inside Telegram. The SDK object is also
+  // installed in a plain browser tab, where its `close()` posts to a host that
+  // is not listening — that used to make "确定退出" look like a dead button.
+  closeWebApp();
 }
 
 function backSurveyPage(): void {
   // Browser back first (supports the mobile edge-swipe gesture and desktop
   // back button); falls back to the survey list when there is no history
   // (e.g. a deep link opened in the default browser).
+  playSfx("cancel");
   if (window.history.length > 1) {
     window.history.back();
     return;
@@ -159,6 +169,8 @@ function SurveyListPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"new" | "hot">("new");
   const [completedIds, setCompletedIds] = useState<number[]>(() => getCompletedSurveyIds());
+  // 金币解锁状态：列表载荷是访客无关的（KV 缓存），解锁与否只能单独取。
+  const [unlockedSurveyIds, setUnlockedSurveyIds] = useState<number[] | null>(null);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [retryKey, setRetryKey] = useState(0);
@@ -191,6 +203,26 @@ function SurveyListPage() {
       cancelled = true;
     };
   }, [debouncedQuery, retryKey]);
+
+  useEffect(() => {
+    // 只在列表里确实存在金币解锁问卷时才查询解锁记录。
+    if (!surveys?.some((survey) => survey.coinUnlock)) {
+      setUnlockedSurveyIds(null);
+      return;
+    }
+    let cancelled = false;
+    coinApi
+      .unlockables()
+      .then((data) => {
+        if (!cancelled) setUnlockedSurveyIds(data.unlocks.map((unlock) => unlock.surveyId));
+      })
+      .catch(() => {
+        if (!cancelled) setUnlockedSurveyIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [surveys]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -346,6 +378,10 @@ function SurveyListPage() {
           {orderedSurveys.map((survey) => {
             const isClosed = Boolean(survey.closedAt && new Date(survey.closedAt).getTime() < Date.now());
             const answered = completedIds.includes(survey.id);
+            // 金币门：只有启用了金币解锁、且当前身份尚未解锁时才提示。
+            const coinPrice = survey.coinUnlock?.price ?? null;
+            const coinLocked =
+              coinPrice !== null && !(unlockedSurveyIds ?? []).includes(survey.id);
             return (
               <a
                 key={survey.id}
@@ -372,6 +408,12 @@ function SurveyListPage() {
                       需密码
                     </span>
                   ) : null}
+                  {coinPrice !== null ? (
+                    <span className={`badge shrink-0 ${coinLocked ? "badge-amber" : "badge-green"}`}>
+                      <Coins className="h-3 w-3" />
+                      {coinPrice > 0 ? `${coinPrice} 金币` : "限时免费"}
+                    </span>
+                  ) : null}
                 </div>
                 {survey.description ? (
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
@@ -381,6 +423,9 @@ function SurveyListPage() {
                   {survey.anonymous ? <span className="chip text-xs">🎭 匿名</span> : null}
                   {isClosed ? (
                     <span className="chip text-xs text-[var(--color-muted)]">已截止</span>
+                  ) : null}
+                  {coinPrice !== null && !coinLocked ? (
+                    <span className="chip text-xs text-[var(--color-muted)]">已解锁</span>
                   ) : null}
                   {answered ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--survey-primary)]">
@@ -400,7 +445,15 @@ function SurveyListPage() {
                       color: isClosed ? "var(--survey-card-bg)" : "var(--survey-primary-content)",
                     }}
                   >
-                    {isClosed ? "已截止" : "开始填写"}
+                    {isClosed
+                      ? "已截止"
+                      : coinLocked
+                        ? coinPrice > 0
+                          ? "解锁填写"
+                          : "免费领取"
+                        : survey.accessCodeRequired
+                          ? "输入密码"
+                          : "开始填写"}
                     <ArrowRight className="h-4 w-4" />
                   </span>
                 </div>
@@ -501,19 +554,36 @@ function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers
   if (currentIndex >= questions.length - 1) return questions.length;
   const current = questions[currentIndex];
   if (!current) return currentIndex + 1;
-  const selected = selectedOptionId(current, answers[current.id]);
-  if (selected !== null && current.condition) {
+  if (current.condition) {
     try {
-      const rules = Array.isArray(current.condition.rules)
-        ? (current.condition.rules as Array<{ optionId?: unknown; targetQuestionId?: unknown }>)
-        : current.condition.kind === "option_equals" && current.condition.optionId !== undefined
-          ? [{ optionId: current.condition.optionId, targetQuestionId: current.skipToQuestionId }]
-          : [];
-      const rule = rules.find((item) => Number(item.optionId) === selected);
-      const targetId = rule?.targetQuestionId !== undefined ? Number(rule.targetQuestionId) : null;
-      if (targetId !== null && Number.isInteger(targetId) && targetId > 0) {
-        const targetIndex = questions.findIndex((question) => question.id === targetId);
-        if (targetIndex > currentIndex) return targetIndex;
+      const selected = selectedOptionId(current, answers[current.id]);
+      if (selected !== null) {
+        const rules = Array.isArray(current.condition.rules)
+          ? (current.condition.rules as Array<{ optionId?: unknown; targetQuestionId?: unknown }>)
+          : current.condition.kind === "option_equals" && current.condition.optionId !== undefined
+            ? [{ optionId: current.condition.optionId, targetQuestionId: current.skipToQuestionId }]
+            : [];
+        const rule = rules.find((item) => Number(item.optionId) === selected);
+        const targetId = rule?.targetQuestionId !== undefined ? Number(rule.targetQuestionId) : null;
+        if (targetId !== null && Number.isInteger(targetId) && targetId > 0) {
+          const targetIndex = questions.findIndex((question) => question.id === targetId);
+          if (targetIndex > currentIndex) return targetIndex;
+        }
+      }
+      // State-driven jumps (answerRules) evaluate accumulated answers and also
+      // fire on note questions, letting narrative cards branch on prior choices.
+      const answerRules = (current.condition as { answerRules?: unknown }).answerRules;
+      if (Array.isArray(answerRules)) {
+        for (const rule of answerRules as Array<{ questionId?: unknown; equals?: unknown; targetQuestionId?: unknown }>) {
+          const value = answers[Number(rule.questionId)];
+          if (value === undefined || value === null) continue;
+          if (Number(rule.equals) !== Number(value)) continue;
+          const targetId = Number(rule.targetQuestionId);
+          if (Number.isInteger(targetId) && targetId > 0) {
+            const targetIndex = questions.findIndex((question) => question.id === targetId);
+            if (targetIndex > currentIndex) return targetIndex;
+          }
+        }
       }
     } catch {
       // malformed condition falls back to linear order
@@ -557,27 +627,47 @@ function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | unde
   return null;
 }
 
-function MediaBlock({ urls, type, cover }: { urls: Array<{ url: string }>; type: string; cover?: boolean }) {
+function MediaBlock({
+  urls,
+  type,
+  cover,
+}: {
+  urls: Array<{ url: string; alt?: string }>;
+  type: string;
+  cover?: boolean;
+}) {
   if (urls.length === 0) return null;
   if (cover) {
-    return <AuthenticatedMedia key={urls[0]?.url ?? 0} url={urls[0]!.url} kind="image" cover />;
+    return (
+      <AuthenticatedMedia key={urls[0]?.url ?? 0} url={urls[0]!.url} alt={urls[0]!.alt} kind="image" cover />
+    );
   }
   return (
     <div className="mt-3 grid gap-2">
       {urls.map((media, index) => {
         if (type === "video") {
-          return <AuthenticatedMedia key={index} url={media.url} kind="video" />;
+          return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="video" />;
         }
         if (type === "audio") {
-          return <AuthenticatedMedia key={index} url={media.url} kind="audio" />;
+          return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="audio" />;
         }
-        return <AuthenticatedMedia key={index} url={media.url} kind="image" />;
+        return <AuthenticatedMedia key={index} url={media.url} alt={media.alt} kind="image" />;
       })}
     </div>
   );
 }
 
-function AuthenticatedMedia({ url, kind, cover }: { url: string; kind: "image" | "video" | "audio"; cover?: boolean }) {
+function AuthenticatedMedia({
+  url,
+  kind,
+  cover,
+  alt,
+}: {
+  url: string;
+  kind: "image" | "video" | "audio";
+  cover?: boolean;
+  alt?: string;
+}) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -623,7 +713,7 @@ function AuthenticatedMedia({ url, kind, cover }: { url: string; kind: "image" |
     <img
       className={cover ? "absolute inset-0 h-full w-full object-cover" : "w-full rounded-lg"}
       src={objectUrl}
-      alt=""
+      alt={alt ?? ""}
       loading="lazy"
     />
   );
@@ -649,64 +739,110 @@ function ExpandableText({ text, className }: { text: string; className?: string 
 }
 
 function BgmPlayer({ url }: { url: string }) {
-  const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  /** Which track the audio element is currently pointed at (swaps are not free). */
+  const loadedUrlRef = useRef<string | null>(null);
+  // Survives src swaps: per-page BGM keeps playing across page changes.
+  const playingRef = useRef(false);
+  // 这个按钮是全站「声音开关」：同时管 BGM 与界面音效，状态存 localStorage。
+  // 不新增第二个开关，也不把静音拆成两套互不一致的状态。
+  const [soundOn, setSoundOn] = useState(() => sfxEnabled());
 
-  useEffect(() => {
-    let cancelled = false;
-    let createdUrl: string | null = null;
-    const audio = new Audio();
-    audio.loop = true;
-    audioRef.current = audio;
-    // BGM URLs are admin-configured and may point off-origin; never send the
-    // participant's Telegram/email identity headers to a third-party host.
-    const sameOrigin = (() => {
-      try {
-        return new URL(url, window.location.origin).origin === window.location.origin;
-      } catch {
-        return false;
-      }
-    })();
-    fetch(url, { headers: sameOrigin ? identityHeaders() : undefined })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("load failed");
-        const blob = await response.blob();
-        if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
-        audio.src = createdUrl;
-        setReady(true);
-      })
-      .catch(() => setReady(false));
-    return () => {
-      cancelled = true;
-      audio.pause();
-      audio.src = "";
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
-    };
-  }, [url]);
+  useEffect(() => subscribeSfxEnabled(setSoundOn), []);
 
-  const toggle = () => {
-    const audio = audioRef.current;
-    if (!audio || !ready) return;
-    if (playing) {
-      audio.pause();
-      setPlaying(false);
-    } else {
-      setPlaying(true);
-      void audio.play().catch(() => setPlaying(false));
+  /**
+   * Attaches a track to the audio element — and only ever does that.
+   *
+   * The player used to `fetch()` the whole track into a blob when it mounted,
+   * so simply opening a survey downloaded the survey's opening music (1.4MB in
+   * the bundled story survey, ~10MB across its pages) whether or not the
+   * participant ever turned sound on — bandwidth taken from the definition, the
+   * scene images and every answer save on a cross-border mobile link. The
+   * element now loads its source lazily, streams it, and lets the HTTP cache
+   * (a year, immutable, for survey assets) do the storing; a plain `src` also
+   * sends no identity headers, which is what the old blob dance was protecting.
+   */
+  const attach = useCallback((next: string): HTMLAudioElement => {
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.loop = true;
+      audio.preload = "none";
+      audioRef.current = audio;
+      registerSfxMusic(audio);
     }
+    if (loadedUrlRef.current !== next) {
+      loadedUrlRef.current = next;
+      audio.src = next;
+    }
+    return audio;
+  }, []);
+
+  const startPlayback = useCallback(
+    (next: string) => {
+      playingRef.current = true;
+      setPlaying(true);
+      const audio = attach(next);
+      void audio.play().catch(() => {
+        playingRef.current = false;
+        setPlaying(false);
+      });
+    },
+    [attach],
+  );
+
+  // 不做挂载自动播放：声音开关的存储值默认是「开」，照它自动起播等于每个第一次
+  // 打开问卷的人都先下载一整首 BGM（本项目 1.4MB）——正是这次要消掉的带宽。
+  // 开关的存储值仍然决定界面音效是否可用（sfx.ts）与按钮图标，音乐则只由用户
+  // 明确点这一下开始；按钮一开始就显示为「开启声音」。
+
+  // Track changes (per page, per question) while sound is on: swap and keep playing.
+  useEffect(() => {
+    if (!playingRef.current || !sfxEnabled()) return;
+    startPlayback(url);
+  }, [url, startPlayback]);
+
+  // Unmount-only teardown: leaving the page (exit, back navigation, mini-app
+  // close) never unmounts the tree React owns, so silence the track on
+  // `pagehide` too: otherwise the audio keeps running until the document is
+  // torn down and an entry restored from the back/forward cache resumes
+  // mid-track.
+  useEffect(() => {
+    const stop = () => audioRef.current?.pause();
+    window.addEventListener("pagehide", stop);
+    return () => {
+      window.removeEventListener("pagehide", stop);
+      audioRef.current?.pause();
+      registerSfxMusic(null);
+    };
+  }, []);
+
+  if (!url) return null;
+  const toggle = () => {
+    if (playing) {
+      audioRef.current?.pause();
+      playingRef.current = false;
+      setPlaying(false);
+      setSfxEnabled(false);
+      return;
+    }
+    setSfxEnabled(true);
+    // 首次真实手势：顺手把界面音效解码好（此处仍在手势调用栈内，
+    // 满足浏览器的自动播放策略；失败也只是没有音效）。
+    preloadSfx();
+    startPlayback(url);
   };
 
-  if (!ready) return null;
   return (
     <button
       type="button"
-      aria-label={playing ? "暂停背景音乐" : "播放背景音乐"}
+      aria-label={playing ? "关闭声音" : "开启声音"}
+      title={playing ? "关闭声音（背景音乐与界面音效）" : "开启声音（背景音乐与界面音效）"}
       onClick={toggle}
       className="fixed bottom-28 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
     >
-      {playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+      {soundOn && playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
     </button>
   );
 }
@@ -780,6 +916,16 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
   const { toast } = useDialogs();
   const [uploading, setUploading] = useState(false);
 
+  // 每次「选项被按下」都先给一次轻点反馈（配置了 select 音效时）。
+  // 走 click 而不是 pointerdown：鼠标 hover 不发声，避免择选过程变成噪音。
+  const choose = useCallback(
+    (next: AnswerValue) => {
+      playSfx("select");
+      onChange(next);
+    },
+    [onChange],
+  );
+
   // Rating gets a star scale: the generic option list gave no visual sense of
   // "how much", and 1-5 options read like five unrelated choices.
   if (question.type === "rating") {
@@ -799,7 +945,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 role="radio"
                 aria-checked={value === option.id}
                 disabled={disabled}
-                onClick={() => onChange(option.id)}
+                onClick={() => choose(option.id)}
                 className="flex flex-1 flex-col items-center gap-1 rounded-2xl border px-1 py-2.5 transition active:scale-95"
                 style={
                   active
@@ -838,7 +984,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               selected={value === option.id}
               multiple={false}
               disabled={disabled}
-              onSelect={() => onChange(option.id)}
+              onSelect={() => choose(option.id)}
             />
           ))}
         </div>
@@ -853,7 +999,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               key={option.id}
               type="button"
               disabled={disabled}
-              onClick={() => onChange(option.id)}
+              onClick={() => choose(option.id)}
               className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[15px] transition active:scale-[0.99] ${
                 selected
                   ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)] shadow-sm"
@@ -913,7 +1059,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
               key={option.id}
               type="button"
               disabled={disabled}
-              onClick={() => onChange(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])}
+              onClick={() => choose(checked ? selected.filter((id) => id !== option.id) : [...selected, option.id])}
               className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left text-[15px] transition active:scale-[0.99] ${
                 checked
                   ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)] shadow-sm"
@@ -976,7 +1122,7 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                         type="button"
                         disabled={disabled}
                         onClick={() =>
-                          onChange(
+                          choose(
                             selected
                               ? Object.fromEntries(Object.entries(selections).filter(([key]) => key !== String(row.id)))
                               : { ...selections, [String(row.id)]: columnIndex },
@@ -1235,6 +1381,15 @@ export function SurveyApp() {
   if (window.location.pathname === "/me" || window.location.pathname.startsWith("/me/")) {
     return <MyScreen />;
   }
+  if (window.location.pathname === "/coins" || window.location.pathname.startsWith("/coins/")) {
+    return <CoinsScreen />;
+  }
+  if (window.location.pathname === "/gacha" || window.location.pathname.startsWith("/gacha/")) {
+    return <GachaScreen />;
+  }
+  if (window.location.pathname === "/submissions" || window.location.pathname.startsWith("/submissions/")) {
+    return <SubmissionsScreen />;
+  }
   // The showcase ("展示区") is the immersive person gallery.
   if (window.location.pathname === "/showcase" || window.location.pathname.startsWith("/showcase/")) {
     return <ShowcaseScreen />;
@@ -1255,6 +1410,9 @@ export function SurveyApp() {
   // 「再填一次」必须复用通过验证的访问码，否则访问码问卷会直接 403 掉进错误页。
   const accessCodeRef = useRef<string | undefined>(undefined);
   const [index, setIndex] = useState(0);
+  // Walked path (question indexes): 上一题 pops this stack instead of stepping
+  // linearly, so going back inside a branch never lands in a sibling branch.
+  const [backStack, setBackStack] = useState<number[]>([]);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1316,6 +1474,24 @@ export function SurveyApp() {
 
   const resolvedUserPreset = useResolvedPreset(userThemePreset);
 
+  // 界面音效配置来自主题（theme.audio.sfx）。规则与 BGM 一致：用户自选主题预设
+  // 会覆盖整份主题，自定义音效随之失效；老问卷没有 sfx 字段时一律不发声。
+  const sfxUrls = (() => {
+    if (resolvedUserPreset) return undefined;
+    return "survey" in screen ? screen.survey.theme?.audio?.sfx : undefined;
+  })();
+
+  useEffect(() => {
+    configureSfx(sfxUrls);
+  }, [sfxUrls]);
+
+  // 解码要等真实手势（自动播放策略），但只等第一次：此后点击就有声音。
+  useEffect(() => {
+    const once = () => preloadSfx();
+    window.addEventListener("pointerdown", once, { once: true, passive: true });
+    return () => window.removeEventListener("pointerdown", once);
+  }, []);
+
   const selectTheme = useCallback(
     (id: string | null) => {
       setUserThemePreset(id);
@@ -1336,7 +1512,9 @@ export function SurveyApp() {
     fetchSurvey(surveyId)
       .then((survey) => {
         if (cancelled) return;
-        if (survey.accessCodeRequired) {
+        if (survey.coinUnlock?.required) {
+          setScreen({ kind: "coin-gate", survey });
+        } else if (survey.accessCodeRequired) {
           setScreen({ kind: "access", survey });
         } else {
           setScreen({ kind: "filling", survey, responseId: 0, currentQuestionId: null, answers: {} });
@@ -1363,12 +1541,43 @@ export function SurveyApp() {
         setPublishToGallery(false);
         setGalleryCoverMediaId(null);
         setGalleryShowUsername(false);
-        const resumeAnswers = started.resumed ? (await fetchAnswers(survey.id, started.responseId)).answers : {};
+        // Restored single-type answers arrive as `[optionId]` arrays (server
+        // compact shape). Normalize to the in-memory shape the fill flow uses:
+        // a bare option id. Without this, resumed selections don't render and
+        // option-driven jumps can't fire on the replayed path.
+        const restored = started.resumed ? (await fetchAnswers(survey.id, started.responseId)).answers : {};
+        const resumeAnswers: Record<number, AnswerValue> = {};
+        for (const question of survey.questions) {
+          const value = restored[String(question.id)];
+          if (value === undefined || value === null) continue;
+          const single = question.type === "single" || question.type === "yes_no" || question.type === "rating";
+          if (single && Array.isArray(value)) {
+            if (value.length > 0) resumeAnswers[question.id] = value[0]!;
+            continue;
+          }
+          resumeAnswers[question.id] = value;
+        }
         setAnswers(resumeAnswers);
         const startIndex = Math.max(
           0,
           survey.questions.findIndex((question) => question.id === started.currentQuestionId),
         );
+        // Rebuild the walked path by replaying the jump-aware flow from the
+        // start, so 上一题 keeps returning to the branch the participant
+        // actually came from. On any disagreement with the server's resume
+        // point, fall back to linear back navigation (empty stack).
+        const replayedStack: number[] = [];
+        if (startIndex > 0) {
+          let cursor = 0;
+          for (let guard = 0; cursor < startIndex && guard <= survey.questions.length + 4; guard += 1) {
+            replayedStack.push(cursor);
+            const next = nextIndex(survey.questions, cursor, resumeAnswers);
+            if (next <= cursor || next >= survey.questions.length) break;
+            cursor = next;
+          }
+          if (cursor !== startIndex) replayedStack.length = 0;
+        }
+        setBackStack(replayedStack);
         setIndex(startIndex >= 0 ? startIndex : 0);
         setScreen({
           kind: "filling",
@@ -1439,9 +1648,17 @@ export function SurveyApp() {
       if (!saved) return;
       const next = nextIndex(screen.survey.questions, index, answers);
       if (next >= screen.survey.questions.length) {
+        playSfx("transition");
         setScreen({ kind: "done", survey: screen.survey });
         return;
       }
+      // 同一页里推进 = 翻过一段文字（page）；跨页 = 换了场景（transition）。
+      // 两者互斥，不会同时响，避免一次点击叠两个声音。
+      const current = screen.survey.questions[index];
+      const target = screen.survey.questions[next];
+      const pageChanged = Boolean(current && target && current.pageId !== target.pageId);
+      playSfx(pageChanged ? "transition" : "page");
+      setBackStack((stack) => [...stack, index]);
       setIndex(next);
     } finally {
       setBusy(false);
@@ -1450,6 +1667,7 @@ export function SurveyApp() {
 
   const goBack = useCallback(async () => {
     if (screen.kind !== "filling") return;
+    playSfx("cancel");
     // 往回翻也要把当前题先落库：不阻塞校验（回退是导航意图，不是提交意图），
     // 保存失败也照常返回——答案仍在本地 state，不会打断用户。
     const question = screen.survey.questions[index];
@@ -1461,9 +1679,14 @@ export function SurveyApp() {
         // 本地已持有该答案；续答时会再次保存
       }
     }
-    setIndex((current) => Math.max(0, current - 1));
+    // 按走过的路径回退；栈为空（如服务端恢复点与重放不一致）才退回线性顺序。
+    setIndex((current) => {
+      const previous = backStack[backStack.length - 1];
+      return previous !== undefined ? previous : Math.max(0, current - 1);
+    });
+    setBackStack((stack) => stack.slice(0, -1));
     setError(null);
-  }, [answers, index, screen]);
+  }, [answers, backStack, index, screen]);
 
   const submit = useCallback(async () => {
     if (screen.kind !== "filling") return;
@@ -1479,6 +1702,7 @@ export function SurveyApp() {
           galleryShowUsername,
         });
         if (result.completed) {
+          playSfx("confirm");
           // 本地"已填过"标记：列表页下次挂载时读取（跨页面导航会重新初始化）。
           markSurveyCompleted(screen.survey.id);
           setScreen({
@@ -1511,16 +1735,27 @@ export function SurveyApp() {
 
   // 退出前确认：填卷进行中直接关掉会丢掉未保存的输入。
   const exitFillingWithConfirm = useCallback(async () => {
-    const inProgress =
-      screen.kind === "filling" && Object.values(screen.answers).some((value) => value !== null && value !== undefined);
+    // `screen.answers` 是进入填卷屏时拍下的快照，之后不再同步：用它判断会永远
+    // 认为「没有作答」，于是刚选完一个选项就退出也不会弹确认。改读实时的
+    // `answers`，并忽略空串/空数组这类「点了但没真的填」的值。
+    const hasAnswers = Object.values(answers).some((value) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === "string") return value.trim().length > 0;
+      if (Array.isArray(value)) return value.length > 0;
+      return true;
+    });
+    const inProgress = screen.kind === "filling" && hasAnswers;
     if (!inProgress) {
       closeSurveyPage();
       return;
     }
     if (await confirm({ message: "确定要退出问卷吗？尚未提交的回答将丢失。", variant: "danger" })) {
+      playSfx("confirm");
       closeSurveyPage();
+    } else {
+      playSfx("cancel");
     }
-  }, [confirm, screen]);
+  }, [answers, confirm, screen.kind]);
 
   if (!Number.isFinite(surveyId)) {
     return <SurveyListPage />;
@@ -1566,6 +1801,24 @@ export function SurveyApp() {
           </div>
         </div>
       </div>
+    );
+  }
+  if (screen.kind === "coin-gate") {
+    return (
+      <CoinGateScreen
+        surveyId={screen.survey.id}
+        title={screen.survey.title}
+        description={screen.survey.description}
+        price={screen.survey.coinUnlock?.price ?? 0}
+        onUnlocked={() => {
+          // 解锁成功：重取定义（此时服务端已放行内容；密码问卷接着走密码门）。
+          accessCodeRef.current = undefined;
+          setRetryKey((key) => key + 1);
+        }}
+        onSkip={() => {
+          window.location.href = "/s";
+        }}
+      />
     );
   }
   if (screen.kind === "access") {
@@ -1783,6 +2036,13 @@ export function SurveyApp() {
   const vars = themeCssVars(theme);
   const backgroundStyle = themeBackgroundStyle(theme);
   const overlay = theme?.overlay;
+  // A per-question cue (a story turn, an ending) wins over the page's
+  // override, which wins over the survey-wide track. A user-chosen preset
+  // replaces the whole theme, which intentionally silences custom music too.
+  const bgmUrl = resolveBgmUrl(theme, question.order, pageIndex);
+  // 立绘与 BGM 同一套优先级（节点级 > 页级 > 默认）；用户自选主题预设会
+  // 覆盖整份主题，因此 `theme` 里没有 sprite 时立绘层整块不渲染。
+  const sprite = resolveSprite(theme, question.order, pageIndex);
 
   return (
     <div
@@ -1870,6 +2130,14 @@ export function SurveyApp() {
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
+          {sprite ? (
+            <SpriteLayer
+              url={sprite.url}
+              expression={sprite.expression}
+              name={sprite.name}
+              expressions={theme?.sprite?.expressions}
+            />
+          ) : null}
           <div className={`survey-card p-5 ${isNote ? "survey-card-story" : ""}`}>
             {currentPage?.title ? (
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
@@ -2020,7 +2288,7 @@ export function SurveyApp() {
             </div>
           </div>
         </nav>
-        {theme?.audio?.url ? <BgmPlayer url={theme.audio.url} /> : null}
+        {bgmUrl ? <BgmPlayer url={bgmUrl} /> : null}
         <ThemePickerSheet
           open={themePickerOpen}
           onClose={() => setThemePickerOpen(false)}

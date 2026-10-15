@@ -2,6 +2,8 @@ import { softDeleteSurvey, updateSurveyStatus } from "../../db/repositories/surv
 import { archiveResponse, deleteResponse, getResponseById } from "../../db/repositories/response.repository";
 import { buildCsv, getExportRows, serializeExport } from "../../services/export.service";
 import { duplicateSurvey, publishSurvey } from "../../services/survey.service";
+import { getSurveyFlow } from "../../services/question.service";
+import { validateSurveyGraph } from "../../services/survey-graph.service";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { sendDocument } from "../../bot/telegram";
 import { prepareResultProfileForResponse } from "../../services/result-visual.service";
@@ -12,6 +14,7 @@ import { resolveReportTemplate } from "../../services/report/template-resolver";
 import { createReportAccessToken } from "../../services/report-access-token.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { WriteContext, loadManageableSurvey, writeAudit } from "./helpers";
+import { getSurveyCoinAccess } from "../../services/coin/unlock.service";
 import { Env } from "../../index";
 
 export async function handleAdminSurveysWrite(
@@ -335,6 +338,25 @@ export async function handleAdminSurveysWrite(
   if (request.method === "POST" && rest === "/publish") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
+    // 图谱校验：分支问卷发布前拦截死路 / 不可达节点 / 向后跳转 / 坏引用。
+    // 运行时会静默忽略这些坏边并回退线性顺序，对普通问卷无害，但会把
+    // 分支剧情悄悄改写掉——所以必须在发布时拦下。
+    const flow = await getSurveyFlow(db, surveyId);
+    const graphIssues = validateSurveyGraph(flow.questions);
+    const graphErrors = graphIssues.filter((issue) => issue.level === "error");
+    if (graphErrors.length) {
+      return Response.json(
+        {
+          ok: false,
+          code: "graph_invalid",
+          message: `图谱校验未通过（${graphErrors.length} 个问题），发布被拒绝；可在错误详情里按题目定位`,
+          issues: graphIssues,
+          requestId: ctx.requestId,
+        },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const graphWarnings = graphIssues.filter((issue) => issue.level === "warning");
     try {
       const published = await publishSurvey(db, surveyId, user.id);
       await writeAudit(db, {
@@ -349,11 +371,65 @@ export async function handleAdminSurveysWrite(
         publishedAt: published.publishedAt,
         version: published.version,
         updatedAt: published.updatedAt,
+        ...(graphWarnings.length ? { warnings: graphWarnings } : {}),
       });
     } catch (error) {
       return fail(400, "publish_validation", error instanceof Error ? error.message : "问卷不满足发布条件");
     }
   }
 
+  // PUT /api/admin/surveys/:id/coin-access — 作者自主启用/关闭金币解锁。
+  // 关闭只是 enabled=0（保留定价痕迹），不会删除任何已存在的解锁记录；
+  // 密码访问与此互相独立，金币解锁永不绕过密码。
+  if (request.method === "PUT" && rest === "/coin-access") {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
+    const enabled = body.enabled === true;
+    const autoPrice = body.autoPrice !== false; // 默认按热度自动定价
+    const basePrice = Number(body.basePrice ?? 0);
+    const rawFixed = body.fixedPrice;
+    if (!Number.isInteger(basePrice) || basePrice < 0) {
+      return fail(400, "invalid_base_price", "基础价格必须是非负整数");
+    }
+    if (rawFixed != null && (!Number.isInteger(Number(rawFixed)) || Number(rawFixed) < 0)) {
+      return fail(400, "invalid_fixed_price", "固定价格必须是非负整数");
+    }
+    const fixedPrice = rawFixed == null ? null : Number(rawFixed);
+    if (enabled && autoPrice && basePrice <= 0) {
+      return fail(400, "invalid_base_price", "自动定价需要大于 0 的基础价格");
+    }
+    if (enabled && !autoPrice && fixedPrice == null) {
+      return fail(400, "invalid_fixed_price", "固定定价需要填写固定价格");
+    }
+    const now = new Date().toISOString();
+    const before = await getSurveyCoinAccess(db, surveyId);
+    await db
+      .prepare(
+        `INSERT INTO survey_coin_access
+           (survey_id, enabled, base_price, auto_price, fixed_price, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(survey_id) DO UPDATE SET
+           enabled = excluded.enabled, base_price = excluded.base_price,
+           auto_price = excluded.auto_price, fixed_price = excluded.fixed_price,
+           price_cached = NULL, price_computed_at = NULL,
+           updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+      )
+      .bind(surveyId, enabled ? 1 : 0, basePrice, autoPrice ? 1 : 0, fixedPrice, adminActorOf(ctx), now)
+      .run();
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "survey.coin_access.update",
+      entityType: "survey_coin_access",
+      entityId: String(surveyId),
+      before: before ? { enabled: before.enabled, basePrice: before.base_price, autoPrice: before.auto_price, fixedPrice: before.fixed_price } : null,
+      after: { enabled, basePrice, autoPrice, fixedPrice },
+    });
+    return json({ ok: true, enabled, autoPrice, basePrice, fixedPrice });
+  }
+
   return null;
+}
+
+function adminActorOf(ctx: WriteContext): string {
+  return `admin:${ctx.user?.id ?? "unknown"}`;
 }

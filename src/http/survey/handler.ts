@@ -18,7 +18,14 @@ import { getFirstQuestion } from "../../survey/engine";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
 import { resolveSubmissionBotUrl } from "../../services/contact-links.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
-import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
+import {
+  atomicRateLimitWindow,
+  buildAtomicRateLimitStatement,
+  checkAtomicRateLimit,
+  checkRateLimit,
+  rateLimitResponse,
+  readAtomicRateLimitCountFromBatch,
+} from "../../services/rate-limit.service";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { createReportAccessToken } from "../../services/report-access-token.service";
 import { createSurveyAccessGrant, verifySurveyAccessGrant } from "../../services/survey-access-grant.service";
@@ -31,12 +38,15 @@ import {
 import { getDefaultPublicationTarget } from "../../db/repositories/publication-target.repository";
 import { promoteResponseMediaToDurable } from "../../services/media/temporary-media.service";
 import { fail, json } from "../api-response";
-import { findMissingRequiredQuestion, saveWebAnswer } from "./answers";
+import { findMissingRequiredQuestion, planWebAnswer } from "./answers";
 import { ANONYMOUS_KEY_PATTERN, enrichBrowserInfo, resolveParticipant, sanitizeHeader } from "./participant";
+import { isCoinAccessEnabled, resolveCoinGate } from "../../services/coin/unlock.service";
 import {
   loadPublishedSurvey,
   loadPublishedSurveyList,
   loadPublishedSurveyListStamp,
+  publishedSurveyStatements,
+  readPublishedSurveyResults,
   resolveParticipantLinkBotUsername,
   SURVEY_LIST_CACHE_TTL_SECONDS,
   SURVEY_LIST_CACHE_VERSION,
@@ -45,12 +55,35 @@ import {
 import { loadSurveyDefinition } from "./definition";
 import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
+import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
 
 interface ResolvedPublicationTarget {
   id: number | null;
   chatId: string;
   threadId: number | null;
 }
+
+/**
+ * Abuse damping for answer saves.
+ *
+ * Counted per participant rather than per address: the write is an idempotent
+ * upsert into the participant's own in-progress response, so it has little
+ * abuse value, while a shared address turns a per-IP bucket into collateral
+ * damage — mainland respondents routinely share VPN egresses and campus NATs,
+ * where one busy household could otherwise throttle everyone behind it. The
+ * modest ceiling still stops a runaway client loop; creating the response the
+ * limit depends on stays capped per address (`/responses`).
+ */
+const ANSWER_RATE_LIMIT_MAX_PER_WINDOW = 120;
+const ANSWER_RATE_LIMIT_WINDOW_SECONDS = 60;
+
+/**
+ * Abuse damping for starting a response, per address: this is what allocates a
+ * row, so it is worth a per-address bucket even though the shared-address
+ * problem above applies. Same shape as the limits it replaces.
+ */
+const START_RESPONSE_MAX_PER_WINDOW = 10;
+const START_RESPONSE_WINDOW_SECONDS = 60;
 
 async function resolvePublicationTarget(env: Env): Promise<ResolvedPublicationTarget | null> {
   if (env.DEPLOYMENT_ROLE === "customer" && env.LICENSE_SERVER_URL && env.LICENSE_KEY && env.INSTALLATION_ID) {
@@ -94,7 +127,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const searchLimiter = await checkRateLimit(
       env.CACHE,
       "survey-search",
-      request.headers.get("cf-connecting-ip") ?? "unknown",
+      resolveClientIdentity(request, env).ip,
       30,
       60,
     );
@@ -156,6 +189,25 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const accessGranted = survey.accessCode
       ? await verifySurveyAccessGrant(env.WEBHOOK_SECRET, surveyId, url.searchParams.get("grant"))
       : true;
+    // 金币解锁是独立于密码的第二道作者自主访问层：启用后，未解锁的访问者
+    // 只能看到元数据与价格。作者本人与管理员豁免；已解锁者直接放行。
+    // 未启用的问卷（绝大多数）不付任何参与者解析/查询成本。
+    if (await isCoinAccessEnabled(env.DB, surveyId)) {
+      const participantResolved = await resolveParticipant(request, env);
+      const participant = participantResolved instanceof Response ? null : participantResolved;
+      const adminIds = (env.ADMIN_IDS ?? "")
+        .split(",")
+        .map((value: string) => Number(value.trim()))
+        .filter((value: number) => Number.isInteger(value));
+      const coinGate = await resolveCoinGate(env.DB, survey, participant, adminIds);
+      if (!coinGate.unlocked) {
+        const locked = await loadSurveyDefinition(env, request, survey, false);
+        return json({
+          ...locked,
+          coinUnlock: { required: true, price: coinGate.price },
+        });
+      }
+    }
     return json(await loadSurveyDefinition(env, request, survey, accessGranted));
   }
 
@@ -168,7 +220,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // Abuse damping on the code check: per IP + per survey, so a 4-digit code
     // cannot be walked in one burst. KV fixed window (same trade-offs as the
     // other public endpoints).
-    const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+    const clientIp = resolveClientIdentity(request, env).ip;
     const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "survey-access", `${clientIp}:${surveyId}`, 20, 300);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
@@ -180,20 +232,39 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
   }
 
   if (request.method === "POST" && rest === "/responses") {
-    // Abuse damping on the public start endpoint (KV fixed window per IP).
-    const limiter = await checkRateLimit(
-      env.CACHE,
-      "start_response",
-      request.headers.get("cf-connecting-ip") ?? "unknown",
-      10,
-      60,
-    );
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
-    const loaded = await loadPublishedSurvey(env, surveyId);
+    // Abuse damping on the public start endpoint, per address (10 per minute):
+    // this is the write that allocates a response, so it stays address-keyed
+    // rather than participant-keyed, unlike the answer saves below. The counter
+    // rides in the same batch as the survey read — one D1 round trip for both.
+    const limiterNow = Date.now();
+    const identity = resolveClientIdentity(request, env);
+    const [startLimitResult, ...surveyResults] = await env.DB.batch([
+      buildAtomicRateLimitStatement(env.DB, "start_response", identity.ip, START_RESPONSE_WINDOW_SECONDS, limiterNow),
+      ...publishedSurveyStatements(env.DB, surveyId),
+    ]);
+    if (readAtomicRateLimitCountFromBatch(startLimitResult) > START_RESPONSE_MAX_PER_WINDOW) {
+      return rateLimitResponse(
+        atomicRateLimitWindow("start_response", identity.ip, START_RESPONSE_WINDOW_SECONDS, limiterNow)
+          .retryAfterSeconds,
+      );
+    }
+    const loaded = readPublishedSurveyResults(surveyResults);
     if (loaded instanceof Response) return loaded;
     const { survey, flow } = loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+
+    // 金币门：未解锁的问卷不能开始作答（与定义读取同一判定）。
+    if (await isCoinAccessEnabled(env.DB, surveyId)) {
+      const coinAdminIds = (env.ADMIN_IDS ?? "")
+        .split(",")
+        .map((value: string) => Number(value.trim()))
+        .filter((value: number) => Number.isInteger(value));
+      const coinGate = await resolveCoinGate(env.DB, survey, participant, coinAdminIds);
+      if (!coinGate.unlocked) {
+        return fail(402, "coin_unlock_required", `该问卷需要金币解锁（${coinGate.price} 金币）后才能填写`);
+      }
+    }
 
     if (survey.accessCode) {
       const body = (await request.json().catch(() => null)) as { accessCode?: unknown } | null;
@@ -212,10 +283,46 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         .filter((value) => Number.isInteger(value))
         .includes(participant.telegramUserId);
 
-    const active =
+    /** Resume lookup, and the policy guard the survey's settings imply. */
+    const activeStatement =
       participant.kind === "telegram"
-        ? await getActiveResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId!)
-        : await getActiveResponse(env.DB, surveyId, participant.participantHash);
+        ? env.DB.prepare(
+            `SELECT id, current_question_id currentQuestionId, status FROM survey_responses
+               WHERE survey_id = ? AND user_id = ? AND status = 'in_progress'
+               ORDER BY id DESC LIMIT 1`,
+          ).bind(surveyId, participant.dbUserId)
+        : env.DB.prepare(
+            `SELECT id, current_question_id currentQuestionId, status FROM survey_responses
+               WHERE survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+               ORDER BY id DESC LIMIT 1`,
+          ).bind(surveyId, participant.participantHash);
+    const policyStatement = !isAdminParticipant
+      ? !survey.allowMultipleResponses
+        ? participant.dbUserId !== null
+          ? env.DB.prepare(
+              "SELECT 1 AS blocked FROM survey_responses WHERE survey_id = ? AND user_id = ? AND status = 'completed' LIMIT 1",
+            ).bind(surveyId, participant.dbUserId)
+          : env.DB.prepare(
+              "SELECT 1 AS blocked FROM survey_responses WHERE survey_id = ? AND participant_hash = ? LIMIT 1",
+            ).bind(surveyId, participant.participantHash)
+        : participant.kind === "telegram" && participant.dbUserId !== null && survey.maxResponsesPerUser > 0
+          ? env.DB.prepare(
+              `SELECT 1 AS blocked FROM survey_responses
+                 WHERE survey_id = ? AND user_id = ? AND status = 'completed'
+                 GROUP BY survey_id HAVING COUNT(*) >= ?`,
+            ).bind(surveyId, participant.dbUserId, survey.maxResponsesPerUser)
+          : null
+      : null;
+
+    // Resume and policy checks are independent reads: one round trip covers both.
+    const [activeResult, policyResult] = await env.DB.batch(
+      policyStatement ? [activeStatement, policyStatement] : [activeStatement],
+    );
+    const active = ((activeResult?.results ?? []) as Array<{
+      id: number;
+      currentQuestionId: number | null;
+      status: string;
+    }>)[0];
     if (active) {
       return json({
         responseId: active.id,
@@ -224,20 +331,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         resumed: true,
       });
     }
-
-    if (!survey.allowMultipleResponses) {
-      const existing =
-        participant.dbUserId !== null
-          ? await getCompletedResponseBySurveyAndUser(env.DB, surveyId, participant.dbUserId)
-          : await getResponseBySurveyAndHash(env.DB, surveyId, participant.participantHash);
-      if (existing && !isAdminParticipant) {
-        return fail(409, "already_completed", "你已经完成过该问卷，不能重复提交");
-      }
-    } else if (participant.kind === "telegram" && participant.dbUserId !== null && !isAdminParticipant) {
-      const completedCount = await countCompletedResponsesBySurveyAndUser(env.DB, surveyId, participant.dbUserId);
-      if (survey.maxResponsesPerUser > 0 && completedCount >= survey.maxResponsesPerUser) {
-        return fail(409, "response_limit_reached", "已达到填写次数上限");
-      }
+    if ((policyResult?.results ?? []).length > 0) {
+      return survey.allowMultipleResponses
+        ? fail(409, "response_limit_reached", "已达到填写次数上限")
+        : fail(409, "already_completed", "你已经完成过该问卷，不能重复提交");
     }
 
     const firstQuestion = getFirstQuestion(flow);
@@ -252,8 +349,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         participantHash: participant.participantHash,
         currentQuestionId: firstQuestion.id,
         deviceFingerprint: sanitizeHeader(request.headers.get("x-device-fingerprint"), 128),
-        browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request),
-        ipAddress: sanitizeHeader(request.headers.get("cf-connecting-ip"), 64),
+        browserInfo: enrichBrowserInfo(request.headers.get("x-browser-info"), request, identity),
+        // Behind the relay the peer address is the relay itself, which is not
+        // worth storing as "where this answer came from".
+        ipAddress: identity.ip === UNKNOWN_CLIENT_IP ? null : sanitizeHeader(identity.ip, 64),
       });
     } catch (error) {
       // A double-tap or a retried request passes the "is there an active
@@ -285,7 +384,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const limiter = await checkRateLimit(
       env.CACHE,
       "upload",
-      request.headers.get("cf-connecting-ip") ?? "unknown",
+      resolveClientIdentity(request, env).ip,
       20,
       60,
     );
@@ -318,18 +417,41 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
   }
 
   if (request.method === "POST" && responseRest === "/answers") {
-    const loaded = await loadPublishedSurvey(env, surveyId);
-    if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const response = await env.DB.prepare(
-      `SELECT id, status FROM survey_responses
-         WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
-         LIMIT 1`,
-    )
-      .bind(responseId, surveyId, participant.participantHash)
-      .first<{ id: number; status: string }>();
-    if (!response) return fail(404, "response_not_found", "答卷不存在或已提交");
+
+    // Reads for one answer, plus the abuse counter, as one D1 round trip. The
+    // counter rides along rather than running as its own request (each
+    // statement sent on its own costs a round trip to the database's region,
+    // and answering is the one interaction a respondent repeats per question).
+    const limiterNow = Date.now();
+    const [limitResult, ...surveyResults] = await env.DB.batch([
+      buildAtomicRateLimitStatement(
+        env.DB,
+        "answers",
+        participant.participantHash,
+        ANSWER_RATE_LIMIT_WINDOW_SECONDS,
+        limiterNow,
+      ),
+      ...publishedSurveyStatements(env.DB, surveyId),
+      env.DB.prepare(
+        `SELECT id, status FROM survey_responses
+           WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+           LIMIT 1`,
+      ).bind(responseId, surveyId, participant.participantHash),
+    ]);
+    const responseResult = surveyResults.pop();
+    if (readAtomicRateLimitCountFromBatch(limitResult) > ANSWER_RATE_LIMIT_MAX_PER_WINDOW) {
+      return rateLimitResponse(
+        atomicRateLimitWindow("answers", participant.participantHash, ANSWER_RATE_LIMIT_WINDOW_SECONDS, limiterNow)
+          .retryAfterSeconds,
+      );
+    }
+    const loaded = readPublishedSurveyResults(surveyResults);
+    if (loaded instanceof Response) return loaded;
+    if (!((responseResult?.results ?? []) as unknown[]).length) {
+      return fail(404, "response_not_found", "答卷不存在或已提交");
+    }
 
     const body = (await request.json().catch(() => null)) as {
       questionId?: unknown;
@@ -341,11 +463,19 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const question = loaded.flow.questions.find((item) => item.id === Number(body.questionId));
     if (!question) return fail(404, "question_not_found", "题目不存在");
 
-    const saveError = await saveWebAnswer(env, responseId, question, body.value);
-    if (saveError) return saveError;
-    await env.DB.prepare("UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?")
-      .bind(question.id, new Date().toISOString(), responseId)
-      .run();
+    const plan = await planWebAnswer(env, responseId, question, body.value);
+    if ("error" in plan) return plan.error;
+    // The answer and the resume pointer are one batch, so a respondent who
+    // closes the tab mid-save never resumes on a question whose answer was
+    // written but not recorded.
+    await env.DB.batch([
+      ...plan.statements,
+      env.DB.prepare("UPDATE survey_responses SET current_question_id = ?, updated_at = ? WHERE id = ?").bind(
+        question.id,
+        new Date().toISOString(),
+        responseId,
+      ),
+    ]);
     return json({ ok: true });
   }
 

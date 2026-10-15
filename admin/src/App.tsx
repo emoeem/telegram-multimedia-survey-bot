@@ -30,6 +30,9 @@ const LoginPage = lazy(() => import("./routes/LoginPage").then((m) => ({ default
 const AuditPage = lazy(() => import("./routes/AuditPage").then((m) => ({ default: m.AuditPage })));
 const SettingsPage = lazy(() => import("./routes/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LicensesPage = lazy(() => import("./routes/LicensesPage").then((m) => ({ default: m.LicensesPage })));
+const CoinEconomyPage = lazy(() =>
+  import("./routes/CoinEconomyPage").then((m) => ({ default: m.CoinEconomyPage })),
+);
 const ControlCenterPage = lazy(() =>
   import("./routes/ControlCenterPage").then((m) => ({ default: m.ControlCenterPage })),
 );
@@ -84,6 +87,7 @@ const router = createBrowserRouter(
         { path: "settings", element: lazyElement(<SettingsPage />) },
         { path: "licenses", element: lazyElement(<LicensesPage />) },
         { path: "control", element: lazyElement(<ControlCenterPage />) },
+        { path: "coin-economy", element: lazyElement(<CoinEconomyPage />) },
         { path: "users", element: lazyElement(<UsersPage />) },
         { path: "*", element: <Navigate to="/" replace /> },
       ],

@@ -1,4 +1,5 @@
 import { getUserById } from "../../db/repositories/user.repository";
+import { getSurveyCoinAccess } from "../../services/coin/unlock.service";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
 import { listAuditLogs } from "../../db/repositories/audit.repository";
 import { getSurveyById } from "../../db/repositories/survey.repository";
@@ -10,7 +11,7 @@ import { listPlazaPosts } from "../../db/repositories/plaza-post.repository";
 import { buildCsv, getExportRows, serializeExport } from "../../services/export.service";
 import { exportUnifiedSurveyJson } from "../../services/survey-json.service";
 import type { Env } from "../../index";
-import { normalizeSurveyTheme, SURVEY_THEME_PRESETS } from "../../survey/theme";
+import { normalizeStoredSurveyTheme, SURVEY_THEME_PRESETS } from "../../survey/theme";
 import {
   diffSurveyVersions,
   getSurveyVersionSnapshot,
@@ -907,6 +908,9 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         return null;
       }
     };
+    // 作者侧的金币解锁配置（缺行 = 免费问卷）。编辑器用它渲染开关；
+    // 展示用的实时价格由公开定义接口下发，这里只回原始配置。
+    const coinAccess = await getSurveyCoinAccess(env.DB, id);
     return json({
       survey: {
         ...survey,
@@ -914,6 +918,14 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         questionCount: questions.length,
         editable: survey.status === "draft" && responseCount === 0,
       },
+      coinAccess: coinAccess
+        ? {
+            enabled: Number(coinAccess.enabled) === 1,
+            autoPrice: Number(coinAccess.auto_price) === 1,
+            basePrice: Number(coinAccess.base_price),
+            fixedPrice: coinAccess.fixed_price == null ? null : Number(coinAccess.fixed_price),
+          }
+        : { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null },
       pages:
         (
           await env.DB.prepare(
@@ -998,9 +1010,9 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
       .first<Record<string, unknown>>();
     if (!survey) return fail(404, "not_found", "问卷不存在");
     if (!isAdmin && survey.owner_id !== user.id) return fail(403, "forbidden", "无权访问此问卷");
-    let theme: ReturnType<typeof normalizeSurveyTheme> = null;
+    let theme: ReturnType<typeof normalizeStoredSurveyTheme> = null;
     try {
-      theme = normalizeSurveyTheme(parseSettingsJson(String(survey.settings_json ?? "")));
+      theme = normalizeStoredSurveyTheme(parseSettingsJson(String(survey.settings_json ?? "")));
     } catch {
       theme = null;
     }

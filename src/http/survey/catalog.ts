@@ -1,10 +1,22 @@
 import type { Env } from "../../index";
 import { getBotUsername } from "../../bot/telegram";
-import { getSurveyById } from "../../db/repositories/survey.repository";
-import { getSurveyFlow } from "../../services/question.service";
-import { normalizeSurveyTheme } from "../../survey/theme";
+import {
+  getSurveyById,
+  getSurveyByIdStatement,
+  mapSurveyStatementResult,
+} from "../../db/repositories/survey.repository";
+import {
+  listOptionsForSurveyStatement,
+  listQuestionsBySurveyStatement,
+  mapOptionRows,
+  mapQuestionRows,
+} from "../../db/repositories/question.repository";
+import type { getSurveyFlow } from "../../services/question.service";
+import { buildSurveyFlow, type SurveyFlow } from "../../survey/engine";
+import { normalizeStoredSurveyTheme } from "../../survey/theme";
 import { fail } from "../api-response";
 import { mediaPublicUrl, parseSettings } from "./presentation";
+import { resolveListCoinPrices } from "../../services/coin/unlock.service";
 
 /**
  * The public survey list is the most expensive read in the product: its
@@ -21,8 +33,12 @@ import { mediaPublicUrl, parseSettings } from "./presentation";
  * much KV storage the stale entries occupy. Keeping it long is deliberate: KV's
  * free plan allows 1,000 writes/day for the whole account, and a short TTL
  * would spend that budget re-writing the same payload.
+ *
+ * The version is part of the key and must be bumped whenever the projection
+ * changes (v3 added the coin-unlock/price fields below), or a rollout serves
+ * entries built by the previous Worker version.
  */
-export const SURVEY_LIST_CACHE_VERSION = "v2";
+export const SURVEY_LIST_CACHE_VERSION = "v3";
 export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
 /**
@@ -36,8 +52,17 @@ export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
  * The TTL therefore only bounds KV usage, and is set to an hour rather than
  * something longer so that a mutation path which forgets to touch the survey
  * row cannot serve stale questions indefinitely.
+ *
+ * The key covers the DATA version but not the PROJECTION version, so it must be
+ * bumped by hand whenever the shape of the cached payload changes (a new field
+ * in the theme, a new media kind, ...). Otherwise a request handled by the
+ * previous Worker version during a rollout can cache a payload that was built
+ * from the new row with the old projection: the new code then reads that
+ * enriched-free entry back and serves a theme missing the new fields until the
+ * TTL expires. That happened once, for `theme.sprite` / `theme.audio.sfx`
+ * (survey 118), which is why this constant is now "v2".
  */
-export const SURVEY_DEFINITION_CACHE_VERSION = "v1";
+export const SURVEY_DEFINITION_CACHE_VERSION = "v2";
 export const SURVEY_DEFINITION_CACHE_TTL_SECONDS = 60 * 60;
 
 export const PARTICIPANT_LINK_BOT_USERNAME_CACHE_KEY = "participant-link-bot-username";
@@ -47,6 +72,11 @@ export interface PublishedSurveyListItem {
   title: string;
   description?: string;
   accessCodeRequired: boolean;
+  /**
+   * 金币解锁信息（仅作者启用了金币解锁的问卷才有）。列表页据此显示
+   * 「🪙 N 金币解锁」，并把按钮改成「解锁填写」，避免用户点进去才发现要付费。
+   */
+  coinUnlock?: { price: number };
   publishedAt: string | null;
   closedAt: string | null;
   anonymous: boolean;
@@ -104,7 +134,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
       coverMediaId: number | null;
       coverUrl: string | null;
     }>();
-  return (rows.results ?? []).map((row) => ({
+  const items = (rows.results ?? []).map((row) => ({
     id: row.id,
     title: row.title,
     ...(row.description ? { description: row.description } : {}),
@@ -117,8 +147,18 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
     // Always serve the cover through the media endpoint so KV/R2/data-URL
     // covers share one path and the public list stays small.
     ...(typeof row.coverMediaId === "number" ? { coverUrl: mediaPublicUrl(Number(row.coverMediaId)) } : {}),
-    theme: normalizeSurveyTheme(parseSettings(row.settingsJson)),
+    theme: normalizeStoredSurveyTheme(parseSettings(row.settingsJson)),
   }));
+  // 金币解锁信息：没有问卷启用时这里零额外查询（免费问卷的列表行为不变）。
+  const prices = await resolveListCoinPrices(
+    env.DB,
+    items.map((item) => item.id),
+  );
+  if (prices.size === 0) return items;
+  return items.map((item) => {
+    const price = prices.get(item.id);
+    return price === undefined ? item : { ...item, coinUnlock: { price } };
+  });
 }
 
 export async function resolveParticipantLinkBotUsername(env: Env): Promise<string | null> {
@@ -138,10 +178,39 @@ export async function resolveParticipantLinkBotUsername(env: Env): Promise<strin
 }
 
 /**
+ * The reads {@link loadPublishedSurvey} performs, as a statement group.
+ *
+ * Exposed separately so a caller that needs more reads for the same request can
+ * append them and still pay a single D1 round trip.
+ */
+export function publishedSurveyStatements(db: D1Database, surveyId: number): D1PreparedStatement[] {
+  return [
+    getSurveyByIdStatement(db, surveyId),
+    listQuestionsBySurveyStatement(db, surveyId),
+    listOptionsForSurveyStatement(db, surveyId),
+  ];
+}
+
+/** Turns the three results of {@link publishedSurveyStatements} into a loader result. */
+export function readPublishedSurveyResults(
+  results: D1Result<unknown>[],
+): { survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>; flow: SurveyFlow } | Response {
+  const survey = mapSurveyStatementResult(results[0]);
+  if (!survey || survey.status !== "published") {
+    return fail(404, "survey_unavailable", "问卷不存在或未发布");
+  }
+  return { survey, flow: buildSurveyFlow(mapQuestionRows(results[1]), mapOptionRows(results[2])) };
+}
+
+/**
  * Loads a published survey plus its flow, or the exact error response.
  *
- * The survey is read once and passed down instead of being re-fetched by each
- * step, which is what keeps `/responses` and `/submit` to a single survey read.
+ * The survey row, its questions and its options arrive as one `db.batch()`:
+ * the statements are independent, and sending them separately costs one round
+ * trip to the database's region each (~90ms a piece from the Hong Kong edge).
+ * Every write path on the survey API goes through here — start, answer, submit,
+ * media upload — so this is the cheapest way to keep a request to a single read
+ * round trip.
  */
 export async function loadPublishedSurvey(
   env: Env,
@@ -150,10 +219,6 @@ export async function loadPublishedSurvey(
   | { survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>; flow: Awaited<ReturnType<typeof getSurveyFlow>> }
   | Response
 > {
-  const survey = await getSurveyById(env.DB, surveyId);
-  if (!survey || survey.status !== "published") {
-    return fail(404, "survey_unavailable", "问卷不存在或未发布");
-  }
-  const flow = await getSurveyFlow(env.DB, surveyId);
-  return { survey, flow };
+  const results = await env.DB.batch(publishedSurveyStatements(env.DB, surveyId));
+  return readPublishedSurveyResults(results);
 }

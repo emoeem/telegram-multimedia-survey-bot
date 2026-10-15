@@ -491,6 +491,7 @@ function EditableEditor({ data }: { data: EditorData }) {
                 questions={editor.questions}
                 meta={editor.surveyMeta}
                 disabled={editingDisabled}
+                coinAccess={data.coinAccess ?? { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null }}
                 onUpdate={(patch) => editor.updateSurveyMeta(patch)}
               />
             </div>
@@ -824,12 +825,14 @@ function SurveySettingsPanel({
   questions,
   meta,
   disabled,
+  coinAccess,
   onUpdate,
 }: {
   surveyId: number;
   questions: Array<{ id: number; type: string; title: string; options: Array<{ id: number; label: string }> }>;
   meta: SurveyMetaState;
   disabled: boolean;
+  coinAccess: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
 }) {
   return (
@@ -872,6 +875,8 @@ function SurveySettingsPanel({
         disabled={disabled}
         onChange={(value) => onUpdate({ reportTemplateId: value })}
       />
+
+      <CoinAccessSetting surveyId={surveyId} initial={coinAccess} disabled={disabled} />
 
       <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
 
@@ -928,6 +933,130 @@ function SurveySettingsPanel({
           />
         </label>
       ) : null}
+    </div>
+  );
+}
+
+
+/**
+ * 作者侧「金币解锁」配置卡片。金币解锁与密码访问互相独立：这里开启后，
+ * 未解锁的访问者需要支付金币才能看到题目；密码问卷仍需输入密码。
+ * 关闭只停用，不会删除任何已产生的解锁记录（已解锁者继续有效）。
+ */
+function CoinAccessSetting({
+  surveyId,
+  initial,
+  disabled,
+}: {
+  surveyId: number;
+  initial: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
+  disabled: boolean;
+}) {
+  const [state, setState] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setState(initial);
+  }, [initial]);
+
+  const save = async (next: typeof state) => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiSend("PUT", `/api/admin/surveys/${surveyId}/coin-access`, {
+        enabled: next.enabled,
+        autoPrice: next.autoPrice,
+        basePrice: next.basePrice,
+        fixedPrice: next.autoPrice ? null : next.fixedPrice,
+      });
+      setState(next);
+      setMessage("已保存。价格在问卷公开页对访问者展示，热度变动会按配置自动调整。");
+      window.setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-check-block">
+      <div className="settings-check">
+        <div>
+          <div className="q-label">金币解锁</div>
+          <div className="q-help">
+            开启后访问者需支付金币解锁本题问卷；免费问卷与密码问卷保持原样，密码仍需单独输入。
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={state.enabled}
+          aria-label="金币解锁"
+          className="switch"
+          data-on={state.enabled}
+          disabled={disabled || busy}
+          onClick={() => void save({ ...state, enabled: !state.enabled })}
+        />
+      </div>
+      {state.enabled ? (
+        <div className="settings-coin-fields">
+          <label className="settings-field">
+            <span className="q-label">定价方式</span>
+            <select
+              className="settings-input"
+              value={state.autoPrice ? "auto" : "fixed"}
+              disabled={disabled || busy}
+              onChange={(event) => void save({ ...state, autoPrice: event.target.value === "auto" })}
+            >
+              <option value="auto">按热度自动定价（推荐）</option>
+              <option value="fixed">固定价格</option>
+            </select>
+          </label>
+          {state.autoPrice ? (
+            <label className="settings-field">
+              <span className="q-label">基础价格（金币）</span>
+              <input
+                type="number"
+                min={1}
+                className="settings-input"
+                defaultValue={state.basePrice}
+                disabled={disabled || busy}
+                onBlur={(event) => {
+                  const next = Number(event.target.value);
+                  if (Number.isInteger(next) && next > 0 && next !== state.basePrice) {
+                    void save({ ...state, basePrice: next });
+                  }
+                }}
+              />
+              <span className="q-help">实际价格 = 基础价 × 热度系数，受平台最低/最高价约束。</span>
+            </label>
+          ) : (
+            <label className="settings-field">
+              <span className="q-label">固定价格（金币，0 = 限时免费）</span>
+              <input
+                type="number"
+                min={0}
+                className="settings-input"
+                defaultValue={state.fixedPrice ?? 0}
+                disabled={disabled || busy}
+                onBlur={(event) => {
+                  const next = Number(event.target.value);
+                  if (Number.isInteger(next) && next >= 0 && next !== state.fixedPrice) {
+                    void save({ ...state, fixedPrice: next });
+                  }
+                }}
+              />
+              <span className="q-help">固定价格不受热度影响；填 0 表示活动期免费开放。</span>
+            </label>
+          )}
+        </div>
+      ) : null}
+      {message ? <div className="q-help settings-coin-ok">{message}</div> : null}
+      {error ? <div className="q-help settings-coin-error">{error}</div> : null}
     </div>
   );
 }

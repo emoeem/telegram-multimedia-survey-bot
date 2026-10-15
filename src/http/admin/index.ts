@@ -26,6 +26,7 @@ import {
 import { consumeAdminMagicLink } from "../../services/admin-magic-link.service";
 import { getBotUsername } from "../../bot/telegram";
 import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
+import { resolveClientIdentity } from "../../services/client-identity.service";
 import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
 import { ADMIN_PASSWORD_SETTING_KEY, verifyAdminPassword } from "../../services/admin-password.service";
 import {
@@ -35,6 +36,7 @@ import {
   saveSystemSetting,
 } from "../../services/system-settings.service";
 import { handleControlApiRequest } from "../control-api";
+import { handleCoinAdminApi } from "./coin-admin";
 import { handleAdminTrashRead, handleAdminTrashWrite } from "./trash";
 import {
   configuredDeploymentRole,
@@ -73,10 +75,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     Response.json({ code, message, requestId }, { status, headers: { "Cache-Control": "no-store" } });
 
   if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
-    const clientIp =
-      request.headers.get("CF-Connecting-IP") ??
-      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
-      "unknown";
+    const clientIp = resolveClientIdentity(request, env).ip;
     const limiter = await checkAtomicRateLimit(
       env.DB,
       env.CACHE,
@@ -128,10 +127,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // Simple Telegram deep-link login. The browser creates a short-lived request;
   // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/telegram/start") {
-    const clientIp =
-      request.headers.get("CF-Connecting-IP") ??
-      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
-      "unknown";
+    const clientIp = resolveClientIdentity(request, env).ip;
     const limiter = await checkAtomicRateLimit(
       env.DB,
       env.CACHE,
@@ -198,10 +194,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // 纯 GET + 302，不需要前端参与，所以 Telegram 内置浏览器 / 微信 / 任何
   // WebView 都能用；兑换失败时回登录页并带上原因，让页面给出人话提示。
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/link") {
-    const clientIp =
-      request.headers.get("CF-Connecting-IP") ??
-      request.headers.get("X-Forwarded-For")?.split(",", 1)[0]?.trim() ??
-      "unknown";
+    const clientIp = resolveClientIdentity(request, env).ip;
     const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-magic-link", clientIp.slice(0, 100), 20, 300);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     const bounce = (reason: string) =>
@@ -318,8 +311,9 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     });
   }
 
-  const trashReadResponse = await handleAdminTrashRead(url, env, { user, isAdmin, fail, json });
-  if (trashReadResponse) return trashReadResponse;
+  // Writes are matched before reads: both handlers only inspect the path, so
+  // checking the read one first would answer `POST`/`DELETE /api/admin/trash`
+  // with the trash list and make restore/permanent delete no-ops.
   if (url.pathname === "/api/admin/trash" && (request.method === "POST" || request.method === "DELETE")) {
     const body = (await request
       .clone()
@@ -335,6 +329,9 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     );
     if (trashWriteResponse) return trashWriteResponse;
   }
+
+  const trashReadResponse = await handleAdminTrashRead(request, url, env, { user, isAdmin, fail, json });
+  if (trashReadResponse) return trashReadResponse;
 
   if (url.pathname.startsWith("/api/control/")) {
     const controlResponse = await handleControlApiRequest(request, env, { isAdmin, userId: user.id });
@@ -374,6 +371,20 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
   }
 
+  if (
+    url.pathname.startsWith("/api/admin/coins") ||
+    url.pathname.startsWith("/api/admin/gacha") ||
+    url.pathname.startsWith("/api/admin/submissions")
+  ) {
+    const coinResponse = await handleCoinAdminApi(request, url, env, {
+      user,
+      isAdmin,
+      requestId,
+      fail,
+      json,
+    });
+    if (coinResponse) return coinResponse;
+  }
   if (request.method === "GET") {
     // Lets the admin SPA hide the vendor-only console on a customer instance.
     // The API refuses those calls regardless, so this is UX, not the boundary.

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   ClipboardList,
+  Coins,
   Contact,
   FileUp,
   LayoutDashboard,
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
   {
     label: "内容",
     items: [
+      { to: "/coin-economy", icon: Coins, label: "金币经济" },
       { to: "/users", icon: Users, label: "用户" },
       { to: "/reports", icon: Package, label: "报告" },
       { to: "/templates", icon: Palette, label: "模板" },
