@@ -640,6 +640,30 @@ input[type="radio"] {
       min-height: 0;
     }
   }
+  /* 编辑器路由占满视口：硬编码 "100dvh - 4.5rem" 假设编辑器上方只有主区内边距，
+     但浏览器模式横幅、测试横幅以及比视口更高的侧边栏都会改变实际可用高度，
+     让工作区下方留下整段空白并撑出页面级滚动条。这里把外壳钳制到视口高度，
+     让高度沿 shell → 主区 → 编辑器 → 三栏 逐级传递，各栏独立滚动。 */
+  @media (min-width: 1000px) {
+    .admin-shell:has(.editor-page) {
+      height: 100dvh;
+    }
+    .admin-shell:has(.editor-page) > div {
+      min-height: 0;
+    }
+    .admin-shell:has(.editor-page) .admin-sidebar {
+      min-height: 0;
+      overflow-y: auto;
+    }
+    .admin-shell:has(.editor-page) .admin-main {
+      display: flex;
+      flex-direction: column;
+    }
+    .admin-shell:has(.editor-page) .editor-page {
+      flex: 1;
+      height: auto;
+    }
+  }
 
   .editor-topbar {
     display: flex;
@@ -1830,7 +1854,9 @@ input[type="radio"] {
   .preview-panel {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    /* 定高（而非 min-height）：让 stage → phone-frame 的百分比高度链可解析，
+       手机框才能先按 9:19 比例、再按舞台实际高度取小。 */
+    height: 100%;
   }
   .preview-head {
     display: flex;
@@ -1856,6 +1882,9 @@ input[type="radio"] {
   }
   .preview-stage {
     flex: 1;
+    /* 允许被压缩到可用高度：否则 flex 最小尺寸会拿手机框的自然高度当下限，
+       把预览列顶出滚动。 */
+    min-height: 0;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -1864,9 +1893,13 @@ input[type="radio"] {
   .phone-frame {
     display: flex;
     flex-direction: column;
-    width: 100%;
-    max-width: 330px;
+    /* 高度优先：填满舞台（不超过 9:19 的手机比例对应高度），宽度按比例推算。
+       之前高度由单题内容撑起，右侧在 tall 舞台下底部留出一大块空白。 */
+    width: auto;
+    min-width: 264px;
+    height: min(100%, 697px);
     max-height: 100%;
+    aspect-ratio: 9 / 19;
     border: 1px solid var(--color-edge);
     border-radius: 30px;
     background: var(--survey-bg);
@@ -4185,4 +4218,433 @@ main > header h1 {
   .report-page table {
     width: 100% !important;
   }
+}
+
+/* ---- 金币经济（余额卡 / 签到 / 挑战 / 抽卡 / 投稿 / 解锁门） ------------- */
+/* 独立命名空间：coin-*。全部基于既有 CSS 变量，明暗主题自动适配；
+   动画一律短促、可跳过，prefers-reduced-motion 下由全局规则关闭。 */
+
+.coin-balance-card {
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--survey-primary, #4f46e5), color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, #22d3ee));
+  padding: 18px;
+  box-shadow: 0 16px 40px -20px color-mix(in srgb, var(--survey-primary, #4f46e5) 70%, transparent);
+}
+
+.coin-checkin-btn {
+  flex: none;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--survey-primary, #4f46e5);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 9px 18px;
+  cursor: pointer;
+  transition: transform 0.05s ease, opacity 0.15s ease;
+}
+.coin-checkin-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.coin-checkin-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.coin-entry,
+.coin-entry-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: var(--survey-radius, 14px);
+  background: var(--survey-card-bg);
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--survey-heading);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.coin-entry-compact {
+  justify-content: center;
+  font-size: 12px;
+  padding: 9px 8px;
+}
+.coin-entry.flex-col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.coin-entry:hover,
+.coin-entry-compact:hover {
+  border-color: color-mix(in srgb, var(--survey-primary, #4f46e5) 45%, var(--survey-card-border));
+}
+
+.coin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 999px;
+  background: var(--survey-card-bg);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--survey-muted);
+  cursor: pointer;
+}
+.coin-tab.is-active {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--survey-primary, #4f46e5) 14%, var(--survey-card-bg));
+  color: var(--survey-primary, #4f46e5);
+}
+
+.coin-card {
+  border: 1px solid var(--survey-card-border);
+  border-radius: var(--survey-radius, 14px);
+  background: var(--survey-card-bg);
+  padding: 14px;
+}
+
+.coin-challenge-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--survey-primary-soft, color-mix(in srgb, var(--survey-primary, #4f46e5) 12%, transparent));
+  font-size: 20px;
+}
+
+.coin-reward-chip {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-primary, #4f46e5) 13%, var(--survey-card-bg));
+  color: var(--survey-primary, #4f46e5);
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 8px;
+}
+
+.coin-progress-track {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--survey-primary, #4f46e5) 12%, transparent);
+  overflow: hidden;
+}
+.coin-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--survey-primary, #4f46e5), color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, #22d3ee));
+  transition: width 0.3s ease;
+}
+
+.coin-claim-btn {
+  flex: none;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--survey-primary, #4f46e5) 40%, transparent);
+  background: color-mix(in srgb, var(--survey-primary, #4f46e5) 10%, var(--survey-card-bg));
+  color: var(--survey-primary, #4f46e5);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.coin-claim-btn:disabled {
+  border-color: var(--survey-card-border);
+  background: transparent;
+  color: var(--survey-muted);
+  cursor: default;
+  opacity: 0.7;
+}
+.coin-claim-flash {
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--survey-primary, #4f46e5);
+  animation: coin-flash-in 0.4s ease;
+}
+@keyframes coin-flash-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.coin-txn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 12px;
+  background: var(--survey-card-bg);
+  padding: 10px 12px;
+}
+.coin-load-more {
+  width: 100%;
+  border: 1px dashed var(--survey-card-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--survey-muted);
+  font-size: 12.5px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+/* 稀有度 */
+.coin-rarity-n {
+  background: color-mix(in srgb, #94a3b8 18%, transparent);
+  color: #64748b;
+}
+.coin-rarity-r {
+  background: color-mix(in srgb, #38bdf8 18%, transparent);
+  color: #0284c7;
+}
+.coin-rarity-sr {
+  background: color-mix(in srgb, #a78bfa 20%, transparent);
+  color: #7c3aed;
+}
+.coin-rarity-ssr {
+  background: linear-gradient(120deg, #fbbf24, #f59e0b);
+  color: #78350f;
+}
+
+.coin-pull-btn {
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--survey-primary, #4f46e5), color-mix(in srgb, var(--survey-primary, #4f46e5) 60%, #22d3ee));
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 800;
+  padding: 11px 16px;
+  cursor: pointer;
+  transition: transform 0.05s ease, filter 0.15s ease;
+}
+.coin-pull-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.coin-pull-btn:disabled {
+  filter: grayscale(0.4);
+  opacity: 0.6;
+  cursor: default;
+}
+.coin-pull-multi {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+}
+.coin-skip-btn {
+  flex: none;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 12px;
+  background: var(--survey-card-bg);
+  color: var(--survey-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+.coin-back-link {
+  background: none;
+  border: 0;
+  color: var(--survey-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+
+/* 抽取揭示层：毛玻璃 + 光效。业务请求在点击时已发出，跳过只移除视觉层。 */
+.coin-reveal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, #0f172a 55%, transparent);
+  backdrop-filter: blur(6px);
+}
+.coin-reveal-glow {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, transparent), transparent 70%);
+  animation: coin-glow 1.1s ease-out;
+}
+@keyframes coin-glow {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+.coin-reveal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 18px;
+  background: var(--survey-card-bg);
+  padding: 18px;
+  animation: coin-panel-in 0.35s ease-out;
+}
+@keyframes coin-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.coin-reveal-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 12px;
+  background: var(--survey-bg);
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--survey-heading);
+}
+.coin-reveal-layer[data-skipped="true"] .coin-reveal-glow {
+  display: none;
+}
+.coin-reveal-layer[data-skipped="true"] .coin-reveal-panel {
+  animation: none;
+}
+
+/* 解锁门 */
+.coin-gate-layer {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--survey-bg);
+}
+.coin-gate-card {
+  width: 100%;
+  max-width: 380px;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 20px;
+  background: var(--survey-card-bg);
+  padding: 22px;
+  text-align: left;
+}
+.coin-gate-price {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 4px;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--survey-primary, #4f46e5);
+}
+.coin-gate-card.coin-gate-open {
+  animation: coin-panel-in 0.35s ease-out;
+}
+.coin-gate-card.coin-gate-open .coin-gate-price {
+  animation: coin-flash-in 0.5s ease;
+}
+
+/* 投稿表单 */
+.coin-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--survey-muted);
+}
+.coin-input {
+  width: 100%;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 12px;
+  background: var(--survey-bg);
+  color: var(--survey-heading);
+  font-size: 13.5px;
+  padding: 10px 12px;
+}
+.coin-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, transparent);
+  outline-offset: 1px;
+}
+.coin-success-box {
+  border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, #22c55e 10%, var(--survey-card-bg));
+  color: #15803d;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 11px 13px;
+  animation: coin-flash-in 0.4s ease;
+}
+
+/* 签到日历（补签入口只在管理员开启时可点） */
+.coin-calendar {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 10px;
+}
+.coin-calendar-cell {
+  aspect-ratio: 1;
+  border: 1px solid var(--survey-card-border);
+  border-radius: 8px;
+  background: var(--survey-bg);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--survey-muted);
+  cursor: default;
+  display: grid;
+  place-items: center;
+}
+.coin-calendar-cell.is-signed {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--survey-primary, #4f46e5), color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, #22d3ee));
+  color: #ffffff;
+}
+.coin-calendar-cell.is-backfillable {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, transparent);
+  color: var(--survey-primary, #4f46e5);
+  cursor: pointer;
+}
+.coin-calendar-cell.is-backfillable:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--survey-primary, #4f46e5) 10%, var(--survey-bg));
+}
+.coin-calendar-cell:disabled {
+  opacity: 0.6;
+}
+
+/* 编辑器里的金币解锁卡片 */
+.settings-check-block {
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+.settings-coin-fields {
+  display: grid;
+  gap: 10px;
+}
+.settings-coin-ok {
+  color: var(--app-success);
+}
+.settings-coin-error {
+  color: var(--app-danger);
 }
