@@ -286,6 +286,50 @@ function ShareEndingCard({ responseId }: { responseId: number }) {
 }
 
 /**
+ * 路线感知的进度（P1.5）：分支问卷的线性百分比会跳变（33%→67%），改为沿
+ * 真实跳转链重放整条路线，按「该路线上的作答步数」计算。
+ *
+ * - 复用答题侧同一套 nextIndex（选项跳转 / answerRules / flagJumps）；
+ * - 剧情文段不占步数（与旧行为一致）；
+ * - 答案变化会改变后续路线 → 用 useMemo 跟随 answers 重算。
+ */
+function routeProgress(
+  questions: SurveyQuestionDto[],
+  currentIndex: number,
+  answers: Record<number, AnswerValue>,
+): { done: number; total: number; percent: number } {
+  // 1. 从头重放路线，得到按顺序访问的节点序列（含当前节点）。
+  const walked: number[] = [];
+  let cursor = 0;
+  for (let guard = 0; cursor < questions.length && guard <= questions.length + 4; guard += 1) {
+    walked.push(cursor);
+    const next = nextIndex(questions, cursor, answers);
+    if (next <= cursor) break;
+    cursor = next;
+  }
+  // 2. 路线总步数 = 路线上需要作答的题；已完成 = 当前位置之前的作答步。
+  const currentIndexInWalk = Math.max(0, walked.lastIndexOf(Math.min(currentIndex, questions.length - 1)));
+  let total = 0;
+  let done = 0;
+  for (let position = 0; position < walked.length; position += 1) {
+    const question = questions[walked[position]!]!;
+    if (question.type === "note") continue;
+    total += 1;
+    if (position < currentIndexInWalk || (position === currentIndexInWalk && currentIndex !== 0)) {
+      // 当前节点之前的作答步全部计入；当前节点在提交前不计，避免首题 100%。
+      done += 1;
+    }
+  }
+  // 兜底：重放被守卫截断（异常条件环）时退回线性计数。
+  if (total === 0) {
+    const answerable = questions.filter((item) => item.type !== "note").length;
+    return { done: Math.min(currentIndex, answerable), total: answerable, percent: 0 };
+  }
+  const percent = Math.round((done / total) * 100);
+  return { done, total, percent };
+}
+
+/**
  * 注册墙登录门（产品决策）：填卷要求邮箱注册或 Telegram 身份。未登录用户
  * 从这里去 /auth 登录，登录态存在 localStorage，回来点「重试」直接续上。
  */
@@ -2503,13 +2547,14 @@ export function SurveyApp() {
   const isNote = question.type === "note";
   const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
   const isLast = index === survey.questions.length - 1;
-  // 进度按"需要作答的题"计数：剧情文段只展示内容，不占题号、不计百分比。
-  const answerableTotal = survey.questions.filter((item) => item.type !== "note").length;
-  const answerableIndex = isNote
-    ? 0
-    : survey.questions.slice(0, index + 1).filter((item) => item.type !== "note").length;
+  // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
+  // 无任何跳转条件的问卷，重放结果与线性顺序完全一致（行为兼容）。
+  const { done: answerableIndex, total: answerableTotal, percent } = routeProgress(
+    survey.questions,
+    index,
+    answers,
+  );
   const total = answerableTotal;
-  const percent = answerableTotal ? Math.round((answerableIndex / answerableTotal) * 100) : 0;
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
   // The participant can override the survey's default theme for this session;
   // the choice is remembered per survey in localStorage.
