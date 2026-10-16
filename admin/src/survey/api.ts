@@ -482,12 +482,22 @@ export function markAchievementsSeen(): Promise<{ ok: boolean; marked: number }>
 
 export function fetchSurveyList(
   q = "",
-): Promise<{ surveys: SurveyListItem[]; communityGroupUrl: string | null; submissionBotUrl: string | null }> {
-  return request<{ surveys: SurveyListItem[]; communityGroupUrl: string | null; submissionBotUrl: string | null }>(
-    `/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`,
-    undefined,
-    { retries: 2 },
-  );
+): Promise<{
+  surveys: SurveyListItem[];
+  communityGroupUrl: string | null;
+  submissionBotUrl: string | null;
+  /** 查看者是否已确认年龄（0080）。未确认时目录不含 r18 问卷。 */
+  ageVerified?: boolean;
+  /** 被分级挡住、未确认年龄看不到的 r18 问卷数（确认后可见）。 */
+  hiddenCount?: number;
+}> {
+  return request<{
+    surveys: SurveyListItem[];
+    communityGroupUrl: string | null;
+    submissionBotUrl: string | null;
+    ageVerified?: boolean;
+    hiddenCount?: number;
+  }>(`/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`, undefined, { retries: 2 });
 }
 
 export async function verifyAccessCode(surveyId: number, code: string): Promise<string | null> {

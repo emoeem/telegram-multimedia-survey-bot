@@ -492,6 +492,10 @@ function SurveyListPage() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [retryKey, setRetryKey] = useState(0);
+  // 内容分级（0080）：未确认年龄时目录隐藏 r18 问卷，给一个确认入口。
+  const [ageVerified, setAgeVerified] = useState(true);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [confirmingAge, setConfirmingAge] = useState(false);
   const resolvedPreset = useResolvedPreset(themePreset);
 
   const selectHomeTheme = (id: string | null) => {
@@ -510,6 +514,8 @@ function SurveyListPage() {
         setSurveys(data.surveys);
         setCommunityGroupUrl(data.communityGroupUrl);
         setSubmissionBotUrl(data.submissionBotUrl);
+        setAgeVerified(data.ageVerified !== false);
+        setHiddenCount(data.hiddenCount ?? 0);
         setError(null);
       })
       .catch((err) => {
@@ -691,6 +697,34 @@ function SurveyListPage() {
           ) : null}
         </div>
       </header>
+      {!ageVerified && hiddenCount > 0 ? (
+        <div className="mx-auto w-full max-w-6xl px-5 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm text-[var(--color-ink)]">
+              🔞 目录中还有 <span className="font-bold">{hiddenCount}</span> 份 18+ 问卷未显示
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary px-5"
+              disabled={confirmingAge}
+              onClick={async () => {
+                if (confirmingAge) return;
+                setConfirmingAge(true);
+                try {
+                  await confirmAgeVerification();
+                  setRetryKey((key) => key + 1);
+                } catch {
+                  // 失败回位，可重试。
+                } finally {
+                  setConfirmingAge(false);
+                }
+              }}
+            >
+              {confirmingAge ? "确认中…" : "我已满 18 岁，查看"}
+            </button>
+          </div>
+        </div>
+      ) : null}
       <main className="mx-auto w-full max-w-6xl px-5 pt-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {orderedSurveys.map((survey) => {

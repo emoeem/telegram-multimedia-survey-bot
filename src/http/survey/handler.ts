@@ -68,6 +68,7 @@ import {
   resolveViewerAgeVerified,
   r18ParticipantGate,
 } from "../../services/content-rating.service";
+import { countPublishedRestrictedSurveys } from "./catalog";
 import { canonicalizeHash, HASH_SET_SQL } from "../../services/identity-link.service";
 import { recordEndingUnlock } from "../../services/ending-unlock.service";
 import { endingTotal, listUnlockedEndings } from "../../services/ending-unlock.service";
@@ -162,6 +163,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // 一份 KV 写预算），过滤发生在服务侧——未确认者拿到的是过滤后的数组，
     // 已确认者原样返回。
     const ageVerified = await resolveViewerAgeVerified(request, env);
+    const hiddenCount = ageVerified ? 0 : await countPublishedRestrictedSurveys(env.DB);
+    const listMeta = { ageVerified, hiddenCount };
     const visibleSurveys = (surveys: PublishedSurveyListItem[]) =>
       ageVerified ? surveys : surveys.filter((item) => item.contentRating === "all");
     // Search results are unbounded and rarely repeated, so only the default
@@ -170,11 +173,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       const cacheKey = `survey-list:${SURVEY_LIST_CACHE_VERSION}:${await loadPublishedSurveyListStamp(env.DB)}`;
       const cached = await readCachedJson<PublishedSurveyListItem[]>(env.CACHE, cacheKey);
       if (cached) {
-        return json({ communityGroupUrl, submissionBotUrl, surveys: visibleSurveys(cached) });
+        return json({ communityGroupUrl, submissionBotUrl, ...listMeta, surveys: visibleSurveys(cached) });
       }
       const surveys = await loadPublishedSurveyList(env, q);
       await writeCachedJson(env.CACHE, cacheKey, surveys, SURVEY_LIST_CACHE_TTL_SECONDS);
-      return json({ communityGroupUrl, submissionBotUrl, surveys: visibleSurveys(surveys) });
+      return json({ communityGroupUrl, submissionBotUrl, ...listMeta, surveys: visibleSurveys(surveys) });
     }
     // Abuse damping on the expensive search branch (per IP fixed window). The
     // default list stays uncapped because it is KV-cached and cheap.
@@ -189,6 +192,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     return json({
       communityGroupUrl,
       submissionBotUrl,
+      ...listMeta,
       surveys: visibleSurveys(await loadPublishedSurveyList(env, q)),
     });
   }

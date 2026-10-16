@@ -161,6 +161,17 @@ export interface PublishedSurveyListItem {
   theme: unknown;
 }
 
+/** 公开目录里被分级挡住的 r18 问卷数（给未确认年龄的查看者一个"还有内容"的提示）。 */
+export async function countPublishedRestrictedSurveys(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM surveys
+       WHERE status = 'published' AND deleted_at IS NULL AND content_rating = 'r18'`,
+    )
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
 export async function loadPublishedSurveyListStamp(db: D1Database): Promise<string> {
   const row = await db
     .prepare(
