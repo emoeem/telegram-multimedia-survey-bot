@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Maximize2, Smartphone } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Flag, Maximize2, Smartphone } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditorPreviewQuestion } from "../../editor/previewModel";
 import { getQuestionInstruction } from "../../../../src/survey/question-presentation";
@@ -14,6 +14,8 @@ interface LivePreviewProps {
   onNavigate: (index: number) => void;
   onOpenFull: () => void;
   preset?: string | null;
+  /** P1 编辑器内试玩：从当前题出发按真实跳转走一遍。 */
+  onTrialFrom?: () => void;
 }
 
 export function LivePreview({
@@ -25,6 +27,7 @@ export function LivePreview({
   onNavigate,
   onOpenFull,
   preset,
+  onTrialFrom,
 }: LivePreviewProps) {
   const question = questions[currentIndex] ?? null;
   const total = questions.length;
@@ -49,6 +52,12 @@ export function LivePreview({
           </div>
           <div className="preview-hint">{dirty ? "包含尚未保存的修改" : "当前已保存版本"} · Telegram 每屏一题</div>
         </div>
+        {onTrialFrom && questions.length > 0 ? (
+          <button className="btn btn-sm btn-quiet" title="从当前题出发，按真实跳转试玩" onClick={onTrialFrom}>
+            <Flag className="h-4 w-4" />
+            试玩
+          </button>
+        ) : null}
         <button className="btn btn-sm btn-quiet" title="打开完整预览" onClick={onOpenFull}>
           <Maximize2 className="h-4 w-4" />
           完整预览

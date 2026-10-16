@@ -22,6 +22,7 @@ import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../co
 import { QuestionCard } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
 import { LivePreview } from "../components/editor/LivePreview";
+import { TrialPlay } from "../components/editor/TrialPlay";
 import { SurveyPreview } from "../components/editor/SurveyPreview";
 import { useSurveyEditor, type EditableQuestion, type SurveyMetaState } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
@@ -96,6 +97,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [trialFrom, setTrialFrom] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const { survey } = data;
@@ -584,16 +586,27 @@ function EditableEditor({ data }: { data: EditorData }) {
         </main>
 
         <aside className="editor-preview editor-col">
-          <LivePreview
-            title={editor.surveyMeta.title}
-            description={editor.surveyMeta.description}
-            questions={previewQuestions}
-            currentIndex={Math.min(previewIndex, Math.max(0, previewQuestions.length - 1))}
-            dirty={editor.dirty}
-            onNavigate={navigatePreview}
-            onOpenFull={() => setPreviewOpen(true)}
-            preset={data.survey.theme?.preset ?? null}
-          />
+          {trialFrom !== null ? (
+            <TrialPlay
+              title={editor.surveyMeta.title}
+              questions={previewQuestions}
+              startIndex={trialFrom}
+              onExit={() => setTrialFrom(null)}
+              preset={data.survey.theme?.preset ?? null}
+            />
+          ) : (
+            <LivePreview
+              title={editor.surveyMeta.title}
+              description={editor.surveyMeta.description}
+              questions={previewQuestions}
+              currentIndex={Math.min(previewIndex, Math.max(0, previewQuestions.length - 1))}
+              dirty={editor.dirty}
+              onNavigate={navigatePreview}
+              onOpenFull={() => setPreviewOpen(true)}
+              preset={data.survey.theme?.preset ?? null}
+              onTrialFrom={() => setTrialFrom(Math.min(previewIndex, Math.max(0, previewQuestions.length - 1)))}
+            />
+          )}
         </aside>
       </div>
 
