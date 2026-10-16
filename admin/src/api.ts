@@ -96,6 +96,19 @@ export async function apiSend<T>(
   return (await parseResponse(response)) as T;
 }
 
+/** 内容分级（0080）：单卷设置（管理员可双向，创作者只能 all→r18）。 */
+export function setSurveyRating(surveyId: number, rating: "all" | "r18"): Promise<{ updatedAt: string }> {
+  return apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { contentRating: rating });
+}
+
+/** 内容分级（0080）：批量标注（仅管理员），一条 UPDATE，统一翻新目录缓存。 */
+export function bulkSetSurveyRating(
+  ids: number[],
+  rating: "all" | "r18",
+): Promise<{ ok: boolean; changed: number }> {
+  return apiSend("POST", "/api/admin/surveys/bulk-rating", { ids, rating });
+}
+
 /** 编辑器：把结果规则生成结局奖池（P1 结局收集）。 */
 export function generateResultPool(
   surveyId: number,
@@ -484,6 +497,8 @@ export interface SurveySummary {
   description: string | null;
   coverUrl: string | null;
   status: SurveyStatus;
+  /** 内容分级（0080）：all=全年龄；r18=仅确认年龄的访问者可见。 */
+  contentRating?: "all" | "r18";
   ownerId: number;
   createdAt: string;
   updatedAt: string;
@@ -498,6 +513,7 @@ export interface SurveyListData {
   total: number;
   totalPages: number;
   statusSummary: { draft: number; published: number; closed: number; archived: number };
+  ratingSummary?: { all: number; r18: number };
 }
 
 export interface ImportQuestionWarning {

@@ -262,6 +262,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
   if (url.pathname === "/api/admin/surveys") {
     const search = (url.searchParams.get("search") ?? "").trim();
     const status = url.searchParams.get("status") ?? "";
+    const rating = url.searchParams.get("rating") ?? "";
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
     const offset = (page - 1) * pageSize;
@@ -275,18 +276,25 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
       conditions.push("s.status = ?");
       binds.push(status);
     }
+    if (rating === "all" || rating === "r18") {
+      conditions.push("s.content_rating = ?");
+      binds.push(rating);
+    }
     const where = conditions.join(" AND ");
     const ownerClause = isAdmin ? "" : " WHERE owner_id = ?";
     const summaryBinds = isAdmin ? [] : [user.id];
-    const [items, count, summaryRows] = (await env.DB.batch([
+    const [items, count, summaryRows, ratingRows] = (await env.DB.batch([
       env.DB.prepare(
-        `SELECT s.id,s.title,s.description,s.status,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
+        `SELECT s.id,s.title,s.description,s.status,s.content_rating AS contentRating,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
       ).bind(...binds, pageSize, offset),
       env.DB.prepare(`SELECT COUNT(*) count FROM surveys s WHERE ${where}`).bind(...binds),
       env.DB.prepare(
         `SELECT status, COUNT(*) count FROM surveys${ownerClause ? ownerClause + " AND deleted_at IS NULL" : " WHERE deleted_at IS NULL"} GROUP BY status`,
       ).bind(...summaryBinds),
-    ])) as [D1Result, D1Result, D1Result];
+      env.DB.prepare(
+        `SELECT content_rating AS rating, COUNT(*) count FROM surveys${ownerClause ? ownerClause + " AND deleted_at IS NULL" : " WHERE deleted_at IS NULL"} GROUP BY content_rating`,
+      ).bind(...summaryBinds),
+    ])) as [D1Result, D1Result, D1Result, D1Result];
     const total = Number((count.results?.[0] as { count?: number })?.count ?? 0);
     const statusSummary = { draft: 0, published: 0, closed: 0, archived: 0 };
     for (const row of summaryRows.results ?? []) {
@@ -295,6 +303,11 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         statusSummary[r.status as keyof typeof statusSummary] = Number(r.count ?? 0);
       }
     }
+    const ratingSummary = { all: 0, r18: 0 };
+    for (const row of ratingRows.results ?? []) {
+      const r = row as { rating: string | null; count: number | null };
+      ratingSummary[r.rating === "r18" ? "r18" : "all"] += Number(r.count ?? 0);
+    }
     return json({
       items: items.results ?? [],
       page,
@@ -302,6 +315,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
       total,
       totalPages: Math.ceil(total / pageSize),
       statusSummary,
+      ratingSummary,
     });
   }
 

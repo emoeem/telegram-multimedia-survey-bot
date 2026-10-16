@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { Plus, Search } from "lucide-react";
 import { donutOption } from "../charts";
 import { useApi } from "../hooks";
-import { apiSend, type SurveyListData, type SurveyStatus, type WriteResult } from "../api";
+import { apiSend, bulkSetSurveyRating, setSurveyRating, type SurveyListData, type SurveyStatus, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { STATUS_LABELS, formatDateTime } from "../format";
 
@@ -35,7 +35,10 @@ export function SurveysPage() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("");
+  const [rating, setRating] = useState<string>("");
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -46,15 +49,51 @@ export function SurveysPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, status]);
+    setSelected([]);
+  }, [search, status, rating]);
 
-  const query = new URLSearchParams({ search, status, page: String(page), pageSize: "20" });
+  const query = new URLSearchParams({ search, status, rating, page: String(page), pageSize: "20" });
   const { data, error, retry } = useApi<SurveyListData>(`/api/admin/surveys?${query}`);
 
-  const hasFilters = searchInput.trim() !== "" || status !== "";
+  const hasFilters = searchInput.trim() !== "" || status !== "" || rating !== "";
   const clearFilters = () => {
     setSearchInput("");
     setStatus("");
+    setRating("");
+  };
+
+  /** 单卷切换分级：r18→all 是放宽，二次确认避免误操作（0080 的管理端语义）。 */
+  const toggleRating = async (surveyId: number, current: "all" | "r18" | undefined) => {
+    const next = current === "r18" ? "all" : "r18";
+    if (next === "all" && !window.confirm("把该问卷改回「全年龄」会立即使其在未确认年龄的访客目录中可见，确定？")) {
+      return;
+    }
+    try {
+      await setSurveyRating(surveyId, next);
+      retry();
+    } catch {
+      // 失败静默，列表数据未变。
+    }
+  };
+
+  const bulkRating = async (target: "all" | "r18") => {
+    if (bulkBusy || !selected.length) return;
+    if (
+      target === "all" &&
+      !window.confirm(`把选中的 ${selected.length} 份问卷改回「全年龄」会立即使其对未确认年龄的访客可见，确定？`)
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      await bulkSetSurveyRating(selected, target);
+      setSelected([]);
+      retry();
+    } catch {
+      // 失败静默。
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const createSurvey = async () => {
@@ -133,6 +172,32 @@ export function SurveysPage() {
             </div>
           </div>
         ) : null}
+        {data?.ratingSummary ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-[var(--color-muted)]">内容分级：</span>
+            {(
+              [
+                { key: "all", label: "全年龄" },
+                { key: "r18", label: "18+" },
+              ] as const
+            ).map(({ key, label }) => {
+              const active = rating === key;
+              return (
+                <button
+                  key={key}
+                  className={`rounded-full border px-3 py-1 transition ${
+                    active
+                      ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] font-semibold"
+                      : "border-[var(--color-edge)] text-[var(--color-muted)]"
+                  }`}
+                  onClick={() => setRating(active ? "" : key)}
+                >
+                  {label} {data.ratingSummary![key]}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1 sm:min-w-52">
@@ -153,6 +218,11 @@ export function SurveysPage() {
               </option>
             ))}
           </select>
+          <select aria-label="内容分级筛选" className="select" value={rating} onChange={(event) => setRating(event.target.value)}>
+            <option value="">全部分级</option>
+            <option value="all">全年龄</option>
+            <option value="r18">18+</option>
+          </select>
           <button className="btn btn-primary" disabled={creating} onClick={createSurvey}>
             {creating ? (
               "创建中…"
@@ -166,14 +236,38 @@ export function SurveysPage() {
         </div>
         {createError ? <div className="mb-3 text-sm text-[var(--app-danger)]">新建失败：{createError}</div> : null}
         {data ? (
-          <div className="mb-3 text-sm text-[var(--color-muted)]">
-            {hasFilters ? (
-              <>
-                符合条件 {data.total} / 全部 {summaryTotal} 份
-              </>
-            ) : (
-              <>共 {summaryTotal} 份问卷</>
-            )}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--color-muted)]">
+            <span>
+              {hasFilters ? (
+                <>
+                  符合条件 {data.total} / 全部 {summaryTotal} 份
+                </>
+              ) : (
+                <>共 {summaryTotal} 份问卷</>
+              )}
+            </span>
+            {selected.length > 0 ? (
+              <span className="flex items-center gap-2">
+                <span className="font-semibold text-[var(--color-foreground)]">已选 {selected.length} 份</span>
+                <button
+                  className="btn btn-sm"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkRating("r18")}
+                >
+                  标为 18+
+                </button>
+                <button
+                  className="btn btn-sm"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkRating("all")}
+                >
+                  标为全年龄
+                </button>
+                <button className="btn btn-sm btn-quiet" onClick={() => setSelected([])}>
+                  取消选择
+                </button>
+              </span>
+            ) : null}
           </div>
         ) : null}
 
@@ -187,8 +281,19 @@ export function SurveysPage() {
               <table className="tbl">
                 <thead>
                   <tr>
+                    <th className="w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="全选本页"
+                        checked={selected.length > 0 && selected.length === data.items.length}
+                        onChange={(event) =>
+                          setSelected(event.target.checked ? data.items.map((item) => item.id) : [])
+                        }
+                      />
+                    </th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">标题</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">状态</th>
+                    <th className="text-sm font-semibold text-[var(--color-muted)]">分级</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">题目</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">答卷</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">更新时间</th>
@@ -201,6 +306,24 @@ export function SurveysPage() {
                       className="cursor-pointer hover:bg-[var(--surface-hover)]"
                       onClick={() => navigate(`/surveys/${item.id}`)}
                     >
+                      <td
+                        className="text-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelected((current) =>
+                            current.includes(item.id)
+                              ? current.filter((id) => id !== item.id)
+                              : [...current, item.id],
+                          );
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${item.title || item.id}`}
+                          checked={selected.includes(item.id)}
+                          readOnly
+                        />
+                      </td>
                       <td className="text-sm">
                         <Link to={`/surveys/${item.id}`} className="font-semibold text-inherit no-underline">
                           {item.title || "未命名问卷"}
@@ -208,6 +331,20 @@ export function SurveysPage() {
                       </td>
                       <td className="text-sm">
                         <StatusBadge status={item.status} />
+                      </td>
+                      <td className="text-sm" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
+                            item.contentRating === "r18"
+                              ? "border-red-500/60 bg-red-500/10 text-red-600"
+                              : "border-[var(--color-edge)] text-[var(--color-muted)]"
+                          }`}
+                          title="点击切换分级（18+ → 全年龄 需确认）"
+                          onClick={() => void toggleRating(item.id, item.contentRating)}
+                        >
+                          {item.contentRating === "r18" ? "18+" : "全年龄"}
+                        </button>
                       </td>
                       <td className="text-sm">{item.questionCount} 题</td>
                       <td className="text-sm">{item.responseCount} 答卷</td>
@@ -226,7 +363,14 @@ export function SurveysPage() {
                 >
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <strong>{item.title || "未命名问卷"}</strong>
-                    <StatusBadge status={item.status} />
+                    <span className="flex items-center gap-1.5">
+                      <StatusBadge status={item.status} />
+                      {item.contentRating === "r18" ? (
+                        <span className="rounded-full border border-red-500/60 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                          18+
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   <div className="mt-2 text-sm text-[var(--color-muted)]">
                     {item.questionCount} 题 · {item.responseCount} 答卷 · {formatDateTime(item.updatedAt)}

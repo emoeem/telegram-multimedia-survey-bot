@@ -27,6 +27,34 @@ export async function handleAdminSurveysWrite(
   const { user, isAdmin, fail, json } = ctx;
   const db = env.DB;
 
+  // POST /api/admin/surveys/bulk-rating — 批量标注内容分级（仅管理员）。
+  // 一条 UPDATE ... IN 搞定并统一 bump updated_at（翻新公开目录缓存）。
+  // 注意必须在数字 ID 匹配之前：bulk-rating 不是数字，否则会被提前 return null。
+  if (request.method === "POST" && url.pathname === "/api/admin/surveys/bulk-rating") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可批量调整内容分级");
+    const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((value) => Number.isInteger(value) && value > 0) : [];
+    const rating = body.rating;
+    if (!ids.length) return fail(400, "validation_failed", "请选择至少一份问卷");
+    if (ids.length > 200) return fail(400, "validation_failed", "一次最多标注 200 份");
+    if (rating !== "all" && rating !== "r18") return fail(400, "validation_failed", "内容分级必须是 all 或 r18");
+    const placeholders = ids.map(() => "?").join(",");
+    const timestamp = new Date().toISOString();
+    const result = await db
+      .prepare(
+        `UPDATE surveys SET content_rating = ?, updated_at = ? WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
+      )
+      .bind(rating, timestamp, ...ids)
+      .run();
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "survey.bulk_rating",
+      entityType: "survey",
+      entityId: null,
+      after: { ids, rating, changed: result.meta?.changes ?? 0 },
+    });
+    return json({ ok: true, changed: result.meta?.changes ?? 0 });
+  }
+
   const surveyMatch = url.pathname.match(/^\/api\/admin\/surveys\/(\d+)(\/.*)?$/);
   if (!surveyMatch) return null;
   const surveyId = Number(surveyMatch[1]);
