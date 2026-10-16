@@ -108,7 +108,7 @@ describe("me overview API", () => {
     );
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({
-      identity: { telegram: true },
+      identity: { telegram: true, email: false, emailMasked: null },
       completedSurveys: 3,
       profileSurveyId: 12,
       myProfile: { responseId: 55, heading: "夜航", publishedAt: "2026-10-01T00:00:00.000Z" },

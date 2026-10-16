@@ -18,6 +18,8 @@ export interface Participant {
   telegramUserId: number | null;
   participantKey: string | null;
   participantHash: string;
+  /** 邮箱身份的脱敏地址（a***@domain），仅用于「我的」页展示。 */
+  emailMasked?: string;
 }
 
 /**
@@ -149,6 +151,7 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
       dbUserId: account.userId,
       telegramUserId: null,
       participantKey: null,
+      emailMasked: maskEmail(account.email),
       // 邮箱 hash 可能已作为 source 被并入某个 user（绑定 TG 后），写侧归一到 canonical。
       participantHash: await canonicalizeHash(env.DB, env.CACHE, `email_${account.id}`),
     };
@@ -190,6 +193,14 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     participantKey,
     participantHash: await canonicalizeHash(env.DB, env.CACHE, participantHashForKey(participantKey)),
   };
+}
+
+/** 邮箱脱敏：保留首字符与域名（a***@domain.com）。 */
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return "***";
+  const local = email.slice(0, at);
+  return `${local.slice(0, 1)}***${email.slice(at)}`;
 }
 
 export function sanitizeHeader(value: string | null, maxLength: number): string | null {

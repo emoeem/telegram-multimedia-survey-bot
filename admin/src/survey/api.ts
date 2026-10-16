@@ -438,7 +438,7 @@ export interface MyShowcase {
 }
 
 export interface MyOverview {
-  identity: { telegram: boolean };
+  identity: { telegram: boolean; email?: boolean; emailMasked?: string | null };
   completedSurveys: number;
   profileSurveyId: number | null;
   myProfile: { responseId: number; heading: string | null; publishedAt: string | null } | null;

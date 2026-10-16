@@ -392,23 +392,32 @@ export function MyScreen() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-[var(--survey-heading)]">
-                  {overview.identity.telegram ? "已绑定 Telegram" : "匿名访客身份"}
+                  {overview.identity.telegram
+                    ? "Telegram 身份"
+                    : overview.identity.email
+                      ? `邮箱账号 · ${overview.identity.emailMasked ?? "已登录"}`
+                      : "匿名访客身份"}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
                   {overview.identity.telegram
                     ? "答卷、挑战与资料卡都会归属到这个身份"
-                    : "从 Telegram 机器人打开可绑定身份，成绩才能上榜"}
+                    : overview.identity.email
+                      ? "已注册登录，答卷与进度都归属这个账号；绑定 Telegram 后成绩可上榜"
+                      : "注册或登录（邮箱即可）后答卷进度才能找回"}
                 </p>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                  overview.identity.telegram
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                    : "bg-[var(--survey-bg)] text-[var(--survey-muted)]"
-                }`}
-              >
-                {overview.identity.telegram ? "已认证" : "未绑定"}
-              </span>
+              {overview.identity.telegram || overview.identity.email ? (
+                <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  {overview.identity.telegram ? "已认证" : "已登录"}
+                </span>
+              ) : (
+                <a
+                  href="/auth"
+                  className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary-content)] no-underline"
+                >
+                  去注册 / 登录
+                </a>
+              )}
             </section>
 
             <CoinCard />

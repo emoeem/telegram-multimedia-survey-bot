@@ -79,7 +79,11 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
             .first<{ id: number; published: number }>();
 
     return json({
-      identity: { telegram: participant.kind === "telegram" },
+      identity: {
+        telegram: participant.kind === "telegram",
+        email: participant.kind === "email",
+        emailMasked: participant.emailMasked ?? null,
+      },
       completedSurveys: Number(responseStats?.completed ?? 0),
       profileSurveyId: Number.isInteger(profileSurveyId) && profileSurveyId > 0 ? profileSurveyId : null,
       myProfile:
