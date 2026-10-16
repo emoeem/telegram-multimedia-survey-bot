@@ -258,9 +258,12 @@ async function serveReportPdf(request: Request, env: Env, url: URL, responseId: 
     const images = await resolveReportProfileImages(env, snapshot);
     const survey = await getSurveyById(env.DB, response.surveyId);
     const settings = await loadSystemSettings(env.DB);
+    // PDF 与网页报告走同一条默认链：作者绑定 > 按报告种类默认（经典报告）> 系统默认。
     const template = await resolveReportTemplate(
       env.DB,
-      survey?.reportTemplateId ?? settings.defaultReportTemplate,
+      survey?.reportTemplateId ??
+        defaultParticipantReportTemplate(snapshot.metadata.reportKind, snapshot.resultType) ??
+        settings.defaultReportTemplate,
     );
     const meta: ResponsiveReportMeta = {
       reportId: `#${responseId}`,

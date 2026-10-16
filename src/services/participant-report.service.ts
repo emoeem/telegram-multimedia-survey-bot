@@ -99,14 +99,13 @@ export function classifyParticipantReport(
   };
 }
 
+/**
+ * 参与者报告的默认模板。产品决策（用户反馈）：所有问卷的报告默认一律用
+ * 「经典报告」——只有个人资料卡（identity card，广场展示用）保留 identity
+ * 布局。作者想用其它样式仍在问卷设置里显式绑定 reportTemplateId。
+ */
 export function defaultParticipantReportTemplate(reportKind: unknown, resultType: unknown): string | null {
   const kind = reportKind === "personal_profile" || resultType === "identity_card" ? "personal_profile" : reportKind;
-  switch (kind) {
-    case "personal_profile": return "identity";
-    case "assessment": return "data";
-    case "preference": return "magazine";
-    case "survey": return "classic";
-    case "form": return "transcript";
-    default: return null;
-  }
+  if (kind === "personal_profile") return "identity";
+  return "classic";
 }

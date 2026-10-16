@@ -17,13 +17,23 @@ describe("participant report classification", () => {
   it("uses explicit rules as the strongest signal", () => {
     const result = classifyParticipantReport([{ type: "text", title: "你的姓名" }], true);
     expect(result.kind).toBe("assessment");
-    expect(defaultParticipantReportTemplate(result.kind, result.kind)).toBe("data");
+    // 产品决策：分类只用于报告标题/文案，默认模板一律经典报告。
+    expect(defaultParticipantReportTemplate(result.kind, result.kind)).toBe("classic");
   });
 
   it("keeps a plain form as answers instead of personality analysis", () => {
     const result = classifyParticipantReport([{ type: "text", title: "联系方式" }, { type: "long_text", title: "备注" }], false);
     expect(result.kind).toBe("form");
     expect(result.resultTitle).toBe("我的回答");
-    expect(defaultParticipantReportTemplate(result.kind, result.kind)).toBe("transcript");
+    expect(defaultParticipantReportTemplate(result.kind, result.kind)).toBe("classic");
+  });
+
+  it("defaults every non-profile kind to the classic report", () => {
+    for (const kind of ["assessment", "preference", "survey", "form", "unknown", undefined]) {
+      expect(defaultParticipantReportTemplate(kind, null)).toBe("classic");
+    }
+    // 资料卡（广场展示）是唯一例外。
+    expect(defaultParticipantReportTemplate("personal_profile", null)).toBe("identity");
+    expect(defaultParticipantReportTemplate("survey", "identity_card")).toBe("identity");
   });
 });

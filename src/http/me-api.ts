@@ -13,6 +13,9 @@ import { revokeReportShare, upsertReportShare } from "../services/report-share.s
 import { hashesFor } from "../services/identity-link.service";
 import { listNotifications, markNotificationsSeen } from "../services/series-follow.service";
 import { getActiveProfileShareFor, revokeProfileShare, upsertProfileShare } from "../services/profile-share.service";
+import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
+import { participantHashForKey } from "../db/repositories/participant-link.repository";
+import { canonicalizeHash, claimParticipantKey } from "../services/identity-link.service";
 
 /** 一次最多返回的报告数：`/me` 是移动端列表，50 条足够回溯到很久以前。 */
 const MY_REPORTS_LIMIT = 50;
@@ -30,6 +33,29 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
   if (request.method === "GET" && url.pathname === "/api/me/overview") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    // 存量用户补认领（0082）：自动认领上线前登录的邮箱用户，其浏览器里的
+    // 匿名进度一直没并入。打开「我的」时静默认领一次——canonicalize 的 KV
+    // 负缓存让已认领用户只付一次缓存读；认领本身幂等（映射 upsert + 幂等
+    // 合并键 + attestation 迁移都是 no-op）。
+    if (participant.kind === "email" && participant.dbUserId !== null) {
+      const anonKey = request.headers.get("x-participant-key");
+      if (anonKey && ANONYMOUS_KEY_PATTERN.test(anonKey)) {
+        try {
+          const rawHash = participantHashForKey(anonKey);
+          const canonical = await canonicalizeHash(env.DB, env.CACHE, rawHash);
+          if (canonical === rawHash) {
+            await claimParticipantKey(env.DB, env.CACHE, {
+              participantKey: anonKey,
+              canonicalHash: participant.participantHash,
+              userId: participant.dbUserId,
+              method: "email_claim",
+            });
+          }
+        } catch (error) {
+          console.warn("overview re-claim failed", { error });
+        }
+      }
+    }
     const hash = participant.participantHash;
     // 0082 并集：绑定前的旧身份数据（web_*/email_*）原地保留，这里一次查全。
     const myHashes = await hashesFor(env.DB, hash);
