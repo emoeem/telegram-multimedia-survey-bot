@@ -69,6 +69,8 @@ import {
   r18ParticipantGate,
 } from "../../services/content-rating.service";
 import { canonicalizeHash, HASH_SET_SQL } from "../../services/identity-link.service";
+import { recordEndingUnlock } from "../../services/ending-unlock.service";
+import { endingTotal, listUnlockedEndings } from "../../services/ending-unlock.service";
 import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
 import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
@@ -279,6 +281,17 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       }
     }
     return json(await loadSurveyDefinition(env, request, survey, accessGranted, system));
+  }
+
+  // 单卷结局图鉴（0086）：当前参与者在某卷上的解锁进度。需要身份（个人数据）。
+  if (request.method === "GET" && rest === "/endings") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const [unlocked, total] = await Promise.all([
+      listUnlockedEndings(env.DB, participant.participantHash, surveyId),
+      endingTotal(env.DB, surveyId),
+    ]);
+    return json({ unlocked, total: total ?? unlocked.length, hasGallery: total !== null });
   }
 
   if (request.method === "POST" && rest === "/access") {
@@ -908,6 +921,17 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       // Answer data is already committed; report archiving is retried by the
       // queue pipeline, so a transient enqueue failure must not fail submit.
       console.error("Report delivery enqueue failed", { responseId, error });
+    }
+    // 单卷结局图鉴（0086）：完成即判定并落解锁行（结果引擎此处首次计算）。
+    // 失败不影响提交——图鉴下次完成时补记。
+    try {
+      await recordEndingUnlock(env.DB, {
+        participantHash: participant.participantHash,
+        surveyId,
+        responseId,
+      });
+    } catch (error) {
+      console.error("Ending unlock recording failed", { responseId, error });
     }
     if (publishToTelegram) {
       try {

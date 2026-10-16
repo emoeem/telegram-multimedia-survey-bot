@@ -46,6 +46,7 @@ import {
   coinApi,
   confirmAgeVerification,
   createReportShare,
+  fetchSurveyEndings,
   revokeReportShare,
   fetchSurvey,
   fetchSurveyList,
@@ -211,6 +212,66 @@ function Typewriter({ text, enabled, className }: { text: string; enabled: boole
       {text.slice(0, shown)}
       {enabled && shown < text.length ? <span className="animate-pulse">▌</span> : null}
     </span>
+  );
+}
+
+interface SurveyEndingDto {
+  resultType: string;
+  title: string | null;
+  unlockedAt: string;
+}
+
+/**
+ * 单卷结局图鉴（0086）：完成页显示「已解锁 n/total」与本结局；多结局问卷
+ * 是拉复玩的核心钩子——没解锁完时提示重玩。
+ */
+function EndingsCard({ surveyId, allowMultiple }: { surveyId: number; allowMultiple: boolean }) {
+  const [endings, setEndings] = useState<{ unlocked: SurveyEndingDto[]; total: number; hasGallery: boolean } | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetchSurveyEndings(surveyId)
+      .then((data) => {
+        if (!cancelled && data.hasGallery) setEndings(data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [surveyId]);
+
+  if (!endings) return null;
+  const complete = endings.unlocked.length >= endings.total;
+  return (
+    <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
+      <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
+        🗺️ 结局图鉴 {endings.unlocked.length}/{endings.total}
+      </p>
+      <ul className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+        {endings.unlocked.map((ending) => (
+          <li
+            key={ending.resultType}
+            className="flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--survey-heading)]"
+          >
+            🏁 {ending.title ?? "隐藏结局"}
+          </li>
+        ))}
+        {Array.from({ length: Math.max(0, endings.total - endings.unlocked.length) }, (_, index) => (
+          <li
+            key={`locked-${index}`}
+            className="rounded-full border border-dashed border-[var(--survey-card-border)] px-3 py-1.5 text-xs text-[var(--survey-muted)]"
+          >
+            ？？？结局
+          </li>
+        ))}
+      </ul>
+      {!complete && allowMultiple ? (
+        <p className="mt-2.5 text-center text-[11px] text-[var(--survey-muted)]">
+          走别的选择，还有 {endings.total - endings.unlocked.length} 个结局等你解锁——重新填写即可再入一局。
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -2396,6 +2457,7 @@ export function SurveyApp() {
           </div>
         ) : null}
         {activeResponseRef.current ? <ShareEndingCard responseId={activeResponseRef.current.responseId} /> : null}
+        <EndingsCard surveyId={screen.survey.id} allowMultiple={screen.survey.allowMultiple} />
         {screen.newAchievements?.length ? (
           <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
             <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">

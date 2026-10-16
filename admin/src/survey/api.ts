@@ -263,6 +263,26 @@ export function fetchSurvey(surveyId: number, accessGrant?: string | null): Prom
 }
 
 /** 年龄确认（0080）：r18 问卷入口 451 之后由确认门调用，随后重试加载。 */
+// ---- 单卷结局图鉴（0086）----
+
+export interface EndingUnlockDto {
+  resultType: string;
+  title: string | null;
+  unlockedAt: string;
+}
+
+export function fetchSurveyEndings(surveyId: number): Promise<{
+  unlocked: EndingUnlockDto[];
+  total: number;
+  hasGallery: boolean;
+}> {
+  return request<{ unlocked: EndingUnlockDto[]; total: number; hasGallery: boolean }>(
+    `/api/survey/${surveyId}/endings`,
+    undefined,
+    { retries: 1 },
+  );
+}
+
 export function confirmAgeVerification(): Promise<{ ageVerifiedAt: string | null }> {
   return request<{ ageVerifiedAt: string | null }>("/api/me/preferences", {
     method: "POST",
