@@ -14,6 +14,7 @@ import {
   runSpendBatch,
   type LedgerEntryInput,
 } from "./ledger.service";
+import { HASH_SET_SQL } from "../identity-link.service";
 
 /**
  * 每日签到：阶梯奖励 + 连续签到。
@@ -47,12 +48,13 @@ function shiftDay(day: string, deltaDays: number): string {
 }
 
 async function currentStreak(db: D1Database, participantHash: string, today: string): Promise<number> {
+  // 0082：并集读取——身份合并前的签到历史（source hash）继续计入连续天数。
   const rows = await db
     .prepare(
       `SELECT day FROM coin_checkins
-       WHERE participant_hash = ? AND day <= ? ORDER BY day DESC LIMIT 60`,
+       WHERE participant_hash ${HASH_SET_SQL} AND day <= ? ORDER BY day DESC LIMIT 60`,
     )
-    .bind(participantHash, today)
+    .bind(participantHash, participantHash, today)
     .all<{ day: string }>();
   const days = new Set((rows.results ?? []).map((row) => row.day));
   // 从今天（或昨天，若今天未签）往前数连续签到天数。
@@ -73,8 +75,8 @@ export async function getCheckinStatus(
   const cfg = config ?? (await loadCoinConfig(db));
   const today = coinDayKey(Date.now(), cfg.timezoneOffsetMinutes);
   const checkedToday = await db
-    .prepare(`SELECT streak, amount FROM coin_checkins WHERE participant_hash = ? AND day = ?`)
-    .bind(participantHash, today)
+    .prepare(`SELECT streak, amount FROM coin_checkins WHERE participant_hash ${HASH_SET_SQL} AND day = ?`)
+    .bind(participantHash, participantHash, today)
     .first<{ streak: number; amount: number }>();
   const streak = checkedToday
     ? Number(checkedToday.streak)
@@ -160,8 +162,8 @@ export async function performCheckin(
     ) {
       const existingTxn = await findTransactionByIdempotencyKey(db, idempotencyKey);
       const checkinRow = await db
-        .prepare(`SELECT streak, amount FROM coin_checkins WHERE participant_hash = ? AND day = ?`)
-        .bind(participantHash, day)
+        .prepare(`SELECT streak, amount FROM coin_checkins WHERE participant_hash ${HASH_SET_SQL} AND day = ?`)
+        .bind(participantHash, participantHash, day)
         .first<{ streak: number; amount: number }>();
       const account = await getCoinAccount(db, participantHash);
       return {
@@ -189,8 +191,8 @@ export async function listCheckinDays(
   const today = coinDayKey(Date.now(), timezoneOffsetMinutes);
   const since = new Date(Date.parse(today + "T00:00:00Z") - (days - 1) * 86_400_000).toISOString().slice(0, 10);
   const result = await db
-    .prepare(`SELECT day FROM coin_checkins WHERE participant_hash = ? AND day >= ? ORDER BY day`)
-    .bind(participantHash, since)
+    .prepare(`SELECT day FROM coin_checkins WHERE participant_hash ${HASH_SET_SQL} AND day >= ? ORDER BY day`)
+    .bind(participantHash, participantHash, since)
     .all<{ day: string }>();
   return (result.results ?? []).map((row) => row.day);
 }
@@ -226,8 +228,8 @@ export async function backfillCheckin(
     throw new CoinLedgerError("invalid_amount", `只能补签最近 ${backfill.maxBackfillDays} 天内的漏签`);
   }
   const existing = await db
-    .prepare(`SELECT 1 FROM coin_checkins WHERE participant_hash = ? AND day = ?`)
-    .bind(participantHash, day)
+    .prepare(`SELECT 1 FROM coin_checkins WHERE participant_hash ${HASH_SET_SQL} AND day = ?`)
+    .bind(participantHash, participantHash, day)
     .first();
   if (existing) {
     const account = await getCoinAccount(db, participantHash);

@@ -1,4 +1,5 @@
 import { createSurvey, getSurveyById } from "../../db/repositories/survey.repository";
+import { normalizeContentRating } from "../../services/content-rating.service";
 import {
   createTaskPack,
   deleteTaskPack,
@@ -24,6 +25,7 @@ import {
 } from "../../services/admin-password.service";
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
+import { handleAdminSeriesWrite } from "./series-admin";
 import { handleAdminEditorWrite } from "./editor";
 import { handleAdminReportsWrite } from "./reports";
 import { handleAdminCommunityWrite } from "./community";
@@ -303,6 +305,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     if (!Number.isInteger(maxResponsesPerUser) || maxResponsesPerUser < 0 || maxResponsesPerUser > 999) {
       return fail(400, "validation_failed", "填写次数上限必须是 0-999 的整数");
     }
+    const contentRating = body.contentRating === undefined ? "all" : normalizeContentRating(body.contentRating);
+    if (!contentRating) return fail(400, "validation_failed", "内容分级必须是 all 或 r18");
     const questions: QuestionPayload[] = [];
     if (body.questions !== undefined) {
       if (!Array.isArray(body.questions)) return fail(400, "validation_failed", "questions 必须是数组");
@@ -320,6 +324,7 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       anonymous,
       allowMultipleResponses,
       maxResponsesPerUser,
+      contentRating,
     });
     for (let index = 0; index < questions.length; index += 1) {
       await insertQuestionWithOptions(db, survey.id, questions[index]!, index);
@@ -674,6 +679,9 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     });
     return json({ ok: true, id: packId });
   }
+
+  const seriesAdminResponse = await handleAdminSeriesWrite(request, url, env, ctx, body);
+  if (seriesAdminResponse) return seriesAdminResponse;
 
   const surveyResponse = await handleAdminSurveysWrite(request, url, env, ctx, body);
   if (surveyResponse) return surveyResponse;

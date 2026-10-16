@@ -35,6 +35,7 @@ export interface DiffSurveyMeta {
   allowMultipleResponses: boolean;
   maxResponsesPerUser: number;
   reportTemplateId?: string | null;
+  contentRating?: "all" | "r18";
 }
 
 export interface EditorSnapshot {

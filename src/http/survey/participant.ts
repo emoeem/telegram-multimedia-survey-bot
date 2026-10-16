@@ -6,6 +6,7 @@ import { getUserById, getUserByTelegramId, upsertUser } from "../../db/repositor
 import { getEmailAccountById } from "../../db/repositories/email-account.repository";
 import { verifyEmailSessionToken } from "../../services/email-auth.service";
 import { getParticipantLink, participantHashForKey } from "../../db/repositories/participant-link.repository";
+import { canonicalizeHash } from "../../services/identity-link.service";
 import { RELAY_OBSCURED_GEO_KEYS, type ClientIdentity } from "../../services/client-identity.service";
 import { fail } from "../api-response";
 
@@ -111,6 +112,7 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
       dbUserId: user.id,
       telegramUserId: profile.telegramUserId,
       participantKey: null,
+      // `user_*` 永远是 canonical（identity-link.service），这里直通零查询。
       participantHash: `user_${user.id}`,
     };
   }
@@ -147,7 +149,8 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
       dbUserId: account.userId,
       telegramUserId: null,
       participantKey: null,
-      participantHash: `email_${account.id}`,
+      // 邮箱 hash 可能已作为 source 被并入某个 user（绑定 TG 后），写侧归一到 canonical。
+      participantHash: await canonicalizeHash(env.DB, env.CACHE, `email_${account.id}`),
     };
   }
 
@@ -164,12 +167,19 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     if (user) {
       const banned = bannedResponse(env, user);
       if (banned) return banned;
+      // 认领后的浏览器身份照旧以 web_* 键续答（participant_links 语义不变），
+      // 但 0082 起 hash 经映射表归一：web_* 若已 link 到该 user，则写侧直接落
+      // user_*，历史数据由读侧并集（hashesFor）覆盖。
+      const rawHash = participantHashForKey(participantKey);
+      const canonical = await canonicalizeHash(env.DB, env.CACHE, rawHash);
       return {
         kind: "telegram",
         dbUserId: user.id,
         telegramUserId: user.telegramUserId,
         participantKey,
-        participantHash: participantHashForKey(participantKey),
+        // 只有 canonical 确实指向当前认领用户时才归一；历史脏映射指向别人时
+        // 保守地留在 web_* 视图（写侧不再归一，读侧并集仍能覆盖旧数据）。
+        participantHash: canonical === `user_${user.id}` ? canonical : rawHash,
       };
     }
   }
@@ -178,7 +188,7 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     dbUserId: null,
     telegramUserId: null,
     participantKey,
-    participantHash: participantHashForKey(participantKey),
+    participantHash: await canonicalizeHash(env.DB, env.CACHE, participantHashForKey(participantKey)),
   };
 }
 

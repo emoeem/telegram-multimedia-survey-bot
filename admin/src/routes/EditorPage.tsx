@@ -17,7 +17,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useApi } from "../hooks";
-import { ApiError, apiSend, apiUpload, type EditorData, type PublishResult, type WriteResult } from "../api";
+import { ApiError, apiSend, apiUpload, generateResultPool, type EditorData, type PublishResult, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { QuestionCard } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
@@ -880,6 +880,8 @@ function SurveySettingsPanel({
 
       <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
 
+      <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
+
       <div className="settings-check">
         <div>
           <div className="q-label">匿名填写</div>
@@ -894,6 +896,27 @@ function SurveySettingsPanel({
           data-on={meta.anonymous}
           disabled={disabled}
           onClick={() => onUpdate({ anonymous: !meta.anonymous })}
+        />
+      </div>
+
+      <div className="settings-check">
+        <div>
+          <div className="q-label">18+ 内容</div>
+          <div className="q-help">
+            开启后问卷仅在目录/广场/展示区对已确认年龄的访问者可见，分享预览走安全卡片
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={meta.contentRating === "r18"}
+          aria-label="18+ 内容"
+          className="switch"
+          data-on={meta.contentRating === "r18"}
+          disabled={disabled}
+          onClick={() =>
+            onUpdate({ contentRating: meta.contentRating === "r18" ? "all" : "r18" })
+          }
         />
       </div>
 
@@ -937,6 +960,43 @@ function SurveySettingsPanel({
   );
 }
 
+
+/**
+ * 结局收集生成器（P1）：把结果设计里的 resultTypes 一键变成抽卡奖池的
+ * 第一方结局卡。池子默认草稿态，价格与上下架在「社区 → 抽卡」管理页调整。
+ */
+function ResultPoolGenerator({ surveyId, disabled }: { surveyId: number; disabled: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const generate = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await generateResultPool(surveyId, 20);
+      setMessage(`已生成结局奖池（${result.items} 张结局卡，草稿态）——到「社区 → 抽卡」调整价格并上架。`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "生成失败，请稍后重试");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="settings-check">
+      <div>
+        <div className="q-label">结局收集奖池</div>
+        <div className="q-help">把「结果设计」里的结局变成抽卡内容：读者完成答卷后花金币抽取结局卡</div>
+        {message ? <div className="q-help mt-1 text-green-600">{message}</div> : null}
+        {error ? <div className="q-help mt-1 text-red-600">{error}</div> : null}
+      </div>
+      <button type="button" className="btn btn-sm" disabled={disabled || busy} onClick={generate}>
+        {busy ? "生成中…" : "生成结局奖池"}
+      </button>
+    </div>
+  );
+}
 
 /**
  * 作者侧「金币解锁」配置卡片。金币解锁与密码访问互相独立：这里开启后，

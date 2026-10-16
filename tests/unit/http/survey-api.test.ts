@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 
 import { handleSurveyApiRequest } from "../../../src/http/survey-api";
 import type { Env } from "../../../src/index";
 
 function makeDb(overrides: Record<string, unknown> = {}) {
+  const overridesTyped = overrides as {
+    participantLink?: { userId: number; bannedAt: string | null; telegramUserId?: number };
+  };
+  void overridesTyped;
   const db = {
     prepare: vi.fn((sql: string) => {
       const statement = {
@@ -12,7 +16,46 @@ function makeDb(overrides: Record<string, unknown> = {}) {
         first: vi.fn(async (): Promise<unknown> => null),
         all: vi.fn(async (): Promise<unknown> => ({ results: [] })),
       };
-      if (sql.includes("SELECT * FROM surveys")) {
+      // 参与者 token（Telegram 分支）解析时的用户读取：默认返回种子身份
+      // user_7001（bannedResponse 需要 banned_at / telegram_user_id 字段）。
+      if (sql.includes("FROM users WHERE telegram_user_id")) {
+        statement.first.mockResolvedValue({
+          id: 7001,
+          telegram_user_id: 7001,
+          username: null,
+          first_name: null,
+          last_name: null,
+          language_code: null,
+          system_role: "participant",
+          bot_started_at: null,
+          banned_at: null,
+          banned_by: null,
+          ban_reason: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      }
+      const linked = overrides.participantLink as
+        | { userId: number; bannedAt: string | null; telegramUserId?: number }
+        | undefined;
+      if (sql.includes("FROM users WHERE telegram_user_id") && linked) {
+        // token 身份的用户读取：用 participantLink 覆盖模拟「被拉黑的用户」。
+        statement.first.mockResolvedValue({
+          id: linked.userId,
+          telegram_user_id: linked.telegramUserId ?? 7001,
+          username: null,
+          first_name: null,
+          last_name: null,
+          language_code: null,
+          system_role: "participant",
+          bot_started_at: null,
+          banned_at: linked.bannedAt ?? null,
+          banned_by: null,
+          ban_reason: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        });
+      } else if (sql.includes("SELECT * FROM surveys")) {
         statement.first.mockResolvedValue(
           overrides.survey ?? {
             id: 1,
@@ -75,7 +118,7 @@ function makeDb(overrides: Record<string, unknown> = {}) {
             id: 42,
             survey_id: 1,
             user_id: null,
-            participant_hash: "web_participant-abc-123",
+            participant_hash: "user_7001",
             status: "in_progress",
             started_at: "2026-08-22T00:00:00.000Z",
             completed_at: null,
@@ -209,6 +252,14 @@ function makeDb(overrides: Record<string, unknown> = {}) {
   } as unknown as D1Database;
   return db;
 }
+
+// 注册墙（产品决策）：匿名 key 不能再开卷/作答——测试统一改用铸造的参与者
+// token（Telegram 身份分支，canonical hash user_7001，与种子行对齐）。
+let authHeaders: Record<string, string> = {};
+beforeAll(async () => {
+  const { createSurveyParticipantToken } = await import("../../../src/services/participant-session.service");
+  authHeaders = { "x-participant-token": await createSurveyParticipantToken("webhook-secret", 7001) };
+});
 
 function makeEnv(db: D1Database, extra: Partial<Env> = {}): Env {
   return {
@@ -397,7 +448,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({}),
       }),
       makeEnv(db),
@@ -436,7 +487,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({}),
       }),
       makeEnv(db),
@@ -464,7 +515,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses/42/answers", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ questionId: 10, value: [101, 102] }),
       }),
       makeEnv(db),
@@ -483,7 +534,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses/42/answers", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ questionId: 10, value: [101, 102] }),
       }),
       makeEnv(db),
@@ -498,7 +549,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses/42/answers", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ questionId: 10, value: [101, 102] }),
       }),
       makeEnv(db),
@@ -516,7 +567,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses/42/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({}),
       }),
       makeEnv(db),
@@ -554,7 +605,7 @@ describe("web survey API", () => {
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/responses/42/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "participant-abc-123" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({}),
       }),
       env,
@@ -585,7 +636,7 @@ describe("web survey API", () => {
       request("/api/survey/1/media", {
         method: "POST",
         body: form,
-        headers: { "x-participant-key": "participant-abc-123" },
+        headers: { ...authHeaders },
       }),
       env,
       new URL("https://worker.test/api/survey/1/media"),
@@ -611,7 +662,7 @@ describe("web survey API", () => {
       request("/api/survey/1/media", {
         method: "POST",
         body: form,
-        headers: { "x-participant-key": "participant-abc-123" },
+        headers: { ...authHeaders },
       }),
       env,
       new URL("https://worker.test/api/survey/1/media"),
@@ -628,7 +679,7 @@ describe("web survey API", () => {
       MEDIA_KV: { put: vi.fn(async () => {}), get: kvGet } as unknown as KVNamespace,
     });
     const response = await handleSurveyApiRequest(
-      request("/api/survey/media/77", { headers: { "x-participant-key": "participant-abc-123" } }),
+      request("/api/survey/media/77", { headers: { ...authHeaders } }),
       env,
       new URL("https://worker.test/api/survey/media/77"),
     );
@@ -722,7 +773,7 @@ describe("web survey media endpoint edge cache", () => {
       MEDIA_KV: { put: vi.fn(async () => {}), get: kvGet } as unknown as KVNamespace,
     });
     const response = await handleSurveyApiRequest(
-      request("/api/survey/media/77", { headers: { "x-participant-key": "participant-abc-123" } }),
+      request("/api/survey/media/77", { headers: { ...authHeaders } }),
       env,
       new URL("https://worker.test/api/survey/media/77"),
     );

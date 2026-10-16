@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { handleSurveyApiRequest } from "../../../src/http/survey-api";
+import { createSurveyParticipantToken } from "../../../src/services/participant-session.service";
 import { atomicRateLimitWindow } from "../../../src/services/rate-limit.service";
 import type { Env } from "../../../src/index";
 import { fullMigrationSchema } from "../../helpers/full-schema";
@@ -31,6 +32,27 @@ function makeEnv(db: D1Database, overrides: Partial<Env> = {}): Env {
     EXPORT_QUEUE: { send: async () => undefined } as unknown as Queue,
     ...overrides,
   } as unknown as Env;
+}
+
+/**
+ * 注册墙（产品决策）之后匿名 key 不能再开卷/作答——测试身份全部改为铸造的
+ * 参与者 token（真实 HMAC 签名，走 Telegram 身份分支，落 users 行）。
+ */
+async function authHeaderAsync(id: number): Promise<Record<string, string>> {
+  return {
+    "x-participant-token": await createSurveyParticipantToken("abuse-test-secret", 7000 + id),
+  };
+}
+
+/** 种子身份：users 行（id = telegram id = 7000+n）→ canonical hash `user_{id}`。 */
+async function seedIdentity(db: D1Database, id: number): Promise<string> {
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO users (id, telegram_user_id, system_role, created_at, updated_at) VALUES (?, ?, 'participant', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    )
+    .bind(7000 + id, 7000 + id)
+    .run();
+  return `user_${7000 + id}`;
 }
 
 /** 直接往 rate_limits 里塞一条"已到上限"的计数：比打满 40 次请求快得多。 */
@@ -75,13 +97,14 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const ip = "203.0.113.7";
 
     // 40/天：先确认正常请求可以通过（模拟第 1 次）。
     const first = await handleSurveyApiRequest(
       makeRequest("/api/survey/1/responses", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "abuse-probe-a" },
+        headers: { "Content-Type": "application/json", ...(await authHeaderAsync(1)) },
         body: JSON.stringify({}),
       }),
       env,
@@ -96,7 +119,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-participant-key": "abuse-probe-b",
+          ...(await authHeaderAsync(2)),
           "cf-connecting-ip": ip,
         },
         body: JSON.stringify({}),
@@ -111,6 +134,8 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const ip = "203.0.113.8";
     await seedRateLimit(db, "start_response_ip_daily", ip, 24 * 60 * 60, 100);
 
@@ -119,7 +144,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-participant-key": "abuse-probe-c",
+          ...(await authHeaderAsync(3)),
           "cf-connecting-ip": ip,
         },
         body: JSON.stringify({}),
@@ -134,22 +159,24 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const raw = db as unknown as { prepare: (sql: string) => { run: () => Promise<unknown> } };
     const now = new Date().toISOString();
     await raw
       .prepare(
         `INSERT INTO survey_responses (id, survey_id, participant_hash, status, started_at,
                                        current_question_id, version, created_at, updated_at)
-         VALUES (42, 1, 'web_abuse-probe-d', 'in_progress', '${now}', 11, 1, '${now}', '${now}')`,
+         VALUES (42, 1, 'user_7004', 'in_progress', '${now}', 11, 1, '${now}', '${now}')`,
       )
       .run();
     await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '秒交', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
 
-    const submit = (path = "/api/survey/1/responses/42/submit") =>
+    const submit = async (path = "/api/survey/1/responses/42/submit") =>
       handleSurveyApiRequest(
         makeRequest(path, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-participant-key": "abuse-probe-d" },
+          headers: { "Content-Type": "application/json", ...(await authHeaderAsync(4)) },
           body: JSON.stringify({}),
         }),
         env,
@@ -173,6 +200,8 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const raw = db as unknown as { prepare: (sql: string) => { run: () => Promise<unknown> } };
     const started = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const completed = new Date(Date.now() - 60 * 1000).toISOString();
@@ -191,7 +220,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
       .prepare(
         `INSERT INTO survey_responses (id, survey_id, participant_hash, status, started_at,
                                        device_fingerprint, current_question_id, version, created_at, updated_at)
-         VALUES (42, 1, 'web_abuse-probe-e', 'in_progress', '${started}', 'fp-same-device', 11, 1, '${started}', '${started}')`,
+         VALUES (42, 1, 'user_7005', 'in_progress', '${started}', 'fp-same-device', 11, 1, '${started}', '${started}')`,
       )
       .run();
     await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '第六份', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
@@ -201,7 +230,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-participant-key": "abuse-probe-e",
+          ...(await authHeaderAsync(5)),
           "x-device-fingerprint": "fp-same-device",
         },
         body: JSON.stringify({}),
@@ -218,22 +247,28 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const raw = db as unknown as { prepare: (sql: string) => { run: () => Promise<unknown> } };
     const started = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     await raw
       .prepare(
         `INSERT INTO survey_responses (id, survey_id, participant_hash, status, started_at,
                                        current_question_id, version, created_at, updated_at)
-         VALUES (42, 1, 'web_abuse-probe-f', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
+         VALUES (42, 1, 'user_7006', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
       )
       .run();
     await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '发布', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
 
-    const publish = (key: string) =>
+    const publish = async (id: number) =>
       handleSurveyApiRequest(
         makeRequest("/api/survey/1/responses/42/submit", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-participant-key": key },
+          headers: {
+            "Content-Type": "application/json",
+            ...(await authHeaderAsync(id)),
+            "cf-connecting-ip": "203.0.113.9",
+          },
           body: JSON.stringify({ publishToTelegram: true }),
         }),
         env,
@@ -241,8 +276,9 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
       );
 
     // 身份闸门：该身份的日计数已达上限 → 429（此时还没有任何发布动作发生）。
-    await seedRateLimit(db, "publish_telegram_identity_daily", "web_abuse-probe-f", 24 * 60 * 60, 2);
-    const blockedByIdentity = await publish("abuse-probe-f");
+    // token 身份的 canonical hash 是 user_{7000+n}（seedIdentity 固定了 users.id）。
+    await seedRateLimit(db, "publish_telegram_identity_daily", "user_7006", 24 * 60 * 60, 2);
+    const blockedByIdentity = await publish(6);
     expect(blockedByIdentity?.status).toBe(429);
     expect(((await blockedByIdentity?.json()) as { code?: string }).code).toBe("publish_limit_reached");
 
@@ -252,7 +288,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
       .prepare(
         `INSERT INTO survey_responses (id, survey_id, participant_hash, status, started_at,
                                        current_question_id, version, created_at, updated_at)
-         VALUES (43, 1, 'web_abuse-probe-g', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
+         VALUES (43, 1, 'user_7007', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
       )
       .run();
     await raw
@@ -267,7 +303,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-participant-key": "abuse-probe-g",
+          ...(await authHeaderAsync(7)),
           "cf-connecting-ip": ip,
         },
         body: JSON.stringify({ publishToTelegram: true }),
@@ -282,13 +318,15 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const db = createSqliteD1(fullMigrationSchema());
     await seedSurvey(db);
     const env = makeEnv(db);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
+    for (let seedId = 1; seedId <= 7; seedId += 1) await seedIdentity(db, seedId);
     const raw = db as unknown as { prepare: (sql: string) => { run: () => Promise<unknown> } };
     const started = new Date(Date.now() - 3 * 60 * 1000).toISOString();
     await raw
       .prepare(
         `INSERT INTO survey_responses (id, survey_id, participant_hash, status, started_at,
                                        current_question_id, version, created_at, updated_at)
-         VALUES (42, 1, 'web_normalkey-1234', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
+         VALUES (42, 1, 'user_7007', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
       )
       .run();
     await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '正常填写', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
@@ -296,7 +334,7 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     const response = await handleSurveyApiRequest(
       makeRequest("/api/survey/1/responses/42/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-participant-key": "normalkey-1234" },
+        headers: { "Content-Type": "application/json", ...(await authHeaderAsync(7)) },
         body: JSON.stringify({}),
       }),
       env,

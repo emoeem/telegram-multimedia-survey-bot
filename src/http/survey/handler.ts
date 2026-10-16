@@ -63,6 +63,12 @@ import {
   type PublishedSurveyListItem,
 } from "./catalog";
 import { loadSurveyDefinition } from "./definition";
+import {
+  ageGateResponse,
+  resolveViewerAgeVerified,
+  r18ParticipantGate,
+} from "../../services/content-rating.service";
+import { canonicalizeHash, HASH_SET_SQL } from "../../services/identity-link.service";
 import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
 import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
@@ -150,17 +156,23 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const q = rawQ;
     const communityGroupUrl = env.COMMUNITY_GROUP_URL || null;
     const submissionBotUrl = resolveSubmissionBotUrl(env);
+    // r18 内容（0080）按查看者年龄确认过滤。缓存始终存全量投影（一份条目、
+    // 一份 KV 写预算），过滤发生在服务侧——未确认者拿到的是过滤后的数组，
+    // 已确认者原样返回。
+    const ageVerified = await resolveViewerAgeVerified(request, env);
+    const visibleSurveys = (surveys: PublishedSurveyListItem[]) =>
+      ageVerified ? surveys : surveys.filter((item) => item.contentRating === "all");
     // Search results are unbounded and rarely repeated, so only the default
     // list (what the survey home page asks for) is cached.
     if (!q) {
       const cacheKey = `survey-list:${SURVEY_LIST_CACHE_VERSION}:${await loadPublishedSurveyListStamp(env.DB)}`;
       const cached = await readCachedJson<PublishedSurveyListItem[]>(env.CACHE, cacheKey);
       if (cached) {
-        return json({ communityGroupUrl, submissionBotUrl, surveys: cached });
+        return json({ communityGroupUrl, submissionBotUrl, surveys: visibleSurveys(cached) });
       }
       const surveys = await loadPublishedSurveyList(env, q);
       await writeCachedJson(env.CACHE, cacheKey, surveys, SURVEY_LIST_CACHE_TTL_SECONDS);
-      return json({ communityGroupUrl, submissionBotUrl, surveys });
+      return json({ communityGroupUrl, submissionBotUrl, surveys: visibleSurveys(surveys) });
     }
     // Abuse damping on the expensive search branch (per IP fixed window). The
     // default list stays uncapped because it is KV-cached and cheap.
@@ -172,7 +184,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       60,
     );
     if (!searchLimiter.allowed) return rateLimitResponse(searchLimiter.retryAfterSeconds);
-    return json({ communityGroupUrl, submissionBotUrl, surveys: await loadPublishedSurveyList(env, q) });
+    return json({
+      communityGroupUrl,
+      submissionBotUrl,
+      surveys: visibleSurveys(await loadPublishedSurveyList(env, q)),
+    });
   }
 
   const participantLinkStartMatch = url.pathname.match(/^\/api\/survey\/participant-link\/start$/);
@@ -230,6 +246,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (!survey || survey.status !== "published") {
       return fail(404, "survey_unavailable", "问卷不存在或未发布");
     }
+    // r18 门（0080）：先于访问密码/金币解锁——未确认年龄的访问者连锁定
+    // 预览也拿不到。全年龄问卷在这里零成本（helper 直接返回 null）。
+    const ageGate = await ageGateResponse(env, request, survey);
+    if (ageGate) return ageGate;
     const system = settingsFromRows((settingsResult?.results ?? []) as Array<{ key: string; value: string }>);
     // A published survey with an access code must not hand out its questions,
     // options or media until the caller proves the code. The grant is minted
@@ -349,6 +369,13 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     }
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    const startAgeGate = await r18ParticipantGate(env.DB, survey, participant);
+    if (startAgeGate) return startAgeGate;
+    // 注册墙（产品决策）：填卷必须注册（邮箱或 Telegram 身份）。匿名浏览器
+    // key 只能浏览——进度、成就、追更、收集都要求可归账的身份。
+    if (participant.kind === "anonymous") {
+      return fail(401, "registration_required", "填写问卷前请先注册或登录（邮箱即可）");
+    }
 
     // 金币门：未解锁的问卷不能开始作答（与定义读取同一判定）。开关已随上面的
     // batch 读回；仅启用时再走一次完整的解锁判定。
@@ -382,18 +409,21 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         .includes(participant.telegramUserId);
 
     /** Resume lookup, and the policy guard the survey's settings imply. */
+    // 归属用并集（HASH_SET_SQL，0082）：绑定/认领前的历史行（web_* / email_*）
+    // 原地保留，canonical 一次查全。SQL 侧并集不增加往返。
     const activeStatement =
       participant.kind === "telegram"
         ? env.DB.prepare(
             `SELECT id, current_question_id currentQuestionId, status FROM survey_responses
-               WHERE survey_id = ? AND user_id = ? AND status = 'in_progress'
+               WHERE survey_id = ? AND (user_id = ? OR participant_hash ${HASH_SET_SQL})
+                 AND status = 'in_progress'
                ORDER BY id DESC LIMIT 1`,
-          ).bind(surveyId, participant.dbUserId)
+          ).bind(surveyId, participant.dbUserId, participant.participantHash, participant.participantHash)
         : env.DB.prepare(
             `SELECT id, current_question_id currentQuestionId, status FROM survey_responses
-               WHERE survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+               WHERE survey_id = ? AND participant_hash ${HASH_SET_SQL} AND status = 'in_progress'
                ORDER BY id DESC LIMIT 1`,
-          ).bind(surveyId, participant.participantHash);
+          ).bind(surveyId, participant.participantHash, participant.participantHash);
     const policyStatement = !isAdminParticipant
       ? !survey.allowMultipleResponses
         ? participant.dbUserId !== null
@@ -401,8 +431,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
               "SELECT 1 AS blocked FROM survey_responses WHERE survey_id = ? AND user_id = ? AND status = 'completed' LIMIT 1",
             ).bind(surveyId, participant.dbUserId)
           : env.DB.prepare(
-              "SELECT 1 AS blocked FROM survey_responses WHERE survey_id = ? AND participant_hash = ? LIMIT 1",
-            ).bind(surveyId, participant.participantHash)
+              `SELECT 1 AS blocked FROM survey_responses
+                WHERE survey_id = ? AND participant_hash ${HASH_SET_SQL} AND status = 'completed'
+                LIMIT 1`,
+            ).bind(surveyId, participant.participantHash, participant.participantHash)
         : participant.kind === "telegram" && participant.dbUserId !== null && survey.maxResponsesPerUser > 0
           ? env.DB.prepare(
               `SELECT 1 AS blocked FROM survey_responses
@@ -514,12 +546,14 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (loaded instanceof Response) return loaded;
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    const savedAgeGate = await r18ParticipantGate(env.DB, loaded.survey, participant);
+    if (savedAgeGate) return savedAgeGate;
     const row = await env.DB.prepare(
       `SELECT id FROM survey_responses
-         WHERE id = ? AND survey_id = ? AND participant_hash = ?
+         WHERE id = ? AND survey_id = ? AND participant_hash ${HASH_SET_SQL}
          LIMIT 1`,
     )
-      .bind(responseId, surveyId, participant.participantHash)
+      .bind(responseId, surveyId, participant.participantHash, participant.participantHash)
       .first<{ id: number }>();
     if (!row) return fail(404, "response_not_found", "答卷不存在");
     const answers = await listAnswersByResponseId(env.DB, responseId);
@@ -546,12 +580,21 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     let participant: Participant;
     let linkStatement: D1PreparedStatement | null = null;
     if (anonKeyHeader !== null && ANONYMOUS_KEY_PATTERN.test(anonKeyHeader)) {
+      // 折叠路径同样要过 canonicalize（0082）：KV 负缓存使未绑定 key 的成本
+      // 是一次缓存读；已绑定的 key 在这里归一到 user_*，与开卷路径写同一行。
+      const rawHash = participantHashForKey(anonKeyHeader);
+      const canonical = await canonicalizeHash(env.DB, env.CACHE, rawHash);
+      const linkedUser = canonical !== rawHash ? Number(canonical.slice("user_".length)) : null;
+      if (linkedUser === null || !Number.isInteger(linkedUser)) {
+        // 注册墙（产品决策）：未注册的浏览器 key 不能作答。
+        return fail(401, "registration_required", "填写问卷前请先注册或登录（邮箱即可）");
+      }
       participant = {
-        kind: "anonymous",
-        dbUserId: null,
+        kind: "telegram",
+        dbUserId: linkedUser,
         telegramUserId: null,
         participantKey: anonKeyHeader,
-        participantHash: participantHashForKey(anonKeyHeader),
+        participantHash: canonical,
       };
       linkStatement = env.DB.prepare(
         `SELECT u.id userId, u.banned_at bannedAt, u.telegram_user_id telegramUserId
@@ -596,9 +639,9 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     statements.push(
       env.DB.prepare(
         `SELECT id, status FROM survey_responses
-           WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+           WHERE id = ? AND survey_id = ? AND participant_hash ${HASH_SET_SQL} AND status = 'in_progress'
            LIMIT 1`,
-      ).bind(responseId, surveyId, participant.participantHash),
+      ).bind(responseId, surveyId, participant.participantHash, participant.participantHash),
     );
     const batchResults = await env.DB.batch(statements);
     const limitResult = batchResults[0];
@@ -614,6 +657,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (!survey || survey.status !== "published") {
       return fail(404, "survey_unavailable", "问卷不存在或未发布");
     }
+    const answersAgeGate = await r18ParticipantGate(env.DB, survey, participant);
+    if (answersAgeGate) return answersAgeGate;
     if (!((responseResult?.results ?? []) as unknown[]).length) {
       return fail(404, "response_not_found", "答卷不存在或已提交");
     }
@@ -678,6 +723,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     }
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    const submitAgeGate = await r18ParticipantGate(env.DB, survey, participant);
+    if (submitAgeGate) return submitAgeGate;
+    if (participant.kind === "anonymous") {
+      return fail(401, "registration_required", "提交前请先注册或登录（邮箱即可）");
+    }
     const body = (await request.json().catch(() => null)) as {
       publishToGallery?: unknown;
       galleryCoverMediaId?: unknown;
@@ -706,9 +756,9 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const submitReads: D1PreparedStatement[] = [
       env.DB.prepare(
         `SELECT id, status, started_at startedAt FROM survey_responses
-           WHERE id = ? AND survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+           WHERE id = ? AND survey_id = ? AND participant_hash ${HASH_SET_SQL} AND status = 'in_progress'
            LIMIT 1`,
-      ).bind(responseId, surveyId, participant.participantHash),
+      ).bind(responseId, surveyId, participant.participantHash, participant.participantHash),
       env.DB.prepare("SELECT * FROM answers WHERE response_id = ? ORDER BY id ASC").bind(responseId),
       // 同一设备指纹 + 同一问卷的完成次数：脚本通常复用同一个（或伪造同一个）指纹；
       // 正常用户一台设备填一次。指纹缺失（首屏未等到 FingerprintJS）时跳过该计数。

@@ -35,6 +35,7 @@ interface ParsedCondition {
   skipToQuestionId?: unknown;
   rules?: Array<{ optionId?: unknown; targetQuestionId?: unknown }>;
   answerRules?: Array<{ questionId?: unknown; equals?: unknown; targetQuestionId?: unknown }>;
+  flagJumps?: Array<{ flag?: unknown; gte?: unknown; targetQuestionId?: unknown }>;
 }
 
 export function validateSurveyGraph(nodes: SurveyGraphNode[]): SurveyGraphIssue[] {
@@ -158,6 +159,23 @@ export function validateSurveyGraph(nodes: SurveyGraphNode[]): SurveyGraphIssue[
       }
       if (node.options.length === 0) pushLinear(); // note：answerRules 不命中时线性兜底
       if (condition.answerRules.length === 0) pushLinear();
+    }
+
+    // flagJumps（P2）：门槛型跳转与 answerRules 同一处理——目标作为边进入
+    // 可达性近似，门槛不可满足也不误报不可达。
+    if (condition.flagJumps !== undefined && !Array.isArray(condition.flagJumps)) {
+      issues.push({ level: "error", questionId: node.id, message: "flagJumps 必须是数组" });
+    } else if (Array.isArray(condition.flagJumps)) {
+      for (const jump of condition.flagJumps) {
+        if (typeof jump.flag !== "string" || !jump.flag) {
+          issues.push({ level: "error", questionId: node.id, message: "flagJumps 的 flag 必须是非空字符串" });
+        }
+        const threshold = Number(jump.gte);
+        if (!Number.isFinite(threshold)) {
+          issues.push({ level: "error", questionId: node.id, message: "flagJumps 的 gte 必须是数字" });
+        }
+        forwardTarget(node, jump.targetQuestionId, "flagJumps", edges);
+      }
     }
     return edges;
   };

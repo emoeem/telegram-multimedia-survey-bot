@@ -1,6 +1,7 @@
 import type { Env } from "../index";
 import { fail, json } from "./api-response";
 import { resolveParticipant } from "./survey/participant";
+import { isParticipantAgeVerified, r18ParticipantGate } from "../services/content-rating.service";
 import { checkAtomicRateLimit, rateLimitResponse } from "../services/rate-limit.service";
 import { getCoinAccountOrCreate } from "../services/coin/ledger.service";
 import { getMediaAssetById } from "../db/repositories/media.repository";
@@ -199,7 +200,10 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
   // ---- 抽卡 -----------------------------------------------------------
   if (request.method === "GET" && path === "/api/gacha/pools") {
     return respond(async () => {
-      const pools = await listActivePools(env.DB);
+      const ageVerified = await isParticipantAgeVerified(env.DB, participant);
+      const pools = (await listActivePools(env.DB)).filter(
+        (pool) => pool.contentRating === "all" || ageVerified,
+      );
       return {
         pools: pools.map((pool) => ({
           slug: pool.slug,
@@ -219,6 +223,8 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
     return respond(async () => {
       const pool = await getPoolBySlug(env.DB, String(poolDetailMatch[1]));
       if (!pool || pool.status !== "active") return fail(404, "pool_not_found", "奖池不存在或未开放");
+      const detailAgeGate = await r18ParticipantGate(env.DB, pool, participant);
+      if (detailAgeGate) return detailAgeGate;
       const items = await loadPoolSnapshot(env.DB, pool);
       // 概率公示：与抽取算法同源（同一快照、同一权重）。
       const totalWeight = items.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
@@ -257,6 +263,8 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
     return respond(async () => {
       const pool = await getPoolBySlug(env.DB, String(pullMatch[1]));
       if (!pool) return fail(404, "pool_not_found", "奖池不存在");
+      const pullAgeGate = await r18ParticipantGate(env.DB, pool, participant);
+      if (pullAgeGate) return pullAgeGate;
       const body = (await request.json().catch(() => null)) as { count?: unknown; idempotencyKey?: unknown } | null;
       const count = Number(body?.count ?? 1);
       const idempotencyKey = typeof body?.idempotencyKey === "string" ? body.idempotencyKey : "";

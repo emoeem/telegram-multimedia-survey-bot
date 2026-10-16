@@ -5,6 +5,14 @@ import { getPublishedGalleryProfile } from "../services/profile-gallery.service"
 import { loadAchievementOverview, markAchievementsSeen } from "../services/achievement.service";
 import { syncShowcasePersonFromProfile } from "../services/showcase-profile.service";
 import { createReportAccessTokens } from "../services/report-access-token.service";
+import { getAgeAttestation, setAgeVerified } from "../services/content-rating.service";
+import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
+import { getSurveyById } from "../db/repositories/survey.repository";
+import { getResultProfileByResponseId } from "../db/repositories/result-profile.repository";
+import { revokeReportShare, upsertReportShare } from "../services/report-share.service";
+import { hashesFor } from "../services/identity-link.service";
+import { listNotifications, markNotificationsSeen } from "../services/series-follow.service";
+import { getActiveProfileShareFor, revokeProfileShare, upsertProfileShare } from "../services/profile-share.service";
 
 /** 一次最多返回的报告数：`/me` 是移动端列表，50 条足够回溯到很久以前。 */
 const MY_REPORTS_LIMIT = 50;
@@ -23,30 +31,33 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
     const hash = participant.participantHash;
+    // 0082 并集：绑定前的旧身份数据（web_*/email_*）原地保留，这里一次查全。
+    const myHashes = await hashesFor(env.DB, hash);
+    const hashPlaceholders = myHashes.map(() => "?").join(",");
 
     const [settings, responseStats, myProfileRow, trialStats, achievements] = await Promise.all([
       loadSystemSettings(env.DB),
       env.DB.prepare(
         `SELECT COUNT(*) AS completed FROM survey_responses
-         WHERE participant_hash = ? AND status = 'completed'`,
+         WHERE participant_hash IN (${hashPlaceholders}) AND status = 'completed'`,
       )
-        .bind(hash)
+        .bind(...myHashes)
         .first<{ completed: number }>(),
       env.DB.prepare(
         `SELECT id FROM survey_responses
-         WHERE participant_hash = ? AND gallery_published = 1
+         WHERE participant_hash IN (${hashPlaceholders}) AND gallery_published = 1
          ORDER BY COALESCE(gallery_published_at, created_at) DESC
          LIMIT 1`,
       )
-        .bind(hash)
+        .bind(...myHashes)
         .first<{ id: number }>(),
       env.DB.prepare(
         `SELECT COUNT(*) AS runs,
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
                 COALESCE(MAX(score), 0) AS bestScore
-         FROM task_runs WHERE participant_hash = ?`,
+         FROM task_runs WHERE participant_hash IN (${hashPlaceholders})`,
       )
-        .bind(hash)
+        .bind(...myHashes)
         .first<{ runs: number; completed: number; bestScore: number }>(),
       loadAchievementOverview(env.DB, hash),
     ]);
@@ -106,16 +117,18 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
   if (request.method === "GET" && url.pathname === "/api/me/reports") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
+    const myHashes = await hashesFor(env.DB, participant.participantHash);
     const rows = await env.DB.prepare(
       `SELECT r.id responseId, r.survey_id surveyId, r.completed_at completedAt,
               COALESCE(s.title, '问卷 #' || r.survey_id) title
          FROM survey_responses r
          JOIN surveys s ON s.id = r.survey_id AND s.deleted_at IS NULL
-        WHERE r.participant_hash = ? AND r.status IN ('completed', 'archived')
+        WHERE r.participant_hash IN (${myHashes.map(() => "?").join(",")})
+          AND r.status IN ('completed', 'archived')
         ORDER BY COALESCE(r.completed_at, r.created_at) DESC, r.id DESC
         LIMIT ?`,
     )
-      .bind(participant.participantHash, MY_REPORTS_LIMIT)
+      .bind(...myHashes, MY_REPORTS_LIMIT)
       .all<{ responseId: number; surveyId: number; completedAt: string | null; title: string }>();
     const reportRows = rows.results ?? [];
     // Token 批量铸造：只 importKey 一次（50 个逐个铸造 ≈9.6ms CPU，顶到 Workers
@@ -136,6 +149,118 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
       };
     });
     return json({ reports });
+  }
+
+  /**
+   * 报告分享卡（0081）：为某份本人答卷创建/查询公开结局卡链接。幂等——
+   * 重复调用返回同一链接；撤销后再调用会换新 token 复活。创建需要答卷归属
+   * 当前身份且已完成；快照字段（结局名/卷名/分级）在创建时刻定格。
+   */
+  if (request.method === "POST" && /^\/api\/me\/reports\/\d+\/share$/.test(url.pathname)) {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const responseId = Number(url.pathname.match(/^\/api\/me\/reports\/(\d+)\/share$/)![1]);
+    const limiter = await checkRateLimit(env.CACHE, "report-share", participant.participantHash, 5, 24 * 3600);
+    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const myHashes = await hashesFor(env.DB, participant.participantHash);
+    const owned = await env.DB.prepare(
+      `SELECT id, survey_id surveyId FROM survey_responses
+       WHERE id = ? AND participant_hash IN (${myHashes.map(() => "?").join(",")})
+         AND status IN ('completed', 'archived') LIMIT 1`,
+    )
+      .bind(responseId, ...myHashes)
+      .first<{ id: number; surveyId: number }>();
+    if (!owned) return fail(404, "report_not_found", "答卷不存在或未完成");
+    const [survey, profile] = await Promise.all([
+      getSurveyById(env.DB, owned.surveyId),
+      getResultProfileByResponseId(env.DB, responseId),
+    ]);
+    const share = await upsertReportShare(env.DB, {
+      responseId,
+      participantHash: participant.participantHash,
+      surveyId: owned.surveyId,
+      surveyTitle: survey?.title ?? null,
+      resultType: profile?.resultType ?? null,
+      resultTitle: profile?.title ?? null,
+      contentRating: survey?.contentRating === "r18" ? "r18" : "all",
+    });
+    return json({
+      share: {
+        url: `/r/${share.token}`,
+        ogUrl: `/r/${share.token}/og.png`,
+        createdAt: share.createdAt,
+        viewCount: share.viewCount,
+      },
+    });
+  }
+
+  if (request.method === "DELETE" && /^\/api\/me\/reports\/\d+\/share$/.test(url.pathname)) {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const responseId = Number(url.pathname.match(/^\/api\/me\/reports\/(\d+)\/share$/)![1]);
+    const revoked = await revokeReportShare(env.DB, responseId, participant.participantHash);
+    return json({ ok: true, revoked });
+  }
+
+  // 内容分级偏好（0080）：年龄确认是 r18 公开面/入口的唯一钥匙。匿名浏览器
+  // key 也允许确认（attestation 按 participant_hash 记录，换设备需重新确认）；
+  // 撤销只影响今后可见性，不改变已产生的答卷归属。
+  if (request.method === "GET" && url.pathname === "/api/me/preferences") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const attestation = await getAgeAttestation(env.DB, participant.participantHash);
+    return json({ ageVerifiedAt: attestation?.ageVerifiedAt ?? null });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/me/preferences") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const body = (await request.json().catch(() => null)) as { ageVerified?: unknown } | null;
+    if (typeof body?.ageVerified !== "boolean") {
+      return fail(400, "validation_failed", "ageVerified 必须是布尔值");
+    }
+    await setAgeVerified(env.DB, participant.participantHash, body.ageVerified);
+    const attestation = await getAgeAttestation(env.DB, participant.participantHash);
+    return json({ ageVerifiedAt: attestation?.ageVerifiedAt ?? null });
+  }
+
+  // 站内通知（0084）：连载更新、召回入口。未读数常驻「我的」页红点。
+  if (request.method === "GET" && url.pathname === "/api/me/notifications") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    return json(await listNotifications(env.DB, participant.participantHash));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/me/notifications/seen") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const marked = await markNotificationsSeen(env.DB, participant.participantHash);
+    return json({ ok: true, marked });
+  }
+
+  // 个人画像分享（0085）：幂等创建/刷新（token 不变、快照更新）、撤销。
+  if (request.method === "POST" && url.pathname === "/api/me/profile-share") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const share = await upsertProfileShare(env.DB, {
+      participantHash: participant.participantHash,
+      displayName: await displayNameOrEmpty(env, participant),
+    });
+    return json({ share: { url: `/u/${share.token}`, updatedAt: share.updatedAt, snapshot: share.snapshot } });
+  }
+
+  if (request.method === "DELETE" && url.pathname === "/api/me/profile-share") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const revoked = await revokeProfileShare(env.DB, participant.participantHash);
+    return json({ ok: true, revoked });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/me/profile-share") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const share = await getActiveProfileShareFor(env.DB, participant.participantHash);
+    return json({ share: share ? { url: `/u/${share.token}`, snapshot: share.snapshot, updatedAt: share.updatedAt } : null });
   }
 
   // Opening 「我的」 is what "reads" the badges: the response above carries the
@@ -183,4 +308,16 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
   }
 
   return fail(404, "not_found", "接口不存在");
+}
+
+/** 画像昵称：TG first_name（平台昵称语义），其余身份匿名展示。 */
+async function displayNameOrEmpty(env: Env, participant: { kind: string; dbUserId: number | null }): Promise<string> {
+  if (participant.kind !== "telegram" || participant.dbUserId === null) return "";
+  try {
+    const { getUserById } = await import("../db/repositories/user.repository");
+    const user = await getUserById(env.DB, participant.dbUserId);
+    return (user?.firstName ?? "").slice(0, 24);
+  } catch {
+    return "";
+  }
 }

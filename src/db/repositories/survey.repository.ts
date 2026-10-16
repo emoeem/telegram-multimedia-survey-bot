@@ -1,4 +1,4 @@
-import type { Survey, SurveyStatus } from "../schema";
+import type { Survey, SurveyContentRating, SurveyStatus } from "../schema";
 import { nowIso, toBoolean } from "../client";
 
 interface SurveyRow {
@@ -21,6 +21,9 @@ interface SurveyRow {
   access_code_encrypted: string | null;
   report_template_id: string | null;
   settings_json: string | null;
+  content_rating: string | null;
+  series_id: number | null;
+  series_order: number | null;
   deleted_at: string | null;
 }
 
@@ -45,6 +48,10 @@ function mapSurvey(row: SurveyRow): Survey {
     accessCodeEncrypted: row.access_code_encrypted,
     reportTemplateId: row.report_template_id,
     settingsJson: row.settings_json,
+    // 0080 之前的行由 DEFAULT 'all' 回填；NULL 只可能来自迁移中途，同样按 all 处理。
+    contentRating: row.content_rating === "r18" ? "r18" : "all",
+    seriesId: row.series_id === null || row.series_id === undefined ? null : Number(row.series_id),
+    seriesOrder: row.series_order === null || row.series_order === undefined ? null : Number(row.series_order),
   };
 }
 
@@ -59,6 +66,7 @@ export async function createSurvey(
     maxResponsesPerUser?: number;
     reportTemplateId?: string | null;
     settingsJson?: string | null;
+    contentRating?: SurveyContentRating;
   },
 ): Promise<Survey> {
   const timestamp = nowIso();
@@ -68,8 +76,8 @@ export async function createSurvey(
         owner_id, title, description, anonymous,
         allow_multiple_responses, max_responses_per_user,
         version, access_code, report_template_id, settings_json,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+        content_rating, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.ownerId,
@@ -81,6 +89,7 @@ export async function createSurvey(
       null,
       input.reportTemplateId ?? null,
       input.settingsJson ?? null,
+      input.contentRating ?? "all",
       timestamp,
       timestamp,
     )

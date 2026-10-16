@@ -118,6 +118,10 @@ export interface PlazaPostListOptions {
   view?: "all" | "published";
   /** 只返回该话题的帖子（公开流筛选）。 */
   topic?: string | null;
+  /**
+   * r18 过滤（0080）：公开流默认只出全年龄内容；传 true（管理端）才放开。
+   */
+  includeRestricted?: boolean;
 }
 
 export interface PlazaPostListPage {
@@ -130,6 +134,7 @@ export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptio
   const binds: unknown[] = [];
   conditions.push("p.deleted_at IS NULL");
   if (options.view === "published") conditions.push("p.status = 'published'");
+  if (!options.includeRestricted) conditions.push("p.content_rating = 'all'");
   if (options.topic) {
     conditions.push("p.topic = ?");
     binds.push(options.topic);
@@ -153,12 +158,17 @@ export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptio
 }
 
 /** 公开流的话题榜：发布中的帖子按话题聚合，热度降序。 */
-export async function listPlazaTopics(db: D1Database, limit = 12): Promise<Array<{ topic: string; count: number }>> {
+export async function listPlazaTopics(
+  db: D1Database,
+  limit = 12,
+  options: { includeRestricted?: boolean } = {},
+): Promise<Array<{ topic: string; count: number }>> {
+  const ratingCondition = options.includeRestricted ? "" : " AND content_rating = 'all'";
   const rows = await db
     .prepare(
       `SELECT topic, COUNT(*) AS count, MAX(id) AS latestId
          FROM plaza_posts
-        WHERE deleted_at IS NULL AND status = 'published' AND topic IS NOT NULL AND topic <> ''
+        WHERE deleted_at IS NULL AND status = 'published' AND topic IS NOT NULL AND topic <> ''${ratingCondition}
         GROUP BY topic
         ORDER BY count DESC, latestId DESC
         LIMIT ?`,

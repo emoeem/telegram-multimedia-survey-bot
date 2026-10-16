@@ -1,4 +1,5 @@
 import type { Survey } from "../db/schema";
+import { CONTENT_RATINGS } from "./content-rating.service";
 import { MATRIX_COLUMN_MIN, isMatrixQuestionType, minOptionCount, parseMatrixColumns } from "../survey/question-rules";
 import {
   createSurvey,
@@ -50,6 +51,12 @@ export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
         surveyRow["settings_json"] === null || surveyRow["settings_json"] === undefined
           ? null
           : String(surveyRow["settings_json"]),
+      contentRating: surveyRow["content_rating"] === "r18" ? "r18" : "all",
+      seriesId: surveyRow["series_id"] === null || surveyRow["series_id"] === undefined ? null : Number(surveyRow["series_id"]),
+      seriesOrder:
+        surveyRow["series_order"] === null || surveyRow["series_order"] === undefined
+          ? null
+          : Number(surveyRow["series_order"]),
     };
   });
 }
@@ -69,6 +76,10 @@ export async function assertSurveyCanPublish(db: D1Database, surveyId: number): 
   }
   if (!survey.title.trim()) {
     throw new Error("问卷标题不能为空");
+  }
+  // mapSurvey 已把存量/缺失值归一为 "all"；这里只拦截显式的脏值。
+  if (survey.contentRating !== undefined && !CONTENT_RATINGS.includes(survey.contentRating)) {
+    throw new Error("问卷内容分级无效");
   }
 
   const questions = await listQuestionsBySurvey(db, surveyId);

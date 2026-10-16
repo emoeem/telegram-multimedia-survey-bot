@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileCheck2, Images, Link2, Palette, Target, UserRound, X } from "lucide-react";
+import {
+  BookOpen, ChevronRight, FileCheck2, Images, Link2, Palette, Target, UserRound, X } from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
 import { BottomNav } from "./BottomNav";
 import {
@@ -13,15 +14,21 @@ import {
 import {
   coinApi,
   createMyShowcase,
+  createReportShare,
   fetchMyOverview,
   fetchMyReports,
   markAchievementsSeen,
+  createProfileShare,
+  fetchProfileShare,
+  revokeProfileShare,
+  revokeReportShare,
   type CoinOverview,
   type MyOverview,
   type MyReportItem,
 } from "./api";
 import { safeGet } from "./storage";
 import { closeWebApp } from "./navigation";
+import { NotificationCenter } from "./SeriesScreen";
 
 
 /** 金币卡片（独立取数：金币服务不可用时不影响「我的」其他区块）。 */
@@ -148,10 +155,142 @@ function ReportList() {
             >
               下载 PDF
             </a>
+            <ReportShareButton responseId={report.responseId} />
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * 个人画像（Wrapped，0085）：跨问卷足迹的可分享公开页。创建幂等——
+ * 同一个人的画像永远只有一个链接，重新生成只是刷新快照。
+ */
+function ProfileShareCard() {
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchProfileShare()
+      .then((data) => {
+        if (!cancelled && data.share) {
+          setShareUrl(new URL(data.share.url, window.location.origin).toString());
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const act = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (shareUrl) {
+        await revokeProfileShare();
+        setShareUrl(null);
+        setCopied(false);
+      } else {
+        const result = await createProfileShare();
+        setShareUrl(new URL(result.share.url, window.location.origin).toString());
+      }
+    } catch {
+      // 失败回位。
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+      <p className="text-[11px] font-semibold text-[var(--survey-muted)]">个人画像</p>
+      <p className="mt-1 text-xs text-[var(--survey-muted)]">
+        把你的答卷足迹（完成卷数、结局收集、成就）做成一张可分享的公开页。只含聚合数字，不含任何答案。
+      </p>
+      {shareUrl ? (
+        <>
+          <p className="mt-2 break-all rounded-lg bg-black/5 px-2.5 py-1.5 text-[11px] text-[var(--survey-muted)]">
+            {shareUrl}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-[var(--survey-card-border)] px-3 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(shareUrl);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 2000);
+                } catch {
+                  // 剪贴板不可用时链接可见可手动复制。
+                }
+              }}
+            >
+              {copied ? "已复制" : "复制链接"}
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-[var(--survey-card-border)] px-3 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
+              disabled={busy}
+              onClick={act}
+            >
+              {busy ? "…" : "撤销分享"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="mt-2 rounded-full border border-[var(--survey-card-border)] px-3 py-1 text-[11px] font-semibold text-[var(--survey-primary)] disabled:opacity-50"
+          disabled={busy}
+          onClick={act}
+        >
+          {busy ? "生成中…" : "生成我的个人画像"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 单条报告的结局卡分享按钮（0081）：点按创建/复制链接，再点撤销。
+ * 与完成页的 ShareEndingCard 同一后端，这里做成行内轻量控件。
+ */
+function ReportShareButton({ responseId }: { responseId: number }) {
+  const [state, setState] = useState<"idle" | "busy" | "shared" | "copied">("idle");
+  const act = async () => {
+    if (state === "busy") return;
+    setState("busy");
+    try {
+      if (state === "shared" || state === "copied") {
+        await revokeReportShare(responseId);
+        setState("idle");
+        return;
+      }
+      const result = await createReportShare(responseId);
+      const absolute = new URL(result.share.url, window.location.origin).toString();
+      try {
+        await navigator.clipboard.writeText(absolute);
+        setState("copied");
+      } catch {
+        setState("shared");
+      }
+    } catch {
+      setState("idle");
+    }
+  };
+  const label = state === "busy" ? "…" : state === "copied" ? "已复制·撤销" : state === "shared" ? "已分享·撤销" : "分享";
+  return (
+    <button
+      type="button"
+      onClick={act}
+      disabled={state === "busy"}
+      className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary)] disabled:opacity-50"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -273,6 +412,21 @@ export function MyScreen() {
             </section>
 
             <CoinCard />
+
+            <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  系列书架
+                </p>
+                <a href="/series" className="text-[11px] font-semibold text-[var(--survey-primary)]">
+                  去追更 →
+                </a>
+              </div>
+              <NotificationCenter />
+            </section>
+
+            <ProfileShareCard />
 
             <ReportList />
 

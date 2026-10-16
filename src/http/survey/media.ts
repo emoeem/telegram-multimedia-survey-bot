@@ -13,6 +13,7 @@ import {
 } from "../../services/media/temporary-media.service";
 import { KVMediaStore } from "../../services/media/temporary-media-store";
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
+import { r18ParticipantGate } from "../../services/content-rating.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
 import { getSurveyByIdStatement, mapSurveyStatementResult } from "../../db/repositories/survey.repository";
@@ -185,6 +186,11 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   }
   const participant = await resolveParticipant(request, env);
   if (participant instanceof Response) return participant;
+  const mediaAgeGate = await r18ParticipantGate(env.DB, survey, participant);
+  if (mediaAgeGate) return mediaAgeGate;
+  if (participant.kind === "anonymous") {
+    return fail(401, "registration_required", "上传前请先注册或登录（邮箱即可）");
+  }
   const response = await env.DB.prepare(
     `SELECT id FROM survey_responses
        WHERE survey_id = ? AND participant_hash = ? AND status = 'in_progress'

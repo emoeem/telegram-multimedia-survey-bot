@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MailCheck, LogIn, UserPlus } from "lucide-react";
 import { loadGlobalPreset, themeBackgroundStyle, themeCssVars, useResolvedPreset } from "./theme-ui";
+import { getParticipantKey } from "./api";
 
 /**
  * Email + password auth screen (/auth) for visitors without Telegram:
@@ -17,7 +18,11 @@ type Mode = "login" | "register" | "reset";
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // 带 key 让服务端在登录/注册成功时自动认领本浏览器的历史进度（0082）。
+      "x-participant-key": getParticipantKey(),
+    },
     body: JSON.stringify(body),
   });
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;

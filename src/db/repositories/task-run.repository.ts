@@ -172,7 +172,7 @@ export interface LeaderboardEntry {
  *  visible in personal history but never on the public board. */
 export async function listTaskRunLeaderboard(
   db: D1Database,
-  options: { packId: number; mode: TrialMode; limit?: number; participantHash?: string },
+  options: { packId: number; mode: TrialMode; limit?: number; participantHash?: string; participantDbUserId?: number | null },
 ): Promise<LeaderboardEntry[]> {
   const limit = Math.min(50, Math.max(1, options.limit ?? 20));
   const { results } = await db
@@ -206,7 +206,11 @@ export async function listTaskRunLeaderboard(
       floors: Number(row.max_floor ?? 0) - Number(row.starting_floor ?? 0),
       completedTasks: Number(row.completed_tasks ?? 0),
       finishedAt: String(row.finished_at ?? ""),
-      mine: options.participantHash ? hash === options.participantHash : false,
+      // 按人判定「我的」（0082）：canonical hash 之外，绑定前的旧 hash 行也
+      // 属于同一个人——user_id 相同即本人。
+      mine: options.participantDbUserId != null
+        ? Number(row.user_id ?? -1) === options.participantDbUserId
+        : Boolean(options.participantHash && hash === options.participantHash),
     };
   });
 }

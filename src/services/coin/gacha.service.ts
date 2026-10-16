@@ -8,6 +8,7 @@ import {
   isDuplicateTransactionError,
   type PreparedStatement,
 } from "./ledger.service";
+import { HASH_SET_SQL } from "../identity-link.service";
 
 /**
  * 报告抽卡（需求 6.x）。
@@ -51,6 +52,8 @@ export interface GachaPoolRow {
   pityAt: number | null;
   defaultAccess: string;
   version: number;
+  /** 内容分级（0080）：r18 池对未确认年龄的查看者不可见、不可抽。 */
+  contentRating: "all" | "r18";
 }
 
 interface RawPoolRow {
@@ -66,6 +69,7 @@ interface RawPoolRow {
   pity_at: number | null;
   default_access: string;
   version: number;
+  content_rating: string | null;
 }
 
 function rowToPool(row: RawPoolRow): GachaPoolRow {
@@ -82,6 +86,7 @@ function rowToPool(row: RawPoolRow): GachaPoolRow {
     pityAt: row.pity_at == null ? null : Number(row.pity_at),
     defaultAccess: row.default_access,
     version: Number(row.version),
+    contentRating: row.content_rating === "r18" ? "r18" : "all",
   };
 }
 
@@ -89,7 +94,7 @@ export async function getPoolBySlug(db: D1Database, slug: string): Promise<Gacha
   const row = await db
     .prepare(
       `SELECT id, slug, name, description, cost_single, cost_multi, status, start_at, end_at,
-              pity_at, default_access, version
+              pity_at, default_access, version, content_rating
        FROM gacha_pools WHERE slug = ?`,
     )
     .bind(slug)
@@ -101,7 +106,7 @@ export async function getPoolById(db: D1Database, id: number): Promise<GachaPool
   const row = await db
     .prepare(
       `SELECT id, slug, name, description, cost_single, cost_multi, status, start_at, end_at,
-              pity_at, default_access, version
+              pity_at, default_access, version, content_rating
        FROM gacha_pools WHERE id = ?`,
     )
     .bind(id)
@@ -114,7 +119,7 @@ export async function listActivePools(db: D1Database): Promise<GachaPoolRow[]> {
   const result = await db
     .prepare(
       `SELECT id, slug, name, description, cost_single, cost_multi, status, start_at, end_at,
-              pity_at, default_access, version
+              pity_at, default_access, version, content_rating
        FROM gacha_pools
        WHERE status = 'active'
          AND (start_at IS NULL OR start_at <= ?)
@@ -426,10 +431,10 @@ export async function listPullsFor(db: D1Database, participantHash: string) {
        FROM gacha_pulls p
        JOIN gacha_pool_items item ON item.id = p.item_id
        JOIN gacha_pools pool ON pool.id = p.pool_id
-       WHERE p.participant_hash = ?
+       WHERE p.participant_hash ${HASH_SET_SQL}
        ORDER BY p.id DESC LIMIT 100`,
     )
-    .bind(participantHash, participantHash)
+    .bind(participantHash, participantHash, participantHash)
     .all();
   return result.results ?? [];
 }

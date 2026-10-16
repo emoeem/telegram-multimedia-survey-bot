@@ -19,6 +19,13 @@ CREATE TABLE participant_achievements (
 );
 CREATE INDEX idx_participant_achievements_hash
   ON participant_achievements(participant_hash, unlocked_at DESC);
+CREATE TABLE participant_hash_links (
+  source_hash TEXT PRIMARY KEY,
+  canonical_hash TEXT NOT NULL,
+  method TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 describe.skipIf(!sqliteD1Available)("achievement repository (real SQLite)", () => {

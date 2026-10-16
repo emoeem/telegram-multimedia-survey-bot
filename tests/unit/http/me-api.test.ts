@@ -42,6 +42,11 @@ function makeDb(routes: Array<[RegExp, unknown]>): D1Database {
           const matched = routes.find(([pattern]) => pattern.test(sql));
           return matched ? matched[1] : null;
         },
+        async all() {
+          // 0082 的并集查询（participant_hash_links / IN 列表）走 all。
+          const matched = routes.find(([pattern]) => pattern.test(sql));
+          return { results: matched && Array.isArray(matched[1]) ? matched[1] : [] };
+        },
         async run() {
           return { meta: { changes: 0, last_row_id: 0 } };
         },
@@ -63,9 +68,14 @@ const TELEGRAM_PARTICIPANT = {
 };
 
 const OVERVIEW_ROUTES: Array<[RegExp, unknown]> = [
-  [/FROM survey_responses\s+WHERE participant_hash = \? AND status = 'completed'/, { completed: 3 }],
+  // 0082：hashesFor 的映射查询（无映射 → 空 source 集合，并集=当前 hash 本身）。
+  [/FROM participant_hash_links/, { results: [] }],
+  // 顺序敏感：completed 与 gallery 两条都来自 survey_responses，用各自的特征
+  // 片段区分（IN 并集的是 overview 聚合；= ? 的是 showcase 草稿的旧式归属查询）。
+  [/FROM survey_responses\s+WHERE participant_hash IN[^]*?status = 'completed'/, { completed: 3 }],
+  [/WHERE participant_hash IN[^]*?gallery_published = 1/, { id: 55 }],
   [/WHERE participant_hash = \? AND gallery_published = 1/, { id: 55 }],
-  [/FROM task_runs WHERE participant_hash = \?/, { runs: 2, completed: 1, bestScore: 300 }],
+  [/FROM task_runs WHERE participant_hash IN/, { runs: 2, completed: 1, bestScore: 300 }],
   [/FROM showcase_persons WHERE response_id = \?/, { id: 9, published: 0 }],
 ];
 

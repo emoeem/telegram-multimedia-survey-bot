@@ -45,6 +45,8 @@ function createSqliteD1(): D1Database & { sqlite: DatabaseSync } {
       access_code TEXT, settings_json TEXT, cover_media_id INTEGER,
       published_at TEXT, closed_at TEXT, archived_at TEXT, deleted_at TEXT,
       anonymous INTEGER DEFAULT 0, updated_at TEXT
+    ,
+      content_rating TEXT NOT NULL DEFAULT 'all'
     );
     CREATE TABLE survey_responses (
       id INTEGER PRIMARY KEY AUTOINCREMENT, survey_id INTEGER, user_id INTEGER,
@@ -55,6 +57,15 @@ function createSqliteD1(): D1Database & { sqlite: DatabaseSync } {
       required INTEGER DEFAULT 1, "order" INTEGER, created_at TEXT, updated_at TEXT
     );
     CREATE TABLE participant_links (participant_key TEXT PRIMARY KEY, user_id INTEGER, linked_at TEXT);
+    CREATE TABLE participant_hash_links (
+      source_hash TEXT PRIMARY KEY,
+      canonical_hash TEXT NOT NULL,
+      method TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    -- 0080 的分级列（本测试只拼 0078/0079，其它 ALTER 的表在这里不存在）。
+    ALTER TABLE gacha_pools ADD COLUMN content_rating TEXT NOT NULL DEFAULT 'all';
     CREATE TABLE plaza_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, participant_hash TEXT,
       user_id INTEGER, content TEXT, anonymous INTEGER DEFAULT 1, status TEXT DEFAULT 'published',
       created_at TEXT, deleted_at TEXT);
@@ -262,9 +273,13 @@ describe("每日签到", () => {
   it("连续签到提升阶梯档位", async () => {
     const sqlite = (db as unknown as { sqlite: DatabaseSync }).sqlite;
     // 预置昨天与前天的签到：今天签到应落在 streak=3 档（amount 8）。
-    const today = new Date();
+    // 日期必须与服务端同一日键（coinDayKey = UTC+偏移），否则午夜后 8 小时内
+    // UTC 日期与服务日键错位，这条测试会在本地 00:00-08:00 间随机挂。
+    const { coinDayKey, loadCoinConfig } = await import("../../../src/services/coin/config.service");
+    const cfg = await loadCoinConfig(db);
+    const today = Date.now();
     for (const delta of [2, 1]) {
-      const day = new Date(today.getTime() - delta * 86_400_000).toISOString().slice(0, 10);
+      const day = coinDayKey(today - delta * 86_400_000, cfg.timezoneOffsetMinutes);
       sqlite
         .prepare(`INSERT INTO coin_checkins (participant_hash, day, streak, amount, created_at) VALUES (?, ?, ?, 5, '2026-01-01T00:00:00Z')`)
         .run(PARTICIPANT.participantHash, day, delta);
@@ -348,7 +363,7 @@ describe("抽卡", () => {
 
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1 },
+      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
       PARTICIPANT,
       1,
       "pull-key-1",
@@ -363,7 +378,7 @@ describe("抽卡", () => {
     // 同幂等键重放：返回同一批结果，不重复扣款。
     const replay = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1 },
+      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
       PARTICIPANT,
       1,
       "pull-key-1",
@@ -378,7 +393,7 @@ describe("抽卡", () => {
     seedPoolItem(db, poolId, "N", 1);
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1 },
+      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
       PARTICIPANT,
       1,
       "pull-poor",
@@ -395,7 +410,7 @@ describe("抽卡", () => {
     await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: 1, defaultAccess: "permanent", version: 1 },
+      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: 1, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
       PARTICIPANT,
       1,
       "pull-pity",
@@ -410,7 +425,7 @@ describe("抽卡", () => {
     await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: 90, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1 },
+      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: 90, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
       PARTICIPANT,
       2, // 十连价的 2 连：只有 1 个库存
       "pull-stock",

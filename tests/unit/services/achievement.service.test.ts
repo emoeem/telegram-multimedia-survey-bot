@@ -44,6 +44,13 @@ CREATE TABLE participant_achievements (
   meta_json TEXT,
   UNIQUE (participant_hash, code)
 );
+CREATE TABLE participant_hash_links (
+  source_hash TEXT PRIMARY KEY,
+  canonical_hash TEXT NOT NULL,
+  method TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 async function seed(db: D1Database) {

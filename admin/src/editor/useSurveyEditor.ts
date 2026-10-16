@@ -47,6 +47,7 @@ export interface SurveyMetaState {
   allowMultipleResponses: boolean;
   maxResponsesPerUser: number;
   reportTemplateId: string | null;
+  contentRating: "all" | "r18";
 }
 
 export type SaveState = "saved" | "dirty" | "saving" | "error";
@@ -60,6 +61,7 @@ export function useSurveyEditor(data: EditorData) {
     allowMultipleResponses: data.survey.allowMultipleResponses,
     maxResponsesPerUser: data.survey.maxResponsesPerUser,
     reportTemplateId: data.survey.reportTemplateId,
+    contentRating: data.survey.contentRating ?? "all",
   }));
   const [questions, setQuestions] = useState<EditableQuestion[]>(() =>
     data.questions.map((question) => ({
@@ -102,6 +104,7 @@ export function useSurveyEditor(data: EditorData) {
         allowMultipleResponses: data.survey.allowMultipleResponses,
         maxResponsesPerUser: data.survey.maxResponsesPerUser,
         reportTemplateId: data.survey.reportTemplateId,
+        contentRating: data.survey.contentRating ?? "all",
       },
       questions: data.questions.map((question) => ({
         id: question.id,
@@ -161,7 +164,11 @@ export function useSurveyEditor(data: EditorData) {
     if (!previous || !baseline) return;
     futureRef.current.push(cloneSnapshot(stateRef.current));
     setQuestions(previous.questions as EditableQuestion[]);
-    setSurveyMeta({ ...previous.surveyMeta, reportTemplateId: previous.surveyMeta.reportTemplateId ?? null });
+    setSurveyMeta({
+      ...previous.surveyMeta,
+      reportTemplateId: previous.surveyMeta.reportTemplateId ?? null,
+      contentRating: previous.surveyMeta.contentRating ?? "all",
+    });
     setOps(
       buildOpsFromDiff(baseline, previous, surveyId, {
         key: () => opKeyRef.current++,
@@ -178,7 +185,11 @@ export function useSurveyEditor(data: EditorData) {
     if (!next || !baseline) return;
     pastRef.current.push(cloneSnapshot(stateRef.current));
     setQuestions(next.questions as EditableQuestion[]);
-    setSurveyMeta({ ...next.surveyMeta, reportTemplateId: next.surveyMeta.reportTemplateId ?? null });
+    setSurveyMeta({
+      ...next.surveyMeta,
+      reportTemplateId: next.surveyMeta.reportTemplateId ?? null,
+      contentRating: next.surveyMeta.contentRating ?? "all",
+    });
     setOps(
       buildOpsFromDiff(baseline, next, surveyId, {
         key: () => opKeyRef.current++,

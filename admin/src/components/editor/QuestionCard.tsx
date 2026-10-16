@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Copy, GitBranch, Paperclip, Plus, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Copy, GitBranch, Paperclip, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -216,21 +216,92 @@ export function QuestionCard({
     const rules = question.options
       .filter((option) => next.has(option.id))
       .map((option) => ({ optionId: option.id, targetQuestionId: next.get(option.id)! }));
-    // answerRules (state-driven jumps) are authored outside this UI — e.g. by
-    // JSON import; committing option rules must not drop them (and clearing
-    // the last option rule must not drop them either).
-    const savedAnswerRules = (question.condition as { answerRules?: unknown } | null)?.answerRules;
-    const hasAnswerRules = Array.isArray(savedAnswerRules) && savedAnswerRules.length > 0;
-    const condition =
-      rules.length || hasAnswerRules
-        ? {
-            kind: "option_equals",
-            ...(rules.length ? { rules } : {}),
-            ...(hasAnswerRules ? { answerRules: savedAnswerRules } : {}),
-          }
-        : null;
+    commitCondition({ rules });
+  };
+  // 条件集中构建（P2 flags）：四个区段（选项跳转 / answerRules / flagRules /
+  // flagJumps）互不覆盖——任一区段提交时都从 question.condition 读回其余区段。
+  const commitCondition = (parts: {
+    rules?: Array<{ optionId: number; targetQuestionId: number }>;
+    flagRules?: Array<{ questionId: number; equals: number; flag: string; score: number }>;
+    flagJumps?: Array<{ flag: string; gte: number; targetQuestionId: number }>;
+  }) => {
+    const saved = (question.condition ?? {}) as Record<string, unknown>;
+    const savedAnswerRules = Array.isArray(saved.answerRules) ? saved.answerRules : undefined;
+    const hasAny =
+      Boolean(parts.rules?.length) ||
+      Boolean(parts.flagRules?.length) ||
+      Boolean(parts.flagJumps?.length) ||
+      Boolean(savedAnswerRules?.length);
+    const condition = hasAny
+      ? {
+          kind: "option_equals",
+          ...(parts.rules?.length ? { rules: parts.rules } : {}),
+          ...(savedAnswerRules?.length ? { answerRules: savedAnswerRules } : {}),
+          ...(parts.flagRules?.length ? { flagRules: parts.flagRules } : {}),
+          ...(parts.flagJumps?.length ? { flagJumps: parts.flagJumps } : {}),
+        }
+      : null;
     onLocalChange(question.id, { condition });
-    onFieldCommit(question.id, { condition }, "跳转规则");
+    onFieldCommit(question.id, { condition }, "跳转 / 剧情规则");
+  };
+
+  // ---- 剧情 flags（P2）----
+  // 本题的 flagRules（questionId 指向自身的那些）：选项命中 → flag 累计分。
+  const ownFlagRules = (() => {
+    const map = new Map<number, { flag: string; score: number }>();
+    const saved = (question.condition as { flagRules?: unknown } | null)?.flagRules;
+    if (Array.isArray(saved)) {
+      for (const rule of saved as Array<Record<string, unknown>>) {
+        if (Number(rule.questionId) !== question.id) continue;
+        const equals = Number(rule.equals);
+        const flag = typeof rule.flag === "string" ? rule.flag : "";
+        if (!flag || !Number.isFinite(equals)) continue;
+        map.set(equals, { flag, score: Number(rule.score ?? 1) || 1 });
+      }
+    }
+    return map;
+  })();
+  const commitFlagRule = (optionId: number, flag: string, score: number) => {
+    const next = new Map(ownFlagRules);
+    if (!flag.trim()) next.delete(optionId);
+    else next.set(optionId, { flag: flag.trim(), score: Math.max(1, Math.floor(score) || 1) });
+    // 其他题目引用的 flagRules 保留在条件里。
+    const saved = ((question.condition as { flagRules?: unknown } | null)?.flagRules ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const others = saved
+      .filter((rule) => Number(rule.questionId) !== question.id)
+      .map((rule) => ({
+        questionId: Number(rule.questionId),
+        equals: Number(rule.equals),
+        flag: String(rule.flag),
+        score: Number(rule.score ?? 1),
+      }));
+    const own = [...next.entries()].map(([equals, value]) => ({
+      questionId: question.id,
+      equals,
+      flag: value.flag,
+      score: value.score,
+    }));
+    commitCondition({ flagRules: [...others, ...own] });
+  };
+  const flagJumps = (() => {
+    const saved = (question.condition as { flagJumps?: unknown } | null)?.flagJumps;
+    if (!Array.isArray(saved)) return [] as Array<{ flag: string; gte: number; targetQuestionId: number }>;
+    return (saved as Array<Record<string, unknown>>)
+      .filter((jump) => typeof jump.flag === "string" && Number.isFinite(Number(jump.gte)) && Number(jump.targetQuestionId) > 0)
+      .map((jump) => ({ flag: String(jump.flag), gte: Number(jump.gte), targetQuestionId: Number(jump.targetQuestionId) }));
+  })();
+  // 未完成的行只存在于本地草稿（条件里只存完整行，避免发布图谱校验报错）。
+  const [jumpDrafts, setJumpDrafts] = useState(flagJumps);
+  useEffect(() => {
+    setJumpDrafts(flagJumps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.id, question.condition]);
+  const commitFlagJumps = (list: Array<{ flag: string; gte: number; targetQuestionId: number }>) => {
+    commitCondition({
+      flagJumps: list.filter((jump) => jump.flag.trim() && jump.gte > 0 && jump.targetQuestionId > 0),
+    });
   };
   const availableTargets = allQuestions.filter((item) => item.id !== question.id && item.order > question.order);
   const runMediaAction = async (key: string, action: () => Promise<boolean>) => {
@@ -588,6 +659,46 @@ export function QuestionCard({
                     </select>
                   </div>
                 ) : null}
+                {question.type === "single" && editableNow ? (
+                  <div className="q-branch-row">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                    <span className="q-branch-label">命中 Flag</span>
+                    <input
+                      className="q-branch-select"
+                      style={{ maxWidth: "9rem" }}
+                      placeholder="flag 名，如 好感"
+                      aria-label={`选项 ${option.label || option.id} 的 flag 名`}
+                      defaultValue={ownFlagRules.get(option.id)?.flag ?? ""}
+                      key={`flag-${option.id}-${ownFlagRules.get(option.id)?.flag ?? ""}`}
+                      disabled={!editableNow}
+                      onBlur={(event) =>
+                        commitFlagRule(
+                          option.id,
+                          event.target.value,
+                          ownFlagRules.get(option.id)?.score ?? 1,
+                        )
+                      }
+                    />
+                    <input
+                      type="number"
+                      className="q-branch-select"
+                      style={{ maxWidth: "4.5rem" }}
+                      placeholder="分"
+                      aria-label={`选项 ${option.label || option.id} 的 flag 分值`}
+                      defaultValue={ownFlagRules.get(option.id)?.score ?? 1}
+                      key={`flag-score-${option.id}-${ownFlagRules.get(option.id)?.score ?? 1}`}
+                      disabled={!editableNow}
+                      min={1}
+                      onBlur={(event) =>
+                        commitFlagRule(
+                          option.id,
+                          ownFlagRules.get(option.id)?.flag ?? "",
+                          Number(event.target.value) || 1,
+                        )
+                      }
+                    />
+                  </div>
+                ) : null}
               </div>
             ))}
             {editableNow ? (
@@ -669,6 +780,99 @@ export function QuestionCard({
                 </button>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {editableNow ? (
+          <div className="q-field">
+            <span className="q-label">
+              剧情 Flag 跳转
+              <span className="ml-1 q-help">
+                前面题目用「命中 Flag」累计的值达到门槛时，答题者直接跳到目标题——用于好感路线 / 真结局锁定。删光所有行即回到线性顺序。
+              </span>
+            </span>
+            {jumpDrafts.map((jump, jumpIndex) => (
+              <div key={`flag-jump-${jumpIndex}`} className="q-branch-row flex-wrap">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="q-branch-label">Flag</span>
+                <input
+                  className="q-branch-select"
+                  style={{ maxWidth: "8rem" }}
+                  placeholder="flag 名"
+                  aria-label={`Flag 跳转 ${jumpIndex + 1} 的 flag 名`}
+                  defaultValue={jump.flag}
+                  disabled={!editableNow}
+                  onBlur={(event) => {
+                    const next = [...jumpDrafts];
+                    next[jumpIndex] = { ...jump, flag: event.target.value };
+                    setJumpDrafts(next);
+                    commitFlagJumps(next);
+                  }}
+                />
+                <span className="q-branch-label">≥</span>
+                <input
+                  type="number"
+                  className="q-branch-select"
+                  style={{ maxWidth: "4.5rem" }}
+                  aria-label={`Flag 跳转 ${jumpIndex + 1} 的门槛`}
+                  defaultValue={jump.gte}
+                  min={1}
+                  disabled={!editableNow}
+                  onBlur={(event) => {
+                    const next = [...jumpDrafts];
+                    next[jumpIndex] = { ...jump, gte: Number(event.target.value) || 1 };
+                    setJumpDrafts(next);
+                    commitFlagJumps(next);
+                  }}
+                />
+                <span className="q-branch-label">→</span>
+                <select
+                  className="q-branch-select"
+                  aria-label={`Flag 跳转 ${jumpIndex + 1} 的目标题目`}
+                  value={jump.targetQuestionId || ""}
+                  disabled={!editableNow}
+                  onChange={(event) => {
+                    const next = [...jumpDrafts];
+                    next[jumpIndex] = { ...jump, targetQuestionId: Number(event.target.value) };
+                    setJumpDrafts(next);
+                    commitFlagJumps(next);
+                  }}
+                >
+                  <option value="">选择目标…</option>
+                  {allQuestions
+                    .filter((item) => item.order > question.order)
+                    .map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {target.type === "note" ? "📖 " : ""}
+                        {allQuestions.indexOf(target) + 1}. {target.title || "未命名"}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  className="q-option-del"
+                  disabled={!editableNow}
+                  title="删除这条 Flag 跳转"
+                  onClick={() => {
+                    const next = jumpDrafts.filter((_, index) => index !== jumpIndex);
+                    setJumpDrafts(next);
+                    commitFlagJumps(next);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            <div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={!editableNow}
+                onClick={() => setJumpDrafts([...jumpDrafts, { flag: "", gte: 1, targetQuestionId: 0 }])}
+              >
+                <Plus className="h-4 w-4" />
+                添加 Flag 跳转
+              </button>
+            </div>
           </div>
         ) : null}
 

@@ -27,6 +27,7 @@ import {
   linkResponsesToUser,
   upsertParticipantLink,
 } from "../db/repositories/participant-link.repository";
+import { claimParticipantKey } from "../services/identity-link.service";
 import { assertCanManageSurvey, canCreateSurvey, canUseAdminPanel, isAdmin } from "../services/permission.service";
 import { createAdminMagicLink } from "../services/admin-magic-link.service";
 import { redeemCreatorInviteForUser } from "../services/creator-invite.service";
@@ -1293,6 +1294,18 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         return;
       }
       await upsertParticipantLink(ctx.db, { participantKey: linkKey, userId: dbUser.id });
+      // 0082：除 participant_links 外同步落 hash 映射并合并金币——写侧从此
+      // 归一到 user_*，读侧并集覆盖 web_* 历史行。
+      try {
+        await claimParticipantKey(ctx.db, ctx.cache, {
+          participantKey: linkKey,
+          canonicalHash: `user_${dbUser.id}`,
+          userId: dbUser.id,
+          method: "tg_deep_link",
+        });
+      } catch (error) {
+        console.warn("tg deep-link claim failed", { linkKey, userId: dbUser.id, error });
+      }
       await linkResponsesToUser(ctx.db, { participantKey: linkKey, userId: dbUser.id });
       const total = await countResponsesForParticipantKey(ctx.db, linkKey);
       const displayName = message.from?.username

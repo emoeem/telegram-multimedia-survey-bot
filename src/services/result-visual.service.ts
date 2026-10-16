@@ -176,6 +176,68 @@ function fallbackResultProfile(
   };
 }
 
+/**
+ * 朋友互测（P2）：对照「答案钥匙」计算默契得分。
+ *
+ * 只比较客观题型（单选/多选/是非/评分/数字/文本的规范化值），钥匙答案本身
+ * 永不出现在结果里——报告与分享卡只拿 {score, total} 这对数字。
+ */
+async function computeAgreement(
+  db: D1Database,
+  settingsJson: string | null,
+  myAnswers: Awaited<ReturnType<typeof listAnswersByResponseId>>,
+): Promise<{ score: number; total: number } | null> {
+  if (!settingsJson) return null;
+  let answerKeyResponseId: number | null = null;
+  try {
+    const settings = JSON.parse(settingsJson) as { answerKeyResponseId?: unknown };
+    const parsed = Number(settings.answerKeyResponseId);
+    if (Number.isInteger(parsed) && parsed > 0) answerKeyResponseId = parsed;
+  } catch {
+    return null;
+  }
+  if (answerKeyResponseId === null) return null;
+  const keyAnswers = await listAnswersByResponseId(db, answerKeyResponseId);
+  if (!keyAnswers.length) return null;
+  const keyByQuestion = new Map(keyAnswers.map((answer) => [answer.questionId, answer]));
+  let score = 0;
+  let total = 0;
+  for (const answer of myAnswers) {
+    const key = keyByQuestion.get(answer.questionId);
+    if (!key) continue;
+    const mine = answerFingerprint(answer);
+    const theirs = answerFingerprint(key);
+    if (mine === null) continue; // 我没答的题不计入
+    total += 1;
+    if (mine === theirs) score += 1;
+  }
+  return total > 0 ? { score, total } : null;
+}
+
+/** 答案值列的规范指纹；空答案返回 null（未回答）。 */
+function answerFingerprint(answer: { textValue: string | null; numberValue: number | null; booleanValue: boolean | null; ratingValue: number | null; dateValue: string | null; timeValue: string | null; jsonValue: string | null }): string | null {
+  let json: unknown = null;
+  if (answer.jsonValue !== null && answer.jsonValue !== undefined) {
+    try {
+      json = JSON.parse(answer.jsonValue);
+      if (Array.isArray(json)) json = [...json].sort();
+    } catch {
+      json = answer.jsonValue;
+    }
+  }
+  const parts = [
+    answer.textValue === null ? "" : answer.textValue.trim().toLowerCase(),
+    answer.numberValue ?? "",
+    answer.booleanValue ?? "",
+    answer.ratingValue ?? "",
+    answer.dateValue ?? "",
+    answer.timeValue ?? "",
+    json === null ? "" : JSON.stringify(json),
+  ];
+  const hasValue = parts.some((part, index) => (index === 0 ? part !== "" : part !== "" && part !== undefined));
+  return hasValue ? JSON.stringify(parts) : null;
+}
+
 export async function prepareResultProfileForResponse(
   db: D1Database,
   responseId: number,
@@ -189,7 +251,8 @@ export async function prepareResultProfileForResponse(
   if (response.status !== "completed") throw new Error("ResultProfile requires a completed response");
   const ruleSetRecord = await getSurveyResultRuleSet(db, response.surveyId);
   const answers = await listAnswersByResponseId(db, response.id);
-  let surveyTitle = (await getSurveyById(db, response.surveyId))?.title ?? "问卷结果";
+  const surveyRow = await getSurveyById(db, response.surveyId);
+  let surveyTitle = surveyRow?.title ?? "问卷结果";
   let questions: Array<Pick<SurveyQuestion, "id" | "type" | "title">> = await listQuestionsBySurvey(
     db,
     response.surveyId,
@@ -237,6 +300,15 @@ export async function prepareResultProfileForResponse(
         };
       })()
     : fallback;
+  // 朋友互测（P2）：答案钥匙存在时把默契得分注入 metadata + stats。
+  const agreement = await computeAgreement(db, surveyRow?.settingsJson ?? null, answers);
+  if (agreement) {
+    snapshot.metadata = { ...snapshot.metadata, agreement };
+    snapshot.stats = [
+      ...snapshot.stats.filter((stat) => stat.id !== "agreement"),
+      { id: "agreement", label: "默契", value: agreement.score, max: agreement.total },
+    ];
+  }
   const serialized = serializeResultProfile(snapshot);
   return {
     profile: await upsertResultProfile(db, {

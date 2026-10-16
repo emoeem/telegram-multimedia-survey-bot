@@ -1,4 +1,5 @@
 import type { Env } from "../index";
+import { resolveViewerAgeVerified } from "../services/content-rating.service";
 import { fail, json } from "./survey-api";
 import {
   getPublishedShowcaseItemById,
@@ -37,6 +38,8 @@ export async function handleShowcaseApiRequest(request: Request, env: Env, url: 
   if (request.method === "GET" && url.pathname === "/api/showcase") {
     const hasCursorParam = url.searchParams.has("cursor");
     const rawLimit = readIntParam(url, "limit");
+    // r18 过滤（0080）：公开流只出全年龄人物，已确认年龄者看全部。
+    const includeRestricted = await resolveViewerAgeVerified(request, env);
 
     if (hasCursorParam) {
       if (rawLimit === null || rawLimit < 1 || rawLimit > 200) {
@@ -51,11 +54,13 @@ export async function handleShowcaseApiRequest(request: Request, env: Env, url: 
               publishedOnly: true,
               limit: rawLimit,
               cursor,
+              includeRestricted,
             })
           : await listShowcasePersonsCursor(env.DB, {
               publishedOnly: true,
               limit: rawLimit,
               cursor,
+              includeRestricted,
             });
       const nextCursor =
         page.hasMore && page.nextCreatedAt && page.nextId
@@ -88,7 +93,12 @@ export async function handleShowcaseApiRequest(request: Request, env: Env, url: 
     const rawOffset = readIntParam(url, "offset");
     const limit = rawLimit !== null ? Math.min(200, Math.max(1, rawLimit)) : 100;
     const offset = rawOffset !== null ? Math.max(0, rawOffset) : 0;
-    const { persons, total } = await listShowcasePersons(env.DB, { publishedOnly: true, limit, offset });
+    const { persons, total } = await listShowcasePersons(env.DB, {
+      publishedOnly: true,
+      limit,
+      offset,
+      includeRestricted,
+    });
     const last = persons.at(-1);
     const nextCursor =
       last && offset + persons.length < total

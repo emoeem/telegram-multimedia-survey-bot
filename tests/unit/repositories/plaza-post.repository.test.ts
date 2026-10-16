@@ -37,6 +37,7 @@ CREATE TABLE plaza_posts (
   payload_json TEXT,
   image_asset_id INTEGER,
   topic TEXT,
+  content_rating TEXT NOT NULL DEFAULT 'all',
   deleted_at TEXT
 );
 CREATE TABLE plaza_post_comments (

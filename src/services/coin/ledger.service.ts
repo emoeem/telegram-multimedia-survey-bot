@@ -22,7 +22,9 @@ export type CoinTxnKind =
   | "submission_reward"
   | "survey_unlock"
   | "gacha_pull"
-  | "admin_adjust";
+  | "admin_adjust"
+  /** 0082 身份合并：source 账户余额整笔搬入 canonical 的那笔流水。 */
+  | "merge_in";
 
 export interface CoinLedgerEnv {
   DB: D1Database;

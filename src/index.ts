@@ -23,6 +23,9 @@ import { handleShowcaseApiRequest } from "./http/showcase-api";
 import { handleTrialApiRequest } from "./http/trial-api";
 import { handleEmailAuthApiRequest } from "./http/email-auth-api";
 import { handleReportRequest } from "./http/report-api";
+import { handleSharePageRequest } from "./http/share-api";
+import { handleSeriesApiRequest } from "./http/series-api";
+import { runSeriesUpdateNotification } from "./services/series-follow.service";
 import { checkDeploymentLicense } from "./services/license-client.service";
 import { isLicenseCenter } from "./services/deployment-role.service";
 import { handleExportQueue } from "./services/export-worker.service";
@@ -121,6 +124,8 @@ const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> =
   "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与挑战记录。" },
   "/coins": { title: "我的金币 · 问卷平台", description: "每日签到、挑战任务与金币收支明细。" },
   "/gacha": { title: "报告抽卡 · 问卷平台", description: "用金币抽取其他用户主动公开并授权的报告与内容。" },
+  "/series": { title: "系列书架 · 问卷平台", description: "追更连载作品：新章节发布即通知。" },
+  "/u": { title: "个人画像 · 问卷平台", description: "跨问卷的答卷足迹与收集成就。" },
   "/submissions": { title: "投稿中心 · 问卷平台", description: "投稿原创内容获取金币奖励，并参与报告抽卡生态。" },
   "/auth": { title: "邮箱账号 · 问卷平台", description: "使用邮箱注册、登录或找回问卷平台账号。" },
 };
@@ -144,6 +149,52 @@ function servePublicPageWithMeta(env: Env, request: Request, pathname: string): 
   return serveHtmlAsset(env, request, "/survey.html", injectHead);
 }
 
+/**
+ * 连载召回内部端点：只接受 SELF binding 的 HMAC 签名请求。常数时间比较，
+ * 验签失败一律 404（不暴露端点存在性）。
+ */
+async function handleInternalSeriesNotify(request: Request, env: Env): Promise<Response> {
+  const body = await request.text();
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(env.WEBHOOK_SECRET ?? ""),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+  const expected = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const provided = request.headers.get("x-notify-signature") ?? "";
+  const a = encoder.encode(expected);
+  const b = encoder.encode(provided);
+  const mismatch = a.length !== b.length || [...a].some((byte, index) => byte !== b[index]);
+  if (!provided || mismatch) return new Response(null, { status: 404 });
+  let payload: { seriesId?: unknown; surveyId?: unknown; chapterTitle?: unknown };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch {
+    return new Response(null, { status: 404 });
+  }
+  const seriesId = Number(payload.seriesId);
+  const surveyId = Number(payload.surveyId);
+  const chapterTitle = typeof payload.chapterTitle === "string" ? payload.chapterTitle.slice(0, 200) : "";
+  if (!Number.isInteger(seriesId) || !Number.isInteger(surveyId) || !chapterTitle) {
+    return new Response(null, { status: 404 });
+  }
+  const titleRow = await env.DB.prepare("SELECT title FROM survey_series WHERE id = ? LIMIT 1").bind(seriesId).first<{
+    title: string;
+  }>();
+  if (!titleRow) return Response.json({ ok: true, notified: 0, pushed: 0 });
+  const result = await runSeriesUpdateNotification(env, {
+    seriesId,
+    seriesTitle: titleRow.title,
+    surveyId,
+    chapterTitle,
+  });
+  return Response.json({ ok: true, ...result });
+}
+
 async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId: number): Promise<Response> {
   let injectHead: string | undefined;
   try {
@@ -151,7 +202,11 @@ async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId
     if (meta) {
       const origin = resolvePublicOrigin(env, new URL(request.url).origin);
       const ogImage = `${origin}/s/${surveyId}/og.png`;
-      const description = meta.description?.slice(0, 120) || `${meta.questionCount} 道题，点击立即填写`;
+      // r18 卷的 unfurl 文案同样走安全描述：描述本身可能就是限制级内容。
+      const description =
+        meta.contentRating === "r18"
+          ? "该内容为 18+ 内容，确认年龄后即可填写"
+          : meta.description?.slice(0, 120) || `${meta.questionCount} 道题，点击立即填写`;
       injectHead = [
         `<meta property="og:type" content="website" />`,
         `<meta property="og:title" content="${escapeMetaAttribute(meta.title)}" />`,
@@ -502,12 +557,25 @@ export default {
         return servePublicPageWithMeta(env, request, url.pathname.startsWith("/gacha") ? "/gacha" : url.pathname.startsWith("/submissions") ? "/submissions" : "/coins");
       }
 
+      if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {
+        return servePublicPageWithMeta(env, request, "/series");
+      }
+
       if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
         return servePublicPageWithMeta(env, request, "/auth");
       }
 
       if (url.pathname.startsWith("/api/me/")) {
         return guardApiResponse(request, env, url, () => handleMeApiRequest(request, env, url));
+      }
+
+      // 连载更新召回的内部端点（0084）：SELF binding + HMAC 验签，无会话。
+      if (url.pathname === "/internal/series-notify" && request.method === "POST") {
+        return handleInternalSeriesNotify(request, env);
+      }
+
+      if (url.pathname.startsWith("/api/series")) {
+        return guardApiResponse(request, env, url, () => handleSeriesApiRequest(request, env, url));
       }
 
       if (
@@ -532,6 +600,17 @@ export default {
 
       if (url.pathname.startsWith("/api/report/") || url.pathname.startsWith("/report/")) {
         return guardApiResponse(request, env, url, () => handleReportRequest(request, env, url));
+      }
+
+      // 报告分享卡（0081）：/r/:token 公开结局卡页 + og.png。公开页不经过
+      // guardApiResponse——它只服务分享行快照的白名单投影。
+      if (url.pathname === "/r" || url.pathname.startsWith("/r/")) {
+        return (await handleSharePageRequest(request, env, url)) ?? servePublicPageWithMeta(env, request, "/plaza");
+      }
+
+      // 个人画像分享（0085）：/u/:token 公开画像页 + og.png。
+      if (url.pathname === "/u" || url.pathname.startsWith("/u/")) {
+        return (await handleSharePageRequest(request, env, url)) ?? servePublicPageWithMeta(env, request, "/plaza");
       }
 
       if (url.pathname.startsWith("/api/auth/email/")) {

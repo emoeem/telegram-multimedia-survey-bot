@@ -43,6 +43,67 @@ export function getNextQuestion(flow: SurveyFlow, currentQuestionId: number): Su
   return flow.questions[index + 1] ?? null;
 }
 
+/**
+ * 剧情 flags（P2）：由答案推导的中间态，用于路线锁定与条件跳转。
+ *
+ * 数据都在 condition_json 里，无需迁移：
+ *  - `flagRules: [{questionId, equals, flag, score?}]`——任意题目的答案命中
+ *    即给 flag 累计分（确定性：flags 永远可从已保存答案重放，续答不丢）；
+ *  - `flagJumps: [{flag, gte, targetQuestionId}]`——当前题的 flagJumps 在
+ *    跳题时对累计 flags 求值，达成门槛即向前跳（目标必须向前，与其它跳转
+ *    同一约束）。
+ */
+export interface SurveyFlagRule {
+  questionId?: unknown;
+  equals?: unknown;
+  flag?: unknown;
+  score?: unknown;
+}
+
+export type SurveyFlags = Map<string, number>;
+
+export function computeFlags(flow: SurveyFlow, answers: Map<number, unknown>): SurveyFlags {
+  const flags: SurveyFlags = new Map();
+  for (const question of flow.questions) {
+    if (!question.conditionJson) continue;
+    try {
+      const condition = JSON.parse(question.conditionJson) as { flagRules?: unknown };
+      if (!Array.isArray(condition.flagRules)) continue;
+      for (const rule of condition.flagRules as SurveyFlagRule[]) {
+        const flag = typeof rule.flag === "string" ? rule.flag : null;
+        if (!flag) continue;
+        const value = answers.get(Number(rule.questionId));
+        if (value === undefined || value === null) continue;
+        if (Number(rule.equals) !== Number(value)) continue;
+        const score = Number(rule.score);
+        flags.set(flag, (flags.get(flag) ?? 0) + (Number.isFinite(score) ? score : 1));
+      }
+    } catch {
+      // 脏数据按没有 flagRules 处理。
+    }
+  }
+  return flags;
+}
+
+function flagJumpTarget(
+  flow: SurveyFlow,
+  currentIndex: number,
+  condition: { flagJumps?: unknown },
+  flags: SurveyFlags,
+): SurveyQuestionView | null {
+  if (!Array.isArray(condition.flagJumps)) return null;
+  for (const jump of condition.flagJumps as Array<{ flag?: unknown; gte?: unknown; targetQuestionId?: unknown }>) {
+    const flag = typeof jump.flag === "string" ? jump.flag : null;
+    if (!flag) continue;
+    const threshold = Number(jump.gte);
+    if (!Number.isFinite(threshold)) continue;
+    if ((flags.get(flag) ?? 0) < threshold) continue;
+    const target = forwardTarget(flow, currentIndex, jump.targetQuestionId);
+    if (target) return target;
+  }
+  return null;
+}
+
 export function getNextQuestionAfterOption(
   flow: SurveyFlow,
   currentQuestionId: number,
@@ -69,6 +130,7 @@ export function getNextQuestionAfterAnswers(
   optionId: number | null,
   answers: Map<number, unknown>,
 ): SurveyQuestionView | null {
+  const flags = computeFlags(flow, answers);
   const current = getQuestionById(flow, currentQuestionId);
   if (current?.conditionJson) {
     try {
@@ -102,6 +164,12 @@ export function getNextQuestionAfterAnswers(
             return target;
           }
         }
+      }
+
+      // flags 路线锁定（P2）：门槛达成即跳，优先级在 answerRules 之后。
+      const flagTarget = flagJumpTarget(flow, currentIndex, condition as { flagJumps?: unknown }, flags);
+      if (flagTarget) {
+        return flagTarget;
       }
     } catch {
       // Malformed legacy condition data falls back to normal ordering.

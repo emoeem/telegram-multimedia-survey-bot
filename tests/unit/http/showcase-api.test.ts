@@ -98,6 +98,7 @@ describe("public showcase API", () => {
       publishedOnly: true,
       limit: 10,
       offset: 0,
+      includeRestricted: false,
     });
     const body = (await response!.json()) as {
       items: Array<Record<string, unknown>>;
@@ -129,6 +130,7 @@ describe("public showcase API", () => {
       publishedOnly: true,
       limit: 100,
       offset: 0,
+      includeRestricted: false,
     });
     const body = (await response!.json()) as { limit: number; offset: number };
     expect(body.limit).toBe(100);
@@ -152,6 +154,7 @@ describe("public showcase API", () => {
       publishedOnly: true,
       limit: 24,
       cursor: null,
+      includeRestricted: false,
     });
     const body = (await response!.json()) as { items: unknown[]; nextCursor: string | null };
     expect(body.items).toHaveLength(1);
@@ -187,6 +190,7 @@ describe("public showcase API", () => {
       publishedOnly: true,
       limit: 100,
       offset: 0,
+      includeRestricted: false,
     });
   });
 

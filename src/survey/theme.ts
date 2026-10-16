@@ -63,6 +63,12 @@ export interface SurveyTheme {
     sfx?: Partial<Record<SurveySfxCue, string>>;
   };
   /**
+   * 视觉小说播放模式（P2）：开启后叙事卡（note 节点）的文字用打字机逐字
+   * 展现，点击立即补全；respect prefers-reduced-motion。老问卷不开启时
+   * 行为完全不变。
+   */
+  vn?: boolean;
+  /**
    * 出场立绘（视觉小说式「立ち絵」）：同一角色的透明 PNG 多表情套图。
    * 与 BGM 同构——页级默认 + 节点级覆盖，缺省时前端完全不渲染立绘层，
    * 老问卷的观感与行为不变。用 `name` 生成 alt 文本（无障碍）。
@@ -331,6 +337,9 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     if (value.completion.showRestart === true) completion.showRestart = true;
     if (Object.keys(completion).length) theme.completion = completion;
   }
+
+  // VN 播放模式（P2）：显式布尔，缺省 false（老问卷行为不变）。
+  if (value.vn === true) theme.vn = true;
 
   return Object.keys(theme).length ? theme : null;
 }

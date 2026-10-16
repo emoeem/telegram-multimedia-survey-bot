@@ -15,6 +15,7 @@ import {
   Paperclip,
   RefreshCw,
   Send,
+  Share2,
   Sparkles,
   Star,
   Users,
@@ -42,6 +43,9 @@ import {
   type AnswerValue,
   fetchAnswers,
   coinApi,
+  confirmAgeVerification,
+  createReportShare,
+  revokeReportShare,
   fetchSurvey,
   fetchSurveyList,
   fetchParticipantLinkStartUrl,
@@ -82,6 +86,7 @@ const SubmissionsScreen = lazy(() => import("./CoinCenter").then((m) => ({ defau
 const CoinGateScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinGateScreen })));
 const ShowcaseScreen = lazy(() => import("./ShowcaseScreen").then((m) => ({ default: m.ShowcaseScreen })));
 const TrialScreen = lazy(() => import("./TrialScreen").then((m) => ({ default: m.TrialScreen })));
+const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
@@ -148,6 +153,8 @@ declare global {
 type Screen =
   | { kind: "loading" }
   | { kind: "error"; message: string }
+  | { kind: "age-gate" }
+  | { kind: "auth-required" }
   | { kind: "access"; survey: SurveyDto }
   | { kind: "coin-gate"; survey: SurveyDto }
   | {
@@ -167,6 +174,178 @@ type Screen =
       /** 提交那一刻新解锁的徽章（服务端判定），用于在完成页做一次庆祝。 */
       newAchievements?: UnlockedAchievement[];
     };
+
+/**
+ * VN 打字机（P2）：逐字展现文本，点击立即补全；respect prefers-reduced-motion
+ * （系统减少动效时直接整段显示）。仅在问卷主题显式开启 vn 时使用。
+ */
+function Typewriter({ text, enabled, className }: { text: string; enabled: boolean; className?: string }) {
+  const [shown, setShown] = useState(() => (enabled ? 0 : text.length));
+  const doneRef = useRef(false);
+  useEffect(() => {
+    if (!enabled) {
+      setShown(text.length);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setShown(text.length);
+      return;
+    }
+    setShown(0);
+    doneRef.current = false;
+    const timer = window.setInterval(() => {
+      setShown((current) => {
+        if (current >= text.length) {
+          window.clearInterval(timer);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 28);
+    return () => window.clearInterval(timer);
+  }, [text, enabled]);
+  const complete = () => setShown(text.length);
+  return (
+    <span className={className} onClick={complete} role={enabled && shown < text.length ? "button" : undefined}>
+      {text.slice(0, shown)}
+      {enabled && shown < text.length ? <span className="animate-pulse">▌</span> : null}
+    </span>
+  );
+}
+
+/**
+ * 结局卡分享（0081）：完成页/「我的」里的分享入口。创建是幂等的——同一份
+ * 答卷反复点击拿到的都是同一个链接；撤销只影响今后的访问。
+ * 公开内容固定为「结局名 + 卷名」，答案永远不出现在分享卡上。
+ */
+function ShareEndingCard({ responseId }: { responseId: number }) {
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const create = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await createReportShare(responseId);
+      const absolute = new URL(result.share.url, window.location.origin).toString();
+      setShareUrl(absolute);
+    } catch {
+      // 创建失败安静回退：按钮回到初始态，用户可以再点。
+    } finally {
+      setBusy(false);
+    }
+  };
+  const revoke = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await revokeReportShare(responseId);
+      setShareUrl(null);
+      setCopied(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 剪贴板不可用（HTTP 域/旧 WebView）：链接文本本身可见，可手动复制。
+    }
+  };
+  if (!shareUrl) {
+    return (
+      <div className="mt-4 flex flex-col items-center gap-1.5">
+        <button type="button" className="btn px-6" disabled={busy} onClick={create}>
+          <Share2 className="h-4 w-4" />
+          {busy ? "生成中…" : "生成结局分享卡"}
+        </button>
+        <p className="text-[11px] text-[var(--survey-muted)]">公开结局名与卷名，不会公开你的答案</p>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-4 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
+      <p className="text-sm font-semibold text-[var(--survey-heading)]">结局分享卡已生成</p>
+      <p className="mt-1.5 break-all rounded-lg bg-black/5 px-2.5 py-1.5 text-[11px] text-[var(--survey-muted)]">
+        {shareUrl}
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+        <button type="button" className="btn btn-primary px-5" onClick={copy}>
+          {copied ? "已复制" : "复制链接"}
+        </button>
+        <button type="button" className="btn px-4 text-sm" disabled={busy} onClick={revoke}>
+          撤销分享
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 注册墙登录门（产品决策）：填卷要求邮箱注册或 Telegram 身份。未登录用户
+ * 从这里去 /auth 登录，登录态存在 localStorage，回来点「重试」直接续上。
+ */
+function AuthRequiredScreen({ onRetry }: { onRetry: () => void }) {
+  const hasEmailSession = typeof localStorage !== "undefined" && Boolean(localStorage.getItem("emailSessionToken"));
+  return (
+    <div className="mx-auto max-w-xl px-5 py-16 text-center">
+      <p className="text-5xl">🔐</p>
+      <h1 className="mt-4 text-lg font-semibold">注册或登录后开始填写</h1>
+      <p className="mt-3 text-sm opacity-70">
+        填写问卷需要一个账号（邮箱即可）：这样你的答卷进度、结局收集和追更通知都能找回，换设备也不会丢。
+        用 Telegram 打开则自动使用 TG 身份。
+      </p>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <a className="btn btn-primary px-8" href="/auth">
+          {hasEmailSession ? "登录状态已过期，重新登录" : "注册 / 登录"}
+        </a>
+        <button type="button" className="btn px-6" onClick={onRetry}>
+          我已完成登录，重试
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * r18 年龄确认门（0080）：确认走 /api/me/preferences，成功后由父级重试加载。
+ * 独立组件——hooks 不能出现在条件分支里。
+ */
+function AgeGateScreen({ onConfirmed }: { onConfirmed: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const confirmAge = async () => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await confirmAgeVerification();
+      onConfirmed();
+    } catch {
+      setConfirming(false);
+    }
+  };
+  return (
+    <div className="mx-auto max-w-xl px-5 py-16 text-center">
+      <p className="text-5xl">🔞</p>
+      <h1 className="mt-4 text-lg font-semibold">该内容为 18+ 内容</h1>
+      <p className="mt-3 text-sm opacity-70">
+        此问卷包含成人内容，仅限已满 18 周岁的访问者查看。确认后本次设备将记住你的选择。
+      </p>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <button type="button" className="btn btn-primary px-8" disabled={confirming} onClick={confirmAge}>
+          {confirming ? "确认中…" : "我已满 18 周岁，继续访问"}
+        </button>
+        <a className="btn px-6" href="/s">
+          <Home className="h-4 w-4" />
+          返回问卷列表
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function surveyIdFromPath(): number {
   const match = window.location.pathname.match(/^\/s\/(\d+)/);
@@ -435,6 +614,9 @@ function SurveyListPage() {
                 ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <h2 className="text-[17px] font-semibold leading-snug text-[var(--color-ink)]">{survey.title}</h2>
+                  {survey.contentRating === "r18" ? (
+                    <span className="badge shrink-0 bg-red-600 text-white">18+</span>
+                  ) : null}
                   {survey.accessCodeRequired ? (
                     <span className="badge badge-amber shrink-0">
                       <Lock className="h-3 w-3" />
@@ -583,10 +765,33 @@ function selectedOptionId(question: SurveyQuestionDto, value: AnswerValue | unde
   return question.options.some((option) => option.id === value) ? value : null;
 }
 
+/** 剧情 flags（P2）：与服务端 engine.computeFlags 同构，由答案推导。 */
+function computeFlags(
+  questions: SurveyQuestionDto[],
+  answers: Record<number, AnswerValue>,
+): Map<string, number> {
+  const flags = new Map<string, number>();
+  for (const question of questions) {
+    const condition = question.condition as { flagRules?: unknown } | null;
+    if (!condition || !Array.isArray(condition.flagRules)) continue;
+    for (const rule of condition.flagRules as Array<{ questionId?: unknown; equals?: unknown; flag?: unknown; score?: unknown }>) {
+      const flag = typeof rule.flag === "string" ? rule.flag : null;
+      if (!flag) continue;
+      const value = answers[Number(rule.questionId)];
+      if (value === undefined || value === null) continue;
+      if (Number(rule.equals) !== Number(value)) continue;
+      const score = Number(rule.score);
+      flags.set(flag, (flags.get(flag) ?? 0) + (Number.isFinite(score) ? score : 1));
+    }
+  }
+  return flags;
+}
+
 function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers: Record<number, AnswerValue>): number {
   if (currentIndex >= questions.length - 1) return questions.length;
   const current = questions[currentIndex];
   if (!current) return currentIndex + 1;
+  const flags = computeFlags(questions, answers);
   if (current.condition) {
     try {
       const selected = selectedOptionId(current, answers[current.id]);
@@ -612,6 +817,22 @@ function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers
           if (value === undefined || value === null) continue;
           if (Number(rule.equals) !== Number(value)) continue;
           const targetId = Number(rule.targetQuestionId);
+          if (Number.isInteger(targetId) && targetId > 0) {
+            const targetIndex = questions.findIndex((question) => question.id === targetId);
+            if (targetIndex > currentIndex) return targetIndex;
+          }
+        }
+      }
+      // flags 路线锁定（P2）：与服务端同一语义——门槛达成即向前跳。
+      const flagJumps = (current.condition as { flagJumps?: unknown }).flagJumps;
+      if (Array.isArray(flagJumps)) {
+        for (const jump of flagJumps as Array<{ flag?: unknown; gte?: unknown; targetQuestionId?: unknown }>) {
+          const flag = typeof jump.flag === "string" ? jump.flag : null;
+          if (!flag) continue;
+          const threshold = Number(jump.gte);
+          if (!Number.isFinite(threshold)) continue;
+          if ((flags.get(flag) ?? 0) < threshold) continue;
+          const targetId = Number(jump.targetQuestionId);
           if (Number.isInteger(targetId) && targetId > 0) {
             const targetIndex = questions.findIndex((question) => question.id === targetId);
             if (targetIndex > currentIndex) return targetIndex;
@@ -1449,6 +1670,13 @@ function AccessScreen({
 
 export function SurveyApp() {
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
+  if (window.location.pathname === "/series" || window.location.pathname.startsWith("/series/")) {
+    return (
+      <Suspense fallback={null}>
+        <SeriesScreen />
+      </Suspense>
+    );
+  }
   if (window.location.pathname === "/plaza" || window.location.pathname.startsWith("/plaza/")) {
     return (
       <LazyScreen>
@@ -1671,7 +1899,13 @@ export function SurveyApp() {
         }
       })
       .catch((err) => {
-        if (!cancelled) setScreen({ kind: "error", message: err instanceof Error ? err.message : "问卷加载失败" });
+        if (cancelled) return;
+        // r18 门（0080）：未确认年龄的访问者先过确认门，确认后重试整条加载链。
+        if ((err as Error & { code?: string }).code === "age_restricted") {
+          setScreen({ kind: "age-gate" });
+          return;
+        }
+        setScreen({ kind: "error", message: err instanceof Error ? err.message : "问卷加载失败" });
       });
     return () => {
       cancelled = true;
@@ -1755,7 +1989,13 @@ export function SurveyApp() {
           answers: resumeAnswers,
         });
       } catch (err) {
-        if (!isCancelled()) setScreen({ kind: "error", message: err instanceof Error ? err.message : "无法开始问卷" });
+        if (isCancelled()) return;
+        // 注册墙（产品决策）：未登录开卷 → 登录门。
+        if ((err as Error & { code?: string }).code === "registration_required") {
+          setScreen({ kind: "auth-required" });
+          return;
+        }
+        setScreen({ kind: "error", message: err instanceof Error ? err.message : "无法开始问卷" });
       }
     },
     [saveQueue],
@@ -1968,7 +2208,7 @@ export function SurveyApp() {
 
   const earlyTheme: SurveyThemeDto | null = userThemePreset
     ? { preset: userThemePreset }
-    : screen.kind !== "loading" && screen.kind !== "error"
+    : screen.kind !== "loading" && screen.kind !== "error" && screen.kind !== "age-gate" && screen.kind !== "auth-required"
       ? screen.survey.theme
       : null;
   const earlyVars = themeCssVars(earlyTheme);
@@ -2005,6 +2245,28 @@ export function SurveyApp() {
             </a>
           </div>
         </div>
+      </div>
+    );
+  }
+  if (screen.kind === "auth-required") {
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={earlyTheme?.preset}
+        style={{ ...earlyVars, ...earlyBackground }}
+      >
+        <AuthRequiredScreen onRetry={() => setRetryKey((key) => key + 1)} />
+      </div>
+    );
+  }
+  if (screen.kind === "age-gate") {
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={earlyTheme?.preset}
+        style={{ ...earlyVars, ...earlyBackground }}
+      >
+        <AgeGateScreen onConfirmed={() => setRetryKey((key) => key + 1)} />
       </div>
     );
   }
@@ -2088,6 +2350,7 @@ export function SurveyApp() {
             ) : null}
           </div>
         ) : null}
+        {activeResponseRef.current ? <ShareEndingCard responseId={activeResponseRef.current.responseId} /> : null}
         {screen.newAchievements?.length ? (
           <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
             <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
@@ -2238,6 +2501,7 @@ export function SurveyApp() {
   const currentPage = survey.pages.find((page) => page.id === question.pageId);
   const value = answers[question.id];
   const isNote = question.type === "note";
+  const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
   const isLast = index === survey.questions.length - 1;
   // 进度按"需要作答的题"计数：剧情文段只展示内容，不占题号、不计百分比。
   const answerableTotal = survey.questions.filter((item) => item.type !== "note").length;
@@ -2365,12 +2629,12 @@ export function SurveyApp() {
               <>
                 {question.title ? (
                   <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    📖 {question.title}
+                    📖 <Typewriter text={question.title} enabled={vnMode} className="whitespace-pre-wrap" />
                   </h1>
                 ) : null}
                 {question.description ? (
                   <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
-                    {question.description}
+                    <Typewriter text={question.description} enabled={vnMode} />
                   </p>
                 ) : null}
                 <MediaBlock urls={question.media} type="image" />

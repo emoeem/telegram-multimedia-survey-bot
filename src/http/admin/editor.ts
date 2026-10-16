@@ -59,6 +59,7 @@ import { getSurveyVersionSnapshot } from "../../services/survey-version.service"
 import { parseImportedSurvey, saveImportedSurvey } from "../../services/import.service";
 import { getSurveyResultRuleSet, saveSurveyResultRuleSet } from "../../db/repositories/result-profile.repository";
 import { parseResultRuleSet } from "../../services/result-engine.service";
+import { normalizeContentRating } from "../../services/content-rating.service";
 
 export async function handleAdminEditorWrite(
   request: Request,
@@ -157,6 +158,20 @@ export async function handleAdminEditorWrite(
         return fail(400, "validation_failed", "reportTemplateId 必须是字符串或 null");
       }
     }
+    if (body.contentRating !== undefined) {
+      const rating = normalizeContentRating(body.contentRating);
+      if (!rating) return fail(400, "validation_failed", "内容分级必须是 all 或 r18");
+      // all → r18 是收窄，随时允许；r18 → all 是放开，非管理员只能改草稿，
+      // 避免误操作把成人内容暴露进公开面。
+      if (rating === "all") {
+        const existing = await getSurveyById(db, surveyId);
+        if (existing && existing.contentRating === "r18" && existing.status !== "draft" && !isAdmin) {
+          return fail(403, "rating_change_forbidden", "r18 问卷改回全年龄需要管理员操作");
+        }
+      }
+      updates.push("content_rating = ?");
+      binds.push(rating);
+    }
     if (body.theme !== undefined) {
       const existingSurvey = await getSurveyById(db, surveyId);
       const settings = existingSurvey?.settingsJson
@@ -184,6 +199,87 @@ export async function handleAdminEditorWrite(
       .bind(...binds)
       .run();
     return json({ updatedAt: timestamp });
+  }
+
+  // POST /api/admin/surveys/:id/result-pool — 结局收集生成器（P1）：把结果
+  // 规则里的 resultTypes 变成抽卡奖池的第一方内容（结局卡）。池子以
+  // ending-{surveyId} 为 slug 幂等：已存在时 409 指回，避免覆盖运营配置。
+  if (request.method === "POST" && rest === "/result-pool") {
+    const survey = await getSurveyById(db, surveyId);
+    if (!survey) return fail(404, "survey_not_found", "问卷不存在");
+    const ruleSetRow = await db
+      .prepare("SELECT rules_json FROM survey_result_rule_sets WHERE survey_id = ? LIMIT 1")
+      .bind(surveyId)
+      .first<{ rules_json: string }>();
+    let resultTypes: Array<{ id?: unknown; label?: unknown; title?: unknown; subtitle?: unknown; description?: unknown }> = [];
+    if (ruleSetRow) {
+      try {
+        const parsedRuleSet = JSON.parse(ruleSetRow.rules_json) as { resultTypes?: unknown };
+        if (Array.isArray(parsedRuleSet.resultTypes)) resultTypes = parsedRuleSet.resultTypes;
+      } catch {
+        // 脏规则数据按"没有结局"处理。
+      }
+    }
+    const usable = resultTypes.filter((item) => typeof item.id === "string" || typeof item.label === "string");
+    if (!usable.length) {
+      return fail(400, "no_results", "这份问卷还没有结局定义，先在「结果设计」里添加结果类型");
+    }
+    const slug = `ending-${surveyId}`;
+    const existing = await db.prepare("SELECT id FROM gacha_pools WHERE slug = ? LIMIT 1").bind(slug).first<{ id: number }>();
+    if (existing) {
+      return fail(409, "pool_exists", `该问卷的结局奖池已生成（池 #${existing.id}）`);
+    }
+    const now = new Date().toISOString();
+    const costSingle = Number(body.costSingle ?? 20);
+    if (!Number.isInteger(costSingle) || costSingle <= 0) {
+      return fail(400, "validation_failed", "单抽价格必须是正整数");
+    }
+    const poolResult = await db
+      .prepare(
+        `INSERT INTO gacha_pools (slug, name, description, cost_single, cost_multi, status,
+            start_at, end_at, pity_at, default_access, version, content_rating, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'draft', NULL, NULL, NULL, 'permanent', 0, ?, ?, ?)`,
+      )
+      .bind(
+        slug,
+        `《${survey.title.slice(0, 80)}》结局收集`,
+        "完成答卷后抽取本作的结局卡（由结果规则生成）",
+        costSingle,
+        survey.contentRating,
+        now,
+        now,
+      )
+      .run();
+    const poolId = Number(poolResult.meta?.last_row_id);
+    const weight = Math.max(1, Math.floor(100 / usable.length));
+    for (const item of usable) {
+      const label = String(item.label ?? item.id);
+      await db
+        .prepare(
+          `INSERT INTO gacha_pool_items (pool_id, owner_participant_hash, title, description, content_type,
+              rarity, weight, stock, remaining, preview_media_id, active, content_rating, created_at)
+           VALUES (?, ?, ?, ?, 'ending', 'R', ?, NULL, NULL, ?, 1, ?, ?)`,
+        )
+        .bind(
+          poolId,
+          `user_${user.id}`,
+          String(item.title ?? label).slice(0, 120),
+          String(item.subtitle ?? item.description ?? "").slice(0, 300),
+          weight,
+          survey.coverMediaId,
+          survey.contentRating,
+          now,
+        )
+        .run();
+    }
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "gacha.pool.generate_from_results",
+      entityType: "gacha_pool",
+      entityId: String(poolId),
+      after: { surveyId, slug, items: usable.length },
+    });
+    return json({ poolId, slug, items: usable.length, status: "draft" });
   }
 
   if (request.method === "PUT" && rest === "/result-rules") {

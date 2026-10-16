@@ -208,12 +208,20 @@ async function listItemsByPersonIds(db: D1Database, personIds: number[]): Promis
 
 export async function listShowcasePersons(
   db: D1Database,
-  options: { publishedOnly?: boolean; ownerUserId?: number; limit?: number; offset?: number } = {},
+  options: {
+    publishedOnly?: boolean;
+    ownerUserId?: number;
+    limit?: number;
+    offset?: number;
+    /** r18 过滤（0080）：公开列表默认只出全年龄人物。 */
+    includeRestricted?: boolean;
+  } = {},
 ): Promise<{ persons: ShowcasePersonWithItems[]; total: number }> {
   const conditions: string[] = [];
   const binds: unknown[] = [];
   conditions.push("deleted_at IS NULL");
   if (options.publishedOnly) conditions.push("published = 1");
+  if (options.publishedOnly && !options.includeRestricted) conditions.push("content_rating = 'all'");
   if (options.ownerUserId !== undefined) {
     conditions.push("owner_user_id = ?");
     binds.push(options.ownerUserId);
@@ -255,6 +263,7 @@ export async function listShowcasePersonsLegacyCursor(
     publishedOnly?: boolean;
     limit?: number;
     cursor?: Pick<ShowcaseCursorPayload, "featureRank" | "sortOrder" | "id"> | null;
+    includeRestricted?: boolean;
   } = {},
 ): Promise<{
   persons: ShowcasePersonWithItems[];
@@ -267,6 +276,7 @@ export async function listShowcasePersonsLegacyCursor(
   const conditions: string[] = ["deleted_at IS NULL"];
   const binds: unknown[] = [];
   if (options.publishedOnly) conditions.push("published = 1");
+  if (options.publishedOnly && !options.includeRestricted) conditions.push("content_rating = 'all'");
   if (options.cursor) {
     conditions.push(
       "(feature_rank < ? OR (feature_rank = ? AND (sort_order > ? OR (sort_order = ? AND id > ?))))",
@@ -314,6 +324,7 @@ export async function listShowcasePersonsCursor(
     ownerUserId?: number;
     limit?: number;
     cursor?: Pick<ShowcaseCursorPayload, "createdAt" | "id"> | null;
+    includeRestricted?: boolean;
   } = {},
 ): Promise<{
   persons: ShowcasePersonWithItems[];
@@ -326,6 +337,7 @@ export async function listShowcasePersonsCursor(
   const conditions: string[] = ["deleted_at IS NULL"];
   const binds: unknown[] = [];
   if (options.publishedOnly) conditions.push("published = 1");
+  if (options.publishedOnly && !options.includeRestricted) conditions.push("content_rating = 'all'");
   if (options.ownerUserId !== undefined) {
     conditions.push("owner_user_id = ?");
     binds.push(options.ownerUserId);

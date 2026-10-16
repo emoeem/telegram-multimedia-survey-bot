@@ -40,7 +40,8 @@ CREATE TABLE showcase_persons (
   survey_id INTEGER, response_id INTEGER, owner_user_id INTEGER,
   feature_rank INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0, created_by INTEGER,
-  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
+  content_rating TEXT NOT NULL DEFAULT 'all'
 );
 CREATE TABLE showcase_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

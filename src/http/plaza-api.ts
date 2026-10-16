@@ -1,5 +1,6 @@
 import type { Env } from "../index";
 import { fail, json, resolveParticipant } from "./survey-api";
+import { resolveViewerAgeVerified } from "../services/content-rating.service";
 import {
   createPlazaPost,
   isPublishedPlazaImage,
@@ -49,7 +50,14 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
     const { limit, offset } = sanitizePaging(url);
     // 话题筛选：非法/超长的值当作「没有筛选」，而不是报错——筛选条是公开 UI。
     const topic = resolvePlazaTopic("", url.searchParams.get("topic"));
-    const { items, total } = await listPlazaPosts(env.DB, { limit, offset, view: "published", topic });
+    const includeRestricted = await resolveViewerAgeVerified(request, env);
+    const { items, total } = await listPlazaPosts(env.DB, {
+      limit,
+      offset,
+      view: "published",
+      topic,
+      includeRestricted,
+    });
     return json({
       items: items.map((item) => ({
         id: item.id,
@@ -81,7 +89,8 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
 
   // 公开流的话题筛选条。
   if (request.method === "GET" && url.pathname === "/api/plaza/topics") {
-    const topics = await listPlazaTopics(env.DB);
+    const includeRestricted = await resolveViewerAgeVerified(request, env);
+    const topics = await listPlazaTopics(env.DB, 12, { includeRestricted });
     return json({ topics });
   }
 
@@ -147,8 +156,8 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
   if (request.method === "POST" && url.pathname === "/api/plaza/posts") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    if (participant.kind !== "telegram" || !participant.dbUserId) {
-      return fail(403, "identity_required", "请从 Telegram 机器人打开广场后再投稿");
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再参与讨论");
     }
     const body = (await request.json().catch(() => null)) as {
       content?: unknown;
@@ -235,8 +244,8 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
   if (request.method === "POST" && url.pathname === "/api/plaza/posts/media") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    if (participant.kind !== "telegram" || !participant.dbUserId) {
-      return fail(403, "identity_required", "请从 Telegram 机器人打开广场后再上传图片");
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再上传图片");
     }
     if (!env.CACHE) return fail(503, "unavailable", "当前部署未启用图片投稿");
     const limit = await checkRateLimit(env.CACHE, "plaza-media", String(participant.dbUserId), 15, 3600);
@@ -300,8 +309,8 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
   if (request.method === "POST" && commentsMatch) {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    if (participant.kind !== "telegram" || !participant.dbUserId) {
-      return fail(403, "identity_required", "请从 Telegram 机器人打开广场后再评论");
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再评论");
     }
     const postId = Number(commentsMatch[1]);
     const post = await env.DB.prepare(
@@ -380,8 +389,8 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
   if (request.method === "POST" && url.pathname === "/api/plaza/trial-shares") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    if (participant.kind !== "telegram" || !participant.dbUserId) {
-      return fail(403, "identity_required", "请从 Telegram 机器人打开后再晒进度（也可以直接复制结局文字）");
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再晒进度");
     }
     const body = (await request.json().catch(() => null)) as { runId?: unknown; anonymous?: unknown } | null;
     const runId = Number(body?.runId);

@@ -1,4 +1,5 @@
 import { nowIso } from "../client";
+import { HASH_SET_SQL } from "../../services/identity-link.service";
 
 /** One unlocked badge for a participant. */
 export interface ParticipantAchievement {
@@ -30,14 +31,15 @@ export async function listParticipantAchievements(
   db: D1Database,
   participantHash: string,
 ): Promise<ParticipantAchievement[]> {
+  // 0082 并集：合并前在旧身份下解锁的徽章继续展示。
   const rows = await db
     .prepare(
       `SELECT code, unlocked_at, seen, meta_json
          FROM participant_achievements
-        WHERE participant_hash = ?
+        WHERE participant_hash ${HASH_SET_SQL}
         ORDER BY unlocked_at DESC, id DESC`,
     )
-    .bind(participantHash)
+    .bind(participantHash, participantHash)
     .all<Record<string, unknown>>();
   return (rows.results ?? []).map(mapRow);
 }

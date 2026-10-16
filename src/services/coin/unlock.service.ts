@@ -1,6 +1,7 @@
 import type { Env } from "../../index";
 import { loadCoinConfig, type CoinEconomyConfig } from "./config.service";
 import { CoinLedgerError, getCoinAccount, runSpendBatch } from "./ledger.service";
+import { HASH_SET_SQL } from "../identity-link.service";
 
 /**
  * 问卷金币解锁（需求 5.x）。
@@ -168,9 +169,10 @@ export async function computePrice(
 }
 
 export async function hasUnlock(db: D1Database, surveyId: number, participantHash: string): Promise<boolean> {
+  // 0082 并集：合并前用旧身份买过的解锁继续有效。
   const row = await db
-    .prepare(`SELECT 1 FROM survey_unlocks WHERE survey_id = ? AND participant_hash = ?`)
-    .bind(surveyId, participantHash)
+    .prepare(`SELECT 1 FROM survey_unlocks WHERE survey_id = ? AND participant_hash ${HASH_SET_SQL}`)
+    .bind(surveyId, participantHash, participantHash)
     .first();
   return Boolean(row);
 }
@@ -230,8 +232,8 @@ export async function unlockSurvey(
   }
 
   const existing = await db
-    .prepare(`SELECT price_paid FROM survey_unlocks WHERE survey_id = ? AND participant_hash = ?`)
-    .bind(survey.id, participant.participantHash)
+    .prepare(`SELECT price_paid FROM survey_unlocks WHERE survey_id = ? AND participant_hash ${HASH_SET_SQL}`)
+    .bind(survey.id, participant.participantHash, participant.participantHash)
     .first<{ price_paid: number }>();
   const account0 = await getCoinAccount(db, participant.participantHash);
   if (existing) {
@@ -284,8 +286,8 @@ export async function unlockSurvey(
   }
   if (outcome.duplicate) {
     const unlock = await db
-      .prepare(`SELECT price_paid FROM survey_unlocks WHERE survey_id = ? AND participant_hash = ?`)
-      .bind(survey.id, participant.participantHash)
+      .prepare(`SELECT price_paid FROM survey_unlocks WHERE survey_id = ? AND participant_hash ${HASH_SET_SQL}`)
+      .bind(survey.id, participant.participantHash, participant.participantHash)
       .first<{ price_paid: number }>();
     const account = await getCoinAccount(db, participant.participantHash);
     return {
@@ -308,9 +310,9 @@ export async function listUnlocksFor(db: D1Database, participantHash: string) {
       `SELECT u.survey_id AS surveyId, u.price_paid AS pricePaid, u.created_at AS createdAt,
               s.title AS surveyTitle
        FROM survey_unlocks u LEFT JOIN surveys s ON s.id = u.survey_id
-       WHERE u.participant_hash = ? ORDER BY u.id DESC LIMIT 100`,
+       WHERE u.participant_hash ${HASH_SET_SQL} ORDER BY u.id DESC LIMIT 100`,
     )
-    .bind(participantHash)
+    .bind(participantHash, participantHash)
     .all();
   return result.results ?? [];
 }

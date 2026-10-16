@@ -36,10 +36,10 @@ import { resolveListCoinPrices } from "../../services/coin/unlock.service";
  * would spend that budget re-writing the same payload.
  *
  * The version is part of the key and must be bumped whenever the projection
- * changes (v3 added the coin-unlock/price fields below), or a rollout serves
- * entries built by the previous Worker version.
+ * changes (v3 added the coin-unlock/price fields, v4 added `contentRating`),
+ * or a rollout serves entries built by the previous Worker version.
  */
-export const SURVEY_LIST_CACHE_VERSION = "v3";
+export const SURVEY_LIST_CACHE_VERSION = "v4";
 export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
 /**
@@ -144,6 +144,8 @@ export interface PublishedSurveyListItem {
   id: number;
   title: string;
   description?: string;
+  /** 内容分级（0080）：列表缓存始终含全量条目，r18 的服务侧过滤在 handler。 */
+  contentRating: "all" | "r18";
   accessCodeRequired: boolean;
   /**
    * 金币解锁信息（仅作者启用了金币解锁的问卷才有）。列表页据此显示
@@ -180,6 +182,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
   const rows = await env.DB.prepare(
     `SELECT s.id, s.title, s.description, s.access_code accessCode,
               s.published_at publishedAt, s.closed_at closedAt, s.anonymous anonymous,
+              s.content_rating contentRating,
               s.settings_json settingsJson,
               m.id coverMediaId, m.url coverUrl,
               (SELECT COUNT(*) FROM survey_questions q
@@ -198,6 +201,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
       title: string;
       description: string | null;
       accessCode: string | null;
+      contentRating: string | null;
       publishedAt: string | null;
       closedAt: string | null;
       anonymous: number;
@@ -212,6 +216,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
     title: row.title,
     ...(row.description ? { description: row.description } : {}),
     accessCodeRequired: Boolean(row.accessCode),
+    contentRating: row.contentRating === "r18" ? ("r18" as const) : ("all" as const),
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
     anonymous: Boolean(row.anonymous),

@@ -96,6 +96,14 @@ export async function apiSend<T>(
   return (await parseResponse(response)) as T;
 }
 
+/** 编辑器：把结果规则生成结局奖池（P1 结局收集）。 */
+export function generateResultPool(
+  surveyId: number,
+  costSingle: number,
+): Promise<{ poolId: number; slug: string; items: number; status: string }> {
+  return apiSend("POST", `/api/admin/surveys/${surveyId}/result-pool`, { costSingle });
+}
+
 export async function apiUpload<T>(path: string, file: File): Promise<T> {
   const formData = new FormData();
   formData.append("file", file);
@@ -754,6 +762,7 @@ export interface EditorData {
     questionCount: number;
     editable: boolean;
     reportTemplateId: string | null;
+    contentRating: "all" | "r18";
     theme?: { preset?: string } | null;
   };
   questions: EditorQuestion[];

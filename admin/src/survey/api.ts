@@ -40,6 +40,8 @@ export interface SurveyPageDto {
 
 export interface SurveyThemeDto {
   preset?: string;
+  /** 视觉小说播放模式（P2）：叙事卡文字打字机展现。 */
+  vn?: boolean;
   background?: {
     color?: string;
     image?: string;
@@ -117,6 +119,8 @@ export interface SurveyListItem {
   title: string;
   description?: string;
   accessCodeRequired: boolean;
+  /** 内容分级（0080）：r18 项仅对已确认年龄的查看者出现在列表里。 */
+  contentRating?: "all" | "r18";
   /** 作者启用了金币解锁时的价格（免费问卷没有此字段）。 */
   coinUnlock?: { price: number };
   publishedAt: string | null;
@@ -257,6 +261,127 @@ export function fetchSurvey(surveyId: number, accessGrant?: string | null): Prom
     { retries: 2 },
   );
 }
+
+/** 年龄确认（0080）：r18 问卷入口 451 之后由确认门调用，随后重试加载。 */
+export function confirmAgeVerification(): Promise<{ ageVerifiedAt: string | null }> {
+  return request<{ ageVerifiedAt: string | null }>("/api/me/preferences", {
+    method: "POST",
+    body: JSON.stringify({ ageVerified: true }),
+  });
+}
+
+/** 报告分享卡（0081）：幂等创建，返回公开结局卡链接。 */
+export function createReportShare(responseId: number): Promise<{
+  share: { url: string; ogUrl: string; createdAt: string; viewCount: number };
+}> {
+  return request<{ share: { url: string; ogUrl: string; createdAt: string; viewCount: number } }>(
+    `/api/me/reports/${responseId}/share`,
+    { method: "POST" },
+  );
+}
+
+export function revokeReportShare(responseId: number): Promise<{ ok: boolean; revoked: boolean }> {
+  return request<{ ok: boolean; revoked: boolean }>(`/api/me/reports/${responseId}/share`, {
+    method: "DELETE",
+  });
+}
+
+// ---- 系列书架（0083/0084）----
+
+export interface SeriesChapterDto {
+  surveyId: number;
+  title: string;
+  order: number;
+  status: string;
+  contentRating: "all" | "r18";
+  accessCodeRequired: boolean;
+  coverMediaId: number | null;
+  publishedAt: string | null;
+  completed: boolean;
+  locked: boolean;
+  coinPrice: number | null;
+}
+
+export interface SeriesListItemDto {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  coverUrl: string | null;
+  chapterCount: number;
+  completedCount: number;
+  updatedAt: string;
+}
+
+export interface SeriesDetailDto {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  coverUrl: string | null;
+  chapters: SeriesChapterDto[];
+  nextChapterId: number | null;
+  following: boolean;
+  followerCount: number;
+}
+
+export function fetchSeriesList(): Promise<{ series: SeriesListItemDto[] }> {
+  return request<{ series: SeriesListItemDto[] }>("/api/series", undefined, { retries: 1 });
+}
+
+export function fetchSeriesDetail(slug: string): Promise<{ series: SeriesDetailDto }> {
+  return request<{ series: SeriesDetailDto }>(`/api/series/${encodeURIComponent(slug)}`, undefined, { retries: 1 });
+}
+
+export function toggleSeriesFollow(seriesId: number): Promise<{ following: boolean }> {
+  return request<{ following: boolean }>(`/api/series/${seriesId}/follow`, { method: "POST" });
+}
+
+export interface NotificationDto {
+  id: number;
+  kind: string;
+  title: string;
+  body: string;
+  link: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export function fetchNotifications(): Promise<{ items: NotificationDto[]; unread: number }> {
+  return request<{ items: NotificationDto[]; unread: number }>("/api/me/notifications", undefined, { retries: 1 });
+}
+
+export function markNotificationsSeen(): Promise<{ ok: boolean; marked: number }> {
+  return request<{ ok: boolean; marked: number }>("/api/me/notifications/seen", { method: "POST" });
+}
+
+// ---- 个人画像（0085）----
+
+export interface ProfileShareDto {
+  url: string;
+  updatedAt: string;
+  snapshot: {
+    completedSurveys: number;
+    achievements: number;
+    endingsCollected: number;
+    trialBestScore: number;
+    trialRuns: number;
+    since: string | null;
+  };
+}
+
+export function fetchProfileShare(): Promise<{ share: ProfileShareDto | null }> {
+  return request<{ share: ProfileShareDto | null }>("/api/me/profile-share", undefined, { retries: 1 });
+}
+
+export function createProfileShare(): Promise<{ share: ProfileShareDto }> {
+  return request<{ share: ProfileShareDto }>("/api/me/profile-share", { method: "POST" });
+}
+
+export function revokeProfileShare(): Promise<{ ok: boolean; revoked: boolean }> {
+  return request<{ ok: boolean; revoked: boolean }>("/api/me/profile-share", { method: "DELETE" });
+}
+
 
 /** 成就徽章：目录由服务端下发，客户端不硬编码任何一条。 */
 export interface AchievementItem {

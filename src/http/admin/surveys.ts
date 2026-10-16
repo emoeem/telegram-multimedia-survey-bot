@@ -1,4 +1,4 @@
-import { softDeleteSurvey, updateSurveyStatus } from "../../db/repositories/survey.repository";
+import { getSurveyById, softDeleteSurvey, updateSurveyStatus } from "../../db/repositories/survey.repository";
 import { archiveResponse, deleteResponse, getResponseById } from "../../db/repositories/response.repository";
 import { buildCsv, getExportRows, serializeExport } from "../../services/export.service";
 import { duplicateSurvey, publishSurvey } from "../../services/survey.service";
@@ -335,6 +335,47 @@ export async function handleAdminSurveysWrite(
     return json({ reportUrl: `/report/${responseId}?t=${token}` });
   }
 
+  // POST /api/admin/surveys/:id/answer-key — 朋友互测（P2）：把一份已完成的
+  // 答卷设为「答案钥匙」。参与者的报告会对照钥匙算默契得分；钥匙答案本身
+  // 永不下发给参与者。
+  if (request.method === "POST" && rest === "/answer-key") {
+    const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
+    if (manageable instanceof Response) return manageable;
+    const responseId = Number(body.responseId);
+    if (!Number.isInteger(responseId) || responseId <= 0) {
+      return fail(400, "validation_failed", "responseId 无效");
+    }
+    const response = await getResponseById(db, responseId);
+    if (!response || response.surveyId !== surveyId || response.status !== "completed") {
+      return fail(404, "response_not_found", "答卷不存在或未完成");
+    }
+    const survey = await getSurveyById(db, surveyId);
+    if (!survey) return fail(404, "survey_not_found", "问卷不存在");
+    let settings: Record<string, unknown> = {};
+    if (survey.settingsJson) {
+      try {
+        const parsed = JSON.parse(survey.settingsJson) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed as Record<string, unknown>;
+      } catch {
+        settings = {};
+      }
+    }
+    settings.answerKeyResponseId = responseId;
+    const timestamp = new Date().toISOString();
+    await db
+      .prepare("UPDATE surveys SET settings_json = ?, updated_at = ? WHERE id = ?")
+      .bind(JSON.stringify(settings), timestamp, surveyId)
+      .run();
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "survey.answer_key.set",
+      entityType: "survey",
+      entityId: String(surveyId),
+      after: { responseId },
+    });
+    return json({ ok: true, responseId, updatedAt: timestamp });
+  }
+
   if (request.method === "POST" && rest === "/publish") {
     const manageable = await loadManageableSurvey(env, ctx, surveyId, body);
     if (manageable instanceof Response) return manageable;
@@ -366,6 +407,15 @@ export async function handleAdminSurveysWrite(
         entityId: String(surveyId),
         after: { version: published.version },
       });
+      // 连载更新召回（0084）：经 SELF service binding 调自己的内部端点，
+      // fire-and-forget——站内通知与 TG push 都不拖住发布响应。
+      if (published.seriesId !== null && env.SELF) {
+        void notifySeriesUpdateViaSelf(env, {
+          seriesId: published.seriesId,
+          surveyId,
+          chapterTitle: published.title,
+        }).catch((error) => console.warn("series notify dispatch failed", { surveyId, error }));
+      }
       return json({
         status: published.status,
         publishedAt: published.publishedAt,
@@ -432,4 +482,32 @@ export async function handleAdminSurveysWrite(
 
 function adminActorOf(ctx: WriteContext): string {
   return `admin:${ctx.user?.id ?? "unknown"}`;
+}
+
+/**
+ * 经 SELF binding 触发连载召回：body 用 WEBHOOK_SECRET 做 HMAC-SHA256 签名
+ * （Web Crypto，与服务内其它令牌同源），内部端点常数时间验签后执行。
+ * 任何失败只留日志。
+ */
+async function notifySeriesUpdateViaSelf(
+  env: { SELF?: Fetcher; WEBHOOK_SECRET?: string },
+  input: { seriesId: number; surveyId: number; chapterTitle: string },
+): Promise<void> {
+  if (!env.SELF) return;
+  const body = JSON.stringify(input);
+  const signature = await hmacHex(env.WEBHOOK_SECRET ?? "", body);
+  await env.SELF.fetch("https://self/internal/series-notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-notify-signature": signature },
+    body,
+  });
+}
+
+async function hmacHex(secret: string, value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

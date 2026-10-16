@@ -18,6 +18,33 @@ import {
   verifyEmailSessionToken,
   verifyPassword,
 } from "../services/email-auth.service";
+import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
+import { claimParticipantKey } from "../services/identity-link.service";
+import { ensureEmailAccountUser } from "../services/identity-link.service";
+
+/**
+ * 登录/注册成功后的自动认领（0082）：请求若携带本浏览器的匿名 key，就把
+ * web_* 历史进度并入该邮箱账户的 canonical（绑定了 user 则 user_*，否则
+ * email_*），金币随之合并（幂等）。认领失败不阻断登录——进度并入是增值
+ * 动作，不是登录的前置条件。
+ */
+async function autoClaimBrowserProgress(request: Request, env: Env, account: {
+  id: number;
+  userId: number | null;
+}): Promise<void> {
+  const key = request.headers.get("x-participant-key");
+  if (!key || !ANONYMOUS_KEY_PATTERN.test(key)) return;
+  try {
+    await claimParticipantKey(env.DB, env.CACHE, {
+      participantKey: key,
+      canonicalHash: account.userId === null ? `email_${account.id}` : `user_${account.userId}`,
+      userId: account.userId,
+      method: "email_claim",
+    });
+  } catch (error) {
+    console.warn("email auto-claim failed", { accountId: account.id, error });
+  }
+}
 
 /**
  * Email + password auth for non-Telegram visitors: register (email code
@@ -86,6 +113,10 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     if (!existing) await markEmailAccountVerified(db, account.id);
     else await updateEmailAccountPassword(db, account.id, await hashPassword(password));
     const version = existing ? account.sessionVersion + 1 : account.sessionVersion;
+    await ensureEmailAccountUser(env.DB, env.CACHE, account).catch((error) =>
+      console.warn("ensure email user failed", { accountId: account.id, error }),
+    );
+    await autoClaimBrowserProgress(request, env, account);
     return json({ token: await mintSession(env, account.id, version), email: account.email });
   }
 
@@ -96,6 +127,10 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     const hash = account?.passwordHash ?? "pbkdf2:100000:AAAA:AAAA";
     const ok = await verifyPassword(password, hash);
     if (!account || !ok || !account.verifiedAt) return fail(401, "invalid_credentials", "邮箱或密码不正确");
+    await ensureEmailAccountUser(env.DB, env.CACHE, account).catch((error) =>
+      console.warn("ensure email user failed", { accountId: account.id, error }),
+    );
+    await autoClaimBrowserProgress(request, env, account);
     return json({ token: await mintSession(env, account.id, account.sessionVersion), email: account.email });
   }
 

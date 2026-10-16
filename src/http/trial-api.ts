@@ -83,10 +83,13 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
     const participant = await resolveParticipant(request, env).catch(() => null);
     const participantHash = participant && !(participant instanceof Response) ? participant.participantHash : null;
+    const participantDbUserId =
+      participant && !(participant instanceof Response) ? participant.dbUserId : null;
     const entries = await listTaskRunLeaderboard(env.DB, {
       packId,
       mode,
       ...(participantHash ? { participantHash } : {}),
+      participantDbUserId,
     });
     return json({ entries });
   }

@@ -26,6 +26,9 @@ export interface UserTag {
 
 export type SurveyStatus = "draft" | "published" | "closed" | "archived";
 
+/** 内容分级（0080）：all=全年龄；r18=仅限已确认年龄的查看者。 */
+export type SurveyContentRating = "all" | "r18";
+
 export interface Survey {
   id: number;
   ownerId: number;
@@ -46,6 +49,10 @@ export interface Survey {
   accessCodeEncrypted: string | null;
   reportTemplateId: string | null;
   settingsJson: string | null;
+  contentRating: SurveyContentRating;
+  /** 所属系列（0083），null = 不属于任何系列。 */
+  seriesId: number | null;
+  seriesOrder: number | null;
 }
 
 export type QuestionType =
