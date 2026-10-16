@@ -63,6 +63,7 @@ export function SurveyDetailPage() {
   const [completionMessage, setCompletionMessage] = useState("");
   const [completionRedirect, setCompletionRedirect] = useState("");
   const [completionRestart, setCompletionRestart] = useState(false);
+  const [storyVn, setStoryVn] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [themeBusy, setThemeBusy] = useState(false);
@@ -82,7 +83,8 @@ export function SurveyDetailPage() {
     if (data.theme) {
       // preset/audio/completion get dedicated fields; the rest stays as raw
       // custom tokens in the JSON area.
-      const { preset: _preset, audio, completion, ...custom } = data.theme;
+      const { preset: _preset, audio, completion, vn: _vn, ...custom } = data.theme;
+      setStoryVn(_vn === true);
       setCustomJson(Object.keys(custom).length ? JSON.stringify(custom, null, 2) : "");
       if (audio) {
         const { url: _url, ...rest } = audio;
@@ -159,6 +161,8 @@ export function SurveyDetailPage() {
         if (completionRedirect.trim()) completion.redirectUrl = completionRedirect.trim();
         if (completionRestart) completion.showRestart = true;
         if (Object.keys(completion).length) theme.completion = completion;
+        // 视觉小说播放模式（P1.5）：叙事卡打字机 + 对话框 + 竖排选择肢。
+        if (storyVn) theme.vn = true;
         const customText = customJson.trim();
         if (customText) {
           try {
@@ -487,6 +491,15 @@ export function SurveyDetailPage() {
             ) : null}
           </div>
           {bgmUrl ? <audio className="mt-2 w-full" src={bgmUrl} controls preload="none" /> : null}
+
+          <label className="mt-3 flex items-center gap-2 text-sm" style={{ color: "var(--color-ink)" }}>
+            <input
+              type="checkbox"
+              checked={storyVn}
+              onChange={(event) => setStoryVn(event.target.checked)}
+            />
+            视觉小说模式（叙事卡打字机 · 对话框名牌 · 竖排选择肢）
+          </label>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <button className="btn btn-primary" disabled={themeBusy} onClick={() => void saveTheme(false)}>

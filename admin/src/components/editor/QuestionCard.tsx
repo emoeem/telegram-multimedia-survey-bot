@@ -193,6 +193,11 @@ export function QuestionCard({
     onLocalChange(question.id, { columns });
     onFieldCommit(question.id, { settings: { columns } }, "矩阵列");
   };
+  // 剧情说话人（VN 名牌，仅 note 题）：settings.speaker。
+  const commitSpeaker = (speaker: string) => {
+    onLocalChange(question.id, { speaker: speaker.trim() || null });
+    onFieldCommit(question.id, { settings: speaker.trim() ? { speaker: speaker.trim() } : null }, "说话人");
+  };
   // 每个选项的跳转目标存在 condition.rules 里（optionId → targetQuestionId）。
   // UI 按"选项 → 下拉选目标"呈现：未设置 = 顺序继续。
   const branchByOption = (() => {
@@ -430,6 +435,25 @@ export function QuestionCard({
 
         <label className="q-field">
           <span className="q-label">{isNote ? "剧情正文（支持换行分段）" : "描述 / 帮助文本（可选）"}</span>
+          {isNote && editableNow ? (
+            <label className="mt-1 block">
+              <span className="q-label">
+                说话人
+                <span className="ml-1 q-help">（VN 模式下显示为名牌，留空 = 旁白）</span>
+              </span>
+              <input
+                className="settings-input"
+                defaultValue={question.speaker ?? ""}
+                key={`speaker-${question.id}-${question.speaker ?? ""}`}
+                disabled={!editableNow}
+                onBlur={(event) => {
+                  if (event.target.value.trim() !== (question.speaker ?? "")) {
+                    commitSpeaker(event.target.value);
+                  }
+                }}
+              />
+            </label>
+          ) : null}
           <textarea
             className={`q-desc-input ${isNote ? "is-note-body" : ""}`}
             defaultValue={question.description ?? ""}

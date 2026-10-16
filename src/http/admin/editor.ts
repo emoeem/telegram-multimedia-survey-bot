@@ -476,7 +476,12 @@ export async function handleAdminEditorWrite(
       }
       if (body.settings !== undefined) {
         if (!isMatrixQuestionType(targetType) && payload!.settingsJson) {
-          return fail(400, "validation_failed", "仅 matrix 题支持 settings");
+          // 非 matrix 题只允许剧情说话人（VN 名牌，P1.5）。
+          const parsedSettings = JSON.parse(payload!.settingsJson) as Record<string, unknown>;
+          const speakerOnly = Object.keys(parsedSettings).every((key) => key === "speaker");
+          if (!speakerOnly) {
+            return fail(400, "validation_failed", "仅 matrix 题支持 settings（说话人除外）");
+          }
         }
         await updateQuestionSettings(db, questionId, payload!.settingsJson);
       }

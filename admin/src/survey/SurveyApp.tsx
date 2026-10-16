@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronRight,
   Coins,
   Download,
   Home,
@@ -2574,8 +2575,12 @@ export function SurveyApp() {
     <div
       className={`survey-glow min-h-dvh ${navHidden ? "pb-10" : "pb-32"}`}
       data-theme={theme?.preset}
-      style={{ ...vars, ...backgroundStyle }}
+      style={{ ...vars, ...(vnMode ? {} : backgroundStyle) }}
     >
+      {vnMode ? (
+        // VN 皮肤：场景图固定铺满视口，不随内容滚动（视觉小说的画面感）。
+        <div aria-hidden className="fixed inset-0 z-0" style={{ ...backgroundStyle, backgroundAttachment: "fixed" }} />
+      ) : null}
       {overlay ? (
         <div
           aria-hidden
@@ -2670,7 +2675,31 @@ export function SurveyApp() {
                 {currentPage.title}
               </p>
             ) : null}
-            {isNote ? (
+            {isNote && vnMode ? (
+              <>
+                <MediaBlock urls={question.media} type="image" />
+                {/* VN 对话框：名牌 + 打字机正文 + 继续，替代表单式叙事卡。 */}
+                <div className="fixed bottom-0 left-0 right-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
+                  <div className="relative mx-auto max-w-xl rounded-2xl border border-white/25 bg-black/70 px-5 py-4 text-white shadow-2xl backdrop-blur-md">
+                    {question.settings?.speaker ? (
+                      <span className="absolute -top-3.5 left-4 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-xs font-bold shadow-lg">
+                        {String(question.settings.speaker)}
+                      </span>
+                    ) : null}
+                    <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[15px] leading-7">
+                      <Typewriter text={question.description || question.title || ""} enabled />
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-2 flex w-full items-center justify-end gap-1 text-sm font-semibold text-amber-300"
+                      onClick={() => void goNext()}
+                    >
+                      继续 <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : isNote ? (
               <>
                 {question.title ? (
                   <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">

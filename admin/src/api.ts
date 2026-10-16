@@ -559,6 +559,7 @@ export interface SurveyDetailData {
     text?: { heading?: string; body?: string; muted?: string };
     button?: { radius?: number };
     completion?: { message?: string; redirectUrl?: string; showRestart?: boolean };
+    vn?: boolean;
   } | null;
   themePresets: Array<{ id: string; name: string }>;
 }
@@ -739,7 +740,7 @@ export interface EditorQuestion {
   required: boolean;
   order: number;
   pageId: number | null;
-  settings: { columns?: unknown } | null;
+  settings: { columns?: unknown; speaker?: unknown } | null;
   validation: Record<string, unknown> | null;
   condition: Record<string, unknown> | null;
   media: EditorMediaRef[];

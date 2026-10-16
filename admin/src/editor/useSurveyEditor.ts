@@ -24,6 +24,8 @@ export interface EditableQuestion {
   order: number;
   pageId: number | null;
   columns: string[];
+  /** 剧情说话人（VN 名牌，仅 note 题）。 */
+  speaker?: string | null;
   validation: Record<string, number | boolean> | null;
   condition: Record<string, unknown> | null;
   media: EditorQuestion["media"];
@@ -75,6 +77,7 @@ export function useSurveyEditor(data: EditorData) {
       columns: Array.isArray(question.settings?.columns)
         ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
         : [],
+      speaker: typeof question.settings?.speaker === "string" ? question.settings.speaker : null,
       validation: (question.validation as Record<string, number | boolean> | null) ?? null,
       condition: question.condition,
       media: question.media,
@@ -117,6 +120,7 @@ export function useSurveyEditor(data: EditorData) {
         columns: Array.isArray(question.settings?.columns)
           ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
           : [],
+        speaker: typeof question.settings?.speaker === "string" ? question.settings.speaker : null,
         validation: (question.validation as Record<string, number | boolean> | null) ?? null,
         condition: question.condition,
         media: question.media,

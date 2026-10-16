@@ -392,17 +392,30 @@ export function validateQuestionPayload(
   let settingsJson: string | null | undefined;
   if (body.settings !== undefined && body.settings !== null) {
     if (!isRecord(body.settings)) return { error: "settings 必须是对象" };
+    // settings 白名单：matrix 列 + 剧情说话人（VN 模式名牌）。两键可并存
+    // （现实里不会：columns 只在 matrix 题出现）。
+    const next: Record<string, unknown> = {};
     const columns = body.settings.columns;
-    if (!Array.isArray(columns)) return { error: "matrix 列必须是字符串数组" };
-    for (const column of columns) {
-      if (typeof column !== "string" || !column.trim() || column.length > 100) {
-        return { error: "matrix 列必须是非空字符串（≤100 字符）" };
+    if (columns !== undefined) {
+      if (!Array.isArray(columns)) return { error: "matrix 列必须是字符串数组" };
+      for (const column of columns) {
+        if (typeof column !== "string" || !column.trim() || column.length > 100) {
+          return { error: "matrix 列必须是非空字符串（≤100 字符）" };
+        }
       }
+      if (columns.length < MATRIX_COLUMN_MIN) {
+        return { error: `matrix 题至少需要 ${MATRIX_COLUMN_MIN} 列` };
+      }
+      next.columns = columns.map((column) => String(column).trim());
     }
-    if (columns.length < MATRIX_COLUMN_MIN) {
-      return { error: `matrix 题至少需要 ${MATRIX_COLUMN_MIN} 列` };
+    const speaker = body.settings.speaker;
+    if (speaker !== undefined) {
+      if (typeof speaker !== "string" || speaker.trim().length > 60) {
+        return { error: "说话人必须是 ≤60 字符的字符串" };
+      }
+      if (speaker.trim()) next.speaker = speaker.trim();
     }
-    settingsJson = JSON.stringify({ columns: columns.map((column) => column.trim()) });
+    settingsJson = Object.keys(next).length ? JSON.stringify(next) : null;
   } else if (body.settings === null) {
     settingsJson = null;
   }
