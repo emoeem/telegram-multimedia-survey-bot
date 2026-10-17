@@ -18,7 +18,17 @@ and change the `from` address to an email using this domain.
 账号本人，其余地址全部在发信侧就被拒了（旧代码把失败静默吞掉，界面仍显示
 「已发送」）。
 
-## 正确的生产配置（一次性）
+## 修复状态（2026-10-17 已完成）
+
+- 域名 `emoemok.top` 已在 Resend 验证（DKIM `resend._domainkey`、SPF 与
+  反馈 MX `send.emoemok.top` 三条记录齐备）；
+- Worker secret `MAIL_FROM` 已更新为 `no-reply@emoemok.top`；
+- 验证：向非账号本人地址（公共测试邮箱）请求验证码，Resend 接受
+  （`ok:true, sender:"no-reply@emoemok.top"`），旧配置下的 403 拒绝消失。
+- 建议（可选增强）：在 DNS 添加 `_dmarc.emoemok.top` → `v=DMARC1; p=none`
+  提升 QQ/163 的收信评分。
+
+## 正确的生产配置（新部署照此执行）
 
 1. 在 [resend.com/domains](https://resend.com/domains) 添加一个自己的域名
    ——建议用**子域**隔离发信声誉，例如 `mail.<你的域名>`；
