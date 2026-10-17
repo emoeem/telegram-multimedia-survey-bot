@@ -90,10 +90,18 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
       "你的验证码",
       `你的验证码是 ${code}，10 分钟内有效。如果不是你本人操作，请忽略这封邮件。`,
     );
-    if (!sent && !env.RESEND_API_KEY?.trim()) {
-      return fail(503, "email_unconfigured", "邮件服务未配置（需要 RESEND_API_KEY 与 MAIL_FROM）");
+    if (!sent) {
+      if (!env.RESEND_API_KEY?.trim() || !env.MAIL_FROM?.trim()) {
+        return fail(503, "email_unconfigured", "邮件服务未配置（需要 RESEND_API_KEY 与 MAIL_FROM）");
+      }
+      // 发信失败不再静默返回 ok——此前 Resend 拒发（域名未验证 / 测试发件域
+      // 只能发账号本人）时用户看到「已发送」却永远收不到码（QQ 邮箱反馈的
+      // 直接原因之一）。失败原因见 Worker 日志里的 Resend 响应体。
+      return fail(502, "email_send_failed", "验证码邮件发送失败。请稍后重试；若持续失败请换一个邮箱，或直接用 Telegram 打开平台（免注册）。");
     }
-    return json({ ok: true });
+    // 成功响应带发件人地址：前端提示「把发件人加入白名单」，QQ/163 邮箱
+    // 拦截第三方验证码邮件是常态（地址本身在每个邮件的 From 头里，非敏感值）。
+    return json({ ok: true, sender: env.MAIL_FROM?.trim() ?? null });
   }
 
   if (url.pathname === "/api/auth/email/register") {

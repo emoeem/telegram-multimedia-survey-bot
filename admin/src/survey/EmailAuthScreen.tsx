@@ -37,6 +37,7 @@ export function EmailAuthScreen() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  const [sender, setSender] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,11 +53,12 @@ export function EmailAuthScreen() {
     setBusy(true);
     setError(null);
     try {
-      await post("/api/auth/email/request-code", {
+      const result = await post<{ ok: boolean; sender?: string | null }>("/api/auth/email/request-code", {
         email: email.trim(),
         purpose: mode === "reset" ? "reset" : "register",
       });
       setCodeSent(true);
+      setSender(result.sender ?? null);
       setNotice("验证码已发送，请查收邮箱（10 分钟内有效）。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "发送失败");
@@ -173,6 +175,24 @@ export function EmailAuthScreen() {
                 {codeSent ? "重新发送" : "发送验证码"}
               </button>
             </div>
+            {codeSent ? (
+              <div className="mt-2 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-[11px] leading-5 text-[var(--survey-muted)]">
+                <p className="font-semibold text-[var(--survey-heading)]">没收到验证码？</p>
+                <p className="mt-0.5">
+                  · 先看<span className="font-semibold">垃圾邮件箱</span>——QQ、163 等邮箱经常把验证码邮件拦进垃圾箱；
+                </p>
+                {sender ? (
+                  <p className="mt-0.5">
+                    · 把发件人 <code className="break-all">{sender}</code> 加入白名单后重新发送；
+                  </p>
+                ) : (
+                  <p className="mt-0.5">· 把本站发件人加入邮箱白名单后重新发送；</p>
+                )}
+                <p className="mt-0.5">
+                  · 仍然收不到可以换一个邮箱，或直接<span className="font-semibold">用 Telegram 打开平台</span>（无需邮箱注册）。
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

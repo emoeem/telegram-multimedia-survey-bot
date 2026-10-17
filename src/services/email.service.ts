@@ -31,7 +31,11 @@ export async function sendEmail(
       body: JSON.stringify({ from, to: [to], subject, text }),
     });
     if (!response.ok) {
-      console.error("Resend email failed", { status: response.status, to });
+      // Resend 的响应体带具体原因（域名未验证 / 测试发件域只能发账号本人 /
+      // 地址被抑制等）——只记 status 会让排障变成猜谜（QQ 邮箱收不到码的
+      // 反馈就是靠这条日志定性的）。响应体是 JSON，不是用户数据。
+      const detail = await response.text().catch(() => "");
+      console.error("Resend email failed", { status: response.status, to, detail: detail.slice(0, 500) });
       return false;
     }
     return true;
