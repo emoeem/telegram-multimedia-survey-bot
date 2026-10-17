@@ -242,7 +242,7 @@ describe("survey message routing", () => {
     expect(sendCall).toBeDefined();
     const body = JSON.parse(String((sendCall?.[1] as RequestInit).body));
     const keyboard = JSON.stringify(body.reply_markup);
-    expect(keyboard).toContain("投稿机器人");
+    expect(keyboard).toContain("📮 投稿");
     expect(keyboard).toContain("https://t.me/tougaojiqirbot");
   });
 

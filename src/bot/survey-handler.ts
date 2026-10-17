@@ -267,10 +267,10 @@ async function buildHomeKeyboard(
       ? [[{ text: "👤 我的 · 成就", url: `${origin}/me${participantParam ? `?${participantParam.slice(1)}` : ""}` }]]
       : []),
   ];
-  // Same jump the web surfaces carry: a direct Telegram deep link, so it works
-  // from inside the chat without leaving for the browser first.
+  // Same jump the web surfaces carry. 投稿入口是一个网页表单（国内可直连、不用
+  // Telegram），所以按钮文案不再写「机器人」；页面上另有「用 Telegram 投稿」的回跳按钮。
   if (submissionBotUrl) {
-    rows.push([{ text: "📮 投稿机器人", url: submissionBotUrl }]);
+    rows.push([{ text: "📮 投稿", url: submissionBotUrl }]);
   }
   if (creator) {
     // 优先用一次性免密链接（点开即登录）；拿不到时退回普通 /admin，用户还需要
@@ -1156,7 +1156,7 @@ async function showResponseReportTemplates(
   // Finishing a survey is the moment people most often want to submit
   // something of their own, so the jump sits right here too.
   if (ctx.submissionBotUrl) {
-    rows.push([{ text: "📮 投稿机器人", url: ctx.submissionBotUrl }]);
+    rows.push([{ text: "📮 投稿", url: ctx.submissionBotUrl }]);
   }
   await replyScreen(ctx, {
     chatId,
@@ -2113,7 +2113,7 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
         replyMarkup: {
           inline_keyboard: [
             [{ text: "返回主页", callback_data: "home:menu" }],
-            ...(ctx.submissionBotUrl ? [[{ text: "📮 投稿机器人", url: ctx.submissionBotUrl }]] : []),
+            ...(ctx.submissionBotUrl ? [[{ text: "📮 投稿", url: ctx.submissionBotUrl }]] : []),
           ],
         },
       });

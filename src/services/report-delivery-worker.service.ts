@@ -7,6 +7,7 @@ import {
 } from "../db/repositories/report-delivery.repository";
 import { getResponseById, listAnswersByResponseId } from "../db/repositories/response.repository";
 import { getUserById } from "../db/repositories/user.repository";
+import { getEmailAccountById, getEmailAccountByUserId } from "../db/repositories/email-account.repository";
 import { getSurveyById } from "../db/repositories/survey.repository";
 import { prepareResultProfileForResponse } from "./result-visual.service";
 import { deserializeResultProfile } from "./result-engine.service";
@@ -52,13 +53,87 @@ function escapeHtml(value: string): string {
  * `tg://user?id=` 由 Telegram 按 ID 解析，用户名怎么变都能打开对应的人；用户名只
  * 作为展示文本。没有用户名时展示姓名/ID，链接仍然可用。
  */
-function respondentHtml(info: { username: string | null; firstName: string | null; telegramUserId: number }): string {
-  const label = info.username
-    ? `@${info.username}`
-    : info.firstName
-      ? info.firstName
-      : `用户 ${info.telegramUserId}`;
-  return `<a href="tg://user?id=${info.telegramUserId}">${escapeHtml(label)}</a>`;
+
+/** 0082 之后邮箱账号在 users 表里的合成 telegram id 段（1e12 起，与真实 TG id 隔离）。 */
+const SYNTHETIC_TELEGRAM_ID_BASE = 1_000_000_000_000;
+
+/**
+ * 归档里的填写者身份（产品决策）：TG 填写显示 TG 用户名 + user id（可点开的
+ * mention）；网页（邮箱注册）填写显示邮箱——不再把合成 id 拼成打不开的
+ * tg:// 链接，也不把邮箱用户误标成「用户 1000000010439」。
+ */
+export type RespondentDisplay =
+  | { kind: "telegram"; username: string | null; firstName: string | null; telegramUserId: number }
+  | { kind: "email"; email: string; accountId: number }
+  | { kind: "web_user"; userId: number };
+
+/**
+ * 解析填写者的展示身份：
+ *  1. user_id → 真实 TG id（< 1e12）→ telegram；
+ *  2. user_id → 合成 id（邮箱账号的 users 行）→ 反查 email_accounts → email；
+ *  3. 无 user_id 但 hash 是 email_*（认领机制上线前的历史行）→ email；
+ *  4. 其余（web_* 匿名时代、脏数据）→ null → 展示「匿名」。
+ */
+export async function resolveRespondentDisplay(
+  db: D1Database,
+  response: { userId: number | null; participantHash: string },
+): Promise<RespondentDisplay | null> {
+  if (response.userId !== null) {
+    const user = await getUserById(db, response.userId);
+    if (user) {
+      if (user.telegramUserId < SYNTHETIC_TELEGRAM_ID_BASE) {
+        return {
+          kind: "telegram",
+          username: user.username,
+          firstName: user.firstName,
+          telegramUserId: user.telegramUserId,
+        };
+      }
+      const account = await getEmailAccountByUserId(db, user.id);
+      if (account) return { kind: "email", email: account.email, accountId: account.id };
+      // 合成行但没有邮箱账号（脏数据）：不以 tg:// 链接展示（点不开），留个可读标签。
+      return { kind: "web_user", userId: user.id };
+    }
+  }
+  if (response.participantHash.startsWith("email_")) {
+    const accountId = Number(response.participantHash.slice("email_".length));
+    if (Number.isInteger(accountId) && accountId > 0) {
+      const account = await getEmailAccountById(db, accountId);
+      if (account) return { kind: "email", email: account.email, accountId: account.id };
+    }
+  }
+  return null;
+}
+
+/** 归档条目的展示 HTML。邮箱不生成链接（不是 TG 实体），用 code 样式防长地址破坏排版。 */
+function respondentHtml(display: RespondentDisplay): string {
+  switch (display.kind) {
+    case "telegram": {
+      const label = display.username
+        ? `@${display.username}`
+        : display.firstName
+          ? display.firstName
+          : `用户 ${display.telegramUserId}`;
+      return `<a href="tg://user?id=${display.telegramUserId}">${escapeHtml(label)}</a>`;
+    }
+    case "email":
+      return `📧 <code>${escapeHtml(display.email)}</code>`;
+    case "web_user":
+      return `网页用户 #${display.userId}`;
+  }
+}
+
+/** 归档标签：#用户<tgid> / #邮箱<账号id> / #匿名答卷。 */
+function respondentTag(display: RespondentDisplay | null): string {
+  if (!display) return "#匿名答卷";
+  switch (display.kind) {
+    case "telegram":
+      return `#用户${display.telegramUserId}`;
+    case "email":
+      return `#邮箱${display.accountId}`;
+    case "web_user":
+      return `#网页用户${display.userId}`;
+  }
 }
 
 function messageIdFromResponse(response: Response): Promise<number> {
@@ -141,7 +216,7 @@ async function deliverReportToChannel(
   }
   const snapshot = deserializeResultProfile(prepared.profile);
   const images = await resolveReportProfileImages(env, snapshot);
-  const respondentInfo = response.userId === null ? null : await getUserById(env.DB, response.userId);
+  const respondentInfo = await resolveRespondentDisplay(env.DB, response);
   const answers = await listAnswersByResponseId(env.DB, responseId);
   const completedAt = formatChinaDateTime(response.completedAt);
 
@@ -207,7 +282,7 @@ async function deliverReportToChannel(
       : `📄 报告：report-${responseId}.pdf`,
   ].join("\n");
   const tags = [`#答卷${responseId}`, `#问卷${response.surveyId}`];
-  tags.push(respondentInfo ? `#用户${respondentInfo.telegramUserId}` : "#匿名答卷");
+  tags.push(respondentTag(respondentInfo));
   const captionWithTags = `${caption}\n\n${tags.join(" ")}`;
 
   const pdfResponse = await sendDocument(
@@ -270,7 +345,7 @@ function buildReportZip(input: {
   surveyId: number;
   surveyTitle: string;
   completedAt: string;
-  respondent: { username: string | null; firstName: string | null; telegramUserId: number } | null;
+  respondent: RespondentDisplay | null;
   profile: ReturnType<typeof deserializeResultProfile>;
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>;
   pdfBytes: Uint8Array;
@@ -303,11 +378,16 @@ function buildReportZip(input: {
     surveyTitle: input.surveyTitle,
     completedAt: input.completedAt,
     respondent: input.respondent
-      ? {
-          username: input.respondent.username,
-          firstName: input.respondent.firstName,
-          telegramUserId: input.respondent.telegramUserId,
-        }
+      ? input.respondent.kind === "telegram"
+        ? {
+            kind: "telegram",
+            username: input.respondent.username,
+            firstName: input.respondent.firstName,
+            telegramUserId: input.respondent.telegramUserId,
+          }
+        : input.respondent.kind === "email"
+          ? { kind: "email", email: input.respondent.email, accountId: input.respondent.accountId }
+          : { kind: "web_user", userId: input.respondent.userId }
       : null,
     files: ["01-report/report.pdf", "01-report/result.json", "02-answers/answers.json"],
   };

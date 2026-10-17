@@ -34,7 +34,10 @@ DEPLOYMENT_ROLE = "vendor"
 REPORT_CHANNEL_ID = "-1004489719605"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 # Survey access-code pepper is a Cloudflare Secret; do not define it in [vars].
-SUBMISSION_BOT_URL = "https://t.me/tougaojiqirbot"
+# 投稿入口：指向投稿机器人的网页表单（不用 Telegram 也能投），
+# 由 cn-relay 反代到 submission-bot Worker 的 /submit；国内可直接打开。
+# 想改回 Telegram 机器人就把值换成 https://t.me/tougaojiqirbot。
+SUBMISSION_BOT_URL = "https://emoemok.top/submit"
 # Canonical origin for user-facing links (Telegram buttons, admin login deep
 # link, og: metadata). The webhook deliberately keeps arriving on the
 # workers.dev hostname, so without this pin the bot would keep handing users

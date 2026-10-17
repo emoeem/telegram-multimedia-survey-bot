@@ -557,6 +557,11 @@ export default {
         return servePublicPageWithMeta(env, request, url.pathname.startsWith("/gacha") ? "/gacha" : url.pathname.startsWith("/submissions") ? "/submissions" : "/coins");
       }
 
+      // 网页投稿两屏（表单 / 收件箱）由问卷 SPA 提供，接口仍走投稿机器人 worker。
+      if (url.pathname === "/submit" || url.pathname.startsWith("/submit/")) {
+        return serveHtmlAsset(env, request, "/survey.html");
+      }
+
       if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {
         return servePublicPageWithMeta(env, request, "/series");
       }

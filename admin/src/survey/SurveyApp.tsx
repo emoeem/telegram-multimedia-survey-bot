@@ -88,6 +88,8 @@ const SubmissionsScreen = lazy(() => import("./CoinCenter").then((m) => ({ defau
 const CoinGateScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinGateScreen })));
 const ShowcaseScreen = lazy(() => import("./ShowcaseScreen").then((m) => ({ default: m.ShowcaseScreen })));
 const TrialScreen = lazy(() => import("./TrialScreen").then((m) => ({ default: m.TrialScreen })));
+const SubmitScreen = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitScreen })));
+const SubmitInboxScreen = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitInboxScreen })));
 const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
 
@@ -1866,6 +1868,22 @@ export function SurveyApp() {
     return (
       <LazyScreen>
         <TrialScreen />
+      </LazyScreen>
+    );
+  }
+  // 网页投稿（不用 Telegram）：表单 + 投稿者收件箱。接口在投稿机器人 worker 上，
+  // 同域经 cn-relay 反代，所以这里直接 fetch /api/submit*。
+  if (window.location.pathname === "/submit/inbox" || window.location.pathname.startsWith("/submit/inbox/")) {
+    return (
+      <LazyScreen>
+        <SubmitInboxScreen />
+      </LazyScreen>
+    );
+  }
+  if (window.location.pathname === "/submit" || window.location.pathname === "/submit/") {
+    return (
+      <LazyScreen>
+        <SubmitScreen />
       </LazyScreen>
     );
   }
