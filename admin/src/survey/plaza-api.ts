@@ -168,13 +168,6 @@ export function ownerDisplayName(owner: { username: string | null; firstName?: s
   return owner.username ? `@${owner.username}` : owner.firstName || "用户";
 }
 
-/** 从 t.me 链接解析 bot handle，供文案展示；解析不出时退回中性文案。 */
-export function botHandleFromUrl(url: string | null): string {
-  if (!url) return "投稿机器人";
-  const match = url.match(/t\.me\/([A-Za-z0-9_]+)/);
-  return match ? `@${match[1]}` : "投稿机器人";
-}
-
 export function fetchPlazaProfile(id: number): Promise<{ profile: PlazaProfileItem }> {
   return plazaRequest(`/api/plaza/profiles/${id}`);
 }

@@ -6,6 +6,7 @@ import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationP
 import { useDialogs } from "../components/Dialogs";
 import { loadGlobalPreset, saveGlobalPreset, themeBackgroundStyle, themeCssVars, ThemePickerSheet, useResolvedPreset } from "./theme-ui";
 import { createTrialShare } from "./plaza-api";
+import { submissionTargetFromUrl } from "./submission-target";
 import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
 import {
@@ -157,12 +158,8 @@ export function TrialScreen() {
     return { vars: themeCssVars(theme), background: themeBackgroundStyle(theme) };
   }, [resolvedPreset]);
 
-  // 文案跟随配置的投稿机器人链接，避免写死 handle 与配置漂移。
-  const submissionBotHandle = useMemo(() => {
-    if (!submissionBotUrl) return "投稿机器人";
-    const match = submissionBotUrl.match(/t\.me\/([A-Za-z0-9_]+)/);
-    return match ? `@${match[1]}` : "投稿机器人";
-  }, [submissionBotUrl]);
+  // 文案跟随配置的投稿入口：可能是机器人，也可能是一个网页（本部署配的是 /submit）。
+  const submissionTarget = useMemo(() => submissionTargetFromUrl(submissionBotUrl), [submissionBotUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -697,9 +694,11 @@ export function TrialScreen() {
             <Send className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
+            <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+              {submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
+            </span>
             <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-              通过 {submissionBotHandle} 投稿你的内容
+              通过 {submissionTarget?.label ?? ""} 投稿你的内容
             </span>
           </span>
           <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />

@@ -13,7 +13,6 @@ import { BottomNav } from "./BottomNav";
 import { PageHeader } from "./PageHeader";
 import { closeWebApp } from "./navigation";
 import {
-  botHandleFromUrl,
   createPlazaPost,
   createPlazaComment,
   fetchPlazaComments,
@@ -28,6 +27,7 @@ import {
   type PlazaProfileItem,
   type PlazaTopic,
 } from "./plaza-api";
+import { submissionTargetFromUrl } from "./submission-target";
 
 type Tab = "treehole" | "profiles";
 
@@ -676,6 +676,7 @@ export function PlazaScreen() {
   };
 
   const activeFeed = tab === "treehole" ? posts : profiles;
+  const submissionTarget = submissionTargetFromUrl(profiles.submissionBotUrl);
 
   return (
     <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
@@ -781,9 +782,11 @@ export function PlazaScreen() {
                 <Send className="h-5 w-5" />
               </span>
               <span className="min-w-0 flex-1 text-left">
-                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">投稿机器人</span>
+                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                  {submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
+                </span>
                 <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                  通过 {botHandleFromUrl(profiles.submissionBotUrl)} 投稿你的内容
+                  通过 {submissionTarget?.label ?? ""} 投稿你的内容
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />

@@ -71,6 +71,7 @@ import {
 import { safeGet, safeSet } from "./storage";
 import { AnswerSaveQueue } from "./save-queue";
 import { collectQuestionImageUrls, preloadImages } from "./media-preload";
+import { submissionTargetFromUrl } from "./submission-target";
 
 /**
  * 非答题界面的按需加载。
@@ -128,10 +129,17 @@ function markSurveyCompleted(surveyId: number): void {
   }
 }
 
-function botHandleFromUrl(url: string | null): string {
-  if (!url) return "投稿机器人";
-  const match = url.match(/t\.me\/([A-Za-z0-9_]+)/);
-  return match ? `@${match[1]}` : "投稿机器人";
+/**
+ * 底部投稿入口的完整文案。`SUBMISSION_BOT_URL` 可能是机器人，也可能是一个网页
+ * （本部署配的是 /submit）；两种目标写不同的话，绝不再把「投稿机器人」当兜底，
+ * 否则标题和值会连着出现两次。
+ */
+function submissionEntryText(url: string | null): string {
+  const target = submissionTargetFromUrl(url);
+  if (!target) return "";
+  return target.kind === "bot"
+    ? `投稿机器人 ${target.label}，投稿给我`
+    : `网页投稿${target.label ? ` · ${target.label}` : ""}`;
 }
 import { identityHeaders } from "./api";
 import { abandonSessionParticipantToken, sessionParticipantIdentity } from "./participant-token";
@@ -820,7 +828,7 @@ function SurveyListPage() {
               className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
             >
               <Send className="h-3.5 w-3.5" />
-              投稿机器人 {botHandleFromUrl(submissionBotUrl)}，投稿给我
+              {submissionEntryText(submissionBotUrl)}
               <ArrowRight className="h-4 w-4" />
             </a>
           ) : null}
