@@ -109,6 +109,53 @@ export function bulkSetSurveyRating(
   return apiSend("POST", "/api/admin/surveys/bulk-rating", { ids, rating });
 }
 
+/** 问卷分类（0087）：一份问卷最多属于一个分类，null = 未分类。 */
+export interface SurveyCategoryDto {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  sortOrder: number;
+  count: number;
+}
+
+export function listSurveyCategories(): Promise<{ items: SurveyCategoryDto[] }> {
+  return api<{ items: SurveyCategoryDto[] }>("/api/admin/survey-categories");
+}
+
+export function createSurveyCategory(input: {
+  name: string;
+  slug?: string;
+  description?: string;
+  sortOrder?: number;
+}): Promise<SurveyCategoryDto> {
+  return apiSend("POST", "/api/admin/survey-categories", input);
+}
+
+export function updateSurveyCategory(
+  id: number,
+  input: { name?: string; slug?: string; description?: string; sortOrder?: number },
+): Promise<SurveyCategoryDto> {
+  return apiSend("PATCH", `/api/admin/survey-categories/${id}`, input);
+}
+
+export function deleteSurveyCategory(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", `/api/admin/survey-categories/${id}`);
+}
+
+/** 单卷改分类（PATCH 已有归属校验）。 */
+export function setSurveyCategory(surveyId: number, categoryId: number | null): Promise<{ updatedAt?: string }> {
+  return apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { categoryId });
+}
+
+/** 批量归类（仅管理员）。categoryId=null 表示移出分类。 */
+export function bulkSetSurveyCategory(
+  ids: number[],
+  categoryId: number | null,
+): Promise<{ ok: boolean; changed: number }> {
+  return apiSend("POST", "/api/admin/surveys/bulk-category", { ids, categoryId });
+}
+
 /** 编辑器：把结果规则生成结局奖池（P1 结局收集）。 */
 export function generateResultPool(
   surveyId: number,
@@ -499,6 +546,9 @@ export interface SurveySummary {
   status: SurveyStatus;
   /** 内容分级（0080）：all=全年龄；r18=仅确认年龄的访问者可见。 */
   contentRating?: "all" | "r18";
+  /** 分类（0087）：null = 未分类。 */
+  categoryId?: number | null;
+  categoryName?: string | null;
   ownerId: number;
   createdAt: string;
   updatedAt: string;

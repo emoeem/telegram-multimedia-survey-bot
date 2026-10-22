@@ -56,6 +56,12 @@ function createSqliteD1(): D1Database & { sqlite: DatabaseSync } {
       id INTEGER PRIMARY KEY AUTOINCREMENT, survey_id INTEGER, type TEXT, title TEXT,
       required INTEGER DEFAULT 1, "order" INTEGER, created_at TEXT, updated_at TEXT
     );
+    CREATE TABLE survey_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT, updated_at TEXT
+    );
+    ALTER TABLE surveys ADD COLUMN category_id INTEGER;
     CREATE TABLE participant_links (participant_key TEXT PRIMARY KEY, user_id INTEGER, linked_at TEXT);
     CREATE TABLE participant_hash_links (
       source_hash TEXT PRIMARY KEY,

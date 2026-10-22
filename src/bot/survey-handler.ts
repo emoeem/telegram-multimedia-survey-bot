@@ -272,6 +272,10 @@ async function buildHomeKeyboard(
   if (submissionBotUrl) {
     rows.push([{ text: "📮 投稿", url: submissionBotUrl }]);
   }
+  // 认证卡生成器：纯前端页面，照片只在本地浏览器里处理，不上传服务器。
+  if (origin) {
+    rows.push([{ text: "🪪 趣味认证卡", url: `${origin}/cert` }]);
+  }
   if (creator) {
     // 优先用一次性免密链接（点开即登录）；拿不到时退回普通 /admin，用户还需要
     // 在登录页点一次「使用 Telegram 登录」。

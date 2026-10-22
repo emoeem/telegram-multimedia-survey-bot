@@ -11,6 +11,7 @@ import { Layout } from "./components/Layout";
  */
 const DashboardPage = lazy(() => import("./routes/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const SurveysPage = lazy(() => import("./routes/SurveysPage").then((m) => ({ default: m.SurveysPage })));
+const CategoriesPage = lazy(() => import("./routes/CategoriesPage").then((m) => ({ default: m.CategoriesPage })));
 const SurveyDetailPage = lazy(() => import("./routes/SurveyDetailPage").then((m) => ({ default: m.SurveyDetailPage })));
 const EditorPage = lazy(() => import("./routes/EditorPage").then((m) => ({ default: m.EditorPage })));
 const ResponsesPage = lazy(() => import("./routes/ResponsesPage").then((m) => ({ default: m.ResponsesPage })));
@@ -26,6 +27,7 @@ const UsersPage = lazy(() => import("./routes/UsersPage").then((m) => ({ default
 const VersionsPage = lazy(() => import("./routes/VersionsPage").then((m) => ({ default: m.VersionsPage })));
 const ReportsPage = lazy(() => import("./routes/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 const TemplatesPage = lazy(() => import("./routes/TemplatesPage").then((m) => ({ default: m.TemplatesPage })));
+const CertContentPage = lazy(() => import("./routes/CertContentPage").then((m) => ({ default: m.CertContentPage })));
 const LoginPage = lazy(() => import("./routes/LoginPage").then((m) => ({ default: m.LoginPage })));
 const AuditPage = lazy(() => import("./routes/AuditPage").then((m) => ({ default: m.AuditPage })));
 const SettingsPage = lazy(() => import("./routes/SettingsPage").then((m) => ({ default: m.SettingsPage })));
@@ -68,6 +70,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: lazyElement(<DashboardPage />) },
         { path: "surveys", element: lazyElement(<SurveysPage />) },
+        { path: "categories", element: lazyElement(<CategoriesPage />) },
         { path: "responses", element: lazyElement(<ResponseActivityPage />) },
         { path: "imports", element: lazyElement(<ImportPage />) },
         { path: "surveys/:id", element: lazyElement(<SurveyDetailPage />) },
@@ -78,6 +81,7 @@ const router = createBrowserRouter(
         { path: "surveys/:id/versions", element: lazyElement(<VersionsPage />) },
         { path: "reports", element: lazyElement(<ReportsPage />) },
         { path: "templates", element: lazyElement(<TemplatesPage />) },
+        { path: "cert-content", element: lazyElement(<CertContentPage />) },
         { path: "plaza", element: lazyElement(<PlazaPostsPage />) },
         { path: "profile-gallery", element: lazyElement(<ProfileGalleryPage />) },
         { path: "showcase", element: lazyElement(<ShowcasePage />) },

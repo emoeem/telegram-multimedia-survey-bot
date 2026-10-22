@@ -76,7 +76,8 @@
 - 任务系统、排行榜、个人画廊、广场/树洞；
 - 邮箱 + 密码身份系统；
 - Telegram WebApp/身份接入；
-- Open Graph 分享预览卡。
+- Open Graph 分享预览卡；
+- 趣味认证卡生成器（`/cert`，纯前端 Canvas，含 18+ 门禁的成人词库，见 [`docs/CERT_CARDS.md`](docs/CERT_CARDS.md)）。
 
 ### 创建者工具
 
@@ -719,6 +720,10 @@ LICENSE_ENFORCEMENT = "disabled"
 - [`docs/RESULT_ENGINE_2_0.md`](docs/RESULT_ENGINE_2_0.md) — Result Rules 与实时结果设计器
 - [`docs/REPORT_TEMPLATE_SYSTEM.md`](docs/REPORT_TEMPLATE_SYSTEM.md) — 报告模板与 Renderer 架构
 - [`docs/REPORT_ARCHIVE.md`](docs/REPORT_ARCHIVE.md) — Telegram 报告归档管线与 ZIP v2
+
+### 前端小工具
+
+- [`docs/CERT_CARDS.md`](docs/CERT_CARDS.md) — 趣味认证卡生成器：版式、评分模型、18+ 门禁、词库导入
 
 ### 数据库 / 运维
 

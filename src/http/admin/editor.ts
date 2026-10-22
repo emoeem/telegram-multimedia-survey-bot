@@ -172,6 +172,26 @@ export async function handleAdminEditorWrite(
       updates.push("content_rating = ?");
       binds.push(rating);
     }
+    // 分类（0087）：null/"" = 移出分类，数字 = 归到该分类。
+    // 归属校验由上面的 loadManageableSurvey 完成，这里只校验分类存在。
+    if (body.categoryId !== undefined) {
+      if (body.categoryId === null || body.categoryId === "") {
+        updates.push("category_id = ?");
+        binds.push(null);
+      } else {
+        const parsed = Number(body.categoryId);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          return fail(400, "validation_failed", "categoryId 必须是正整数或 null");
+        }
+        const known = await db
+          .prepare("SELECT id FROM survey_categories WHERE id = ? LIMIT 1")
+          .bind(parsed)
+          .first<{ id: number }>();
+        if (!known) return fail(404, "not_found", "分类不存在");
+        updates.push("category_id = ?");
+        binds.push(parsed);
+      }
+    }
     if (body.theme !== undefined) {
       const existingSurvey = await getSurveyById(db, surveyId);
       const settings = existingSurvey?.settingsJson

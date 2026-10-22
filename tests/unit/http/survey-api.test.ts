@@ -326,7 +326,9 @@ describe("web survey API", () => {
     } as unknown as KVNamespace;
     const env = makeEnv(db, { CACHE: cache });
     const prepareCalls = (db.prepare as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    const listQueries = () => prepareCalls.filter((call) => String(call[0]).includes("FROM surveys s")).length;
+    // 认「列表投影」这条语句本身（LIMIT 200 只属于它）。不能用 `FROM surveys s`
+    // 匹配：分类筛选条的计数子查询里也有这个片段，会把一次请求数成两次。
+    const listQueries = () => prepareCalls.filter((call) => String(call[0]).includes("LIMIT 200")).length;
 
     const first = await handleSurveyApiRequest(
       request("/api/surveys"),

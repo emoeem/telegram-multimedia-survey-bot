@@ -9,12 +9,21 @@ import { describePublicDatabaseError, isDatabaseCapacityError } from "./db/error
 import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
+import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
+import {
+  escapeMetaAttribute,
+  homeRedirectLocation,
+  publicPageHead,
+  submitPageMetaPath,
+} from "./http/public-page";
 import { handleInternalRenderRequest } from "./http/internal-render";
 import { handleLicenseApiRequest } from "./http/license-api";
 import { handleRemoteApiRequest } from "./http/remote-api";
 import { handleControlApiRequest } from "./http/control-api";
 import { sendCustomerHeartbeat } from "./services/customer-control.service";
 import { handleAdminApi } from "./http/admin-api";
+import { CERT_CONTENT_SETTING_KEY } from "./http/admin/cert-content";
+import { getSystemSetting } from "./db/repositories/system-settings.repository";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
 import { handleMeApiRequest } from "./http/me-api";
@@ -55,7 +64,13 @@ import type { BrowserWorker } from "@cloudflare/puppeteer";
  * cache to keep a stale copy: stale bundles have historically left Telegram
  * WebViews stuck on a blank page after a redeploy.
  */
-async function serveHtmlAsset(env: Env, request: Request, assetPath: string, injectHead?: string): Promise<Response> {
+async function serveHtmlAsset(
+  env: Env,
+  request: Request,
+  assetPath: string,
+  injectHead?: string,
+  title?: string,
+): Promise<Response> {
   const assetUrl = new URL(assetPath, request.url);
   const response = await env.ASSETS.fetch(new Request(assetUrl, request));
   if (!response.headers.get("content-type")?.includes("text/html")) {
@@ -70,7 +85,11 @@ async function serveHtmlAsset(env: Env, request: Request, assetPath: string, inj
       headers,
     });
   }
-  const html = (await response.text()).replace("</head>", `${injectHead}\n</head>`);
+  let html = await response.text();
+  /* 每个公开页有自己的标题（分享卡片、浏览器标签都要它）。index.html 里那份
+   * 是通用的「问卷」，这里直接替换而不是追加第二份 <title>。 */
+  if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+  html = html.replace("</head>", `${injectHead}\n</head>`);
   return new Response(html, { status: response.status, headers });
 }
 
@@ -113,40 +132,29 @@ async function serveStaticAsset(env: Env, request: Request): Promise<Response> {
  * shares on Telegram and social platforms render a preview card. Failures
  * are non-fatal: the stock page is served without meta tags.
  */
-export function escapeMetaAttribute(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+export { escapeMetaAttribute };
+
+/** SPA 公开页（/s、/plaza、/submit、/me …）：资源是 /survey.html，由前端按路径切屏。 */
+function servePublicPageWithMeta(env: Env, request: Request, pathname: string): Promise<Response> {
+  return serveHtmlAssetWithMeta(env, request, "/survey.html", pathname);
 }
 
-const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> = {
-  "/plaza": { title: "广场 · 问卷平台", description: "发现公开个人资料、树洞内容与社区问卷。" },
-  "/showcase": { title: "展示区 · 问卷平台", description: "沉浸式浏览创作者的公开个人展览与作品。" },
-  "/trial": { title: "挑战任务 · 问卷平台", description: "参与文字扮演挑战任务，查看成绩与排行榜。" },
-  "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与挑战记录。" },
-  "/coins": { title: "我的金币 · 问卷平台", description: "每日签到、挑战任务与金币收支明细。" },
-  "/gacha": { title: "报告抽卡 · 问卷平台", description: "用金币抽取其他用户主动公开并授权的报告与内容。" },
-  "/series": { title: "系列书架 · 问卷平台", description: "追更连载作品：新章节发布即通知。" },
-  "/u": { title: "个人画像 · 问卷平台", description: "跨问卷的答卷足迹与收集成就。" },
-  "/submissions": { title: "投稿中心 · 问卷平台", description: "投稿原创内容获取金币奖励，并参与报告抽卡生态。" },
-  "/auth": { title: "邮箱账号 · 问卷平台", description: "使用邮箱注册、登录或找回问卷平台账号。" },
-};
-
-function servePublicPageWithMeta(env: Env, request: Request, pathname: string): Promise<Response> {
-  const meta = PUBLIC_PAGE_META[pathname] ?? PUBLIC_PAGE_META["/plaza"]!;
+/** 独立静态页也要同一套 head 注入。
+ *
+ * 认证卡生成器（/cert）是 `cert/index.html` 单独一份静态页，不走 SPA；原先
+ * 直接 `serveHtmlAsset` 发出去，于是它**没有 canonical、没有 og:url** ——
+ * 从国内域名分享出去是一条光秃秃的链接，搜索引擎也会把 Cloudflare 那个
+ * 打不开的域名当主域。这里复用的就是 SPA 那几页的 `publicPageHead`，
+ * 两边的 canonical 来源完全一致（PUBLIC_ORIGIN → emoemok.top）。 */
+function serveHtmlAssetWithMeta(
+  env: Env,
+  request: Request,
+  assetPath: string,
+  pathname: string,
+): Promise<Response> {
   const origin = resolvePublicOrigin(env, new URL(request.url).origin);
-  const title = escapeMetaAttribute(meta.title);
-  const description = escapeMetaAttribute(meta.description);
-  const canonical = escapeMetaAttribute(origin + pathname);
-  const injectHead = [
-    '<meta name="description" content="' + description + '" />',
-    '<meta property="og:type" content="website" />',
-    '<meta property="og:title" content="' + title + '" />',
-    '<meta property="og:description" content="' + description + '" />',
-    '<meta property="og:url" content="' + canonical + '" />',
-    '<meta name="twitter:card" content="summary" />',
-    '<meta name="twitter:title" content="' + title + '" />',
-    '<meta name="twitter:description" content="' + description + '" />',
-  ].join("\n    ");
-  return serveHtmlAsset(env, request, "/survey.html", injectHead);
+  const { title, injectHead } = publicPageHead(origin, pathname);
+  return serveHtmlAsset(env, request, assetPath, injectHead, title);
 }
 
 /**
@@ -480,6 +488,11 @@ export default {
         });
       }
 
+      // 裸域名：后台 SPA 的 basename 是 /admin，React Router 匹配不到 "/"，
+      // 直接发 index.html 就是一张纯白页。首页是问卷列表，指过去。
+      const homeRedirect = homeRedirectLocation(url.pathname);
+      if (homeRedirect) return new Response(null, { status: 302, headers: { Location: homeRedirect } });
+
       // Internal endpoints (queue consumers hand browser renders to a request
       // context); token-authenticated, must be routed before the SPA/API blocks.
       if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env);
@@ -519,7 +532,7 @@ export default {
         return serveSurveyPageWithShareMeta(env, request, Number(surveyPageMatch[1]));
       }
       if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
-        return serveHtmlAsset(env, request, "/survey.html");
+        return servePublicPageWithMeta(env, request, "/s");
       }
 
       if (url.pathname === "/plaza" || url.pathname.startsWith("/plaza/")) {
@@ -558,8 +571,38 @@ export default {
       }
 
       // 网页投稿两屏（表单 / 收件箱）由问卷 SPA 提供，接口仍走投稿机器人 worker。
-      if (url.pathname === "/submit" || url.pathname.startsWith("/submit/")) {
-        return serveHtmlAsset(env, request, "/survey.html");
+      const submitMeta = submitPageMetaPath(url.pathname);
+      if (submitMeta) {
+        return servePublicPageWithMeta(env, request, submitMeta);
+      }
+
+      // 认证卡生成器：纯前端静态页，构建时由 scripts/sync-cert.mjs 拷进
+      // admin/public/cert/。内容包走 /api/cert-content（公开只读）。
+      //
+      // 路由判定抽在 src/http/cert-page.ts：那里钉住了「重定向必须是相对路径」
+      // —— 这个 Worker 同时挂在 emoe.eu.cc（Cloudflare，国内 SNI 阻断）和
+      // emoemok.top（Vercel 中继）后面，中继改写后 request.url 的 host 永远是
+      // emoe.eu.cc，用绝对地址重定向会把国内用户甩回打不开的域名。
+      const certRoute = certPageRoute(url.pathname);
+      if (certRoute?.kind === "redirect") {
+        // 页面里的脚本/样式是相对路径，/cert 下会被解析成 /app.js，必须带尾斜杠。
+        return new Response(null, { status: 302, headers: { Location: CERT_PAGE_REDIRECT_LOCATION } });
+      }
+      if (certRoute?.kind === "html") {
+        /* 走 head 注入：canonical / og:url 与其它公开页同源（PUBLIC_ORIGIN），
+         * 从国内域名分享出去才是一条带标题的完整链接。 */
+        return serveHtmlAssetWithMeta(env, request, "/cert/index.html", "/cert");
+      }
+
+      // 认证卡内容包：公开只读，管理端通过 /api/admin/cert-content 写入。
+      if (url.pathname === "/api/cert-content") {
+        const raw = await getSystemSetting(env.DB, CERT_CONTENT_SETTING_KEY);
+        if (!raw) return Response.json({ ok: true, pack: null });
+        try {
+          return Response.json({ ok: true, pack: JSON.parse(raw) });
+        } catch {
+          return Response.json({ ok: true, pack: null });
+        }
       }
 
       if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {

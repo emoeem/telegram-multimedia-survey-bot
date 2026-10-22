@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>认证卡生成器</title>
+    <meta
+      name="description"
+      content="纯前端趣味认证卡生成器：内置多套主题，标签与字段全部可编辑，支持上传证件照，导出身份认证卡图片。"
+    />
+    <link rel="stylesheet" href="styles.css?v=20261022c" />
+  </head>
+  <body>
+    <header class="topbar">
+      <!-- 「← 首页」：和 /plaza、/submit 的 .survey-home-link 同一套 token
+           （44px 触摸高度、999px 圆角、同样的边框与正文色）。认证卡生成器
+           原来是孤岛页面，进去之后只能靠浏览器后退回站内。 -->
+      <a class="home-link" href="/" aria-label="返回首页" title="返回首页">
+        <span aria-hidden="true">←</span><span class="home-link-text">首页</span>
+      </a>
+      <div class="topbar-title">
+        <h1>认证卡生成器</h1>
+        <p class="sub">内置主题 · 内容可编辑 · 支持上传证件照 · 全程在浏览器本地完成，照片不会上传服务器</p>
+      </div>
+      <div class="topbar-actions">
+        <button id="themePickerBtn" class="btn ghost tiny" type="button" title="选择主题（与问卷主页同步）">
+          🎨 主题：<span id="themePresetLabel">默认</span>
+        </button>
+        <button id="resetAll" class="btn ghost tiny" type="button">恢复默认</button>
+      </div>
+    </header>
+
+    <!-- 顶部实时统计条 -->
+    <div class="statsbar" id="statsbar">
+      <div class="statsbar-inner">
+        <div class="stats-text">
+          <span>已选 <strong id="statCount">0</strong> 条</span>
+          <span class="sep">·</span>
+          <span><span id="statPctLabel">强度</span> <strong id="statPct">0%</strong></span>
+          <span class="sep">·</span>
+          <span id="statRank" class="stat-rank">未评级</span>
+        </div>
+        <div class="stats-track"><div class="stats-fill" id="statFill"></div></div>
+      </div>
+    </div>
+
+    <main class="shell">
+      <!-- 左侧：编辑面板 -->
+      <section class="panel" aria-label="编辑面板">
+        <div class="card">
+          <h2>
+            1. 版式样式
+            <span class="hint">
+              <strong>证件样式</strong> 照真证件排（身份证 / 学生证 / 工牌 …）· <strong>创意版式</strong> 整活向 ·
+              共 <span id="styleCount">0</span> 种，全部可套任意比例
+            </span>
+          </h2>
+          <div id="styleList" class="style-groups"></div>
+        </div>
+
+        <div class="card">
+          <h2>2. 选择主题</h2>
+          <div id="themeList" class="theme-list"></div>
+          <div class="adult-box" id="adultBox"></div>
+        </div>
+
+        <div class="card">
+          <h2>3. 基本信息</h2>
+          <div class="grid2">
+            <label class="field">
+              <span>姓名 / 代号</span>
+              <input id="fName" type="text" placeholder="张三" />
+            </label>
+            <label class="field">
+              <span>证书编号</span>
+              <input id="fNo" type="text" placeholder="CERT-2026-0001" />
+            </label>
+            <label class="field span2">
+              <span>发证机构</span>
+              <input id="fIssuer" type="text" />
+            </label>
+            <label class="field span2">
+              <span>页眉英文副标题</span>
+              <input id="fSubtitle" type="text" />
+            </label>
+            <label class="field">
+              <span>发证日期</span>
+              <input id="fIssueDate" type="text" placeholder="2026-10-21" />
+            </label>
+            <label class="field">
+              <span>有效期至</span>
+              <input id="fValidUntil" type="text" placeholder="长期有效" />
+            </label>
+            <label class="field span2">
+              <span>徽标文字（卡片右上角）</span>
+              <input id="fCardLabel" type="text" />
+            </label>
+            <label class="field span2">
+              <span>印章环文字</span>
+              <input id="fSealText" type="text" />
+            </label>
+            <label class="field span2">
+              <span>二维码内容（留空则自动生成核验链接）</span>
+              <input id="fQr" type="text" placeholder="留空自动生成" />
+            </label>
+          </div>
+          <div class="preset-row" id="titleWrap" hidden>
+            <span class="preset-label">标题预设</span>
+            <div class="chips" id="titlePresets"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>
+            4. 标签库
+            <span class="hint">点标签即勾选，勾选后计入强度</span>
+            <span class="head-actions">
+              <button id="randomBtn" class="btn tiny" type="button" title="随机勾选一批标签">🎲 帮我选</button>
+              <button id="clearTagsBtn" class="btn ghost tiny" type="button">清空</button>
+            </span>
+          </h2>
+          <div class="gender-row" id="genderWrap" hidden>
+            <div class="seg" id="genderSeg" role="tablist" aria-label="选择性别"></div>
+            <span class="echo" id="genderNote"></span>
+          </div>
+          <div id="groupList" class="group-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>
+            5. 等级称号
+            <span class="hint">按百分比区间命中，区间可改</span>
+          </h2>
+          <div id="rankList" class="rank-list"></div>
+          <div class="row">
+            <button id="addRank" class="btn ghost" type="button">+ 增加一档</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>
+            6. 照片
+            <span class="hint">可多张一起排上卡片</span>
+            <span class="head-actions">
+              <button id="photoAll" class="btn tiny" type="button" title="把缩略图里的照片都排到卡上">全部上卡</button>
+              <button id="photoFirst" class="btn ghost tiny" type="button">只留第一张</button>
+            </span>
+          </h2>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button">
+            <strong>点击或拖拽照片到这里</strong>
+            <span>支持多张，最多 9 张一起拼到卡上 · 建议 3:4 竖版</span>
+            <input id="fileInput" type="file" accept="image/*" multiple hidden />
+          </div>
+          <div id="photoList" class="photo-list"></div>
+          <p id="photoMeta" class="photo-meta"></p>
+          <div class="photo-tools">
+            <div class="seg" id="photoModeSeg" role="tablist" aria-label="多图排法"></div>
+            <label class="switch">
+              <input id="photoOverlayChk" type="checkbox" />
+              <span>照片上压姓名/日期</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>7. 百分比</h2>
+          <label class="switch">
+            <input id="autoPct" type="checkbox" checked />
+            <span>按勾选标签自动计算</span>
+          </label>
+          <div class="row">
+            <input
+              id="manualPct"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              disabled
+              placeholder="手动指定百分比"
+            />
+            <span id="pctEcho" class="echo"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右侧：预览与导出 -->
+      <section class="stage" id="stage">
+        <div class="stage-head">
+          <div class="seg" id="ratioSeg" role="tablist"></div>
+          <div class="stage-actions">
+            <button id="shareBtn" class="btn ghost" type="button">复制分享链接</button>
+            <button id="copyBtn" class="btn ghost" type="button">复制图片</button>
+            <button id="downloadBtn" class="btn primary" type="button">下载 PNG</button>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="card" width="1012" height="638"></canvas>
+        </div>
+        <p class="stage-foot">
+          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 照片与编辑内容只保存在本地浏览器
+        </p>
+      </section>
+    </main>
+
+    <!-- 底部主操作 -->
+    <div class="cta-bar">
+      <button id="certifyBtn" class="cta-btn" type="button">
+        去认证<span id="ctaCount" class="cta-count">0</span>
+      </button>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- 主题选择面板（与问卷主页同一套预设，选择双向同步） -->
+    <div id="themeSheet" class="theme-sheet" hidden>
+      <button class="theme-sheet-mask" id="themeSheetClose" aria-label="关闭主题选择"></button>
+      <div class="theme-sheet-panel" role="dialog" aria-label="选择主题">
+        <div class="theme-sheet-head">
+          <span>选择主题</span>
+          <button id="themeSheetCloseBtn" class="btn ghost tiny" type="button" aria-label="关闭">✕</button>
+        </div>
+        <div class="theme-grid" id="themeGrid"></div>
+      </div>
+    </div>
+
+    <!-- 启动看门狗：5 秒还没起来就不是「慢」，而是真的没加载成功。
+         线上最常见的原因是所在网络到 Cloudflare 被拦，所以这里给离线版入口。 -->
+    <div id="bootFail" class="boot-fail" hidden role="alert">
+      <strong>页面没能加载起来</strong>
+      <p>
+        如果一直停在空白或转圈，通常是这个域名在你当前网络下被拦截（不是链接写错）。可以试：换 Wi-Fi／切移动数据、
+        用系统浏览器而不是 App 内置浏览器、或直接下载离线版。
+      </p>
+      <p class="boot-fail-actions">
+        <a class="btn primary" href="cert.html" download="认证卡生成器.html">下载离线单文件版</a>
+        <button class="btn ghost" type="button" onclick="location.reload()">重新加载</button>
+      </p>
+      <p class="boot-fail-tip">
+        离线版是一个 HTML 文件，双击用浏览器打开即可，功能相同（照片同样只在本机处理）。
+      </p>
+    </div>
+
+    <script>
+      setTimeout(function () {
+        if (document.documentElement.getAttribute("data-cert-ready") === "1") return;
+        var el = document.getElementById("bootFail");
+        if (el) el.hidden = false;
+      }, 5000);
+    </script>
+
+    <script src="vendor/qrcode.js"></script>
+    <script src="themes.js?v=20261022c"></script>
+    <script src="presets.js?v=20261022c"></script>
+    <script src="render.js?v=20261022c"></script>
+    <script src="app.js?v=20261022c"></script>
+  </body>
+</html>

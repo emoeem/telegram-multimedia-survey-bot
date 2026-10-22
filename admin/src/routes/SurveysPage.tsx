@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
 import { EChart } from "../components/EChart";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Plus, Search } from "lucide-react";
 import { donutOption } from "../charts";
 import { useApi } from "../hooks";
-import { apiSend, bulkSetSurveyRating, setSurveyRating, type SurveyListData, type SurveyStatus, type WriteResult } from "../api";
+import { useDialogs } from "../components/Dialogs";
+import {
+  apiSend,
+  bulkSetSurveyCategory,
+  bulkSetSurveyRating,
+  listSurveyCategories,
+  setSurveyRating,
+  type SurveyCategoryDto,
+  type SurveyListData,
+  type SurveyStatus,
+  type WriteResult,
+} from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { STATUS_LABELS, formatDateTime } from "../format";
 
@@ -32,10 +43,21 @@ const STATUS_META: Record<SurveyStatus, { label: string; color: string; tint: st
 
 export function SurveysPage() {
   const navigate = useNavigate();
+  const { toast } = useDialogs();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("");
   const [rating, setRating] = useState<string>("");
+  // 分类筛选存在 URL 里：「分类」页点过来（/surveys?category=3）要能直接落在
+  // 该分类上，刷新和分享链接也不丢。
+  const category = searchParams.get("category") ?? "";
+  const setCategory = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("category", next);
+    else params.delete("category");
+    setSearchParams(params, { replace: true });
+  };
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -50,16 +72,21 @@ export function SurveysPage() {
   useEffect(() => {
     setPage(1);
     setSelected([]);
-  }, [search, status, rating]);
+  }, [search, status, rating, category]);
 
-  const query = new URLSearchParams({ search, status, rating, page: String(page), pageSize: "20" });
+  const query = new URLSearchParams({ search, status, rating, category, page: String(page), pageSize: "20" });
   const { data, error, retry } = useApi<SurveyListData>(`/api/admin/surveys?${query}`);
+  // 分类清单很轻（几个抽屉），但和列表分开取：列表缓存/分页与分类字典的
+  // 生命周期不同，捆在一起会让翻页时重建筛选条。
+  const { data: categoryData } = useApi<{ items: SurveyCategoryDto[] }>("/api/admin/survey-categories");
+  const categories = categoryData?.items ?? [];
 
-  const hasFilters = searchInput.trim() !== "" || status !== "" || rating !== "";
+  const hasFilters = searchInput.trim() !== "" || status !== "" || rating !== "" || category !== "";
   const clearFilters = () => {
     setSearchInput("");
     setStatus("");
     setRating("");
+    setCategory("");
   };
 
   /** 单卷切换分级：r18→all 是放宽，二次确认避免误操作（0080 的管理端语义）。 */
@@ -91,6 +118,26 @@ export function SurveysPage() {
       retry();
     } catch {
       // 失败静默。
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  /** 批量归类：选中的问卷一起放进一个分类（或移出分类）。 */
+  const bulkCategory = async (target: string) => {
+    if (bulkBusy || !selected.length || !target) return;
+    setBulkBusy(true);
+    try {
+      await bulkSetSurveyCategory(selected, target === "none" ? null : Number(target));
+      const label = target === "none" ? "未分类" : (categories.find((c) => String(c.id) === target)?.name ?? "该分类");
+      toast({ message: `已把 ${selected.length} 份问卷归到「${label}」`, variant: "success" });
+      setSelected([]);
+      retry();
+    } catch (requestError) {
+      toast({
+        message: requestError instanceof Error ? requestError.message : "归类失败",
+        variant: "error",
+      });
     } finally {
       setBulkBusy(false);
     }
@@ -200,7 +247,9 @@ export function SurveysPage() {
         ) : null}
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 sm:min-w-52">
+          {/* 窄屏让搜索框独占一行：加了「分类」下拉之后这一排有四个控件，
+              挤在一行会把输入框压到只能看见「搜索问…」。 */}
+          <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:min-w-52">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-soft)]" />
             <input
               type="text"
@@ -222,6 +271,15 @@ export function SurveysPage() {
             <option value="">全部分级</option>
             <option value="all">全年龄</option>
             <option value="r18">18+</option>
+          </select>
+          <select aria-label="分类筛选" className="select" value={category} onChange={(event) => setCategory(event.target.value)}>
+            <option value="">全部分类</option>
+            <option value="none">未分类</option>
+            {categories.map((option) => (
+              <option key={option.id} value={String(option.id)}>
+                {option.name}（{option.count}）
+              </option>
+            ))}
           </select>
           <button className="btn btn-primary" disabled={creating} onClick={createSurvey}>
             {creating ? (
@@ -249,6 +307,25 @@ export function SurveysPage() {
             {selected.length > 0 ? (
               <span className="flex items-center gap-2">
                 <span className="font-semibold text-[var(--color-foreground)]">已选 {selected.length} 份</span>
+                <select
+                  aria-label="批量归类到"
+                  className="select btn-sm"
+                  value=""
+                  disabled={bulkBusy}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    event.target.value = "";
+                    if (value) void bulkCategory(value);
+                  }}
+                >
+                  <option value="">批量归类…</option>
+                  <option value="none">移出分类</option>
+                  {categories.map((option) => (
+                    <option key={option.id} value={String(option.id)}>
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
                 <button
                   className="btn btn-sm"
                   disabled={bulkBusy}
@@ -294,6 +371,7 @@ export function SurveysPage() {
                     <th className="text-sm font-semibold text-[var(--color-muted)]">标题</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">状态</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">分级</th>
+                    <th className="text-sm font-semibold text-[var(--color-muted)]">分类</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">题目</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">答卷</th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">更新时间</th>
@@ -346,6 +424,15 @@ export function SurveysPage() {
                           {item.contentRating === "r18" ? "18+" : "全年龄"}
                         </button>
                       </td>
+                      <td className="text-sm">
+                        {item.categoryName ? (
+                          <span className="rounded-full border border-[var(--color-edge)] px-2.5 py-0.5 text-xs">
+                            {item.categoryName}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--color-muted-soft)]">未分类</span>
+                        )}
+                      </td>
                       <td className="text-sm">{item.questionCount} 题</td>
                       <td className="text-sm">{item.responseCount} 答卷</td>
                       <td className="text-sm">{formatDateTime(item.updatedAt)}</td>
@@ -373,7 +460,8 @@ export function SurveysPage() {
                     </span>
                   </div>
                   <div className="mt-2 text-sm text-[var(--color-muted)]">
-                    {item.questionCount} 题 · {item.responseCount} 答卷 · {formatDateTime(item.updatedAt)}
+                    {item.categoryName ?? "未分类"} · {item.questionCount} 题 · {item.responseCount} 答卷 ·{" "}
+                    {formatDateTime(item.updatedAt)}
                   </div>
                 </Link>
               ))}

@@ -18,6 +18,7 @@ import { fail } from "../api-response";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
 import { mediaPublicUrl, parseSettings } from "./presentation";
 import { resolveListCoinPrices } from "../../services/coin/unlock.service";
+import { listPublishedCategories } from "../../services/survey-category.service";
 
 /**
  * The public survey list is the most expensive read in the product: its
@@ -36,10 +37,11 @@ import { resolveListCoinPrices } from "../../services/coin/unlock.service";
  * would spend that budget re-writing the same payload.
  *
  * The version is part of the key and must be bumped whenever the projection
- * changes (v3 added the coin-unlock/price fields, v4 added `contentRating`),
- * or a rollout serves entries built by the previous Worker version.
+ * changes (v3 added the coin-unlock/price fields, v4 added `contentRating`,
+ * v5 added the category projection and the categories array), or a rollout
+ * serves entries built by the previous Worker version.
  */
-export const SURVEY_LIST_CACHE_VERSION = "v4";
+export const SURVEY_LIST_CACHE_VERSION = "v5";
 export const SURVEY_LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 
 /**
@@ -148,6 +150,11 @@ export interface PublishedSurveyListItem {
   contentRating: "all" | "r18";
   accessCodeRequired: boolean;
   /**
+   * 分类（0087）。没有分类的问卷给 null——公开面把这类归到「全部」，
+   * 管理端有专门的「未分类」筛选把它们捞出来。
+   */
+  category: { id: number; name: string; slug: string } | null;
+  /**
    * 金币解锁信息（仅作者启用了金币解锁的问卷才有）。列表页据此显示
    * 「🪙 N 金币解锁」，并把按钮改成「解锁填写」，避免用户点进去才发现要付费。
    */
@@ -160,6 +167,25 @@ export interface PublishedSurveyListItem {
   coverUrl?: string;
   theme: unknown;
 }
+
+/**
+ * 公开筛选条的分类清单。刻意不带 count：count 依赖查看者是否确认过年龄
+ * （r18 条目会被服务侧过滤掉），由前端按过滤后的数组自己数，才不会出现
+ * 「分类显示 12 份、点进去 3 份」。
+ */
+export interface PublishedSurveyCategory {
+  id: number;
+  name: string;
+  slug: string;
+  sortOrder: number;
+}
+
+/** KV 里缓存的一份列表载荷：条目 + 筛选条（一起失效，不会互相错位）。 */
+export interface PublishedSurveyListPayload {
+  surveys: PublishedSurveyListItem[];
+  categories: PublishedSurveyCategory[];
+}
+
 
 /** 公开目录里被分级挡住的 r18 问卷数（给未确认年龄的查看者一个"还有内容"的提示）。 */
 export async function countPublishedRestrictedSurveys(db: D1Database): Promise<number> {
@@ -195,6 +221,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
               s.published_at publishedAt, s.closed_at closedAt, s.anonymous anonymous,
               s.content_rating contentRating,
               s.settings_json settingsJson,
+              s.category_id categoryId, c.name categoryName, c.slug categorySlug,
               m.id coverMediaId, m.url coverUrl,
               (SELECT COUNT(*) FROM survey_questions q
                WHERE q.survey_id = s.id) questionCount,
@@ -202,6 +229,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
                WHERE r.survey_id = s.id AND r.status = 'completed') responseCount
        FROM surveys s
        LEFT JOIN media_assets m ON m.id = s.cover_media_id
+       LEFT JOIN survey_categories c ON c.id = s.category_id
        WHERE ${conditions.join(" AND ")}
        ORDER BY s.published_at DESC, s.id DESC
        LIMIT 200`,
@@ -219,6 +247,9 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
       questionCount: number;
       responseCount: number;
       settingsJson: string | null;
+      categoryId: number | null;
+      categoryName: string | null;
+      categorySlug: string | null;
       coverMediaId: number | null;
       coverUrl: string | null;
     }>();
@@ -228,6 +259,10 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
     ...(row.description ? { description: row.description } : {}),
     accessCodeRequired: Boolean(row.accessCode),
     contentRating: row.contentRating === "r18" ? ("r18" as const) : ("all" as const),
+    category:
+      typeof row.categoryId === "number" && row.categoryName && row.categorySlug
+        ? { id: Number(row.categoryId), name: row.categoryName, slug: row.categorySlug }
+        : null,
     publishedAt: row.publishedAt,
     closedAt: row.closedAt,
     anonymous: Boolean(row.anonymous),
@@ -248,6 +283,24 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
     const price = prices.get(item.id);
     return price === undefined ? item : { ...item, coinUnlock: { price } };
   });
+}
+
+/**
+ * 公开目录的一份完整载荷：条目 + 筛选条分类。
+ *
+ * 两者必须一起缓存、一起失效：分类单独缓存会在「运营把问卷从 A 类挪到 B 类」
+ * 之后出现「B 类 0 份」这种自相矛盾的组合，而列表本身已经按 stamp 失效了，
+ * 没有理由再引入第二个失效时钟。
+ */
+export async function loadPublishedSurveyListPayload(env: Env, q: string): Promise<PublishedSurveyListPayload> {
+  const [surveys, categories] = await Promise.all([
+    loadPublishedSurveyList(env, q),
+    listPublishedCategories(env.DB),
+  ]);
+  return {
+    surveys,
+    categories: categories.map(({ id, name, slug, sortOrder }) => ({ id, name, slug, sortOrder })),
+  };
 }
 
 export async function resolveParticipantLinkBotUsername(env: Env): Promise<string | null> {

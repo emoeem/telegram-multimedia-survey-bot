@@ -10,6 +10,7 @@ import {
   useResolvedPreset,
 } from "./theme-ui";
 import { BottomNav } from "./BottomNav";
+import { PageHeader } from "./PageHeader";
 import { closeWebApp } from "./navigation";
 import {
   botHandleFromUrl,
@@ -679,51 +680,46 @@ export function PlazaScreen() {
   return (
     <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
       <div className="relative">
-        <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
-          <div className="mx-auto max-w-xl px-5 py-3 lg:max-w-3xl">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[15px] font-bold text-[var(--survey-heading)]">🏛 广场</p>
-                <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">展示自己的个人资料，也听听大家的心里话</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-label="选择主题"
-                  title="选择主题"
-                  className="survey-icon-btn"
-                  onClick={() => setThemePickerOpen(true)}
-                >
-                  <Palette className="h-4 w-4" />
-                </button>
-                <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="mt-2.5 flex gap-1.5 pb-0.5">
-              {(
-                [
-                  { id: "profiles", label: "🧑 个人资料" },
-                  { id: "treehole", label: "🌳 树洞" },
-                ] as const
-              ).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={`flex-1 rounded-[var(--survey-button-radius)] border px-3 py-2 text-[13px] font-medium transition-colors ${
-                    tab === item.id
-                      ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                      : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </header>
+        <PageHeader
+          title="🏛 广场"
+          subtitle="个人资料 · 树洞心里话"
+          actions={
+            <>
+              <button
+                type="button"
+                aria-label="选择主题"
+                title="选择主题"
+                className="survey-icon-btn"
+                onClick={() => setThemePickerOpen(true)}
+              >
+                <Palette className="h-4 w-4" />
+              </button>
+              <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          }
+          tabs={(
+            [
+              { id: "profiles", label: "🧑 个人资料" },
+              { id: "treehole", label: "🌳 树洞" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              aria-pressed={tab === item.id}
+              className={`min-h-11 flex-1 rounded-[var(--survey-button-radius)] border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                tab === item.id
+                  ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                  : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        />
 
         <main className="mx-auto max-w-xl px-5 pb-28 pt-4 lg:max-w-3xl">
           {tab === "treehole" && (topics.length > 0 || topicFilter) ? (

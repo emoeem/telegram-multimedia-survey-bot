@@ -21,6 +21,8 @@ import {
   Sprout,
   Users,
   Images,
+  BadgeCheck,
+  Tags,
 } from "lucide-react";
 import { fetchAdminSession, fetchDeploymentInfo, fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
@@ -33,6 +35,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/", icon: LayoutDashboard, label: "总览" },
       { to: "/surveys", icon: ClipboardList, label: "问卷" },
+      { to: "/categories", icon: Tags, label: "分类" },
       { to: "/responses", icon: ListChecks, label: "答卷动态" },
       { to: "/imports", icon: FileUp, label: "导入" },
     ],
@@ -44,6 +47,7 @@ const NAV_GROUPS = [
       { to: "/users", icon: Users, label: "用户" },
       { to: "/reports", icon: Package, label: "报告" },
       { to: "/templates", icon: Palette, label: "模板" },
+      { to: "/cert-content", icon: BadgeCheck, label: "认证卡内容" },
     ],
   },
   {

@@ -604,6 +604,74 @@ input[type="radio"] {
   .survey-icon-btn:active:not(:disabled) {
     transform: scale(0.94);
   }
+  /* 「← 首页」入口：与 .survey-icon-btn 同一套 token，固定 44px 触摸高度。
+   * /plaza 与 /submit 共用（admin/src/survey/PageHeader.tsx），所以两页的
+   * 返回入口在颜色、圆角、间距上完全一致。
+   *
+   * min-width: 44px + 居中：≤360px 时胶囊的文字会被隐藏、只剩 emoji，
+   * 宽度会掉到 37px —— 低于 44px 的最小触摸目标。定宽兜住这一档。 */
+  .survey-home-link,
+  .survey-header-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 12px;
+    flex: none;
+    border-radius: 999px;
+    border: 1px solid var(--survey-card-border, #e7ebf2);
+    background: var(--survey-card-bg, #ffffff);
+    color: var(--survey-muted, #475569);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.05s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .survey-home-link:hover,
+  .survey-header-pill:hover {
+    color: var(--survey-primary, #4f46e5);
+    border-color: color-mix(in srgb, var(--survey-primary, #4f46e5) 45%, var(--survey-card-border, #e7ebf2));
+  }
+  .survey-home-link:active,
+  .survey-header-pill:active {
+    transform: scale(0.96);
+  }
+  .survey-home-link:focus-visible,
+  .survey-header-pill:focus-visible {
+    outline: 2px solid var(--survey-primary, #4f46e5);
+    outline-offset: 2px;
+  }
+  /* 窄屏（≤380px）只留箭头 + 「首页」，避免和标题挤在一起 */
+  @media (max-width: 360px) {
+    .survey-home-link,
+    .survey-header-pill {
+      padding: 0 10px;
+      gap: 2px;
+    }
+    /* 窄屏上「📬 收件箱 / ✍️ 再投一稿 / 🪪 认证卡」只留 emoji，给标题让位。
+     *
+     * 这里必须写死 width 而不是靠 min-width：index.css 顶部有一条**不带 layer**
+     * 的 `* { min-width: 0 }`，未分层声明压过所有 @layer 里的声明，所以上面
+     * 那条 min-width: 44px 在窄屏根本赢不了（实测 emoji 版胶囊只有 37px，
+     * 低于 44px 的最小触摸目标）。width 不在那条重置的范围内。 */
+    .survey-header-pill {
+      font-size: 15px;
+      width: 44px;
+      padding: 0;
+    }
+    .survey-header-pill .pill-text {
+      display: none;
+    }
+  }
   .survey-progress-track {
     height: 8px;
     border-radius: 999px;

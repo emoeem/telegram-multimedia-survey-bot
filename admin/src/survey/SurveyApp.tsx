@@ -4,6 +4,7 @@ import type { FocusEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BadgeCheck,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -133,6 +134,47 @@ function botHandleFromUrl(url: string | null): string {
   return match ? `@${match[1]}` : "投稿机器人";
 }
 import { identityHeaders } from "./api";
+import { abandonSessionParticipantToken, sessionParticipantIdentity } from "./participant-token";
+
+/**
+ * 「这份答卷会归档给谁」提示条。
+ *
+ * 本标签页因为打开过带 pt 的链接而以某个 Telegram 身份作答时展示。绝大多数
+ * 情况这是参与者本人从 bot 点进来的正常身份，展示出来是确认；而当一条链接
+ * 被转发给别人时，这正是受害者当场发现「我要替别人交卷」的入口——身份是
+ * bearer 凭证，服务端无法区分本人与持链接者，只能靠这里亮出来。
+ *
+ * 「改为匿名」丢弃会话身份并整页刷新：答卷归属在开卷那一刻写死，中途换
+ * 身份继续答同一份卷会过不了归属校验，重新开始是唯一干净的做法。
+ */
+function ParticipantIdentityNotice({ done }: { done?: boolean }) {
+  const [identity, setIdentity] = useState(() => sessionParticipantIdentity());
+  if (!identity) return null;
+  const label = identity.username
+    ? `@${identity.username}`
+    : identity.firstName || `TG 用户 ${identity.telegramUserId}`;
+  const abandon = () => {
+    abandonSessionParticipantToken();
+    window.location.reload();
+  };
+  return (
+    <div className="survey-card mb-4 flex items-center justify-between gap-3 p-3">
+      <p className="text-xs leading-relaxed text-[var(--survey-muted)]">
+        {done ? "本答卷已" : "本次填写将"}
+        以 Telegram 账号{" "}
+        <span className="font-semibold text-[var(--survey-heading)]">{label}</span>{" "}
+        的身份归档（来自打开的链接）。
+      </p>
+      <button
+        type="button"
+        className="shrink-0 text-xs font-semibold text-[var(--survey-primary)] hover:underline"
+        onClick={abandon}
+      >
+        不是我，改为匿名
+      </button>
+    </div>
+  );
+}
 
 import {
   configureSfx,
@@ -488,6 +530,14 @@ function SurveyListPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"new" | "hot">("new");
+  // 分类筛选（0087）。列表接口一次拿回全量条目（≤200）与分类字典，切分类
+  // 纯客户端过滤——手机上点一下立刻换，不转圈、不重排滚动位置。
+  // 初始值读 URL：`/s?category=scenario` 是可分享的「只看情景剧情」深链。
+  const [categories, setCategories] = useState<{ id: number; name: string; slug: string; sortOrder: number }[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string | null>(() => {
+    const value = new URLSearchParams(window.location.search).get("category");
+    return value && value.trim() ? value.trim() : null;
+  });
   const [completedIds, setCompletedIds] = useState<number[]>(() => getCompletedSurveyIds());
   // 金币解锁状态：列表载荷是访客无关的（KV 缓存），解锁与否只能单独取。
   const [unlockedSurveyIds, setUnlockedSurveyIds] = useState<number[] | null>(null);
@@ -499,6 +549,18 @@ function SurveyListPage() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [confirmingAge, setConfirmingAge] = useState(false);
   const resolvedPreset = useResolvedPreset(themePreset);
+
+  // 切分类时同步 URL：这样「只看某类」的链接可以直接发出去，刷新也还在
+  // 同一类里；用 replaceState 而不是 pushState，避免手机返回键要按十几次
+  // 才能退出列表页。
+  const selectCategory = (slug: string | null) => {
+    setActiveCategory(slug);
+    const params = new URLSearchParams(window.location.search);
+    if (slug) params.set("category", slug);
+    else params.delete("category");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  };
 
   const selectHomeTheme = (id: string | null) => {
     setThemePreset(id);
@@ -518,6 +580,7 @@ function SurveyListPage() {
         setSubmissionBotUrl(data.submissionBotUrl);
         setAgeVerified(data.ageVerified !== false);
         setHiddenCount(data.hiddenCount ?? 0);
+        setCategories(data.categories ?? []);
         setError(null);
       })
       .catch((err) => {
@@ -612,10 +675,26 @@ function SurveyListPage() {
     );
   }
 
+  // 每个分类当前可见多少份（surveys 已被服务端按年龄过滤，所以这里数出来的
+  // 就是访客真正能点开的数量）。分类筛选条只有 chips，没有分页压力。
+  const categoryCounts = new Map<string, number>();
+  for (const survey of surveys) {
+    const slug = survey.category?.slug;
+    if (slug) categoryCounts.set(slug, (categoryCounts.get(slug) ?? 0) + 1);
+  }
+  // 空的分类不出现在筛选条上：未确认年龄时会有一整类 18+ 内容被藏起来，
+  // 留一个「0 份」的抽屉只会让人以为页面坏了。选中的分类被清空时回落到全部。
+  const visibleCategories = categories.filter((category) => (categoryCounts.get(category.slug) ?? 0) > 0);
+  const effectiveCategory =
+    activeCategory && categoryCounts.has(activeCategory) ? activeCategory : null;
+  const filteredSurveys = effectiveCategory
+    ? surveys.filter((survey) => survey.category?.slug === effectiveCategory)
+    : surveys;
+
   const orderedSurveys =
     sortOrder === "hot"
-      ? [...surveys].sort((a, b) => (b.responseCount ?? 0) - (a.responseCount ?? 0))
-      : surveys;
+      ? [...filteredSurveys].sort((a, b) => (b.responseCount ?? 0) - (a.responseCount ?? 0))
+      : filteredSurveys;
 
   return (
     <div
@@ -674,6 +753,54 @@ function SurveyListPage() {
               </button>
             ))}
           </div>
+          {visibleCategories.length > 1 ? (
+            /* 分类筛选条（0087）。横向滚动而不是折行：8 个抽屉折成三行会把
+               搜索框和列表往下推掉一整屏，而手机上「横向轻扫」是本能手势。
+               -mx-5/px-5 让它贴着屏幕边缘出血，滚动时不会在两侧留一条硬边。 */
+            <div
+              className="-mx-5 mt-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              role="tablist"
+              aria-label="问卷分类"
+            >
+              <div className="flex w-max items-center gap-2">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={effectiveCategory === null}
+                  onClick={() => selectCategory(null)}
+                  className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                    effectiveCategory === null
+                      ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                      : "bg-[var(--survey-primary-soft)] text-[var(--color-muted)]"
+                  }`}
+                >
+                  全部 {surveys.length}
+                </button>
+                {visibleCategories.map((category) => {
+                  const active = effectiveCategory === category.slug;
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => selectCategory(active ? null : category.slug)}
+                      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                        active
+                          ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                          : "bg-[var(--survey-primary-soft)] text-[var(--color-muted)]"
+                      }`}
+                    >
+                      {category.name}
+                      <span className={`ml-1 text-[11px] ${active ? "opacity-80" : "opacity-60"}`}>
+                        {categoryCounts.get(category.slug) ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {communityGroupUrl ? (
             <a
               href={communityGroupUrl}
@@ -728,6 +855,25 @@ function SurveyListPage() {
         </div>
       ) : null}
       <main className="mx-auto w-full max-w-6xl px-5 pt-5">
+        {/* 认证卡生成器入口卡：它和问卷、挑战、广场是同一个产品的功能，不该
+            只靠「自己记得 /cert」才进得去。卡片完全复用 .survey-card（与下面的
+            问卷卡同一套边框、圆角、阴影、悬停位移），所以一眼就是同体系的一块，
+            视觉权重低于问卷列表、高于页脚文字链。 */}
+        <a
+          href="/cert/"
+          className="survey-card mb-4 flex items-center gap-3 px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+            <BadgeCheck className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[var(--survey-heading)]">认证卡生成器</span>
+            <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">
+              挑主题、改字段、传张证件照，做一张趣味认证卡
+            </span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+        </a>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {orderedSurveys.map((survey) => {
             const isClosed = Boolean(survey.closedAt && new Date(survey.closedAt).getTime() < Date.now());
@@ -776,6 +922,7 @@ function SurveyListPage() {
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
                 ) : null}
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {survey.category ? <span className="chip text-xs">{survey.category.name}</span> : null}
                   <span className="chip text-xs">{survey.questionCount} 道题</span>
                   {survey.anonymous ? <span className="chip text-xs">🎭 匿名</span> : null}
                   {isClosed ? (
@@ -2492,6 +2639,9 @@ export function SurveyApp() {
         <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--survey-muted)]">
           {completion?.message ?? "感谢你的参与，你的回答已记录。"}
         </p>
+        <div className="mt-4 w-full max-w-sm">
+          <ParticipantIdentityNotice done />
+        </div>
         {screen.reportUrl ? (
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <a className="btn btn-primary px-7" href={screen.reportUrl}>
@@ -2775,6 +2925,7 @@ export function SurveyApp() {
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
+          <ParticipantIdentityNotice />
           {sprite ? (
             <SpriteLayer
               url={sprite.url}

@@ -54,13 +54,14 @@ import { resolveCoinGate } from "../../services/coin/unlock.service";
 import {
   beginPublishedFlowRead,
   loadPublishedSurvey,
-  loadPublishedSurveyList,
+  loadPublishedSurveyListPayload,
   loadPublishedSurveyListStamp,
   resolvePublishedFlow,
   resolveParticipantLinkBotUsername,
   SURVEY_LIST_CACHE_TTL_SECONDS,
   SURVEY_LIST_CACHE_VERSION,
   type PublishedSurveyListItem,
+  type PublishedSurveyListPayload,
 } from "./catalog";
 import { loadSurveyDefinition } from "./definition";
 import {
@@ -167,17 +168,29 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const listMeta = { ageVerified, hiddenCount };
     const visibleSurveys = (surveys: PublishedSurveyListItem[]) =>
       ageVerified ? surveys : surveys.filter((item) => item.contentRating === "all");
+    // 分类筛选（0087）：`?category=<slug>` 是「按分类看」的深链入口，公开页
+    // 自己是在客户端筛的（一次请求拿全量，切分类零延迟），但分享出去的
+    // 「只看某类」链接必须由服务端解释，否则打开就是全量列表。
+    const categorySlug = (url.searchParams.get("category") ?? "").trim().slice(0, 40);
+    const filterByCategory = (surveys: PublishedSurveyListItem[]) =>
+      categorySlug ? surveys.filter((item) => item.category?.slug === categorySlug) : surveys;
+    const shape = (payload: PublishedSurveyListPayload) =>
+      json({
+        communityGroupUrl,
+        submissionBotUrl,
+        ...listMeta,
+        categories: payload.categories,
+        surveys: filterByCategory(visibleSurveys(payload.surveys)),
+      });
     // Search results are unbounded and rarely repeated, so only the default
     // list (what the survey home page asks for) is cached.
     if (!q) {
       const cacheKey = `survey-list:${SURVEY_LIST_CACHE_VERSION}:${await loadPublishedSurveyListStamp(env.DB)}`;
-      const cached = await readCachedJson<PublishedSurveyListItem[]>(env.CACHE, cacheKey);
-      if (cached) {
-        return json({ communityGroupUrl, submissionBotUrl, ...listMeta, surveys: visibleSurveys(cached) });
-      }
-      const surveys = await loadPublishedSurveyList(env, q);
-      await writeCachedJson(env.CACHE, cacheKey, surveys, SURVEY_LIST_CACHE_TTL_SECONDS);
-      return json({ communityGroupUrl, submissionBotUrl, ...listMeta, surveys: visibleSurveys(surveys) });
+      const cached = await readCachedJson<PublishedSurveyListPayload>(env.CACHE, cacheKey);
+      if (cached) return shape(cached);
+      const payload = await loadPublishedSurveyListPayload(env, q);
+      await writeCachedJson(env.CACHE, cacheKey, payload, SURVEY_LIST_CACHE_TTL_SECONDS);
+      return shape(payload);
     }
     // Abuse damping on the expensive search branch (per IP fixed window). The
     // default list stays uncapped because it is KV-cached and cheap.
@@ -189,12 +202,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       60,
     );
     if (!searchLimiter.allowed) return rateLimitResponse(searchLimiter.retryAfterSeconds);
-    return json({
-      communityGroupUrl,
-      submissionBotUrl,
-      ...listMeta,
-      surveys: visibleSurveys(await loadPublishedSurveyList(env, q)),
-    });
+    return shape(await loadPublishedSurveyListPayload(env, q));
   }
 
   const participantLinkStartMatch = url.pathname.match(/^\/api\/survey\/participant-link\/start$/);

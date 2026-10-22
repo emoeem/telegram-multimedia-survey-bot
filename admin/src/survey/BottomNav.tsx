@@ -1,4 +1,4 @@
-import { ClipboardList, Images, Sparkles, Sprout, UserRound } from "lucide-react";
+import { BadgeCheck, ClipboardList, Images, Sparkles, Sprout, UserRound } from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -12,6 +12,10 @@ const ITEMS: NavItem[] = [
   { href: "/trial", label: "挑战", icon: Sparkles, pathStartsWith: ["/trial"] },
   { href: "/plaza", label: "广场", icon: Sprout, pathStartsWith: ["/plaza"] },
   { href: "/showcase", label: "展示", icon: Images, pathStartsWith: ["/showcase"] },
+  /* 认证卡生成器（/cert）：它一直是能用的独立页，却没有出现在任何导航里 ——
+   * 用户只能靠记住 URL 才进得去，观感上就是「没并进来」。放进全局导航后，
+   * 它和问卷、挑战、广场、展示、我的一样是一等入口。 */
+  { href: "/cert/", label: "认证卡", icon: BadgeCheck, pathStartsWith: ["/cert"] },
   { href: "/me", label: "我的", icon: UserRound, pathStartsWith: ["/me"] },
 ];
 

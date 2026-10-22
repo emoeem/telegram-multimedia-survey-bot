@@ -25,6 +25,7 @@ import {
 } from "../../services/admin-password.service";
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
+import { handleAdminCategoriesWrite } from "./categories";
 import { handleAdminSeriesWrite } from "./series-admin";
 import { handleAdminEditorWrite } from "./editor";
 import { handleAdminReportsWrite } from "./reports";
@@ -67,6 +68,9 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     body = await readJsonBody(request);
     if (body === null) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
   }
+
+  const categoriesResponse = await handleAdminCategoriesWrite(request, url, env, ctx, body);
+  if (categoriesResponse) return categoriesResponse;
 
   const reportResponse = await handleAdminReportsWrite(request, url, env, ctx, body);
   if (reportResponse) return reportResponse;

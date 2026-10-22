@@ -10,11 +10,21 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { PageHeader } from "./PageHeader";
+import {
+  SURVEY_CARD,
+  SURVEY_CHIP,
+  SURVEY_INPUT,
+  SURVEY_PAGE,
+  SURVEY_PRIMARY_BTN,
+} from "./ui";
+
 const VIEWER_KEY = "webSubmitViewer";
-const CARD = "rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]";
-const BTN = "rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-3 text-sm font-semibold text-[var(--survey-primary-content)] shadow-md disabled:opacity-60";
-const INPUT =
-  "w-full rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-heading)] outline-none focus:border-[var(--survey-primary)]";
+/* 卡片 / 按钮 / 输入框的类名统一来自 ui.ts，和 /plaza 引同一份，
+ * 两页的圆角、边框、字号、触摸高度因此不会各写各的。 */
+const CARD = SURVEY_CARD;
+const BTN = SURVEY_PRIMARY_BTN;
+const INPUT = SURVEY_INPUT;
 
 interface SubmitStep {
   id: string;
@@ -245,7 +255,7 @@ export function SubmitScreen() {
             编号 #{done.id} ·{" "}
             {done.status === "published" ? "已发布，多谢投稿！" : "管理员审核通过后会发布"}
           </p>
-          <a className={`${BTN} mt-4 inline-block`} href="/submit/inbox">
+          <a className={`${BTN} mt-4`} href="/submit/inbox">
             📬 打开我的投稿收件箱
           </a>
           <p className="mt-3 text-[12px] text-[var(--survey-muted)]">
@@ -260,16 +270,28 @@ export function SubmitScreen() {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-28 pt-6">
-      <header className="mb-4">
-        <h1 className="text-xl font-semibold text-[var(--survey-heading)]">{form?.title ?? "📮 投稿"}</h1>
-        <p className="mt-1 whitespace-pre-wrap text-[13px] text-[var(--survey-muted)]">
+    <div className="survey-glow min-h-dvh">
+      <PageHeader
+        title={form?.title ?? "📮 投稿"}
+        subtitle="不用注册 · 审核通过后发布"
+        actions={
+          <>
+            {/* /submit 是独立表单页（没有底部全局导航），所以认证卡入口放在
+                顶栏，和收件箱同一套 .survey-header-pill；窄屏 ≤360px 只剩
+                图标，不会把标题挤掉。 */}
+            <a className="survey-header-pill" href="/cert/" aria-label="认证卡生成器" title="认证卡生成器">
+              🪪<span className="pill-text"> 认证卡</span>
+            </a>
+            <a className="survey-header-pill" href="/submit/inbox" aria-label="我的投稿收件箱">
+              📬<span className="pill-text"> 收件箱</span>
+            </a>
+          </>
+        }
+      />
+      <main className={`${SURVEY_PAGE} pb-32 pt-3`}>
+        <p className="mb-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-muted)]">
           {form?.intro ?? "正在加载投稿表单…"}
         </p>
-        <a className="mt-2 inline-block text-[13px] font-medium text-[var(--survey-primary)]" href="/submit/inbox">
-          📬 我的投稿收件箱
-        </a>
-      </header>
 
       {error.length > 0 ? (
         <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">
@@ -303,7 +325,7 @@ export function SubmitScreen() {
                         const active = values[step.id] === option;
                         return (
                           <button
-                            className={`rounded-full border px-4 py-2 text-[13px] transition ${
+                            className={`${SURVEY_CHIP} ${
                               active
                                 ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]/10 font-semibold text-[var(--survey-primary)]"
                                 : "border-[var(--survey-card-border)] text-[var(--survey-heading)]"
@@ -344,6 +366,16 @@ export function SubmitScreen() {
                 className={`mt-2 rounded-[var(--survey-radius)] border-2 border-dashed px-4 py-5 text-center text-[13px] text-[var(--survey-muted)] ${
                   dragging ? "border-[var(--survey-primary)] text-[var(--survey-primary)]" : "border-[var(--survey-card-border)]"
                 }`}
+                role="button"
+                tabIndex={0}
+                aria-label="添加图片或视频"
+                onClick={() => fileInput.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    fileInput.current?.click();
+                  }
+                }}
                 onDragEnter={(event) => {
                   event.preventDefault();
                   setDragging(true);
@@ -359,10 +391,12 @@ export function SubmitScreen() {
                   addFiles(Array.from(event.dataTransfer.files));
                 }}
               >
-                <p>把图片/视频拖到这里，或</p>
-                <button className="mt-2 font-semibold text-[var(--survey-primary)]" onClick={() => fileInput.current?.click()} type="button">
+                {/* 移动端没有拖拽：整块都是点击入口，拖拽文案只作提示 */}
+                <p className="hidden sm:block">把图片/视频拖到这里，或</p>
+                <p className="sm:hidden">点这里选择图片 / 视频</p>
+                <span className="mt-2 inline-flex min-h-11 items-center rounded-full border border-[var(--survey-primary)] px-5 text-[13px] font-semibold text-[var(--survey-primary)]">
                   选择文件
-                </button>
+                </span>
                 <input
                   accept="image/*,video/*"
                   className="hidden"
@@ -376,7 +410,7 @@ export function SubmitScreen() {
                 </p>
               </div>
               {files.length > 0 ? (
-                <div className="mt-3 grid grid-cols-4 gap-2">
+                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {files.map((file, index) => (
                     <div className="relative aspect-square overflow-hidden rounded-[10px] border border-[var(--survey-card-border)]" key={`${file.name}-${index}`}>
                       {file.type.startsWith("image/") ? (
@@ -429,15 +463,22 @@ export function SubmitScreen() {
             ) : null}
           </section>
 
-          <div className="sticky bottom-3 z-10">
-            <button className={`${BTN} w-full`} disabled={busy} onClick={() => void submit()} type="button">
-              {busy ? "正在上传…" : "提交投稿"}
-            </button>
-            <p className="mt-2 text-center text-[12px] text-[var(--survey-muted)]">提交即表示同意内容被公开发布；审核不通过不会发布。</p>
+          {/* 固定在视口底部：不用负外边距（那会在窄屏撑出 2px 横向滚动），
+              下方留白由 main 的 pb-32 让出来，最后一个字段不会被挡住。 */}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-3 backdrop-blur-md">
+            <div className="mx-auto max-w-xl">
+              <button className={BTN} disabled={busy} onClick={() => void submit()} type="button">
+                {busy ? "正在上传…" : "提交投稿"}
+              </button>
+              <p className="mt-1.5 text-center text-[11px] leading-4 text-[var(--survey-muted)]">
+                提交即表示同意内容被公开发布；审核不通过不会发布。
+              </p>
+            </div>
           </div>
         </>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -486,11 +527,20 @@ export function SubmitInboxScreen() {
   );
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-28 pt-6">
-      <h1 className="text-xl font-semibold text-[var(--survey-heading)]">📬 我的投稿</h1>
-      <p className="mt-1 text-[13px] text-[var(--survey-muted)]">
-        这里能看到你投过的稿、审核进度、别人的评论（可直接回复）和管理员留言。
-      </p>
+    <div className="survey-glow min-h-dvh">
+      <PageHeader
+        title="📬 我的投稿"
+        subtitle="进度 · 评论 · 管理员留言"
+        actions={
+          <a className="survey-header-pill" href="/submit">
+            ✍️<span className="pill-text"> 再投一稿</span>
+          </a>
+        }
+      />
+      <main className={`${SURVEY_PAGE} pb-8 pt-3`}>
+        <p className="mb-1 text-[13px] leading-6 text-[var(--survey-muted)]">
+          这里能看到你投过的稿、审核进度、别人的评论（可直接回复）和管理员留言。
+        </p>
       {error ? (
         <div className="mt-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">{error}</div>
       ) : null}
@@ -500,7 +550,7 @@ export function SubmitInboxScreen() {
       ) : items.length === 0 ? (
         <div className={`${CARD} mt-4 p-5 text-center`}>
           <p className="text-[13px] text-[var(--survey-muted)]">这个浏览器还没有投稿记录。</p>
-          <a className={`${BTN} mt-3 inline-block`} href="/submit">
+          <a className={`${BTN} mt-3`} href="/submit">
             去投稿
           </a>
         </div>
@@ -608,11 +658,7 @@ export function SubmitInboxScreen() {
         })
       )}
 
-      <p className="mt-5 text-center text-[13px]">
-        <a className="font-medium text-[var(--survey-primary)]" href="/submit">
-          ← 再投一稿
-        </a>
-      </p>
-    </main>
+      </main>
+    </div>
   );
 }

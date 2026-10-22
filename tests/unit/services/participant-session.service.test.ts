@@ -50,4 +50,17 @@ describe("survey participant session service", () => {
     const expired = `eyJ1Ijo0MiwgImV4cCI6MSwgInAiOiJwYXJ0aWNpcGFudCJ9.invalid`;
     expect(await verifySurveyParticipantToken(SECRET, expired)).toBeNull();
   });
+
+  it("rejects tokens from an older payload version (version bump = revocation)", async () => {
+    // A correctly signed v1 payload (no `v` field): must fail verification even
+    // though the signature and expiry are fine — old deployments' outstanding
+    // tokens die when the version constant moves.
+    const v1Payload = btoa(JSON.stringify({ u: 42, exp: Math.floor(Date.now() / 1000) + 3600, p: "participant" }))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/, "");
+    const token = await createSurveyParticipantToken(SECRET, 42);
+    const [, signature] = token.split(".");
+    expect(await verifySurveyParticipantToken(SECRET, `${v1Payload}.${signature}`)).toBeNull();
+  });
 });

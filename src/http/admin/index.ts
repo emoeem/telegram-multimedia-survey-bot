@@ -6,6 +6,7 @@ import type { Env } from "../../index";
 import { KVMediaStore } from "../../services/media/temporary-media-store";
 import { handleAdminRead } from "./read";
 import { handleAdminWrite } from "./write";
+import { handleCertContentAdmin } from "./cert-content";
 import { INIT_DATA_MAX_AGE_SECONDS, hexToBytes } from "./helpers";
 import {
   ADMIN_SESSION_COOKIE,
@@ -332,6 +333,16 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
 
   const trashReadResponse = await handleAdminTrashRead(request, url, env, { user, isAdmin, fail, json });
   if (trashReadResponse) return trashReadResponse;
+
+  // 认证卡内容包（/cert 生成器的主题数据）。
+  const certContentResponse = await handleCertContentAdmin(request, url, env, {
+    user,
+    isAdmin,
+    requestId,
+    fail,
+    json,
+  });
+  if (certContentResponse) return certContentResponse;
 
   if (url.pathname.startsWith("/api/control/")) {
     const controlResponse = await handleControlApiRequest(request, env, { isAdmin, userId: user.id });

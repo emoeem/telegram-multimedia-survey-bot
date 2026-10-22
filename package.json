@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build:admin": "pnpm --dir admin build",
+    "build:admin": "node scripts/build-cert-single.mjs && node scripts/sync-cert.mjs && pnpm --dir admin build",
     "deploy": "pnpm build:admin && pnpm exec wrangler deploy",
     "deploy:staging": "pnpm build:admin && pnpm exec wrangler deploy -c wrangler.staging.toml",
     "typecheck": "tsc --noEmit",
@@ -23,7 +23,8 @@
     "customer:deploy": "node scripts/deploy-customer.mjs",
     "customer:update": "node scripts/update-customers.mjs",
     "deployment:runner": "node scripts/deployment-runner.mjs",
-    "release": "node scripts/publish-release.mjs"
+    "release": "node scripts/publish-release.mjs",
+    "build:cert-single": "node scripts/build-cert-single.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

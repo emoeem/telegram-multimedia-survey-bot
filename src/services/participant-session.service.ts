@@ -11,10 +11,24 @@ const decoder = new TextDecoder();
 export const SURVEY_PARTICIPANT_TOKEN_TTL_SECONDS = 30 * 24 * 3600;
 export const SURVEY_PARTICIPANT_TOKEN_PARAM = "pt";
 
+/**
+ * Token payload version. Tokens are stateless HMACs — there is no way to
+ * revoke one individually — so bumping this constant is the revocation
+ * mechanism: on deploy every outstanding token (stored in old builds'
+ * localStorage, pasted in chat history, forwarded to a friend) fails
+ * verification and the holder falls back to anonymous or re-opens a fresh
+ * bot link. v1 → v2: the frontend used to persist these tokens in
+ * localStorage forever, so leaked links kept answering as their minter for
+ * the full TTL.
+ */
+export const SURVEY_PARTICIPANT_TOKEN_VERSION = 2;
+
 interface ParticipantPayload {
   u: number;
   exp: number;
   p: "participant";
+  /** Payload version; verify rejects anything but the current constant. */
+  v: number;
   /** Optional Telegram profile snapshot (username / names / language). */
   n?: { u?: string; f?: string; l?: string; c?: string };
 }
@@ -93,6 +107,7 @@ export async function createSurveyParticipantToken(
         u: telegramUserId,
         exp: Math.floor(Date.now() / 1000) + SURVEY_PARTICIPANT_TOKEN_TTL_SECONDS,
         p: "participant",
+        v: SURVEY_PARTICIPANT_TOKEN_VERSION,
         ...(Object.keys(n).length ? { n } : {}),
       } satisfies ParticipantPayload),
     ),
@@ -117,6 +132,8 @@ export async function verifySurveyParticipantToken(
     if (parsed.p !== "participant" || typeof parsed.u !== "number" || typeof parsed.exp !== "number") {
       return null;
     }
+    // v1 tokens (no `v` field) fail this check — that is the revocation.
+    if (parsed.v !== SURVEY_PARTICIPANT_TOKEN_VERSION) return null;
     if (parsed.exp * 1000 <= Date.now()) return null;
     return {
       telegramUserId: parsed.u,

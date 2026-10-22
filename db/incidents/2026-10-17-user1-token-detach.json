@@ -1,0 +1,39 @@
+{
+  "incident": "participant-token cross-device identity contamination (pre-fix localStorage persistence)",
+  "detachedAt": "2026-10-17T03:08:29Z",
+  "derivedCleanupAt": "2026-10-17T03:12:00Z",
+  "deployedFixVersion": "9ae7e76d-aa3c-48e0-81df-1cb7795095a1",
+  "deployedFixAt": "2026-10-17T02:52:09Z",
+  "why": "Bot survey links carried pt=<30-day signed token> of the link minter. The old web build persisted it in localStorage forever, so every later visitor of a browser that had opened such a link answered as that user — for every identity-gated feature (surveys, trial tasks, check-ins, endings, achievements). Evidence: 14 distinct device fingerprints across different carrier IPs under user_id=1 between 2026-10-15 and 2026-10-17; the account owner reports filling none of them.",
+  "guard": "WHERE user_id = 1 / participant_hash = 'user_1' AND explicit id lists or date windows only",
+  "kept": {
+    "reason": "Completed before the token mechanism shipped (commit 36cc720, 2026-08-24), or a single early profile fill outside any burst.",
+    "responseIds": [29, 81, 82, 85, 86, 87, 96, 651]
+  },
+  "detached": {
+    "completed": [1619, 2663, 3147, 3394, 3409, 3414, 3415, 3419, 3436, 3459, 3463, 3465, 3468, 3469, 3493, 3494, 3510, 3511],
+    "inProgress": [2662, 2696, 3036, 3348, 3356, 3357, 3395, 3396, 3397, 3403, 3407, 3410, 3428, 3430, 3432, 3437, 3454, 3458, 3460, 3462, 3464, 3470, 3471, 3472, 3473, 3485, 3486, 3487, 3488, 3489, 3490, 3491, 3492, 3495, 3496, 3497, 3499, 3500, 3505, 3507, 3508, 3509, 3514, 3516, 3518],
+    "alreadyDetachedEarlier": [3408, 3506],
+    "taskRunIds": [431, 432, 433, 434, 435, 436, 437, 439, 440, 442, 443, 444, 446, 447, 448, 452, 473, 474, 475, 476],
+    "achievementsDeleted": ["survey_twenty", "night_owl", "early_bird", "trial_clear_ten", "survey_five", "trial_veteran"],
+    "endingUnlocksDeleted": [
+      { "surveyId": 42, "resultType": "identity_card" },
+      { "surveyId": 62, "resultType": "preference" },
+      { "surveyId": 82, "resultType": "assessment" },
+      { "surveyId": 90, "resultType": "form" },
+      { "surveyId": 91, "resultType": "identity_card" },
+      { "surveyId": 92, "resultType": "form" },
+      { "surveyId": 97, "resultType": "identity_card" },
+      { "surveyId": 108, "resultType": "assessment" },
+      { "surveyId": 109, "resultType": "preference" },
+      { "surveyId": 121, "resultType": "identity_card" }
+    ]
+  },
+  "leftForOwnerDecision": {
+    "taskRunsKept": "5 runs before 2026-10-15 (2 on 2026-09-09, 3 completed on 2026-10-14) — plausibly the owner's own launch tests.",
+    "achievementsKept": "first_survey + trial_first_clear (2026-10-14T15:34) — no matching completion on that date, likely legacy or owner testing.",
+    "coinCheckins": "2 rows (2026-10-15, 2026-10-16) and coin balance 30 / total_earned 30 from those check-ins — ledger left append-only, not rewritten.",
+    "profileShare": "1 profile_shares row created and revoked in the same second (2026-10-15T16:09), never publicly exposed."
+  },
+  "restore": "Responses: UPDATE survey_responses SET user_id = 1, participant_hash = 'user_1' WHERE id IN (…). Task runs: UPDATE task_runs SET user_id = 1, participant_hash = 'user_1' WHERE id IN (…). Deleted achievements/endings: rows are listed above and can be re-inserted (codes / surveyId+resultType, timestamps in the release doc)."
+}

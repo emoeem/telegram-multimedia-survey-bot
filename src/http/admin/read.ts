@@ -48,6 +48,7 @@ import { listProfileGalleryItems } from "../../services/profile-gallery.service"
 import { handleAdminShowcaseRead } from "./showcase";
 import { listOptionsForQuestions, listQuestionsBySurvey } from "../../db/repositories/question.repository";
 import { getSurveyResultRuleSet } from "../../db/repositories/result-profile.repository";
+import { listCategories } from "../../services/survey-category.service";
 
 export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
@@ -259,10 +260,17 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     });
   }
 
+  // 分类字典（0087）：管理端筛选条与批量归类共用一份清单。带 count 便于
+  // 运营看出「哪个分类是空的」——空分类不占公开页，但值得补内容或删掉。
+  if (url.pathname === "/api/admin/survey-categories") {
+    return json({ items: await listCategories(env.DB) });
+  }
+
   if (url.pathname === "/api/admin/surveys") {
     const search = (url.searchParams.get("search") ?? "").trim();
     const status = url.searchParams.get("status") ?? "";
     const rating = url.searchParams.get("rating") ?? "";
+    const category = (url.searchParams.get("category") ?? "").trim();
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(50, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
     const offset = (page - 1) * pageSize;
@@ -280,12 +288,20 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
       conditions.push("s.content_rating = ?");
       binds.push(rating);
     }
+    // category=none（未分类）与 category=<id> 两种；非法值当作未筛选，
+    // 避免 `?category=abc` 直接 500。
+    if (category === "none") {
+      conditions.push("s.category_id IS NULL");
+    } else if (/^\d+$/.test(category)) {
+      conditions.push("s.category_id = ?");
+      binds.push(Number(category));
+    }
     const where = conditions.join(" AND ");
     const ownerClause = isAdmin ? "" : " WHERE owner_id = ?";
     const summaryBinds = isAdmin ? [] : [user.id];
     const [items, count, summaryRows, ratingRows] = (await env.DB.batch([
       env.DB.prepare(
-        `SELECT s.id,s.title,s.description,s.status,s.content_rating AS contentRating,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
+        `SELECT s.id,s.title,s.description,s.status,s.content_rating AS contentRating,s.owner_id ownerId,s.created_at createdAt,s.updated_at updatedAt,s.category_id categoryId,c.name categoryName,COALESCE(m.url, NULL) coverUrl,(SELECT COUNT(*) FROM survey_questions q WHERE q.survey_id=s.id) questionCount,(SELECT COUNT(*) FROM survey_responses r WHERE r.survey_id=s.id) responseCount FROM surveys s LEFT JOIN media_assets m ON m.id=s.cover_media_id LEFT JOIN survey_categories c ON c.id=s.category_id WHERE ${where} ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`,
       ).bind(...binds, pageSize, offset),
       env.DB.prepare(`SELECT COUNT(*) count FROM surveys s WHERE ${where}`).bind(...binds),
       env.DB.prepare(

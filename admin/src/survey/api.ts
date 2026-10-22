@@ -1,6 +1,7 @@
 import { getTelegramInitData } from "../telegram";
 import { safeGet, safeSet } from "./storage";
 import { surveyDeviceHeaders } from "./deviceInfo";
+import { sessionParticipantToken } from "./participant-token";
 import type { SurveySfxCue } from "../../../src/survey/theme";
 
 export interface SurveyMediaDto {
@@ -121,6 +122,8 @@ export interface SurveyListItem {
   accessCodeRequired: boolean;
   /** 内容分级（0080）：r18 项仅对已确认年龄的查看者出现在列表里。 */
   contentRating?: "all" | "r18";
+  /** 分类（0087）：null = 未分类，公开目录把它归到「全部」。 */
+  category?: { id: number; name: string; slug: string } | null;
   /** 作者启用了金币解锁时的价格（免费问卷没有此字段）。 */
   coinUnlock?: { price: number };
   publishedAt: string | null;
@@ -150,27 +153,30 @@ export function getParticipantKey(): string {
 }
 
 export function identityHeaders(): Record<string, string> {
+  // Always run the capture first: it strips pt from the address bar and wipes
+  // the legacy persisted token even when another identity ends up winning.
+  const participantToken = sessionParticipantToken();
   const telegramInitData = getTelegramInitData();
   if (telegramInitData) {
     return { "x-telegram-init-data": encodeURIComponent(telegramInitData) };
   }
-  // The bot mints a signed participant token (pt=…) when a Telegram user
-  // opens a survey from the chat, so browser responses stay linked to the
-  // real Telegram account without forcing the WebView.
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("pt");
-  if (token) {
-    safeSet("webSurveyParticipantToken", token);
-  }
-  const storedToken = safeGet("webSurveyParticipantToken");
-  if (storedToken) {
-    return { "x-participant-token": storedToken };
-  }
   // Email accounts (registered at /auth) ride along on every survey/trial
-  // request so progress is attributed and resumable across devices.
+  // request so progress is attributed and resumable across devices. They
+  // outrank the participant token: a browser logged into its own email must
+  // keep answering as itself even when the URL carries someone else's
+  // forwarded pt link.
   const emailSession = safeGet("emailSessionToken");
   if (emailSession) {
     return { "x-email-session": emailSession };
+  }
+  // The bot mints a signed participant token (pt=…) when a Telegram user
+  // opens a survey from the chat, so browser responses stay linked to the
+  // real Telegram account without forcing the WebView. The token is
+  // session-scoped (see participant-token.ts): it is never persisted across
+  // page loads, so it dies with the tab instead of turning every future visit
+  // of this browser into the token owner's identity.
+  if (participantToken) {
+    return { "x-participant-token": participantToken };
   }
   return { "x-participant-key": getParticipantKey() };
 }
@@ -490,6 +496,8 @@ export function fetchSurveyList(
   ageVerified?: boolean;
   /** 被分级挡住、未确认年龄看不到的 r18 问卷数（确认后可见）。 */
   hiddenCount?: number;
+  /** 分类筛选条（0087）：已按运营设定的顺序排好，count 由前端按可见条目自算。 */
+  categories?: { id: number; name: string; slug: string; sortOrder: number }[];
 }> {
   return request<{
     surveys: SurveyListItem[];
@@ -497,6 +505,7 @@ export function fetchSurveyList(
     submissionBotUrl: string | null;
     ageVerified?: boolean;
     hiddenCount?: number;
+    categories?: { id: number; name: string; slug: string; sortOrder: number }[];
   }>(`/api/surveys${q ? `?q=${encodeURIComponent(q)}` : ""}`, undefined, { retries: 2 });
 }
 
@@ -617,15 +626,16 @@ export function uploadAnswerMedia(
 }
 
 /**
- * True when the current browser already carries a Telegram identity (Mini App
- * initData or a bot-minted participant token), so the opt-in bind card on the
- * completion page is unnecessary.
+ * True when requests from this browser will be attributed to a Telegram
+ * identity (Mini App initData or a session participant token), so the opt-in
+ * bind card on the completion page is unnecessary. An email session outranks
+ * the token (see identityHeaders), so its presence means attribution goes to
+ * the email account instead and the bind card stays relevant.
  */
 export function hasTelegramIdentity(): boolean {
   if (getTelegramInitData()) return true;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("pt")) return true;
-  return Boolean(safeGet("webSurveyParticipantToken"));
+  if (safeGet("emailSessionToken")) return false;
+  return sessionParticipantToken() !== null;
 }
 
 export interface ParticipantLinkStatus {

@@ -2,6 +2,8 @@ node_modules/
 .venv/
 /dist/
 admin/dist/
+# 构建时由 scripts/sync-cert.mjs 从 cert/ 拷进来的副本，不纳入版本库
+admin/public/cert/
 .wrangler/
 .dev.vars
 .env
@@ -28,3 +30,6 @@ scripts/galgame/.se-raw/
 qa/artifacts/
 # 交付目录中的递归副本（误拷贝，不纳入版本库；delivery 其余内容已被跟踪）
 delivery/*/delivery/
+
+# 本地工作产物（截图、一次性验收脚本、临时数据），不进版本库
+.workbuddy/
