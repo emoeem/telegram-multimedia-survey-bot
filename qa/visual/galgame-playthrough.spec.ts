@@ -267,6 +267,19 @@ async function installRoutes(page: Page): Promise<string[]> {
   await page.route(`**/api/survey/${SURVEY_ID}/responses/1`, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify({ answers: {} }) }),
   );
+  // 单卷结局图鉴（0086）：完成页会拉一次。这条路一加，`**/api/**` 的兜底
+  // abort 就不再把「没建模的接口」算成问题——但反过来，一旦完成页真的去拉它，
+  // 这个 mock 必须存在，否则 aborted 非空、测试失败（这正是它当初红的原因）。
+  await page.route(`**/api/survey/${SURVEY_ID}/endings`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        unlocked: [{ endingKey: "lamplight", resultType: "chapter", title: "台灯与手稿", unlockedAt: "2026-08-23T12:00:00Z" }],
+        total: 4,
+        hasGallery: true,
+      }),
+    }),
+  );
 
   // Instrumentation: every `new Audio()` the app creates, plus which of those
   // elements actually received a track, so player duplication and per-page
@@ -528,6 +541,11 @@ test("production survey 118 plays from the prologue to an ending", async ({ page
   for (const other of ["距离线 · 隔座的月光", "深入线 · 凌晨三点的语音条", "默契线 · 猫、外卖与碎碎念"]) {
     expect(result.pages, `不该走到其它路线：${other}`).not.toContain(other);
   }
+
+  // 完成页的结局图鉴（0086）：/endings 被真的请求并消费，而不是被兜底 abort。
+  // 没有这条断言，mock 只是让红色变绿；有了它，接口回归会重新变红。
+  await expect(page.locator("body")).toContainText("结局图鉴");
+  await expect(page.locator("body")).toContainText("1/4");
 
   // A run that never asks for sound must not download a single note: each cue
   // here is 1.1–1.6MB, and pulling them unasked is what made the survey crawl

@@ -176,11 +176,33 @@ const navAudit = await railPage.evaluate(() => {
     }).length,
   };
 });
+// 820×700 是「图标轨 + 矮窗口」，走紧凑模式：nav 里 10 项，其余 9 项在
+// 「更多」面板里。所以这里量的是「nav 里这 10 项」；面板里的 9 项由下面一段
+// 单独量——一条断言不该靠数目去猜自己在量哪一半。
 check(
   "图标轨宽度（820px）下每个导航项都有 aria-label 与 title",
-  navAudit.unnamed === 0 && navAudit.untitled === 0 && navAudit.total > 10,
+  navAudit.unnamed === 0 && navAudit.untitled === 0 && navAudit.total === 10,
   JSON.stringify(navAudit),
 );
+await railPage.locator("[aria-controls='admin-rail-more']").click();
+await railPage.locator("#admin-rail-more").waitFor();
+const panelAudit = await railPage.evaluate(() => {
+  const links = Array.from(document.querySelectorAll("#admin-rail-more a"));
+  return {
+    total: links.length,
+    unnamed: links.filter((a) => !(a.getAttribute("aria-label") ?? a.textContent ?? "").trim()).length,
+    hiddenText: links.filter((a) => {
+      const span = a.querySelector("span:not(.absolute)");
+      return span ? getComputedStyle(span).display === "none" : false;
+    }).length,
+  };
+});
+check(
+  "「更多」面板里的 9 项也都有可读名字（图标轨下文字被隐藏）",
+  panelAudit.total === 9 && panelAudit.unnamed === 0 && panelAudit.hiddenText === 0,
+  JSON.stringify(panelAudit),
+);
+await railPage.keyboard.press("Escape");
 check("导航容器可纵向滚动（短屏不会截断菜单）", navAudit.overflowY === "auto", String(navAudit.overflowY));
 
 /* ---------------------------------------------------------------- B4 ---- */

@@ -21,6 +21,7 @@
 // 的目录）。因此需要跳过 Playwright 的主机校验，否则启动前就被拦下。
 process.env.PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS ??= "1";
 
+import { readFileSync, readdirSync } from "node:fs";
 import { chromium, devices, webkit } from "playwright";
 import { startAdminStub } from "./lib/admin-stub.mjs";
 
@@ -87,8 +88,23 @@ for (const viewport of VIEWPORTS) {
       navUnnamed: Array.from(document.querySelectorAll("nav.admin-nav a")).filter(
         (anchor) => !(anchor.getAttribute("aria-label") ?? "").trim(),
       ).length,
+      // 图标轨下导航是否装得下：`aside` 高度 = 视口高度才算"固定框"，`nav` 的
+      // scrollHeight 超过 clientHeight 就是有图标被挤到滚动区里——平板上滚动找
+      // 入口等于没有入口，所以这条必须是零。
+      asideHeight: Math.round(document.querySelector("aside").getBoundingClientRect().height),
+      navClient: document.querySelector("nav.admin-nav").clientHeight,
+      navScroll: document.querySelector("nav.admin-nav").scrollHeight,
+      navItems: document.querySelectorAll("nav.admin-nav a").length,
+      navItemHeight: Math.round(document.querySelector("nav.admin-nav a").getBoundingClientRect().height),
     };
   });
+
+  check(`${viewport.name} 侧栏固定在视口内`, layout.asideHeight === viewport.height, `aside=${layout.asideHeight} / 视口=${viewport.height}`);
+  check(
+    `${viewport.name} 图标轨下导航不需要滚动`,
+    layout.navScroll - layout.navClient <= 1,
+    `${layout.navItems} 项 × ${layout.navItemHeight}px · 内容 ${layout.navScroll} / 可视 ${layout.navClient} · 溢出 ${Math.max(0, layout.navScroll - layout.navClient)}px`,
+  );
 
   check(`${viewport.name} 命中 pointer: coarse`, layout.coarse === true, String(layout.coarse));
   check(`${viewport.name} 页面无横向溢出`, layout.docOverflow <= 1, `overflow=${layout.docOverflow}`);
@@ -130,6 +146,84 @@ for (const viewport of VIEWPORTS) {
 
   await page.screenshot({ path: `qa/artifacts/ipad-${viewport.width}.png`, fullPage: false });
   await context.close();
+}
+
+/* --------------- 紧凑轨的「更多」面板：触屏上必须好用，不只是存在 --------- */
+{
+  // 1024x768（iPad 横屏）是唯一落进紧凑模式的档位：装不下 17 个 44px 图标。
+  const context = await browser.newContext({
+    ...devices["iPad (gen 7)"],
+    viewport: { width: 1024, height: 768 },
+  });
+  await context.addInitScript(() => window.localStorage.setItem("admin_theme", "dark"));
+  const page = await context.newPage();
+  page.on("pageerror", (error) => problems.push(`更多面板: ${error.message}`));
+  await page.goto(`${ORIGIN}/admin/reports`, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "报告归档" }).waitFor();
+
+  const trigger = page.locator("[aria-controls='admin-rail-more']");
+  check("横屏 紧凑模式下有「更多」触发器", (await trigger.count()) === 1);
+  await trigger.click();
+  const panel = page.locator("#admin-rail-more");
+  await panel.waitFor();
+
+  const entries = await panel.locator("a").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const box = node.getBoundingClientRect();
+      return {
+        name: (node.getAttribute("aria-label") ?? node.textContent ?? "").trim(),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        right: Math.round(box.right),
+      };
+    }),
+  );
+  check("横屏 面板收齐后两组 + 快捷入口", entries.length === 9, `entries=${entries.length}`);
+  check(
+    "横屏 面板条目热区 ≥ 44×44",
+    entries.every((entry) => entry.width >= 44 && entry.height >= 44),
+    JSON.stringify(entries.map((entry) => `${entry.name}:${entry.width}x${entry.height}`)),
+  );
+  check(
+    "横屏 面板整体在视口内（不越出右边界）",
+    entries.every((entry) => entry.right <= 1024),
+    `maxRight=${Math.max(...entries.map((entry) => entry.right))}`,
+  );
+
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  check(
+    "横屏 Esc 关闭面板并把焦点还给触发器",
+    (await panel.count()) === 0 &&
+      (await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "")) === "更多",
+  );
+
+  await trigger.click();
+  await panel.locator("a").filter({ hasText: "审计" }).click();
+  await page.waitForURL(/\/admin\/audit$/);
+  check("横屏 面板里的条目真的可达（审计）", page.url().endsWith("/admin/audit"), page.url());
+  await page.screenshot({ path: "qa/artifacts/ipad-1024-more-panel.png" });
+  await context.close();
+}
+
+/* --------------- 构建产物：可移植性相关声明真的发布到了线上 CSS ------------- */
+{
+  // 这里量的是「构建后还在不在」。上一版我写过 `height: 100vh` 兜底，被
+  // lightningcss 按 baseline 目标（Safari 16.4 起）裁掉了——源码里看得到、
+  // 产物里没有，属于「声称修了实际没修」。所以断言只认 dist。
+  const dir = "admin/dist/assets";
+  const css = readdirSync(dir)
+    .filter((file) => file.endsWith(".css"))
+    .map((file) => readFileSync(`${dir}/${file}`, "utf-8"))
+    .join("\n");
+  check(
+    "产物里侧栏底部让出安全区（env(safe-area-inset-bottom)）",
+    /\.admin-sidebar\{[^}]*safe-area-inset-bottom/.test(css),
+  );
+  check(
+    "产物里侧栏高度是 dvh（h-dvh → 100dvh），不是 vh",
+    /h-dvh\{height:100dvh\}/.test(css) && !/\.h-dvh\{height:100vh\}/.test(css),
+  );
 }
 
 check("全程无脚本异常", problems.length === 0, problems.join(" | "));

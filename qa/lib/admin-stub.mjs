@@ -128,6 +128,27 @@ export async function startAdminStub() {
       return json({ ok: true });
     }
 
+    // 审计页直接读 data.items.length，桩里缺这条会抛 TypeError —— 侧栏深链接
+    // 验收要落到 /admin/audit，所以这里给一条最小可渲染记录。
+    if (url.pathname === "/api/admin/audit-logs") {
+      return json({
+        items: [
+          {
+            id: 1,
+            actorName: "管理员",
+            action: "survey.publish",
+            entityType: "survey",
+            entityId: "7",
+            after: { status: "published" },
+            createdAt: "2026-10-22T08:48:00Z",
+          },
+        ],
+        page: 1,
+        total: 1,
+        totalPages: 1,
+      });
+    }
+
     if (url.pathname === "/api/admin/cert-content") {
       if (req.method === "PUT") {
         const chunks = [];

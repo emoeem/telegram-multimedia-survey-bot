@@ -2,6 +2,17 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { scanA11y } from "./a11y";
 
+/*
+ * 断言的是「最终长什么样」，不是「动画走到第几帧」。
+ *
+ * 总览/统计页的环形图会从 0 长到目标角度（约 1s）。之前截图固定等 250ms，
+ * 于是在 4 并发下机器一慢，截到的就是动画第 1 帧——同一张图，有时 38 条
+ * SVG path、有时 46 条，表现为「偶发 1–2 条失败，单跑全过」。给截图用例声明
+ * 减少动态效果，`EChart` 自己会把 `animation` 关掉（见 EChart.tsx 的
+ * `usePrefersReducedMotion`），首帧即终态，与机器快慢无关。
+ */
+test.use({ reducedMotion: "reduce" });
+
 const VIEWPORTS = [
   { width: 390, height: 844 },
   { width: 1440, height: 900 },

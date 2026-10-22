@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { scanA11y } from "./a11y";
 
+// 报告页也挂了 ECharts（同一条动画）。理由见 admin.spec.ts 的同名声明：
+// 截图要的是终态，不是「机器有多快」。
+test.use({ reducedMotion: "reduce" });
+
 const TEMPLATES = [
   { id: "classic", name: "经典报告" },
   { id: "magazine-dark", name: "杂志暗色" },
