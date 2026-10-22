@@ -6,6 +6,7 @@ import { donutOption } from "../charts";
 import { useApi } from "../hooks";
 import type { DashboardData } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
+import { StatCard } from "../components/StatCard";
 import { formatDateTime } from "../format";
 
 const DELIVERY_COLORS = {
@@ -95,15 +96,13 @@ export function DashboardPage() {
 
         <div className="admin-stat-grid mt-5">
           {METRICS.map(({ key, label, icon: Icon, tint }) => (
-            <div key={key} className="admin-stat">
-              <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
-                <span className={`grid h-7 w-7 place-items-center rounded-lg ${tint}`}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                {label}
-              </div>
-              <div className="mt-2 text-2xl font-bold font-tabular-nums">{Number(data[key] ?? 0)}</div>
-            </div>
+            <StatCard
+              key={key}
+              label={label}
+              value={Number(data[key] ?? 0)}
+              icon={<Icon className="h-4 w-4" />}
+              tint={tint}
+            />
           ))}
         </div>
       </section>
@@ -119,28 +118,19 @@ export function DashboardPage() {
         <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
-              <Link
+              <StatCard
                 key={label}
+                label={label}
+                value={value}
+                icon={<Icon className="h-4 w-4" />}
+                tint={tint}
+                tone={label === "失败" && value > 0 ? "danger" : "default"}
                 to={`/reports?status=${status}`}
-                className={`rounded-xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
-                  label === "失败" && value > 0
-                    ? "border-[color-mix(in_srgb,var(--app-danger)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))]"
-                    : "border-edge bg-[var(--surface)]"
-                }`}
-              >
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`grid h-7 w-7 place-items-center rounded-lg ${tint}`}>
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  {label}
-                </div>
-                <div className={`mt-2 text-2xl font-bold font-tabular-nums ${label === "失败" && value > 0 ? "text-[var(--app-danger)]" : ""}`}>
-                  {value}
-                </div>
-              </Link>
+                ariaLabel={`${label} ${value}，查看报告归档`}
+              />
             ))}
           </div>
-          <div className="rounded-xl border border-[var(--color-edge)] p-2">
+          <div className="rounded-surface border border-[var(--color-edge)] p-2">
             {deliveryTotal > 0 ? (
               <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
             ) : (
@@ -162,13 +152,15 @@ export function DashboardPage() {
                 <tbody>
                   {data.recentSurveys.map((item) => (
                     <tr key={item.id} className="cursor-pointer" onClick={() => navigate(`/surveys/${item.id}`)}>
-                      <td>
+                      <td data-label="问卷">
                         <strong>{item.title || "未命名问卷"}</strong>
                       </td>
-                      <td className="text-right">
+                      <td className="text-right" data-label="状态">
                         <StatusBadge status={item.status} />
                       </td>
-                      <td className="muted text-right">{formatDateTime(item.updatedAt)}</td>
+                      <td className="muted text-right" data-label="更新时间">
+                        {formatDateTime(item.updatedAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -206,11 +198,15 @@ export function DashboardPage() {
                         className="cursor-pointer"
                         onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
                       >
-                        <td>
+                        <td data-label="问卷">
                           <strong>{item.title || `问卷 ${item.surveyId}`}</strong>
                         </td>
-                        <td className="text-sm">{respondentText}</td>
-                        <td className="muted">{formatDateTime(item.updatedAt)}</td>
+                        <td className="text-sm" data-label="填写者">
+                          {respondentText}
+                        </td>
+                        <td className="muted" data-label="时间">
+                          {formatDateTime(item.updatedAt)}
+                        </td>
                       </tr>
                     );
                   })}

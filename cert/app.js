@@ -1952,7 +1952,7 @@
     }
     function color(v, fallback) {
       var s = String(v == null ? "" : v).trim();
-      return /^#[0-9a-fA-F]{6}$/.test(s) ? s : fallback;
+      return /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ? s : fallback;
     }
     var groups = null;
     if (Array.isArray(raw.groups)) {

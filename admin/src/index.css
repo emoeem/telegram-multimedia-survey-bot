@@ -39,6 +39,19 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 18px;
+  /* Two semantic radii. Before this every surface picked its own value:
+     `.card` used 16px, but the panels next to a card used Tailwind's
+     `rounded-xl`, which in this project resolves to `--radius-xl` = 18px, and
+     hand-rolled buttons used `rounded-lg`/`rounded-[10px]`. A card and the
+     chart box inside it therefore had visibly different corners.
+     `rounded-surface` / `rounded-control` replace those ad-hoc numbers. */
+  --radius-surface: 16px;
+  --radius-control: 10px;
+  /* One control height for buttons, inputs and selects. They used to differ by
+     ~2px (35.5 vs 37.6) because only the paddings had been copied, which is
+     visible wherever a button sits on the same row as an input. */
+  --control-h: 38px;
+  --control-h-sm: 32px;
   --accent-from: #6366f1;
   --accent-to: #8b5cf6;
 }
@@ -134,7 +147,7 @@ input[type="radio"] {
   .card {
     background: var(--surface);
     border: 1px solid var(--color-edge);
-    border-radius: 16px;
+    border-radius: var(--radius-surface);
     box-shadow:
       0 1px 2px rgba(16, 24, 40, 0.04),
       0 14px 32px -20px rgba(16, 24, 40, 0.18);
@@ -171,13 +184,14 @@ input[type="radio"] {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    border-radius: 10px;
+    min-height: var(--control-h);
+    border-radius: var(--radius-control);
     border: 1px solid var(--color-edge);
     background: var(--surface);
     padding: 8px 14px;
     font-size: 14px;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.4;
     color: var(--color-ink);
     cursor: pointer;
     box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
@@ -217,9 +231,10 @@ input[type="radio"] {
     color: var(--survey-primary-content, var(--color-primary-content, #ffffff));
   }
   .btn-sm {
+    min-height: var(--control-h-sm);
     padding: 5px 10px;
     font-size: 13px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     gap: 5px;
   }
   .btn-ghost {
@@ -240,31 +255,24 @@ input[type="radio"] {
     color: var(--app-danger);
   }
   .btn-icon {
-    width: 36px;
-    height: 36px;
+    width: var(--control-h);
+    height: var(--control-h);
+    min-width: var(--control-h);
     padding: 0;
     flex: none;
   }
   @media (max-width: 639px) {
     .btn {
       white-space: normal;
-      min-height: 40px;
       padding: 9px 14px;
       flex-wrap: wrap;
       touch-action: manipulation;
     }
     .btn-sm {
-      min-height: 36px;
       padding: 7px 10px;
-    }
-    .btn-icon {
-      width: 40px;
-      height: 40px;
-      min-width: 40px;
     }
     .input,
     .select {
-      min-height: 40px;
       font-size: 16px;
       touch-action: manipulation;
     }
@@ -273,7 +281,8 @@ input[type="radio"] {
   /* ---- Form controls -------------------------------------------------- */
   .input,
   .select {
-    border-radius: 10px;
+    min-height: var(--control-h);
+    border-radius: var(--radius-control);
     border: 1px solid var(--control-border);
     background: var(--surface-input);
     padding: 8px 12px;
@@ -306,6 +315,75 @@ input[type="radio"] {
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 15px;
+  }
+
+  /* The dense variants. `input-sm` was used in the cert editor for 14 fields
+     but was never defined — daisyUI is imported for its themes only, so the
+     `input-sm`/`modal-box` component classes are never emitted. Every "small"
+     field therefore rendered at full size, and a `btn-sm` next to it sat 6px
+     short. Defining it is cheaper and safer than rewriting 14 class names. */
+  .input-sm,
+  .select-sm {
+    min-height: var(--control-h-sm);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px;
+    font-size: 13px;
+  }
+  .select-sm {
+    padding-right: 30px;
+    background-position: right 8px center;
+    background-size: 14px;
+  }
+  /* Native colour input, sized to sit on the same row as `.input-sm`. Chrome
+     draws an inner swatch with its own padding and border, so those are reset
+     here instead of being left to the platform. */
+  .color-well {
+    flex: none;
+    width: var(--control-h);
+    height: var(--control-h-sm);
+    padding: 0;
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-input);
+    cursor: pointer;
+  }
+  .color-well::-webkit-color-swatch-wrapper {
+    padding: 2px;
+  }
+  .color-well::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
+  }
+  .color-well::-moz-color-swatch {
+    border: none;
+    border-radius: 4px;
+  }
+  .input-invalid,
+  .input[aria-invalid="true"] {
+    border-color: color-mix(in srgb, var(--app-danger) 55%, var(--control-border));
+  }
+  .input-invalid:focus,
+  .input[aria-invalid="true"]:focus {
+    border-color: var(--app-danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-danger) 14%, transparent);
+  }
+
+  /* Row checkboxes: daisyUI's `checkbox` component classes are never emitted
+     by this build, so a plain native box with `accent-color` is both smaller
+     and honest about what it is. */
+  .row-check {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  @media (pointer: coarse) {
+    .row-check {
+      width: 20px;
+      height: 20px;
+    }
   }
 
   /* ---- Tables --------------------------------------------------------- */
@@ -361,6 +439,36 @@ input[type="radio"] {
       padding: 4px 0;
       white-space: normal;
       text-align: left;
+    }
+    /* Stacked card mode hid the header row, and almost no `<td>` carried a
+       label, so on a phone every row was a column of bare values with no way
+       to tell 问卷 from 答卷 from 时间. Cells opt in with `data-label`. */
+    .tbl td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: 2px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--color-muted);
+    }
+    .tbl td[data-label=""]::before {
+      content: none;
+    }
+    /* A row checkbox is a `data-label=""` cell. Stacked, it occupied a whole
+       44px line above every card, so the list opened with five blank boxes.
+       Lifting it into the corner keeps the 44px hit area and lets the card
+       start with its title. `:has()` degrades gracefully — without support the
+       checkbox simply stays in flow. */
+    .tbl tr:has(td[data-label=""]) {
+      position: relative;
+      padding-right: 44px;
+    }
+    .tbl td[data-label=""] {
+      position: absolute;
+      top: 2px;
+      right: 0;
+      width: 44px;
     }
   }
 
@@ -3007,14 +3115,31 @@ main > header h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+/* The grid is 5-up on desktop, which suits the dashboard's five metrics but
+   leaves an empty sixth cell on pages with four cards (报告归档: 待处理/生成中/
+   已归档/失败). Cards opt out with data-cols="4". */
+.admin-stat-grid[data-cols="4"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 640px) {
+  .admin-stat-grid[data-cols="4"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .admin-stat {
   position: relative;
+  display: block;
+  width: 100%;
   overflow: hidden;
   min-height: 112px;
   padding: 16px;
   border: 1px solid var(--color-edge);
-  border-radius: 16px;
+  border-radius: var(--radius-surface);
   background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
   box-shadow: 0 8px 28px -24px rgba(15, 23, 42, 0.45);
   transition:
     transform 0.16s ease,
@@ -3034,7 +3159,47 @@ main > header h1 {
   width: 110px;
   height: 110px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  /* Decorative only. At 7% with a hard edge it read as a grey disc sitting
+     behind the number — visible in dark mode, and it overlapped the value on
+     the two-column mobile layout. A radial falloff at 5% keeps the texture
+     without the edge; `data-glow="off"` removes it entirely. */
+  background: radial-gradient(
+    circle at center,
+    color-mix(in srgb, var(--color-primary) 5%, transparent) 0%,
+    color-mix(in srgb, var(--color-primary) 2%, transparent) 55%,
+    transparent 72%
+  );
+}
+.admin-stat[data-glow="off"]::after {
+  content: none;
+}
+/* Interactive variants (filter cards, links into /reports). Kept as classes
+   rather than per-page Tailwind strings so the dashboard and 报告归档 cannot
+   drift apart again. */
+a.admin-stat,
+button.admin-stat {
+  cursor: pointer;
+}
+a.admin-stat:focus-visible,
+button.admin-stat:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.admin-stat.is-active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--surface));
+}
+.admin-stat.is-danger {
+  border-color: color-mix(in srgb, var(--app-danger) 35%, var(--surface));
+  background: color-mix(in srgb, var(--app-danger) 10%, var(--surface));
+}
+.admin-stat-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
 }
 .admin-stat-label {
   display: flex;
@@ -3050,6 +3215,14 @@ main > header h1 {
   font-weight: 750;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
+}
+.admin-stat-value.is-danger {
+  color: var(--app-danger);
+}
+.admin-stat-hint {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 11px;
 }
 .admin-section-title {
   display: flex;
@@ -4715,4 +4888,56 @@ main > header h1 {
 }
 .settings-coin-error {
   color: var(--app-danger);
+}
+
+/* ---- Touch targets ----------------------------------------------------
+ * The 44px rule used to be written as `@media (max-width: 639px)`, which is
+ * the wrong axis: an iPad in portrait is 768px wide and therefore got 32px
+ * buttons even though it is a touch device, while a 600px-wide desktop window
+ * (fine pointer, mouse) got the large ones. `pointer: coarse` asks the real
+ * question and covers both.
+ *
+ * `.hit-target` exists because growing the checkbox box itself to 44x44 looks
+ * broken in a table row; the wrapper takes the hit area instead and the
+ * control keeps its size.
+ */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .color-well {
+    height: 44px;
+  }
+  .btn-sm {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 12px;
+  }
+  .btn-icon {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .input,
+  .select,
+  .input-sm,
+  .select-sm {
+    min-height: 44px;
+  }
+  .hit-target {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -8px -4px;
+    cursor: pointer;
+  }
+  .tbl td .hit-target {
+    margin: -14px -4px;
+  }
+  .admin-stat {
+    min-height: 96px;
+  }
 }

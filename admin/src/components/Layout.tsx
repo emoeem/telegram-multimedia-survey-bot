@@ -230,7 +230,7 @@ export function Layout() {
             <BrandMark />
             <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
           </div>
-          <nav className="admin-nav flex flex-1 flex-col gap-3">
+          <nav className="admin-nav flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pr-1">
             {navGroups.map((group) => (
               <div key={group.label} className="admin-nav-group">
                 <p className="admin-nav-label">{group.label}</p>
@@ -245,6 +245,15 @@ export function Layout() {
                       <Link
                         key={item.to}
                         to={item.to}
+                        // The icon rail (640–999px) hides `.admin-nav-label`
+                        // and every item's text, and these links carried no
+                        // accessible name at all — on an iPad in portrait the
+                        // sidebar was 19 anonymous icons for both sighted and
+                        // screen-reader users. `title` gives the mouse a
+                        // tooltip, `aria-label` gives assistive tech the name.
+                        title={item.label}
+                        aria-label={item.label}
+                        aria-current={active ? "page" : undefined}
                         className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
                           active
                             ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
@@ -273,6 +282,8 @@ export function Layout() {
                   href="/plaza"
                   target="_blank"
                   rel="noreferrer"
+                  title="打开树洞"
+                  aria-label="打开树洞"
                   className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
                 >
                   <Sprout className="h-[18px] w-[18px] shrink-0" />
@@ -285,6 +296,8 @@ export function Layout() {
                   href="/showcase"
                   target="_blank"
                   rel="noreferrer"
+                  title="打开展示区"
+                  aria-label="打开展示区"
                   className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
                 >
                   <Images className="h-[18px] w-[18px] shrink-0" />
@@ -297,6 +310,8 @@ export function Layout() {
                   href="/trial"
                   target="_blank"
                   rel="noreferrer"
+                  title="挑战任务"
+                  aria-label="挑战任务"
                   className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
                 >
                   <Target className="h-[18px] w-[18px] shrink-0" />
@@ -308,6 +323,8 @@ export function Layout() {
                 href="/s"
                 target="_blank"
                 rel="noreferrer"
+                title="问卷列表"
+                aria-label="问卷列表"
                 className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
               >
                 <ClipboardList className="h-[18px] w-[18px] shrink-0" />

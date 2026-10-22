@@ -78,7 +78,9 @@ export interface CertContentPack {
   themes: CertTheme[];
 }
 
-const HEX = /^#[0-9a-fA-F]{6}$/;
+/* Must match admin/src/cert-content-model.ts and cert/app.js: a 6-only
+   pattern here silently replaced an 8-digit (alpha) colour with the default. */
+const HEX = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 /** 强度口径是不是「分值累加」（成人向词库）：决定档位区间上限是 100 还是 999。 */
 function isScore(metric: unknown): boolean {
