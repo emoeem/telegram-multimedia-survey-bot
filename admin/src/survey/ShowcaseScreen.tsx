@@ -107,6 +107,12 @@ export function ShowcaseScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const frameRef = useRef(0);
+  // `loadingMore` 是 state：它要等下一次渲染才可见。而不停翻页的触发器有两个
+  // （横向哨兵的 IntersectionObserver 和 scroller 自己的 onScroll），同一帧里
+  // 两个回调都会读到 `loadingMore === false`，于是同一个 cursor 被请求两次、
+  // 第二页被追加两遍（实测 24 → 26，第 25 位重复）。用 ref 做同步闸门，state
+  // 继续负责 UI，两者不混用。
+  const loadingRef = useRef(false);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const resolvedPreset = useResolvedPreset(themePreset);
@@ -135,19 +141,28 @@ export function ShowcaseScreen() {
   }, [reloadKey]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingRef.current) return;
+    loadingRef.current = true;
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
       const feed = await fetchShowcase(nextCursor, 24);
-      setPeople((current) => (current ? [...current, ...feed.items] : feed.items));
+      // 幂等追加：即便服务端对同一个 cursor 给了重叠的一页（或两个触发器抢在
+      // ref 之前各发一次），同一个人也不会出现两遍——展示区是按人横滑的，
+      // 重复一张卡会让「第 n 位」与真实人数错位。
+      setPeople((current) => {
+        if (!current) return feed.items;
+        const seen = new Set(current.map((person) => person.id));
+        return [...current, ...feed.items.filter((person) => !seen.has(person.id))];
+      });
       setNextCursor(feed.nextCursor);
     } catch (requestError) {
       setLoadMoreError(requestError instanceof Error ? requestError.message : "加载下一组失败");
     } finally {
+      loadingRef.current = false;
       setLoadingMore(false);
     }
-  }, [loadingMore, nextCursor]);
+  }, [nextCursor]);
 
   useEffect(() => {
     const root = scrollerRef.current;

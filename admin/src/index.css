@@ -2733,6 +2733,72 @@ html[data-theme="black"] {
 .admin-nav a {
   min-height: 40px;
 }
+/* 紧凑图标轨的「更多」触发器与面板条目：与导航项同高，触屏由下面
+ * `@media (pointer: coarse)` 抬到 44。 */
+.admin-rail-more,
+.admin-rail-more-item {
+  min-height: 40px;
+}
+
+/* ---- iOS 可移植性 ----------------------------------------------------
+ * 侧栏高度走 `dvh`（Tailwind 的 `sm:h-dvh`），不是 `vh`：Safari 的
+ * 100vh 含地址栏，窗口一收起就多出一截；dvh 跟随可视区域。
+ *
+ * 这里**不写 `height: 100vh` 兜底**。写过，构建时被 lightningcss 按 baseline
+ * 目标（Safari 16.4 起）裁掉了——dvh 从 15.4 就支持，那条兜底对支持范围是
+ * 死代码，留着只会让人以为"兼容到 15.0 了"。支持下限就是 16.4。
+ *
+ * 真正需要补的是底部安全区：iPad/iPhone 的 home indicator 会压住最后一行。
+ */
+@media (min-width: 640px) {
+  .admin-sidebar {
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+/* A collapsible group turns its label into a disclosure button. It keeps the
+ * label's type scale, so a folded group still reads as a section header.
+ * `margin-left:auto` on the caret parks it on the right edge of the sidebar. */
+.admin-nav-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 120ms var(--ui-ease),
+    background-color 120ms var(--ui-ease);
+}
+.admin-nav-toggle:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.05);
+}
+.admin-nav-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.admin-nav-caret {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
+  opacity: 0.8;
+  transition: transform 160ms var(--ui-ease);
+}
+.admin-nav-group.is-collapsed .admin-nav-caret {
+  transform: rotate(-90deg);
+}
 /* Theme contrast overrides must come after daisyUI theme imports so their
  * palette variables cannot be overwritten by the generated theme layer. */
 html[data-theme="dark"],
@@ -3080,6 +3146,19 @@ main > header h1 {
 .admin-main {
   width: min(100%, 1440px);
   margin-inline: auto;
+}
+/* Breaks the notice strip out of <main>'s padding so it stays full-bleed.
+ * The numbers must equal that padding exactly: 32px from `sm:p-8`, but 14px
+ * below 720px because `main { padding: 14px !important }` wins there. Using
+ * Tailwind's `-mx-4` (16px) against a 14px padding overflowed by 2px on a
+ * 390px screen. Change one of these and the other has to follow. */
+.admin-notices {
+  margin: -32px -32px 24px;
+}
+@media (max-width: 720px) {
+  .admin-notices {
+    margin: -14px -14px 16px;
+  }
 }
 .admin-page-intro {
   display: flex;
@@ -4939,5 +5018,17 @@ button.admin-stat:focus-visible {
   }
   .admin-stat {
     min-height: 96px;
+  }
+  /* The rail is icons only, so a mis-tap costs a page load; 44px on a real
+   * touch device beats the 40px desktop row. */
+  .admin-nav a {
+    min-height: 44px;
+  }
+  .admin-nav-toggle {
+    min-height: 44px;
+  }
+  .admin-rail-more,
+  .admin-rail-more-item {
+    min-height: 44px;
   }
 }
