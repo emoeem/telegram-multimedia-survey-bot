@@ -76,7 +76,7 @@ check(
 
 // —— 4. 深色下边框色（旧 --color-border 未定义 → currentColor → 发白）——
 const asideBorder = await page.evaluate(() => {
-  const aside = document.querySelector("aside.rounded-xl");
+  const aside = document.querySelector("aside[class*=\"rounded-\"]");
   return aside ? getComputedStyle(aside).borderTopColor : null;
 });
 const channels = (asideBorder ?? "").match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
