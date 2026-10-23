@@ -387,19 +387,17 @@ export function SurveysPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* 整行点击只是鼠标便利，不声明交互语义。
+                      这里刻意不用 role="button" + tabIndex：行内含复选框、标题链接
+                      和分级按钮，任何 interactive 角色套在外层都会构成 axe 的
+                      `nested-interactive`（button > checkbox/link）。键盘用户走标题
+                      链接 —— 它本来就是本行唯一的目的地，语义已经完整。
+                      1440×900 才暴露是因为移动端渲染的是卡片布局，不渲染这张表。 */}
                   {data.items.map((item) => (
                     <tr
                       key={item.id}
                       className="cursor-pointer hover:bg-[var(--surface-hover)]"
-                      role="button"
-                      tabIndex={0}
                       onClick={() => navigate(`/surveys/${item.id}`)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          navigate(`/surveys/${item.id}`);
-                        }
-                      }}
                     >
                       <td
                         className="text-sm"
