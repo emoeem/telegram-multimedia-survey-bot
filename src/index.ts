@@ -12,6 +12,7 @@ import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
+import { handleSubmissionBotProxy, isSubmissionBotApiPath } from "./http/submission-proxy";
 import {
   escapeMetaAttribute,
   homeRedirectLocation,
@@ -342,6 +343,25 @@ export interface Env {
   COMMUNITY_GROUP_URL?: string;
   /** Public link for the submission bot (投稿机器人); defaults to @tougaojiqirbot. */
   SUBMISSION_BOT_URL?: string;
+  /**
+   * Origin of the standalone submission-bot Worker that serves `/api/submit/*`
+   * (the no-login submission form: form definition, inbox, replies).
+   *
+   * Set this so the endpoints exist on this Worker's own domain too. Before it
+   * was set, they only existed behind the CN relay (`cn-relay/vercel.json`
+   * forwards `/api/submit/*` there), which meant the no-login tab worked on
+   * emoemok.top and silently fell back to the SPA HTML on emoe.eu.cc.
+   */
+  SUBMISSION_BOT_API_ORIGIN?: string;
+  /**
+   * Shared secret for the submission bot's admin review API (`/api/admin/review/*`).
+   *
+   * Must match `REVIEW_API_SECRET` on that Worker. It exists so the browser never
+   * holds it: this Worker verifies the admin session first, then forwards the
+   * secret. Empty = the review endpoints refuse with 503 instead of running
+   * unauthenticated (see src/http/admin/web-submission.ts).
+   */
+  WEB_REVIEW_SECRET?: string;
   /** Transactional email (Resend) for email+password auth. */
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
@@ -355,6 +375,12 @@ export interface Env {
   /** Cloudflare Stream 视频直传（两项齐备才启用，见 plan.service.ts）。 */
   STREAM_ACCOUNT_ID?: string;
   STREAM_API_TOKEN?: string;
+  /**
+   * Stream 硬停用开关（`"true"` = 关闭）。优先级高于上面两项配置：即使 token
+   * 齐备也不铸造直传凭证。停用原因是计费——Stream 是本部署唯一按分钟线性
+   * 计费的资源，见 wrangler.toml 的同名注释。
+   */
+  STREAM_DISABLED?: string;
   /** Cloudflare Images 图片存储与边缘变换（三项齐备才启用）。 */
   IMAGES_ACCOUNT_ID?: string;
   IMAGES_DELIVERY_HASH?: string;
@@ -606,10 +632,18 @@ export default {
         return servePublicPageWithMeta(env, request, url.pathname.startsWith("/gacha") ? "/gacha" : url.pathname.startsWith("/submissions") ? "/submissions" : "/coins");
       }
 
-      // 网页投稿两屏（表单 / 收件箱）由问卷 SPA 提供，接口仍走投稿机器人 worker。
+      // 旧的投稿两条路径已经并进 /submissions 投稿中心（三个页签：账号投稿 /
+      // 免登录投稿 / 我的投稿）。这里 302 而不是直接删，是因为 /submit 被配在
+      // SUBMISSION_BOT_URL 里、也发进过群和邮件，删掉就是一堆白屏。
+      //
+      // **相对路径 Location**：这个 Worker 同时挂在 emoe.eu.cc（国内 SNI 阻断）
+      // 和 emoemok.top（Vercel 中继）后面，中继改写后 request.url 的 host 永远
+      // 是 emoe.eu.cc —— 写绝对地址会把国内用户甩回打不开的域名。与上面 cert
+      // 的重定向同一条规则。
       const submitMeta = submitPageMetaPath(url.pathname);
       if (submitMeta) {
-        return servePublicPageWithMeta(env, request, submitMeta);
+        const tab = submitMeta === "/submit/inbox" ? "inbox" : "anon";
+        return new Response(null, { status: 302, headers: { Location: `/submissions?tab=${tab}` } });
       }
 
       // 认证卡生成器：纯前端静态页，构建时由 scripts/sync-cert.mjs 拷进
@@ -656,6 +690,18 @@ export default {
 
       if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
         return servePublicPageWithMeta(env, request, "/auth");
+      }
+
+      // 免登录投稿的后端在主站之外（独立的 submission-bot Worker）。合并投稿
+      // 中心之后这一屏和其他两屏在同一个页面里，接口必须在本域上也存在，
+      // 否则页签切过去就是 "Unexpected token '<'" —— 那正是合并前"两个投稿
+      // 中心"的成因：免登录那半只在 emoemok.top 上真能用。
+      //
+      // 必须放在 /api/submissions（金币投稿，本站）之前，且 isSubmissionBotApiPath
+      // 用的是精确前缀匹配：写成 startsWith("/api/submit") 会把 /api/submissions
+      // 一起吞进代理。
+      if (isSubmissionBotApiPath(url.pathname)) {
+        return handleSubmissionBotProxy(request, env, url);
       }
 
       if (url.pathname.startsWith("/api/me/")) {
@@ -813,7 +859,7 @@ export default {
             // bot surfaces; customer licensing/heartbeat uses Env.LICENSE_SERVER_URL
             // directly in HTTP services. Never advertise a customer Worker as its own
             // license server, because that makes the origin semantically ambiguous.
-            licenseServerUrl: isLicenseCenter(env) ? url.origin : null,
+            licenseServerUrl: isLicenseCenter(env) ? resolvePublicOrigin(env, url.origin) : null,
             surveyCodePepper: env.SURVEY_CODE_PEPPER,
             // Same single source of truth as the web API: only the authorization
             // center may issue licenses or hand out trial accounts.

@@ -117,7 +117,14 @@ function parseChatId(raw: string | null | undefined): number | null {
   return id;
 }
 
-function isDisabled(env: CertShareEnv): boolean {
+/**
+ * 全局停用开关（`CERT_SHARE_DISABLED=true`）。
+ *
+ * 导出成公开函数，是为了让控制中心的 GET 能区分两种「看起来一样」的状态：
+ * 「管理员填了频道但功能被全局停用」与「什么都没配」。两者都解析成 null，
+ * 但处置完全不同——面板必须能说清是哪一种。
+ */
+export function isCertShareDisabled(env: CertShareEnv): boolean {
   return (env.CERT_SHARE_DISABLED ?? "").trim().toLowerCase() === "true";
 }
 
@@ -128,7 +135,7 @@ function isDisabled(env: CertShareEnv): boolean {
  * 直接调用；**业务入口不应该只用它**，否则会漏掉后台配置。
  */
 export function certShareChannel(env: CertShareEnv): number | null {
-  if (isDisabled(env)) return null;
+  if (isCertShareDisabled(env)) return null;
   return parseChatId(env.CERT_SHARE_CHANNEL) ?? parseChatId(env.REPORT_CHANNEL_ID);
 }
 
@@ -151,7 +158,7 @@ export function certShareChannel(env: CertShareEnv): number | null {
 export async function resolveCertShareChannel(
   env: CertShareEnv,
 ): Promise<ResolvedCertShareChannel | null> {
-  if (isDisabled(env)) return null;
+  if (isCertShareDisabled(env)) return null;
 
   const envChannel = parseChatId(env.CERT_SHARE_CHANNEL);
   if (!env.DB) {

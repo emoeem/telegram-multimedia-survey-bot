@@ -17,6 +17,23 @@
 export interface StreamEnv {
   STREAM_ACCOUNT_ID?: string;
   STREAM_API_TOKEN?: string;
+  /**
+   * 硬开关：置 "true" 时无视 `STREAM_ACCOUNT_ID` / `STREAM_API_TOKEN` 一律视为未启用。
+   *
+   * 存在的理由是计费而不是功能。Stream 按分钟计费（$5 / 1000 分钟），是这个部署里
+   * 唯一「单价随使用时长线性增长」的资源；凭证一旦能被铸造，暴露面就不再由代码
+   * 决定，而由谁拿到一张直传凭证决定。想停用它时，删掉线上那两个 secret 也能达到
+   * 同样效果，但那是**隐式**的——下一次有人为了别的目的补回 token，视频通道会
+   * 无声无息地重新打开。一个显式的、写在 wrangler.toml 里的 `"true"` 才是可审计的
+   * 停用声明：要开就得改这行，改这行就必然进 diff。
+   */
+  STREAM_DISABLED?: string;
+}
+
+/** `STREAM_DISABLED` 是否显式声明停用（大小写与空白不敏感）。 */
+export function isStreamDisabled(env: { STREAM_DISABLED?: string } | undefined | null): boolean {
+  if (!env || typeof env.STREAM_DISABLED !== "string") return false;
+  return env.STREAM_DISABLED.trim().toLowerCase() === "true";
 }
 
 export interface StreamUploadTicket {
@@ -41,6 +58,8 @@ export const STREAM_TICKET_TTL_SECONDS = 24 * 60 * 60;
 export const STREAM_MAX_DURATION_SECONDS = 15 * 60;
 
 export function streamConfigured(env: StreamEnv): boolean {
+  // 停用声明优先于配置：即使两个 secret 都在，`STREAM_DISABLED=true` 也一律不启用。
+  if (isStreamDisabled(env)) return false;
   return (
     typeof env.STREAM_ACCOUNT_ID === "string" &&
     env.STREAM_ACCOUNT_ID.trim().length > 0 &&

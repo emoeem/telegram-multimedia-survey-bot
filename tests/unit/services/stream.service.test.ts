@@ -4,6 +4,7 @@ import {
   createStreamDirectUpload,
   deleteStreamVideo,
   getStreamVideoStatus,
+  isStreamDisabled,
   streamConfigured,
   sweepStaleStreamUploads,
 } from "../../../src/services/media/stream.service";
@@ -23,6 +24,28 @@ describe("streamConfigured", () => {
     expect(streamConfigured(ENV)).toBe(true);
     expect(streamConfigured({ STREAM_ACCOUNT_ID: "acct" })).toBe(false);
     expect(streamConfigured({ STREAM_ACCOUNT_ID: " ", STREAM_API_TOKEN: "t" })).toBe(false);
+  });
+
+  it("STREAM_DISABLED=true 压过齐备的配置", () => {
+    // 这条是计费开关的钉子：两个 secret 都在、且完全合法，只要显式声明停用，
+    // 就不许铸造凭证。去掉 streamConfigured 里的早退分支，这条会立刻变红。
+    expect(streamConfigured({ ...ENV, STREAM_DISABLED: "true" })).toBe(false);
+    expect(streamConfigured({ ...ENV, STREAM_DISABLED: " TRUE " })).toBe(false);
+    // 反向：显式 "false" 与未声明都必须回到「配置齐备即启用」，
+    // 否则这个开关会变成只能关不能开的单行道。
+    expect(streamConfigured({ ...ENV, STREAM_DISABLED: "false" })).toBe(true);
+    expect(streamConfigured({ ...ENV, STREAM_DISABLED: "" })).toBe(true);
+    expect(streamConfigured(ENV)).toBe(true);
+  });
+
+  it("isStreamDisabled 只认显式 true，缺失与噪声一律 false", () => {
+    expect(isStreamDisabled({ STREAM_DISABLED: "true" })).toBe(true);
+    expect(isStreamDisabled({ STREAM_DISABLED: "True" })).toBe(true);
+    expect(isStreamDisabled({ STREAM_DISABLED: "1" })).toBe(false);
+    expect(isStreamDisabled({ STREAM_DISABLED: "yes" })).toBe(false);
+    expect(isStreamDisabled({})).toBe(false);
+    expect(isStreamDisabled(undefined)).toBe(false);
+    expect(isStreamDisabled(null)).toBe(false);
   });
 });
 

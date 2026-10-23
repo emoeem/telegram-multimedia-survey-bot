@@ -10,6 +10,8 @@
  * 「Free 部署上它退化成什么」，且降级是换实现而不是砍按钮。
  */
 
+import { isStreamDisabled } from "./media/stream.service";
+
 export type PlanTier = "free" | "paid" | "pro";
 
 export interface PlanCapabilities {
@@ -39,6 +41,8 @@ export interface PlanCapabilitySource {
   RATE_LIMIT?: unknown;
   STREAM_ACCOUNT_ID?: string;
   STREAM_API_TOKEN?: string;
+  /** 显式停用 Stream（计费开关），优先级高于上面两项配置。 */
+  STREAM_DISABLED?: string;
   IMAGES_ACCOUNT_ID?: string;
   IMAGES_DELIVERY_HASH?: string;
   CLOUDFLARE_API_TOKEN?: string;
@@ -75,7 +79,9 @@ const TIER_ORDER: Record<PlanTier, number> = { free: 0, paid: 1, pro: 2 };
 export function resolvePlanCapabilities(source: PlanCapabilitySource): PlanCapabilities {
   const withoutTier = {
     r2Media: hasBinding(source.MEDIA),
-    streamVideo: hasConfig(source.STREAM_ACCOUNT_ID, source.STREAM_API_TOKEN),
+    // `STREAM_DISABLED=true` 是显式停用：配置齐了也报无此能力，避免前端继续
+    // 渲染视频上传入口而请求必然 404。
+    streamVideo: hasConfig(source.STREAM_ACCOUNT_ID, source.STREAM_API_TOKEN) && !isStreamDisabled(source),
     imagesPipeline:
       hasConfig(source.IMAGES_ACCOUNT_ID, source.IMAGES_DELIVERY_HASH, source.CLOUDFLARE_API_TOKEN),
     browserRender: hasBinding(source.BROWSER),

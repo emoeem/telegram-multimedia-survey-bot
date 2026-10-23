@@ -33,6 +33,19 @@ describe("resolvePlanCapabilities", () => {
     expect(resolvePlanCapabilities(base).streamVideo).toBe(false);
     expect(resolvePlanCapabilities({ ...base, STREAM_ACCOUNT_ID: "abc" }).streamVideo).toBe(false);
     expect(resolvePlanCapabilities({ ...base, STREAM_ACCOUNT_ID: "abc", STREAM_API_TOKEN: "t" }).streamVideo).toBe(true);
+
+    // Stream 停用开关只压它自己的能力，不碰档位：tier 由 R2/渲染/队列决定，
+    // 关掉视频通道不该把整个部署从 pro 降成 paid（那会连带关掉导出队列等
+    // 与 Stream 无关的功能）。这条同时钉住「开关不会误伤档位」这个不变式。
+    const streamDisabled = resolvePlanCapabilities({
+      ...base,
+      STREAM_ACCOUNT_ID: "abc",
+      STREAM_API_TOKEN: "t",
+      STREAM_DISABLED: "true",
+    });
+    expect(streamDisabled.streamVideo).toBe(false);
+    expect(streamDisabled.tier).toBe("pro");
+    expect(streamDisabled.r2Media).toBe(true);
     expect(
       resolvePlanCapabilities({
         ...base,

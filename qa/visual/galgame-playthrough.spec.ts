@@ -5,7 +5,7 @@ import { expect, test, type Page, type Request, type Route } from "@playwright/t
  * End-to-end playthrough of the real production visual novel `/s/118`.
  *
  * The definition under `qa/fixtures/galgame-118.json` is a byte-for-byte copy
- * of what `https://emoe.eu.cc/api/survey/118` serves, and every illustration and
+ * of what `https://emoemok.top/api/survey/118` serves, and every illustration and
  * BGM track is fetched live from production and re-served same-origin, so this
  * suite renders the real story, the real artwork and the real audio while
  * writing nothing to production.
@@ -18,7 +18,9 @@ import { expect, test, type Page, type Request, type Route } from "@playwright/t
  */
 
 const SURVEY_ID = 118;
-const PROD = "https://emoe.eu.cc";
+// 对外域名（国内可达）。源站 emoe.eu.cc 是 Cloudflare 直连地址，国内 SNI 阻断，
+// 只作为 Vercel 中继的上游存在 —— QA 应该打用户真正点得开的那个。
+const PROD = process.env.QA_PROD_ORIGIN ?? "https://emoemok.top";
 const SHOTS = "qa/artifacts/galgame-118";
 
 // 首次运行需要把 25 个素材（约 15MB）拉下来落盘缓存，给本文件更宽的预算

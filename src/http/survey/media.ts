@@ -22,6 +22,7 @@ import {
   streamConfigured,
 } from "../../services/media/stream.service";
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
+import { checkRateLimit } from "../../services/rate-limit.service";
 import { r18ParticipantGate } from "../../services/content-rating.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
@@ -185,6 +186,17 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
  * response.
  */
 export async function handleSurveyMediaUpload(request: Request, env: Env, surveyId: number): Promise<Response> {
+  // 总闸先生效：打满后不读表单、不查库，直接拒。
+  const dailyQuota = await checkRateLimit(
+    env.CACHE,
+    "media-upload-daily",
+    "global",
+    MEDIA_DAILY_UPLOAD_LIMIT,
+    DAY_SECONDS,
+  );
+  if (!dailyQuota.allowed) {
+    return fail(429, "media_daily_limit", "今日上传额度已满，请明天再试");
+  }
   // Only the publication check is needed here (the question row is read
   // separately below), so this reads the survey row alone: no flow cache, no
   // questions/options read.
@@ -334,6 +346,30 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
 /** 单份答卷最多挂多少条 Stream 视频：云转码按条计费，收敛滥用面。 */
 const MAX_STREAM_ASSETS_PER_RESPONSE = 10;
 
+const DAY_SECONDS = 24 * 60 * 60;
+
+/**
+ * 全局每日（UTC）Stream 凭证上限 —— 与请求来源无关的总闸。
+ *
+ * 单张凭证允许最长 `STREAM_MAX_DURATION_SECONDS`（15 分钟）的视频，而 Stream
+ * Basic 按分钟计费（$5 / 1000 分钟）。`20 次/分钟/IP` 的限流只按 IP 计数，
+ * 换一个出口 IP 就重置，挡不住邮箱农场批量注册后逐份答卷刷凭证。
+ *
+ * 30 张/天 ⇒ 最坏 450 分钟/天（约 $2.25/天），正常业务用量（单份答卷 ≤10 条）
+ * 离这条线很远。被打满时受影响的是全体用户，这是有意的取舍：宁可少收一天
+ * 视频，也不让计费额度被无声刷穿。
+ */
+const STREAM_DAILY_TICKET_LIMIT = 30;
+
+/**
+ * 全局每日（UTC）普通媒体上传次数上限。
+ *
+ * R2 存储单价低（$0.015/GB/月）且临时媒体 7 天过期，但它同时消耗 Worker
+ * 请求、D1 写与（首次上传时的）校验 CPU。300 次/天足以覆盖正常答卷用量，
+ * 又能在多 IP 轮换刷上传时先刹住。
+ */
+const MEDIA_DAILY_UPLOAD_LIMIT = 300;
+
 /**
  * `POST /api/survey/:id/media/stream-ticket`（Pro 部署的视频/音频答卷）。
  *
@@ -345,6 +381,17 @@ const MAX_STREAM_ASSETS_PER_RESPONSE = 10;
 export async function handleStreamTicketRequest(request: Request, env: Env, surveyId: number): Promise<Response> {
   if (!streamConfigured(env)) {
     return fail(404, "stream_unavailable", "当前部署未启用视频托管");
+  }
+  // 总闸放在任何 D1 读之前：打满后连问卷/答卷都不用查，直接拒。
+  const dailyQuota = await checkRateLimit(
+    env.CACHE,
+    "stream-ticket-daily",
+    "global",
+    STREAM_DAILY_TICKET_LIMIT,
+    DAY_SECONDS,
+  );
+  if (!dailyQuota.allowed) {
+    return fail(429, "stream_daily_limit", "今日视频上传额度已满，请明天再试");
   }
   const [surveyRowResult] = await env.DB.batch([getSurveyByIdStatement(env.DB, surveyId)]);
   const survey = mapSurveyStatementResult(surveyRowResult);

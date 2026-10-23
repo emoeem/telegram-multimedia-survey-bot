@@ -31,6 +31,21 @@ LICENSE_GRACE_SECONDS = "86400"
 # DEPLOYMENT_ROLE = "customer" (scripts/deploy-customer.mjs) and are refused
 # those surfaces even if they hold a stray admin token.
 DEPLOYMENT_ROLE = "vendor"
+# Cloudflare Stream（视频答卷）**已停用**。
+#
+# 停用的理由是计费模型而不是功能：Stream 是本部署里唯一按「分钟」线性计费的
+# 资源（Basic：$5 / 1000 分钟，超出 $0.005/分钟），一张直传凭证最长可换 15 分钟。
+# 其余按量资源要么有免费额度（R2 10GB），要么单价与体量无关（Worker 请求）。
+#
+# 这是**硬开关**：`true` 时 streamConfigured() 无条件返回 false，即使
+# STREAM_ACCOUNT_ID / STREAM_API_TOKEN 两个 secret 都存在，`POST
+# /api/survey/:id/media/stream-ticket` 也只会回 404 stream_unavailable，
+# 能力面板的 streamVideo 同样报 false（见 src/services/plan.service.ts）。
+#
+# 要重新启用：把这一行改成 "false"（并确认 Stream 订阅仍在）。
+# 用显式变量而不是「删掉 secret」来停用，是为了让停用状态留在 diff 里——
+# 删 secret 是隐式的，下次有人补回 token 时视频通道会无声重开。
+STREAM_DISABLED = "true"
 REPORT_CHANNEL_ID = "-1004489719605"
 # 认证卡生成器「完成制作」时，把用户原图与成品图同步到的频道。
 # 解析顺序（先命中先用），见 src/http/cert-share.ts#resolveCertShareChannel：
@@ -42,13 +57,34 @@ REPORT_CHANNEL_ID = "-1004489719605"
 # 客户部署（DEPLOYMENT_ROLE = "customer"）不生成这两个变量，因此该功能默认关闭。
 CERT_SHARE_CHANNEL = ""
 # 置 "true" 可无条件停用认证卡同步，优先级高于以上全部。
-CERT_SHARE_DISABLED = "true"
+# 当前为 "false"：女生导出认证卡后默认同步一份到上面的频道（前端勾选框默认勾选，
+# 用户可以自己取消）。客户部署（DEPLOYMENT_ROLE = "customer"）不生成该变量，
+# 走 isDisabled() 的缺省判断，行为不受这里影响。
+CERT_SHARE_DISABLED = "false"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 # Survey access-code pepper is a Cloudflare Secret; do not define it in [vars].
-# 投稿入口：指向投稿机器人的网页表单（不用 Telegram 也能投），
-# 由 cn-relay 反代到 submission-bot Worker 的 /submit；国内可直接打开。
+# 投稿入口：投稿中心（/submissions 的三个页签之一 —— 免登录投稿）。
+# 合并后 /submit 仍然可用，但它只是 302 到 /submissions?tab=anon，直接把入口
+# 指到最终地址可以少一跳，也让文案里的域名永远落在同一个页面上。
+# 由 cn-relay 反代到本站；国内可直接打开。
 # 想改回 Telegram 机器人就把值换成 https://t.me/tougaojiqirbot。
-SUBMISSION_BOT_URL = "https://emoemok.top/submit"
+SUBMISSION_BOT_URL = "https://emoemok.top/submissions?tab=anon"
+# 免登录投稿的后端是一个独立部署的 Worker（/api/submit/*：表单定义、收件箱、
+# 回复）。不配这一项，那些接口只在中继域名 emoemok.top 上存在（cn-relay 的
+# vercel.json 里有专门的两条 routes），本域上会静默回落成 SPA 的 index.html。
+# 投稿中心的「免登录投稿」页签依赖它，必须配。
+SUBMISSION_BOT_API_ORIGIN = "https://submission-bot.3353745917.workers.dev"
+# 网页投稿审核的共享密钥，**必须和投稿机器人 Worker 上的 REVIEW_API_SECRET 完全
+# 相同**。浏览器永远拿不到它：后台先验证管理员会话，再由本站 Worker 带上
+# `x-review-secret` 转发给 /api/admin/review/*（见 src/http/admin/web-submission.ts）。
+#
+# 没配 = 后台的「网页投稿」页面明确报 503，而不是退化成"无鉴权也能转发"。要配就
+# 两边一起配，只配一边的表现是 401/503（对方的密钥为空或对不上）。
+#
+# 用 secret 存，不要写进这个文件：
+#   npx wrangler secret put WEB_REVIEW_SECRET    # 本站（管理员账号 ed1957…）
+#   # 投稿机器人那边（另一个 Cloudflare 账号 fb8f4c…）：
+#   #   REVIEW_API_SECRET 必须填同一个值，见 /home/emo/code/bot/README.md
 # Canonical origin for user-facing links (Telegram buttons, admin login deep
 # link, og: metadata). The webhook deliberately keeps arriving on the
 # workers.dev hostname, so without this pin the bot would keep handing users

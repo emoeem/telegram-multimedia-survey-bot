@@ -346,3 +346,96 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
     expect(body.reportUrl).toContain("/report/42?t=");
   });
 });
+
+/**
+ * 全局每日配额闸门：按 `global` 身份计数，与 `cf-connecting-ip` 完全无关。
+ *
+ * 这是计费保护，不是反爬。按 IP 的限流（20 次/分钟）在换出口 IP 后归零，
+ * 而 Stream Basic 按分钟计费、R2 按字节计费——被多 IP 轮换刷穿时账单是真钱。
+ */
+describe("global daily quota gates (billing protection)", () => {
+  /** KV mock：只让目标 bucket 命中 `used`，其余 bucket 一律当 0（避免误伤 IP 限流）。 */
+  function makeQuotaEnv(quotaBucket: string, used: number | null, extra: Partial<Env> = {}) {
+    const written: string[] = [];
+    const cache = {
+      get: async (key: string) => {
+        if (!key.includes(`:${quotaBucket}:`)) return null;
+        return used === null ? null : String(used);
+      },
+      put: async (key: string) => {
+        if (key.includes(`:${quotaBucket}:`)) written.push(key);
+      },
+    } as unknown as KVNamespace;
+    const env = {
+      DB: {} as D1Database,
+      BOT_TOKEN: "test-token",
+      WEBHOOK_SECRET: "quota-test-secret",
+      ADMIN_IDS: "",
+      MEDIA_KV: { put: async () => undefined, get: async () => null } as unknown as KVNamespace,
+      CACHE: cache,
+      EXPORT_QUEUE: { send: async () => undefined } as unknown as Queue,
+      ...extra,
+    } as unknown as Env;
+    return { env, written };
+  }
+
+  function streamTicketRequest(ip: string): Request {
+    return makeRequest("/api/survey/999/media/stream-ticket", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ kind: "video" }),
+    });
+  }
+
+  it("Stream 凭证：全局 30 张/天打满后，任意来源 IP 一律 429", async () => {
+    const { env } = makeQuotaEnv("stream-ticket-daily", 30, {
+      STREAM_ACCOUNT_ID: "acct",
+      STREAM_API_TOKEN: "stream-token",
+    });
+    for (const ip of ["203.0.113.7", "198.51.100.9", "192.0.2.44"]) {
+      const response = await handleSurveyApiRequest(
+        streamTicketRequest(ip),
+        env,
+        new URL("https://worker.test/api/survey/999/media/stream-ticket"),
+      );
+      expect(response?.status).toBe(429);
+      const body = (await response?.json()) as { code?: string };
+      expect(body.code).toBe("stream_daily_limit");
+    }
+  });
+
+  it("Stream 凭证：计数键落在 global 桶、不含请求 IP（换 IP 不重置配额）", async () => {
+    const db = createSqliteD1(fullMigrationSchema());
+    const { env, written } = makeQuotaEnv("stream-ticket-daily", null, {
+      DB: db,
+      STREAM_ACCOUNT_ID: "acct",
+      STREAM_API_TOKEN: "stream-token",
+    });
+    const response = await handleSurveyApiRequest(
+      streamTicketRequest("203.0.113.7"),
+      env,
+      new URL("https://worker.test/api/survey/999/media/stream-ticket"),
+    );
+    // 未打满 ⇒ 放行到业务层（问卷 999 不存在 → 404，而不是 429）
+    expect(response?.status).not.toBe(429);
+    expect(written.length).toBe(1);
+    expect(written[0]).toContain(":stream-ticket-daily:global:");
+    expect(written[0]).not.toContain("203.0.113.7");
+  });
+
+  it("普通上传：全局 300 次/天打满后拒绝", async () => {
+    const { env } = makeQuotaEnv("media-upload-daily", 300);
+    const response = await handleSurveyApiRequest(
+      makeRequest("/api/survey/999/media", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.7" },
+        body: "irrelevant",
+      }),
+      env,
+      new URL("https://worker.test/api/survey/999/media"),
+    );
+    expect(response?.status).toBe(429);
+    const body = (await response?.json()) as { code?: string };
+    expect(body.code).toBe("media_daily_limit");
+  });
+});

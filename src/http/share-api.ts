@@ -6,6 +6,7 @@ import { getResultProfileByResponseId } from "../db/repositories/result-profile.
 import { deserializeResultProfile } from "../services/result-engine.service";
 import puppeteer from "@cloudflare/puppeteer";
 import { RESULT_VISUAL_FONT } from "../services/result-visual-font";
+import { resolvePublicOrigin } from "../services/public-origin.service";
 
 /**
  * 报告分享卡的公开面（0081）：`/r/:token` 结局卡页 + `/r/:token/og.png`。
@@ -298,7 +299,10 @@ export async function handleSharePageRequest(request: Request, env: Env, url: UR
     .run()
     .catch(() => undefined);
 
-  const origin = new URL(request.url).origin;
+  // og:image 与页面里的绝对链接必须落在 PUBLIC_ORIGIN（国内域名）上：
+  // 中继会把 Host 改写成源站域名，直接用 url.origin 会让分享卡片的图
+  // 指回国内打不开的 emoe.eu.cc，微信/Telegram 抓取时取不到图。
+  const origin = resolvePublicOrigin(env, new URL(request.url).origin);
   return htmlResponse(buildSharePageHtml(view, `${origin}/r/${share.token}/og.png`, origin), "public, max-age=60");
 }
 
@@ -411,7 +415,8 @@ async function serveProfileSharePage(env: Env, url: URL, token: string, isOg: bo
       404,
     );
   }
-  const base = url.origin;
+  // 同上：画像分享页的 og:image / 绝对链接一律取 PUBLIC_ORIGIN。
+  const base = resolvePublicOrigin(env, url.origin);
   const ogUrl = `${base}/u/${profile.token}/og.png`;
   if (isOg) {
     const png = await getOrRenderProfileOg(env, profile);

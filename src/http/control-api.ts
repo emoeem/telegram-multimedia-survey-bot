@@ -30,9 +30,10 @@ import {
   upsertDefaultPublicationTarget,
 } from "../db/repositories/publication-target.repository";
 import { isLicenseCenter } from "../services/deployment-role.service";
-import { resolveCertShareChannel } from "./cert-share";
+import { isCertShareDisabled, resolveCertShareChannel } from "./cert-share";
 import { resolveReportChannel } from "../services/report-delivery.service";
 import { saveSystemSetting } from "../services/system-settings.service";
+import { resolvePublicOrigin } from "../services/public-origin.service";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const text = (v: unknown, name: string, min = 1, max = 256) => {
@@ -76,6 +77,7 @@ export async function handleControlApiRequest(
     DEPLOYMENT_ROLE?: string;
     CACHE?: KVNamespace | null;
     REPORT_CHANNEL_ID?: string | null;
+    PUBLIC_ORIGIN?: string;
   },
   auth: { isAdmin: boolean; userId: number | null },
 ): Promise<Response | null> {
@@ -153,7 +155,9 @@ export async function handleControlApiRequest(
         adminIds,
         botToken,
         licenseKey: license.licenseKey,
-        licenseServerUrl: new URL(request.url).origin,
+        // 客户 Worker 将来回调授权中心用的地址：必须是国内可达的 PUBLIC_ORIGIN，
+        // 而不是 vendor 这次请求碰巧到达的 Host（中继场景下那是 emoe.eu.cc）。
+        licenseServerUrl: resolvePublicOrigin(env, url.origin),
         workerName,
         installationId,
         accountId,
@@ -329,6 +333,9 @@ export async function handleControlApiRequest(
         certShare: certShare
           ? { name: "认证卡作品频道", chatId: String(certShare.chatId), source: certShare.source }
           : null,
+        // 「功能被全局关掉」和「什么都没配」都解析成 null，但对管理员是两件事：
+        // 前者要去改 CERT_SHARE_DISABLED，后者要去填频道。面板靠这个字段区分。
+        certShareDisabled: isCertShareDisabled(env),
       });
     }
     if (

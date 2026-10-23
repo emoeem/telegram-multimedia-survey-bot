@@ -9,6 +9,7 @@ import { renderReportPdf } from "../services/report/pdf";
 import { REPORT_TEMPLATES } from "../services/report/template";
 import { resolveReportTemplate } from "../services/report/template-resolver";
 import { verifyReportAccessToken } from "../services/report-access-token.service";
+import { resolvePublicOrigin } from "../services/public-origin.service";
 import {
   atomicRateLimitWindow,
   buildAtomicRateLimitStatement,
@@ -187,7 +188,9 @@ async function serveReportPdf(request: Request, env: Env, url: URL, responseId: 
   }
 
   const reportPageUrl = (() => {
-    const target = new URL(`/report/${responseId}`, url.origin);
+    // 报告下载完成后跳回的页面链接：走 PUBLIC_ORIGIN，而不是请求到达的 Host。
+    // 中继会把 Host 改写成源站域名，用 url.origin 会把用户甩回国内打不开的地址。
+    const target = new URL(`/report/${responseId}`, resolvePublicOrigin(env, url.origin));
     if (token) target.searchParams.set("t", token);
     return target.toString();
   })();

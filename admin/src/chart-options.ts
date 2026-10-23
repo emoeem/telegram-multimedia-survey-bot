@@ -31,10 +31,25 @@ function percentPosition(value: number | string): string {
   return value;
 }
 
-/** 扇区描边跟随主题表面色（亮色是白、暗色是深表面），构建时读一次。 */
+/**
+ * 扇区描边跟随主题表面色（亮色是白、暗色是深表面），构建时读一次。
+ *
+ * 这里刻意不直接引用 `document` / `getComputedStyle` 全局名：本模块被两个
+ * tsconfig 各编译一次——`admin/tsconfig.json`（含 DOM lib）和根
+ * `tsconfig.json`（WebWorker lib，因为 `tests/unit/admin/donut-option.test.ts`
+ * 直接 import 了它）。若为了让根配置通过而补上 DOM lib，Worker 侧误用
+ * `document` 就不再报错，代价比这里绕一层大得多。
+ * 所以改成运行时能力探测 + 本地结构化类型，两套 lib 下行为完全一致。
+ */
 function surfaceColor(): string {
-  if (typeof document === "undefined") return "#ffffff";
-  return getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#ffffff";
+  const g = globalThis as unknown as {
+    document?: { documentElement: unknown };
+    getComputedStyle?: (el: unknown) => { getPropertyValue(name: string): string };
+  };
+  if (typeof g.document === "undefined" || typeof g.getComputedStyle !== "function") {
+    return "#ffffff";
+  }
+  return g.getComputedStyle(g.document.documentElement).getPropertyValue("--surface").trim() || "#ffffff";
 }
 
 export function donutOption(slices: DonutSlice[], opts: DonutOptions = {}) {
