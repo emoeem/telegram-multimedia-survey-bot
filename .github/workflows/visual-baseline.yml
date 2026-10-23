@@ -48,8 +48,5 @@ jobs:
             echo "基线无变化，无需提交"
             exit 0
           fi
-          git commit -m "test(visual): 在 CI 字体环境更新截图基线
-
-本地字体集与 ubuntu-latest + fonts-noto-cjk 不同，本地生成的基线会在 CI
-上整体失败，因此基线只允许由本工作流生成。"
+          git commit -m "test(visual): 在 CI 字体环境更新截图基线（本地字体与 CI 不同，基线只能由本工作流生成）"
           git push
