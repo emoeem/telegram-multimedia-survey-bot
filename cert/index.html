@@ -206,8 +206,16 @@
           <canvas id="card" width="1012" height="638"></canvas>
         </div>
         <p class="stage-foot">
-          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 默认只在本地浏览器保存（勾选「同步到作品频道」后会上传）
+          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 图片保存在你自己的设备上
         </p>
+        <!-- 投稿入口。同步到作品频道已改为静默：导出即同步，不再提供勾选框。
+             要做成可关闭的，把同步勾选框（fShare）加回这一行即可 —— app.js 的
+             shareOptIn() 会在找到开关时改以勾选状态为准。 -->
+        <div class="publish-row">
+          <a class="publish-link" id="submitLink" href="/submissions" target="_blank" rel="noopener">
+            一键投稿 →
+          </a>
+        </div>
       </section>
     </main>
 
@@ -219,6 +227,20 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- 导出后的投稿提示：只在真的导出/复制成功后弹一次，不拦操作。
+         点「知道了」或点遮罩即关闭，本浏览器不再重复弹。 -->
+    <div id="publishPrompt" class="publish-prompt" hidden role="dialog" aria-label="投稿提示">
+      <div class="publish-card">
+        <strong id="publishTitle">卡做好了</strong>
+        <p id="publishDesc">图片已保存到你的设备。</p>
+        <div class="publish-actions">
+          <a class="btn primary" id="publishSubmit" href="/submissions" target="_blank" rel="noopener">去投稿</a>
+          <button class="btn ghost" id="publishClose" type="button">知道了</button>
+        </div>
+        <p class="publish-note">投稿时把刚下载的图片选上去就行</p>
+      </div>
+    </div>
 
     <!-- 主题选择面板（与问卷主页同一套预设，选择双向同步） -->
     <div id="themeSheet" class="theme-sheet" hidden>

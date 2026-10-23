@@ -105,6 +105,8 @@ export function ControlCenterPage() {
   const [showArchive, setShowArchive] = useState(false);
   const [archiveChatId, setArchiveChatId] = useState("");
   const [certShare, setCertShare] = useState<PublicationCertShareView | null>(null);
+  /** true = 部署环境变量把整个功能关了，此时 certShare 恒为 null。 */
+  const [certShareDisabled, setCertShareDisabled] = useState(false);
   const [showCertShare, setShowCertShare] = useState(false);
   const [certShareChatId, setCertShareChatId] = useState("");
   const [selected, setSelected] = useState<DeploymentView | null>(null);
@@ -142,12 +144,14 @@ export function ControlCenterPage() {
           items: PublicationTargetView[];
           archive: PublicationArchiveView | null;
           certShare: PublicationCertShareView | null;
+          certShareDisabled?: boolean;
         }>("/api/control/publication-targets"),
       ]);
       setDeployments(d.items);
       setTargets(t.items);
       setArchive(t.archive ?? null);
       setCertShare(t.certShare ?? null);
+      setCertShareDisabled(!!t.certShareDisabled);
       if (selected) setSelected(d.items.find((item) => item.id === selected.id) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -536,14 +540,28 @@ export function ControlCenterPage() {
                   {certShare?.source === "archive" ? (
                     <span className="badge badge-ghost badge-sm">未单独配置</span>
                   ) : null}
+                  {certShareDisabled ? (
+                    <span className="badge badge-warning badge-sm">已全局停用</span>
+                  ) : null}
                 </div>
-                <div className="mt-2 text-sm opacity-70">Chat ID: {certShare?.chatId ?? "未配置"}</div>
+                <div className="mt-2 text-sm opacity-70">
+                  Chat ID: {certShareDisabled ? "—" : (certShare?.chatId ?? "未配置")}
+                </div>
                 <div className="text-sm opacity-70">
                   用户在认证卡生成器点「导出」时，成品图 + 用户自己上传的原图同步到这里。
                 </div>
                 <div className="mt-1 text-xs opacity-50">
-                  来源：{certShare ? certShareSourceLabel[certShare.source] : "未配置"}
-                  {certShare?.source === "archive" ? "，改归档频道即同步生效" : ""}
+                  {certShareDisabled ? (
+                    <>
+                      来源：部署环境变量 <code>CERT_SHARE_DISABLED=true</code>
+                      —— 这一项优先级高于下面的频道配置，填了频道也不会发
+                    </>
+                  ) : (
+                    <>
+                      来源：{certShare ? certShareSourceLabel[certShare.source] : "未配置"}
+                      {certShare?.source === "archive" ? "，改归档频道即同步生效" : ""}
+                    </>
+                  )}
                 </div>
               </div>
               <button
@@ -1110,7 +1128,11 @@ export function ControlCenterPage() {
               频道 ID 形如 -100xxxxxxxxxx。
             </p>
             <p className="text-xs text-[var(--color-muted)]">
-              当前：{certShare ? `${certShare.chatId}（${certShareSourceLabel[certShare.source]}）` : "未配置"}
+              当前：{certShareDisabled
+                ? "已全局停用（CERT_SHARE_DISABLED=true），保存频道不会生效"
+                : certShare
+                  ? `${certShare.chatId}（${certShareSourceLabel[certShare.source]}）`
+                  : "未配置"}
             </p>
             <input
               className="input w-full font-mono"

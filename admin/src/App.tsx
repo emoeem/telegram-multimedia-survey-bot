@@ -39,6 +39,9 @@ const ControlCenterPage = lazy(() =>
   import("./routes/ControlCenterPage").then((m) => ({ default: m.ControlCenterPage })),
 );
 const PlazaPostsPage = lazy(() => import("./routes/PlazaPostsPage").then((m) => ({ default: m.PlazaPostsPage })));
+const WebSubmissionsPage = lazy(() =>
+  import("./routes/WebSubmissionsPage").then((m) => ({ default: m.WebSubmissionsPage })),
+);
 const ProfileGalleryPage = lazy(() =>
   import("./routes/ProfileGalleryPage").then((m) => ({ default: m.ProfileGalleryPage })),
 );
@@ -83,6 +86,7 @@ const router = createBrowserRouter(
         { path: "templates", element: lazyElement(<TemplatesPage />) },
         { path: "cert-content", element: lazyElement(<CertContentPage />) },
         { path: "plaza", element: lazyElement(<PlazaPostsPage />) },
+        { path: "web-submissions", element: lazyElement(<WebSubmissionsPage />) },
         { path: "profile-gallery", element: lazyElement(<ProfileGalleryPage />) },
         { path: "showcase", element: lazyElement(<ShowcasePage />) },
         { path: "trash", element: lazyElement(<TrashPage />) },

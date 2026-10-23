@@ -23,6 +23,7 @@ import {
   ServerCog,
   Sprout,
   Images,
+  Inbox,
   Tags,
   Users,
   type LucideIcon,
@@ -61,6 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
     collapsible: true,
     items: [
       { to: "/coin-economy", icon: Coins, label: "金币经济" },
+      { to: "/web-submissions", icon: Inbox, label: "网页投稿" },
       { to: "/users", icon: Users, label: "用户" },
       { to: "/reports", icon: Package, label: "报告" },
       { to: "/templates", icon: Palette, label: "模板" },
@@ -350,6 +352,7 @@ export function Layout() {
     if (path.startsWith("/users")) return "用户目录";
     if (path.startsWith("/reports")) return "报告归档";
     if (path.startsWith("/templates")) return "报告模板";
+    if (path.startsWith("/web-submissions")) return "网页投稿审核";
     if (path.startsWith("/plaza")) return "树洞";
     if (path.startsWith("/profile-gallery")) return "个人画廊";
     if (path.startsWith("/showcase")) return "展示区";

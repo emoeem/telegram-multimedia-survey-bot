@@ -37,6 +37,7 @@ import {
   saveSystemSetting,
 } from "../../services/system-settings.service";
 import { handleControlApiRequest } from "../control-api";
+import { handleWebSubmissionAdmin } from "./web-submission";
 import { handleCoinAdminApi } from "./coin-admin";
 import { handleAdminTrashRead, handleAdminTrashWrite } from "./trash";
 import { PLAN_FALLBACK_NOTES, resolvePlanCapabilities } from "../../services/plan.service";
@@ -382,6 +383,12 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     });
     return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
   }
+
+  // 网页投稿（免登录投稿）的审核：带共享密钥转到投稿机器人 Worker 的
+  // /api/admin/review/*。和金币投稿（/api/admin/submissions）是两套数据，
+  // 路径刻意不同前缀，避免 startsWith 互相吃掉。
+  const webSubmissionResponse = await handleWebSubmissionAdmin(request, url, env, { isAdmin, fail, json });
+  if (webSubmissionResponse) return webSubmissionResponse;
 
   if (
     url.pathname.startsWith("/api/admin/coins") ||

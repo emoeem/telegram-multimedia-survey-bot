@@ -78,6 +78,11 @@ html = html.replace(/<a class="btn primary" href="cert\.html"[^>]*>[^<]*<\/a>\s*
 const siteOrigin = new URL(SHARE_BASE).origin;
 html = html.replace(/(<a class="home-link" href=")\/(")/, `$1${siteOrigin}/s$2`);
 
+/* 4c. 其余站内根路径链接同理（如「一键投稿 →」指向 /submissions）。
+ *     做成通用规则而不是逐条列举：以后页面里再加 href="/xxx"，不用回来改脚本。
+ *     不匹配 "//cdn…"（协议相对）和已经是 http(s) 的绝对地址。 */
+html = html.replace(/(href=")\/(?!\/)([^"]*)(")/g, (_m, open, path, close) => `${open}${siteOrigin}/${path}${close}`);
+
 /* 5. 自检：不能残留任何对本地文件的引用（只看标签层，脚本里的字符串不算） */
 const skeleton = html
   .replace(/<script[\s\S]*?<\/script>/gi, "<script></script>")
