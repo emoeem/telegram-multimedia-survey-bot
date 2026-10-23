@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "./PageHeader";
+import { prepareImageForPublish } from "../lib/image-publish";
 import {
   SURVEY_CARD,
   SURVEY_CHIP,
@@ -106,7 +107,7 @@ function formatTime(seconds: number): string {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export function SubmitScreen() {
+export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const viewer = useMemo(() => viewerToken(), []);
   const [form, setForm] = useState<SubmitFormDto | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -168,11 +169,18 @@ export function SubmitScreen() {
   const mediaStep = useMemo(() => form?.steps.find((step) => step.type === "media") ?? null, [form]);
 
   const addFiles = useCallback(
-    (incoming: File[]) => {
+    async (incoming: File[]) => {
       if (!form || !incoming.length) return;
       const limit = form.maxFiles;
       const maxBytes = form.maxFileMb * 1024 * 1024;
-      const merged = [...files, ...incoming].slice(0, limit);
+      // 图片先归一化（最长边 1600 / WebP）再判体积：这样「超过 N MB」判的是
+      // 真正要上传的字节，而不是手机原图的 sizeof。其余类型原样通过。
+      const prepared = await Promise.all(
+        incoming.map((file) =>
+          file.type.startsWith("image/") ? prepareImageForPublish(file) : Promise.resolve(file),
+        ),
+      );
+      const merged = [...files, ...prepared].slice(0, limit);
       const tooBig = merged.find((file) => file.size > maxBytes);
       if (tooBig) {
         setError([`「${tooBig.name}」超过 ${form.maxFileMb} MB，请压缩后再传`]);
@@ -255,7 +263,7 @@ export function SubmitScreen() {
             编号 #{done.id} ·{" "}
             {done.status === "published" ? "已发布，多谢投稿！" : "管理员审核通过后会发布"}
           </p>
-          <a className={`${BTN} mt-4`} href="/submit/inbox">
+          <a className={`${BTN} mt-4`} href="/submissions?tab=inbox">
             📬 打开我的投稿收件箱
           </a>
           <p className="mt-3 text-[12px] text-[var(--survey-muted)]">
@@ -269,26 +277,28 @@ export function SubmitScreen() {
     );
   }
 
+  /* embedded = 嵌在 /submissions 投稿中心里：外壳与顶栏由投稿中心提供，
+   * 这里只出表单本体，避免出现两个 PageHeader 和一个多余的 min-h-dvh
+   * （那会在 tab 之间切换时把页面高度顶得跳一下）。 */
   return (
-    <div className="survey-glow min-h-dvh">
-      <PageHeader
-        title={form?.title ?? "📮 投稿"}
-        subtitle="不用注册 · 审核通过后发布"
-        actions={
-          <>
-            {/* /submit 是独立表单页（没有底部全局导航），所以认证卡入口放在
-                顶栏，和收件箱同一套 .survey-header-pill；窄屏 ≤360px 只剩
-                图标，不会把标题挤掉。 */}
-            <a className="survey-header-pill" href="/cert/" aria-label="认证卡生成器" title="认证卡生成器">
-              🪪<span className="pill-text"> 认证卡</span>
-            </a>
-            <a className="survey-header-pill" href="/submit/inbox" aria-label="我的投稿收件箱">
-              📬<span className="pill-text"> 收件箱</span>
-            </a>
-          </>
-        }
-      />
-      <main className={`${SURVEY_PAGE} pb-32 pt-3`}>
+    <div className={embedded ? "" : "survey-glow min-h-dvh"}>
+      {embedded ? null : (
+        <PageHeader
+          title={form?.title ?? "📮 投稿"}
+          subtitle="不用注册 · 审核通过后发布"
+          actions={
+            <>
+              <a className="survey-header-pill" href="/cert/" aria-label="认证卡生成器" title="认证卡生成器">
+                🪪<span className="pill-text"> 认证卡</span>
+              </a>
+              <a className="survey-header-pill" href="/submissions?tab=inbox" aria-label="我的投稿收件箱">
+                📬<span className="pill-text"> 收件箱</span>
+              </a>
+            </>
+          }
+        />
+      )}
+      <main className={`${SURVEY_PAGE} ${embedded ? "pb-28 pt-1" : "pb-32 pt-3"}`}>
         <p className="mb-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-muted)]">
           {form?.intro ?? "正在加载投稿表单…"}
         </p>
@@ -388,7 +398,7 @@ export function SubmitScreen() {
                 onDrop={(event) => {
                   event.preventDefault();
                   setDragging(false);
-                  addFiles(Array.from(event.dataTransfer.files));
+                  void addFiles(Array.from(event.dataTransfer.files));
                 }}
               >
                 {/* 移动端没有拖拽：整块都是点击入口，拖拽文案只作提示 */}
@@ -401,7 +411,7 @@ export function SubmitScreen() {
                   accept="image/*,video/*"
                   className="hidden"
                   multiple
-                  onChange={(event) => addFiles(Array.from(event.target.files ?? []))}
+                  onChange={(event) => void addFiles(Array.from(event.target.files ?? []))}
                   ref={fileInput}
                   type="file"
                 />
@@ -482,7 +492,7 @@ export function SubmitScreen() {
   );
 }
 
-export function SubmitInboxScreen() {
+export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const viewer = useMemo(() => viewerToken(), []);
   const [items, setItems] = useState<InboxItemDto[] | null>(null);
   const [error, setError] = useState("");
@@ -527,17 +537,19 @@ export function SubmitInboxScreen() {
   );
 
   return (
-    <div className="survey-glow min-h-dvh">
-      <PageHeader
-        title="📬 我的投稿"
-        subtitle="进度 · 评论 · 管理员留言"
-        actions={
-          <a className="survey-header-pill" href="/submit">
-            ✍️<span className="pill-text"> 再投一稿</span>
-          </a>
-        }
-      />
-      <main className={`${SURVEY_PAGE} pb-8 pt-3`}>
+    <div className={embedded ? "" : "survey-glow min-h-dvh"}>
+      {embedded ? null : (
+        <PageHeader
+          title="📬 我的投稿"
+          subtitle="进度 · 评论 · 管理员留言"
+          actions={
+            <a className="survey-header-pill" href="/submissions?tab=anon">
+              ✍️<span className="pill-text"> 再投一稿</span>
+            </a>
+          }
+        />
+      )}
+      <main className={`${SURVEY_PAGE} ${embedded ? "pb-8 pt-1" : "pb-8 pt-3"}`}>
         <p className="mb-1 text-[13px] leading-6 text-[var(--survey-muted)]">
           这里能看到你投过的稿、审核进度、别人的评论（可直接回复）和管理员留言。
         </p>
@@ -550,7 +562,7 @@ export function SubmitInboxScreen() {
       ) : items.length === 0 ? (
         <div className={`${CARD} mt-4 p-5 text-center`}>
           <p className="text-[13px] text-[var(--survey-muted)]">这个浏览器还没有投稿记录。</p>
-          <a className={`${BTN} mt-3`} href="/submit">
+          <a className={`${BTN} mt-3`} href="/submissions?tab=anon">
             去投稿
           </a>
         </div>

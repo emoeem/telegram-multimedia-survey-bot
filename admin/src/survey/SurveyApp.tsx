@@ -73,6 +73,7 @@ import { safeGet, safeSet } from "./storage";
 import { AnswerSaveQueue } from "./save-queue";
 import { collectQuestionImageUrls, preloadImages } from "./media-preload";
 import { submissionTargetFromUrl } from "./submission-target";
+import { prepareImageForPublish } from "../lib/image-publish";
 
 /**
  * 非答题界面的按需加载。
@@ -87,18 +88,30 @@ const PlazaScreen = lazy(() => import("./PlazaScreen").then((m) => ({ default: m
 const MyScreen = lazy(() => import("./MyScreen").then((m) => ({ default: m.MyScreen })));
 const CoinsScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinsScreen })));
 const GachaScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.GachaScreen })));
-const SubmissionsScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.SubmissionsScreen })));
+/* 投稿中心：把原来分开的 /submit（免登录）与 /submissions（金币）收进一个页面。
+ * 旧的 /submit 与 /submit/inbox 现在重定向到对应页签，见下方 RedirectTo。 */
+const SubmissionHub = lazy(() => import("./SubmissionHub").then((m) => ({ default: m.SubmissionHub })));
 const CoinGateScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinGateScreen })));
 const ShowcaseScreen = lazy(() => import("./ShowcaseScreen").then((m) => ({ default: m.ShowcaseScreen })));
 const TrialScreen = lazy(() => import("./TrialScreen").then((m) => ({ default: m.TrialScreen })));
-const SubmitScreen = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitScreen })));
-const SubmitInboxScreen = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitInboxScreen })));
+/** 旧路径 → 投稿中心页签。
+ *
+ * 用 `location.replace` 而不是 pushState：这两条旧地址不是「上一步」，用户从
+ * 群里点旧链接进来后按后退应该离开投稿页，而不是退回到一个立刻又跳走的空壳。
+ */
+function RedirectTo({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+  return (
+    <div className="grid min-h-dvh place-items-center text-sm text-[var(--survey-muted)]">正在打开投稿中心…</div>
+  );
+}
 const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
-function LazyScreen({ children }: { children: React.ReactNode }) {
-  return (
+function LazyScreen({ children }: { children: React.ReactNode }) {  return (
     <Suspense
       fallback={
         <div className="grid min-h-dvh place-items-center text-sm text-[var(--color-muted)]">加载中…</div>
@@ -1871,12 +1884,16 @@ function QuestionAnswer({ question, value, onChange, disabled, streamVideo }: Qu
                 if (!file) return;
                 setUploading(true);
                 try {
+                  // 图片先归一化（最长边 1600 / WebP）：与投稿图、树洞配图、
+                  // 认证卡共用 admin/src/lib/image-publish.ts 的同一套参数。
+                  // 音视频和文档原样上传——重编码会毁掉它们。
+                  const upload = file.type.startsWith("image/") ? await prepareImageForPublish(file) : file;
                   // Pro 部署（问卷定义带 streamVideo 位）且是音视频：浏览器直传
                   // Cloudflare Stream，绕开 Worker 20MB；其余走原 KV 上传。
-                  const useStream = Boolean(streamVideo) && /\/(video|audio)\//.test(file.type);
+                  const useStream = Boolean(streamVideo) && /\/(video|audio)\//.test(upload.type);
                   const result = useStream
-                    ? await uploadAnswerMediaViaStream(surveyIdFromPath(), file)
-                    : await uploadAnswerMedia(surveyIdFromPath(), file, question.id);
+                    ? await uploadAnswerMediaViaStream(surveyIdFromPath(), upload)
+                    : await uploadAnswerMedia(surveyIdFromPath(), upload, question.id);
                   onChange({ mediaAssetId: result.mediaAssetId });
                 } catch (error) {
                   toast({ message: error instanceof Error ? error.message : "上传失败", variant: "error" });
@@ -2014,7 +2031,7 @@ export function SurveyApp() {
   if (window.location.pathname === "/submissions" || window.location.pathname.startsWith("/submissions/")) {
     return (
       <LazyScreen>
-        <SubmissionsScreen />
+        <SubmissionHub />
       </LazyScreen>
     );
   }
@@ -2034,21 +2051,14 @@ export function SurveyApp() {
       </LazyScreen>
     );
   }
-  // 网页投稿（不用 Telegram）：表单 + 投稿者收件箱。接口在投稿机器人 worker 上，
-  // 同域经 cn-relay 反代，所以这里直接 fetch /api/submit*。
+  // 旧的两条投稿路径已经并进 /submissions 投稿中心（见 SubmissionHub）。
+  // 这里保留重定向而不是删分支：/submit 作为投稿入口被配置在
+  // SUBMISSION_BOT_URL 里、也被发进过群和邮件，直接删会让人撞到白屏。
   if (window.location.pathname === "/submit/inbox" || window.location.pathname.startsWith("/submit/inbox/")) {
-    return (
-      <LazyScreen>
-        <SubmitInboxScreen />
-      </LazyScreen>
-    );
+    return <RedirectTo to="/submissions?tab=inbox" />;
   }
-  if (window.location.pathname === "/submit" || window.location.pathname === "/submit/") {
-    return (
-      <LazyScreen>
-        <SubmitScreen />
-      </LazyScreen>
-    );
+  if (window.location.pathname === "/submit" || window.location.pathname.startsWith("/submit/")) {
+    return <RedirectTo to="/submissions?tab=anon" />;
   }
   // Email account login/registration for visitors without Telegram.
   if (window.location.pathname === "/auth" || window.location.pathname.startsWith("/auth/")) {

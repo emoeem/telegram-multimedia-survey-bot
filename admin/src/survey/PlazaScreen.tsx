@@ -28,6 +28,7 @@ import {
   type PlazaTopic,
 } from "./plaza-api";
 import { submissionTargetFromUrl } from "./submission-target";
+import { prepareImageForPublish } from "../lib/image-publish";
 
 type Tab = "treehole" | "profiles";
 
@@ -624,11 +625,14 @@ export function PlazaScreen() {
     setComposerMessage(null);
     setImageBusy(true);
     try {
-      const uploaded = await uploadPlazaImage(file);
+      // 与投稿图、答卷附件、认证卡同一套归一化（最长边 1600 / WebP）。
+      // 预览也用压缩后的文件：省一次解码，手机端明显更快。
+      const upload = await prepareImageForPublish(file);
+      const uploaded = await uploadPlazaImage(upload);
       setImageAssetId(uploaded.mediaAssetId);
       setImagePreview((previous) => {
         if (previous) URL.revokeObjectURL(previous);
-        return URL.createObjectURL(file);
+        return URL.createObjectURL(upload);
       });
     } catch (error) {
       setComposerMessage(error instanceof Error ? error.message : "图片上传失败");

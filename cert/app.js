@@ -1645,23 +1645,40 @@
   /* ------------------------------------------------------------------ *
    * 事件
    * ------------------------------------------------------------------ */
-  function fileName() {
+  /**
+   * 导出文件名。扩展名跟着 blob 的真实类型走——卡图现在优先导出 WebP，
+   * 名字还写 .png 的话，用户下载下来双击会被系统当成损坏文件。
+   */
+  function fileName(mime) {
+    var ext = "png";
+    if (mime === "image/webp") ext = "webp";
+    else if (mime === "image/jpeg") ext = "jpg";
     var parts = ["认证卡"];
     if (state.shared.name) parts.push(state.shared.name);
     if (state.shared.no) parts.push(state.shared.no);
-    return parts.join("-").replace(/[\\/:*?"<>|]/g, "_") + ".png";
+    return parts.join("-").replace(/[\\/:*?"<>|]/g, "_") + "." + ext;
+  }
+
+  /** 原图附件扩展名：跟着实际编码走，避免 Telegram 收到 .png 的 WebP 字节。 */
+  function sourceExt(mime) {
+    if (mime === "image/webp") return ".webp";
+    if (mime === "image/jpeg") return ".jpg";
+    return ".png";
   }
 
   /* ------------------------------------------------------------------ *
-   * 完成制作时同步到作者频道
+   * 完成制作时同步到作品频道 + 导出后的投稿提示
    *
-   * 两条原则（与 src/http/cert-share.ts 的注释对应）：
-   *   - 默认关闭：服务端没配频道时 probe 返回 enabled=false，这里什么都不做；
-   *   - 失败静默：导出已经成功了，同步只是旁路，失败只写 console.warn。
-   *
-   * 点「导出」即上传，不弹窗、不落 localStorage：作者频道是这个生成器的默认去向。
+   * 三条原则（与 src/http/cert-share.ts 的注释对应）：
+   *   - 静默同步：界面不再提供勾选框，导出即上传（产品决定）；
+   *     若将来把同步勾选框（fShare）加回界面，shareOptIn() 会自动改以
+   *     勾选状态为准，不需要动这里的其他逻辑；
+   *   - 失败静默：导出已经成功了，同步只是旁路，失败只写 console.warn；
+   *   - 提示只弹一次：导出/复制成功后出现一次（本浏览器），之后靠页面里
+   *     常驻的「一键投稿 →」链接，不再打扰。
    * ------------------------------------------------------------------ */
   var shareEnabled = null;
+  var PUBLISH_PROMPT_KEY = "cert-card-maker:publish-prompt:v1";
 
   async function shareAvailable() {
     if (shareEnabled !== null) return shareEnabled;
@@ -1673,6 +1690,112 @@
       shareEnabled = false;
     }
     return shareEnabled;
+  }
+
+  function publishPromptSeen() {
+    try {
+      return localStorage.getItem(PUBLISH_PROMPT_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function markPublishPromptSeen() {
+    try {
+      localStorage.setItem(PUBLISH_PROMPT_KEY, "1");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  /** 导出成功后的投稿提示。只弹一次，之后不再打扰。 */
+  function showPublishPrompt() {
+    if (publishPromptSeen()) return;
+    var el = $("publishPrompt");
+    if (!el) return;
+    el.hidden = false;
+    markPublishPromptSeen();
+  }
+
+  function closePublishPrompt() {
+    var el = $("publishPrompt");
+    if (el) el.hidden = true;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 上传前的图片归一化 —— 与 admin/src/lib/image-publish.ts 同一套参数。
+   *
+   * cert/ 是零依赖的离线单文件（还要被 scripts/build-cert-single.mjs 内联），
+   * 不能 import React 那边的模块，所以这里保留一份同参数实现。
+   * tests/unit/media/image-publish-parity.test.ts 会读这两个文件并断言常量
+   * 一致——改一边不改另一边，测试直接红。
+   * ------------------------------------------------------------------ */
+  var PUBLISH_MAX_EDGE = 1600;
+  var PUBLISH_QUALITY = 0.86;
+  var PUBLISH_MIME = "image/webp";
+  var PUBLISH_SKIP_UNDER_BYTES = 320 * 1024;
+  /** 卡面是渲染产物，比照片更吃质量，所以导出质量单独一档。 */
+  var CARD_EXPORT_QUALITY = 0.92;
+
+  /**
+   * 超过最长边或体积阈值才重编码；任何一步失败都返回原 blob。
+   * 与原图比较后取更小的那个——压缩绝不该让上传变大。
+   */
+  function normalizeForPublish(blob) {
+    if (
+      !blob ||
+      !/^image\//.test(blob.type || "") ||
+      blob.type === "image/gif" ||
+      blob.type === "image/svg+xml" ||
+      typeof createImageBitmap !== "function"
+    ) {
+      return Promise.resolve(blob);
+    }
+    return createImageBitmap(blob)
+      .then(function (bitmap) {
+        var edge = Math.max(bitmap.width, bitmap.height);
+        function release() {
+          if (bitmap.close) bitmap.close();
+        }
+        if (edge <= PUBLISH_MAX_EDGE && blob.size <= PUBLISH_SKIP_UNDER_BYTES) {
+          release();
+          return blob;
+        }
+        var scale = Math.min(1, PUBLISH_MAX_EDGE / edge);
+        var w = Math.max(1, Math.round(bitmap.width * scale));
+        var h = Math.max(1, Math.round(bitmap.height * scale));
+        var canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) {
+          release();
+          return blob;
+        }
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        release();
+        return new Promise(function (resolve) {
+          canvas.toBlob(
+            function (out) {
+              resolve(out && out.size < blob.size ? out : blob);
+            },
+            PUBLISH_MIME,
+            PUBLISH_QUALITY
+          );
+        });
+      })
+      .catch(function () {
+        return blob;
+      });
+  }
+
+  /** 卡图导出：优先 WebP（同画质小一个量级），不支持就退回 PNG。 */
+  function exportCardBlob(done) {
+    var card = $("card");
+    card.toBlob(function (blob) {
+      if (blob) return done(blob);
+      card.toBlob(done, "image/png");
+    }, PUBLISH_MIME, CARD_EXPORT_QUALITY);
   }
 
   /** 卡上正在展示的原图（按勾选顺序），取回字节用于上传 */
@@ -1687,6 +1810,9 @@
           .then(function (r) {
             return r.blob();
           })
+          .then(function (blob) {
+            return normalizeForPublish(blob);
+          })
           .catch(function () {
             return null;
           });
@@ -1695,18 +1821,18 @@
   }
 
   async function shareToChannel(cardBlob) {
-    /* 用户没勾「同步到作品频道」就一个字节都不发。
+    /* 用户取消了「同步一份到作品频道」就一个字节都不发。
      * 这是本文件唯一的上传出口，判断放在最前面，后面所有分支都不会绕过它。 */
     if (!shareOptIn()) return;
     if (!(await shareAvailable())) return;
 
     var form = new FormData();
-    form.append("card", cardBlob, fileName());
+    form.append("card", cardBlob, fileName(cardBlob.type));
     var blobs = await pickedPhotoBlobs();
     var n = 0;
     blobs.forEach(function (blob) {
       if (!blob) return;
-      form.append("source" + n, blob, "source-" + n + ".png");
+      form.append("source" + n, blob, "source-" + n + sourceExt(blob.type));
       n += 1;
     });
     form.append(
@@ -1734,21 +1860,24 @@
     }
   }
 
-  /** 延迟触发：先让下载/复制落地，再发上传，避免占住下载的事件循环 */
-  function scheduleShare(blob) {
-    if (!shareOptIn()) return;
-    setTimeout(function () {
-      shareToChannel(blob);
-    }, 300);
+  /** 延迟触发：先让下载/复制落地，再发上传，避免占住下载的事件循环。 */
+  async function scheduleShare(blob) {
+    if (shareOptIn() && (await shareAvailable())) {
+      setTimeout(function () {
+        shareToChannel(blob);
+      }, 300);
+    }
+    showPublishPrompt();
   }
 
-  /** 当前勾选状态。
-   * 界面上没有开关 = 用户从未表达过同意 = 不上传。
-   * 这里刻意不回退到 localStorage：存储只能证明「以前勾过」，
-   * 不能证明「这次同意」，上传这种一次性动作必须以当次界面状态为准。 */
+  /** 是否同步到作品频道。
+   *  界面已改为静默上传（不再有勾选框），所以「找不到开关」= 同步。
+   *  若将来把同步勾选框（fShare）加回界面，这里会自动改以勾选状态为准，
+   *  但刻意不回退到 localStorage：存储只能证明「以前勾过」，不能证明
+   *  「这次同意」，上传这种一次性动作必须以当次界面状态为准。 */
   function shareOptIn() {
     var box = $("fShare");
-    if (!box) return false;
+    if (!box) return true;
     return !!box.checked;
   }
 
@@ -1764,8 +1893,31 @@
       writeSigner($("fSigner").value.trim());
     });
 
-    /* 同步开关的 UI 已移除（见 index.html）：没有勾选框就没有同意，
-     * shareOptIn() 恒为 false，上传路径不可达。要恢复时把开关加回界面即可。 */
+    /* 预热一次服务端状态，让首次导出不必多等一次往返。
+     *
+     * 守卫保留：CDN 上 app.js 与 index.html 的缓存寿命不同步，可能短暂出现
+     * 「新 HTML（已无勾选框）+ 旧 JS」或反过来的组合。$("fShare") 为 null 时
+     * 直接 addEventListener 会抛错并中断整个 bind()，后面的输入框、按钮全部
+     * 失效。同步开关有没有都是可选的，不该有这种权力。 */
+    var shareBox = $("fShare");
+    if (shareBox) {
+      shareBox.addEventListener("change", function () {
+        if (shareBox.checked) shareAvailable();
+      });
+    }
+    shareAvailable();
+
+    var promptClose = $("publishClose");
+    if (promptClose) promptClose.addEventListener("click", closePublishPrompt);
+    /* 点「去投稿」也关掉弹窗：新标签页打开后回到本页时不该还被挡一层。 */
+    var promptSubmit = $("publishSubmit");
+    if (promptSubmit) promptSubmit.addEventListener("click", closePublishPrompt);
+    var promptEl = $("publishPrompt");
+    if (promptEl) {
+      promptEl.addEventListener("click", function (e) {
+        if (e.target === promptEl) closePublishPrompt();
+      });
+    }
 
     [
       ["fName", "name"],
@@ -1977,7 +2129,7 @@
       });
 
     $("downloadBtn").addEventListener("click", function () {
-      $("card").toBlob(function (blob) {
+      exportCardBlob(function (blob) {
         if (!blob) {
           toast("导出失败");
           return;
@@ -1985,16 +2137,16 @@
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = fileName();
+        a.download = fileName(blob.type);
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(function () {
           URL.revokeObjectURL(url);
         }, 1000);
-        toast("已导出 PNG");
+        toast(blob.type === "image/webp" ? "已导出 WebP" : "已导出 PNG");
         scheduleShare(blob);
-      }, "image/png");
+      });
     });
 
     $("copyBtn").addEventListener("click", function () {
@@ -2002,13 +2154,16 @@
         toast("当前浏览器不支持复制图片，请改用下载");
         return;
       }
-      $("card").toBlob(function (blob) {
+      exportCardBlob(function (blob) {
         if (!blob) {
           toast("复制失败");
           return;
         }
+        /* ClipboardItem 的键必须和 blob 的真实类型一致，否则浏览器直接拒写。 */
+        var item = {};
+        item[blob.type === "image/webp" ? "image/webp" : "image/png"] = blob;
         navigator.clipboard
-          .write([new window.ClipboardItem({ "image/png": blob })])
+          .write([new window.ClipboardItem(item)])
           .then(function () {
             toast("图片已复制到剪贴板");
             scheduleShare(blob);
@@ -2016,7 +2171,7 @@
           .catch(function () {
             toast("复制被浏览器拒绝，请改用下载");
           });
-      }, "image/png");
+      });
     });
 
     $("resetAll").addEventListener("click", function () {

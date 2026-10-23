@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
+import { makeThumbnailFile, prepareImageForPublish } from "../lib/image-publish";
 import {
   coinApi,
   coinUnlockKey,
@@ -35,29 +36,6 @@ import {
  * "减少动态效果"时动画自动禁用（全局 CSS 已处理）。
  */
 
-
-/** 客户端缩略图：最长边 480px 的 JPEG，列表页与奖池预览只用它。 */
-async function makeThumbnail(file: File): Promise<File | null> {
-  if (!file.type.startsWith("image/")) return null;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close?.();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-    return blob ? new File([blob], "thumb.jpg", { type: "image/jpeg" }) : null;
-  } catch {
-    // 浏览器不支持 createImageBitmap 或图片损坏：放弃缩略图，原图照常上传。
-    return null;
-  }
-}
 
 /** 音频时长探测：仅用于展示与提示；读不出就返回 null，不影响投稿。 */
 async function probeAudioDuration(file: File): Promise<number | null> {
@@ -81,7 +59,10 @@ async function probeAudioDuration(file: File): Promise<number | null> {
   }
 }
 
-function CoinPageShell(props: { title: string; subtitle: string; children: React.ReactNode }) {
+function CoinPageShell(props: { title: string; subtitle: string; embedded?: boolean; children: React.ReactNode }) {
+  /* embedded = 已经嵌在 /submissions 投稿中心里，外壳（顶栏 / 底部导航 /
+   * survey-glow）由投稿中心统一提供。不这样的话页面上会出现两条 header。 */
+  if (props.embedded) return <>{props.children}</>;
   return (
     <div className="survey-glow min-h-dvh pb-24">
       <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
@@ -701,7 +682,7 @@ const STATUS_LABELS: Record<string, string> = {
   removed: "已下架",
 };
 
-export function SubmissionsScreen() {
+export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [mine, setMine] = useState<SubmissionDto[] | null>(null);
   const [type, setType] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -735,16 +716,19 @@ export function SubmissionsScreen() {
       const authorization = { confirmOwn, publishToPool, allowCollection: true };
       if (type === "image" || type === "audio") {
         if (!file) throw new Error("请选择文件");
+        // 图片在提交前归一化（最长边 1600 / WebP）；音视频原样上传。
+        // 与答卷附件、树洞配图、认证卡共用 admin/src/lib/image-publish.ts。
+        const upload = type === "image" ? await prepareImageForPublish(file) : file;
         const form = new FormData();
         form.set("type", type);
         form.set("title", title);
         form.set("description", description);
         form.set("publishToPool", String(publishToPool));
         form.set("confirmOwn", String(confirmOwn));
-        form.set("file", file);
+        form.set("file", upload);
         if (type === "image") {
           // 缩略图在客户端生成；生成失败不阻塞投稿（服务端会退回原图）。
-          const thumb = await makeThumbnail(file);
+          const thumb = await makeThumbnailFile(upload);
           if (thumb) form.set("thumb", thumb);
         }
         if (type === "audio") {
@@ -791,7 +775,11 @@ export function SubmissionsScreen() {
   const selectedMeta = SUBMISSION_TYPE_META.find((entry) => entry.type === type);
 
   return (
-    <CoinPageShell title="📮 投稿中心" subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池">
+    <CoinPageShell
+      title="📮 投稿中心"
+      subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池"
+      embedded={embedded}
+    >
       {error ? <ErrorBox message={error} /> : null}
       {success ? (
         <div className="coin-success-box" role="status">
