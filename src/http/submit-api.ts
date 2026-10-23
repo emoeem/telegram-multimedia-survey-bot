@@ -294,9 +294,19 @@ async function handleInbox(url: URL, env: Env): Promise<Response> {
 }
 
 function inboxMediaCount(row: WebSubmissionRow): number {
+  /* 新投稿附件带 mediaAssetId,迁移数据带 fileId:两者都算,否则旧投稿显示 0。 */
   for (const step of Object.keys(row.data)) {
     const value = row.data[step];
-    if (Array.isArray(value) && value.some((item) => (item as WebSubmitAttachment)?.mediaAssetId !== undefined)) {
+    if (
+      Array.isArray(value) &&
+      value.some(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          ((item as WebSubmitAttachment).mediaAssetId !== undefined ||
+            typeof (item as { fileId?: unknown }).fileId === "string"),
+      )
+    ) {
       return value.length;
     }
   }
