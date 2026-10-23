@@ -66,6 +66,7 @@ import {
   startResponse,
   submitResponse,
   uploadAnswerMedia,
+  uploadAnswerMediaViaStream,
   verifyAccessCode,
 } from "./api";
 import { safeGet, safeSet } from "./storage";
@@ -1442,6 +1443,8 @@ interface QuestionAnswerProps {
   value: AnswerValue | undefined;
   onChange: (value: AnswerValue) => void;
   disabled: boolean;
+  /** Pro 部署能力位：音视频答卷走 Stream 浏览器直传。 */
+  streamVideo?: boolean;
 }
 
 function OptionCard({
@@ -1502,7 +1505,7 @@ function OptionCard({
   );
 }
 
-function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerProps) {
+function QuestionAnswer({ question, value, onChange, disabled, streamVideo }: QuestionAnswerProps) {
   const { toast } = useDialogs();
   const [uploading, setUploading] = useState(false);
 
@@ -1868,7 +1871,12 @@ function QuestionAnswer({ question, value, onChange, disabled }: QuestionAnswerP
                 if (!file) return;
                 setUploading(true);
                 try {
-                  const result = await uploadAnswerMedia(surveyIdFromPath(), file, question.id);
+                  // Pro 部署（问卷定义带 streamVideo 位）且是音视频：浏览器直传
+                  // Cloudflare Stream，绕开 Worker 20MB；其余走原 KV 上传。
+                  const useStream = Boolean(streamVideo) && /\/(video|audio)\//.test(file.type);
+                  const result = useStream
+                    ? await uploadAnswerMediaViaStream(surveyIdFromPath(), file)
+                    : await uploadAnswerMedia(surveyIdFromPath(), file, question.id);
                   onChange({ mediaAssetId: result.mediaAssetId });
                 } catch (error) {
                   toast({ message: error instanceof Error ? error.message : "上传失败", variant: "error" });
@@ -3010,6 +3018,7 @@ export function SurveyApp() {
                     value={value}
                     onChange={(next) => updateAnswer(question.id, next)}
                     disabled={busy}
+                    streamVideo={survey?.streamVideo}
                   />
                 </div>
               </>

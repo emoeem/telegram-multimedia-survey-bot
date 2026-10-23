@@ -20,7 +20,7 @@
       </a>
       <div class="topbar-title">
         <h1>认证卡生成器</h1>
-        <p class="sub">内置主题 · 内容可编辑 · 支持上传证件照 · 全程在浏览器本地完成，照片不会上传服务器</p>
+        <p class="sub">内置主题 · 内容可编辑 · 支持上传证件照 · 浏览器本地渲染</p>
       </div>
       <div class="topbar-actions">
         <button id="themePickerBtn" class="btn ghost tiny" type="button" title="选择主题（与问卷主页同步）">
@@ -67,6 +67,15 @@
         <div class="card">
           <h2>3. 基本信息</h2>
           <div class="grid2">
+            <label class="field span2">
+              <span>频道署名（可选，会显示在频道消息里）</span>
+              <input
+                id="fSigner"
+                type="text"
+                placeholder="频道昵称 / @用户名，方便别人认出这是你的作品"
+                maxlength="40"
+              />
+            </label>
             <label class="field">
               <span>姓名 / 代号</span>
               <input id="fName" type="text" placeholder="张三" />
@@ -197,7 +206,7 @@
           <canvas id="card" width="1012" height="638"></canvas>
         </div>
         <p class="stage-foot">
-          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 照片与编辑内容只保存在本地浏览器
+          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 默认只在本地浏览器保存（勾选「同步到作品频道」后会上传）
         </p>
       </section>
     </main>
@@ -234,9 +243,6 @@
       <p class="boot-fail-actions">
         <a class="btn primary" href="cert.html" download="认证卡生成器.html">下载离线单文件版</a>
         <button class="btn ghost" type="button" onclick="location.reload()">重新加载</button>
-      </p>
-      <p class="boot-fail-tip">
-        离线版是一个 HTML 文件，双击用浏览器打开即可，功能相同（照片同样只在本机处理）。
       </p>
     </div>
 

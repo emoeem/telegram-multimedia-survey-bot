@@ -82,21 +82,21 @@ function PostRow({
     <article
       className={
         post.status === "published"
-          ? "rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
-          : "rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 opacity-80 dark:border-slate-600 dark:bg-slate-900/60"
+          ? "card"
+          : "card opacity-80"
       }
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          <p className="text-sm font-semibold text-[var(--color-ink)]">
             #{post.id} · {authorLabel(post)}
             {post.kind === "trial" ? (
-              <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+              <span className="ml-2 badge badge-blue">
                 🎯 挑战晒卡
               </span>
             ) : null}
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-[var(--color-muted)]">
             {formatDateTime(post.createdAt)} · {post.status === "published" ? "展示中" : "已下架"} · 💬{" "}
             {post.commentCount}
           </p>
@@ -107,8 +107,8 @@ function PostRow({
             onClick={() => onToggle(post)}
             className={
               post.status === "published"
-                ? "shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-                : "shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+                ? "btn btn-sm"
+                : "btn btn-primary btn-sm"
             }
           >
             {post.status === "published" ? "下架" : "恢复展示"}
@@ -120,18 +120,18 @@ function PostRow({
               await restorePlazaPost(post.id);
               onRefresh();
             }}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
           >
             删除
           </DeleteWithUndo>
         </div>
       </div>
-      <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-200">
+      <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-ink)]">
         {post.content}
       </p>
       {post.topic ? (
         <p className="mt-2">
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-muted)]">
             #{post.topic}#
           </span>
         </p>
@@ -147,39 +147,39 @@ function PostRow({
             src={`/api/admin/media/${post.imageAssetId}/image`}
             alt="树洞配图"
             loading="lazy"
-            className="max-h-56 rounded-xl border border-slate-200 object-cover dark:border-slate-700"
+            className="max-h-56 rounded-xl border border-[var(--color-edge)] object-cover"
           />
         </a>
       ) : null}
 
-      <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+      <div className="mt-3 border-t border-[var(--color-edge)] pt-2.5">
         <button
           type="button"
           onClick={toggleComments}
-          className="text-xs font-semibold text-slate-500 dark:text-slate-400"
+          className="text-xs font-semibold text-[var(--color-muted)]"
         >
           💬 评论（{publishedComments || post.commentCount}）
           <span className="ml-1">{commentsOpen ? "收起" : "展开"}</span>
         </button>
         {commentsOpen ? (
           <div className="mt-2 space-y-2">
-            {commentsError ? <p className="text-xs text-red-500">{commentsError}</p> : null}
+            {commentsError ? <p className="text-xs text-[var(--app-danger)]">{commentsError}</p> : null}
             {comments === null ? (
-              <p className="text-xs text-slate-400">加载中…</p>
+              <p className="text-xs text-[var(--color-muted-soft)]">加载中…</p>
             ) : comments.length === 0 ? (
-              <p className="text-xs text-slate-400">暂无评论</p>
+              <p className="text-xs text-[var(--color-muted-soft)]">暂无评论</p>
             ) : (
               comments.map((comment) => (
                 <div
                   key={comment.id}
-                  className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60"
+                  className="flex items-start justify-between gap-3 rounded-xl bg-[var(--surface-muted)] px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    <p className="text-xs font-semibold text-[var(--color-ink)]">
                       #{comment.id} · {commentAuthorLabel(comment)}
-                      <span className="ml-2 font-normal text-slate-400">{formatDateTime(comment.createdAt)}</span>
+                      <span className="ml-2 font-normal text-[var(--color-muted-soft)]">{formatDateTime(comment.createdAt)}</span>
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[var(--color-muted)]">
                       {comment.content}
                     </p>
                   </div>
@@ -189,8 +189,8 @@ function PostRow({
                     onClick={() => void toggleComment(comment)}
                     className={
                       comment.status === "published"
-                        ? "shrink-0 rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-                        : "shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-medium text-white"
+                        ? "btn btn-sm"
+                        : "btn btn-primary btn-sm"
                     }
                   >
                     {comment.status === "published" ? "下架" : "恢复"}
@@ -217,12 +217,19 @@ export function PlazaPostsPage() {
     offset: number;
   }>(`/api/admin/plaza/posts?view=${view}&offset=${page * pageSize}&limit=${pageSize}`);
 
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const toggle = async (post: PlazaPostSummary) => {
+    if (togglingId !== null) return;
+    setTogglingId(post.id);
     try {
       await setPlazaPostStatus(post.id, post.status === "published" ? "removed" : "published");
       retry();
-    } catch {
+    } catch (error) {
+      // 此前失败被静默吞掉（只 retry 列表），管理员不知道下架没生效。
+      toast({ message: error instanceof Error ? error.message : "操作失败，请重试", variant: "error" });
       retry();
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -250,8 +257,8 @@ export function PlazaPostsPage() {
                 }}
                 className={
                   view === option
-                    ? "rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                    ? "btn btn-sm"
+                    : "btn btn-sm"
                 }
               >
                 {option === "all" ? "全部" : "展示中"}
@@ -273,7 +280,7 @@ export function PlazaPostsPage() {
               <PostRow key={post.id} post={post} onToggle={toggle} onDelete={remove} onRefresh={retry} />
             ))}
           </div>
-          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-[var(--color-muted)]">
             <span>
               共 {total} 条 · 第 {page + 1}/{totalPages} 页
             </span>
@@ -282,7 +289,7 @@ export function PlazaPostsPage() {
                 type="button"
                 disabled={page === 0}
                 onClick={() => setPage((current) => Math.max(0, current - 1))}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium disabled:opacity-40 dark:border-slate-600"
+                className="btn btn-sm"
               >
                 上一页
               </button>
@@ -290,7 +297,7 @@ export function PlazaPostsPage() {
                 type="button"
                 disabled={page + 1 >= totalPages}
                 onClick={() => setPage((current) => current + 1)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium disabled:opacity-40 dark:border-slate-600"
+                className="btn btn-sm"
               >
                 下一页
               </button>

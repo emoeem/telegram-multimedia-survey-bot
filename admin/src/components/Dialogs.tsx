@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { trapFocusWithin } from "./focus-trap";
 
 export type DialogVariant = "default" | "danger";
 
@@ -243,6 +244,8 @@ function DialogPanel({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
+      // Tab 焦点循环留在面板内（见 components/focus-trap.ts）。
+      onKeyDown={(event) => trapFocusWithin(panelRef.current, event.nativeEvent)}
       className="w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--color-edge)] bg-[var(--surface)] shadow-2xl"
     >
       <div className="flex items-start gap-3 p-5">

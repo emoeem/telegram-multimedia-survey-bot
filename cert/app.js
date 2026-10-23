@@ -18,6 +18,9 @@
   /* 18+ 同意状态单独存一个键：boot 时要在 state 之前同步读到它，
    * 好决定「先把成人词库加载进来、再恢复上次的主题」，否则重启后主题会丢。 */
   var ADULT_KEY = "cert-card-maker:adult-ok";
+  /* 频道署名单独存一个键：它表示「谁做的」，不属于卡片内容，
+   * 所以不进 state.shared，也不会被分享链接 #s= 带出去。 */
+  var SIGNER_KEY = "cert-card-maker:signer";
   var ADULT_SRC = "themes-adult.js";
   var adultLoading = null;
 
@@ -64,6 +67,24 @@
    * 改成「勾选词条分值累加 ÷ divisor」，与来源站同口径，因此百分比可以超过 100%。
    * 这类主题的词条还带性别（u 通用 / f 雌性 / m 雄性），选定性别后只显示 u + 该性别。
    * ------------------------------------------------------------------ */
+  /* 频道署名：写完就存，下次打开还在。隐私模式写不进去也不影响导出。 */
+  function readSigner() {
+    try {
+      return localStorage.getItem(SIGNER_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function writeSigner(value) {
+    try {
+      if (value) localStorage.setItem(SIGNER_KEY, value);
+      else localStorage.removeItem(SIGNER_KEY);
+    } catch (e) {
+      /* 存不下就算了，本次导出仍然带着它 */
+    }
+  }
+
   function adultOk() {
     try {
       return localStorage.getItem(ADULT_KEY) === "1";
@@ -125,6 +146,24 @@
   /** 当前性别下真正显示/计分的词条 */
   function visibleTags() {
     return themeData().tags.filter(tagVisible);
+  }
+
+  /**
+   * 频道消息用的已勾选标签文本。
+   * 取不到就当空数组：标签是锦上添花，不能因为它让整次上传失败。
+   */
+  function selectedTagTexts() {
+    try {
+      return visibleTags()
+        .filter(function (x) {
+          return x.on && x.text.trim();
+        })
+        .map(function (x) {
+          return x.text.trim();
+        });
+    } catch (e) {
+      return [];
+    }
   }
 
   /** 分值制主题的原始分值（只有勾选中的才算） */
@@ -974,7 +1013,7 @@
       p.textContent =
         "已解锁成人向词库" +
         (adultThemeCount() ? "（" + adultThemeCount() + " 套主题）" : "") +
-        "。词表只加载到你自己的浏览器里，导出与编辑同样不会上传。";
+        "。词表只加载到你自己的浏览器里，不会上传。";
       var off = document.createElement("button");
       off.type = "button";
       off.className = "btn ghost tiny";
@@ -1113,6 +1152,7 @@
     $("fCardLabel").value = f.cardLabel || "";
     $("fSealText").value = f.sealText || "";
     $("fName").value = state.shared.name || "";
+    $("fSigner").value = readSigner();
     $("fNo").value = state.shared.no || "";
     $("fIssueDate").value = state.shared.issueDate || "";
     $("fValidUntil").value = state.shared.validUntil || "";
@@ -1612,6 +1652,106 @@
     return parts.join("-").replace(/[\\/:*?"<>|]/g, "_") + ".png";
   }
 
+  /* ------------------------------------------------------------------ *
+   * 完成制作时同步到作者频道
+   *
+   * 两条原则（与 src/http/cert-share.ts 的注释对应）：
+   *   - 默认关闭：服务端没配频道时 probe 返回 enabled=false，这里什么都不做；
+   *   - 失败静默：导出已经成功了，同步只是旁路，失败只写 console.warn。
+   *
+   * 点「导出」即上传，不弹窗、不落 localStorage：作者频道是这个生成器的默认去向。
+   * ------------------------------------------------------------------ */
+  var shareEnabled = null;
+
+  async function shareAvailable() {
+    if (shareEnabled !== null) return shareEnabled;
+    try {
+      var res = await fetch("/api/cert/share", { headers: { accept: "application/json" } });
+      var data = await res.json();
+      shareEnabled = !!(data && data.enabled);
+    } catch (e) {
+      shareEnabled = false;
+    }
+    return shareEnabled;
+  }
+
+  /** 卡上正在展示的原图（按勾选顺序），取回字节用于上传 */
+  function pickedPhotoBlobs() {
+    var picked = [];
+    for (var i = 0; i < photos.length && picked.length < PHOTO_MAX; i++) {
+      if (photos[i].on) picked.push(photos[i]);
+    }
+    return Promise.all(
+      picked.map(function (p) {
+        return fetch(p.url)
+          .then(function (r) {
+            return r.blob();
+          })
+          .catch(function () {
+            return null;
+          });
+      })
+    );
+  }
+
+  async function shareToChannel(cardBlob) {
+    /* 用户没勾「同步到作品频道」就一个字节都不发。
+     * 这是本文件唯一的上传出口，判断放在最前面，后面所有分支都不会绕过它。 */
+    if (!shareOptIn()) return;
+    if (!(await shareAvailable())) return;
+
+    var form = new FormData();
+    form.append("card", cardBlob, fileName());
+    var blobs = await pickedPhotoBlobs();
+    var n = 0;
+    blobs.forEach(function (blob) {
+      if (!blob) return;
+      form.append("source" + n, blob, "source-" + n + ".png");
+      n += 1;
+    });
+    form.append(
+      "meta",
+      JSON.stringify({
+        style: (R.findStyle(state.styleId) || {}).name || "",
+        ratio: (R.findRatio(state.ratioId) || {}).name || "",
+        theme: (theme() || {}).name || state.themeId || "",
+        /* 下面三项是给频道认人用的：署名（谁做的）、卡片上的姓名、勾选的标签 */
+        signer: readSigner(),
+        name: state.shared.name || "",
+        tags: selectedTagTexts(),
+      })
+    );
+
+    try {
+      var res = await fetch("/api/cert/share", {
+        method: "POST",
+        headers: { "x-cert-share-origin": "cert-generator" },
+        body: form,
+      });
+      if (!res.ok) console.warn("认证卡同步未完成", res.status);
+    } catch (e) {
+      console.warn("认证卡同步失败", e);
+    }
+  }
+
+  /** 延迟触发：先让下载/复制落地，再发上传，避免占住下载的事件循环 */
+  function scheduleShare(blob) {
+    if (!shareOptIn()) return;
+    setTimeout(function () {
+      shareToChannel(blob);
+    }, 300);
+  }
+
+  /** 当前勾选状态。
+   * 界面上没有开关 = 用户从未表达过同意 = 不上传。
+   * 这里刻意不回退到 localStorage：存储只能证明「以前勾过」，
+   * 不能证明「这次同意」，上传这种一次性动作必须以当次界面状态为准。 */
+  function shareOptIn() {
+    var box = $("fShare");
+    if (!box) return false;
+    return !!box.checked;
+  }
+
   function refreshAfterTagChange() {
     save();
     updateStats();
@@ -1619,6 +1759,14 @@
   }
 
   function bind() {
+    /* 署名只写 localStorage，不动 state、不触发重绘：它不参与卡片渲染 */
+    $("fSigner").addEventListener("input", function () {
+      writeSigner($("fSigner").value.trim());
+    });
+
+    /* 同步开关的 UI 已移除（见 index.html）：没有勾选框就没有同意，
+     * shareOptIn() 恒为 false，上传路径不可达。要恢复时把开关加回界面即可。 */
+
     [
       ["fName", "name"],
       ["fNo", "no"],
@@ -1845,6 +1993,7 @@
           URL.revokeObjectURL(url);
         }, 1000);
         toast("已导出 PNG");
+        scheduleShare(blob);
       }, "image/png");
     });
 
@@ -1862,6 +2011,7 @@
           .write([new window.ClipboardItem({ "image/png": blob })])
           .then(function () {
             toast("图片已复制到剪贴板");
+            scheduleShare(blob);
           })
           .catch(function () {
             toast("复制被浏览器拒绝，请改用下载");

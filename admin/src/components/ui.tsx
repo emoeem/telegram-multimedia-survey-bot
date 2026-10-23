@@ -3,6 +3,7 @@ import { AlertTriangle, Inbox, RotateCw, X } from "lucide-react";
 import { ApiError } from "../api";
 import { STATUS_LABELS } from "../format";
 import type { SurveyStatus } from "../api";
+import { trapFocusWithin } from "./focus-trap";
 
 const BADGE_CLASSES: Record<SurveyStatus, string> = {
   draft: "badge-gray badge-dot",
@@ -113,9 +114,10 @@ export function Modal({
   title: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -123,6 +125,8 @@ export function Modal({
     if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // 关闭后把焦点还给打开弹窗的按钮（键盘用户不该被丢到页面顶部）。
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onCloseRef.current();
     };
@@ -133,6 +137,7 @@ export function Modal({
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
+      restoreFocusRef.current?.focus?.();
     };
   }, [open]);
 
@@ -147,6 +152,11 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
+        // Tab 焦点循环留在面板内（见 components/focus-trap.ts）。
+        onKeyDown={(event) => {
+          const panel = panelRef.current;
+          if (panel) trapFocusWithin(panel, event.nativeEvent);
+        }}
       >
         <header className="ui-modal-head">
           <h2 className="ui-modal-title">{title}</h2>

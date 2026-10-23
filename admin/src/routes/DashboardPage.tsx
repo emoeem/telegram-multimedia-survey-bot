@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EChart } from "../components/EChart";
 import { Link, useNavigate } from "react-router";
 import { Activity, Archive, CheckCircle2, ClipboardList, Clock, FileText, Loader, Package, RefreshCw, Users, XCircle } from "lucide-react";
@@ -8,6 +8,77 @@ import type { DashboardData } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { StatCard } from "../components/StatCard";
 import { formatDateTime } from "../format";
+import { fetchDeploymentInfo, type DeploymentInfo, type PlanCapabilities } from "../api";
+
+const PLAN_TIER_LABELS: Record<NonNullable<PlanCapabilities["tier"]>, string> = {
+  free: "Free 部署",
+  paid: "Paid 部署",
+  pro: "Pro 部署",
+};
+
+const PLAN_TIER_TINTS: Record<NonNullable<PlanCapabilities["tier"]>, string> = {
+  free: "bg-[var(--surface-muted)] text-[var(--color-muted)]",
+  paid: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]",
+  pro: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]",
+};
+
+const PLAN_CAPABILITY_LABELS: Record<keyof Omit<PlanCapabilities, "tier">, string> = {
+  r2Media: "R2 媒体存储",
+  streamVideo: "Stream 视频托管",
+  imagesPipeline: "Images 图片管线",
+  browserRender: "PDF/分享图渲染",
+  asyncQueue: "异步任务队列",
+  rateLimitDO: "原子限流",
+};
+
+/** 部署能力面板：当前档位 + 每项付费能力，附 Free 部署的降级说明。 */
+function PlanCapabilityCard() {
+  const [info, setInfo] = useState<DeploymentInfo | null>(null);
+  useEffect(() => {
+    void fetchDeploymentInfo().then(setInfo);
+  }, []);
+  if (!info?.plan) return null;
+  const { plan, planFallbacks } = info;
+  const capabilities = Object.entries(PLAN_CAPABILITY_LABELS) as Array<
+    [keyof Omit<PlanCapabilities, "tier">, string]
+  >;
+  return (
+    <section className="mt-5 card">
+      <div className="card-title">
+        <div>
+          <h2>部署能力</h2>
+          <p className="card-sub">按部署绑定的付费资源自动探测 · 免费部署自动降级，功能不缺失</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PLAN_TIER_TINTS[plan.tier]}`}>
+          {PLAN_TIER_LABELS[plan.tier]}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {capabilities.map(([key, label]) => {
+          const on = plan[key];
+          const fallback = planFallbacks?.[key];
+          return (
+            <div
+              key={key}
+              className="flex items-start gap-2.5 rounded-xl border border-[var(--border)] px-3 py-2.5"
+              title={on ? `${label} 已启用` : `${label} 未启用：${fallback ?? "走免费路径"}`}
+            >
+              {on ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--app-success)]" />
+              ) : (
+                <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{label}</p>
+                {!on && fallback ? <p className="mt-0.5 text-xs text-[var(--color-muted)]">{fallback}</p> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 const DELIVERY_COLORS = {
   pending: "#94a3b8",
@@ -151,7 +222,19 @@ export function DashboardPage() {
               <table className="tbl">
                 <tbody>
                   {data.recentSurveys.map((item) => (
-                    <tr key={item.id} className="cursor-pointer" onClick={() => navigate(`/surveys/${item.id}`)}>
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/surveys/${item.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(`/surveys/${item.id}`);
+                        }
+                      }}
+                    >
                       <td data-label="问卷">
                         <strong>{item.title || "未命名问卷"}</strong>
                       </td>
@@ -196,7 +279,15 @@ export function DashboardPage() {
                       <tr
                         key={item.id}
                         className="cursor-pointer"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            navigate(`/surveys/${item.surveyId}/responses/${item.id}`);
+                          }
+                        }}
                       >
                         <td data-label="问卷">
                           <strong>{item.title || `问卷 ${item.surveyId}`}</strong>
@@ -233,6 +324,7 @@ export function DashboardPage() {
           </ul>
         </section>
       ) : null}
+      <PlanCapabilityCard />
     </div>
   );
 }

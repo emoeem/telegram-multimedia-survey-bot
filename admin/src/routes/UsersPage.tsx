@@ -184,7 +184,7 @@ export function UsersPage() {
             <tbody>
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                  <td className="text-sm">
+                  <td data-label="用户" className="text-sm">
                     <button
                       className="text-left font-semibold text-[var(--app-info)]"
                       onClick={() => void openDetail(item.id)}
@@ -198,9 +198,9 @@ export function UsersPage() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="text-sm">{item.telegramUserId}</td>
-                  <td className="text-sm">{item.completedResponses}</td>
-                  <td className="text-sm">
+                  <td data-label="Telegram ID" className="text-sm">{item.telegramUserId}</td>
+                  <td data-label="完成答卷" className="text-sm">{item.completedResponses}</td>
+                  <td data-label="标签" className="text-sm">
                     <div className="flex max-w-56 flex-wrap gap-1">
                       {item.tags.map((value) => (
                         <button
@@ -214,7 +214,7 @@ export function UsersPage() {
                       ))}
                     </div>
                   </td>
-                  <td className="text-sm">
+                  <td data-label="操作" className="text-sm">
                     <div className="flex gap-2">
                       <a className="btn btn-sm" href={userChatLink(item.telegramUserId)}>
                         私聊
@@ -249,6 +249,7 @@ export function UsersPage() {
             </button>
           </div>
           {detailError ? <p className="mt-2 text-sm text-[var(--app-danger)]">{detailError}</p> : null}
+          {!detail && !detailError ? <p className="mt-3 text-sm text-[var(--color-muted)]">加载中…</p> : null}
           {detail ? (
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div>

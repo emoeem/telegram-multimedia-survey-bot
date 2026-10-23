@@ -25,16 +25,16 @@ function ProfileTile({
   busy: boolean;
 }) {
   return (
-    <article className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+    <article className="flex flex-col gap-3 card">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{ownerLabel(profile)}</h3>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+          <h3 className="truncate text-base font-semibold text-[var(--color-ink)]">{ownerLabel(profile)}</h3>
+          <p className="truncate text-xs text-[var(--color-muted)]">
             {formatDateTime(profile.createdAt)}
             {profile.publishedAt ? ` · 发布于 ${formatDateTime(profile.publishedAt)}` : ""}
           </p>
           {profile.owner ? (
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+            <p className="truncate text-xs text-[var(--color-muted)]">
               {profile.owner.username ? `@${profile.owner.username}` : "无用户名"} · Telegram ID{" "}
               {profile.owner.telegramUserId}
             </p>
@@ -43,8 +43,8 @@ function ProfileTile({
         <span
           className={
             profile.publishedAt
-              ? "shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              ? "badge badge-green"
+              : "badge badge-gray"
           }
         >
           {profile.publishedAt ? `已公开${profile.showUsername ? " · 显示用户名" : " · 隐藏用户名"}` : "未公开"}
@@ -64,13 +64,13 @@ function ProfileTile({
           ))}
         </div>
       ) : (
-        <div className="grid h-28 place-items-center rounded-xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+        <div className="grid h-28 place-items-center rounded-xl bg-[var(--surface-muted)] text-xs text-[var(--color-muted)]">
           无照片
         </div>
       )}
 
       {profile.images.length > 1 ? (
-        <label className="text-xs text-slate-500 dark:text-slate-400">
+        <label className="text-xs text-[var(--color-muted)]">
           画廊封面
           <select
             className="select mt-1 w-full text-sm"
@@ -90,8 +90,8 @@ function ProfileTile({
       <dl className="space-y-1.5 text-sm">
         {profile.fields.map((field) => (
           <div key={field.questionId} className="grid grid-cols-1 sm:grid-cols-[100px_minmax(0,1fr)] gap-x-2">
-            <dt className="text-slate-500 dark:text-slate-400">{field.title}</dt>
-            <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{field.value}</dd>
+            <dt className="text-[var(--color-muted)]">{field.title}</dt>
+            <dd className="whitespace-pre-wrap break-words text-[var(--color-ink)]">{field.value}</dd>
           </div>
         ))}
       </dl>
@@ -102,8 +102,8 @@ function ProfileTile({
         onClick={() => onToggle(profile)}
         className={
           profile.publishedAt
-            ? "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-            : "rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+            ? "btn btn-sm"
+            : "btn btn-primary btn-sm"
         }
       >
         {busy ? "处理中…" : profile.publishedAt ? "从画廊下架" : "管理员发布"}
@@ -174,8 +174,8 @@ export function ProfileGalleryPage() {
                 }}
                 className={
                   view === option
-                    ? "rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                    ? "btn btn-sm"
+                    : "btn btn-sm"
                 }
               >
                 {option === "all" ? "全部" : "已发布"}
@@ -185,7 +185,7 @@ export function ProfileGalleryPage() {
         }
       />
       {data ? (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-[var(--color-muted)]">
           已完成 {data.total} 份 · 已公开 {data.publishedTotal} 份
         </p>
       ) : null}
@@ -230,7 +230,7 @@ export function ProfileGalleryPage() {
         <EmptyPanel text={view === "published" ? "还没有已发布的个人资料。" : "还没有个人资料答卷。"} />
       ) : (
         <>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-[var(--color-muted)]">
             问卷：{data.surveyTitle}（#{data.surveyId}） · 共 {total} 条
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -244,7 +244,7 @@ export function ProfileGalleryPage() {
               />
             ))}
           </div>
-          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-[var(--color-muted)]">
             <span>
               第 {page + 1}/{totalPages} 页
             </span>
@@ -253,7 +253,7 @@ export function ProfileGalleryPage() {
                 type="button"
                 disabled={page === 0}
                 onClick={() => setPage((current) => Math.max(0, current - 1))}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium disabled:opacity-40 dark:border-slate-600"
+                className="btn btn-sm"
               >
                 上一页
               </button>
@@ -261,7 +261,7 @@ export function ProfileGalleryPage() {
                 type="button"
                 disabled={page + 1 >= totalPages}
                 onClick={() => setPage((current) => current + 1)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium disabled:opacity-40 dark:border-slate-600"
+                className="btn btn-sm"
               >
                 下一页
               </button>

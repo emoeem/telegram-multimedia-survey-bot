@@ -192,7 +192,7 @@ export function ResponseActivityPage() {
             <tbody>
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                  <td className="text-sm">
+                  <td data-label="答卷" className="text-sm">
                     <Link
                       className="font-semibold text-[var(--app-info)]"
                       to={`/surveys/${item.surveyId}/responses/${item.id}`}
@@ -200,9 +200,9 @@ export function ResponseActivityPage() {
                       #{item.id}
                     </Link>
                   </td>
-                  <td className="text-sm">{item.surveyTitle || `问卷 ${item.surveyId}`}</td>
-                  <td className="text-sm">{displayRespondent(item)}</td>
-                  <td className="text-sm">
+                  <td data-label="问卷" className="text-sm">{item.surveyTitle || `问卷 ${item.surveyId}`}</td>
+                  <td data-label="填写者" className="text-sm">{displayRespondent(item)}</td>
+                  <td data-label="状态" className="text-sm">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs ${
                         item.status === "completed"
@@ -219,7 +219,7 @@ export function ResponseActivityPage() {
                       {item.statusLabel}
                     </span>
                   </td>
-                  <td className="text-sm">{formatDateTime(item.completedAt ?? item.updatedAt)}</td>
+                  <td data-label="时间" className="text-sm">{formatDateTime(item.completedAt ?? item.updatedAt)}</td>
                 </tr>
               ))}
             </tbody>

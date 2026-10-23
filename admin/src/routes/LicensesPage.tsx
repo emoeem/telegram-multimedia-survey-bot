@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 
 const LICENSE_STATUS_LABELS: Record<string, string> = {
@@ -24,6 +25,7 @@ const LICENSE_TYPE_LABELS: Record<string, string> = {
 };
 
 export function LicensesPage() {
+  const { confirm } = useDialogs();
   // Vendor-only console. `null` = role not resolved yet, so hold the requests
   // until we know — a customer instance would otherwise fire three 403s.
   const [licenseCenter, setLicenseCenter] = useState<boolean | null>(null);
@@ -350,12 +352,19 @@ export function LicensesPage() {
             <tbody>
               {(releases.data?.items ?? []).map((release) => (
                 <tr key={release.version}>
-                  <td className="font-mono text-sm">{release.version}</td>
-                  <td>{release.channel}</td>
-                  <td>{formatDateTime(release.releasedAt)}</td>
-                  <td className="text-[var(--color-muted)]">{release.notes ?? "—"}</td>
+                  <td data-label="版本" className="font-mono text-sm">{release.version}</td>
+                  <td data-label="渠道">{release.channel}</td>
+                  <td data-label="发布时间">{formatDateTime(release.releasedAt)}</td>
+                  <td data-label="说明" className="text-[var(--color-muted)]">{release.notes ?? "—"}</td>
                 </tr>
               ))}
+              {!(releases.data?.items ?? []).length ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-sm text-[var(--color-muted)]">
+                    还没有登记任何版本
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -404,13 +413,13 @@ export function LicensesPage() {
             <tbody>
               {(trials.data?.items ?? []).map((trial) => (
                 <tr key={trial.userId}>
-                  <td>
+                  <td data-label="用户">
                     {[trial.firstName, trial.lastName].filter(Boolean).join(" ") ||
                       (trial.username ? `@${trial.username}` : `用户 ${trial.userId}`)}
                   </td>
-                  <td>{trial.telegramUserId}</td>
-                  <td>{formatDateTime(trial.expiresAt)}</td>
-                  <td>
+                  <td data-label="Telegram ID">{trial.telegramUserId}</td>
+                  <td data-label="到期">{formatDateTime(trial.expiresAt)}</td>
+                  <td data-label="操作">
                     <button
                       className="btn btn-sm btn-danger"
                       disabled={busy}
@@ -421,6 +430,13 @@ export function LicensesPage() {
                   </td>
                 </tr>
               ))}
+              {!(trials.data?.items ?? []).length ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-sm text-[var(--color-muted)]">
+                    还没有发放过体验权限
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -496,14 +512,14 @@ export function LicensesPage() {
                 <tbody>
                   {(invites.data?.items ?? []).map((invite) => (
                     <tr key={invite.code}>
-                      <td className="font-mono">{invite.code}</td>
-                      <td>{invite.days} 天</td>
-                      <td>
+                      <td data-label="邀请码" className="font-mono">{invite.code}</td>
+                      <td data-label="体验天数">{invite.days} 天</td>
+                      <td data-label="已用/可用">
                         {invite.usedCount}/{invite.maxUses}
                       </td>
-                      <td>{formatDateTime(invite.expiresAt)}</td>
-                      <td>{invite.note ?? "—"}</td>
-                      <td>
+                      <td data-label="码到期">{formatDateTime(invite.expiresAt)}</td>
+                      <td data-label="备注">{invite.note ?? "—"}</td>
+                      <td data-label="操作">
                         <button
                           className="btn btn-sm btn-danger"
                           disabled={busy}

@@ -691,7 +691,7 @@ function PersonDialog({
     <Modal
       open={open}
       onClose={onClose}
-      size="lg"
+      size="xl"
       title={person ? `编辑「${person.name}」` : "新建展示人物"}
       footer={
         <>
@@ -704,37 +704,39 @@ function PersonDialog({
         </>
       }
     >
-      <div className="flex flex-col gap-5">
-        <section className="flex flex-col gap-3">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="flex flex-col gap-3.5">
           <h3 className="text-sm font-bold">基本信息</h3>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--color-muted)]">昵称（必填，≤40 字）</span>
-            <input
-              className="input"
-              value={draft.name}
-              maxLength={40}
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-[var(--color-muted)]">副标题（一句话身份）</span>
-            <input
-              className="input"
-              value={draft.subtitle}
-              maxLength={60}
-              onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <label className="flex flex-col gap-2">
+              <span className="text-xs text-[var(--color-muted)]">昵称（必填，≤40 字）</span>
+              <input
+                className="input"
+                value={draft.name}
+                maxLength={40}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-2">
+              <span className="text-xs text-[var(--color-muted)]">副标题（一句话身份）</span>
+              <input
+                className="input"
+                value={draft.subtitle}
+                maxLength={60}
+                onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })}
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-2">
             <span className="text-xs text-[var(--color-muted)]">个人简介</span>
             <textarea
-              className="input min-h-[90px] resize-y"
+              className="input min-h-[140px] resize-y leading-relaxed"
               value={draft.description}
               maxLength={800}
               onChange={(event) => setDraft({ ...draft, description: event.target.value })}
             />
           </label>
-          <label className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-2">
             <span className="text-xs text-[var(--color-muted)]">标签（用逗号分隔，最多 8 个）</span>
             <input
               className="input"
@@ -743,7 +745,7 @@ function PersonDialog({
               placeholder="插画, 角色设计, 世界观"
             />
           </label>
-          <label className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-2">
             <span className="text-xs text-[var(--color-muted)]">
               关联问卷编号（可留空；填写后前台显示「查看我的问卷」）
             </span>
@@ -755,9 +757,10 @@ function PersonDialog({
               placeholder="例如 12"
             />
           </label>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2.5 pt-1">
             <input
               type="checkbox"
+              className="h-4 w-4"
               checked={draft.published}
               onChange={(event) => setDraft({ ...draft, published: event.target.checked })}
             />

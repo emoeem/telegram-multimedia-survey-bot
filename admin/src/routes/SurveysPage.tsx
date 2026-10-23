@@ -43,7 +43,7 @@ const STATUS_META: Record<SurveyStatus, { label: string; color: string; tint: st
 
 export function SurveysPage() {
   const navigate = useNavigate();
-  const { toast } = useDialogs();
+  const { toast, confirm } = useDialogs();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -92,24 +92,33 @@ export function SurveysPage() {
   /** 单卷切换分级：r18→all 是放宽，二次确认避免误操作（0080 的管理端语义）。 */
   const toggleRating = async (surveyId: number, current: "all" | "r18" | undefined) => {
     const next = current === "r18" ? "all" : "r18";
-    if (next === "all" && !window.confirm("把该问卷改回「全年龄」会立即使其在未确认年龄的访客目录中可见，确定？")) {
+    if (
+      next === "all" &&
+      !(await confirm({
+        title: "改回「全年龄」？",
+        message: "该问卷会立即使其在未确认年龄的访客目录中可见。",
+        confirmLabel: "改回全年龄",
+      }))
+    ) {
       return;
     }
     try {
       await setSurveyRating(surveyId, next);
       retry();
     } catch {
-      // 失败静默，列表数据未变。
+      toast({ message: "分级切换失败，请重试", variant: "error" });
     }
   };
 
   const bulkRating = async (target: "all" | "r18") => {
     if (bulkBusy || !selected.length) return;
-    if (
-      target === "all" &&
-      !window.confirm(`把选中的 ${selected.length} 份问卷改回「全年龄」会立即使其对未确认年龄的访客可见，确定？`)
-    ) {
-      return;
+    if (target === "all") {
+      const ok = await confirm({
+        title: `把 ${selected.length} 份问卷改回「全年龄」？`,
+        message: "选中的问卷会立即使其对未确认年龄的访客可见。",
+        confirmLabel: "批量改回全年龄",
+      });
+      if (!ok) return;
     }
     setBulkBusy(true);
     try {
@@ -117,7 +126,7 @@ export function SurveysPage() {
       setSelected([]);
       retry();
     } catch {
-      // 失败静默。
+      toast({ message: "批量分级失败，请重试", variant: "error" });
     } finally {
       setBulkBusy(false);
     }
@@ -382,7 +391,15 @@ export function SurveysPage() {
                     <tr
                       key={item.id}
                       className="cursor-pointer hover:bg-[var(--surface-hover)]"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate(`/surveys/${item.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(`/surveys/${item.id}`);
+                        }
+                      }}
                     >
                       <td
                         className="text-sm"
@@ -399,7 +416,16 @@ export function SurveysPage() {
                           type="checkbox"
                           aria-label={`选择 ${item.title || item.id}`}
                           checked={selected.includes(item.id)}
-                          readOnly
+                          // 复选框自己处理 change（键盘空格可用）；td 的点击
+                          // 只负责扩大热区，点在框上时不能重复切换。
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) =>
+                            setSelected((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, item.id])]
+                                : current.filter((id) => id !== item.id),
+                            )
+                          }
                         />
                       </td>
                       <td className="text-sm">
@@ -415,7 +441,7 @@ export function SurveysPage() {
                           type="button"
                           className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
                             item.contentRating === "r18"
-                              ? "border-red-500/60 bg-red-500/10 text-red-600"
+                              ? "badge badge-red"
                               : "border-[var(--color-edge)] text-[var(--color-muted)]"
                           }`}
                           title="点击切换分级（18+ → 全年龄 需确认）"
@@ -449,11 +475,30 @@ export function SurveysPage() {
                   className="block rounded-lg border border-[var(--color-edge)] bg-[var(--surface)] p-4 no-underline active:bg-[var(--surface-muted)]"
                 >
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <strong>{item.title || "未命名问卷"}</strong>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {/* 手机端也要能多选：批量归类/分级不能只在桌面可用。 */}
+                      <input
+                        type="checkbox"
+                        aria-label={`选择 ${item.title || item.id}`}
+                        checked={selected.includes(item.id)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onChange={(event) =>
+                          setSelected((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, item.id])]
+                              : current.filter((id) => id !== item.id),
+                          )
+                        }
+                      />
+                      <strong className="truncate">{item.title || "未命名问卷"}</strong>
+                    </span>
                     <span className="flex items-center gap-1.5">
                       <StatusBadge status={item.status} />
                       {item.contentRating === "r18" ? (
-                        <span className="rounded-full border border-red-500/60 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-600">
+                        <span className="badge badge-red">
                           18+
                         </span>
                       ) : null}

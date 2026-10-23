@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DeleteWithUndo } from "../components/DeleteWithUndo";
+import { useDialogs } from "../components/Dialogs";
 import { Plus, X } from "lucide-react";
 import {
   DndContext,
@@ -20,7 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api, apiSend, deleteReportTemplate, restoreReportTemplate, type ReportTemplateOption } from "../api";
-import { SkeletonPanel } from "../components/ui";
+import { EmptyPanel, SkeletonPanel } from "../components/ui";
 
 interface SectionDraft {
   /** Stable identity for dnd-kit sorting; stripped before saving. */
@@ -227,7 +228,13 @@ function SortableSectionRow({
           </option>
         ))}
       </select>
-      <button type="button" className="btn btn-sm text-[var(--app-danger)]" onClick={() => onRemove(index)}>
+      <button
+        type="button"
+        className="btn btn-sm text-[var(--app-danger)]"
+        aria-label="删除该内容块"
+        title="删除该内容块"
+        onClick={() => onRemove(index)}
+      >
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -238,6 +245,28 @@ export function TemplatesPage() {
   const [templates, setTemplates] = useState<ReportTemplateOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
+  const { confirm } = useDialogs();
+  // 打开编辑器那一刻的草稿快照：与当前 draft 的差异即「未保存修改」。
+  const draftBaseline = useRef("");
+  const draftDirty = draft !== null && JSON.stringify(draft) !== draftBaseline.current;
+  /** 退出编辑：有未保存修改时先确认（对照 CertContentPage 的离场守卫）。 */
+  const exitDraft = async () => {
+    if (
+      draftDirty &&
+      !(await confirm({
+        title: "有未保存的修改",
+        message: "模板的修改还没保存，离开后会丢失。",
+        confirmLabel: "离开",
+        cancelLabel: "留下修改",
+        variant: "danger",
+      }))
+    ) {
+      return;
+    }
+    setDraft(null);
+    setPreviewHtml(null);
+    setError(null);
+  };
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewWidth, setPreviewWidth] = useState(390);
   const [busy, setBusy] = useState(false);
@@ -271,7 +300,7 @@ export function TemplatesPage() {
       const data = await api<{ template: TemplateDraft & { isCustom?: boolean } }>(
         `/api/admin/report-templates/${encodeURIComponent(id)}`,
       );
-      setDraft({
+      const nextDraft: TemplateDraft = {
         ...data.template,
         id: copy ? `${id}-copy` : data.template.id,
         css: data.template.css ?? "",
@@ -279,7 +308,9 @@ export function TemplatesPage() {
           ...section,
           uid: newSectionUid(),
         })),
-      });
+      };
+      draftBaseline.current = JSON.stringify(nextDraft);
+      setDraft(nextDraft);
       setCssExtra(data.template.css ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "加载模板失败");
@@ -385,7 +416,9 @@ export function TemplatesPage() {
             onClick={() => {
               setError(null);
               setPreviewHtml(null);
-              setDraft(emptyDraft());
+              const blank = emptyDraft();
+              draftBaseline.current = JSON.stringify(blank);
+              setDraft(blank);
             }}
           >
             <Plus className="h-4 w-4" />
@@ -395,7 +428,13 @@ export function TemplatesPage() {
         <p className="mt-1 text-sm text-[var(--color-muted)]">
           系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。
         </p>
-        {templates ? (
+        {templates && templates.length === 0 ? (
+          <EmptyPanel text="还没有任何模板" actionLabel="新建模板" onAction={() => {
+            const blank = emptyDraft();
+            draftBaseline.current = JSON.stringify(blank);
+            setDraft(blank);
+          }} />
+        ) : templates ? (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (
               <div key={template.id} className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4">
@@ -450,14 +489,7 @@ export function TemplatesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-semibold">{draft.id ? `编辑模板：${draft.id}` : "新建模板"}</h3>
             <div className="flex gap-2">
-              <button
-                className="btn"
-                onClick={() => {
-                  setDraft(null);
-                  setPreviewHtml(null);
-                  setError(null);
-                }}
-              >
+              <button className="btn" onClick={() => void exitDraft()}>
                 返回列表
               </button>
               <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
@@ -469,8 +501,8 @@ export function TemplatesPage() {
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="space-y-3">
-              <div>
-                <label className="text-sm text-[var(--text-soft)]">模板 id（小写字母/数字/连字符）</label>
+              <label className="block">
+                <span className="text-sm text-[var(--text-soft)]">模板 id（小写字母/数字/连字符）</span>
                 <input
                   className="input mt-1 w-full font-mono"
                   value={draft.id}
@@ -478,18 +510,18 @@ export function TemplatesPage() {
                   onChange={(event) => setDraft({ ...draft, id: event.target.value.trim() })}
                   placeholder="my-template"
                 />
-              </div>
-              <div>
-                <label className="text-sm text-[var(--text-soft)]">模板名称</label>
+              </label>
+              <label className="block">
+                <span className="text-sm text-[var(--text-soft)]">模板名称</span>
                 <input
                   className="input mt-1 w-full"
                   value={draft.name}
                   onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                   placeholder="我的报告模板"
                 />
-              </div>
-              <div>
-                <label className="text-sm text-[var(--text-soft)]">主题</label>
+              </label>
+              <label className="block">
+                <span className="text-sm text-[var(--text-soft)]">主题</span>
                 <select
                   className="select mt-1 w-full"
                   value={draft.theme}
@@ -501,9 +533,9 @@ export function TemplatesPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="text-sm text-[var(--text-soft)]">版式（启用后使用真版式引擎渲染）</label>
+              </label>
+              <label className="block">
+                <span className="text-sm text-[var(--text-soft)]">版式（启用后使用真版式引擎渲染）</span>
                 <select
                   className="select mt-1 w-full"
                   value={draft.layout ?? ""}
@@ -518,9 +550,9 @@ export function TemplatesPage() {
                 <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
                   版式引擎提供编辑风 / 网格 / 杂志 / 数据 / 影集 / 档案六种真正的布局差异；不启用时使用经典分区渲染。
                 </p>
-              </div>
+              </label>
               <div>
-                <label className="text-sm text-[var(--text-soft)]">内容块（自上而下渲染）</label>
+                <p className="text-sm text-[var(--text-soft)]">内容块（自上而下渲染）</p>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSectionsDragEnd}>
                   <SortableContext
                     items={draft.sections.map((section) => section.uid)}
@@ -550,7 +582,7 @@ export function TemplatesPage() {
                 </button>
               </div>
               <div>
-                <label className="text-sm text-[var(--text-soft)]">字体与配色（可视化）</label>
+                <p className="text-sm text-[var(--text-soft)]">字体与配色（可视化）</p>
                 <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <label className="text-xs text-[var(--color-muted)]">
                     字体
@@ -586,15 +618,15 @@ export function TemplatesPage() {
                   </label>
                 </div>
               </div>
-              <div>
-                <label className="text-sm text-[var(--text-soft)]">额外 CSS（可选，追加到模板样式）</label>
+              <label className="block">
+                <span className="text-sm text-[var(--text-soft)]">额外 CSS（可选，追加到模板样式）</span>
                 <textarea
                   className="input mt-1 min-h-24 w-full font-mono text-xs"
                   value={cssExtra}
                   onChange={(event) => setCssExtra(event.target.value)}
                   placeholder=".report-section { ... }"
                 />
-              </div>
+              </label>
             </div>
 
             <div>

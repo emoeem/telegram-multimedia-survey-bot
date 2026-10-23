@@ -259,6 +259,19 @@ export interface PublicationArchiveView {
   source: "settings" | "cache" | "env";
 }
 
+/**
+ * 认证卡生成器的发布目标。
+ *
+ * source 与 archive 不同：`archive` 表示「没单独配，继承了报告归档频道」，
+ * 因此它内部还可能来自归档频道的 cache/env 档，这里不再细分——管理员关心的是
+ * 「这个值是不是我在本页填的」，而不是归档频道自己从哪读到的。
+ */
+export interface PublicationCertShareView {
+  name: string;
+  chatId: string;
+  source: "settings" | "env" | "archive";
+}
+
 export interface DeploymentInfo {
   /** "vendor" = authorization center; "customer" = licensed instance. */
   role: "vendor" | "customer";
@@ -268,7 +281,21 @@ export interface DeploymentInfo {
   licenseCenter: boolean;
   /** Actionable explanation when the console is unavailable. */
   hint?: string | null;
+  /** 部署能力探测（plan.service）：档位 + 每项付费能力是否可用。 */
+  plan?: PlanCapabilities;
+  /** 每项能力在 Free 部署上的降级文案（能力面板展示用）。 */
+  planFallbacks?: Partial<Record<keyof PlanCapabilities, string>>;
 }
+
+export type PlanCapabilities = {
+  tier: "free" | "paid" | "pro";
+  r2Media: boolean;
+  streamVideo: boolean;
+  imagesPipeline: boolean;
+  browserRender: boolean;
+  asyncQueue: boolean;
+  rateLimitDO: boolean;
+};
 
 let deploymentInfoPromise: Promise<DeploymentInfo | null> | null = null;
 

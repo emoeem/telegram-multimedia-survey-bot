@@ -1197,8 +1197,3 @@ input:disabled {
   gap: 10px;
   align-items: center;
 }
-
-.boot-fail-tip {
-  color: #7a5c5c;
-  font-size: 12px;
-}

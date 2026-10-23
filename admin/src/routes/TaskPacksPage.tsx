@@ -135,7 +135,30 @@ export function TaskPacksPage() {
   const { confirm, toast } = useDialogs();
 
   const [editing, setEditing] = useState<EditablePack | null>(null);
+  // 打开编辑器那一刻的快照：与当前 editing 的差异即「未保存修改」。
+  // 快照在 openNew/openEdit 里显式拍摄——用 effect 依赖 id 会在「保存后再打开
+  // 同一个包」和「连续两次新建」时漏拍（id 没变）。
+  const editingBaseline = useRef("");
+  const editingDirty = editing !== null && JSON.stringify(editing) !== editingBaseline.current;
+  /** 退出编辑：有未保存修改时先确认（对照 CertContentPage 的离场守卫）。 */
+  const exitEditor = async () => {
+    if (
+      editingDirty &&
+      !(await confirm({
+        title: "有未保存的修改",
+        message: "任务包的修改还没保存，离开后会丢失。",
+        confirmLabel: "离开",
+        cancelLabel: "留下修改",
+        variant: "danger",
+      }))
+    ) {
+      return;
+    }
+    setEditing(null);
+  };
   const [saving, setSaving] = useState(false);
+  /** 正在切换「玩家端可见」的包 id：开关是整包全量更新，连点会互相覆盖。 */
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const nextItemKey = useRef(1000);
 
@@ -148,13 +171,17 @@ export function TaskPacksPage() {
 
   const openNew = () => {
     setSaveError(null);
-    setEditing(blankPack());
+    const blank = blankPack();
+    editingBaseline.current = JSON.stringify(blank);
+    setEditing(blank);
   };
 
   const openEdit = (pack: AdminTaskPack) => {
     setSaveError(null);
     nextItemKey.current = Math.max(nextItemKey.current, pack.items.length);
-    setEditing(packToEditable(pack));
+    const editable = packToEditable(pack);
+    editingBaseline.current = JSON.stringify(editable);
+    setEditing(editable);
   };
 
   const updateMeta = (patch: Partial<EditablePack>) => {
@@ -268,6 +295,8 @@ export function TaskPacksPage() {
   };
 
   const toggleEnabled = async (pack: AdminTaskPack, enabled: boolean) => {
+    if (togglingId !== null) return;
+    setTogglingId(pack.id);
     try {
       await updateAdminTaskPack(pack.id, {
         name: pack.name,
@@ -293,6 +322,8 @@ export function TaskPacksPage() {
       retry();
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : "操作失败", variant: "error" });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -300,15 +331,15 @@ export function TaskPacksPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <button type="button" className="btn btn-sm gap-1.5" onClick={() => setEditing(null)} disabled={saving}>
+          <button type="button" className="btn btn-sm gap-1.5" onClick={() => void exitEditor()} disabled={saving}>
             <ArrowLeft className="h-4 w-4" />
             返回列表
           </button>
           <div className="flex items-center gap-2">
-            {saveError ? <span className="text-xs text-red-500">{saveError}</span> : null}
+            {saveError ? <span className="text-xs text-[var(--app-danger)]">{saveError}</span> : null}
             <button
               type="button"
-              className="btn btn-sm gap-1.5 bg-indigo-600 text-white hover:bg-indigo-500"
+              className="btn btn-sm gap-1.5 btn-primary"
               onClick={() => void save()}
               disabled={saving}
             >
@@ -318,12 +349,12 @@ export function TaskPacksPage() {
           </div>
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+        <section className="card">
+          <h2 className="text-sm font-bold text-[var(--color-ink)]">
             {editing.id === null ? "新建任务包" : `编辑「${editing.name || "未命名"}」`}
           </h2>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="block text-xs font-medium text-[var(--color-muted)]">
               名称
               <input
                 className="input mt-1 w-full"
@@ -333,7 +364,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ name: event.target.value })}
               />
             </label>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 lg:col-span-2">
+            <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
               描述（玩家端展示，可写玩法说明与 18+ 提示）
               <textarea
                 className="input mt-1 min-h-16 w-full py-2"
@@ -342,7 +373,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ description: event.target.value })}
               />
             </label>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="block text-xs font-medium text-[var(--color-muted)]">
               普通模式层数
               <input
                 type="number"
@@ -353,7 +384,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ normalFloors: Number(event.target.value) })}
               />
             </label>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="block text-xs font-medium text-[var(--color-muted)]">
               地狱模式层数
               <input
                 type="number"
@@ -364,7 +395,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ hellFloors: Number(event.target.value) })}
               />
             </label>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 lg:col-span-2">
+            <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
               开始前准备清单（每行一条，玩家开局前展示）
               <textarea
                 className="input mt-1 min-h-20 w-full py-2"
@@ -374,7 +405,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ prepItemsText: event.target.value })}
               />
             </label>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 lg:col-span-2">
+            <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
               准备提示（一句话，随清单一起展示）
               <input
                 className="input mt-1 w-full"
@@ -384,7 +415,7 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ prepText: event.target.value })}
               />
             </label>
-            <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-[var(--color-muted)]">
               <input
                 type="checkbox"
                 className="checkbox checkbox-sm"
@@ -396,28 +427,28 @@ export function TaskPacksPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="card">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">任务列表（{editing.items.length}）</h2>
+            <h2 className="text-sm font-bold text-[var(--color-ink)]">任务列表（{editing.items.length}）</h2>
             <button type="button" className="btn btn-sm gap-1.5" onClick={addItem}>
               <Plus className="h-4 w-4" />
               添加任务
             </button>
           </div>
-          <p className="mt-1 text-xs text-slate-400">任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。</p>
+          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。</p>
 
           {editing.items.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400 dark:border-slate-600">
+            <div className="mt-4 rounded-xl border border-dashed border-[var(--color-edge)] p-8 text-center text-sm text-[var(--color-muted-soft)] ">
               还没有任务。先添加一个吧——每个任务需要标题与描述，保存时会按当前顺序编号。
             </div>
           ) : (
             <div className="mt-4 space-y-3">
               {editing.items.map((item, index) => (
-                <article key={item.key} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <article key={item.key} className="rounded-xl border border-[var(--color-edge)] p-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold text-slate-400">#{index + 1}</span>
+                    <span className="text-xs font-bold text-[var(--color-muted-soft)]">#{index + 1}</span>
                     <div className="flex items-center gap-1">
-                      <label className="flex items-center gap-1 pr-1 text-[11px] text-slate-400">
+                      <label className="flex items-center gap-1 pr-1 text-[11px] text-[var(--color-muted-soft)]">
                         <input
                           type="checkbox"
                           className="checkbox checkbox-xs"
@@ -445,7 +476,7 @@ export function TaskPacksPage() {
                       <button
                         type="button"
                         aria-label="删除任务"
-                        className="btn btn-ghost btn-xs text-red-500"
+                        className="btn btn-ghost btn-xs text-[var(--app-danger)]"
                         onClick={() => removeItem(item.key)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -468,7 +499,7 @@ export function TaskPacksPage() {
                       onChange={(event) => updateItem(item.key, { description: event.target.value })}
                     />
                     <div className="grid grid-cols-2 gap-2 lg:col-span-3">
-                      <label className="text-[11px] text-slate-400">
+                      <label className="text-[11px] text-[var(--color-muted-soft)]">
                         分值
                         <input
                           type="number"
@@ -479,7 +510,7 @@ export function TaskPacksPage() {
                           onChange={(event) => updateItem(item.key, { score: Number(event.target.value) })}
                         />
                       </label>
-                      <label className="text-[11px] text-slate-400">
+                      <label className="text-[11px] text-[var(--color-muted-soft)]">
                         身份
                         <SelectField
                           value={item.persona}
@@ -487,7 +518,7 @@ export function TaskPacksPage() {
                           options={Object.entries(PERSONA_LABELS).map(([value, label]) => ({ value, label }))}
                         />
                       </label>
-                      <label className="text-[11px] text-slate-400">
+                      <label className="text-[11px] text-[var(--color-muted-soft)]">
                         模式
                         <SelectField
                           value={item.mode}
@@ -496,7 +527,7 @@ export function TaskPacksPage() {
                         />
                       </label>
                       <div className="grid grid-cols-2 gap-1.5">
-                        <label className="text-[11px] text-slate-400">
+                        <label className="text-[11px] text-[var(--color-muted-soft)]">
                           起始层
                           <input
                             type="number"
@@ -507,7 +538,7 @@ export function TaskPacksPage() {
                             onChange={(event) => updateItem(item.key, { minFloor: Number(event.target.value) })}
                           />
                         </label>
-                        <label className="text-[11px] text-slate-400">
+                        <label className="text-[11px] text-[var(--color-muted-soft)]">
                           结束层
                           <input
                             type="number"
@@ -521,7 +552,7 @@ export function TaskPacksPage() {
                       </div>
                     </div>
                   </div>
-                  <label className="mt-2 block text-[11px] text-slate-400">
+                  <label className="mt-2 block text-[11px] text-[var(--color-muted-soft)]">
                     风险弹窗提醒（可选，留空则无弹窗；建议用于危险动作 / 公共场合 / 违法边缘内容）
                     <textarea
                       className="input mt-1 min-h-8 w-full py-2"
@@ -543,14 +574,14 @@ export function TaskPacksPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">任务包</h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <h2 className="text-base font-bold text-[var(--color-ink)]">任务包</h2>
+          <p className="mt-0.5 text-xs text-[var(--color-muted)]">
             内容与机制分离：任务文案存库，改动立即对玩家端生效。
           </p>
         </div>
         <button
           type="button"
-          className="btn btn-sm gap-1.5 bg-indigo-600 text-white hover:bg-indigo-500"
+          className="btn btn-sm gap-1.5 btn-primary"
           onClick={openNew}
         >
           <Plus className="h-4 w-4" />
@@ -569,42 +600,43 @@ export function TaskPacksPage() {
           {packItems.map((pack) => (
             <article
               key={pack.id}
-              className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+              className="card"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{pack.name}</h3>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  <h3 className="truncate text-base font-semibold text-[var(--color-ink)]">{pack.name}</h3>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
                     {pack.description || "（暂无描述）"}
                   </p>
                 </div>
                 <span
                   className={
                     pack.enabled
-                      ? "shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      ? "badge badge-green"
+                      : "badge badge-gray"
                   }
                 >
                   {pack.enabled ? "已启用" : "已停用"}
                 </span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-700 dark:text-slate-400">
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-[var(--color-ink)] dark:text-[var(--color-muted-soft)]">
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
                   普通 {pack.normalFloors} 层
                 </span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
                   地狱 {pack.hellFloors} 层
                 </span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
                   {pack.items.filter((item) => item.enabled).length} 个任务
                 </span>
               </div>
-              <div className="mt-4 flex items-center justify-between flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 flex-wrap">
-                <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-4 flex items-center justify-between flex-wrap gap-2 border-t border-[var(--color-edge)] pt-3 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
                   <input
                     type="checkbox"
                     className="checkbox checkbox-sm"
                     checked={pack.enabled}
+                    disabled={togglingId !== null}
                     onChange={(event) => void toggleEnabled(pack, event.target.checked)}
                   />
                   玩家端可见
@@ -616,7 +648,7 @@ export function TaskPacksPage() {
                   <button
                     type="button"
                     aria-label="删除任务包"
-                    className="btn btn-sm btn-ghost text-red-500"
+                    className="btn btn-sm btn-ghost text-[var(--app-danger)]"
                     onClick={() => void remove(pack)}
                   >
                     <Trash2 className="h-4 w-4" />

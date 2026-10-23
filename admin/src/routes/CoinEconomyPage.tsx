@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Coins, Gift, Settings2, Sparkles, Target, Wallet } from "lucide-react";
 import { api, apiSend } from "../api";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
+import { useDialogs } from "../components/Dialogs";
 
 /**
  * 金币经济管理（/coin-economy）：投稿审核、奖池、运营配置、调账与流水查询。
@@ -106,8 +107,10 @@ function ReviewTab() {
   const [tier, setTier] = useState<Record<number, number>>({});
   const [pools, setPools] = useState<PoolRow[]>([]);
   const [poolChoice, setPoolChoice] = useState<Record<number, number>>({});
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   const reload = useCallback(() => {
+    setError(null);
     api<{ submissions: SubmissionRow[] }>("/api/admin/submissions")
       .then((data) => setRows(data.submissions))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载失败"));
@@ -121,33 +124,48 @@ function ReviewTab() {
   }, [reload]);
 
   const review = async (id: number, decision: "approved" | "rejected" | "changes_requested") => {
+    if (busyId !== null) return;
+    setBusyId(id);
     setError(null);
     try {
       await apiSend("POST", `/api/admin/submissions/${id}/review`, { decision, qualityTier: tier[id] ?? 2 });
       reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "审核失败");
+    } finally {
+      setBusyId(null);
     }
   };
 
   const addToPool = async (id: number) => {
+    if (busyId !== null) return;
     const poolId = poolChoice[id] ?? pools[0]?.id;
     if (!poolId) {
       setError("请先创建奖池");
       return;
     }
+    setBusyId(id);
     setError(null);
     try {
       await apiSend("POST", `/api/admin/submissions/${id}/pool`, { poolId, rarity: "R" });
       reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "加入奖池失败");
+    } finally {
+      setBusyId(null);
     }
   };
 
   return (
     <div className="space-y-3">
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      {error ? (
+        <div className="alert alert-error flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={reload}>
+            重试
+          </button>
+        </div>
+      ) : null}
       {rows === null ? (
         <SkeletonPanel lines={6} />
       ) : rows.length === 0 ? (
@@ -181,14 +199,30 @@ function ReviewTab() {
                     <option value={3}>3</option>
                   </select>
                 </label>
-                <button type="button" className="btn btn-sm" onClick={() => void review(row.id, "changes_requested")}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={busyId !== null}
+                  onClick={() => void review(row.id, "changes_requested")}
+                >
                   需修改
                 </button>
-                <button type="button" className="btn btn-sm btn-danger-hover" onClick={() => void review(row.id, "rejected")}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger-hover"
+                  disabled={busyId !== null}
+                  onClick={() => void review(row.id, "rejected")}
+                >
                   拒绝
                 </button>
-                <button type="button" className="btn btn-sm btn-accent" onClick={() => void review(row.id, "approved")}>
-                  通过{row.rewardAmount == null ? "并奖励" : ""}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-accent"
+                  disabled={busyId !== null}
+                  onClick={() => void review(row.id, "approved")}
+                >
+                  {busyId === row.id && "处理中…"}
+                  {busyId !== row.id && (row.rewardAmount == null ? "通过并奖励" : "通过")}
                 </button>
                 {row.status === "approved" ? (
                   <span className="flex items-center gap-1">
@@ -238,6 +272,7 @@ function PoolsTab() {
   const [form, setForm] = useState({ slug: "", name: "", costSingle: 20, costMulti: "", pityAt: "" });
 
   const reload = useCallback(() => {
+    setError(null);
     api<{ pools: PoolRow[] }>("/api/admin/gacha/pools")
       .then((data) => setPools(data.pools))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载失败"));
@@ -278,7 +313,14 @@ function PoolsTab() {
 
   return (
     <div className="space-y-3">
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      {error ? (
+        <div className="alert alert-error flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={reload}>
+            重试
+          </button>
+        </div>
+      ) : null}
       <div className="panel space-y-2 p-4">
         <p className="text-sm font-bold">创建奖池（创建后默认草稿；加入内容生成快照后才能上架）</p>
         <div className="grid gap-2 sm:grid-cols-5">
@@ -358,6 +400,7 @@ function ChallengesTab() {
   });
 
   const reload = useCallback(() => {
+    setError(null);
     api<{ challenges: ChallengeRow[] }>("/api/admin/coins/challenges")
       .then((data) => setRows(data.challenges))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载失败"));
@@ -390,7 +433,14 @@ function ChallengesTab() {
 
   return (
     <div className="space-y-3">
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      {error ? (
+        <div className="alert alert-error flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={reload}>
+            重试
+          </button>
+        </div>
+      ) : null}
       <div className="panel space-y-2 p-4">
         <p className="text-sm font-bold">新建挑战（进度全部由服务端按真实记录计算）</p>
         <div className="grid gap-2 sm:grid-cols-4">
@@ -456,11 +506,16 @@ function ConfigTab() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
+    setError(null);
     api<ConfigShape>("/api/admin/coins/config")
       .then(setConfig)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载失败"));
   }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const save = async (section: string, value: unknown) => {
     setError(null);
@@ -475,7 +530,16 @@ function ConfigTab() {
     }
   };
 
-  if (error) return <div className="alert alert-error">{error}</div>;
+  if (error) {
+    return (
+      <div className="alert alert-error flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <button type="button" className="btn btn-sm" onClick={reload}>
+          重试
+        </button>
+      </div>
+    );
+  }
   if (!config) return <SkeletonPanel lines={6} />;
 
   return (
@@ -739,11 +803,13 @@ function ModerationSection() {
 }
 
 function AdjustTab() {
+  const { confirm } = useDialogs();
   const [target, setTarget] = useState("");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [hash, setHash] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [adjustPending, setAdjustPending] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Array<Record<string, unknown>> | null>(null);
 
@@ -764,7 +830,17 @@ function AdjustTab() {
     }
   };
 
+  const adjustBusy = adjustPending !== "";
   const adjust = async () => {
+    if (adjustBusy) return;
+    const ok = await confirm({
+      title: "确认人工调账？",
+      message: `将把用户 ${target} 的金币余额直接变更 ${Number(amount) > 0 ? "+" : ""}${amount}。此操作写入审计日志。`,
+      confirmLabel: "确认调账",
+      variant: Number(amount) < 0 ? "danger" : "default",
+    });
+    if (!ok) return;
+    setAdjustPending("调账中…");
     setError(null);
     setResult(null);
     try {
@@ -779,6 +855,8 @@ function AdjustTab() {
       void resolve();
     } catch (err) {
       setError(err instanceof Error ? err.message : "调账失败");
+    } finally {
+      setAdjustPending("");
     }
   };
 
@@ -829,7 +907,7 @@ function AdjustTab() {
                     <span>
                       {String(txn.kind)} · {String(txn.note ?? "")}
                     </span>
-                    <span className={Number(txn.amount) > 0 ? "font-bold text-emerald-600" : "font-bold text-rose-500"}>
+                    <span className={Number(txn.amount) > 0 ? "font-bold text-[var(--app-success)]" : "font-bold text-[var(--app-danger)]"}>
                       {Number(txn.amount) > 0 ? "+" : ""}
                       {String(txn.amount)}（余 {String(txn.balanceAfter)}）
                     </span>

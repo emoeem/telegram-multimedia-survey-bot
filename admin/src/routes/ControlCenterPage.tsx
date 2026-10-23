@@ -23,6 +23,7 @@ import {
   type DeploymentTaskView,
   type DeploymentView,
   type PublicationArchiveView,
+  type PublicationCertShareView,
   type PublicationTargetView,
   type ProvisionCustomerResult,
 } from "../api";
@@ -58,6 +59,13 @@ const archiveSourceLabel: Record<PublicationArchiveView["source"], string> = {
   settings: "系统设置（本页可改）",
   cache: "KV 缓存（由 /set_report_channel 写入）",
   env: "环境变量 REPORT_CHANNEL_ID",
+};
+
+/** 认证卡作品频道的来源；`archive` = 没单独配，跟着报告归档频道走。 */
+const certShareSourceLabel: Record<PublicationCertShareView["source"], string> = {
+  settings: "系统设置（本页可改）",
+  env: "环境变量 CERT_SHARE_CHANNEL",
+  archive: "继承报告归档频道",
 };
 
 function StatusBadge({ status }: { status: DeploymentView["status"] }) {
@@ -96,6 +104,9 @@ export function ControlCenterPage() {
   const [archive, setArchive] = useState<PublicationArchiveView | null>(null);
   const [showArchive, setShowArchive] = useState(false);
   const [archiveChatId, setArchiveChatId] = useState("");
+  const [certShare, setCertShare] = useState<PublicationCertShareView | null>(null);
+  const [showCertShare, setShowCertShare] = useState(false);
+  const [certShareChatId, setCertShareChatId] = useState("");
   const [selected, setSelected] = useState<DeploymentView | null>(null);
   // Vendor-side read-only viewer (客户数据); null keeps it closed.
   const [remoteFor, setRemoteFor] = useState<DeploymentView | null>(null);
@@ -127,13 +138,16 @@ export function ControlCenterPage() {
     try {
       const [d, t] = await Promise.all([
         api<{ items: DeploymentView[] }>("/api/control/deployments"),
-        api<{ items: PublicationTargetView[]; archive: PublicationArchiveView | null }>(
-          "/api/control/publication-targets",
-        ),
+        api<{
+          items: PublicationTargetView[];
+          archive: PublicationArchiveView | null;
+          certShare: PublicationCertShareView | null;
+        }>("/api/control/publication-targets"),
       ]);
       setDeployments(d.items);
       setTargets(t.items);
       setArchive(t.archive ?? null);
+      setCertShare(t.certShare ?? null);
       if (selected) setSelected(d.items.find((item) => item.id === selected.id) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -376,23 +390,23 @@ export function ControlCenterPage() {
             <tbody>
               {filtered.map((d) => (
                 <tr key={d.id} className="hover">
-                  <td>
+                  <td> data-label="Worker"
                     <button className="text-left" onClick={() => setSelected(d)}>
                       <div className="font-medium">{d.workerName}</div>
                       <div className="text-xs opacity-50">{d.installationId}</div>
                     </button>
                   </td>
-                  <td className="text-sm">{d.licenseId}</td>
-                  <td>
+                  <td className="text-sm"> data-label="授权"{d.licenseId}</td>
+                  <td> data-label="状态"
                     <StatusBadge status={d.status} />
                   </td>
-                  <td className="text-sm">
+                  <td className="text-sm"> data-label="版本"
                     {d.currentVersion ?? "—"}
                     {d.desiredVersion && d.desiredVersion !== d.currentVersion ? (
                       <span className="ml-1 opacity-50">→ {d.desiredVersion}</span>
                     ) : null}
                   </td>
-                  <td className="text-xs opacity-60">{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}</td>
+                  <td className="text-xs opacity-60"> data-label="最后在线"{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}</td>
                   <td>
                     <div className="flex items-center gap-1">
                       <button
@@ -403,7 +417,12 @@ export function ControlCenterPage() {
                         <Database className="h-3.5 w-3.5" />
                         查看数据
                       </button>
-                      <button className="btn btn-ghost btn-xs" onClick={() => setSelected(d)}>
+                      <button
+                        className="btn btn-ghost btn-xs"
+                        aria-label={`打开 ${d.workerName} 详情`}
+                        title="打开详情"
+                        onClick={() => setSelected(d)}
+                      >
                         <ChevronRight className="h-4 w-4" />
                       </button>
                     </div>
@@ -446,7 +465,7 @@ export function ControlCenterPage() {
                   {task.targetVersion ? <span className="text-xs opacity-60">目标 {task.targetVersion}</span> : null}
                   <span className="ml-auto text-xs opacity-50">{formatDateTime(task.requestedAt)}</span>
                 </div>
-                {task.errorMessage ? <p className="mt-2 text-sm text-error">{task.errorMessage}</p> : null}
+                {task.errorMessage ? <p className="mt-2 text-sm text-[var(--app-danger)]">{task.errorMessage}</p> : null}
                 {task.logText ? (
                   <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-base-200 p-2 text-xs whitespace-pre-wrap">
                     {task.logText}
@@ -466,8 +485,9 @@ export function ControlCenterPage() {
           <div>
             <h2>Telegram Publication Targets</h2>
             <p className="card-sub">
-              一个列表两种用途：公开群（用户勾选公开后，报告以图片相册 fan-out
-              到所有已启用的群）与归档频道（每份答卷自动打包 ZIP 归档，不参与相册）。
+              一个列表三种用途：公开群（用户勾选公开后，报告以图片相册 fan-out
+              到所有已启用的群）、归档频道（每份答卷自动打包 ZIP 归档，不参与相册）
+              与认证卡作品频道（用户自制认证卡的照片同步）。
             </p>
           </div>
           <button
@@ -507,6 +527,37 @@ export function ControlCenterPage() {
               </button>
             </div>
           </div>
+          <div className="rounded-xl border border-[color-mix(in_srgb,var(--app-success)_35%,var(--surface))] bg-[color-mix(in_srgb,var(--app-success)_6%,var(--surface))] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 font-medium">
+                  认证卡作品频道
+                  <span className="badge badge-success badge-sm">认证卡 · 照片</span>
+                  {certShare?.source === "archive" ? (
+                    <span className="badge badge-ghost badge-sm">未单独配置</span>
+                  ) : null}
+                </div>
+                <div className="mt-2 text-sm opacity-70">Chat ID: {certShare?.chatId ?? "未配置"}</div>
+                <div className="text-sm opacity-70">
+                  用户在认证卡生成器点「导出」时，成品图 + 用户自己上传的原图同步到这里。
+                </div>
+                <div className="mt-1 text-xs opacity-50">
+                  来源：{certShare ? certShareSourceLabel[certShare.source] : "未配置"}
+                  {certShare?.source === "archive" ? "，改归档频道即同步生效" : ""}
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="编辑认证卡作品频道"
+                onClick={() => {
+                  setCertShareChatId(certShare?.chatId ?? "");
+                  setShowCertShare(true);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
           {(targets ?? []).map((target) => (
             <div
               key={target.id}
@@ -528,7 +579,7 @@ export function ControlCenterPage() {
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
-                    className="btn btn-ghost btn-sm text-error"
+                    className="btn btn-ghost btn-sm text-[var(--app-danger)]"
                     title="删除"
                     disabled={busy}
                     onClick={() =>
@@ -657,9 +708,18 @@ export function ControlCenterPage() {
             <button
               className="btn btn-sm"
               disabled={busy || selected.status === "disabled"}
-              onClick={() =>
-                void act(() => apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "rollback" }))
-              }
+              onClick={() => {
+                void confirmDialog({
+                  title: "回滚该客户实例？",
+                  message: `${selected.workerName} 将回滚到上一个部署版本，回滚期间的进行中任务会中断。`,
+                  confirmLabel: "回滚",
+                }).then((ok) => {
+                  if (ok)
+                    void act(() =>
+                      apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "rollback" }),
+                    );
+                });
+              }}
             >
               回滚任务
             </button>
@@ -678,9 +738,18 @@ export function ControlCenterPage() {
               <button
                 className="btn btn-outline btn-sm"
                 disabled={busy}
-                onClick={() =>
-                  void act(() => apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "disable" }))
-                }
+                onClick={() => {
+                  void confirmDialog({
+                    title: "停用该客户实例？",
+                    message: `${selected.workerName} 的 Telegram 入口会立即下线，直到重新启用。`,
+                    confirmLabel: "停用",
+                  }).then((ok) => {
+                    if (ok)
+                      void act(() =>
+                        apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "disable" }),
+                      );
+                  });
+                }}
               >
                 <CloudOff className="h-4 w-4" />
                 停用
@@ -1021,6 +1090,76 @@ export function ControlCenterPage() {
                     await load();
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "保存归档频道失败");
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}保存
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {showCertShare ? (
+        <Modal open onClose={() => setShowCertShare(false)} title="设置认证卡作品频道">
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--color-muted)]">
+              保存后写入系统设置 cert_share_channel_id，优先于环境变量 CERT_SHARE_CHANNEL 与报告归档频道。
+              频道 ID 形如 -100xxxxxxxxxx。
+            </p>
+            <p className="text-xs text-[var(--color-muted)]">
+              当前：{certShare ? `${certShare.chatId}（${certShareSourceLabel[certShare.source]}）` : "未配置"}
+            </p>
+            <input
+              className="input w-full font-mono"
+              placeholder="-100xxxxxxxxxx"
+              value={certShareChatId}
+              onChange={(e) => setCertShareChatId(e.target.value)}
+            />
+          </div>
+          <div className="toolbar mt-4 justify-end">
+            <button
+              className="btn"
+              disabled={busy}
+              title="清除单独配置，改为跟随报告归档频道"
+              onClick={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await apiSend("PUT", "/api/control/publication-targets/cert-share", { chatId: "" });
+                    setShowCertShare(false);
+                    await load();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "恢复默认失败");
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            >
+              恢复继承归档频道
+            </button>
+            <button className="btn" onClick={() => setShowCertShare(false)}>
+              取消
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={busy || !certShareChatId.trim()}
+              onClick={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await apiSend("PUT", "/api/control/publication-targets/cert-share", {
+                      chatId: certShareChatId.trim(),
+                    });
+                    setShowCertShare(false);
+                    await load();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "保存认证卡频道失败");
                   } finally {
                     setBusy(false);
                   }

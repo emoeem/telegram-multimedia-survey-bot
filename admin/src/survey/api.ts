@@ -113,6 +113,8 @@ export interface SurveyDto {
   submissionBotUrl: string | null;
   /** 金币解锁门：服务端在启用解锁且未持有时返回（内容此时不下发）。 */
   coinUnlock?: { required: boolean; price: number };
+  /** 部署级能力位：Pro 部署的视频/音频答卷走 Stream 浏览器直传。 */
+  streamVideo?: boolean;
 }
 
 export interface SurveyListItem {
@@ -623,6 +625,28 @@ export function uploadAnswerMedia(
     method: "POST",
     body: form,
   });
+}
+
+/**
+ * Stream 直传（Pro 部署）：Worker 只发一张上传凭证，视频字节由浏览器直传
+ * Cloudflare——绕开经 Worker 上传的 20MB 天花板。返回与 uploadAnswerMedia
+ * 相同的形状，调用方无感切换。
+ */
+export async function uploadAnswerMediaViaStream(
+  surveyId: number,
+  file: File,
+): Promise<{ ok: boolean; mediaAssetId: number; url: string }> {
+  const kind = file.type.startsWith("audio/") ? "audio" : "video";
+  const ticket = await request<{ ok: boolean; mediaAssetId: number; uploadUrl: string; videoUid: string }>(
+    `/api/survey/${surveyId}/media/stream-ticket`,
+    { method: "POST", body: JSON.stringify({ kind }), headers: { "Content-Type": "application/json" } },
+    { retries: 0 },
+  );
+  const put = await fetch(ticket.uploadUrl, { method: "PUT", body: file });
+  if (!put.ok) {
+    throw new Error(`视频上传失败（${put.status}），请稍后重试`);
+  }
+  return { ok: true, mediaAssetId: ticket.mediaAssetId, url: "" };
 }
 
 /**

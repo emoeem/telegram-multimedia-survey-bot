@@ -282,22 +282,22 @@ function SurveysPanel({
                 <tbody>
                   {data.items.map((survey) => (
                     <tr key={survey.id} className="hover">
-                      <td className="text-sm">#{survey.id}</td>
-                      <td className="text-sm">
+                      <td data-label="ID" className="text-sm">#{survey.id}</td>
+                      <td data-label="标题" className="text-sm">
                         <div className="font-medium">{survey.title}</div>
                         {survey.description ? (
                           <div className="max-w-72 truncate text-xs opacity-50">{survey.description}</div>
                         ) : null}
                       </td>
-                      <td className="text-sm">
+                      <td data-label="状态" className="text-sm">
                         {survey.status in STATUS_LABELS ? (
                           <StatusBadge status={survey.status as SurveyStatus} />
                         ) : (
                           <span className="badge badge-sm">{survey.status}</span>
                         )}
                       </td>
-                      <td className="text-xs opacity-60">{formatDateTime(survey.createdAt)}</td>
-                      <td className="text-xs opacity-60">{formatDateTime(survey.updatedAt)}</td>
+                      <td data-label="创建时间" className="text-xs opacity-60">{formatDateTime(survey.createdAt)}</td>
+                      <td data-label="更新时间" className="text-xs opacity-60">{formatDateTime(survey.updatedAt)}</td>
                       <td>
                         <button className="btn btn-ghost btn-xs" onClick={() => onOpenResponses(survey.id)}>
                           看答卷
@@ -388,7 +388,7 @@ function ResponsesPanel({
           ))}
         </select>
         {options.loading ? <span className="text-xs opacity-50">正在读取问卷列表…</span> : null}
-        {options.error ? <span className="text-xs text-error">问卷筛选列表加载失败</span> : null}
+        {options.error ? <span className="text-xs text-[var(--app-danger)]">问卷筛选列表加载失败</span> : null}
         {(options.data?.total ?? 0) > SURVEY_OPTION_PAGE ? (
           <span className="text-xs opacity-50">筛选列表只显示最近 {SURVEY_OPTION_PAGE} 份问卷</span>
         ) : null}
@@ -415,15 +415,15 @@ function ResponsesPanel({
                 <tbody>
                   {data.items.map((item) => (
                     <tr key={item.id} className="hover">
-                      <td className="text-sm">#{item.id}</td>
-                      <td className="text-sm">
+                      <td data-label="ID" className="text-sm">#{item.id}</td>
+                      <td data-label="问卷" className="text-sm">
                         <div className="max-w-56 truncate font-medium">{item.surveyTitle ?? "（问卷已删除）"}</div>
                         <div className="text-xs opacity-50">surveyId {item.surveyId}</div>
                       </td>
-                      <td className="text-sm">{respondentName(item)}</td>
-                      <td className="text-sm">{RESPONSE_STATUS_LABELS[item.status] ?? item.status}</td>
-                      <td className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
-                      <td className="text-xs opacity-60">
+                      <td data-label="填写者" className="text-sm">{respondentName(item)}</td>
+                      <td data-label="状态" className="text-sm">{RESPONSE_STATUS_LABELS[item.status] ?? item.status}</td>
+                      <td data-label="开始时间" className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
+                      <td data-label="完成时间" className="text-xs opacity-60">
                         {item.completedAt ? formatDateTime(item.completedAt) : "—"}
                       </td>
                       <td>
@@ -473,8 +473,8 @@ function ResponsesPanel({
                   <tbody>
                     {detail.data.answers.map((answer) => (
                       <tr key={answer.id}>
-                        <td className="text-sm">questionId {answer.questionId}</td>
-                        <td className="text-sm break-all">{answerText(answer)}</td>
+                        <td data-label="题目" className="text-sm">questionId {answer.questionId}</td>
+                        <td data-label="答案" className="text-sm break-all">{answerText(answer)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -542,7 +542,7 @@ function UsersPanel({
                     const banned = item.banned === true || item.banned === 1;
                     return (
                       <tr key={item.id} className="hover">
-                        <td className="text-sm">
+                        <td data-label="用户" className="text-sm">
                           <div className="font-medium">
                             {name}
                             {banned ? (
@@ -555,10 +555,10 @@ function UsersPanel({
                             <div className="text-xs opacity-50">@{item.username}</div>
                           ) : null}
                         </td>
-                        <td className="text-sm">{item.telegramUserId}</td>
-                        <td className="text-sm">{item.systemRole}</td>
-                        <td className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
-                        <td className="text-xs opacity-60">
+                        <td data-label="Telegram ID" className="text-sm">{item.telegramUserId}</td>
+                        <td data-label="角色" className="text-sm">{item.systemRole}</td>
+                        <td data-label="注册时间" className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
+                        <td data-label="最近启动" className="text-xs opacity-60">
                           {item.botStartedAt ? formatDateTime(item.botStartedAt) : "—"}
                         </td>
                         <td>
@@ -660,7 +660,7 @@ export function RemoteDataViewer({
     // The shared Modal owns Escape, the scroll lock and focus; this surface
     // previously re-implemented the daisyUI modal classes, which are not
     // generated by this build (so it wasn't an overlay at all).
-    <Modal open onClose={onClose} size="lg" title={`客户数据 · ${deployment.workerName}`}>
+    <Modal open onClose={onClose} size="xl" title={`客户数据 · ${deployment.workerName}`}>
         <p className="text-sm text-[var(--color-muted)]">只读浏览 · {deployment.workerUrl ?? deployment.installationId}</p>
 
         <p className="mt-3 rounded-xl bg-base-200 p-3 text-xs text-[var(--color-muted)]">
@@ -684,7 +684,7 @@ export function RemoteDataViewer({
           </button>
         </div>
 
-        <div className="mt-4 max-h-[58vh] overflow-y-auto pr-1">
+        <div className="mt-4">
           {tab === "summary" ? <SummaryPanel state={summary} /> : null}
           {tab === "surveys" ? (
             <SurveysPanel

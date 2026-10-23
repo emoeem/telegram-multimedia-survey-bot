@@ -88,14 +88,14 @@ export function AuditPage() {
             <tbody>
               {data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                  <td className="text-sm">{formatDateTime(item.createdAt)}</td>
-                  <td className="text-sm">{item.actorName ?? "系统"}</td>
-                  <td className="text-sm font-medium">{item.action}</td>
-                  <td className="text-sm text-[var(--text-soft)]">
+                  <td data-label="时间" className="text-sm">{formatDateTime(item.createdAt)}</td>
+                  <td data-label="执行者" className="text-sm">{item.actorName ?? "系统"}</td>
+                  <td data-label="操作" className="text-sm font-medium">{item.action}</td>
+                  <td data-label="对象" className="text-sm text-[var(--text-soft)]">
                     {item.entityType}
                     {item.entityId ? ` #${item.entityId}` : ""}
                   </td>
-                  <td className="max-w-72 text-sm text-[var(--color-muted)]">{summarize(item.after) || "—"}</td>
+                  <td data-label="变更摘要" className="max-w-72 text-sm text-[var(--color-muted)]">{summarize(item.after) || "—"}</td>
                 </tr>
               ))}
             </tbody>

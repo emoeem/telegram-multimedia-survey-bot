@@ -338,7 +338,11 @@ export function ResponsesPage() {
                   const completed = item.status === "completed";
                   return (
                     <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                      <td className="">
+                      <td data-label="{completedItems.length ? (
+                       selected.has(item.id))}
+                        onChange={toggleSelectAllCompleted}
+                      />
+                    ) : null}" className="">
                         {completed ? (
                           <input
                             type="checkbox"
@@ -349,7 +353,7 @@ export function ResponsesPage() {
                           />
                         ) : null}
                       </td>
-                      <td className="text-sm">
+                      <td data-label="编号" className="text-sm">
                         <Link
                           className="font-semibold text-[var(--app-info)]"
                           to={`/surveys/${data.survey.id}/responses/${item.id}`}
@@ -357,7 +361,7 @@ export function ResponsesPage() {
                           #{item.id}
                         </Link>
                       </td>
-                      <td className="text-sm">
+                      <td data-label="填写者" className="text-sm">
                         {item.respondent ? (
                           <Link
                             className="font-medium text-[var(--app-info)] hover:underline"
@@ -369,9 +373,9 @@ export function ResponsesPage() {
                           respondentName(item)
                         )}
                       </td>
-                      <td className="text-sm">{item.statusLabel}</td>
-                      <td className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
-                      <td className="">
+                      <td data-label="状态" className="text-sm">{item.statusLabel}</td>
+                      <td data-label="完成时间" className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
+                      <td data-label="操作" className="">
                         <div className="flex flex-wrap gap-2">
                           {completed ? (
                             <>
@@ -479,6 +483,8 @@ export function ResponsesPage() {
               </select>
               <button
                 className="btn btn-sm"
+                aria-label="关闭报告预览"
+                title="关闭报告预览"
                 onClick={() => {
                   setPreviewUrl(null);
                   setPreviewResponseId(null);

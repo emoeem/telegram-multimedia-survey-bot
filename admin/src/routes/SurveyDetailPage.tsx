@@ -22,7 +22,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { histogramOption, useChartColors } from "../charts";
 import { apiSend, authHeaders, type ReportTemplateOption, type SurveyAnalyticsData, type SurveyDetailData } from "../api";
 import { useApi } from "../hooks";
-import { ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
+import { ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
 import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { formatDateTime } from "../format";
@@ -546,22 +546,20 @@ function ShareSurveyDialog({ survey, onClose }: { survey: SurveyDetailData; onCl
   const telegramShare = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(survey.title)}`;
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/50 px-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="share-title"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-edge)] bg-[var(--surface)] shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-[var(--color-edge-soft)] px-5 py-3">
-          <h3 id="share-title" className="text-base font-bold tracking-tight">分享问卷</h3>
-          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--color-muted)] hover:bg-black/5">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-4 p-5">
+    // 手写弹窗换成统一 Modal：Escape 关闭、打开时聚焦、关闭后焦点归位、
+    // Tab 焦点循环都由 Modal 提供（此前这套分享弹窗三者皆无）。
+    <Modal
+      open
+      onClose={onClose}
+      title="分享问卷"
+      size="md"
+      footer={
+        <button type="button" className="btn" onClick={onClose}>
+          关闭
+        </button>
+      }
+    >
+        <div className="space-y-4">
           <div className="overflow-hidden rounded-xl border border-[var(--color-edge)]">
             {displayImage ? (
               <img src={displayImage} alt="问卷封面" className="aspect-[16/7] w-full object-cover" />
@@ -628,7 +626,6 @@ function ShareSurveyDialog({ survey, onClose }: { survey: SurveyDetailData; onCl
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

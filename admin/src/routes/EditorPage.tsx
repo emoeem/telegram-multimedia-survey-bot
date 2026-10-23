@@ -1001,8 +1001,8 @@ function ResultPoolGenerator({ surveyId, disabled }: { surveyId: number; disable
       <div>
         <div className="q-label">结局收集奖池</div>
         <div className="q-help">把「结果设计」里的结局变成抽卡内容：读者完成答卷后花金币抽取结局卡</div>
-        {message ? <div className="q-help mt-1 text-green-600">{message}</div> : null}
-        {error ? <div className="q-help mt-1 text-red-600">{error}</div> : null}
+        {message ? <div className="q-help mt-1 text-[var(--app-success)]">{message}</div> : null}
+        {error ? <div className="q-help mt-1 text-[var(--app-danger)]">{error}</div> : null}
       </div>
       <button type="button" className="btn btn-sm" disabled={disabled || busy} onClick={generate}>
         {busy ? "生成中…" : "生成结局奖池"}

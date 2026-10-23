@@ -79,11 +79,11 @@ export function VersionsPage() {
             <tbody>
               {versions.map((version) => (
                 <tr key={version.version} className="hover:bg-[var(--surface-hover)]">
-                  <td className="text-sm font-semibold">v{version.version}</td>
-                  <td className="text-sm">{version.title || "未命名问卷"}</td>
-                  <td className="text-sm">{version.questionCount}</td>
-                  <td className="text-sm">{formatDateTime(version.createdAt)}</td>
-                  <td className="text-sm">
+                  <td data-label="版本" className="text-sm font-semibold">v{version.version}</td>
+                  <td data-label="标题" className="text-sm">{version.title || "未命名问卷"}</td>
+                  <td data-label="题目数" className="text-sm">{version.questionCount}</td>
+                  <td data-label="创建时间" className="text-sm">{formatDateTime(version.createdAt)}</td>
+                  <td data-label="操作" className="text-sm">
                     <button className="btn btn-sm" disabled={busy} onClick={() => void restore(version.version)}>
                       恢复为新草稿
                     </button>

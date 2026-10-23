@@ -31,6 +31,12 @@ function percentPosition(value: number | string): string {
   return value;
 }
 
+/** 扇区描边跟随主题表面色（亮色是白、暗色是深表面），构建时读一次。 */
+function surfaceColor(): string {
+  if (typeof document === "undefined") return "#ffffff";
+  return getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#ffffff";
+}
+
 export function donutOption(slices: DonutSlice[], opts: DonutOptions = {}) {
   const data = slices.filter((s) => s.value > 0).map((s) => ({
     name: s.name,
@@ -62,7 +68,7 @@ export function donutOption(slices: DonutSlice[], opts: DonutOptions = {}) {
         type: "pie" as const,
         radius: opts.radius ?? ["42%", "78%"],
         center: [percentPosition(centerX), percentPosition(centerY)],
-        itemStyle: { borderColor: "#fff", borderWidth: 3, borderRadius: 4 },
+        itemStyle: { borderColor: surfaceColor(), borderWidth: 3, borderRadius: 4 },
         label: {
           show: true,
           position: "outside" as const,
@@ -134,7 +140,7 @@ export function pieOption(slices: PieSlice[]) {
         radius: ["42%", "68%"],
         center: ["50%", "50%"],
         avoidLabelOverlap: true,
-        itemStyle: { borderColor: "#fff", borderWidth: 2, borderRadius: 3 },
+        itemStyle: { borderColor: surfaceColor(), borderWidth: 2, borderRadius: 3 },
         label: { show: true, fontSize: 11, formatter: "{d}%" },
         labelLine: { length: 8, length2: 6 },
         data,
