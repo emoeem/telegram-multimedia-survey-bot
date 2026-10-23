@@ -153,8 +153,17 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
         WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND om.media_asset_id = ?
       UNION
       SELECT 1 AS linked FROM surveys s
-        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
-    ).bind(mediaId, mediaId, mediaId),
+        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND s.cover_media_id = ?
+      UNION
+      /* 第四种挂载:galgame 卷的立绘/BGM/背景不走媒体表,而是以
+       * "/api/survey/media/<id>" 的 URL 字符串嵌在 surveys.settings_json 里
+       * (背景、BGM、按页音频、立绘都在这)。用 instr 找两侧都带引号的完整
+       * 引用串:JSON 值的引号边界天然防 767 误配 1767。id 必须绑成字符串:
+       * number 绑定会被当 REAL,concat 时 8 变成 '8.0',永远匹配不上。 */
+      SELECT 1 AS linked FROM surveys s
+       WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL
+         AND instr(s.settings_json, '"/api/survey/media/' || ? || '"') > 0`,
+    ).bind(mediaId, mediaId, mediaId, String(mediaId)),
   ]);
   const asset = mapMediaAssetStatement(assetResult);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");

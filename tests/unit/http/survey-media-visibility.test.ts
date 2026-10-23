@@ -25,7 +25,8 @@ CREATE TABLE surveys (
   id INTEGER PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'draft',
   deleted_at TEXT,
-  cover_media_id INTEGER
+  cover_media_id INTEGER,
+  settings_json TEXT
 );
 CREATE TABLE survey_questions (
   id INTEGER PRIMARY KEY,
@@ -86,10 +87,16 @@ function buildEnv() {
   return {
     env,
     insert: {
-      survey: (id: number, status: string, deletedAt: string | null = null, coverMediaId: number | null = null) =>
+      survey: (
+        id: number,
+        status: string,
+        deletedAt: string | null = null,
+        coverMediaId: number | null = null,
+        settingsJson: string | null = null,
+      ) =>
         void db
-          .prepare("INSERT INTO surveys (id, status, deleted_at, cover_media_id) VALUES (?, ?, ?, ?)")
-          .bind(id, status, deletedAt, coverMediaId)
+          .prepare("INSERT INTO surveys (id, status, deleted_at, cover_media_id, settings_json) VALUES (?, ?, ?, ?, ?)")
+          .bind(id, status, deletedAt, coverMediaId, settingsJson)
           .run(),
       question: (id: number, surveyId: number) =>
         void db.prepare("INSERT INTO survey_questions (id, survey_id) VALUES (?, ?)").bind(id, surveyId).run(),
@@ -147,6 +154,29 @@ describeIf("survey media visibility (real SQL)", () => {
   it("unlinked asset → refused", async () => {
     const { env } = buildEnv();
     const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/6"), env, 6);
+    expect(response.status).toBe(404);
+  });
+
+  it("galgame-style settings_json URL references keep their assets public", async () => {
+    const { env, insert } = buildEnv();
+    /* 立绘/BGM 不走媒体表,以 URL 字符串嵌在 settings_json(galgame 卷的全部素材)。 */
+    insert.survey(7, "published", null, null, JSON.stringify({ background: { image: "/api/survey/media/8" } }));
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/8"), env, 8);
+    expect(response.status).toBe(200);
+  });
+
+  it("settings_json reference in a DRAFT survey does not make the asset public", async () => {
+    const { env, insert } = buildEnv();
+    insert.survey(8, "draft", null, null, JSON.stringify({ audio: { url: "/api/survey/media/9" } }));
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/9"), env, 9);
+    expect(response.status).toBe(404);
+  });
+
+  it("substring ids do not false-match the settings_json reference (767 vs 1767)", async () => {
+    const { env, insert } = buildEnv();
+    /* 引用的是 1767,素材 767 不能因此变公开。 */
+    insert.survey(9, "published", null, null, JSON.stringify({ image: "/api/survey/media/1767" }));
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/10"), env, 10);
     expect(response.status).toBe(404);
   });
 
