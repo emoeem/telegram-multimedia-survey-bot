@@ -11,7 +11,7 @@
 │   └── 所有客户实例启动时到这里校验授权
 └── 客户 A 实例（独立 Worker）
     ├── 独立 D1 数据库（问卷/答卷数据）
-    ├── 独立 KV / R2（缓存、媒体文件）
+    ├── 独立 KV（缓存、媒体文件）
     ├── 独立 Telegram Bot
     └── 授权密钥（环境变量/Secret）
 ```
@@ -39,7 +39,8 @@
 
 ## 二、前置准备
 
-1. Cloudflare 账号 + 一个 API Token（需要 Workers Scripts、D1、KV、Queues、R2 编辑权限）；
+1. Cloudflare 账号 + 一个 API Token（需要 Workers Scripts、D1、KV 编辑权限；
+   `--plan paid` 时另需 Queues 权限）；
 2. 客户自己的 Telegram Bot Token（@BotFather 创建）；
 3. 初始化本地授权令牌（只需一次）：
 
@@ -90,7 +91,12 @@ pnpm customer:deploy
 
 脚本会自动完成：
 
-1. 创建该客户专用的 D1 / KV / Queue / R2；
+1. 创建该客户专用的 D1 / KV（`--plan paid` 时另建 Queue）；
+   **`--plan free`（默认）不创建 Queue**——Queues 是 Workers Paid 能力，免费
+   账号带该绑定根本无法部署。free 部署的导出/归档任务经 SELF service binding
+   回到本 Worker 的请求上下文同步执行（`src/services/export-job-dispatch.service.ts`），
+   功能等价、只是慢；PDF/分享图退化为 HTML/SVG。详见
+   `docs/CLOUDFLARE_PLAN_TIERS.md`。
 2. 生成独立 `wrangler.toml`（含 `ADMIN_IDS`、`INSTALLATION_ID`、授权中心地址、控制台源）；
 3. 把 `BOT_TOKEN`、`WEBHOOK_SECRET`、`LICENSE_KEY` 写入 Cloudflare Secret（不进代码）；
 4. 执行数据库迁移并部署 Worker；
@@ -165,7 +171,7 @@ pnpm exec node scripts/rehash-survey-access-codes.mjs
 
 已经内置的保护：
 
-- **数据隔离**：每个客户独立 D1/KV/R2，互不可见；
+- **数据隔离**：每个客户独立 D1/KV，互不可见；
 - **密钥管理**：Bot Token、Webhook 密钥、授权密钥全部是 Cloudflare Secret，不进代码/Git；
 - **管理端认证**：后台仅 `ADMIN_IDS` 可进；浏览器登录链接 5 分钟有效、会话为 HMAC 签名的 7 天 Cookie；
 - **问卷安全**：支持访问密码；答卷人身份由 Telegram 签名数据或机器人签发的参与者令牌认证；

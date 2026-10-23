@@ -406,3 +406,16 @@ pnpm e2e
 > 这是一个跑在 Cloudflare 边缘上的 **Telegram + Web 问卷与个人报告平台**，不是普通 Bot。填写者从 TG 点一下就能答题、传图、拿一份属于自己的图文报告（网页 / PDF / 分享卡三选一）；创作者有完整的可视化编辑器——14 种题型、结果维度引擎、剧情 Flag、可视化试玩、PDF / Forms / Word 多源导入、9 套报告模板、版本 diff 回滚；运营方有 25 页的网页后台，含分级管理、金币经济、审计日志。它还有互动小说模式、树洞广场、一屏一人的展示区、连载书架追更，以及一个纯前端的趣味认证卡生成器（26 种版式，含身份证 / 学生证 / 工牌 / 驾驶证 / 结婚证等拟真证件，照片不上传服务器）。
 >
 > 工程上：**零服务器、零 Docker、零运维**，约 9.4 万行代码、1,010 个自动化测试、87 个数据库迁移，幂等与成本护栏都经过真实事故验证，可一条命令为客户独立部署并配套授权码体系。
+
+
+## 部署档位（free / paid / pro）
+
+部署能力按 Cloudflare 绑定自动探测（`src/services/plan.service.ts`，原则与矩阵见
+`CLOUDFLARE_PLAN_TIERS.md`），后台首页「部署能力」面板可见。R2/Stream/Images/
+Browser/Queues 任一未绑定时，对应功能走等价降级路径（KV+TG 媒体、HTML 报告、
+同步任务执行），**免费部署不缺按钮**。R2 部署的答卷媒体上限放宽为单文件
+100MB / 总量 200MB。
+答卷视频/音频在 Pro 部署（配置 `STREAM_ACCOUNT_ID`/`STREAM_API_TOKEN`）走
+Cloudflare Stream 浏览器直传（转码 + HLS），免费部署保持经 Worker 的 20MB KV 路径；
+认证卡成品图在配置 `IMAGES_*` 三项后旁路上传 Cloudflare Images（响应带可直链的
+`imageUrl`）。
