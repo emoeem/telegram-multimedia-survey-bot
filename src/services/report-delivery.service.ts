@@ -8,6 +8,7 @@ import {
 } from "../db/repositories/report-delivery.repository";
 import type { ReportDelivery } from "../db/schema";
 import { getSystemSettingValue } from "./system-settings.service";
+import type { ExportJobSender } from "./export-job-sender";
 
 export const REPORT_DELIVERY_MAX_ATTEMPTS = 5;
 
@@ -74,7 +75,7 @@ export interface EnqueueReportDeliveryResult {
  */
 export async function enqueueReportDelivery(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   input: {
     responseId: number;
     reportVersion?: number;
@@ -115,7 +116,7 @@ export async function enqueueReportDelivery(
     return { delivery, queued: false };
   }
 
-  await queue.send({ kind: "report_delivery", deliveryId } satisfies ReportDeliveryMessage);
+  await sender.send({ kind: "report_delivery", deliveryId } satisfies ReportDeliveryMessage);
   return { delivery, queued: true };
 }
 
@@ -142,7 +143,7 @@ export function reportDeliveryStatusTimestamp(): string {
  */
 export async function retryPendingReportDeliveries(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   now = new Date(),
 ): Promise<{ requeued: number }> {
   const timestamp = now.toISOString();
@@ -188,7 +189,7 @@ export async function retryPendingReportDeliveries(
     .all<{ deliveryId: string }>();
   const deliveries = rows.results ?? [];
   for (const row of deliveries) {
-    await queue.send({ kind: "report_delivery", deliveryId: row.deliveryId } satisfies ReportDeliveryMessage);
+    await sender.send({ kind: "report_delivery", deliveryId: row.deliveryId } satisfies ReportDeliveryMessage);
   }
   return { requeued: deliveries.length + reclaimed };
 }

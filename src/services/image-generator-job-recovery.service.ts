@@ -1,5 +1,6 @@
 import { sendMessage } from "../bot/telegram";
 import type { ImageGeneratorJobMessage } from "./image-generator-worker.service";
+import type { ExportJobSender } from "./export-job-sender";
 
 interface StaleImageGeneratorJob {
   id: number;
@@ -21,7 +22,7 @@ const staleProcessingMs = 30 * 60_000;
  */
 export async function recoverStaleImageGeneratorJobs(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   botToken: string,
   now = Date.now(),
 ): Promise<{ requeued: number; failed: number }> {
@@ -65,7 +66,7 @@ export async function recoverStaleImageGeneratorJobs(
       }
     } else {
       requeued += 1;
-      await queue.send({ kind: "image_generator", jobId: job.id } satisfies ImageGeneratorJobMessage);
+      await sender.send({ kind: "image_generator", jobId: job.id } satisfies ImageGeneratorJobMessage);
     }
   }
   return { requeued, failed };

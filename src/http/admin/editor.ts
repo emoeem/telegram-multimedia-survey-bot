@@ -640,7 +640,7 @@ export async function handleAdminEditorWrite(
     if (fileOrError instanceof Response) return fileOrError;
     let asset: MediaAsset;
     try {
-      asset = await storeSurveyAdminMedia(db, env.MEDIA_KV, fileOrError);
+      asset = await storeSurveyAdminMedia(db, env, fileOrError);
     } catch (error) {
       return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
     }
@@ -682,7 +682,7 @@ export async function handleAdminEditorWrite(
     if (fileOrError instanceof Response) return fileOrError;
     let asset: MediaAsset;
     try {
-      asset = await storeSurveyAdminMedia(db, env.MEDIA_KV, fileOrError);
+      asset = await storeSurveyAdminMedia(db, env, fileOrError);
     } catch (error) {
       return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
     }

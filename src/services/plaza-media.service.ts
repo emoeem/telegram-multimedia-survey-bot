@@ -1,6 +1,6 @@
 import { createMediaAsset, expireMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
 import { detachPlazaPostImage, getPlazaPostImageAssetId } from "../db/repositories/plaza-post.repository";
-import { KVMediaStore } from "./media/temporary-media-store";
+import { createMediaStore, KVMediaStore } from "./media/temporary-media-store";
 import { verifyUploadContent } from "./media/upload-validation.service";
 import type { MediaAsset } from "../db/schema";
 
@@ -27,6 +27,7 @@ const PLAZA_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", 
 export interface PlazaMediaEnvironment {
   DB: D1Database;
   MEDIA_KV: KVNamespace;
+  MEDIA?: R2Bucket | undefined;
 }
 
 export async function storePlazaPostImage(
@@ -46,7 +47,7 @@ export async function storePlazaPostImage(
   const verified = verifyUploadContent(bytes, mimeType);
   if (!verified.ok) return { error: verified.reason ?? "图片内容无法识别" };
 
-  const store = new KVMediaStore(env.MEDIA_KV);
+  const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   const storageKey = `${PLAZA_IMAGE_STORAGE_PREFIX}${crypto.randomUUID()}`;
   await store.put({ storageKey, bytes, contentType: mimeType });
   const asset = await createMediaAsset(env.DB, {
@@ -73,7 +74,7 @@ export async function purgePlazaPostImage(env: PlazaMediaEnvironment, postId: nu
   const asset = await getMediaAssetById(env.DB, assetId);
   if (asset?.storageKey) {
     try {
-      await new KVMediaStore(env.MEDIA_KV).delete(asset.storageKey);
+      await createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }).delete(asset.storageKey);
     } catch (error) {
       console.error("Plaza image purge failed", { postId, assetId, error });
     }

@@ -1,6 +1,6 @@
 import type { Env } from "../../index";
 import { createMediaAsset, getMediaAssetById } from "../../db/repositories/media.repository";
-import { KVMediaStore } from "../media/temporary-media-store";
+import { createMediaStore, KVMediaStore } from "../media/temporary-media-store";
 import { verifyUploadContent } from "../media/upload-validation.service";
 import { loadCoinConfig, coinDayKey } from "./config.service";
 import { earnCoins } from "./ledger.service";
@@ -57,6 +57,8 @@ function normalizeText(text: string): string {
 export interface SubmissionEnv {
   DB: D1Database;
   MEDIA_KV: KVNamespace;
+  /** 绑定后媒体走 R2 分层存储；缺省回落 KV（免费部署不变）。 */
+  MEDIA?: R2Bucket | undefined;
   MODERATION_API_KEY?: string | undefined;
 }
 
@@ -138,7 +140,7 @@ export async function createSubmission(
     if (!verified.ok || verified.detected?.family !== (input.type === "image" ? "image" : "audio")) {
       throw new SubmissionError("media_invalid", "文件内容与类型不符或无法识别");
     }
-    const store = new KVMediaStore(env.MEDIA_KV);
+    const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
     const storageKey = `media:submission:${crypto.randomUUID()}`;
     await store.put({ storageKey, bytes, contentType: verified.detected?.mime ?? file.type });
     const asset = await createMediaAsset(db, {

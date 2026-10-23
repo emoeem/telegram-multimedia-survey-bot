@@ -4,6 +4,7 @@ import { getResponseById } from "../../db/repositories/response.repository";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { WriteContext, writeAudit } from "./helpers";
 import { Env } from "../../index";
+import { createExportJobSender } from "../../services/export-job-dispatch.service";
 
 export async function handleAdminReportsWrite(
   request: Request,
@@ -25,7 +26,7 @@ export async function handleAdminReportsWrite(
     if (!isAdmin && (!survey || survey.ownerId !== user.id)) {
       return fail(403, "forbidden", "无权操作该报告任务");
     }
-    await enqueueReportDelivery(db, env.EXPORT_QUEUE, {
+    await enqueueReportDelivery(db, createExportJobSender(env), {
       responseId: delivery.responseId,
       force: true,
     });

@@ -8,10 +8,19 @@ import { getQuestionById } from "../../db/repositories/question.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
 import {
   countTemporaryMediaBytesForResponse,
+  MAX_RESPONSE_MEDIA_BYTES,
+  R2_MAX_PER_FILE_BYTES,
+  R2_MAX_RESPONSE_MEDIA_BYTES,
   storeTemporaryMedia,
   TEMP_IMAGE_MIME_TYPES,
 } from "../../services/media/temporary-media.service";
-import { KVMediaStore } from "../../services/media/temporary-media-store";
+import { createMediaStore, type TemporaryMediaStore } from "../../services/media/temporary-media-store";
+import {
+  createStreamDirectUpload,
+  STREAM_MAX_DURATION_SECONDS,
+  STREAM_TICKET_TTL_SECONDS,
+  streamConfigured,
+} from "../../services/media/stream.service";
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
 import { r18ParticipantGate } from "../../services/content-rating.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
@@ -30,8 +39,8 @@ const TEMP_MEDIA_TYPE_LABELS: Record<string, { label: string; mediaType: "photo"
 };
 const TEMP_FILE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
-export function temporaryStore(env: Env): KVMediaStore {
-  return new KVMediaStore(env.MEDIA_KV);
+export function temporaryStore(env: Env): TemporaryMediaStore {
+  return createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
 }
 
 /**
@@ -276,18 +285,27 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   }
 
   const settings = await loadSystemSettings(env.DB);
-  const typeDefaultBytes = questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : TEMP_FILE_UPLOAD_MAX_BYTES;
+  // R2 部署放宽单文件天花板（KV 25MB 值上限不复存在）；运营配置仍然取小。
+  const hardCeiling = env.MEDIA ? R2_MAX_PER_FILE_BYTES : TEMP_FILE_UPLOAD_MAX_BYTES;
+  const typeDefaultBytes =
+    questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : hardCeiling;
   const maxUploadBytes = Math.min(
     maxSizeMb !== null ? maxSizeMb * 1024 * 1024 : typeDefaultBytes,
-    TEMP_FILE_UPLOAD_MAX_BYTES,
+    hardCeiling,
   );
   if (file.size > maxUploadBytes) {
     return fail(413, "upload_too_large", `单个文件不能超过 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB`);
   }
   const currentBytes = await countTemporaryMediaBytesForResponse(env.DB, response.id);
-  const maxResponseBytes = settings.maxResponseMediaMb * 1024 * 1024;
+  const responseCeilingMb = Math.floor(
+    Math.min(
+      settings.maxResponseMediaMb * 1024 * 1024,
+      env.MEDIA ? R2_MAX_RESPONSE_MEDIA_BYTES : MAX_RESPONSE_MEDIA_BYTES,
+    ) / (1024 * 1024),
+  );
+  const maxResponseBytes = responseCeilingMb * 1024 * 1024;
   if (currentBytes + file.size > maxResponseBytes) {
-    return fail(413, "response_media_limit", `单份答卷媒体总量不能超过 ${settings.maxResponseMediaMb}MB`);
+    return fail(413, "response_media_limit", `单份答卷媒体总量不能超过 ${responseCeilingMb}MB`);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   // Magic-byte check media uploads (image/video/audio) so a mismatched or
@@ -310,4 +328,99 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     ttlSeconds: settings.mediaTtlSeconds,
   });
   return json({ ok: true, mediaAssetId: asset.id, url: mediaPublicUrl(asset.id) }, 201);
+}
+
+
+/** 单份答卷最多挂多少条 Stream 视频：云转码按条计费，收敛滥用面。 */
+const MAX_STREAM_ASSETS_PER_RESPONSE = 10;
+
+/**
+ * `POST /api/survey/:id/media/stream-ticket`（Pro 部署的视频/音频答卷）。
+ *
+ * Worker 不经手视频字节：校验身份与配额后铸造一张 Stream 直传凭证并落一条
+ * `storage_kind='stream'` 的占位行（expires_at = 凭证过期点，未完成上传的
+ * 行由每日 cron 对账清理）。浏览器拿到 `uploadUrl` 后直传 Cloudflare，
+ * 上传完成与否通过媒体端点按 Stream 状态查询。
+ */
+export async function handleStreamTicketRequest(request: Request, env: Env, surveyId: number): Promise<Response> {
+  if (!streamConfigured(env)) {
+    return fail(404, "stream_unavailable", "当前部署未启用视频托管");
+  }
+  const [surveyRowResult] = await env.DB.batch([getSurveyByIdStatement(env.DB, surveyId)]);
+  const survey = mapSurveyStatementResult(surveyRowResult);
+  if (!survey || survey.status !== "published") {
+    return fail(404, "survey_unavailable", "问卷不存在或未发布");
+  }
+  const participant = await resolveParticipant(request, env);
+  if (participant instanceof Response) return participant;
+  const mediaAgeGate = await r18ParticipantGate(env.DB, survey, participant);
+  if (mediaAgeGate) return mediaAgeGate;
+  if (participant.kind === "anonymous") {
+    return fail(401, "registration_required", "上传前请先注册或登录（邮箱即可）");
+  }
+  const response = await env.DB.prepare(
+    `SELECT id FROM survey_responses
+       WHERE survey_id = ? AND participant_hash = ? AND status = 'in_progress'
+       ORDER BY id DESC LIMIT 1`,
+  )
+    .bind(surveyId, participant.participantHash)
+    .first<{ id: number }>();
+  if (!response) return fail(404, "response_not_found", "请先开始填写问卷");
+
+  const body = (await request.json().catch(() => null)) as { kind?: unknown; maxDurationSeconds?: unknown } | null;
+  const kind = body?.kind === "audio" ? "audio" : "video";
+  const maxDurationSeconds =
+    typeof body?.maxDurationSeconds === "number" && body.maxDurationSeconds > 0
+      ? Math.min(Math.floor(body.maxDurationSeconds), STREAM_MAX_DURATION_SECONDS)
+      : STREAM_MAX_DURATION_SECONDS;
+
+  // media_assets 没有 response_id 列：占位行以 `stream:{responseId}:{uid}`
+  // 作为 storage_key（与临时媒体的 media:temp:{id}: 前缀约定一致），
+  // 归属与计数都走前缀。
+  const prefix = `stream:${response.id}:`;
+  const existing = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM media_assets
+       WHERE asset_scope = 'response' AND storage_kind = 'stream' AND storage_key LIKE ? || '%'`,
+  )
+    .bind(prefix)
+    .first<{ n: number }>();
+  const count = Number(existing?.n ?? 0);
+  if (count >= MAX_STREAM_ASSETS_PER_RESPONSE) {
+    return fail(413, "stream_limit", `单份答卷最多 ${MAX_STREAM_ASSETS_PER_RESPONSE} 条视频`);
+  }
+
+  let ticket;
+  try {
+    ticket = await createStreamDirectUpload(env, {
+      maxDurationSeconds,
+      metaName: `resp-${response.id}-${kind}`,
+    });
+  } catch (error) {
+    console.error("Stream ticket creation failed", error);
+    return fail(502, "stream_ticket_failed", "视频上传凭证创建失败，请稍后重试");
+  }
+
+  // 占位行：expires_at = 凭证过期点。上传成功后媒体端点会把 expires_at 清空
+  // （转正），未上传的行由每日 cron 按 expires_at 清理并删除 Stream 侧对象。
+  const expiresAt = new Date(Date.now() + STREAM_TICKET_TTL_SECONDS * 1000).toISOString();
+  const { createMediaAsset } = await import("../../db/repositories/media.repository");
+  const asset = await createMediaAsset(env.DB, {
+    scope: "response",
+    mediaType: kind === "audio" ? "audio" : "video",
+    storageKind: "stream",
+    storageKey: `${prefix}${ticket.videoUid}`,
+    expiresAt,
+    fileName: `${ticket.videoUid}.${kind === "audio" ? "m4a" : "mp4"}`,
+  });
+
+  return json(
+    {
+      ok: true,
+      mediaAssetId: asset.id,
+      videoUid: ticket.videoUid,
+      uploadUrl: ticket.uploadUrl,
+      maxDurationSeconds,
+    },
+    201,
+  );
 }

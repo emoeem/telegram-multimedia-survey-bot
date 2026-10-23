@@ -19,6 +19,7 @@ import { normalizeAnswer } from "./answer-value-adapter.service";
 import type { ResultProfileSnapshot } from "../result/schema";
 import { getResponseSurveySnapshot } from "./survey-version.service";
 import { classifyParticipantReport } from "./participant-report.service";
+import type { ExportJobSender } from "./export-job-sender";
 
 export interface PreparedResultProfile {
   profile: ResultProfile;
@@ -322,7 +323,7 @@ export async function prepareResultProfileForResponse(
 
 export async function requestConfiguredResultVisual(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   input: {
     responseId: number;
     chatId: number | null;
@@ -358,7 +359,7 @@ export async function requestConfiguredResultVisual(
   const version = await getVisualTemplateVersion(db, template.id, template.currentVersion);
   if (!version) throw new Error("Configured result visual template version is missing");
 
-  return enqueueResultVisualJob(db, queue, {
+  return enqueueResultVisualJob(db, sender, {
     resultProfileId: prepared.profile.id,
     templateId: template.id,
     templateVersion: version.version,

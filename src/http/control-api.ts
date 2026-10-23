@@ -30,6 +30,7 @@ import {
   upsertDefaultPublicationTarget,
 } from "../db/repositories/publication-target.repository";
 import { isLicenseCenter } from "../services/deployment-role.service";
+import { resolveCertShareChannel } from "./cert-share";
 import { resolveReportChannel } from "../services/report-delivery.service";
 import { saveSystemSetting } from "../services/system-settings.service";
 
@@ -314,14 +315,20 @@ export async function handleControlApiRequest(
     }
     if (url.pathname === "/api/control/publication-targets" && request.method === "GET") {
       if (!isLicenseCenter(env)) return json({ ok: false, error: "vendor_only" }, 403);
-      // 一个列表装两种用途：items 是「公开群 · 相册」（fan-out 到所有启用项），
-      // archive 是「归档频道 · ZIP」（数据源仍是 report_channel_id / KV / 环境变量）。
+      // 一个列表装三种用途：items 是「公开群 · 相册」（fan-out 到所有启用项），
+      // archive 是「归档频道 · ZIP」（数据源仍是 report_channel_id / KV / 环境变量），
+      // certShare 是「认证卡作品」（默认继承 archive，可在控制中心单独覆盖）。
+      // 三者都走各自的 resolve 函数，列表与真实发送路径不会分叉。
       const archive = await resolveReportChannel(env);
+      const certShare = await resolveCertShareChannel(env);
       return json({
         ok: true,
         items: await listPublicationTargets(env.DB),
         defaultTarget: await getDefaultPublicationTarget(env.DB),
         archive: archive ? { name: "报告归档频道", chatId: String(archive.chatId), source: archive.source } : null,
+        certShare: certShare
+          ? { name: "认证卡作品频道", chatId: String(certShare.chatId), source: certShare.source }
+          : null,
       });
     }
     if (
@@ -334,6 +341,33 @@ export async function handleControlApiRequest(
       if (!Number.isInteger(chatId) || chatId === 0) return json({ ok: false, error: "invalid_chat_id" }, 400);
       await saveSystemSetting(env.DB, "report_channel_id", String(chatId), auth.userId);
       return json({ ok: true, archive: { name: "报告归档频道", chatId: String(chatId), source: "settings" } });
+    }
+    if (
+      url.pathname === "/api/control/publication-targets/cert-share" &&
+      (request.method === "PUT" || request.method === "POST")
+    ) {
+      if (!isLicenseCenter(env)) return json({ ok: false, error: "vendor_only" }, 403);
+      const raw = typeof b.chatId === "string" || typeof b.chatId === "number" ? String(b.chatId).trim() : "";
+      // 传空串 = 清除覆盖，回到「继承报告归档频道」。这是唯一能把配置还原成
+      // 默认状态的操作，所以它必须与「填一个频道」是同一入口，否则管理员
+      // 一旦覆盖过就再也回不去了。
+      if (raw === "") {
+        await saveSystemSetting(env.DB, "cert_share_channel_id", "", auth.userId);
+        const inherited = await resolveCertShareChannel(env);
+        return json({
+          ok: true,
+          certShare: inherited
+            ? { name: "认证卡作品频道", chatId: String(inherited.chatId), source: inherited.source }
+            : null,
+        });
+      }
+      const chatId = Number(raw);
+      if (!Number.isInteger(chatId) || chatId === 0) return json({ ok: false, error: "invalid_chat_id" }, 400);
+      await saveSystemSetting(env.DB, "cert_share_channel_id", String(chatId), auth.userId);
+      return json({
+        ok: true,
+        certShare: { name: "认证卡作品频道", chatId: String(chatId), source: "settings" },
+      });
     }
     if (
       url.pathname === "/api/control/publication-targets/default" &&

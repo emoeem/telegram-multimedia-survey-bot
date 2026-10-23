@@ -1,5 +1,6 @@
 import { isWebhookSecretValid } from "../core/security";
 import { publishPublicResponseReport } from "../services/public-report.service";
+import { runExportJobInline } from "../services/export-job-dispatch.service";
 import type { Env } from "../index";
 
 /**
@@ -11,7 +12,12 @@ import type { Env } from "../index";
  * hands the actual render+send to this HTTP endpoint, which runs in a request
  * context.
  */
-export async function handleInternalRenderRequest(request: Request, env: Env): Promise<Response> {
+export async function handleInternalRenderRequest(
+  request: Request,
+  env: Env,
+  /** waitUntil host for fire-and-forget dispatch; absent in unit tests. */
+  ctx?: Pick<ExecutionContext, "waitUntil">,
+): Promise<Response> {
   if (!isWebhookSecretValid(env.WEBHOOK_SECRET, request.headers.get("x-internal-token"))) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -36,6 +42,23 @@ export async function handleInternalRenderRequest(request: Request, env: Env): P
         { status: 500 },
       );
     }
+  }
+
+  // Queue-less deployments (Workers Free) dispatch export/delivery jobs here:
+  // the enqueuer gets an immediate response while the job runs under waitUntil
+  // — request context, so Browser Rendering keeps working.
+  if (url.pathname === "/internal/dispatch-export-job" && request.method === "POST") {
+    const body: unknown = await request.json().catch(() => null);
+    if (typeof body !== "object" || body === null) {
+      return Response.json({ ok: false, error: "invalid_body" }, { status: 400 });
+    }
+    const run = runExportJobInline(env, body);
+    if (ctx) {
+      ctx.waitUntil(run);
+      return Response.json({ ok: true, mode: "waitUntil" });
+    }
+    await run;
+    return Response.json({ ok: true, mode: "inline" });
   }
 
   return Response.json({ ok: false, error: "not_found" }, { status: 404 });

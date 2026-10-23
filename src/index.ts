@@ -1,15 +1,17 @@
 import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
+import { RateLimitDO } from "./durable-objects/rate-limit";
 import { UiSessionDO } from "./durable-objects/ui-session";
 import { handleTelegramUpdate } from "./bot/router";
 import { isTelegramUpdateHandledError } from "./bot/router";
 import { syncDefaultBotCommands } from "./bot/telegram";
 import { answerCallbackQuery, getWebhookInfo, setWebhook } from "./bot/telegram";
-import { describePublicDatabaseError, isDatabaseCapacityError } from "./db/errors";
+import { describePublicDatabaseError, isDatabaseCapacityError, isKeyValueCapacityError } from "./db/errors";
 import type { BotContext } from "./bot/types";
 import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
+import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
 import {
   escapeMetaAttribute,
   homeRedirectLocation,
@@ -17,6 +19,7 @@ import {
   submitPageMetaPath,
 } from "./http/public-page";
 import { handleInternalRenderRequest } from "./http/internal-render";
+import { createExportJobSender } from "./services/export-job-dispatch.service";
 import { handleLicenseApiRequest } from "./http/license-api";
 import { handleRemoteApiRequest } from "./http/remote-api";
 import { handleControlApiRequest } from "./http/control-api";
@@ -41,7 +44,8 @@ import { handleExportQueue } from "./services/export-worker.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
 import { runDatabaseMaintenance } from "./services/database-maintenance.service";
 import { cleanupExpiredTemporaryMedia, retainFinishedResponseMedia } from "./services/media/temporary-media.service";
-import { KVMediaStore } from "./services/media/temporary-media-store";
+import { createMediaStore } from "./services/media/temporary-media-store";
+import { sweepStaleStreamUploads } from "./services/media/stream.service";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
 import { resolveSubmissionBotUrl } from "./services/contact-links.service";
@@ -54,7 +58,7 @@ import { loadWeeklyDigest, renderWeeklyDigestMessage } from "./services/weekly-d
 import { loadSystemSettings } from "./services/system-settings.service";
 import { sendMessage } from "./bot/telegram";
 import { createUpdateDedupStore } from "./services/update-dedup.service";
-import { createKVRateLimiter } from "./services/rate-limit.service";
+import { createPreferredRateLimiter } from "./services/rate-limit.service";
 import { withQueueMetrics, withRequestMetrics } from "./observability/metrics";
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
@@ -236,9 +240,13 @@ async function serveSurveyPageWithShareMeta(env: Env, request: Request, surveyId
 export interface Env {
   DB: D1Database;
   CACHE: KVNamespace;
-  EXPORT_QUEUE: Queue;
+  /** Queues 是 Workers Paid 能力；无队列部署经 createExportJobSender 降级。 */
+  EXPORT_QUEUE?: Queue;
   SESSION: DurableObjectNamespace<SurveySessionDO>;
   UI: DurableObjectNamespace<UiSessionDO>;
+  /** Atomic rate limiting. Optional so customer deployments without the
+   *  binding still boot; without it the KV limiter is used. */
+  RATE_LIMIT?: DurableObjectNamespace<RateLimitDO>;
   BUILDER: DurableObjectNamespace<SurveyBuilderDO>;
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
@@ -295,7 +303,8 @@ export interface Env {
   /** "vendor" = authorization center, "customer" = licensed instance. Unset
    *  falls back to LICENSE_ADMIN_TOKEN presence (legacy deployments). */
   DEPLOYMENT_ROLE?: "vendor" | "customer";
-  BROWSER: BrowserWorker;
+  /** Browser Rendering 需要 Workers Paid；未绑定时报告/分享图走既有降级路径。 */
+  BROWSER?: BrowserWorker;
   ASSETS: Fetcher;
   TARGET_CHAT_ID?: string;
   TOPIC_ID?: string;
@@ -315,6 +324,14 @@ export interface Env {
   MEDIA_KV: KVNamespace;
   REPORT_CHANNEL_ID?: string;
   /**
+   * 认证卡生成器「完成制作」时同步原图与成品的目标频道。
+   * 留空则回落到 REPORT_CHANNEL_ID；两者都空 = 功能关闭。
+   * 客户部署（DEPLOYMENT_ROLE = "customer"）必须留空，见 src/http/cert-share.ts。
+   */
+  CERT_SHARE_CHANNEL?: string;
+  /** 置 "true" 时无条件停用认证卡同步，优先级高于任何频道配置。 */
+  CERT_SHARE_DISABLED?: string;
+  /**
    * Self service binding: queue consumers re-enter this worker through it so
    * browser renders happen in a request context (they die in queue contexts
    * on constrained accounts). Optional; renders fall back to in-process.
@@ -330,9 +347,22 @@ export interface Env {
   MAIL_FROM?: string;
   /** Pepper used only for new salted survey access-code hashes. */
   SURVEY_CODE_PEPPER?: string;
+  /**
+   * 部署档位显式声明（docs/CLOUDFLARE_PLAN_TIERS.md 原则一）。与绑定探测结果
+   * 取更保守的一档；不声明则完全由绑定推导（见 services/plan.service.ts）。
+   */
+  PLAN_TIER?: string;
+  /** Cloudflare Stream 视频直传（两项齐备才启用，见 plan.service.ts）。 */
+  STREAM_ACCOUNT_ID?: string;
+  STREAM_API_TOKEN?: string;
+  /** Cloudflare Images 图片存储与边缘变换（三项齐备才启用）。 */
+  IMAGES_ACCOUNT_ID?: string;
+  IMAGES_DELIVERY_HASH?: string;
+  /** Cloudflare API Token：Images（后续 Stream 管理操作）用的账号级凭据。 */
+  CLOUDFLARE_API_TOKEN?: string;
 }
 
-export { SurveySessionDO, SurveyBuilderDO, UiSessionDO };
+export { SurveySessionDO, SurveyBuilderDO, UiSessionDO, RateLimitDO };
 
 const commandMenuCacheKey = "telegram-command-menu:v2";
 const webhookConfigCacheKey = "telegram-webhook-config:v2";
@@ -371,7 +401,7 @@ async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Pro
  * capacity problem so retrying clients back off differently than on a bug.
  */
 async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
-  const limiter = createKVRateLimiter(env.CACHE);
+  const limiter = createPreferredRateLimiter(env);
   const clientIp = resolveClientIdentity(request, env).ip;
 
   if (request.method === "POST" && url.pathname.startsWith("/api/auth/email/")) {
@@ -429,11 +459,17 @@ async function guardApiResponse(
     return Response.json(
       {
         ok: false,
-        code: isDatabaseCapacityError(error) ? "database_capacity" : "internal_error",
+        code: isDatabaseCapacityError(error)
+          ? "database_capacity"
+          : isKeyValueCapacityError(error)
+            ? "kv_capacity"
+            : "internal_error",
         message: describePublicDatabaseError(error),
       },
       {
-        status: isDatabaseCapacityError(error) ? 503 : 500,
+        // 两种容量错误都是"等一会儿/改天再来"，不是服务端 bug，用 503 让
+        // 前端和监控都按可重试对待；其余仍是 500。
+        status: isDatabaseCapacityError(error) || isKeyValueCapacityError(error) ? 503 : 500,
         headers: { "Cache-Control": "no-store" },
       },
     );
@@ -472,7 +508,7 @@ async function ensureWebhookAllowsChannelPosts(env: Env, origin: string): Promis
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: Pick<ExecutionContext, "waitUntil">): Promise<Response> {
     // One structured metrics line per request (route/duration/status plus the
     // D1 rows read and KV/queue/Telegram call counts). Instrumented bindings
     // also make the request's own D1 query budget visible in production.
@@ -495,7 +531,7 @@ export default {
 
       // Internal endpoints (queue consumers hand browser renders to a request
       // context); token-authenticated, must be routed before the SPA/API blocks.
-      if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env);
+      if (url.pathname.startsWith("/internal/")) return handleInternalRenderRequest(request, env, ctx);
 
       // Admin SPA entry. html_handling="none" means /admin has no directory
       // index, so serve the built index.html explicitly (client-side routing
@@ -603,6 +639,15 @@ export default {
         } catch {
           return Response.json({ ok: true, pack: null });
         }
+      }
+
+      // 认证卡「完成制作」时的原图 + 成品同步：GET 探测开关，POST 上传。
+      // 目标频道与报告归档频道共用同一条解析链（见 src/http/cert-share.ts），
+      // 未带来源标头的跨站表单一律 403。
+      if (url.pathname === CERT_SHARE_PATH) {
+        return handleCertShare(request, env, {
+          clientKey: resolveClientIdentity(request, env).ip,
+        });
       }
 
       if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {
@@ -758,7 +803,8 @@ export default {
             session: env.SESSION,
             builder: env.BUILDER,
             adminIds: parseAdminIds(env.ADMIN_IDS),
-            exportQueue: env.EXPORT_QUEUE,
+            exportQueue: createExportJobSender(env),
+            ...(env.BROWSER ? { browser: env.BROWSER } : {}),
             mediaKv: env.MEDIA_KV,
             origin: resolvePublicOrigin(env, url.origin),
             submissionBotUrl: resolveSubmissionBotUrl(env),
@@ -772,7 +818,7 @@ export default {
             // Same single source of truth as the web API: only the authorization
             // center may issue licenses or hand out trial accounts.
             licenseAdminEnabled: isLicenseCenter(env),
-            browser: env.BROWSER,
+            ...(env.BROWSER ? { browser: env.BROWSER } : {}),
             webhookSecret: env.WEBHOOK_SECRET,
           };
           await handleTelegramUpdate(update, context);
@@ -886,7 +932,7 @@ export default {
       await Promise.allSettled([
         (async () => {
           try {
-            const summary = await retryPendingReportDeliveries(env.DB, env.EXPORT_QUEUE);
+            const summary = await retryPendingReportDeliveries(env.DB, createExportJobSender(env));
             if (summary.requeued > 0) {
               console.info("Requeued pending report deliveries", summary);
             }
@@ -896,7 +942,7 @@ export default {
         })(),
         (async () => {
           try {
-            const summary = await recoverStaleResultVisualJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+            const summary = await recoverStaleResultVisualJobs(env.DB, createExportJobSender(env), env.BOT_TOKEN);
             if (summary.requeued || summary.failed) console.warn("Recovered stale result visual jobs", summary);
           } catch (error) {
             console.error("Result visual job recovery failed", error);
@@ -904,7 +950,7 @@ export default {
         })(),
         (async () => {
           try {
-            const summary = await recoverStaleImageGeneratorJobs(env.DB, env.EXPORT_QUEUE, env.BOT_TOKEN);
+            const summary = await recoverStaleImageGeneratorJobs(env.DB, createExportJobSender(env), env.BOT_TOKEN);
             if (summary.requeued || summary.failed) console.warn("Recovered stale image generator jobs", summary);
           } catch (error) {
             console.error("Image generator job recovery failed", error);
@@ -936,7 +982,7 @@ export default {
     try {
       // Rescue attachments of finished responses before the expiry sweep can
       // delete a blob whose previews are still expected to work.
-      mediaRetentionSummary = await retainFinishedResponseMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
+      mediaRetentionSummary = await retainFinishedResponseMedia(env.DB, createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }));
     } catch (error) {
       console.error("Response media retention sweep failed", error);
     }
@@ -949,12 +995,21 @@ export default {
       console.info("Database maintenance media retention", { mediaRetention: mediaRetentionSummary });
     }
     try {
-      const summary = await cleanupExpiredTemporaryMedia(env.DB, new KVMediaStore(env.MEDIA_KV));
+      const summary = await cleanupExpiredTemporaryMedia(env.DB, createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }));
       if (summary.deleted > 0) {
         console.info("Expired temporary media cleaned", summary);
       }
     } catch (error) {
       console.error("Temporary media cleanup failed", error);
+    }
+    try {
+      // Stream 直传凭证对账（Pro 部署）：未完成的凭证删对象 + 失效行。
+      const streamSweep = await sweepStaleStreamUploads(env.DB, env);
+      if (streamSweep.deleted > 0 || streamSweep.failed > 0) {
+        console.info("Stale stream uploads swept", streamSweep);
+      }
+    } catch (error) {
+      console.error("Stream upload sweep failed", error);
     }
     if (!env.LICENSE_ADMIN_TOKEN) return;
     const adminIds = parseAdminIds(env.ADMIN_IDS);

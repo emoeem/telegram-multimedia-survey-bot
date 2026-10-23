@@ -32,6 +32,17 @@ LICENSE_GRACE_SECONDS = "86400"
 # those surfaces even if they hold a stray admin token.
 DEPLOYMENT_ROLE = "vendor"
 REPORT_CHANNEL_ID = "-1004489719605"
+# 认证卡生成器「完成制作」时，把用户原图与成品图同步到的频道。
+# 解析顺序（先命中先用），见 src/http/cert-share.ts#resolveCertShareChannel：
+#   1. 系统设置 cert_share_channel_id（控制中心「认证卡作品频道」卡片可改）
+#   2. 环境变量 CERT_SHARE_CHANNEL（本行）
+#   3. 报告归档频道（REPORT_CHANNEL_ID → KV 缓存 → 系统设置 report_channel_id）
+# 留空 = 继承报告归档频道，也就是下面这个 -1004489719605。要指向别的频道，
+# 建议在控制中心改（落库、立即生效、无需重新部署），而不是改本行。
+# 客户部署（DEPLOYMENT_ROLE = "customer"）不生成这两个变量，因此该功能默认关闭。
+CERT_SHARE_CHANNEL = ""
+# 置 "true" 可无条件停用认证卡同步，优先级高于以上全部。
+CERT_SHARE_DISABLED = "true"
 COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 # Survey access-code pepper is a Cloudflare Secret; do not define it in [vars].
 # 投稿入口：指向投稿机器人的网页表单（不用 Telegram 也能投），
@@ -64,6 +75,12 @@ database_name = "telegram-survey-db"
 database_id = "159e8169-a233-4bd7-b3e9-723586f850c2"
 migrations_dir = "db/migrations"
 
+# R2 媒体桶（Pro 能力，docs/CLOUDFLARE_PLAN_TIERS.md）：答卷附件/题目媒体大文件
+# 存 R2（survey-media 桶），TieredMediaStore 读取回落 KV（旧数据仍可读）。
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "survey-media"
+
 [[kv_namespaces]]
 binding = "MEDIA_KV"
 id = "1761c29892764597992c189096bc62c2"
@@ -93,6 +110,16 @@ binding = "BROWSER"
 # delivery waits half an hour instead of ten minutes.
 crons = ["*/30 * * * *", "15 1 * * *", "30 9 * * 1"]
 
+# Workers Logs：`request_metrics` / `queue_metrics` / `Resend email failed`
+# 这些 console 输出此前只能在 `wrangler tail` 里实时看到，会话一断就没了，
+# 于是「额度什么时候打满的」「验证码为什么发不出去」都只能靠复现。
+# 超过免费额度（20 万事件/天、保留 3 天）只是停止记录，不影响请求处理。
+[observability]
+enabled = true
+
+[observability.logs]
+invocation_logs = true
+
 [[durable_objects.bindings]]
 name = "SESSION"
 class_name = "SurveySessionDO"
@@ -105,6 +132,10 @@ class_name = "SurveyBuilderDO"
 name = "UI"
 class_name = "UiSessionDO"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMIT"
+class_name = "RateLimitDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
@@ -112,3 +143,10 @@ new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["UiSessionDO"]
+
+# Atomic rate limiting. KV allows one write per key per second, so the previous
+# get-then-put counter lost increments whenever two requests arrived together;
+# a Durable Object serialises them instead.
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["RateLimitDO"]

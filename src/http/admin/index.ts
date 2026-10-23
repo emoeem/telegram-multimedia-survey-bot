@@ -3,7 +3,7 @@ import { isWebhookSecretValid } from "../../core/security";
 import { describeDatabaseError, isDatabaseCapacityError } from "../../db/errors";
 import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repository";
 import type { Env } from "../../index";
-import { KVMediaStore } from "../../services/media/temporary-media-store";
+import { createMediaStore } from "../../services/media/temporary-media-store";
 import { handleAdminRead } from "./read";
 import { handleAdminWrite } from "./write";
 import { handleCertContentAdmin } from "./cert-content";
@@ -39,6 +39,7 @@ import {
 import { handleControlApiRequest } from "../control-api";
 import { handleCoinAdminApi } from "./coin-admin";
 import { handleAdminTrashRead, handleAdminTrashWrite } from "./trash";
+import { PLAN_FALLBACK_NOTES, resolvePlanCapabilities } from "../../services/plan.service";
 import {
   configuredDeploymentRole,
   describeDeploymentRoleIssue,
@@ -366,7 +367,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       return fail(413, "upload_too_large", "背景音乐不能超过 20MB");
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const store = new KVMediaStore(env.MEDIA_KV);
+    const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
     const storageKey = `media:survey-audio:${crypto.randomUUID()}`;
     await store.put({ storageKey, bytes, contentType: file.type });
     const asset = await createMediaAsset(env.DB, {
@@ -407,6 +408,10 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
         // Actionable text when the console is unavailable for a fixable reason
         // (e.g. a center that forgot LICENSE_ADMIN_TOKEN).
         hint: describeDeploymentRoleIssue(env),
+        // 部署能力面板（docs/CLOUDFLARE_PLAN_TIERS.md）：档位与每项付费能力的
+        // 探测结果 + Free 部署上的等价降级文案。
+        plan: resolvePlanCapabilities(env),
+        planFallbacks: PLAN_FALLBACK_NOTES,
       });
     }
     if (

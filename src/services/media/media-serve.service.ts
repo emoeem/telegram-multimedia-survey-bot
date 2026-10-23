@@ -1,9 +1,15 @@
 import type { MediaAsset } from "../../db/schema";
 import { downloadTelegramFile } from "../../bot/telegram";
 import { readTemporaryMedia } from "./temporary-media.service";
-import { KVMediaStore } from "./temporary-media-store";
+import { createMediaStore } from "./temporary-media-store";
 import { decodeDataUrl } from "../import.service";
 import { isActiveContentMime } from "./upload-validation.service";
+import { expireMediaAsset } from "../../db/repositories/media.repository";
+import { getStreamVideoStatus, type StreamEnv } from "./stream.service";
+
+interface StreamEnvSlice extends MediaServeEnv, StreamEnv {
+  DB: D1Database;
+}
 
 export interface MediaServeEnv {
   BOT_TOKEN: string;
@@ -96,7 +102,7 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
   }
 
   if (asset.storageKind === "temporary") {
-    const data = await readTemporaryMedia(new KVMediaStore(env.MEDIA_KV), asset);
+    const data = await readTemporaryMedia(createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }), asset);
     if (!data) {
       return new Response("媒体已过期或已被清理", {
         status: 410,
@@ -115,6 +121,10 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
     // Response-scope uploads are personal data and stay uncacheable.
     secureHeaders(headers, mediaCacheControl(asset));
     return new Response(new Uint8Array(data).buffer, { headers });
+  }
+
+  if (asset.storageKind === "stream") {
+    return serveStreamAsset(env as MediaServeEnv & StreamEnvSlice, asset);
   }
 
   if (asset.storageKind === "r2") {
@@ -152,4 +162,62 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
   }
 
   return null;
+}
+
+/**
+ * Stream 视频的状态分流（Pro 部署的视频/音频答卷）。
+ *
+ * ready   → 302 到 Stream 的 HLS 播放地址（转码、自适应码率、边缘分发都归
+ *           Stream；Worker 不代理字节）。
+ * 未完成  → 上传凭证过期未转正：删行 + 删 Stream 对象，回 410，让前端知道
+ *           这条视频永远不会好了。
+ * processing → 202 + Retry-After：转码通常几十秒内完成。
+ */
+async function serveStreamAsset(env: StreamEnvSlice, asset: MediaAsset): Promise<Response | null> {
+  const key = asset.storageKey ?? "";
+  // storage_key 编码：`stream:{responseId}:{videoUid}`（见 stream-ticket 端点）。
+  const videoUid = key.includes(":") ? (key.split(":")[2] ?? "") : key;
+  if (!videoUid) return null;
+
+  let status;
+  try {
+    status = await getStreamVideoStatus(env, videoUid);
+  } catch (error) {
+    console.error("Stream status lookup failed", { videoUid, error });
+    return new Response(JSON.stringify({ ok: false, code: "stream_unavailable" }), {
+      status: 503,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }
+
+  if (status.state === "ready" && status.hlsUrl) {
+    // 上传已完成：清掉凭证期的 expires_at（否则每日对账 cron 会把好视频删掉）。
+    // 转正失败不影响本次播放。
+    if (asset.expiresAt) {
+      await env.DB.prepare("UPDATE media_assets SET expires_at = NULL, updated_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), asset.id)
+        .run()
+        .catch(() => undefined);
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { Location: status.hlsUrl, "cache-control": "private, max-age=60" },
+    });
+  }
+  if (status.state === "processing") {
+    return new Response(JSON.stringify({ ok: true, processing: true }), {
+      status: 202,
+      headers: { "content-type": "application/json", "retry-after": "10", "cache-control": "no-store" },
+    });
+  }
+  // not_found / errored：凭证过期未上传或转码失败，这条视频不会好了——
+  // 顺手失效占位行（不删行，保留对账痕迹）。
+  await env.DB.prepare("UPDATE media_assets SET expires_at = ?, updated_at = ? WHERE id = ?")
+    .bind(new Date(0).toISOString(), new Date().toISOString(), asset.id)
+    .run()
+    .catch(() => undefined);
+  return new Response(JSON.stringify({ ok: false, code: "stream_gone" }), {
+    status: 410,
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
+  });
 }

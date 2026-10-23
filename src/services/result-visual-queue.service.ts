@@ -1,5 +1,6 @@
 import { createRenderJob, failRenderJob, findActiveRenderJob } from "../db/repositories/result-visual.repository";
 import type { RenderJob } from "../db/schema";
+import type { ExportJobSender } from "./export-job-sender";
 
 export interface ResultVisualJobMessage {
   kind: "result_visual";
@@ -16,7 +17,7 @@ export function isResultVisualJobMessage(value: unknown): value is ResultVisualJ
 
 export async function enqueueResultVisualJob(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   input: {
     resultProfileId: number;
     templateId: number;
@@ -50,7 +51,7 @@ export async function enqueueResultVisualJob(
     return winner.status === "processing" ? { status: "processing", job: winner } : { status: "queued", job: winner };
   }
   try {
-    await queue.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);
+    await sender.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);
   } catch (error) {
     await failRenderJob(db, job.id, {
       code: "queue_enqueue_failed",

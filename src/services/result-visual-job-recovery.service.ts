@@ -1,5 +1,6 @@
 import { sendMessage } from "../bot/telegram";
 import type { ResultVisualJobMessage } from "./result-visual-queue.service";
+import type { ExportJobSender } from "./export-job-sender";
 
 interface StaleRenderJob {
   id: number;
@@ -19,7 +20,7 @@ const staleProcessingMs = 30 * 60_000;
 
 export async function recoverStaleResultVisualJobs(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   botToken: string,
   now = Date.now(),
 ): Promise<{ requeued: number; failed: number }> {
@@ -65,7 +66,7 @@ export async function recoverStaleResultVisualJobs(
       }
     } else {
       requeued += 1;
-      await queue.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);
+      await sender.send({ kind: "result_visual", jobId: job.id } satisfies ResultVisualJobMessage);
     }
   }
   return { requeued, failed };

@@ -1,6 +1,6 @@
 import type { ImportedMedia, ImportedMediaResolver } from "./import.service";
 import { decodeDataUrl } from "./import.service";
-import { KVMediaStore } from "./media/temporary-media-store";
+import { createMediaStore } from "./media/temporary-media-store";
 
 const IMPORT_MEDIA_KV_MAX_BYTES = 24 * 1024 * 1024;
 
@@ -21,8 +21,8 @@ function isMicrosoftMediaHost(host: string): boolean {
  * with small D1 rows and are served through the normal media pipeline.
  * Oversized or unfetchable payloads fall back to their original form.
  */
-export function createImportMediaResolver(env: { MEDIA_KV: KVNamespace }): ImportedMediaResolver {
-  const store = new KVMediaStore(env.MEDIA_KV);
+export function createImportMediaResolver(env: { MEDIA_KV: KVNamespace; MEDIA?: R2Bucket | undefined }): ImportedMediaResolver {
+  const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   return async (media: ImportedMedia) => {
     if (media.url?.startsWith("data:")) {
       const decoded = decodeDataUrl(media.url);

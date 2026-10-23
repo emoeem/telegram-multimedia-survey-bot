@@ -11,6 +11,7 @@ import { parseVisualTemplateDefinition } from "./visual-template-validator.servi
 import type { ResultJsonValue, ResultProfileSnapshot } from "../result/schema";
 import type { VisualReportSection } from "../visual-template/schema";
 import { applyReportPresentation, type ReportContrastMode } from "./report-presentation.service";
+import type { ExportJobSender } from "./export-job-sender";
 
 export interface ImageGeneratorJobMessage {
   kind: "image_generator";
@@ -150,7 +151,7 @@ function adaptTemplate(
 }
 export async function enqueueImageGeneratorJob(
   db: D1Database,
-  queue: Queue,
+  sender: ExportJobSender,
   input: {
     generatorId: number;
     templateId: number;
@@ -193,7 +194,7 @@ export async function enqueueImageGeneratorJob(
     )
     .run();
   const id = Number(r.meta?.last_row_id);
-  await queue.send({ kind: "image_generator", jobId: id } satisfies ImageGeneratorJobMessage);
+  await sender.send({ kind: "image_generator", jobId: id } satisfies ImageGeneratorJobMessage);
   return id;
 }
 export async function processImageGeneratorMessage(

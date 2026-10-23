@@ -2,6 +2,7 @@ import { getSystemSetting, listSystemSettings, setSystemSetting } from "../db/re
 
 export const SYSTEM_SETTING_KEYS = [
   "report_channel_id",
+  "cert_share_channel_id",
   "plaza_channel_id",
   "default_report_template",
   "media_ttl_seconds",
@@ -25,6 +26,12 @@ export async function loadAdminSessionEpoch(db: D1Database): Promise<number> {
 
 export interface SystemSettings {
   reportChannelId: string;
+  /**
+   * 认证卡生成器的发布目标。留空即「继承报告归档频道」——两者在语义上不同
+   * （归档频道收的是答卷 ZIP，这里收的是访客自己生成的照片），所以能单独覆盖，
+   * 但不覆盖时不该要求管理员再填一遍同一个 id。
+   */
+  certShareChannelId: string;
   plazaChannelId: string;
   defaultReportTemplate: string;
   mediaTtlSeconds: number;
@@ -37,6 +44,7 @@ export interface SystemSettings {
 
 export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   reportChannelId: "",
+  certShareChannelId: "",
   plazaChannelId: "",
   defaultReportTemplate: "classic",
   mediaTtlSeconds: 7 * 24 * 60 * 60,
@@ -68,6 +76,7 @@ export function settingsFromRows(rows: Array<{ key: string; value: string }>): S
   };
   return {
     reportChannelId: stored["report_channel_id"] ?? SYSTEM_SETTING_DEFAULTS.reportChannelId,
+    certShareChannelId: stored["cert_share_channel_id"] ?? SYSTEM_SETTING_DEFAULTS.certShareChannelId,
     plazaChannelId: stored["plaza_channel_id"] ?? SYSTEM_SETTING_DEFAULTS.plazaChannelId,
     defaultReportTemplate: stored["default_report_template"] ?? SYSTEM_SETTING_DEFAULTS.defaultReportTemplate,
     mediaTtlSeconds: number("media_ttl_seconds", SYSTEM_SETTING_DEFAULTS.mediaTtlSeconds),

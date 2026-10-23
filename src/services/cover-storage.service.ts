@@ -1,5 +1,5 @@
 import { decodeDataUrl } from "./import.service";
-import { KVMediaStore } from "./media/temporary-media-store";
+import { createMediaStore } from "./media/temporary-media-store";
 
 /**
  * One-shot self-heal: survey covers backfilled as base64 data URLs live inside
@@ -8,8 +8,11 @@ import { KVMediaStore } from "./media/temporary-media-store";
  * buildMediaResponse reads. Idempotent: once a cover row is `temporary` it is
  * skipped, so the scheduled task becomes a cheap no-op afterwards.
  */
-export async function migrateDataUrlCoversToKv(db: D1Database, env: { MEDIA_KV: KVNamespace }): Promise<number> {
-  const store = new KVMediaStore(env.MEDIA_KV);
+export async function migrateDataUrlCoversToKv(
+  db: D1Database,
+  env: { MEDIA_KV: KVNamespace; MEDIA?: R2Bucket | undefined },
+): Promise<number> {
+  const store = createMediaStore({ ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}), MEDIA_KV: env.MEDIA_KV });
   const rows = await db
     .prepare(
       `SELECT m.id, m.url, m.mime_type mimeType, m.file_name fileName,

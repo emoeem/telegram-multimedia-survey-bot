@@ -21,6 +21,21 @@ export const TEMP_MEDIA_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const TEMP_MEDIA_KV_BACKSTOP_SECONDS = 30 * 24 * 60 * 60;
 export const MAX_TEMP_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_RESPONSE_MEDIA_BYTES = 50 * 1024 * 1024;
+/**
+ * R2 部署（Pro）的上限放宽：KV 25MB 值上限与 TG 50MB 转发上限是免费管线的
+ * 事实天花板；R2 没有这些约束，但上限仍要守在平台合理值内（单文件 100MB、
+ * 单答卷总量 200MB），并继续被 system_settings 的运营配置取小。
+ */
+export const R2_MAX_PER_FILE_BYTES = 100 * 1024 * 1024;
+export const R2_MAX_RESPONSE_MEDIA_BYTES = 200 * 1024 * 1024;
+
+export function perFileCeilingBytes(hasR2Media: boolean): number {
+  return hasR2Media ? R2_MAX_PER_FILE_BYTES : MAX_TEMP_IMAGE_BYTES;
+}
+
+export function responseMediaCeilingBytes(hasR2Media: boolean): number {
+  return hasR2Media ? R2_MAX_RESPONSE_MEDIA_BYTES : MAX_RESPONSE_MEDIA_BYTES;
+}
 
 /**
  * Prefix for attachments that have graduated out of the temporary namespace.

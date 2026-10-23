@@ -2,6 +2,7 @@ import type { SurveyBuilderNamespace } from "../services/survey-builder.service"
 import type { SurveySessionNamespace } from "../services/session.service";
 import type { UiSessionNamespace } from "../services/ui-session.service";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
+import type { ExportJobSender } from "../services/export-job-sender";
 
 export interface TelegramUser {
   id: number;
@@ -106,7 +107,8 @@ export interface BotContext {
   ui?: UiSessionNamespace;
   builder: SurveyBuilderNamespace;
   adminIds: number[];
-  exportQueue: Queue;
+  /** 队列或其无队列降级实现（createExportJobSender）；业务侧只依赖 send。 */
+  exportQueue: ExportJobSender;
   origin?: string;
   /** Public link for the submission bot (投稿机器人); renders as a jump button. */
   submissionBotUrl?: string | null;

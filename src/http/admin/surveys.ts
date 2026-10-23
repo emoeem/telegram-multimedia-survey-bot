@@ -16,6 +16,7 @@ import { loadSystemSettings } from "../../services/system-settings.service";
 import { WriteContext, loadManageableSurvey, writeAudit } from "./helpers";
 import { getSurveyCoinAccess } from "../../services/coin/unlock.service";
 import { Env } from "../../index";
+import { createExportJobSender } from "../../services/export-job-dispatch.service";
 
 export async function handleAdminSurveysWrite(
   request: Request,
@@ -86,7 +87,7 @@ export async function handleAdminSurveysWrite(
     }
     let queued = 0;
     for (const row of completed) {
-      await enqueueReportDelivery(db, env.EXPORT_QUEUE, {
+      await enqueueReportDelivery(db, createExportJobSender(env), {
         responseId: row.id,
         force: true,
       });
@@ -261,7 +262,7 @@ export async function handleAdminSurveysWrite(
       return fail(404, "response_not_found", "答卷不存在");
     }
     await prepareResultProfileForResponse(db, responseId, { forceRecalculate: true });
-    await enqueueReportDelivery(db, env.EXPORT_QUEUE, { responseId, force: true });
+    await enqueueReportDelivery(db, createExportJobSender(env), { responseId, force: true });
     await writeAudit(db, {
       actorUserId: user.id,
       action: "report.regenerate",
@@ -310,7 +311,7 @@ export async function handleAdminSurveysWrite(
       if (response.status !== "completed") {
         return fail(400, "not_completed", "答卷尚未完成，无法发送报告");
       }
-      await enqueueReportDelivery(db, env.EXPORT_QUEUE, { responseId, force: true });
+      await enqueueReportDelivery(db, createExportJobSender(env), { responseId, force: true });
       await writeAudit(db, {
         actorUserId: user.id,
         action: "report.resend",
@@ -332,6 +333,9 @@ export async function handleAdminSurveysWrite(
         return fail(404, "report_unavailable", "报告不存在或尚未生成");
       }
       const snapshot = deserializeResultProfile(prepared.profile);
+      if (!env.BROWSER) {
+        return fail(503, "render_unavailable", "当前部署未启用 PDF 渲染（未配置 Browser Rendering），请改用网页报告。");
+      }
       const images = await resolveReportProfileImages(env, snapshot);
       const pdf = await renderReportPdf(
         env.BROWSER,

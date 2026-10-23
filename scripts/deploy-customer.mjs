@@ -37,6 +37,7 @@ class DeploymentError extends Error {
 function parseArgs(argv) {
   const args = {
     dryRun: false,
+    plan: null,
     projectDir: ROOT_DIR,
     outputRoot: path.join(ROOT_DIR, "customer-deployments"),
     values: {},
@@ -44,6 +45,7 @@ function parseArgs(argv) {
 
   const valueFlags = new Set([
     "customer-name",
+    "plan",
     "bot-token",
     "admin-id",
     "license-key",
@@ -106,6 +108,9 @@ Windows 客户部署工具
 
 常用参数：
   --customer-name <名称>       客户名称
+  --plan <free|paid>           客户 Cloudflare 套餐（默认 free）：free 不创建
+                               Queue、不下发 Browser Rendering，导出/归档走
+                               自调用同步降级；paid 与 vendor 配置一致。
   --bot-token <Token>          Telegram Bot Token
   --admin-id <ID[,ID...]>      管理员 Telegram 数字 ID
   --license-key <密钥>         厂商发放的软件授权密钥
@@ -380,7 +385,15 @@ function resourceNames(workerName) {
   };
 }
 
-async function createResources({ workerName, deploymentDir, dryRun, manifest }) {
+function normalizePlan(value) {
+  const plan = (value ?? "free").trim().toLowerCase();
+  if (plan !== "free" && plan !== "paid") {
+    throw new DeploymentError(`--plan 只支持 free 或 paid，收到：${value}`);
+  }
+  return plan;
+}
+
+async function createResources({ workerName, deploymentDir, dryRun, manifest, plan = "free" }) {
   const names = resourceNames(workerName);
   const state = {
     ...(manifest ?? {}),
@@ -488,6 +501,12 @@ async function createResources({ workerName, deploymentDir, dryRun, manifest }) 
     if (!dryRun) await save();
   }
 
+  if (plan !== "paid") {
+    // Free 计划：不创建 Queue（Workers Paid 能力），导出走 SELF 同步降级。
+    state.resources.queue = { name: names.queue, skipped: "free-plan" };
+    if (!dryRun) await save();
+    return state;
+  }
   state.resources.queue ??= { name: names.queue };
   if (!state.resources.queue.created) {
     if (dryRun) {
@@ -586,6 +605,9 @@ function buildWranglerConfig({
   resources,
   accountId,
   licenseCenterService = "",
+  // "free"（默认）= 不下发 Queues/BROWSER，改用 SELF 内部端点同步执行；
+  // "paid" = 与 vendor 相同的全量绑定。
+  plan = "free",
 }) {
   const sourcePath = (value) => path.resolve(projectDir, value).replaceAll("\\", "/");
   const lines = [
@@ -623,6 +645,9 @@ function buildWranglerConfig({
     // licenses, publish releases or hand out trial accounts (no re-authorizing
     // third parties with a product the customer only licensed).
     `DEPLOYMENT_ROLE = ${tomlString("customer")}`,
+    // 显式档位声明（plan.service 探测之外的最保守兜底）：free 配置里根本没有
+    // Queues/BROWSER 绑定，探测自然为 free；这里写死是为了防止以后误补绑定。
+    `PLAN_TIER = ${tomlString(plan)}`,
     `ADMIN_IDS = ${tomlString(adminIds)}`,
     // The console reads this instance directly from the vendor's browser, and
     // CORS matches the *page's* origin: listing only LICENSE_SERVER_URL breaks
@@ -656,21 +681,36 @@ function buildWranglerConfig({
           "",
         ]
       : []),
-    "[[queues.producers]]",
-    `binding = ${tomlString("EXPORT_QUEUE")}`,
-    `queue = ${tomlString(resources.queue.name)}`,
-    "",
-    "[[queues.consumers]]",
-    `queue = ${tomlString(resources.queue.name)}`,
-    // Matches the vendor instance, which is the configuration exports have
-    // actually been exercised against.
-    "max_batch_size = 1",
-    "max_batch_timeout = 5",
-    "max_concurrency = 3",
-    "",
-    "[browser]",
-    `binding = ${tomlString("BROWSER")}`,
-    "",
+    // Queues 与 Browser Rendering 都是 Workers Paid 能力：free 计划的客户
+    // 部署带不上它们（带上了也部署不起来）。导出/归档改走 SELF 内部端点同步
+    // 执行（src/services/export-job-dispatch.service.ts），PDF/分享图退化为
+    // HTML/SVG——功能不缺失，只是慢。paid 计划保持与 vendor 相同的全量绑定。
+    ...(plan === "paid"
+      ? [
+          "[[queues.producers]]",
+          `binding = ${tomlString("EXPORT_QUEUE")}`,
+          `queue = ${tomlString(resources.queue.name)}`,
+          "",
+          "[[queues.consumers]]",
+          `queue = ${tomlString(resources.queue.name)}`,
+          // Matches the vendor instance, which is the configuration exports have
+          // actually been exercised against.
+          "max_batch_size = 1",
+          "max_batch_timeout = 5",
+          "max_concurrency = 3",
+          "",
+          "[browser]",
+          `binding = ${tomlString("BROWSER")}`,
+          "",
+        ]
+      : [
+          // 免费部署的自调用通道：无队列时的导出任务经它回到请求上下文执行
+          // （service binding 不分套餐，free 可用）。
+          "[[services]]",
+          `binding = ${tomlString("SELF")}`,
+          `service = ${tomlString(workerName)}`,
+          "",
+        ]),
     // Report-delivery retries + heartbeat (`*/30`) and media retention +
     // database maintenance (`15 1`). Without them a customer never retries a
     // failed report and never runs any maintenance.
@@ -793,6 +833,7 @@ async function deploy(args, values) {
     throw new DeploymentError("授权中心地址必须以 http:// 或 https:// 开头。");
   }
 
+  const planTier = normalizePlan(values["plan"]);
   const workerName = values["worker-name"]?.trim() || makeSlug(customerName);
   validateWorkerName(workerName);
   const installationId =
@@ -865,6 +906,7 @@ async function deploy(args, values) {
     deploymentDir,
     dryRun: args.dryRun,
     manifest: existingManifest,
+    plan: planTier,
   });
   const resources = resourceState.resources;
   const configPath = path.join(deploymentDir, "wrangler.toml");
@@ -881,6 +923,7 @@ async function deploy(args, values) {
     resources,
     accountId,
     licenseCenterService,
+    plan: planTier,
   });
   await fs.writeFile(configPath, config, "utf8");
 
@@ -950,6 +993,7 @@ async function deploy(args, values) {
       ...resourceState,
       customerName,
       installationId,
+      plan: planTier,
       deployedAt: new Date().toISOString(),
       workerUrl: resolvedWorkerUrl,
       webhookUrl,
@@ -1061,6 +1105,7 @@ async function updateDeployment(args, values) {
     resources: manifest.resources,
     accountId,
     licenseCenterService,
+    plan: normalizePlan(manifest.plan),
   });
   await fs.writeFile(configPath, config, "utf8");
   const surveyCodePepper = manifest.surveyCodePepperConfigured ? "" : randomBytes(32).toString("hex");
@@ -1085,6 +1130,7 @@ async function updateDeployment(args, values) {
       await writeJson(manifestPath, {
         ...manifest,
         appVersion: APP_VERSION,
+        plan: manifest.plan ?? plan,
         updatedAt: new Date().toISOString(),
         surveyCodePepperConfigured: true,
         ...(consoleOrigins.length > 0 ? { consoleOrigins } : {}),

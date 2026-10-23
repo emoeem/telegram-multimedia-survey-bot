@@ -8,7 +8,7 @@ import {
 import { restorePlazaPost } from "../db/repositories/plaza-post.repository";
 import { deleteCustomReportTemplate, restoreCustomReportTemplate } from "../db/repositories/report-template.repository";
 import { getMediaAssetById } from "../db/repositories/media.repository";
-import { KVMediaStore } from "./media/temporary-media-store";
+import { createMediaStore } from "./media/temporary-media-store";
 
 export const TRASH_RETENTION_DAYS = 30;
 const DAY_MS = 86_400_000;
@@ -128,6 +128,7 @@ export async function permanentlyDeleteTrashItem(
   db: D1Database,
   target: TrashTarget,
   mediaKv?: KVNamespace,
+  media?: R2Bucket,
 ): Promise<boolean> {
   switch (target.kind) {
     case "survey":
@@ -147,7 +148,10 @@ export async function permanentlyDeleteTrashItem(
         .first<{ imageAssetId: number | null }>();
       if (mediaKv && row?.imageAssetId) {
         const asset = await getMediaAssetById(db, row.imageAssetId);
-        if (asset?.storageKey) await new KVMediaStore(mediaKv).delete(asset.storageKey).catch(() => undefined);
+        if (asset?.storageKey)
+          await createMediaStore({ ...(media ? { MEDIA: media } : {}), MEDIA_KV: mediaKv })
+            .delete(asset.storageKey)
+            .catch(() => undefined);
       }
       const result = await db.prepare("DELETE FROM plaza_posts WHERE id = ? AND deleted_at IS NOT NULL").bind(id).run();
       return Number(result.meta?.changes ?? 0) > 0;

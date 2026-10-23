@@ -23,6 +23,34 @@ import { claimParticipantKey } from "../services/identity-link.service";
 import { ensureEmailAccountUser } from "../services/identity-link.service";
 
 /**
+ * 验证码存储（KV）不可用时的统一文案。KV 有每日写额度，也会随边缘抖动，
+ * 而验证码的读写都在这条链上——失败必须明确指向「换 Telegram 免注册」这条
+ * 出路，不能和「数据库挂了」共用一句通用提示。
+ */
+const EMAIL_CODE_STORE_UNAVAILABLE =
+  "验证码暂时不可用（存储额度或网络波动）。请稍后重试；也可以直接用 Telegram 打开平台，免注册使用。";
+
+/**
+ * 校验验证码并把「存储不可用」和「码不对」分开：
+ * `verifyEmailCode` 内部会 delete / put KV，额度打满时直接抛错。此前不捕获，
+ * 异常冒泡成全局兜底文案，用户看到「服务暂时不可用」却不知道是验证码环节。
+ * 返回 null 表示存储不可用（→ 503），false 表示码错误（→ 400）。
+ */
+async function safeVerifyEmailCode(
+  store: Parameters<typeof verifyEmailCode>[0],
+  email: string,
+  purpose: "register" | "reset",
+  code: string,
+): Promise<boolean | null> {
+  try {
+    return await verifyEmailCode(store, email, purpose, code);
+  } catch (error) {
+    console.error("email code verify failed", { purpose, error });
+    return null;
+  }
+}
+
+/**
  * 登录/注册成功后的自动认领（0082）：请求若携带本浏览器的匿名 key，就把
  * web_* 历史进度并入该邮箱账户的 canonical（绑定了 user 则 user_*，否则
  * email_*），金币随之合并（幂等）。认领失败不阻断登录——进度并入是增值
@@ -83,7 +111,20 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
       return json({ ok: true });
     }
     if (purpose === "reset" && !existing) return json({ ok: true });
-    const code = await issueEmailCode(codeStore, email, purpose);
+    // KV 写可能因每日额度或边缘抖动失败。此前不捕获，异常会冒泡到全局兜底，
+    // 用户只看到「服务暂时不可用，请稍后重试」——而实际卡在发码这一步，
+    // 换个入口（Telegram 免注册）马上能用。所以单独识别并给出那条出路。
+    let code: string;
+    try {
+      code = await issueEmailCode(codeStore, email, purpose);
+    } catch (error) {
+      console.error("email code issue failed", { purpose, error });
+      return fail(
+        503,
+        "email_code_store_unavailable",
+        "验证码暂时发不出去（存储额度或网络波动）。请稍后重试；也可以直接用 Telegram 打开平台，免注册使用。",
+      );
+    }
     const sent = await sendEmail(
       { RESEND_API_KEY: env.RESEND_API_KEY, MAIL_FROM: env.MAIL_FROM },
       email,
@@ -113,7 +154,8 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     // Verify the code first: request-code never issues a code for an already
     // registered address, so probing `register` without one no longer reveals
     // whether the email is taken (the 409 is only reachable with a valid code).
-    const valid = await verifyEmailCode(codeStore, email, "register", code);
+    const valid = await safeVerifyEmailCode(codeStore, email, "register", code);
+    if (valid === null) return fail(503, "email_code_store_unavailable", EMAIL_CODE_STORE_UNAVAILABLE);
     if (!valid) return fail(400, "invalid_code", "验证码错误或已过期");
     if (existing?.verifiedAt) return fail(409, "email_taken", "该邮箱已注册，请直接登录");
     const account =
@@ -149,7 +191,8 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     if (!codeStore) return fail(503, "unavailable", "当前部署未启用邮箱验证码");
     const account = await getEmailAccountByEmail(db, email);
     if (!account) return fail(400, "invalid_code", "验证码错误或已过期");
-    const valid = await verifyEmailCode(codeStore, email, "reset", code);
+    const valid = await safeVerifyEmailCode(codeStore, email, "reset", code);
+    if (valid === null) return fail(503, "email_code_store_unavailable", EMAIL_CODE_STORE_UNAVAILABLE);
     if (!valid) return fail(400, "invalid_code", "验证码错误或已过期");
     await updateEmailAccountPassword(db, account.id, await hashPassword(password));
     // updateEmailAccountPassword bumped session_version, so the fresh token

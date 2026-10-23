@@ -183,8 +183,9 @@ export interface Answer {
 export type MediaType = "photo" | "video" | "audio" | "voice" | "animation" | "gif" | "sticker" | "document";
 
 /** Explicit storage provider for a media asset. Legacy rows are 'telegram';
- * temporary response uploads are 'temporary' with an expiry. */
-export type MediaStorageKind = "temporary" | "telegram" | "r2" | "url";
+ * temporary response uploads are 'temporary' with an expiry; 'stream' rows
+ * reference a Cloudflare Stream video by uid in storage_key. */
+export type MediaStorageKind = "temporary" | "telegram" | "r2" | "url" | "stream";
 
 /** Ownership boundary for media. A media type alone must never decide whether
  * an image can be used by the template editor. */

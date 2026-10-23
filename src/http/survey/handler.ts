@@ -64,6 +64,7 @@ import {
   type PublishedSurveyListPayload,
 } from "./catalog";
 import { loadSurveyDefinition } from "./definition";
+import { streamConfigured } from "../../services/media/stream.service";
 import {
   ageGateResponse,
   resolveViewerAgeVerified,
@@ -73,9 +74,15 @@ import { countPublishedRestrictedSurveys } from "./catalog";
 import { canonicalizeHash, HASH_SET_SQL } from "../../services/identity-link.service";
 import { recordEndingUnlock } from "../../services/ending-unlock.service";
 import { endingTotal, listUnlockedEndings } from "../../services/ending-unlock.service";
-import { handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
+import {
+  handleStreamTicketRequest,
+  handleSurveyMediaUpload,
+  serveSurveyMedia,
+  temporaryStore,
+} from "./media";
 import { answerValue } from "./presentation";
 import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
+import { createExportJobSender } from "../../services/export-job-dispatch.service";
 
 interface ResolvedPublicationTarget {
   id: number | null;
@@ -276,6 +283,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // 未启用的问卷（绝大多数）不再付任何参与者解析/查询成本——开关已经
     // 在上面那趟 batch 里顺手读掉了。
     const coinEnabled = Number(((coinResult?.results ?? [])[0] as { enabled?: number } | undefined)?.enabled ?? 0) > 0;
+    // 部署级能力位（不进问卷版本缓存）：Pro 部署的前端视频/音频答卷走 Stream 直传。
+    const streamVideo = streamConfigured(env);
     if (coinEnabled) {
       const participantResolved = await resolveParticipant(request, env);
       const participant = participantResolved instanceof Response ? null : participantResolved;
@@ -288,11 +297,12 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         const locked = await loadSurveyDefinition(env, request, survey, false, system);
         return json({
           ...locked,
+          streamVideo,
           coinUnlock: { required: true, price: coinGate.price },
         });
       }
     }
-    return json(await loadSurveyDefinition(env, request, survey, accessGranted, system));
+    return json({ ...(await loadSurveyDefinition(env, request, survey, accessGranted, system)), streamVideo });
   }
 
   // 单卷结局图鉴（0086）：当前参与者在某卷上的解锁进度。需要身份（个人数据）。
@@ -405,6 +415,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // 金币门：未解锁的问卷不能开始作答（与定义读取同一判定）。开关已随上面的
     // batch 读回；仅启用时再走一次完整的解锁判定。
     const coinEnabled = Number(((coinResult?.results ?? [])[0] as { enabled?: number } | undefined)?.enabled ?? 0) > 0;
+    // 部署级能力位（不进问卷版本缓存）：Pro 部署的前端视频/音频答卷走 Stream 直传。
+    const streamVideo = streamConfigured(env);
     if (coinEnabled) {
       const coinAdminIds = (env.ADMIN_IDS ?? "")
         .split(",")
@@ -547,6 +559,19 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       },
       201,
     );
+  }
+
+  // Pro 部署的视频/音频答卷：铸造 Stream 直传凭证（浏览器直传，不经 Worker）。
+  if (request.method === "POST" && rest === "/media/stream-ticket") {
+    const ticketLimiter = await checkRateLimit(
+      env.CACHE,
+      "upload",
+      resolveClientIdentity(request, env).ip,
+      20,
+      60,
+    );
+    if (!ticketLimiter.allowed) return rateLimitResponse(ticketLimiter.retryAfterSeconds);
+    return handleStreamTicketRequest(request, env, surveyId);
   }
 
   if (request.method === "POST" && rest === "/media") {
@@ -928,7 +953,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       console.error("Response media retention failed", { responseId, error });
     }
     try {
-      await enqueueReportDelivery(env.DB, env.EXPORT_QUEUE, { responseId });
+      await enqueueReportDelivery(env.DB, createExportJobSender(env), { responseId });
     } catch (error) {
       // Answer data is already committed; report archiving is retried by the
       // queue pipeline, so a transient enqueue failure must not fail submit.
@@ -957,7 +982,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
           publicationTarget.chatId,
           publicationTarget.threadId,
         );
-        await env.EXPORT_QUEUE.send({ kind: "public_report", responseId });
+        await createExportJobSender(env).send({ kind: "public_report", responseId });
       } catch (error) {
         await setResponseReportPublication(
           env.DB,

@@ -2,7 +2,7 @@ import type { Answer, QuestionType } from "../db/schema";
 import { createMediaAsset, expireMediaAsset } from "../db/repositories/media.repository";
 import { listAnswersByResponseIds, setResponseGalleryPublished } from "../db/repositories/response.repository";
 import { normalizeAnswer } from "./answer-value-adapter.service";
-import { KVMediaStore } from "./media/temporary-media-store";
+import { createMediaStore } from "./media/temporary-media-store";
 import { getSurveyFlow } from "./question.service";
 import { getMatrixColumns } from "../survey/question-presentation";
 
@@ -16,6 +16,7 @@ import { getMatrixColumns } from "../survey/question-presentation";
 export interface ProfileGalleryEnvironment {
   DB: D1Database;
   MEDIA_KV?: KVNamespace;
+  MEDIA?: R2Bucket | undefined;
 }
 
 export interface ProfileGalleryMediaRef {
@@ -176,7 +177,7 @@ export async function publishProfileResponse(
   if (!env.MEDIA_KV) {
     throw new Error("个人画廊需要 MEDIA_KV 存储，当前环境未配置");
   }
-  const store = new KVMediaStore(env.MEDIA_KV);
+  const store = createMediaStore({ ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}), MEDIA_KV: env.MEDIA_KV });
   const existingMedia = await listGalleryMedia(env.DB, responseId);
   if (existingMedia.length > 0) {
     if (
@@ -285,7 +286,9 @@ export async function deleteProfileGalleryMedia(env: ProfileGalleryEnvironment, 
   )
     .bind(responseId)
     .all<{ mappingId: number; mediaAssetId: number; storageKey: string | null }>();
-  const store = env.MEDIA_KV ? new KVMediaStore(env.MEDIA_KV) : null;
+  const store = env.MEDIA_KV
+    ? createMediaStore({ ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}), MEDIA_KV: env.MEDIA_KV })
+    : null;
   for (const row of rows.results ?? []) {
     if (row.storageKey && store) await store.delete(row.storageKey).catch(() => undefined);
     await expireMediaAsset(env.DB, row.mediaAssetId);

@@ -1,7 +1,7 @@
 import type { MediaAsset } from "../../db/schema";
 import { getMediaAssetById, getMediaAssetsByIds } from "../../db/repositories/media.repository";
 import { downloadTelegramFile } from "../../bot/telegram";
-import { KVMediaStore } from "../media/temporary-media-store";
+import { createMediaStore } from "../media/temporary-media-store";
 import type { ResultProfileSnapshot } from "../../result/schema";
 
 export interface ReportImagesEnv {
@@ -69,7 +69,7 @@ async function resolveAssetDataUrl(env: ReportImagesEnv, asset: MediaAsset): Pro
     // "Key name cannot be empty", which used to fail the WHOLE archive instead
     // of just skipping one missing image.
     if (!env.MEDIA_KV || !asset.storageKey) return null;
-    const bytes = await new KVMediaStore(env.MEDIA_KV).get(asset.storageKey);
+    const bytes = await createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }).get(asset.storageKey);
     if (!bytes) return null;
     return bytesToDataUrl(bytes, asset.mimeType ?? "image/jpeg");
   }

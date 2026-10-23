@@ -55,6 +55,76 @@ export function createKVRateLimiter(cache: KVNamespace): RateLimiter {
   };
 }
 
+/**
+ * Atomic limiter backed by the `RateLimitDO` Durable Object.
+ *
+ * Same `RateLimiter` contract as the KV implementation, but the increment
+ * happens inside a serialised Durable Object instead of a KV get-then-put, so
+ * two simultaneous requests cannot both read the same counter and write the
+ * same value (KV permits one write per key per second, so the loser's write is
+ * silently dropped).
+ *
+ * Hashing still happens here rather than in the DO: the object is not a
+ * trusted vault for raw addresses, and keeping the hash on this side means the
+ * DO's persisted keys are never reversible to an email or an IP.
+ *
+ * Failure policy matches the KV limiter — fail open. Rate limiting must not
+ * become an availability dependency, so a DO that is unavailable allows the
+ * request and leaves an auditable warning rather than locking users out.
+ */
+export function createAtomicRateLimiter(namespace: DurableObjectNamespace): RateLimiter {
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      if (limit <= 0 || windowSeconds <= 0) return false;
+
+      try {
+        const separator = key.indexOf("|");
+        const scope = separator >= 0 ? key.slice(0, separator) : key;
+        const subject = separator >= 0 ? key.slice(separator + 1) : key;
+        // Hash first, then shard on the scope: the instance name is derived
+        // from an allow-listed label, so no request-derived string becomes an
+        // object identifier.
+        const stub = namespace.get(namespace.idFromName(scope));
+        const response = await stub.fetch("https://rate-limit/allow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scope, subject: await subjectHash(subject), limit, windowSeconds }),
+        });
+        if (!response.ok) {
+          console.warn("Atomic rate limiter returned a non-OK response; allowing request", {
+            scope,
+            status: response.status,
+          });
+          return true;
+        }
+        const decision = (await response.json()) as { allowed?: unknown };
+        return decision?.allowed !== false;
+      } catch (error) {
+        console.warn("Atomic rate limiter unavailable; allowing request", error);
+        return true;
+      }
+    },
+  };
+}
+
+/**
+ * Pick the strongest limiter the deployment can support.
+ *
+ * Deployments that bind `RATE_LIMIT` get the atomic path; anything else (local
+ * dev, a customer Worker without the binding) keeps working on KV with its
+ * known concurrency caveat instead of failing to boot.
+ */
+export function createPreferredRateLimiter(env: {
+  /* Typed `unknown` so this module never has to import the Durable Object
+   * class to name it; the guard below narrows it once, at the single point
+   * where the binding is actually used. */
+  RATE_LIMIT?: unknown;
+  CACHE: KVNamespace;
+}): RateLimiter {
+  const namespace = env.RATE_LIMIT as DurableObjectNamespace | undefined;
+  return namespace ? createAtomicRateLimiter(namespace) : createKVRateLimiter(env.CACHE);
+}
+
 export function createMemoryRateLimiter(): RateLimiter {
   const windows = new Map<string, { count: number; expiresAt: number }>();
 

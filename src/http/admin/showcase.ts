@@ -144,7 +144,7 @@ export async function handleAdminShowcaseWrite(
     }
     let asset;
     try {
-      asset = await storeSurveyAdminMedia(db, env.MEDIA_KV, file);
+      asset = await storeSurveyAdminMedia(db, env, file);
     } catch (error) {
       return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
     }

@@ -277,6 +277,46 @@ describe("telegram webhook idempotency wiring", () => {
     expect(blocked.status).toBe(429);
   });
 
+  it("reports a diagnostic 503 (not a generic 500) when the code store is unavailable", async () => {
+    // KV 每日写额度打满 / 边缘抖动时，issueEmailCode 的 put 会抛错。此前异常
+    // 冒泡到全局兜底，用户只看到「服务暂时不可用，请稍后重试」——实际卡在发码，
+    // 换 Telegram 免注册即可用。这条断言锁住「错误必须指向那条出路」。
+    const cache = {
+      get: vi.fn(async () => null),
+      put: vi.fn(async (key: string) => {
+        if (key.startsWith("email-code:")) throw new Error("KV PUT failed: 429 exceeded daily write limit");
+      }),
+      delete: vi.fn(async () => undefined),
+      list: vi.fn(async () => ({ keys: [], list_complete: true })),
+    } as unknown as KVNamespace;
+    const env = {
+      ...createEnv(cache),
+      DB: {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            first: vi.fn(async () => null),
+            run: vi.fn(async () => ({ success: true })),
+            all: vi.fn(async () => ({ results: [] })),
+          })),
+        })),
+      } as unknown as D1Database,
+    };
+
+    const response = await worker.fetch(
+      new Request("https://example.test/api/auth/email/request-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "cf-connecting-ip": "192.0.2.55" },
+        body: JSON.stringify({ email: "probe@example.com" }),
+      }),
+      env as never,
+    );
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { code?: string; message?: string };
+    expect(body.code).toBe("email_code_store_unavailable");
+    expect(body.message).toContain("Telegram");
+  });
+
   it("rejects a webhook with the wrong secret", async () => {
     const env = createEnv();
     const response = await worker.fetch(

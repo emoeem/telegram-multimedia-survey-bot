@@ -301,7 +301,7 @@ export async function publishPublicResponseReport(
   const ctx = {
     db: env.DB,
     botToken: env.BOT_TOKEN,
-    browser: env.BROWSER,
+    ...(env.BROWSER ? { browser: env.BROWSER } : {}),
     mediaKv: env.MEDIA_KV,
   } as unknown as BotContext;
 

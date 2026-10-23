@@ -15,6 +15,7 @@ import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { isReportDeliveryMessage, type ReportDeliveryMessage } from "./report-delivery.service";
 import { processReportDeliveryMessage, type ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
 import { publishPublicResponseReport, type PublicReportEnvironment } from "./public-report.service";
+import { createExportJobSender } from "./export-job-dispatch.service";
 
 export interface ExportWorkerEnvironment {
   DB: D1Database;
@@ -47,8 +48,11 @@ interface PublicReportMessage {
  * working. When PUBLIC_BASE_URL is configured, hand the render+send to the
  * worker's own internal HTTP endpoint (request context) instead of rendering
  * here; otherwise fall back to the in-process path.
+ *
+ * Exported for the queue-less inline dispatcher (export-job-dispatch.service),
+ * which must execute exactly the same per-kind logic.
  */
-async function publishPublicReportViaRequestContext(
+export async function publishPublicReportViaRequestContext(
   env: ExportWorkerEnvironment & PublicReportEnvironment,
   responseId: number,
 ): Promise<{ chatId: number; messageIds: number[]; pages: number }> {
@@ -78,7 +82,7 @@ async function publishPublicReportViaRequestContext(
   };
 }
 
-function isPublicReportMessage(value: unknown): value is PublicReportMessage {
+export function isPublicReportMessage(value: unknown): value is PublicReportMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
   return message.kind === "public_report" && Number.isInteger(message.responseId) && Number(message.responseId) > 0;
@@ -95,7 +99,7 @@ interface ResponseReportJobMessage {
   anonymize: boolean;
 }
 
-function isResponseReportJobMessage(value: unknown): value is ResponseReportJobMessage {
+export function isResponseReportJobMessage(value: unknown): value is ResponseReportJobMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
   return (
@@ -106,11 +110,11 @@ function isResponseReportJobMessage(value: unknown): value is ResponseReportJobM
   );
 }
 
-async function processResponseReportMessage(
+export async function processResponseReportMessage(
   env: ExportWorkerEnvironment,
   body: ResponseReportJobMessage,
 ): Promise<void> {
-  if (!env.CACHE || !env.SESSION || !env.UI || !env.BUILDER || !env.EXPORT_QUEUE || !env.BROWSER)
+  if (!env.CACHE || !env.SESSION || !env.UI || !env.BUILDER || !env.BROWSER)
     throw new Error("Response report worker bindings are unavailable");
   const { sendResponseReportExport } = await import("../bot/survey-handler");
   await sendResponseReportExport(
@@ -125,8 +129,8 @@ async function processResponseReportMessage(
         .split(",")
         .map((value) => Number(value.trim()))
         .filter((value) => Number.isInteger(value) && value > 0),
-      exportQueue: env.EXPORT_QUEUE,
-      browser: env.BROWSER,
+      exportQueue: createExportJobSender(env),
+      ...(env.BROWSER ? { browser: env.BROWSER } : {}),
     },
     body.chatId,
     body.userId,
@@ -162,7 +166,7 @@ function exportFileMetadata(
   return { fileName: `survey-${surveyId}.csv`, contentType: "text/csv" };
 }
 
-async function processExportMessage(env: ExportWorkerEnvironment, body: unknown): Promise<void> {
+export async function processExportMessage(env: ExportWorkerEnvironment, body: unknown): Promise<void> {
   if (!isExportJobMessage(body)) {
     console.error("Invalid export queue message", body);
     return;
