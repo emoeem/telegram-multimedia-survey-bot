@@ -130,10 +130,7 @@ function validateQuestionCondition(
   const optionIds = new Set((question.options ?? []).map((option) => String(option?.id)));
   const indexOfId = new Map(questions.map((entry, position) => [String(entry?.id), position]));
   const optionIdsByQuestion = new Map(
-    questions.map((entry) => [
-      String(entry?.id),
-      new Set((entry?.options ?? []).map((option) => String(option?.id))),
-    ]),
+    questions.map((entry) => [String(entry?.id), new Set((entry?.options ?? []).map((option) => String(option?.id)))]),
   );
 
   const checkTarget = (value: unknown, targetPath: string): void => {
@@ -181,7 +178,10 @@ function validateQuestionCondition(
         }
         const entry = rule as Record<string, unknown>;
         if (indexOfId.get(String(entry.questionId)) === undefined) {
-          issues.push({ path: `${rulePath}.questionId`, message: "questionId must reference a question in this survey" });
+          issues.push({
+            path: `${rulePath}.questionId`,
+            message: "questionId must reference a question in this survey",
+          });
         }
         // equals is the matched answer: a numeric option id, or (import
         // format) an option id of the referenced question.

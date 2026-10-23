@@ -40,13 +40,7 @@ function ProfileTile({
             </p>
           ) : null}
         </div>
-        <span
-          className={
-            profile.publishedAt
-              ? "badge badge-green"
-              : "badge badge-gray"
-          }
-        >
+        <span className={profile.publishedAt ? "badge badge-green" : "badge badge-gray"}>
           {profile.publishedAt ? `已公开${profile.showUsername ? " · 显示用户名" : " · 隐藏用户名"}` : "未公开"}
         </span>
       </div>
@@ -100,11 +94,7 @@ function ProfileTile({
         type="button"
         disabled={busy}
         onClick={() => onToggle(profile)}
-        className={
-          profile.publishedAt
-            ? "btn btn-sm"
-            : "btn btn-primary btn-sm"
-        }
+        className={profile.publishedAt ? "btn btn-sm" : "btn btn-primary btn-sm"}
       >
         {busy ? "处理中…" : profile.publishedAt ? "从画廊下架" : "管理员发布"}
       </button>
@@ -172,11 +162,7 @@ export function ProfileGalleryPage() {
                   setView(option);
                   setPage(0);
                 }}
-                className={
-                  view === option
-                    ? "btn btn-sm"
-                    : "btn btn-sm"
-                }
+                className={view === option ? "btn btn-sm" : "btn btn-sm"}
               >
                 {option === "all" ? "全部" : "已发布"}
               </button>

@@ -113,9 +113,10 @@ function buildOgCardHtml(meta: SurveyShareMeta, origin: string): string {
   // pipeline; Browser Rendering has no system CJK fonts.
   const fontFace = `@font-face{font-family:ReportSans;src:url(${bytesToDataUrl(RESULT_VISUAL_FONT)}) format("truetype");font-weight:400;font-style:normal}`;
   const primary = meta.primaryColor ?? "#4f46e5";
-  const cover = !safe && meta.coverUrl
-    ? `<img class="cover" src="${escapeHtml(new URL(meta.coverUrl, origin).toString())}" onerror="this.remove()" />`
-    : "";
+  const cover =
+    !safe && meta.coverUrl
+      ? `<img class="cover" src="${escapeHtml(new URL(meta.coverUrl, origin).toString())}" onerror="this.remove()" />`
+      : "";
   const badge = safe ? '<span class="pill adult">18+</span>' : "";
   const gradient = `linear-gradient(135deg, ${primary} 0%, color-mix(in srgb, ${primary} 55%, #0f172a) 100%)`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>

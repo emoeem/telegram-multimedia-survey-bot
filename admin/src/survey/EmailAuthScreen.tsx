@@ -189,7 +189,8 @@ export function EmailAuthScreen() {
                   <p className="mt-0.5">· 把本站发件人加入邮箱白名单后重新发送；</p>
                 )}
                 <p className="mt-0.5">
-                  · 仍然收不到可以换一个邮箱，或直接<span className="font-semibold">用 Telegram 打开平台</span>（无需邮箱注册）。
+                  · 仍然收不到可以换一个邮箱，或直接<span className="font-semibold">用 Telegram 打开平台</span>
+                  （无需邮箱注册）。
                 </p>
               </div>
             ) : null}

@@ -65,21 +65,12 @@ import {
 } from "./catalog";
 import { loadSurveyDefinition } from "./definition";
 import { streamConfigured } from "../../services/media/stream.service";
-import {
-  ageGateResponse,
-  resolveViewerAgeVerified,
-  r18ParticipantGate,
-} from "../../services/content-rating.service";
+import { ageGateResponse, resolveViewerAgeVerified, r18ParticipantGate } from "../../services/content-rating.service";
 import { countPublishedRestrictedSurveys } from "./catalog";
 import { canonicalizeHash, HASH_SET_SQL } from "../../services/identity-link.service";
 import { recordEndingUnlock } from "../../services/ending-unlock.service";
 import { endingTotal, listUnlockedEndings } from "../../services/ending-unlock.service";
-import {
-  handleStreamTicketRequest,
-  handleSurveyMediaUpload,
-  serveSurveyMedia,
-  temporaryStore,
-} from "./media";
+import { handleStreamTicketRequest, handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
 import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
 import { createExportJobSender } from "../../services/export-job-dispatch.service";
@@ -144,13 +135,22 @@ const PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS = 24 * 60 * 60;
 
 async function resolvePublicationTarget(env: Env): Promise<ResolvedPublicationTarget | null> {
   if (env.DEPLOYMENT_ROLE === "customer" && env.LICENSE_SERVER_URL && env.LICENSE_KEY && env.INSTALLATION_ID) {
-    const response = await fetch(env.LICENSE_SERVER_URL.replace(/\/+$/, "") + "/api/control/customer/publication-target", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ licenseKey: env.LICENSE_KEY, installationId: env.INSTALLATION_ID, appVersion: env.APP_VERSION ?? "0.0.0" }),
-    });
+    const response = await fetch(
+      env.LICENSE_SERVER_URL.replace(/\/+$/, "") + "/api/control/customer/publication-target",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          licenseKey: env.LICENSE_KEY,
+          installationId: env.INSTALLATION_ID,
+          appVersion: env.APP_VERSION ?? "0.0.0",
+        }),
+      },
+    );
     if (!response.ok) return null;
-    const payload = await response.json().catch(() => null) as { target?: { chatId?: string; threadId?: number | null } } | null;
+    const payload = (await response.json().catch(() => null)) as {
+      target?: { chatId?: string; threadId?: number | null };
+    } | null;
     if (!payload?.target?.chatId) return null;
     return { id: null, chatId: payload.target.chatId, threadId: payload.target.threadId ?? null };
   }
@@ -390,12 +390,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (readAtomicRateLimitCountFromBatch(ipDailyResult) > START_RESPONSE_IP_DAILY_MAX) {
       console.warn("start_response daily ip cap reached", { ip: identity.ip });
       return rateLimitResponse(
-        atomicRateLimitWindow(
-          "start_response_ip_daily",
-          identity.ip,
-          START_RESPONSE_DAILY_WINDOW_SECONDS,
-          limiterNow,
-        ).retryAfterSeconds,
+        atomicRateLimitWindow("start_response_ip_daily", identity.ip, START_RESPONSE_DAILY_WINDOW_SECONDS, limiterNow)
+          .retryAfterSeconds,
       );
     }
     const survey = mapSurveyStatementResult(surveyResult);
@@ -498,11 +494,13 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const activeResult = batchResults[0];
     const policyResult = policyStatement ? batchResults[1] : undefined;
     const resumeAnswers = mapAnswerRows(batchResults[batchResults.length - 1]);
-    const active = ((activeResult?.results ?? []) as Array<{
-      id: number;
-      currentQuestionId: number | null;
-      status: string;
-    }>)[0];
+    const active = (
+      (activeResult?.results ?? []) as Array<{
+        id: number;
+        currentQuestionId: number | null;
+        status: string;
+      }>
+    )[0];
     if (active) {
       return json({
         responseId: active.id,
@@ -563,25 +561,13 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
 
   // Pro 部署的视频/音频答卷：铸造 Stream 直传凭证（浏览器直传，不经 Worker）。
   if (request.method === "POST" && rest === "/media/stream-ticket") {
-    const ticketLimiter = await checkRateLimit(
-      env.CACHE,
-      "upload",
-      resolveClientIdentity(request, env).ip,
-      20,
-      60,
-    );
+    const ticketLimiter = await checkRateLimit(env.CACHE, "upload", resolveClientIdentity(request, env).ip, 20, 60);
     if (!ticketLimiter.allowed) return rateLimitResponse(ticketLimiter.retryAfterSeconds);
     return handleStreamTicketRequest(request, env, surveyId);
   }
 
   if (request.method === "POST" && rest === "/media") {
-    const limiter = await checkRateLimit(
-      env.CACHE,
-      "upload",
-      resolveClientIdentity(request, env).ip,
-      20,
-      60,
-    );
+    const limiter = await checkRateLimit(env.CACHE, "upload", resolveClientIdentity(request, env).ip, 20, 60);
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     return handleSurveyMediaUpload(request, env, surveyId);
   }
@@ -850,9 +836,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const answersResult = batchResults[1];
     const fingerprintResult = batchResults[2];
     const settingsResult = publishToGallery ? batchResults[3] : undefined;
-    const publishIdentityResult = publishToTelegram
-      ? batchResults[publishToGallery ? 4 : 3]
-      : undefined;
+    const publishIdentityResult = publishToTelegram ? batchResults[publishToGallery ? 4 : 3] : undefined;
     const publishIpResult = publishToTelegram ? batchResults[publishToGallery ? 5 : 4] : undefined;
     const response = ((responseResult?.results ?? [])[0] ?? null) as {
       id: number;

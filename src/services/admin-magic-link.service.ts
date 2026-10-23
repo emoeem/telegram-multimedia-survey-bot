@@ -37,22 +37,16 @@ export function isAdminMagicLinkToken(value: string): boolean {
 
 export async function createAdminMagicLink(cache: KVNamespace, userId: number): Promise<string> {
   const id = randomId();
-  await cache.put(
-    MAGIC_LINK_PREFIX + id,
-    JSON.stringify({ userId, createdAt: Date.now() } satisfies MagicLinkState),
-    { expirationTtl: ADMIN_MAGIC_LINK_TTL_SECONDS },
-  );
+  await cache.put(MAGIC_LINK_PREFIX + id, JSON.stringify({ userId, createdAt: Date.now() } satisfies MagicLinkState), {
+    expirationTtl: ADMIN_MAGIC_LINK_TTL_SECONDS,
+  });
   return id;
 }
 
 /**
  * 兑换链接：返回用户 id，失败返回 null。**只能成功一次**。
  */
-export async function consumeAdminMagicLink(
-  db: D1Database,
-  cache: KVNamespace,
-  token: string,
-): Promise<number | null> {
+export async function consumeAdminMagicLink(db: D1Database, cache: KVNamespace, token: string): Promise<number | null> {
   if (!isAdminMagicLinkToken(token)) return null;
   const raw = await cache.get(MAGIC_LINK_PREFIX + token);
   if (!raw) return null;

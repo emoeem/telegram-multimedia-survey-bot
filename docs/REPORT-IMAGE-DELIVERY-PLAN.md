@@ -17,12 +17,12 @@
 
 推荐路线（下文 §4 详述）：
 
-| 阶段 | 做什么 | 改动量 | 解决什么 |
-| --- | --- | --- | --- |
-| **P0** | 归档渲染那次会话**顺带**产出 PNG 页，公开投递直接读 KV | 中（~250 行） | 30 次失败的根因；不再有 PDF 降级 |
-| **P1** | 控制中心加「投递形态」设置（图集 / PDF / 两者） | 小（~80 行） | 让你能按群配置 |
-| **P2** | 版式从 900×1200 重排到 1080×1920 | 大（需改 CSS + 高度估算） | 真正的「手机满屏」体验 |
-| **P3** | 历史 PDF 批量转图（离线脚本，`pdftoppm`） | 小（~120 行） | 已归档的旧报告 |
+| 阶段   | 做什么                                                 | 改动量                    | 解决什么                         |
+| ------ | ------------------------------------------------------ | ------------------------- | -------------------------------- |
+| **P0** | 归档渲染那次会话**顺带**产出 PNG 页，公开投递直接读 KV | 中（~250 行）             | 30 次失败的根因；不再有 PDF 降级 |
+| **P1** | 控制中心加「投递形态」设置（图集 / PDF / 两者）        | 小（~80 行）              | 让你能按群配置                   |
+| **P2** | 版式从 900×1200 重排到 1080×1920                       | 大（需改 CSS + 高度估算） | 真正的「手机满屏」体验           |
+| **P3** | 历史 PDF 批量转图（离线脚本，`pdftoppm`）              | 小（~120 行）             | 已归档的旧报告                   |
 
 下面逐条给证据。
 
@@ -34,19 +34,30 @@
 
 这是理解整件事的关键——系统里存在两条互不相干的报告渲染路径：
 
-| # | 模板 | 长什么样 | 用途 |
-| --- | --- | --- | --- |
-| A | `src/services/report/web.ts` → `renderReportPdf()` | 响应式网页，A4 纵向，靠浏览器自动分页 | **归档频道**的 ZIP 里的 `report.pdf` |
-| B | `src/services/response-report/html.ts` → `renderResponseReport()` | **固定 900×1200 画布**，自己算分页，一页一个 `<section class="page">` | **公开群**的 PNG 相册 |
+| #   | 模板                                                              | 长什么样                                                              | 用途                                 |
+| --- | ----------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------ |
+| A   | `src/services/report/web.ts` → `renderReportPdf()`                | 响应式网页，A4 纵向，靠浏览器自动分页                                 | **归档频道**的 ZIP 里的 `report.pdf` |
+| B   | `src/services/response-report/html.ts` → `renderResponseReport()` | **固定 900×1200 画布**，自己算分页，一页一个 `<section class="page">` | **公开群**的 PNG 相册                |
 
 模板 B 就是你要的东西：它已经把内容切成一页一块了。
 
 证据（`src/services/response-report/html.ts:103`）：
 
 ```css
-.page{ width:900px; height:1200px; padding:28px 48px 30px;
-       display:flex; flex-direction:column; overflow:hidden; break-after:page }
-.page-content{ height:1058px; padding-top:12px; overflow:hidden }
+.page {
+  width: 900px;
+  height: 1200px;
+  padding: 28px 48px 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  break-after: page;
+}
+.page-content {
+  height: 1058px;
+  padding-top: 12px;
+  overflow: hidden;
+}
 ```
 
 `overflow:hidden` + 固定高宽 = **天然的一页一张图**，不需要切。
@@ -83,16 +94,16 @@ published  8
 
 近 12 条投递记录（都发往 `-1004497177255` / thread `6016`，即「天地一家大爱盟」）：
 
-| 答卷 | 状态 | 时间 |
-| --- | --- | --- |
-| 3766 | failed | 2026-10-22 10:51 |
-| 3757 | failed | 2026-10-22 10:29 |
-| 3734 | failed | 2026-10-22 08:47 |
+| 答卷 | 状态          | 时间             |
+| ---- | ------------- | ---------------- |
+| 3766 | failed        | 2026-10-22 10:51 |
+| 3757 | failed        | 2026-10-22 10:29 |
+| 3734 | failed        | 2026-10-22 08:47 |
 | 3732 | **published** | 2026-10-22 08:39 |
-| 3577 | published | 2026-10-18 |
-| 3566 | published | 2026-10-17 |
-| 3511 | failed | 2026-10-17 |
-| 3173 | published | 2026-10-12 |
+| 3577 | published     | 2026-10-18       |
+| 3566 | published     | 2026-10-17       |
+| 3511 | failed        | 2026-10-17       |
+| 3173 | published     | 2026-10-12       |
 
 **所以「改成图片」这件事，优先级低于「先让它别失败」** ——现在有四分之三的情况群里什么都没收到。
 
@@ -164,11 +175,11 @@ A4 宽 794 px ÷ 内容宽 900 px = 0.882  →  排版时整体缩到 88.2%
 
 ### 3.1 画布尺寸
 
-| 方案 | 画布 | 手机上占屏 | 页数变化 | 改动 |
-| --- | --- | --- | --- | --- |
-| 现状 | 900×1200（3:4） | 约 62% | 基准 | 无 |
-| **P1 提清晰度** | 1350×1800（dpr 1.5） | 62% | 不变 | 一行 |
-| **P2 真竖屏** | 1080×1920（9:16） | ~92% | 减少约 40% | 改 CSS + 高度估算 |
+| 方案            | 画布                 | 手机上占屏 | 页数变化   | 改动              |
+| --------------- | -------------------- | ---------- | ---------- | ----------------- |
+| 现状            | 900×1200（3:4）      | 约 62%     | 基准       | 无                |
+| **P1 提清晰度** | 1350×1800（dpr 1.5） | 62%        | 不变       | 一行              |
+| **P2 真竖屏**   | 1080×1920（9:16）    | ~92%       | 减少约 40% | 改 CSS + 高度估算 |
 
 说明：
 
@@ -177,13 +188,13 @@ A4 宽 794 px ÷ 内容宽 900 px = 0.882  →  排版时整体缩到 88.2%
 
 ### 3.2 Telegram 的硬限制
 
-| 限制 | 数值 | 出处 |
-| --- | --- | --- |
-| 相册张数 | **2–10** | `src/bot/telegram.ts:648`（自己写的校验） |
-| 单张图片 | ≤ 10 MB | Telegram Bot API `sendPhoto` |
-| 宽+高 | ≤ 10000 | 同上 |
-| 宽高比 | ≤ 20:1 | 同上 |
-| 现有页大小目标 | 单页 ≤ 5 MB 目标，10 MB 硬上限 | `response-report.service.ts:22-24` |
+| 限制           | 数值                           | 出处                                      |
+| -------------- | ------------------------------ | ----------------------------------------- |
+| 相册张数       | **2–10**                       | `src/bot/telegram.ts:648`（自己写的校验） |
+| 单张图片       | ≤ 10 MB                        | Telegram Bot API `sendPhoto`              |
+| 宽+高          | ≤ 10000                        | 同上                                      |
+| 宽高比         | ≤ 20:1                         | 同上                                      |
+| 现有页大小目标 | 单页 ≤ 5 MB 目标，10 MB 硬上限 | `response-report.service.ts:22-24`        |
 
 ### 3.3 页数问题：长问卷会刷屏
 
@@ -212,11 +223,11 @@ Telegram 对 `sendPhoto` 上传的图**一律转成 JPEG**（PNG 不保留）。
 
 三个选项：
 
-| 做法 | 清晰度 | 可滑动预览 | 备注 |
-| --- | --- | --- | --- |
-| `sendPhoto` + PNG 源 | 中（被转 JPEG） | ✅ | 现状 |
-| `sendPhoto` + 自己先转高质量 JPEG(q92) | 中上（少一次代际损失） | ✅ | 推荐，需 `@jsquash/jpeg` 之类 WASM 或在浏览器里 `toDataURL` |
-| `sendDocument` + PNG | 最高 | ❌ 要逐张点开 | 适合追求存档质量 |
+| 做法                                   | 清晰度                 | 可滑动预览    | 备注                                                        |
+| -------------------------------------- | ---------------------- | ------------- | ----------------------------------------------------------- |
+| `sendPhoto` + PNG 源                   | 中（被转 JPEG）        | ✅            | 现状                                                        |
+| `sendPhoto` + 自己先转高质量 JPEG(q92) | 中上（少一次代际损失） | ✅            | 推荐，需 `@jsquash/jpeg` 之类 WASM 或在浏览器里 `toDataURL` |
+| `sendDocument` + PNG                   | 最高                   | ❌ 要逐张点开 | 适合追求存档质量                                            |
 
 **建议：主发 `sendPhoto`（保证体验），同时把 PNG 原图塞进归档 ZIP（保证质量）。** 归档那边已经在发 ZIP，加 4 个文件不增加消息数。
 
@@ -282,7 +293,7 @@ public-report-pages:${responseId}:3
 4. **PNG 捕获策略**：`capturePngPages` 有两条路：
    - `set-viewport`：滚动到每页位置截图，`captureBeyondViewport:false`（默认，稳）
    - `probe-fullpage`：整页截图（快，但会触发 `TargetCloseError`）
-   合并到归档会话后，**默认用 `set-viewport`**，因为不再有重试预算。
+     合并到归档会话后，**默认用 `set-viewport`**，因为不再有重试预算。
 
 5. **`report` 对象要留给公开投递用**：caption 里的问卷名、填写者、完成时间都来自 `buildResponseReportBundle().report`。现在它是现算的，合并后要么一起存 KV（推荐，存 JSON 元数据），要么公开投递再查一次 DB。
 
@@ -306,24 +317,25 @@ public-report-pages:${responseId}:3
 
 `system_settings` 表加一行，key 用 `report_publication_format`：
 
-| 取值 | 行为 |
-| --- | --- |
-| `images`（默认） | 发 PNG 相册 |
-| `pdf` | 发 PDF 文件 |
-| `both` | 相册 + PDF（PDF 作为一条 document 消息跟在相册后） |
+| 取值             | 行为                                               |
+| ---------------- | -------------------------------------------------- |
+| `images`（默认） | 发 PNG 相册                                        |
+| `pdf`            | 发 PDF 文件                                        |
+| `both`           | 相册 + PDF（PDF 作为一条 document 消息跟在相册后） |
 
 实现上照抄 `report_channel_id` 那条路：
+
 - `src/services/system-settings.service.ts` 的 `SYSTEM_SETTING_KEYS` + `SYSTEM_SETTING_DEFAULTS`
 - `src/http/control-api.ts` 的 GET/PUT 端点（参考本仓库已有的 `cert-share` 端点写法）
 - `admin/src/routes/ControlCenterPage.tsx` 的卡片
 
 ### 5.2 建议同时暴露的开关
 
-| 设置 | 作用 | 默认 |
-| --- | --- | --- |
-| `report_publication_format` | images / pdf / both | images |
-| `report_image_max_pages` | 超过 N 页切精简版 | 12 |
-| `report_image_scale` | 900×1200 / 1350×1800 | 1350×1800（见 §3.1 风险） |
+| 设置                        | 作用                 | 默认                      |
+| --------------------------- | -------------------- | ------------------------- |
+| `report_publication_format` | images / pdf / both  | images                    |
+| `report_image_max_pages`    | 超过 N 页切精简版    | 12                        |
+| `report_image_scale`        | 900×1200 / 1350×1800 | 1350×1800（见 §3.1 风险） |
 
 ---
 
@@ -345,12 +357,12 @@ public-report-pages:${responseId}:3
 
 Cloudflare Workers 里做 PDF 栅格化的技术选型：
 
-| 方案 | 可行性 | 结论 |
-| --- | --- | --- |
-| `pdfjs-dist` + Canvas | ❌ Workers 无 DOM/Canvas/OffscreenCanvas | 不可行 |
-| `mupdf-js`（WASM） | ✅ 能跑 | ❌ **AGPL**，商用需买授权 |
-| **`@hyzyla/pdfium`（WASM）** | ✅ 纯软件光栅化，不依赖 Canvas | ✅ **PDFium 是 BSD-3**，可行 |
-| `@resvg/resvg-wasm` | ✅ 仓库已在用（`result-visual-wasm.ts`） | 只吃 SVG，不吃 PDF |
+| 方案                         | 可行性                                   | 结论                         |
+| ---------------------------- | ---------------------------------------- | ---------------------------- |
+| `pdfjs-dist` + Canvas        | ❌ Workers 无 DOM/Canvas/OffscreenCanvas | 不可行                       |
+| `mupdf-js`（WASM）           | ✅ 能跑                                  | ❌ **AGPL**，商用需买授权    |
+| **`@hyzyla/pdfium`（WASM）** | ✅ 纯软件光栅化，不依赖 Canvas           | ✅ **PDFium 是 BSD-3**，可行 |
+| `@resvg/resvg-wasm`          | ✅ 仓库已在用（`result-visual-wasm.ts`） | 只吃 SVG，不吃 PDF           |
 
 结论：如果非要在 Worker 里转，用 PDFium WASM。但**内存与 CPU 都是瓶颈**（128 MB / 请求），一份 20 页 A4 @150dpi ≈ 20 × 1240×1755×4B ≈ 174 MB，**必然 OOM**。必须逐页流式处理 + 降 DPI。
 
@@ -387,14 +399,14 @@ pdftotext -bbox input.pdf - | grep -o 'yMin="[0-9.]*"'
 
 ### 8.1 必须有的测试
 
-| 测试 | 断言 |
-| --- | --- |
-| `public-report-kv.test.ts` | 从 KV 读页 → 发相册，不碰浏览器（mock 里 `puppeteer.launch` 被调用即失败） |
-| `page-batching.test.ts` | 23 页 → 3 次 `sendMediaGroup`，批次为 10/10/3 |
-| `album-limits.test.ts` | 单批 >10 张时报错；1 张时走 `sendPhoto` 而非 `sendMediaGroup` |
-| `oversized-fallback.test.ts` | manifest 标 oversized → 发 PDF，不发相册 |
-| `idempotency.test.ts` | 同一 `responseId` 重投 → 已发过的 chat 不重复发 |
-| `regression` | 现有 `tests/unit/services/public-report-targets.test.ts` 全绿 |
+| 测试                         | 断言                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `public-report-kv.test.ts`   | 从 KV 读页 → 发相册，不碰浏览器（mock 里 `puppeteer.launch` 被调用即失败） |
+| `page-batching.test.ts`      | 23 页 → 3 次 `sendMediaGroup`，批次为 10/10/3                              |
+| `album-limits.test.ts`       | 单批 >10 张时报错；1 张时走 `sendPhoto` 而非 `sendMediaGroup`              |
+| `oversized-fallback.test.ts` | manifest 标 oversized → 发 PDF，不发相册                                   |
+| `idempotency.test.ts`        | 同一 `responseId` 重投 → 已发过的 chat 不重复发                            |
+| `regression`                 | 现有 `tests/unit/services/public-report-targets.test.ts` 全绿              |
 
 ### 8.2 验收（对着生产机跑）
 
@@ -414,24 +426,24 @@ wrangler d1 execute DB --remote --command \
 
 ### 8.3 回归风险清单
 
-| 风险 | 缓解 |
-| --- | --- |
-| 归档投递变慢 → 队列堆积 | 监控 `report_deliveries` 的 `status='pending'` 数量 |
-| KV 写入放大（每次提交多 5–20 个 key） | 7 天 TTL；KV 免费额度 1000 写/天（付费 1M），按当前提交量够 |
-| `TargetCloseError` 仍可能发生 | 保留「归档投递失败则公开投递也标记 failed」的联动，不再单独重试 |
-| 提高 DPR 触发截图失败 | 灰度：先只对 `survey_id` 白名单开启 |
+| 风险                                  | 缓解                                                            |
+| ------------------------------------- | --------------------------------------------------------------- |
+| 归档投递变慢 → 队列堆积               | 监控 `report_deliveries` 的 `status='pending'` 数量             |
+| KV 写入放大（每次提交多 5–20 个 key） | 7 天 TTL；KV 免费额度 1000 写/天（付费 1M），按当前提交量够     |
+| `TargetCloseError` 仍可能发生         | 保留「归档投递失败则公开投递也标记 failed」的联动，不再单独重试 |
+| 提高 DPR 触发截图失败                 | 灰度：先只对 `survey_id` 白名单开启                             |
 
 ---
 
 ## 9. 工作量估算
 
-| 阶段 | 内容 | 估算 |
-| --- | --- | --- |
-| P0 | 合并渲染、KV 存页、公开投递瘦身、测试 | **1.5–2 天** |
-| P1 | 设置项（service + API + 控制中心卡片 + 测试） | **0.5 天** |
-| P2 | 版式重排 1080×1920（CSS + 高度估算 + 分页测试全改） | **2–3 天**（含调版） |
-| P3 | 历史 PDF 离线转换脚本 | **0.5 天** |
-| 合计 | | **4.5–6 天** |
+| 阶段 | 内容                                                | 估算                 |
+| ---- | --------------------------------------------------- | -------------------- |
+| P0   | 合并渲染、KV 存页、公开投递瘦身、测试               | **1.5–2 天**         |
+| P1   | 设置项（service + API + 控制中心卡片 + 测试）       | **0.5 天**           |
+| P2   | 版式重排 1080×1920（CSS + 高度估算 + 分页测试全改） | **2–3 天**（含调版） |
+| P3   | 历史 PDF 离线转换脚本                               | **0.5 天**           |
+| 合计 |                                                     | **4.5–6 天**         |
 
 **建议先只做 P0+P1**：解决 30 次失败 + 拿到设置能力，1 天半到 2 天半。P2 等你确认「长问卷要全看还是看重点」再动。
 
@@ -486,14 +498,14 @@ pdftoppm -png -r 150 → 1240 x 1755, 66,337 B / 页
 
 ## 附录 B：相关文件索引
 
-| 文件 | 作用 |
-| --- | --- |
-| `src/services/public-report.service.ts` | 公开投递（改造主战场） |
-| `src/services/report-delivery-worker.service.ts` | 归档投递（PDF 来源） |
-| `src/services/response-report.service.ts` | PNG 分页渲染 |
-| `src/services/response-report/html.ts` | 900×1200 分页模板 |
-| `src/services/response-report/pagination.ts` | 分页估算 |
-| `src/services/report/web.ts` / `report/pdf.ts` | A4 响应式模板 + PDF 输出 |
-| `src/bot/telegram.ts` | `sendPhoto` / `sendPhotoAlbum` / `sendDocument` |
-| `src/db/repositories/publication-target.repository.ts` | 发布目标表 |
-| `tests/unit/services/public-report-targets.test.ts` | 现有测试 |
+| 文件                                                   | 作用                                            |
+| ------------------------------------------------------ | ----------------------------------------------- |
+| `src/services/public-report.service.ts`                | 公开投递（改造主战场）                          |
+| `src/services/report-delivery-worker.service.ts`       | 归档投递（PDF 来源）                            |
+| `src/services/response-report.service.ts`              | PNG 分页渲染                                    |
+| `src/services/response-report/html.ts`                 | 900×1200 分页模板                               |
+| `src/services/response-report/pagination.ts`           | 分页估算                                        |
+| `src/services/report/web.ts` / `report/pdf.ts`         | A4 响应式模板 + PDF 输出                        |
+| `src/bot/telegram.ts`                                  | `sendPhoto` / `sendPhotoAlbum` / `sendDocument` |
+| `src/db/repositories/publication-target.repository.ts` | 发布目标表                                      |
+| `tests/unit/services/public-report-targets.test.ts`    | 现有测试                                        |

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { mapProfileToShowcasePerson, syncShowcasePersonFromProfile } from "../../../src/services/showcase-profile.service";
+import {
+  mapProfileToShowcasePerson,
+  syncShowcasePersonFromProfile,
+} from "../../../src/services/showcase-profile.service";
 import type { ProfileGalleryItem } from "../../../src/services/profile-gallery.service";
 import { createSqliteD1, sqliteD1Available } from "../../helpers/sqlite-d1";
 
@@ -92,13 +95,18 @@ describe.skipIf(!sqliteD1Available)("profile → showcase sync (real SQLite)", (
     expect(first).toMatchObject({ created: true, published: false });
 
     const row = await db
-      .prepare("SELECT name, published, owner_user_id ownerUserId, response_id responseId FROM showcase_persons WHERE id = ?")
+      .prepare(
+        "SELECT name, published, owner_user_id ownerUserId, response_id responseId FROM showcase_persons WHERE id = ?",
+      )
       .bind(first.personId)
       .first<{ name: string; published: number; ownerUserId: number; responseId: number }>();
     expect(row).toMatchObject({ name: "夜航", published: 0, ownerUserId: 7, responseId: 55 });
 
     // 管理员改过名字后再点一次「生成展示页」不能把改动冲掉。
-    await db.prepare("UPDATE showcase_persons SET name = '管理员改名', published = 1 WHERE id = ?").bind(first.personId).run();
+    await db
+      .prepare("UPDATE showcase_persons SET name = '管理员改名', published = 1 WHERE id = ?")
+      .bind(first.personId)
+      .run();
     const second = await syncShowcasePersonFromProfile(db, profile({ fields: [] }), { ownerUserId: 7 });
     expect(second).toMatchObject({ personId: first.personId, created: false, published: true });
     const names = await db.prepare("SELECT name FROM showcase_persons").all<{ name: string }>();

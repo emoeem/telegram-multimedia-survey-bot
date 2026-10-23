@@ -80,10 +80,7 @@ async function encode(
 /**
  * 上传前的图片归一化。任何一步失败都退回原文件——压缩是优化，不是前置条件。
  */
-export async function prepareImageForPublish(
-  file: File,
-  options: PublishImageOptions = {},
-): Promise<File> {
+export async function prepareImageForPublish(file: File, options: PublishImageOptions = {}): Promise<File> {
   if (!isReencodeCandidate(file)) return file;
   const maxEdge = options.maxEdge ?? PUBLISH_MAX_EDGE;
   const quality = options.quality ?? PUBLISH_QUALITY;

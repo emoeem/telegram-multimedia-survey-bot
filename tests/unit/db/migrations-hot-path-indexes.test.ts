@@ -52,9 +52,7 @@ describe.skipIf(!sqliteD1Available)("migration 0071 (hot-path indexes)", () => {
 
     const indexes = (
       db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name",
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name")
         .all() as Array<{ name: string }>
     ).map((row) => row.name);
     expect(indexes).toContain("idx_survey_responses_user_status");
@@ -71,7 +69,11 @@ describe.skipIf(!sqliteD1Available)("migration 0071 (hot-path indexes)", () => {
       ),
     ).toContain("idx_survey_responses_user_status");
     expect(
-      plan(db.prepare("EXPLAIN QUERY PLAN SELECT COUNT(*) FROM plaza_posts WHERE user_id = 7 AND status = 'published'").all()),
+      plan(
+        db
+          .prepare("EXPLAIN QUERY PLAN SELECT COUNT(*) FROM plaza_posts WHERE user_id = 7 AND status = 'published'")
+          .all(),
+      ),
     ).toContain("idx_plaza_posts_user_status");
     expect(
       plan(db.prepare("EXPLAIN QUERY PLAN SELECT id FROM audit_logs WHERE action = 'survey.publish'").all()),

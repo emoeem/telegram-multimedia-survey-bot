@@ -102,10 +102,7 @@ export function setSurveyRating(surveyId: number, rating: "all" | "r18"): Promis
 }
 
 /** 内容分级（0080）：批量标注（仅管理员），一条 UPDATE，统一翻新目录缓存。 */
-export function bulkSetSurveyRating(
-  ids: number[],
-  rating: "all" | "r18",
-): Promise<{ ok: boolean; changed: number }> {
+export function bulkSetSurveyRating(ids: number[], rating: "all" | "r18"): Promise<{ ok: boolean; changed: number }> {
   return apiSend("POST", "/api/admin/surveys/bulk-rating", { ids, rating });
 }
 

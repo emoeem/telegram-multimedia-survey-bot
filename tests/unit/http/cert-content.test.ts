@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  CERT_CONTENT_SETTING_KEY,
-  validateCertContentPack,
-} from "../../../src/http/admin/cert-content";
+import { CERT_CONTENT_SETTING_KEY, validateCertContentPack } from "../../../src/http/admin/cert-content";
 
 const PALETTE = {
   primary: "#c2185b",
@@ -21,7 +18,10 @@ function neutralTheme(overrides: Record<string, unknown> = {}) {
     name: "演示主题",
     palette: PALETTE,
     tags: ["标签一", "标签二"],
-    ranks: [{ min: 0, max: 49, name: "新手" }, { min: 50, max: 100, name: "老手" }],
+    ranks: [
+      { min: 0, max: 49, name: "新手" },
+      { min: 50, max: 100, name: "老手" },
+    ],
     ...overrides,
   };
 }
@@ -49,7 +49,11 @@ describe("validateCertContentPack", () => {
       name: "分区" + i,
       emoji: "🔥",
       badge: "分区徽章" + i,
-      tags: Array.from({ length: 80 }, (_, j) => ({ t: `词条${i}-${j}`, s: ((j % 3) + 1) as 1 | 2 | 3, g: j % 2 ? "f" : "u" })),
+      tags: Array.from({ length: 80 }, (_, j) => ({
+        t: `词条${i}-${j}`,
+        s: ((j % 3) + 1) as 1 | 2 | 3,
+        g: j % 2 ? "f" : "u",
+      })),
     }));
     const ranks = [
       { min: 0, max: 9, grade: "F", rare: "N", f: ["母狗"], m: ["公狗"], say: ["还行"] },

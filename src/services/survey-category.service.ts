@@ -63,7 +63,10 @@ export function normalizeCategoryDescription(value: unknown): string | null {
  * 管理端列表：全部分类 + 各分类下的问卷数（含草稿，管理员要看得到
  * 「这个分类还没建内容」）。
  */
-export async function listCategories(db: D1Database, options: { publishedOnly?: boolean } = {}): Promise<SurveyCategory[]> {
+export async function listCategories(
+  db: D1Database,
+  options: { publishedOnly?: boolean } = {},
+): Promise<SurveyCategory[]> {
   const countCondition = options.publishedOnly
     ? "s.status = 'published' AND s.deleted_at IS NULL"
     : "s.deleted_at IS NULL";
@@ -139,8 +142,7 @@ export async function createCategory(
     slug = await uniqueSlug(db, normalized, null);
   }
   if (!slug) return { code: "slug_conflict", message: "slug 已被占用" };
-  const sortOrder =
-    input.sortOrder === undefined || input.sortOrder === null ? 0 : Number(input.sortOrder);
+  const sortOrder = input.sortOrder === undefined || input.sortOrder === null ? 0 : Number(input.sortOrder);
   const timestamp = nowIso();
   const result = await db
     .prepare(
@@ -239,9 +241,7 @@ export async function assignCategoryToSurveys(
   if (!surveyIds.length) return 0;
   const placeholders = surveyIds.map(() => "?").join(",");
   const result = await db
-    .prepare(
-      `UPDATE surveys SET category_id = ?, updated_at = ? WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
-    )
+    .prepare(`UPDATE surveys SET category_id = ?, updated_at = ? WHERE id IN (${placeholders}) AND deleted_at IS NULL`)
     .bind(categoryId, nowIso(), ...surveyIds)
     .run();
   return Number(result.meta?.changes ?? 0);

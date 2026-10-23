@@ -231,7 +231,13 @@ export async function handleAdminEditorWrite(
       .prepare("SELECT rules_json FROM survey_result_rule_sets WHERE survey_id = ? LIMIT 1")
       .bind(surveyId)
       .first<{ rules_json: string }>();
-    let resultTypes: Array<{ id?: unknown; label?: unknown; title?: unknown; subtitle?: unknown; description?: unknown }> = [];
+    let resultTypes: Array<{
+      id?: unknown;
+      label?: unknown;
+      title?: unknown;
+      subtitle?: unknown;
+      description?: unknown;
+    }> = [];
     if (ruleSetRow) {
       try {
         const parsedRuleSet = JSON.parse(ruleSetRow.rules_json) as { resultTypes?: unknown };
@@ -245,7 +251,10 @@ export async function handleAdminEditorWrite(
       return fail(400, "no_results", "这份问卷还没有结局定义，先在「结果设计」里添加结果类型");
     }
     const slug = `ending-${surveyId}`;
-    const existing = await db.prepare("SELECT id FROM gacha_pools WHERE slug = ? LIMIT 1").bind(slug).first<{ id: number }>();
+    const existing = await db
+      .prepare("SELECT id FROM gacha_pools WHERE slug = ? LIMIT 1")
+      .bind(slug)
+      .first<{ id: number }>();
     if (existing) {
       return fail(409, "pool_exists", `该问卷的结局奖池已生成（池 #${existing.id}）`);
     }

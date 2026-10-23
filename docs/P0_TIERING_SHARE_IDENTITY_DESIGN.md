@@ -14,16 +14,16 @@
 
 ## 0. 事实基础（设计依据的现状）
 
-| 事实 | 出处 |
-|---|---|
-| `surveys` 表无任何分级字段；catalog/广场/showcase/抽卡池全部无过滤 | `db/migrations/0001`，`src/http/survey/catalog.ts:173-235` |
-| participant_hash 是明文前缀串：`user_{users.id}` / `email_{email_accounts.id}` / `web_{participantKey}`，非哈希 | `src/http/survey/participant.ts:100-183` |
-| 已有匿名浏览器→TG 用户的绑定表 `participant_links`（participant_key PK → user_id），bot deep link `link_<key>` 认领 | `db/migrations/0044_participant_links.sql`，`participant.ts:158-175` |
-| 报告 token = `{expiresAt}.{HMAChex}`，签名输入 `"{responseId}:{expiresAt}"`，密钥 `WEBHOOK_SECRET`，30 天 | `src/services/report-access-token.service.ts` |
-| 报告内容 = `result_profiles`（UNIQUE(response_id)，一卷一结果），报告页是纯 SSR HTML 无前端组件 | `0013_result_visuals.sql:53-71`，`src/http/report-api.ts:285-337` |
-| OG 图与完成海报渲染管线现成：`survey-og-image.service.ts`（1200×630，KV 缓存 7 天）、`completion-poster.service.ts`（1080×1350，仅 bot 预览用） | 同名文件 |
-| 金币账本：`coin_accounts` PK=participant_hash（余额是缓存），`coin_transactions.idempotency_key UNIQUE` 唯一事实源 | `db/migrations/0078_coin_economy.sql:18-44` |
-| 收藏=抽取记录 `gacha_pulls`；解锁=`survey_unlocks` UNIQUE(survey_id, participant_hash) | `0078:102-111, 161-174` |
+| 事实                                                                                                                                            | 出处                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `surveys` 表无任何分级字段；catalog/广场/showcase/抽卡池全部无过滤                                                                              | `db/migrations/0001`，`src/http/survey/catalog.ts:173-235`           |
+| participant_hash 是明文前缀串：`user_{users.id}` / `email_{email_accounts.id}` / `web_{participantKey}`，非哈希                                 | `src/http/survey/participant.ts:100-183`                             |
+| 已有匿名浏览器→TG 用户的绑定表 `participant_links`（participant_key PK → user_id），bot deep link `link_<key>` 认领                             | `db/migrations/0044_participant_links.sql`，`participant.ts:158-175` |
+| 报告 token = `{expiresAt}.{HMAChex}`，签名输入 `"{responseId}:{expiresAt}"`，密钥 `WEBHOOK_SECRET`，30 天                                       | `src/services/report-access-token.service.ts`                        |
+| 报告内容 = `result_profiles`（UNIQUE(response_id)，一卷一结果），报告页是纯 SSR HTML 无前端组件                                                 | `0013_result_visuals.sql:53-71`，`src/http/report-api.ts:285-337`    |
+| OG 图与完成海报渲染管线现成：`survey-og-image.service.ts`（1200×630，KV 缓存 7 天）、`completion-poster.service.ts`（1080×1350，仅 bot 预览用） | 同名文件                                                             |
+| 金币账本：`coin_accounts` PK=participant_hash（余额是缓存），`coin_transactions.idempotency_key UNIQUE` 唯一事实源                              | `db/migrations/0078_coin_economy.sql:18-44`                          |
+| 收藏=抽取记录 `gacha_pulls`；解锁=`survey_unlocks` UNIQUE(survey_id, participant_hash)                                                          | `0078:102-111, 161-174`                                              |
 
 ---
 
@@ -99,11 +99,11 @@ CREATE INDEX idx_report_shares_participant ON report_shares(participant_hash);
 
 ### B2. API
 
-| 端点 | 行为 |
-|---|---|
-| `POST /api/me/reports/:responseId/share` | 创建或返回已有分享（幂等）。校验：response 归属当前身份（走 C 的 hash 集合）。限流 5 次/天。返回 `{url: "/r/{token}", ogUrl}` |
-| `DELETE /api/me/reports/:responseId/share` | `revoked_at` 置位；`/r/{token}` 此后 404 |
-| `GET /r/:token` | 公开页 + OG meta（SSR，同现有报告页技术栈） |
+| 端点                                       | 行为                                                                                                                          |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/me/reports/:responseId/share`   | 创建或返回已有分享（幂等）。校验：response 归属当前身份（走 C 的 hash 集合）。限流 5 次/天。返回 `{url: "/r/{token}", ogUrl}` |
+| `DELETE /api/me/reports/:responseId/share` | `revoked_at` 置位；`/r/{token}` 此后 404                                                                                      |
+| `GET /r/:token`                            | 公开页 + OG meta（SSR，同现有报告页技术栈）                                                                                   |
 
 ### B3. 安全投影（核心约束）
 
@@ -188,11 +188,11 @@ linkUserAccounts(canonical, source):
 
 ## 实施顺序与涉及面
 
-| 步骤 | 内容 | 主要文件 |
-|---|---|---|
-| 1 | 0080 迁移 + 编辑器分级开关 + catalog/plaza/showcase/gacha 过滤 + 年龄确认 API | `src/http/survey/catalog.ts`、`src/http/plaza-api.ts`、`src/http/showcase-api.ts`、`src/services/coin/gacha.service.ts`、admin 编辑器 |
-| 2 | 0081 迁移 + share API + `/r/:token` SSR 页 + 安全投影 + 两形态卡片渲染 | `src/http/me-api.ts`、新 `src/http/share-api.ts`、`completion-poster.service.ts`、`survey-og-image.service.ts`、`report-api.ts` |
-| 3 | 0082 迁移 + `canonicalizeHash/hashesFor` + 各读接口并集改造 + 金币合并交易 + 绑定 API | `src/http/survey/participant.ts`、`src/http/me-api.ts`、`src/services/coin/*.ts`、新 `src/services/identity-link.service.ts` |
+| 步骤 | 内容                                                                                  | 主要文件                                                                                                                              |
+| ---- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | 0080 迁移 + 编辑器分级开关 + catalog/plaza/showcase/gacha 过滤 + 年龄确认 API         | `src/http/survey/catalog.ts`、`src/http/plaza-api.ts`、`src/http/showcase-api.ts`、`src/services/coin/gacha.service.ts`、admin 编辑器 |
+| 2    | 0081 迁移 + share API + `/r/:token` SSR 页 + 安全投影 + 两形态卡片渲染                | `src/http/me-api.ts`、新 `src/http/share-api.ts`、`completion-poster.service.ts`、`survey-og-image.service.ts`、`report-api.ts`       |
+| 3    | 0082 迁移 + `canonicalizeHash/hashesFor` + 各读接口并集改造 + 金币合并交易 + 绑定 API | `src/http/survey/participant.ts`、`src/http/me-api.ts`、`src/services/coin/*.ts`、新 `src/services/identity-link.service.ts`          |
 
 三步相互独立可分开发布；A 先行因为它解锁 B 的 r18 形态与公开面安全。
 
@@ -202,7 +202,6 @@ linkUserAccounts(canonical, source):
 2. **分享卡默认公开时长**：本设计永久（可撤销）。若担心已删问卷的分享残留，可在问卷删除/归档时级联 revoke。
 3. **金币合并是否需要用户显式确认**：本设计在绑定确认弹层里明示「金币将合并」，不单独二次确认。
 4. **排行榜是否切换为按人**：留到 P1，本设计保留按身份。
-
 
 ---
 
@@ -228,12 +227,12 @@ linkUserAccounts(canonical, source):
    路径（编辑器 PATCH）总是 bump updated_at，直连 SQL 改分级不会翻新缓存
    （本地冒烟时踩过，生产无此路径）。
 
-
 ---
 
 ## P1/P2 实施记录（2026-10-16 上线）
 
 **P1（留存变现闭环）**
+
 - 0083 系列模型：`survey_series` + `surveys.series_id/series_order`。作者 API
   （/api/admin/series：建系列、挂/摘章节、含草稿章节视图）；公开 API
   （/api/series 书架、/api/series/:slug 详情）。详情含续读推导（按查看者答卷
@@ -244,10 +243,11 @@ linkUserAccounts(canonical, source):
   站内通知，绑定 TG 身份的关注者逐个私聊兜底（上限 50 人、3 秒超时、失败
   静默）。「我的」页新增通知区块（未读红点，打开即清）。
 - 结局收集生成器：编辑器「生成结局奖池」按钮 → `POST /api/admin/surveys/:id/
-  result-pool`，把结果规则的 resultTypes 变成 `ending-{surveyId}` 奖池的第一方
+result-pool`，把结果规则的 resultTypes 变成 `ending-{surveyId}` 奖池的第一方
   结局卡（草稿态，价格/上架在抽卡管理页调）。
 
 **P2（引擎升级与拉新）**
+
 - flags 引擎：`condition_json` 新增 `flagRules`（答案命中给 flag 累计分）与
   `flagJumps`（门槛达标向前跳）。零迁移——flags 永远由已保存答案确定性重放，
   续答不丢路线。服务端 engine、SPA 跳题、发布图谱校验三处同构实现；
@@ -259,7 +259,7 @@ linkUserAccounts(canonical, source):
   `metadata.agreement` + stats「默契 N/M」；结局分享卡展示默契得分。
   钥匙答案本身永不下发。
 - Wrapped 个人画像：0085 `profile_shares` + `POST/GET/DELETE
-  /api/me/profile-share` + 公开页 `/u/:token`（含 og.png，KV+Browser Rendering
+/api/me/profile-share` + 公开页 `/u/:token`（含 og.png，KV+Browser Rendering
   缓存）。快照只含聚合数字（完成卷数/结局收集/成就/挑战分/起始日），
   「我的」页一键生成/复制/撤销。
 
@@ -267,7 +267,6 @@ linkUserAccounts(canonical, source):
 两端 tsc 干净、lint 干净、admin 构建通过；本地 D1 迁移 + wrangler dev 冒烟
 （书架/详情/续读推导/关注/画像页与 OG 渲染）；生产已部署并验证
 （/api/series 空 shelf 正确、/series 200、r18 门保持）。
-
 
 ---
 
@@ -292,7 +291,6 @@ linkUserAccounts(canonical, source):
 **验证**：980 例全过（防刷集成测试从匿名 key 改为铸造参与者 token，语义不变）；
 两端 tsc / lint / admin 构建干净；本地冒烟（匿名开卷 401、匿名发帖 401、
 已链接 key 的行为一致性）；生产已部署（版本 1da60c99）并验证墙生效。
-
 
 ---
 

@@ -19,16 +19,15 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
-export async function encryptDeploymentTaskPayload(secret: string | undefined, payload: Record<string, unknown>): Promise<string> {
+export async function encryptDeploymentTaskPayload(
+  secret: string | undefined,
+  payload: Record<string, unknown>,
+): Promise<string> {
   const normalized = secret?.trim();
   if (!normalized) throw new Error("CONTROL_PLANE_RUNNER_SECRET 未配置，无法创建自动部署任务");
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(normalized);
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoder.encode(JSON.stringify(payload)),
-  );
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(JSON.stringify(payload)));
   return JSON.stringify({
     version: 1,
     iv: bytesToBase64(iv),
@@ -36,7 +35,10 @@ export async function encryptDeploymentTaskPayload(secret: string | undefined, p
   });
 }
 
-export async function decryptDeploymentTaskPayload(secret: string | undefined, encoded: string): Promise<Record<string, unknown>> {
+export async function decryptDeploymentTaskPayload(
+  secret: string | undefined,
+  encoded: string,
+): Promise<Record<string, unknown>> {
   const normalized = secret?.trim();
   if (!normalized) throw new Error("CONTROL_PLANE_RUNNER_SECRET 未配置");
   const envelope = JSON.parse(encoded) as { version?: number; iv?: string; ciphertext?: string };

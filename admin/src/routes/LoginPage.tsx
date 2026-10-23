@@ -44,7 +44,11 @@ export function LoginPage() {
         body: JSON.stringify({ password }),
       });
       let body: { message?: string; redirect?: string } = {};
-      try { body = (await response.json()) as typeof body; } catch { /* ignore malformed edge responses */ }
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        /* ignore malformed edge responses */
+      }
       if (!response.ok) throw new Error(body.message || `登录失败（HTTP ${response.status}）`);
       window.location.assign(body.redirect || "/admin/");
     } catch (error) {
@@ -71,7 +75,11 @@ export function LoginPage() {
         cache: "no-store",
       });
       let start: { loginUrl?: string; expiresIn?: number; message?: string } = {};
-      try { start = (await startResponse.json()) as typeof start; } catch { /* ignore malformed edge responses */ }
+      try {
+        start = (await startResponse.json()) as typeof start;
+      } catch {
+        /* ignore malformed edge responses */
+      }
       if (!startResponse.ok || !start.loginUrl) {
         throw new Error(start.message || `无法发起 Telegram 登录（HTTP ${startResponse.status}）`);
       }
@@ -89,7 +97,11 @@ export function LoginPage() {
           cache: "no-store",
         });
         let status: { status?: string; message?: string } = {};
-        try { status = (await statusResponse.json()) as typeof status; } catch { /* ignore malformed edge responses */ }
+        try {
+          status = (await statusResponse.json()) as typeof status;
+        } catch {
+          /* ignore malformed edge responses */
+        }
         if (!statusResponse.ok) throw new Error(status.message || `登录状态查询失败（HTTP ${statusResponse.status}）`);
         if (status.status === "approved") {
           window.location.assign("/admin");
@@ -136,16 +148,29 @@ export function LoginPage() {
                 autoFocus
                 required
               />
-              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-[var(--color-muted-soft)] hover:text-[var(--color-ink)]" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-[var(--color-muted-soft)] hover:text-[var(--color-ink)]"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? "隐藏密码" : "显示密码"}
+              >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </span>
           </label>
           <button type="submit" className="btn btn-primary w-full" disabled={loading || !password}>
-            {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
+            {loading ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <LockKeyhole className="mr-2 h-4 w-4" />
+            )}
             {loading ? "登录中…" : "登录管理后台"}
           </button>
-          {message ? <p role="alert" className="text-sm text-[var(--app-danger)]">{message}</p> : null}
+          {message ? (
+            <p role="alert" className="text-sm text-[var(--app-danger)]">
+              {message}
+            </p>
+          ) : null}
           <p className="text-center text-xs text-[var(--color-muted-soft)]">密码可在「系统设置」中修改。</p>
         </form>
         <div className="border-t border-[var(--color-edge-soft)] p-6">
@@ -160,14 +185,22 @@ export function LoginPage() {
             onClick={telegramLogin}
             disabled={telegramLoading}
           >
-            {telegramLoading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+            {telegramLoading ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="mr-2 h-4 w-4" />
+            )}
             {telegramLoading ? "等待 Telegram 确认…" : "使用 Telegram 登录"}
           </button>
           <p className="mt-3 text-xs leading-relaxed text-[var(--color-muted-soft)]">
             点击后会打开 Telegram 机器人；确认登录必须在 Telegram 机器人里点击「✅ 确认登录」，本页面不能自行完成验证。
           </p>
           {telegramHint ? <p className="mt-2 text-xs text-[var(--color-primary)]">{telegramHint}</p> : null}
-          {telegramError ? <p role="alert" className="mt-2 text-sm text-[var(--app-danger)]">{telegramError}</p> : null}
+          {telegramError ? (
+            <p role="alert" className="mt-2 text-sm text-[var(--app-danger)]">
+              {telegramError}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

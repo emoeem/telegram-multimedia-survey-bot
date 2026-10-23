@@ -75,11 +75,12 @@ describe("normalizeQuestionCondition", () => {
 
   it("rejects malformed input", () => {
     expect(normalizeQuestionCondition("nope")).toEqual({ error: "condition 必须是对象或 null" });
-    expect(normalizeQuestionCondition({ rules: [{ optionId: -1, targetQuestionId: 2 }] })).
-      toEqual({ error: "rules 中的 optionId / targetQuestionId 必须是正整数" });
+    expect(normalizeQuestionCondition({ rules: [{ optionId: -1, targetQuestionId: 2 }] })).toEqual({
+      error: "rules 中的 optionId / targetQuestionId 必须是正整数",
+    });
     expect(normalizeQuestionCondition({ answerRules: "nope" })).toEqual({ error: "answerRules 必须是对象数组" });
-    expect(
-      normalizeQuestionCondition({ answerRules: [{ questionId: 1, equals: 0, targetQuestionId: 2 }] }),
-    ).toEqual({ error: "answerRules 中的 questionId / equals / targetQuestionId 必须是正整数" });
+    expect(normalizeQuestionCondition({ answerRules: [{ questionId: 1, equals: 0, targetQuestionId: 2 }] })).toEqual({
+      error: "answerRules 中的 questionId / equals / targetQuestionId 必须是正整数",
+    });
   });
 });

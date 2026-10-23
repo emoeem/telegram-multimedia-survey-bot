@@ -4,7 +4,11 @@ import { getMediaAssetById } from "../db/repositories/media.repository";
 import { prepareResultProfileForResponse } from "../services/result-visual.service";
 import { deserializeResultProfile } from "../services/result-engine.service";
 import { buildReportViewModel } from "../services/html-report-renderer.service";
-import { buildResponsiveReportHtml, injectReportDownloadAction, type ResponsiveReportMeta } from "../services/report/web";
+import {
+  buildResponsiveReportHtml,
+  injectReportDownloadAction,
+  type ResponsiveReportMeta,
+} from "../services/report/web";
 import { renderReportPdf } from "../services/report/pdf";
 import { REPORT_TEMPLATES } from "../services/report/template";
 import { resolveReportTemplate } from "../services/report/template-resolver";
@@ -333,7 +337,9 @@ async function serveReportPage(env: Env, url: URL, responseId: number): Promise<
   const reportHtml = buildResponsiveReportHtml(viewModel, meta, template);
   // 「下载 PDF」按钮只注入到参与者打开的网页报告：同一个 builder 还负责 PDF
   // 渲染、归档副本、模板预览与视觉快照，交互控件绝不能出现在那些产物里。
-  const html = token ? injectReportDownloadAction(reportHtml, `/report/${responseId}.pdf?t=${encodeURIComponent(token)}`) : reportHtml;
+  const html = token
+    ? injectReportDownloadAction(reportHtml, `/report/${responseId}.pdf?t=${encodeURIComponent(token)}`)
+    : reportHtml;
   return new Response(html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",

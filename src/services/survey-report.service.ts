@@ -1,10 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
-import type {
-  CompletionTimeBucket,
-  NumericStat,
-  OptionStat,
-  SurveyStatistics,
-} from "./statistics.service";
+import type { CompletionTimeBucket, NumericStat, OptionStat, SurveyStatistics } from "./statistics.service";
 import {
   renderPieChartSvg,
   renderDonutChartSvg,
@@ -157,9 +152,7 @@ function renderNumericSection(numericStats: NumericStat[]): string {
       value: Math.round((s.average ?? 0) * 10),
       max: 50,
     }));
-  const snapshotSvg = snapshotRows.length >= 2
-    ? renderQuickSnapshotSvg(snapshotRows, REPORT_COLORS, 260, 24)
-    : "";
+  const snapshotSvg = snapshotRows.length >= 2 ? renderQuickSnapshotSvg(snapshotRows, REPORT_COLORS, 260, 24) : "";
 
   return `
     <section class="numeric-block">
@@ -243,13 +236,7 @@ function renderOverviewSection(report: SurveySummaryReport): string {
   const { totalStarted, totalCompleted, completionRate } = statistics;
   const inProgress = totalStarted - totalCompleted;
 
-  const progressDonut = renderProgressDonutSvg(
-    totalCompleted,
-    totalStarted,
-    REPORT_COLORS,
-    140,
-    140,
-  );
+  const progressDonut = renderProgressDonutSvg(totalCompleted, totalStarted, REPORT_COLORS, 140, 140);
 
   const statusSlices = [
     { label: "已完成", value: totalCompleted },
@@ -290,9 +277,7 @@ function renderOptionSection(options: OptionStat[]): string {
   const grouped = groupByQuestion(options);
   const questionCount = grouped.size;
 
-  const questionSections = [...grouped.values()]
-    .map((rows) => renderOptionQuestionSection(rows))
-    .join("");
+  const questionSections = [...grouped.values()].map((rows) => renderOptionQuestionSection(rows)).join("");
 
   return `
     <section class="option-block">
@@ -318,9 +303,10 @@ export function buildSurveySummaryReportHtml(report: SurveySummaryReport): strin
   const timelineHtml = hasTimeline ? renderTimelineSection(report.completionTimeBuckets!) : "";
   const optionHtml = hasOptions ? renderOptionSection(report.optionStatistics) : "";
 
-  const emptyState = !hasOptions && !hasNumeric && !hasTimeline
-    ? `<div class="empty-state">暂无可统计的选项、评分或数字答案。</div>`
-    : "";
+  const emptyState =
+    !hasOptions && !hasNumeric && !hasTimeline
+      ? `<div class="empty-state">暂无可统计的选项、评分或数字答案。</div>`
+      : "";
 
   return `<!doctype html>
 <html lang="zh-CN">

@@ -12,13 +12,8 @@ import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
-import { handleSubmissionBotProxy, isSubmissionBotApiPath } from "./http/submission-proxy";
-import {
-  escapeMetaAttribute,
-  homeRedirectLocation,
-  publicPageHead,
-  submitPageMetaPath,
-} from "./http/public-page";
+import { handleSubmitApiRequest, isSubmitApiPath } from "./http/submit-api";
+import { escapeMetaAttribute, homeRedirectLocation, publicPageHead, submitPageMetaPath } from "./http/public-page";
 import { handleInternalRenderRequest } from "./http/internal-render";
 import { createExportJobSender } from "./services/export-job-dispatch.service";
 import { handleLicenseApiRequest } from "./http/license-api";
@@ -151,12 +146,7 @@ function servePublicPageWithMeta(env: Env, request: Request, pathname: string): 
  * 从国内域名分享出去是一条光秃秃的链接，搜索引擎也会把 Cloudflare 那个
  * 打不开的域名当主域。这里复用的就是 SPA 那几页的 `publicPageHead`，
  * 两边的 canonical 来源完全一致（PUBLIC_ORIGIN → emoemok.top）。 */
-function serveHtmlAssetWithMeta(
-  env: Env,
-  request: Request,
-  assetPath: string,
-  pathname: string,
-): Promise<Response> {
+function serveHtmlAssetWithMeta(env: Env, request: Request, assetPath: string, pathname: string): Promise<Response> {
   const origin = resolvePublicOrigin(env, new URL(request.url).origin);
   const { title, injectHead } = publicPageHead(origin, pathname);
   return serveHtmlAsset(env, request, assetPath, injectHead, title);
@@ -344,24 +334,12 @@ export interface Env {
   /** Public link for the submission bot (投稿机器人); defaults to @tougaojiqirbot. */
   SUBMISSION_BOT_URL?: string;
   /**
-   * Origin of the standalone submission-bot Worker that serves `/api/submit/*`
-   * (the no-login submission form: form definition, inbox, replies).
-   *
-   * Set this so the endpoints exist on this Worker's own domain too. Before it
-   * was set, they only existed behind the CN relay (`cn-relay/vercel.json`
-   * forwards `/api/submit/*` there), which meant the no-login tab worked on
-   * emoemok.top and silently fell back to the SPA HTML on emoe.eu.cc.
+   * Legacy submission-bot's bot token, kept ONLY to read media of submissions
+   * imported from the old D1 (their attachments are Telegram file_ids that are
+   * valid for that bot account alone). Read-only getFile + file download; once
+   * every legacy submission has been reviewed/archived this can be removed.
    */
-  SUBMISSION_BOT_API_ORIGIN?: string;
-  /**
-   * Shared secret for the submission bot's admin review API (`/api/admin/review/*`).
-   *
-   * Must match `REVIEW_API_SECRET` on that Worker. It exists so the browser never
-   * holds it: this Worker verifies the admin session first, then forwards the
-   * secret. Empty = the review endpoints refuse with 503 instead of running
-   * unauthenticated (see src/http/admin/web-submission.ts).
-   */
-  WEB_REVIEW_SECRET?: string;
+  SUBMISSION_BOT_LEGACY_TOKEN?: string;
   /** Transactional email (Resend) for email+password auth. */
   RESEND_API_KEY?: string;
   MAIL_FROM?: string;
@@ -629,7 +607,15 @@ export default {
         url.pathname === "/submissions" ||
         url.pathname.startsWith("/submissions/")
       ) {
-        return servePublicPageWithMeta(env, request, url.pathname.startsWith("/gacha") ? "/gacha" : url.pathname.startsWith("/submissions") ? "/submissions" : "/coins");
+        return servePublicPageWithMeta(
+          env,
+          request,
+          url.pathname.startsWith("/gacha")
+            ? "/gacha"
+            : url.pathname.startsWith("/submissions")
+              ? "/submissions"
+              : "/coins",
+        );
       }
 
       // 旧的投稿两条路径已经并进 /submissions 投稿中心（三个页签：账号投稿 /
@@ -692,16 +678,15 @@ export default {
         return servePublicPageWithMeta(env, request, "/auth");
       }
 
-      // 免登录投稿的后端在主站之外（独立的 submission-bot Worker）。合并投稿
-      // 中心之后这一屏和其他两屏在同一个页面里，接口必须在本域上也存在，
-      // 否则页签切过去就是 "Unexpected token '<'" —— 那正是合并前"两个投稿
-      // 中心"的成因：免登录那半只在 emoemok.top 上真能用。
+      // 免登录投稿(/api/submit/*):并轨后由本 Worker 直接服务(数据在本站
+      // D1,migration 0088;实现见 src/http/submit-api.ts)。历史上这里曾把
+      // 请求代理到独立的 submission-bot Worker,该 Worker 已退役。
       //
-      // 必须放在 /api/submissions（金币投稿，本站）之前，且 isSubmissionBotApiPath
-      // 用的是精确前缀匹配：写成 startsWith("/api/submit") 会把 /api/submissions
-      // 一起吞进代理。
-      if (isSubmissionBotApiPath(url.pathname)) {
-        return handleSubmissionBotProxy(request, env, url);
+      // 必须放在 /api/submissions(金币投稿,本站)之前,且 isSubmitApiPath
+      // 用的是精确前缀匹配:写成 startsWith("/api/submit") 会把 /api/submissions
+      // 一起吞掉。
+      if (isSubmitApiPath(url.pathname)) {
+        return guardApiResponse(request, env, url, () => handleSubmitApiRequest(request, env, url));
       }
 
       if (url.pathname.startsWith("/api/me/")) {
@@ -1028,7 +1013,10 @@ export default {
     try {
       // Rescue attachments of finished responses before the expiry sweep can
       // delete a blob whose previews are still expected to work.
-      mediaRetentionSummary = await retainFinishedResponseMedia(env.DB, createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }));
+      mediaRetentionSummary = await retainFinishedResponseMedia(
+        env.DB,
+        createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }),
+      );
     } catch (error) {
       console.error("Response media retention sweep failed", error);
     }
@@ -1041,7 +1029,10 @@ export default {
       console.info("Database maintenance media retention", { mediaRetention: mediaRetentionSummary });
     }
     try {
-      const summary = await cleanupExpiredTemporaryMedia(env.DB, createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }));
+      const summary = await cleanupExpiredTemporaryMedia(
+        env.DB,
+        createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }),
+      );
       if (summary.deleted > 0) {
         console.info("Expired temporary media cleaned", summary);
       }

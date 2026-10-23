@@ -4,7 +4,12 @@ import { writeAudit } from "./helpers";
 import { loadCoinConfig, saveCoinConfigSection, type CoinEconomyConfig } from "../../services/coin/config.service";
 import { getCoinAccount, describeAdjustStatements } from "../../services/coin/ledger.service";
 import { getUserById, getUserByTelegramId } from "../../db/repositories/user.repository";
-import { getSubmissionById, reviewSubmission, addSubmissionToPool, SubmissionError } from "../../services/coin/submission.service";
+import {
+  getSubmissionById,
+  reviewSubmission,
+  addSubmissionToPool,
+  SubmissionError,
+} from "../../services/coin/submission.service";
 import { getPoolById, loadPoolSnapshot } from "../../services/coin/gacha.service";
 
 /**
@@ -112,11 +117,7 @@ export async function handleCoinAdminApi(
         ) {
           return fail(400, "invalid_pricing", "价格上下限必须是非负整数且上限大于 0");
         }
-        if (
-          pricing.minPrice !== undefined &&
-          pricing.maxPrice !== undefined &&
-          pricing.minPrice > pricing.maxPrice
-        ) {
+        if (pricing.minPrice !== undefined && pricing.maxPrice !== undefined && pricing.minPrice > pricing.maxPrice) {
           return fail(400, "invalid_pricing", "最低价不能高于最高价");
         }
       }
@@ -138,11 +139,20 @@ export async function handleCoinAdminApi(
         }
       }
       if (section === "moderation") {
-        const moderation = value as { enabled?: unknown; endpoint?: unknown; rejectBelow?: unknown; approveAbove?: unknown };
+        const moderation = value as {
+          enabled?: unknown;
+          endpoint?: unknown;
+          rejectBelow?: unknown;
+          approveAbove?: unknown;
+        };
         if (moderation.enabled === true && typeof moderation.endpoint !== "string") {
           return fail(400, "invalid_moderation", "启用审核服务需要配置 endpoint");
         }
-        if (typeof moderation.endpoint === "string" && moderation.endpoint && !/^https:\/\//.test(moderation.endpoint)) {
+        if (
+          typeof moderation.endpoint === "string" &&
+          moderation.endpoint &&
+          !/^https:\/\//.test(moderation.endpoint)
+        ) {
           return fail(400, "invalid_moderation", "endpoint 必须是 https 地址");
         }
         const rejectBelow = Number(moderation.rejectBelow ?? 0.85);
@@ -320,7 +330,9 @@ export async function handleCoinAdminApi(
       const withCounts = await Promise.all(
         (pools.results ?? []).map(async (pool: Record<string, unknown>) => {
           const count = await db
-            .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(weight), 0) AS w FROM gacha_pool_items WHERE pool_id = ? AND active = 1`)
+            .prepare(
+              `SELECT COUNT(*) AS n, COALESCE(SUM(weight), 0) AS w FROM gacha_pool_items WHERE pool_id = ? AND active = 1`,
+            )
             .bind(Number(pool.id))
             .first<{ n: number; w: number }>();
           return { ...pool, itemCount: Number(count?.n ?? 0), totalWeight: Number(count?.w ?? 0) };
@@ -385,11 +397,7 @@ export async function handleCoinAdminApi(
       if (status === "active" && pool.version === 0) {
         return fail(400, "snapshot_required", "上架前需要先生成奖池快照（加入至少一个内容）");
       }
-      await db
-        .prepare(
-          `UPDATE gacha_pools SET status = ?, updated_at = ? WHERE id = ?`,
-        )
-        .bind(status, now, poolId);
+      await db.prepare(`UPDATE gacha_pools SET status = ?, updated_at = ? WHERE id = ?`).bind(status, now, poolId);
       await writeAudit(db, {
         actorUserId: ctx.user?.id ?? null,
         action: "gacha.pool.update",
@@ -560,11 +568,24 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
 function parseChallengePayload(
   body: Record<string, unknown>,
   before?: Record<string, unknown>,
-): { value: {
-  code: string; title: string; description: string; icon: string; goalType: string;
-  goalTarget: number; reward: number; period: string; startAt: string | null; endAt: string | null;
-  active: number; sort: number;
-} } | { error: string } {
+):
+  | {
+      value: {
+        code: string;
+        title: string;
+        description: string;
+        icon: string;
+        goalType: string;
+        goalTarget: number;
+        reward: number;
+        period: string;
+        startAt: string | null;
+        endAt: string | null;
+        active: number;
+        sort: number;
+      };
+    }
+  | { error: string } {
   const code = String(body.code ?? before?.code ?? "").trim();
   const title = String(body.title ?? before?.title ?? "").trim();
   const goalType = String(body.goalType ?? before?.goal_type ?? "");
@@ -579,8 +600,9 @@ function parseChallengePayload(
   if (!Number.isInteger(goalTarget) || goalTarget < 1) return { error: "目标数必须是正整数" };
   if (!Number.isInteger(reward) || reward <= 0) return { error: "奖励必须是正整数" };
   if (!["once", "daily", "weekly"].includes(period)) return { error: "period 必须是 once / daily / weekly" };
-  const startAt = body.startAt === undefined ? (before?.start_at as string | null) ?? null : (body.startAt as string | null);
-  const endAt = body.endAt === undefined ? (before?.end_at as string | null) ?? null : (body.endAt as string | null);
+  const startAt =
+    body.startAt === undefined ? ((before?.start_at as string | null) ?? null) : (body.startAt as string | null);
+  const endAt = body.endAt === undefined ? ((before?.end_at as string | null) ?? null) : (body.endAt as string | null);
   if (startAt && endAt && Date.parse(startAt) > Date.parse(endAt)) return { error: "开始时间不能晚于结束时间" };
   const active = body.active === undefined ? Number(before?.active ?? 1) : body.active === true ? 1 : 0;
   const sort = Number(body.sort ?? before?.sort ?? 0);

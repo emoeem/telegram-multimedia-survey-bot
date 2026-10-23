@@ -145,8 +145,7 @@ class SfxEngine {
       const url = urls?.[cue];
       if (typeof url === "string" && url.length > 0) next.set(cue, url);
     }
-    const changed =
-      next.size !== this.urls.size || [...next].some(([cue, url]) => this.urls.get(cue) !== url);
+    const changed = next.size !== this.urls.size || [...next].some(([cue, url]) => this.urls.get(cue) !== url);
     if (!changed) return;
     this.urls = next;
     this.buffers.clear();

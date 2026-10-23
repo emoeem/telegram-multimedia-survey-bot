@@ -141,9 +141,13 @@ describe("me overview API", () => {
     await expect(response?.json()).resolves.toEqual({
       showcase: { personId: 9, created: true, published: false, url: "/showcase?p=9" },
     });
-    expect(mocks.syncShowcasePersonFromProfile).toHaveBeenCalledWith(env.DB, expect.objectContaining({ responseId: 55 }), {
-      ownerUserId: 7,
-    });
+    expect(mocks.syncShowcasePersonFromProfile).toHaveBeenCalledWith(
+      env.DB,
+      expect.objectContaining({ responseId: 55 }),
+      {
+        ownerUserId: 7,
+      },
+    );
   });
 
   it("refuses to build a showcase page without a published profile", async () => {

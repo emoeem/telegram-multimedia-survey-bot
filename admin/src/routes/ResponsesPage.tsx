@@ -338,11 +338,14 @@ export function ResponsesPage() {
                   const completed = item.status === "completed";
                   return (
                     <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                      <td data-label="{completedItems.length ? (
+                      <td
+                        data-label="{completedItems.length ? (
                        selected.has(item.id))}
                         onChange={toggleSelectAllCompleted}
                       />
-                    ) : null}" className="">
+                    ) : null}"
+                        className=""
+                      >
                         {completed ? (
                           <input
                             type="checkbox"
@@ -373,8 +376,12 @@ export function ResponsesPage() {
                           respondentName(item)
                         )}
                       </td>
-                      <td data-label="状态" className="text-sm">{item.statusLabel}</td>
-                      <td data-label="完成时间" className="text-sm">{item.completedAt ? formatDateTime(item.completedAt) : "—"}</td>
+                      <td data-label="状态" className="text-sm">
+                        {item.statusLabel}
+                      </td>
+                      <td data-label="完成时间" className="text-sm">
+                        {item.completedAt ? formatDateTime(item.completedAt) : "—"}
+                      </td>
                       <td data-label="操作" className="">
                         <div className="flex flex-wrap gap-2">
                           {completed ? (

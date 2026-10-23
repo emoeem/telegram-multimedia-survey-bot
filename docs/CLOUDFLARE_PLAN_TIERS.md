@@ -45,8 +45,9 @@ npx wrangler tail --format json | grep -E "capacity|kv_capacity|exceeded"
 ```
 
 当前 `wrangler.toml` 已绑定 **Durable Objects（3 个类）+ Queues（1 生产者 1 消费者）
-+ Browser Rendering**。这三项在纯 Free 计划下要么不可用、要么额度极低，所以
-**这个项目事实上已经不是"免费部署"了**——它至少需要 Workers Paid。
+
+- Browser Rendering**。这三项在纯 Free 计划下要么不可用、要么额度极低，所以
+  **这个项目事实上已经不是"免费部署"了**——它至少需要 Workers Paid。
 
 这一点很关键：如果升级 Pro 后你感觉「没什么变化」，那是因为瓶颈从来不在 Zone 层。
 
@@ -56,23 +57,23 @@ npx wrangler tail --format json | grep -E "capacity|kv_capacity|exceeded"
 
 数据全部取自 2026-10-23 的官方 limits 页面（Workers / KV / D1），不是记忆。
 
-| 资源 | Workers Free | **Workers Paid（当前）** | 倍率 | 对本站的意义 |
-| --- | --- | --- | --- | --- |
-| Worker 请求 | 100,000 / 天 | **无限制** | ∞ | 活动期不怕被打满 |
-| CPU 时间 | 10 ms | **30 秒**（可调至 5 分钟） | 3,000× | Browser 渲染不再有 CPU 悬崖 |
-| Subrequests / 请求 | 50 | **10,000** | 200× | 队列任务里的多步 fetch 不被截断 |
-| KV 读 | 100,000 / 天 | **无限制** | ∞ | 列表缓存可以放心读 |
-| KV 写（不同 key） | 1,000 / 天 | **无限制** | ∞ | **验证码存储不再会「写不进去」** |
-| KV 写（同一 key） | 1 / 秒 | **1 / 秒** | **1×** | ⚠️ **唯一没变的硬限**，见 §4.2 |
-| KV 存储 | 1 GB | 无限制 | ∞ | 媒体临时文件可以放更久 |
-| D1 读行数 | 5,000,000 / 天 | **无硬限**（按量计费） | 硬→软 | 「超了全站 500」变成账单 |
-| D1 写行数 | 100,000 / 天 | **无硬限**（按量计费） | 硬→软 | 同上 |
-| D1 单库大小 | 500 MB | **10 GB** | 20× | 短期内不用分库 |
-| D1 账户存储 | 5 GB | **1 TB** | 200× | — |
-| **D1 Time Travel** | 7 天 | **30 天** | 4.3× | **免费的多了一层可回滚备份，见 §3.4** |
-| D1 每请求查询数 | 50 | **1,000** | 20× | 后台聚合页可以合并查询 |
-| Cron Triggers | 5 / 账户 | **250 / 账户** | 50× | 可加独立的对账/清理触发器 |
-| 环境变量 | 64 / Worker | **128 / Worker** | 2× | 还有余量 |
+| 资源               | Workers Free   | **Workers Paid（当前）**   | 倍率   | 对本站的意义                          |
+| ------------------ | -------------- | -------------------------- | ------ | ------------------------------------- |
+| Worker 请求        | 100,000 / 天   | **无限制**                 | ∞      | 活动期不怕被打满                      |
+| CPU 时间           | 10 ms          | **30 秒**（可调至 5 分钟） | 3,000× | Browser 渲染不再有 CPU 悬崖           |
+| Subrequests / 请求 | 50             | **10,000**                 | 200×   | 队列任务里的多步 fetch 不被截断       |
+| KV 读              | 100,000 / 天   | **无限制**                 | ∞      | 列表缓存可以放心读                    |
+| KV 写（不同 key）  | 1,000 / 天     | **无限制**                 | ∞      | **验证码存储不再会「写不进去」**      |
+| KV 写（同一 key）  | 1 / 秒         | **1 / 秒**                 | **1×** | ⚠️ **唯一没变的硬限**，见 §4.2        |
+| KV 存储            | 1 GB           | 无限制                     | ∞      | 媒体临时文件可以放更久                |
+| D1 读行数          | 5,000,000 / 天 | **无硬限**（按量计费）     | 硬→软  | 「超了全站 500」变成账单              |
+| D1 写行数          | 100,000 / 天   | **无硬限**（按量计费）     | 硬→软  | 同上                                  |
+| D1 单库大小        | 500 MB         | **10 GB**                  | 20×    | 短期内不用分库                        |
+| D1 账户存储        | 5 GB           | **1 TB**                   | 200×   | —                                     |
+| **D1 Time Travel** | 7 天           | **30 天**                  | 4.3×   | **免费的多了一层可回滚备份，见 §3.4** |
+| D1 每请求查询数    | 50             | **1,000**                  | 20×    | 后台聚合页可以合并查询                |
+| Cron Triggers      | 5 / 账户       | **250 / 账户**             | 50×    | 可加独立的对账/清理触发器             |
+| 环境变量           | 64 / Worker    | **128 / Worker**           | 2×     | 还有余量                              |
 
 ### 2.1 一句话概括这次升级的性质
 
@@ -90,13 +91,13 @@ Paid 档把这条悬崖填平了。现在的代价是「超了要付钱」，而
 
 `emoe.eu.cc` 是 `Free Plan`（截图第三行）。域名套餐没升级，所以下面这些**依然拿不到**：
 
-| 能力 | Free 现状 | 对本项目的实际影响 |
-| --- | --- | --- |
-| WAF 托管规则 / 高级速率限制 | 只有基础 5 条速率规则 | 抗刷靠应用层（已实现），不靠边缘 |
-| 缓存规则精细化（Cache Rules） | 只有 Page Rules 的 3 条 | 静态资源缓存靠 `ASSETS` 与 Worker 头，影响很小 |
-| 图片 Resize / Polish | 无 | 认证卡与报告图都是 Worker 自己渲染，**不受影响** |
-| Argo Smart Routing | 无 | 中国大陆访问靠 `emoemok.top` 中继，不靠这个 |
-| 日志保留 | 取决于账户套餐 | Workers Logs 的 3 天保留不变 |
+| 能力                          | Free 现状               | 对本项目的实际影响                               |
+| ----------------------------- | ----------------------- | ------------------------------------------------ |
+| WAF 托管规则 / 高级速率限制   | 只有基础 5 条速率规则   | 抗刷靠应用层（已实现），不靠边缘                 |
+| 缓存规则精细化（Cache Rules） | 只有 Page Rules 的 3 条 | 静态资源缓存靠 `ASSETS` 与 Worker 头，影响很小   |
+| 图片 Resize / Polish          | 无                      | 认证卡与报告图都是 Worker 自己渲染，**不受影响** |
+| Argo Smart Routing            | 无                      | 中国大陆访问靠 `emoemok.top` 中继，不靠这个      |
+| 日志保留                      | 取决于账户套餐          | Workers Logs 的 3 天保留不变                     |
 
 **结论：Zone 层不升级，对本项目的功能完整性没有影响。** 要花的钱应该花在
 Workers Paid 上（已花），而不是 Pro 域名套餐。
@@ -152,13 +153,13 @@ export interface PlanCapabilities {
 
 用户不应该因为部署方省钱就少一个按钮。每一项都要有功能等价的降级路径：
 
-| 能力 | Paid/Pro 实现 | Free 降级实现 | 用户感知 |
-| --- | --- | --- | --- |
-| API 限流 | KV 计数器（`rate-limit.service.ts:25`） | 内存 Map（`createMemoryRateLimiter`，同文件已存在） + 仅对写接口生效 | 无（多实例下略宽松） |
-| 报表图渲染 | Browser Rendering（`[browser]` binding） | 服务端 SVG/字符串模板 | 图片略朴素 |
-| 导出/可视化 | Queues 异步 | 同步处理 + 明确的"生成中"轮询 | 慢几秒 |
-| 公开列表缓存 | 戳式 KV 缓存（已有） | TTL 拉长到 12h + 只缓存 top-N 热键 | 无 |
-| 验证码存储 | KV | **无降级**（必须有地方存码）→ 见 §4.3 |
+| 能力         | Paid/Pro 实现                            | Free 降级实现                                                        | 用户感知             |
+| ------------ | ---------------------------------------- | -------------------------------------------------------------------- | -------------------- |
+| API 限流     | KV 计数器（`rate-limit.service.ts:25`）  | 内存 Map（`createMemoryRateLimiter`，同文件已存在） + 仅对写接口生效 | 无（多实例下略宽松） |
+| 报表图渲染   | Browser Rendering（`[browser]` binding） | 服务端 SVG/字符串模板                                                | 图片略朴素           |
+| 导出/可视化  | Queues 异步                              | 同步处理 + 明确的"生成中"轮询                                        | 慢几秒               |
+| 公开列表缓存 | 戳式 KV 缓存（已有）                     | TTL 拉长到 12h + 只缓存 top-N 热键                                   | 无                   |
+| 验证码存储   | KV                                       | **无降级**（必须有地方存码）→ 见 §4.3                                |
 
 ### 原则三：配额耗尽必须是"可解释失败"，不是 500
 
@@ -180,11 +181,11 @@ export interface PlanCapabilities {
 
 这一项值得单独写成原则，因为它改变了「备份」这件事的成本结构：
 
-| 层次 | 手段 | RPO | 成本 | 谁维护 |
-| --- | --- | --- | --- | --- |
-| **平台层（新获得）** | Time Travel 时间点恢复 | 分钟级 | **0**（已含在 Paid） | Cloudflare |
-| 应用层 | `scripts/backup-d1.mjs` 定期导出 | 天级 | 存储成本 | 自己 |
-| 人工 | `wrangler d1 export` 手动 | 不定 | 0 | 自己 |
+| 层次                 | 手段                             | RPO    | 成本                 | 谁维护     |
+| -------------------- | -------------------------------- | ------ | -------------------- | ---------- |
+| **平台层（新获得）** | Time Travel 时间点恢复           | 分钟级 | **0**（已含在 Paid） | Cloudflare |
+| 应用层               | `scripts/backup-d1.mjs` 定期导出 | 天级   | 存储成本             | 自己       |
+| 人工                 | `wrangler d1 export` 手动        | 不定   | 0                    | 自己       |
 
 **推荐做法**：Time Travel 兜「刚手滑删了数据」这类分钟级事故，应用层导出兜
 「要跨账号迁移/离线归档」这类需求，两者不互相替代。
@@ -208,13 +209,13 @@ npx wrangler d1 time-travel restore telegram-survey-db --timestamp <ISO8601>
 
 ### 4.1 第一步（P0，与套餐无关，现在就该做）
 
-| # | 做什么 | 状态 |
-| --- | --- | --- |
-| 1 | `wrangler.toml` 加 `[observability]`，让 `request_metrics` / `queue_metrics` / `Resend email failed` 有留存 | ✅ 已加 |
-| 2 | 错误分类认识 KV 配额，返回 `kv_capacity` + 可执行建议 | ✅ 已改 `src/db/errors.ts` |
-| 3 | 验证码存储失败与「码不对」分流，返回 `email_code_store_unavailable` | ✅ 已改 `src/http/email-auth-api.ts` |
-| 4 | **部署**（以上三项不部署就全部不生效） | ⬜ `npx wrangler deploy` |
-| 5 | 成本/用量仪表盘：把 `request_metrics` 的 `d1RowsRead` / `d1RowsWritten` 做日聚合 | ⬜ |
+| #   | 做什么                                                                                                      | 状态                                 |
+| --- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | `wrangler.toml` 加 `[observability]`，让 `request_metrics` / `queue_metrics` / `Resend email failed` 有留存 | ✅ 已加                              |
+| 2   | 错误分类认识 KV 配额，返回 `kv_capacity` + 可执行建议                                                       | ✅ 已改 `src/db/errors.ts`           |
+| 3   | 验证码存储失败与「码不对」分流，返回 `email_code_store_unavailable`                                         | ✅ 已改 `src/http/email-auth-api.ts` |
+| 4   | **部署**（以上三项不部署就全部不生效）                                                                      | ⬜ `npx wrangler deploy`             |
+| 5   | 成本/用量仪表盘：把 `request_metrics` 的 `d1RowsRead` / `d1RowsWritten` 做日聚合                            | ⬜                                   |
 
 **第 4 项是关键**：`[observability]` 只有部署后才开始收集；`CERT_SHARE_DISABLED = "true"`
 也只有部署后才在线上生效。
@@ -230,11 +231,11 @@ npx wrangler d1 time-travel restore telegram-survey-db --timestamp <ISO8601>
 现状：`src/services/rate-limit.service.ts:33-55` 的 `allow()` 是「读计数器 → 比较 →
 写回 `current + 1`」。这条路径在三种情况下会算错：
 
-| 情况 | 后果 | Paid 是否解决 |
-| --- | --- | --- |
-| 同一 key 并发请求 | 两个请求都读到 `n`，都写 `n+1`，**少算一次** | ❌ 不解决 |
+| 情况                   | 后果                                                                   | Paid 是否解决                           |
+| ---------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
+| 同一 key 并发请求      | 两个请求都读到 `n`，都写 `n+1`，**少算一次**                           | ❌ 不解决                               |
 | 同一 key 每秒 > 1 次写 | KV 明确限制 `Writes to same key: 1 per second`，**超出的写被拒或覆盖** | ❌ **不解决，这是 Paid 也不放开的硬限** |
-| 额度耗尽 | 整条链路写入失败 | ✅ 解决了 |
+| 额度耗尽               | 整条链路写入失败                                                       | ✅ 解决了                               |
 
 真正被 Paid 解决的只有第三行。前两行是**语义问题**，不是额度问题：
 
@@ -268,12 +269,12 @@ Map 实现。它在 Free 下可用，代价是多 isolate 时各算各的（限�
 
 买到 Paid 之后**解锁的、值得用上的**四件事，按收益排序：
 
-| # | 能力 | 现在为什么做不了 | Paid 后怎么做 | Free 降级 |
-| --- | --- | --- | --- | --- |
-| 1 | **报告图/证书图 CPU 放宽** | Free 10 ms 下复杂渲染极易 1102 | `[limits] cpu_ms = 300000`（见 §4.3.1） | 保持 10 ms，退到简化模板 |
-| 2 | **队列重活扩容** | Free 下 Queues 额度极低 | `max_concurrency` 从 3 提到 10 | 保持 3 |
-| 3 | **D1 30 天 Time Travel** | Free 只有 7 天 | 无需配置，`wrangler d1 time-travel` 直接可用 | 7 天 |
-| 4 | **Cron 从 5 条扩到 250 条** | 已被 3 条占满，加不了 | 可加独立的对账/清理/成本巡检触发器 | 不加 |
+| #   | 能力                        | 现在为什么做不了               | Paid 后怎么做                                | Free 降级                |
+| --- | --------------------------- | ------------------------------ | -------------------------------------------- | ------------------------ |
+| 1   | **报告图/证书图 CPU 放宽**  | Free 10 ms 下复杂渲染极易 1102 | `[limits] cpu_ms = 300000`（见 §4.3.1）      | 保持 10 ms，退到简化模板 |
+| 2   | **队列重活扩容**            | Free 下 Queues 额度极低        | `max_concurrency` 从 3 提到 10               | 保持 3                   |
+| 3   | **D1 30 天 Time Travel**    | Free 只有 7 天                 | 无需配置，`wrangler d1 time-travel` 直接可用 | 7 天                     |
+| 4   | **Cron 从 5 条扩到 250 条** | 已被 3 条占满，加不了          | 可加独立的对账/清理/成本巡检触发器           | 不加                     |
 
 #### 4.3.1 CPU 上限要不要调
 
@@ -289,13 +290,13 @@ Map 实现。它在 Free 下可用，代价是多 isolate 时各算各的（限�
 
 按 `PLAN_TIER` 开启：
 
-| 开关 | free | paid | pro |
-| --- | --- | --- | --- |
-| `kvRateLimit` | ❌（走 DO） | ✅ | ✅ |
-| `browserRender` | ❌（SVG 降级） | ✅ | ✅ |
-| `asyncQueue` | ⚠️ 仅重活 | ✅ | ✅ |
-| `longLivedCache` | ❌（短 TTL） | ✅ | ✅ |
-| 日志保留 | 3 天 | 3 天 | 7 天+ |
+| 开关             | free           | paid | pro   |
+| ---------------- | -------------- | ---- | ----- |
+| `kvRateLimit`    | ❌（走 DO）    | ✅   | ✅    |
+| `browserRender`  | ❌（SVG 降级） | ✅   | ✅    |
+| `asyncQueue`     | ⚠️ 仅重活      | ✅   | ✅    |
+| `longLivedCache` | ❌（短 TTL）   | ✅   | ✅    |
+| 日志保留         | 3 天           | 3 天 | 7 天+ |
 
 `pro` 与 `paid` 在 Worker 运行时额度上**没有区别**——Pro 的增量在 Zone 层
 （WAF/缓存/图片）。所以代码里 `pro` 档的价值只有一项：
@@ -329,16 +330,17 @@ PLAN_TIER=free KV_FAIL=1 npx vitest run tests/unit/http
 
 同一份代码要跑在两种账户下，所以预算表必须两列都填。
 
-| 资源 | 单次成本 | **自用（Paid）** | **客户（Free）** |
-| --- | --- | --- | --- |
-| KV 写 | 限流 1 次/公开请求，登录 2 次 | 无硬限，按量计费 | **1,000/天 → 最紧** |
-| KV 同 key 写 | 限流计数器 | **1/秒（不变）** | **1/秒（不变）** |
-| D1 行读 | 见 `FREE_TIER_BUDGET.md` | 无硬限，按量计费 | 5,000,000/天（硬限，超了全挂） |
-| D1 行写 | 同上 | 无硬限，按量计费 | 100,000/天 |
-| Worker CPU | 报表渲染最重 | 30 秒 | **10 ms → 次紧** |
-| 请求数 | 每页一次 | 无限制 | 100,000/天 |
+| 资源         | 单次成本                      | **自用（Paid）** | **客户（Free）**               |
+| ------------ | ----------------------------- | ---------------- | ------------------------------ |
+| KV 写        | 限流 1 次/公开请求，登录 2 次 | 无硬限，按量计费 | **1,000/天 → 最紧**            |
+| KV 同 key 写 | 限流计数器                    | **1/秒（不变）** | **1/秒（不变）**               |
+| D1 行读      | 见 `FREE_TIER_BUDGET.md`      | 无硬限，按量计费 | 5,000,000/天（硬限，超了全挂） |
+| D1 行写      | 同上                          | 无硬限，按量计费 | 100,000/天                     |
+| Worker CPU   | 报表渲染最重                  | 30 秒            | **10 ms → 次紧**               |
+| 请求数       | 每页一次                      | 无限制           | 100,000/天                     |
 
 **两列的最紧项不同，这就是双轨的必要性**：
+
 - Paid 下最紧的是「KV 同 key 1 次/秒」——**不是额度，是协议限速**，只能靠换存储（§4.2）。
 - Free 下最紧的是「KV 写 1,000/天」和「CPU 10 ms」——前者靠 DO 迁移缓解，
   后者靠关掉 Browser 渲染、退到字符串模板。
@@ -361,20 +363,20 @@ PLAN_TIER=free KV_FAIL=1 npx vitest run tests/unit/http
 全站只有一个产出点：`src/db/errors.ts` 的 `describePublicDatabaseError` **兜底分支**。
 它属于**存储层异常**，不是邮件异常。链路是：
 
-| 步骤 | 代码 | 缺陷 |
-| --- | --- | --- |
-| 发码写 KV | `src/services/email-auth.service.ts:82` `await store.put(...)` | **零 try/catch** |
-| 异常冒泡 | 穿过 `email-auth-api.ts` | 无人接住 |
-| 全局兜底 | `src/index.ts` `guardApiResponse` | 返回通用文案 ✅/❌ |
+| 步骤      | 代码                                                           | 缺陷               |
+| --------- | -------------------------------------------------------------- | ------------------ |
+| 发码写 KV | `src/services/email-auth.service.ts:82` `await store.put(...)` | **零 try/catch**   |
+| 异常冒泡  | 穿过 `email-auth-api.ts`                                       | 无人接住           |
+| 全局兜底  | `src/index.ts` `guardApiResponse`                              | 返回通用文案 ✅/❌ |
 
 对照：限流那边**做了**保护（`rate-limit.service.ts:56` catch 后 fail open）。
 同一类风险，一个堵了、一个漏了。
 
 ### 6.2 决定性证据：时间跨过了额度重置点
 
-| 时刻 | 实测 | 换算 UTC |
-| --- | --- | --- |
-| 截图 07:33 CST | 失败 | 23:33（额度耗尽） |
+| 时刻           | 实测                                              | 换算 UTC          |
+| -------------- | ------------------------------------------------- | ----------------- |
+| 截图 07:33 CST | 失败                                              | 23:33（额度耗尽） |
 | 复测 08:06 CST | `200 {"ok":true,"sender":"no-reply@emoemok.top"}` | 00:06（额度重置） |
 
 **中间跨过 UTC 00:00 —— KV 免费额度的每日重置点。** 这是 Free 档的典型症状。
@@ -386,11 +388,11 @@ PLAN_TIER=free KV_FAIL=1 npx vitest run tests/unit/http
 
 ### 6.4 已修什么、没修什么
 
-| 项 | 状态 |
-| --- | --- |
-| 用户看到误导性通用文案 | ✅ 已修：`safeVerifyEmailCode` 区分「存储挂了」与「码不对」，返回 `email_code_store_unavailable`（503）+ 指向 Telegram 免注册入口 |
-| 根因（Free 档 KV 写 1,000/天） | ❌ **未修，也不需要修** —— 账户已是 Payed，KV 写 `Unlimited` |
-| 线上生效 | ⬜ **待部署** |
+| 项                             | 状态                                                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| 用户看到误导性通用文案         | ✅ 已修：`safeVerifyEmailCode` 区分「存储挂了」与「码不对」，返回 `email_code_store_unavailable`（503）+ 指向 Telegram 免注册入口 |
+| 根因（Free 档 KV 写 1,000/天） | ❌ **未修，也不需要修** —— 账户已是 Payed，KV 写 `Unlimited`                                                                      |
+| 线上生效                       | ⬜ **待部署**                                                                                                                     |
 
 **结论：这条在买到 Workers Paid 之后已经不是活跃故障。** 但代码层的错误分流仍要保留，
 因为客户部署跑 Free（见原则三）。
@@ -407,7 +409,7 @@ PLAN_TIER=free KV_FAIL=1 npx vitest run tests/unit/http
 
 1. **限流迁 `RateLimitDO`，做不做？** 收益：修掉「同 key 1 写/秒」导致的计数丢失，
    并让 `rate-limit.service.ts:24` 那句「并发下不精确」的自述失效。成本：一个新 DO 类
-   + 一次 config 迁移 + 单测。**我倾向做**，因为这是唯一一条「买了 Paid 也没解决」的缺陷。
+   - 一次 config 迁移 + 单测。**我倾向做**，因为这是唯一一条「买了 Paid 也没解决」的缺陷。
 2. **`Images Stream Basic` 要不要留？** 代码里没有任何一处引用 Images
    （认证卡在浏览器画、报告图在 Worker 内渲染）。如果只是为了「以后可能用」，
    它现在是纯支出；如果打算把认证卡成品图迁到 Images 做变换，那就留着。
@@ -417,12 +419,12 @@ PLAN_TIER=free KV_FAIL=1 npx vitest run tests/unit/http
 
 ## 8. 变更记录
 
-| 日期 | 改动 | 文件 |
-| --- | --- | --- |
-| 2026-10-23 | **Stream 视频托管上线**（Pro）：答卷视频/音频走 Stream 浏览器直传（`/media/stream-ticket` 铸凭证 + `storage_kind='stream'` 占位行 + 媒体端点按状态分流 302 HLS / 202 / 410），突破经 Worker 上传的 20MB 天花板；每日 cron 对账清理未完成凭证。**Images 图片管线上线**（Pro）：认证卡成品图旁路上传 Images（`images.service.ts`，响应带 `imageUrl`），TG 发送不变 | `src/services/media/stream.service.ts`、`src/services/media/images.service.ts` 等 |
-| 2026-10-23 | **能力探测层落地**：`plan.service.ts`（tier + 六项能力探测，PLAN_TIER 显式声明只收紧不解锁）；后台「部署能力」面板（`/api/admin/deployment` 返回 `plan`）；无队列部署的导出/归档走 SELF 内部端点同步执行（`export-job-dispatch.service.ts`，`/internal/dispatch-export-job` + waitUntil），免费客户部署可用 `--plan free` 部署（`deploy-customer.mjs`）；**R2 媒体分层存储上线**（`TieredMediaStore`：R2 主、KV 读回落，行保持 `storage_kind='temporary'` 以兼容既有 retention SQL；答卷单文件 20→100MB、总量 50→200MB，仅 R2 部署生效） | `src/services/plan.service.ts` 等 |
-| 2026-10-23 | 新增 `[observability]`，让指标日志有留存 | `wrangler.toml` |
-| 2026-10-23 | 新增 `isKeyValueCapacityError`，KV 配额不再被兜底成通用 500 | `src/db/errors.ts` |
-| 2026-10-23 | `guardApiResponse` 区分 `kv_capacity`，按可重试返回 503 | `src/index.ts` |
-| 2026-10-23 | 验证码存储失败与「码不对」分流（`safeVerifyEmailCode`） | `src/http/email-auth-api.ts` |
-| 2026-10-23 | **本文件按账单截图重写 §0/§2/§4.2/§5.2/§6**：确认订阅是 Workers Paid，纠正「Pro = 域名套餐」的错判，补 §3.4 Time Travel 原则 | 本文件 |
+| 日期       | 改动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 文件                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 2026-10-23 | **Stream 视频托管上线**（Pro）：答卷视频/音频走 Stream 浏览器直传（`/media/stream-ticket` 铸凭证 + `storage_kind='stream'` 占位行 + 媒体端点按状态分流 302 HLS / 202 / 410），突破经 Worker 上传的 20MB 天花板；每日 cron 对账清理未完成凭证。**Images 图片管线上线**（Pro）：认证卡成品图旁路上传 Images（`images.service.ts`，响应带 `imageUrl`），TG 发送不变                                                                                                                                                                         | `src/services/media/stream.service.ts`、`src/services/media/images.service.ts` 等 |
+| 2026-10-23 | **能力探测层落地**：`plan.service.ts`（tier + 六项能力探测，PLAN_TIER 显式声明只收紧不解锁）；后台「部署能力」面板（`/api/admin/deployment` 返回 `plan`）；无队列部署的导出/归档走 SELF 内部端点同步执行（`export-job-dispatch.service.ts`，`/internal/dispatch-export-job` + waitUntil），免费客户部署可用 `--plan free` 部署（`deploy-customer.mjs`）；**R2 媒体分层存储上线**（`TieredMediaStore`：R2 主、KV 读回落，行保持 `storage_kind='temporary'` 以兼容既有 retention SQL；答卷单文件 20→100MB、总量 50→200MB，仅 R2 部署生效） | `src/services/plan.service.ts` 等                                                 |
+| 2026-10-23 | 新增 `[observability]`，让指标日志有留存                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `wrangler.toml`                                                                   |
+| 2026-10-23 | 新增 `isKeyValueCapacityError`，KV 配额不再被兜底成通用 500                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `src/db/errors.ts`                                                                |
+| 2026-10-23 | `guardApiResponse` 区分 `kv_capacity`，按可重试返回 503                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `src/index.ts`                                                                    |
+| 2026-10-23 | 验证码存储失败与「码不对」分流（`safeVerifyEmailCode`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `src/http/email-auth-api.ts`                                                      |
+| 2026-10-23 | **本文件按账单截图重写 §0/§2/§4.2/§5.2/§6**：确认订阅是 Workers Paid，纠正「Pro = 域名套餐」的错判，补 §3.4 Time Travel 原则                                                                                                                                                                                                                                                                                                                                                                                                             | 本文件                                                                            |

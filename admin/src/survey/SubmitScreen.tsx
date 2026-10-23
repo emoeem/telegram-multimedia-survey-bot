@@ -12,13 +12,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "./PageHeader";
 import { prepareImageForPublish } from "../lib/image-publish";
-import {
-  SURVEY_CARD,
-  SURVEY_CHIP,
-  SURVEY_INPUT,
-  SURVEY_PAGE,
-  SURVEY_PRIMARY_BTN,
-} from "./ui";
+import { preloadSubmitForm, resetSubmitFormPreload, type SubmitFormDto } from "./submit-form-preload";
+import { FormSkeleton } from "./FormSkeleton";
+import { SURVEY_CARD, SURVEY_CHIP, SURVEY_INPUT, SURVEY_PAGE, SURVEY_PRIMARY_BTN } from "./ui";
 
 const VIEWER_KEY = "webSubmitViewer";
 /* 卡片 / 按钮 / 输入框的类名统一来自 ui.ts，和 /plaza 引同一份，
@@ -26,30 +22,6 @@ const VIEWER_KEY = "webSubmitViewer";
 const CARD = SURVEY_CARD;
 const BTN = SURVEY_PRIMARY_BTN;
 const INPUT = SURVEY_INPUT;
-
-interface SubmitStep {
-  id: string;
-  type: "text" | "choice" | "media";
-  label: string;
-  prompt: string;
-  options: string[] | null;
-  required: boolean;
-  maxLength: number;
-  showIf: { step: string; equals: string } | null;
-}
-
-interface SubmitFormDto {
-  title: string;
-  intro: string;
-  captcha: boolean;
-  maxFiles: number;
-  maxFileMb: number;
-  submitUrl: string;
-  captchaUrl: string;
-  inboxUrl: string;
-  mainGroupUrl: string | null;
-  steps: SubmitStep[];
-}
 
 interface InboxCommentDto {
   messageId: number;
@@ -135,15 +107,15 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     }
   }, [form]);
 
+  /* 表单数据走共享预取（投稿中心一挂载就发起，见 submit-form-preload.ts），
+   * 这里只负责把结果放进 state；formEpoch 是重试按钮的扳机。 */
+  const [formEpoch, setFormEpoch] = useState(0);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("/api/submit/form");
-        const data = (await response.json()) as { ok: boolean; form?: SubmitFormDto; error?: string };
-        if (cancelled) return;
-        if (!data.ok || !data.form) throw new Error(data.error ?? "表单加载失败");
-        setForm(data.form);
+        const data = await preloadSubmitForm();
+        if (!cancelled) setForm(data);
       } catch (caught) {
         if (!cancelled) setError([caught instanceof Error ? caught.message : String(caught)]);
       }
@@ -151,6 +123,12 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     return () => {
       cancelled = true;
     };
+  }, [formEpoch]);
+
+  const retryFormLoad = useCallback(() => {
+    resetSubmitFormPreload();
+    setError([]);
+    setFormEpoch((epoch) => epoch + 1);
   }, []);
 
   useEffect(() => {
@@ -176,9 +154,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
       // 图片先归一化（最长边 1600 / WebP）再判体积：这样「超过 N MB」判的是
       // 真正要上传的字节，而不是手机原图的 sizeof。其余类型原样通过。
       const prepared = await Promise.all(
-        incoming.map((file) =>
-          file.type.startsWith("image/") ? prepareImageForPublish(file) : Promise.resolve(file),
-        ),
+        incoming.map((file) => (file.type.startsWith("image/") ? prepareImageForPublish(file) : Promise.resolve(file))),
       );
       const merged = [...files, ...prepared].slice(0, limit);
       const tooBig = merged.find((file) => file.size > maxBytes);
@@ -204,8 +180,10 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
       }
       if (value.length > step.maxLength) problems.push(`${step.label}：最多 ${step.maxLength} 字`);
     }
-    if (values.author === "显示我的昵称" && !nickname.trim()) problems.push("昵称：选了「显示我的昵称」，请填昵称或改成匿名");
-    if (email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) problems.push("邮箱格式看起来不对（不填也没关系）");
+    if (values.author === "显示我的昵称" && !nickname.trim())
+      problems.push("昵称：选了「显示我的昵称」，请填昵称或改成匿名");
+    if (email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))
+      problems.push("邮箱格式看起来不对（不填也没关系）");
     if (problems.length) {
       setError(problems);
       return;
@@ -260,8 +238,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
           <div className="text-4xl">✅</div>
           <h1 className="mt-2 text-lg font-semibold text-[var(--survey-heading)]">投稿已收到</h1>
           <p className="mt-1 text-[13px] text-[var(--survey-muted)]">
-            编号 #{done.id} ·{" "}
-            {done.status === "published" ? "已发布，多谢投稿！" : "管理员审核通过后会发布"}
+            编号 #{done.id} · {done.status === "published" ? "已发布，多谢投稿！" : "管理员审核通过后会发布"}
           </p>
           <a className={`${BTN} mt-4`} href="/submissions?tab=inbox">
             📬 打开我的投稿收件箱
@@ -299,194 +276,224 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
         />
       )}
       <main className={`${SURVEY_PAGE} ${embedded ? "pb-28 pt-1" : "pb-32 pt-3"}`}>
-        <p className="mb-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-muted)]">
-          {form?.intro ?? "正在加载投稿表单…"}
-        </p>
-
-      {error.length > 0 ? (
-        <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">
-          {error.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-        </div>
-      ) : null}
-
-      {!form ? null : (
-        <>
-          <section className={`${CARD} mb-3 p-4`}>
-            {visibleSteps
-              .filter((step) => step.type !== "media")
-              .map((step) => (
-                <div className="mb-4 last:mb-0" key={step.id}>
-                  <label className="flex items-center justify-between text-[14px] font-semibold text-[var(--survey-heading)]">
-                    <span>
-                      {step.label}
-                      {step.required ? <span className="ml-0.5 text-red-500">*</span> : null}
-                    </span>
-                    {step.type === "text" ? (
-                      <span className="text-[12px] font-normal text-[var(--survey-muted)]">
-                        {(values[step.id] ?? "").length}/{step.maxLength} 字
-                      </span>
-                    ) : null}
-                  </label>
-                  {step.type === "choice" ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(step.options ?? []).map((option) => {
-                        const active = values[step.id] === option;
-                        return (
-                          <button
-                            className={`${SURVEY_CHIP} ${
-                              active
-                                ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]/10 font-semibold text-[var(--survey-primary)]"
-                                : "border-[var(--survey-card-border)] text-[var(--survey-heading)]"
-                            }`}
-                            key={option}
-                            onClick={() => setValues((prev) => ({ ...prev, [step.id]: option }))}
-                            type="button"
-                          >
-                            {option}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : step.maxLength > 120 ? (
-                    <textarea
-                      className={`${INPUT} mt-2 min-h-[130px]`}
-                      maxLength={step.maxLength}
-                      onChange={(event) => setValues((prev) => ({ ...prev, [step.id]: event.target.value }))}
-                      value={values[step.id] ?? ""}
-                    />
-                  ) : (
-                    <input
-                      className={`${INPUT} mt-2`}
-                      maxLength={step.maxLength}
-                      onChange={(event) => setValues((prev) => ({ ...prev, [step.id]: event.target.value }))}
-                      value={values[step.id] ?? ""}
-                    />
-                  )}
-                  <p className="mt-2 text-[12px] leading-5 text-[var(--survey-muted)]">{step.prompt}</p>
-                </div>
+        {form === null ? (
+          /* 表单没到：失败给重试，其余给表单形状的骨架（而不是一行字 + 空白）。 */
+          error.length > 0 ? (
+            <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-3 text-[13px] text-red-500">
+              {error.map((line) => (
+                <p key={line}>{line}</p>
               ))}
-          </section>
-
-          {mediaStep ? (
-            <section className={`${CARD} mb-3 p-4`}>
-              <p className="text-[14px] font-semibold text-[var(--survey-heading)]">{mediaStep.label}</p>
-              <div
-                className={`mt-2 rounded-[var(--survey-radius)] border-2 border-dashed px-4 py-5 text-center text-[13px] text-[var(--survey-muted)] ${
-                  dragging ? "border-[var(--survey-primary)] text-[var(--survey-primary)]" : "border-[var(--survey-card-border)]"
-                }`}
-                role="button"
-                tabIndex={0}
-                aria-label="添加图片或视频"
-                onClick={() => fileInput.current?.click()}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    fileInput.current?.click();
-                  }
-                }}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setDragging(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  setDragging(false);
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setDragging(false);
-                  void addFiles(Array.from(event.dataTransfer.files));
-                }}
+              <button
+                type="button"
+                className="mt-2 font-semibold text-[var(--survey-primary)] underline underline-offset-4"
+                onClick={retryFormLoad}
               >
-                {/* 移动端没有拖拽：整块都是点击入口，拖拽文案只作提示 */}
-                <p className="hidden sm:block">把图片/视频拖到这里，或</p>
-                <p className="sm:hidden">点这里选择图片 / 视频</p>
-                <span className="mt-2 inline-flex min-h-11 items-center rounded-full border border-[var(--survey-primary)] px-5 text-[13px] font-semibold text-[var(--survey-primary)]">
-                  选择文件
-                </span>
-                <input
-                  accept="image/*,video/*"
-                  className="hidden"
-                  multiple
-                  onChange={(event) => void addFiles(Array.from(event.target.files ?? []))}
-                  ref={fileInput}
-                  type="file"
-                />
-                <p className="mt-2">
-                  最多 {form.maxFiles} 个，每个不超过 {form.maxFileMb} MB
-                </p>
+                重试
+              </button>
+            </div>
+          ) : (
+            <FormSkeleton />
+          )
+        ) : (
+          <>
+            <p className="mb-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-muted)]">{form.intro}</p>
+
+            {error.length > 0 ? (
+              <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">
+                {error.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
               </div>
-              {files.length > 0 ? (
-                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {files.map((file, index) => (
-                    <div className="relative aspect-square overflow-hidden rounded-[10px] border border-[var(--survey-card-border)]" key={`${file.name}-${index}`}>
-                      {file.type.startsWith("image/") ? (
-                        <img alt={file.name} className="h-full w-full object-cover" src={URL.createObjectURL(file)} />
-                      ) : (
-                        <span className="grid h-full w-full place-items-center text-[11px] text-[var(--survey-muted)]">🎬</span>
-                      )}
-                      <button
-                        className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-[13px] text-white"
-                        onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
-                        type="button"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+            ) : null}
+
+            <section className={`${CARD} mb-3 p-4`}>
+              {visibleSteps
+                .filter((step) => step.type !== "media")
+                .map((step) => (
+                  <div className="mb-4 last:mb-0" key={step.id}>
+                    <label className="flex items-center justify-between text-[14px] font-semibold text-[var(--survey-heading)]">
+                      <span>
+                        {step.label}
+                        {step.required ? <span className="ml-0.5 text-red-500">*</span> : null}
+                      </span>
+                      {step.type === "text" ? (
+                        <span className="text-[12px] font-normal text-[var(--survey-muted)]">
+                          {(values[step.id] ?? "").length}/{step.maxLength} 字
+                        </span>
+                      ) : null}
+                    </label>
+                    {step.type === "choice" ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(step.options ?? []).map((option) => {
+                          const active = values[step.id] === option;
+                          return (
+                            <button
+                              className={`${SURVEY_CHIP} ${
+                                active
+                                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary)]/10 font-semibold text-[var(--survey-primary)]"
+                                  : "border-[var(--survey-card-border)] text-[var(--survey-heading)]"
+                              }`}
+                              key={option}
+                              onClick={() => setValues((prev) => ({ ...prev, [step.id]: option }))}
+                              type="button"
+                            >
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : step.maxLength > 120 ? (
+                      <textarea
+                        className={`${INPUT} mt-2 min-h-[130px]`}
+                        maxLength={step.maxLength}
+                        onChange={(event) => setValues((prev) => ({ ...prev, [step.id]: event.target.value }))}
+                        value={values[step.id] ?? ""}
+                      />
+                    ) : (
+                      <input
+                        className={`${INPUT} mt-2`}
+                        maxLength={step.maxLength}
+                        onChange={(event) => setValues((prev) => ({ ...prev, [step.id]: event.target.value }))}
+                        value={values[step.id] ?? ""}
+                      />
+                    )}
+                    <p className="mt-2 text-[12px] leading-5 text-[var(--survey-muted)]">{step.prompt}</p>
+                  </div>
+                ))}
+            </section>
+
+            {mediaStep ? (
+              <section className={`${CARD} mb-3 p-4`}>
+                <p className="text-[14px] font-semibold text-[var(--survey-heading)]">{mediaStep.label}</p>
+                <div
+                  className={`mt-2 rounded-[var(--survey-radius)] border-2 border-dashed px-4 py-5 text-center text-[13px] text-[var(--survey-muted)] ${
+                    dragging
+                      ? "border-[var(--survey-primary)] text-[var(--survey-primary)]"
+                      : "border-[var(--survey-card-border)]"
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="添加图片或视频"
+                  onClick={() => fileInput.current?.click()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      fileInput.current?.click();
+                    }
+                  }}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                    void addFiles(Array.from(event.dataTransfer.files));
+                  }}
+                >
+                  {/* 移动端没有拖拽：整块都是点击入口，拖拽文案只作提示 */}
+                  <p className="hidden sm:block">把图片/视频拖到这里，或</p>
+                  <p className="sm:hidden">点这里选择图片 / 视频</p>
+                  <span className="mt-2 inline-flex min-h-11 items-center rounded-full border border-[var(--survey-primary)] px-5 text-[13px] font-semibold text-[var(--survey-primary)]">
+                    选择文件
+                  </span>
+                  <input
+                    accept="image/*,video/*"
+                    className="hidden"
+                    multiple
+                    onChange={(event) => void addFiles(Array.from(event.target.files ?? []))}
+                    ref={fileInput}
+                    type="file"
+                  />
+                  <p className="mt-2">
+                    最多 {form.maxFiles} 个，每个不超过 {form.maxFileMb} MB
+                  </p>
                 </div>
+                {files.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {files.map((file, index) => (
+                      <div
+                        className="relative aspect-square overflow-hidden rounded-[10px] border border-[var(--survey-card-border)]"
+                        key={`${file.name}-${index}`}
+                      >
+                        {file.type.startsWith("image/") ? (
+                          <img alt={file.name} className="h-full w-full object-cover" src={URL.createObjectURL(file)} />
+                        ) : (
+                          <span className="grid h-full w-full place-items-center text-[11px] text-[var(--survey-muted)]">
+                            🎬
+                          </span>
+                        )}
+                        <button
+                          className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-[13px] text-white"
+                          onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                          type="button"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            <section className={`${CARD} mb-3 p-4`}>
+              <label className="text-[14px] font-semibold text-[var(--survey-heading)]">昵称（选填）</label>
+              <input
+                className={`${INPUT} mt-2`}
+                maxLength={32}
+                onChange={(event) => setNickname(event.target.value)}
+                value={nickname}
+              />
+              <p className="mt-2 text-[12px] text-[var(--survey-muted)]">
+                署名方式选了「显示我的昵称」时必填；选匿名就不用管它。
+              </p>
+              <label className="mt-4 block text-[14px] font-semibold text-[var(--survey-heading)]">邮箱（选填）</label>
+              <input
+                className={`${INPUT} mt-2`}
+                inputMode="email"
+                maxLength={120}
+                onChange={(event) => setEmail(event.target.value)}
+                value={email}
+              />
+              <p className="mt-2 text-[12px] text-[var(--survey-muted)]">
+                留了邮箱，审核结果和新评论会发邮件通知你；不填也能用，收件箱里一样能看到。
+              </p>
+              {form.captcha ? (
+                <>
+                  <label className="mt-4 block text-[14px] font-semibold text-[var(--survey-heading)]">
+                    验证<span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <p className="mt-2 text-[13px] text-[var(--survey-muted)]">请算一下：{captchaQuestion || "…"}</p>
+                  <input
+                    className={`${INPUT} mt-2`}
+                    inputMode="numeric"
+                    onChange={(event) => setCaptchaAnswer(event.target.value)}
+                    value={captchaAnswer}
+                  />
+                </>
               ) : null}
             </section>
-          ) : null}
 
-          <section className={`${CARD} mb-3 p-4`}>
-            <label className="text-[14px] font-semibold text-[var(--survey-heading)]">昵称（选填）</label>
-            <input className={`${INPUT} mt-2`} maxLength={32} onChange={(event) => setNickname(event.target.value)} value={nickname} />
-            <p className="mt-2 text-[12px] text-[var(--survey-muted)]">署名方式选了「显示我的昵称」时必填；选匿名就不用管它。</p>
-            <label className="mt-4 block text-[14px] font-semibold text-[var(--survey-heading)]">邮箱（选填）</label>
-            <input
-              className={`${INPUT} mt-2`}
-              inputMode="email"
-              maxLength={120}
-              onChange={(event) => setEmail(event.target.value)}
-              value={email}
-            />
-            <p className="mt-2 text-[12px] text-[var(--survey-muted)]">
-              留了邮箱，审核结果和新评论会发邮件通知你；不填也能用，收件箱里一样能看到。
-            </p>
-            {form.captcha ? (
-              <>
-                <label className="mt-4 block text-[14px] font-semibold text-[var(--survey-heading)]">
-                  验证<span className="ml-0.5 text-red-500">*</span>
-                </label>
-                <p className="mt-2 text-[13px] text-[var(--survey-muted)]">请算一下：{captchaQuestion || "…"}</p>
-                <input
-                  className={`${INPUT} mt-2`}
-                  inputMode="numeric"
-                  onChange={(event) => setCaptchaAnswer(event.target.value)}
-                  value={captchaAnswer}
-                />
-              </>
-            ) : null}
-          </section>
-
-          {/* 固定在视口底部：不用负外边距（那会在窄屏撑出 2px 横向滚动），
+            {/* 固定在视口底部：不用负外边距（那会在窄屏撑出 2px 横向滚动），
               下方留白由 main 的 pb-32 让出来，最后一个字段不会被挡住。 */}
-          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-3 backdrop-blur-md">
-            <div className="mx-auto max-w-xl">
-              <button className={BTN} disabled={busy} onClick={() => void submit()} type="button">
-                {busy ? "正在上传…" : "提交投稿"}
-              </button>
-              <p className="mt-1.5 text-center text-[11px] leading-4 text-[var(--survey-muted)]">
-                提交即表示同意内容被公开发布；审核不通过不会发布。
-              </p>
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-3 backdrop-blur-md">
+              <div className="mx-auto max-w-xl">
+                <button className={BTN} disabled={busy} onClick={() => void submit()} type="button">
+                  {busy ? "正在上传…" : "提交投稿"}
+                </button>
+                <p className="mt-1.5 text-center text-[11px] leading-4 text-[var(--survey-muted)]">
+                  提交即表示同意内容被公开发布；审核不通过不会发布。
+                </p>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
       </main>
     </div>
   );
@@ -553,123 +560,130 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
         <p className="mb-1 text-[13px] leading-6 text-[var(--survey-muted)]">
           这里能看到你投过的稿、审核进度、别人的评论（可直接回复）和管理员留言。
         </p>
-      {error ? (
-        <div className="mt-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">{error}</div>
-      ) : null}
+        {error ? (
+          <div className="mt-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">
+            {error}
+          </div>
+        ) : null}
 
-      {items === null ? (
-        <p className="mt-6 text-center text-[13px] text-[var(--survey-muted)]">正在加载…</p>
-      ) : items.length === 0 ? (
-        <div className={`${CARD} mt-4 p-5 text-center`}>
-          <p className="text-[13px] text-[var(--survey-muted)]">这个浏览器还没有投稿记录。</p>
-          <a className={`${BTN} mt-3`} href="/submissions?tab=anon">
-            去投稿
-          </a>
-        </div>
-      ) : (
-        items.map((item) => {
-          const unread = item.unreadComments + item.unreadThread;
-          return (
-            <section className={`${CARD} mt-3 p-4`} key={item.id}>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-[15px] font-semibold text-[var(--survey-heading)]">
-                  #{item.id} {item.title}
-                </h2>
-                {unread > 0 ? (
-                  <span className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[11px] font-semibold text-[var(--survey-primary-content)]">
-                    {unread} 条新消息
+        {items === null ? (
+          <p className="mt-6 text-center text-[13px] text-[var(--survey-muted)]">正在加载…</p>
+        ) : items.length === 0 ? (
+          <div className={`${CARD} mt-4 p-5 text-center`}>
+            <p className="text-[13px] text-[var(--survey-muted)]">这个浏览器还没有投稿记录。</p>
+            <a className={`${BTN} mt-3`} href="/submissions?tab=anon">
+              去投稿
+            </a>
+          </div>
+        ) : (
+          items.map((item) => {
+            const unread = item.unreadComments + item.unreadThread;
+            return (
+              <section className={`${CARD} mt-3 p-4`} key={item.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[15px] font-semibold text-[var(--survey-heading)]">
+                    #{item.id} {item.title}
+                  </h2>
+                  {unread > 0 ? (
+                    <span className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[11px] font-semibold text-[var(--survey-primary-content)]">
+                      {unread} 条新消息
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[var(--survey-muted)]">
+                  <span className="rounded-full border border-[var(--survey-card-border)] px-2 py-0.5">
+                    {STATUS_LABEL[item.status] ?? item.status}
                   </span>
-                ) : null}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[var(--survey-muted)]">
-                <span className="rounded-full border border-[var(--survey-card-border)] px-2 py-0.5">
-                  {STATUS_LABEL[item.status] ?? item.status}
-                </span>
-                <span>{formatTime(item.createdAt)}</span>
-                {item.mediaCount > 0 ? <span>{item.mediaCount} 个附件</span> : null}
-              </div>
+                  <span>{formatTime(item.createdAt)}</span>
+                  {item.mediaCount > 0 ? <span>{item.mediaCount} 个附件</span> : null}
+                </div>
 
-              {item.comments.length === 0 ? (
-                <p className="mt-3 text-[12px] text-[var(--survey-muted)]">还没有评论。</p>
-              ) : (
-                item.comments.map((comment) => (
-                  <div
-                    className={`mt-3 border-t border-[var(--survey-card-border)] pt-2 text-[13px] ${
-                      comment.isMine ? "rounded-[var(--survey-radius)] bg-[var(--survey-primary)]/5 p-2" : ""
-                    }`}
-                    key={comment.messageId}
-                  >
-                    <p className="text-[12px] font-semibold text-[var(--survey-heading)]">
-                      {comment.name}
-                      {comment.parentAuthor ? ` ↩️ 回复 ${comment.parentAuthor}` : ""}
-                      <span className="ml-2 font-normal text-[var(--survey-muted)]">{formatTime(comment.createdAt)}</span>
-                    </p>
-                    <p className="mt-1 text-[var(--survey-heading)]">{comment.text}</p>
-                    {!comment.isMine ? (
-                      <button
-                        className="mt-1 text-[12px] font-medium text-[var(--survey-primary)]"
-                        onClick={() => {
-                          const text = window.prompt("回复这条评论（会以「作者回复」公开出现在评论区）：");
-                          if (text && text.trim()) {
-                            void post("/api/submit/reply", {
-                              submissionId: item.id,
-                              commentMessageId: comment.messageId,
-                              text: text.trim(),
-                            });
-                          }
-                        }}
-                        type="button"
-                      >
-                        ↩️ 回复这条评论
-                      </button>
-                    ) : null}
-                  </div>
-                ))
-              )}
-
-              <div className="mt-3 rounded-[var(--survey-radius)] bg-[var(--survey-primary)]/5 p-3">
-                {item.thread.length === 0 ? (
-                  <p className="text-[12px] text-[var(--survey-muted)]">想跟管理员说点什么？（只有管理员能看到，不会公开）</p>
+                {item.comments.length === 0 ? (
+                  <p className="mt-3 text-[12px] text-[var(--survey-muted)]">还没有评论。</p>
                 ) : (
-                  item.thread.map((message, index) => (
-                    <p
-                      className={`mt-1 text-[13px] ${message.direction === "to_admin" ? "text-right text-[var(--survey-primary)]" : "text-[var(--survey-heading)]"}`}
-                      key={`${message.createdAt}-${index}`}
+                  item.comments.map((comment) => (
+                    <div
+                      className={`mt-3 border-t border-[var(--survey-card-border)] pt-2 text-[13px] ${
+                        comment.isMine ? "rounded-[var(--survey-radius)] bg-[var(--survey-primary)]/5 p-2" : ""
+                      }`}
+                      key={comment.messageId}
                     >
-                      {message.direction === "to_admin" ? "我：" : "管理员："}
-                      {message.text}
-                      <span className="ml-2 text-[11px] text-[var(--survey-muted)]">{formatTime(message.createdAt)}</span>
-                    </p>
+                      <p className="text-[12px] font-semibold text-[var(--survey-heading)]">
+                        {comment.name}
+                        {comment.parentAuthor ? ` ↩️ 回复 ${comment.parentAuthor}` : ""}
+                        <span className="ml-2 font-normal text-[var(--survey-muted)]">
+                          {formatTime(comment.createdAt)}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-[var(--survey-heading)]">{comment.text}</p>
+                      {!comment.isMine ? (
+                        <button
+                          className="mt-1 text-[12px] font-medium text-[var(--survey-primary)]"
+                          onClick={() => {
+                            const text = window.prompt("回复这条评论（会以「作者回复」公开出现在评论区）：");
+                            if (text && text.trim()) {
+                              void post("/api/submit/reply", {
+                                submissionId: item.id,
+                                commentMessageId: comment.messageId,
+                                text: text.trim(),
+                              });
+                            }
+                          }}
+                          type="button"
+                        >
+                          ↩️ 回复这条评论
+                        </button>
+                      ) : null}
+                    </div>
                   ))
                 )}
-                <div className="mt-2 flex items-end gap-2">
-                  <textarea
-                    className={`${INPUT} min-h-[44px] flex-1`}
-                    maxLength={800}
-                    onChange={(event) => setDrafts((prev) => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder="给管理员留言…"
-                    value={drafts[item.id] ?? ""}
-                  />
-                  <button
-                    className={`${BTN} px-3 py-2`}
-                    onClick={() => {
-                      const text = (drafts[item.id] ?? "").trim();
-                      if (!text) return;
-                      void post("/api/submit/message", { submissionId: item.id, text }).then(() =>
-                        setDrafts((prev) => ({ ...prev, [item.id]: "" })),
-                      );
-                    }}
-                    type="button"
-                  >
-                    发送
-                  </button>
-                </div>
-              </div>
-            </section>
-          );
-        })
-      )}
 
+                <div className="mt-3 rounded-[var(--survey-radius)] bg-[var(--survey-primary)]/5 p-3">
+                  {item.thread.length === 0 ? (
+                    <p className="text-[12px] text-[var(--survey-muted)]">
+                      想跟管理员说点什么？（只有管理员能看到，不会公开）
+                    </p>
+                  ) : (
+                    item.thread.map((message, index) => (
+                      <p
+                        className={`mt-1 text-[13px] ${message.direction === "to_admin" ? "text-right text-[var(--survey-primary)]" : "text-[var(--survey-heading)]"}`}
+                        key={`${message.createdAt}-${index}`}
+                      >
+                        {message.direction === "to_admin" ? "我：" : "管理员："}
+                        {message.text}
+                        <span className="ml-2 text-[11px] text-[var(--survey-muted)]">
+                          {formatTime(message.createdAt)}
+                        </span>
+                      </p>
+                    ))
+                  )}
+                  <div className="mt-2 flex items-end gap-2">
+                    <textarea
+                      className={`${INPUT} min-h-[44px] flex-1`}
+                      maxLength={800}
+                      onChange={(event) => setDrafts((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                      placeholder="给管理员留言…"
+                      value={drafts[item.id] ?? ""}
+                    />
+                    <button
+                      className={`${BTN} px-3 py-2`}
+                      onClick={() => {
+                        const text = (drafts[item.id] ?? "").trim();
+                        if (!text) return;
+                        void post("/api/submit/message", { submissionId: item.id, text }).then(() =>
+                          setDrafts((prev) => ({ ...prev, [item.id]: "" })),
+                        );
+                      }}
+                      type="button"
+                    >
+                      发送
+                    </button>
+                  </div>
+                </div>
+              </section>
+            );
+          })
+        )}
       </main>
     </div>
   );

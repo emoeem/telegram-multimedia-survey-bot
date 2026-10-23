@@ -38,7 +38,10 @@ function base64UrlEncode(bytes: Uint8Array): string {
 
 function base64UrlDecode(value: string): Uint8Array | null {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
-  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const padded = value
+    .replaceAll("-", "+")
+    .replaceAll("_", "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
   try {
     const binary = atob(padded);
     const bytes = new Uint8Array(binary.length);

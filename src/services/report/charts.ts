@@ -3,7 +3,17 @@ import { BarChart, RadarChart, PieChart } from "echarts/charts";
 import { GridComponent, RadarComponent, LegendComponent, TooltipComponent, GraphicComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 
-echarts.use([BarChart, RadarChart, PieChart, GridComponent, RadarComponent, LegendComponent, TooltipComponent, GraphicComponent, SVGRenderer]);
+echarts.use([
+  BarChart,
+  RadarChart,
+  PieChart,
+  GridComponent,
+  RadarComponent,
+  LegendComponent,
+  TooltipComponent,
+  GraphicComponent,
+  SVGRenderer,
+]);
 
 export interface ChartColors {
   accent: string;
@@ -106,8 +116,16 @@ export function renderBarChartSvg(
 }
 
 const PIE_PALETTE = [
-  "#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444",
-  "#8b5cf6", "#06b6d4", "#84cc16", "#f97316", "#a855f7",
+  "#6366f1",
+  "#ec4899",
+  "#14b8a6",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#06b6d4",
+  "#84cc16",
+  "#f97316",
+  "#a855f7",
 ];
 
 export function renderPieChartSvg(
@@ -162,35 +180,36 @@ export function renderDonutChartSvg(
   chart.setOption({
     color: PIE_PALETTE,
     tooltip: { show: false },
-    graphic: total > 0 && centerLabel
-      ? [
-          {
-            type: "text",
-            left: "center",
-            top: "42%",
-            style: {
-              text: total.toString(),
-              fontSize: 26,
-              fontWeight: 700,
-              fill: colors.accent,
-              fontFamily: REPORT_FONT,
-              textAlign: "center",
+    graphic:
+      total > 0 && centerLabel
+        ? [
+            {
+              type: "text",
+              left: "center",
+              top: "42%",
+              style: {
+                text: total.toString(),
+                fontSize: 26,
+                fontWeight: 700,
+                fill: colors.accent,
+                fontFamily: REPORT_FONT,
+                textAlign: "center",
+              },
             },
-          },
-          {
-            type: "text",
-            left: "center",
-            top: "62%",
-            style: {
-              text: centerLabel,
-              fontSize: 11,
-              fill: colors.muted,
-              fontFamily: REPORT_FONT,
-              textAlign: "center",
+            {
+              type: "text",
+              left: "center",
+              top: "62%",
+              style: {
+                text: centerLabel,
+                fontSize: 11,
+                fill: colors.muted,
+                fontFamily: REPORT_FONT,
+                textAlign: "center",
+              },
             },
-          },
-        ]
-      : [],
+          ]
+        : [],
     series: [
       {
         type: "pie",
@@ -315,7 +334,10 @@ export function renderSurveyBarChartSvg(
           itemStyle: {
             color: {
               type: "linear",
-              x: 0, y: 0, x2: 1, y2: 0,
+              x: 0,
+              y: 0,
+              x2: 1,
+              y2: 0,
               colorStops: [
                 { offset: 0, color: colors.accent },
                 { offset: 1, color: withAlpha(colors.accent, 0.55) },
@@ -353,7 +375,13 @@ export function renderHistogramSvg(
     xAxis: {
       type: "category",
       data: buckets.map((b) => b.label),
-      axisLabel: { color: colors.muted, fontSize: 10, fontFamily: REPORT_FONT, interval: 0, rotate: buckets.length > 7 ? 30 : 0 },
+      axisLabel: {
+        color: colors.muted,
+        fontSize: 10,
+        fontFamily: REPORT_FONT,
+        interval: 0,
+        rotate: buckets.length > 7 ? 30 : 0,
+      },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -372,7 +400,10 @@ export function renderHistogramSvg(
           itemStyle: {
             color: {
               type: "linear",
-              x: 0, y: 0, x2: 0, y2: 1,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
               colorStops: [
                 { offset: 0, color: colors.accent },
                 { offset: 1, color: withAlpha(colors.accent, 0.35) },
@@ -451,4 +482,3 @@ export function renderQuickSnapshotSvg(
   chart.dispose();
   return svg ? svgWithClass(svg, "quick-snapshot") : "";
 }
-

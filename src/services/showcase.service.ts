@@ -354,10 +354,7 @@ function previewDescription(value: string | null): { description: string | null;
  * `full: false`（feed 默认）只给预览：一场展览可能有几十篇文字作品，把正文全塞进
  * 列表响应会白白撑大移动端首屏；`full: true` 供 /api/showcase/items/:id 阅读全文用。
  */
-export function toPublicShowcaseItem(
-  item: ShowcaseItem,
-  options: { full?: boolean; admin?: boolean } = {},
-) {
+export function toPublicShowcaseItem(item: ShowcaseItem, options: { full?: boolean; admin?: boolean } = {}) {
   const description = options.full
     ? { description: item.description, descriptionTruncated: false }
     : previewDescription(item.description);
@@ -412,7 +409,9 @@ export function toAdminShowcasePerson(person: ShowcasePersonWithItems) {
       ...publicView.background,
       imageUrl: person.backgroundMediaId ? mediaUrl("admin", person.backgroundMediaId) : person.backgroundUrl,
     },
-    illustrationUrl: person.illustrationMediaId ? mediaUrl("admin", person.illustrationMediaId) : person.illustrationUrl,
+    illustrationUrl: person.illustrationMediaId
+      ? mediaUrl("admin", person.illustrationMediaId)
+      : person.illustrationUrl,
     avatarUrl: person.avatarMediaId ? mediaUrl("admin", person.avatarMediaId) : null,
     backgroundMediaId: person.backgroundMediaId,
     illustrationMediaId: person.illustrationMediaId,

@@ -1,0 +1,78 @@
+name: d1-backup
+
+# D1 的定时逻辑备份。
+#
+# 之前唯一的恢复手段是 Cloudflare Time Travel(30 天 PITR):它和账号绑定、
+# 恢复要人工操作,且误删表 + 30 天后才发现的场景它救不了。本工作流每天把
+# 整库导出成 SQL 文件传到 R2,保留 90 天,恢复 = 拿回 SQL 重放。
+#
+# 与 deploy.yml 分开一个文件:备份的密钥(CLOUDFLARE_API_TOKEN + R2 凭据)
+# 与部署共享同一 token 但权限面不同,独立文件让失败/成功状态在 Actions
+# 列表里一眼可辨,坏了不会把部署也标红。
+
+on:
+  schedule:
+    # 每天 18:20 UTC(北京时间凌晨 2:20,业务低峰)。
+    - cron: "20 18 * * *"
+  # 手动触发入口:第一次配置完 secrets 后从这里先跑一次验证。
+  workflow_dispatch:
+
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (for wrangler config)
+        uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install wrangler
+        run: pnpm install --frozen-lockfile
+
+      - name: Export D1 database
+        run: |
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          echo "stamp=$STAMP" >> "$GITHUB_ENV"
+          # wrangler 4 的 d1 export 没有单独的 atomic 开关:导出走 D1 的
+          # export API,本身就是一致性快照。--skip-confirmation 是无头 CI 必需。
+          pnpm exec wrangler d1 export DB --remote --output "d1-backup-${STAMP}.sql" --skip-confirmation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Upload to R2
+        run: |
+          pnpm exec wrangler r2 object put "${{ secrets.R2_BACKUP_BUCKET }}/d1/d1-backup-${STAMP}.sql" --file "d1-backup-${STAMP}.sql" --content-type "application/sql"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAMP: ${{ env.stamp }}
+
+      - name: Verify the object landed
+        run: |
+          pnpm exec wrangler r2 object get "${{ secrets.R2_BACKUP_BUCKET }}/d1/d1-backup-${STAMP}.sql" --file /tmp/verify.sql
+          test -s /tmp/verify.sql
+          grep -q "CREATE TABLE" /tmp/verify.sql
+          echo "backup verified: $(wc -c < /tmp/verify.sql) bytes"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAMP: ${{ env.stamp }}
+
+      - name: Delete local dump
+        if: always()
+        run: rm -f d1-backup-*.sql /tmp/verify.sql

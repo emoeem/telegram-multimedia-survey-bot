@@ -278,9 +278,7 @@ export async function listShowcasePersonsLegacyCursor(
   if (options.publishedOnly) conditions.push("published = 1");
   if (options.publishedOnly && !options.includeRestricted) conditions.push("content_rating = 'all'");
   if (options.cursor) {
-    conditions.push(
-      "(feature_rank < ? OR (feature_rank = ? AND (sort_order > ? OR (sort_order = ? AND id > ?))))",
-    );
+    conditions.push("(feature_rank < ? OR (feature_rank = ? AND (sort_order > ? OR (sort_order = ? AND id > ?))))");
     binds.push(
       options.cursor.featureRank,
       options.cursor.featureRank,
@@ -306,7 +304,10 @@ export async function listShowcasePersonsLegacyCursor(
   const hasMore = rawRows.length > limit;
   const personRows = rawRows.slice(0, limit);
   const last = personRows.at(-1) ?? null;
-  const itemsByPerson = await listItemsByPersonIds(db, personRows.map((row) => row.id));
+  const itemsByPerson = await listItemsByPersonIds(
+    db,
+    personRows.map((row) => row.id),
+  );
   return {
     persons: personRows.map((row) => ({ ...mapPerson(row), items: itemsByPerson.get(row.id) ?? [] })),
     hasMore,

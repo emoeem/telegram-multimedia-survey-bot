@@ -33,7 +33,9 @@ export async function handleAdminSurveysWrite(
   // 注意必须在数字 ID 匹配之前：bulk-rating 不是数字，否则会被提前 return null。
   if (request.method === "POST" && url.pathname === "/api/admin/surveys/bulk-rating") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可批量调整内容分级");
-    const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((value) => Number.isInteger(value) && value > 0) : [];
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map(Number).filter((value) => Number.isInteger(value) && value > 0)
+      : [];
     const rating = body.rating;
     if (!ids.length) return fail(400, "validation_failed", "请选择至少一份问卷");
     if (ids.length > 200) return fail(400, "validation_failed", "一次最多标注 200 份");
@@ -387,7 +389,8 @@ export async function handleAdminSurveysWrite(
     if (survey.settingsJson) {
       try {
         const parsed = JSON.parse(survey.settingsJson) as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+          settings = parsed as Record<string, unknown>;
       } catch {
         settings = {};
       }
@@ -503,7 +506,14 @@ export async function handleAdminSurveysWrite(
       action: "survey.coin_access.update",
       entityType: "survey_coin_access",
       entityId: String(surveyId),
-      before: before ? { enabled: before.enabled, basePrice: before.base_price, autoPrice: before.auto_price, fixedPrice: before.fixed_price } : null,
+      before: before
+        ? {
+            enabled: before.enabled,
+            basePrice: before.base_price,
+            autoPrice: before.auto_price,
+            fixedPrice: before.fixed_price,
+          }
+        : null,
       after: { enabled, basePrice, autoPrice, fixedPrice },
     });
     return json({ ok: true, enabled, autoPrice, basePrice, fixedPrice });

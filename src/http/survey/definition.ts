@@ -12,10 +12,7 @@ import {
   mapQuestionRows,
 } from "../../db/repositories/question.repository";
 import { buildSurveyFlow } from "../../survey/engine";
-import {
-  SURVEY_DEFINITION_CACHE_TTL_SECONDS,
-  SURVEY_DEFINITION_CACHE_VERSION,
-} from "./catalog";
+import { SURVEY_DEFINITION_CACHE_TTL_SECONDS, SURVEY_DEFINITION_CACHE_VERSION } from "./catalog";
 import { questionView, parseSettings } from "./presentation";
 import { resolveParticipant } from "./participant";
 

@@ -26,7 +26,9 @@ vi.mock("../../../src/db/repositories/plaza-comment.repository", () => ({
   listPlazaComments: mocks.listPlazaComments,
 }));
 vi.mock("../../../src/services/rate-limit.service", () => ({ checkRateLimit: mocks.checkRateLimit }));
-vi.mock("../../../src/services/plaza-channel.service", () => ({ mirrorPlazaPostToChannel: mocks.mirrorPlazaPostToChannel }));
+vi.mock("../../../src/services/plaza-channel.service", () => ({
+  mirrorPlazaPostToChannel: mocks.mirrorPlazaPostToChannel,
+}));
 vi.mock("../../../src/services/achievement.service", () => ({
   evaluateAchievements: mocks.evaluateAchievements,
   serializeUnlockedAchievements: (items: unknown[]) => items,
@@ -91,7 +93,10 @@ describe("plaza post creation rules", () => {
       URL_,
     );
     expect(response?.status).toBe(201);
-    expect(mocks.createPlazaPost).toHaveBeenCalledWith(env.DB, expect.objectContaining({ imageAssetId: 42, topic: "夜话" }));
+    expect(mocks.createPlazaPost).toHaveBeenCalledWith(
+      env.DB,
+      expect.objectContaining({ imageAssetId: 42, topic: "夜话" }),
+    );
     await expect(response?.json()).resolves.toMatchObject({
       post: { id: 31, imageUrl: "/api/plaza/media/42", topic: "夜话" },
     });
@@ -107,11 +112,7 @@ describe("plaza post creation rules", () => {
 
   it("rejects an image that is already used or not a plaza upload", async () => {
     const env = makeEnv(false);
-    const response = await handlePlazaApiRequest(
-      post({ content: "借用别人的图", imageAssetId: 4242 }),
-      env,
-      URL_,
-    );
+    const response = await handlePlazaApiRequest(post({ content: "借用别人的图", imageAssetId: 4242 }), env, URL_);
     expect(response?.status).toBe(400);
     await expect(response?.json()).resolves.toMatchObject({ code: "invalid_image" });
     expect(mocks.createPlazaPost).not.toHaveBeenCalled();

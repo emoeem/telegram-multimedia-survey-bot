@@ -132,15 +132,8 @@ export async function linkHash(
   invalidateLinkCache(cache, input.sourceHash);
 }
 
-export async function unlinkHash(
-  db: D1Database,
-  cache: KVNamespace | undefined,
-  sourceHash: string,
-): Promise<boolean> {
-  const result = await db
-    .prepare("DELETE FROM participant_hash_links WHERE source_hash = ?")
-    .bind(sourceHash)
-    .run();
+export async function unlinkHash(db: D1Database, cache: KVNamespace | undefined, sourceHash: string): Promise<boolean> {
+  const result = await db.prepare("DELETE FROM participant_hash_links WHERE source_hash = ?").bind(sourceHash).run();
   invalidateLinkCache(cache, sourceHash);
   return (result.meta?.changes ?? 0) > 0;
 }

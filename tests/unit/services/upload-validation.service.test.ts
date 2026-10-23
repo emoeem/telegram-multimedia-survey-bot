@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isActiveContentMime,
-  verifyUploadContent,
-} from "../../../src/services/media/upload-validation.service";
+import { isActiveContentMime, verifyUploadContent } from "../../../src/services/media/upload-validation.service";
 
 describe("upload validation service", () => {
   it("flags active-content MIME types", () => {

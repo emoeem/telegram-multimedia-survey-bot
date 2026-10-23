@@ -134,8 +134,12 @@ function asTheme(raw: unknown): CertTheme | null {
           const row = (g ?? {}) as Record<string, unknown>;
           const badge = String(row.badge ?? "").trim();
           const out: CertGroup = {
-            name: String(row.name ?? "").trim().slice(0, 12),
-            emoji: String(row.emoji ?? "").trim().slice(0, 4),
+            name: String(row.name ?? "")
+              .trim()
+              .slice(0, 12),
+            emoji: String(row.emoji ?? "")
+              .trim()
+              .slice(0, 4),
             tags: asTagList(row.tags, 200),
           };
           if (badge) out.badge = badge.slice(0, 30);
@@ -149,7 +153,11 @@ function asTheme(raw: unknown): CertTheme | null {
 
   const strList = (v: unknown, max: number, width: number) =>
     (Array.isArray(v) ? v : [])
-      .map((x) => String(x ?? "").trim().slice(0, width))
+      .map((x) =>
+        String(x ?? "")
+          .trim()
+          .slice(0, width),
+      )
       .filter(Boolean)
       .slice(0, max);
 
@@ -160,7 +168,9 @@ function asTheme(raw: unknown): CertTheme | null {
           const out: CertRank = {
             min: Math.max(0, Math.min(hi, Math.round(Number(row.min ?? 0)) || 0)),
             max: Math.max(0, Math.min(hi, Math.round(Number(row.max ?? hi)) || 0)),
-            name: String(row.name ?? "").trim().slice(0, 40),
+            name: String(row.name ?? "")
+              .trim()
+              .slice(0, 40),
           };
           const grade = String(row.grade ?? "").trim();
           const rare = String(row.rare ?? "").trim();
@@ -201,7 +211,10 @@ function asTheme(raw: unknown): CertTheme | null {
   };
   if (groups.length) theme.groups = groups;
   if (score) {
-    theme.metric = { kind: "score", divisor: Math.max(1, Math.min(999, Math.round(Number((t.metric as Record<string, unknown>).divisor) || 60))) };
+    theme.metric = {
+      kind: "score",
+      divisor: Math.max(1, Math.min(999, Math.round(Number((t.metric as Record<string, unknown>).divisor) || 60))),
+    };
   }
   if (t.genderAware === true) theme.genderAware = true;
   if (t.adult === true) theme.adult = true;
@@ -216,10 +229,18 @@ function asTheme(raw: unknown): CertTheme | null {
     const out: Record<string, { f: string; m: string; adj: string; say: string }> = {};
     for (const key of Object.keys(raw3).slice(0, 40)) {
       const row = (raw3[key] ?? {}) as Record<string, unknown>;
-      const f = String(row.f ?? "").trim().slice(0, 20);
-      const m = String(row.m ?? "").trim().slice(0, 20);
-      const adj = String(row.adj ?? "").trim().slice(0, 20);
-      const say = String(row.say ?? "").trim().slice(0, 80);
+      const f = String(row.f ?? "")
+        .trim()
+        .slice(0, 20);
+      const m = String(row.m ?? "")
+        .trim()
+        .slice(0, 20);
+      const adj = String(row.adj ?? "")
+        .trim()
+        .slice(0, 20);
+      const say = String(row.say ?? "")
+        .trim()
+        .slice(0, 80);
       if (!f && !m && !say) continue;
       out[key.slice(0, 12)] = { f: f || m, m: m || f, adj, say };
     }

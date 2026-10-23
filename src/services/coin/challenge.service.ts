@@ -10,11 +10,7 @@ import { earnCoins } from "./ledger.service";
  */
 
 export type ChallengeGoalType =
-  | "completed_surveys"
-  | "checkin_streak"
-  | "submissions_approved"
-  | "gacha_pulls"
-  | "plaza_posts";
+  "completed_surveys" | "checkin_streak" | "submissions_approved" | "gacha_pulls" | "plaza_posts";
 
 export interface CoinChallengeRow {
   id: number;
@@ -149,10 +145,7 @@ export interface ChallengeView extends CoinChallengeRow {
   withinWindow: boolean;
 }
 
-export async function listChallengesFor(
-  db: D1Database,
-  participantHash: string,
-): Promise<ChallengeView[]> {
+export async function listChallengesFor(db: D1Database, participantHash: string): Promise<ChallengeView[]> {
   const cfg = await loadCoinConfig(db);
   const nowMs = Date.now();
   const result = await db
@@ -238,7 +231,13 @@ export async function claimChallenge(
       .prepare(`SELECT balance FROM coin_accounts WHERE participant_hash = ?`)
       .bind(participantHash)
       .first<{ balance: number }>();
-    return { ok: true, duplicate: true, reward: Number(existing.reward), progress: challenge.goalTarget, balance: Number(account?.balance ?? 0) };
+    return {
+      ok: true,
+      duplicate: true,
+      reward: Number(existing.reward),
+      progress: challenge.goalTarget,
+      balance: Number(account?.balance ?? 0),
+    };
   }
 
   // 服务端重算进度：完成后才能领取；不信任客户端上报。
@@ -268,7 +267,15 @@ export async function claimChallenge(
            (challenge_id, participant_hash, period_key, progress, reward, transaction_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(challenge.id, participantHash, periodKey, progress, challenge.reward, reward.transactionId, new Date().toISOString())
+      .bind(
+        challenge.id,
+        participantHash,
+        periodKey,
+        progress,
+        challenge.reward,
+        reward.transactionId,
+        new Date().toISOString(),
+      )
       .run();
   } catch (error) {
     if (/UNIQUE constraint failed/i.test(String((error as Error)?.message ?? ""))) {

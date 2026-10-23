@@ -170,7 +170,11 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
          VALUES (42, 1, 'user_7004', 'in_progress', '${now}', 11, 1, '${now}', '${now}')`,
       )
       .run();
-    await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '秒交', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
+    await raw
+      .prepare(
+        `INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '秒交', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`,
+      )
+      .run();
 
     const submit = async (path = "/api/survey/1/responses/42/submit") =>
       handleSurveyApiRequest(
@@ -223,7 +227,11 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
          VALUES (42, 1, 'user_7005', 'in_progress', '${started}', 'fp-same-device', 11, 1, '${started}', '${started}')`,
       )
       .run();
-    await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '第六份', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
+    await raw
+      .prepare(
+        `INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '第六份', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`,
+      )
+      .run();
 
     const response = await handleSurveyApiRequest(
       makeRequest("/api/survey/1/responses/42/submit", {
@@ -258,7 +266,11 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
          VALUES (42, 1, 'user_7006', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
       )
       .run();
-    await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '发布', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
+    await raw
+      .prepare(
+        `INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '发布', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`,
+      )
+      .run();
 
     const publish = async (id: number) =>
       handleSurveyApiRequest(
@@ -329,7 +341,11 @@ describe.skipIf(!sqliteD1Available)("survey anti-abuse guards (real schema)", ()
          VALUES (42, 1, 'user_7007', 'in_progress', '${started}', 11, 1, '${started}', '${started}')`,
       )
       .run();
-    await raw.prepare(`INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '正常填写', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`).run();
+    await raw
+      .prepare(
+        `INSERT INTO answers (response_id, question_id, text_value, created_at, updated_at) VALUES (42, 11, '正常填写', '2026-10-15T00:00:00.000Z', '2026-10-15T00:00:00.000Z')`,
+      )
+      .run();
 
     const response = await handleSurveyApiRequest(
       makeRequest("/api/survey/1/responses/42/submit", {

@@ -232,7 +232,10 @@ export async function attachSurveyToSeries(
 }
 
 /** 系列 ID 反查（作者归属校验用）。 */
-export async function getSurveySeriesRef(db: D1Database, surveyId: number): Promise<{ seriesId: number | null; order: number | null }> {
+export async function getSurveySeriesRef(
+  db: D1Database,
+  surveyId: number,
+): Promise<{ seriesId: number | null; order: number | null }> {
   const row = await db
     .prepare('SELECT series_id AS seriesId, series_order AS "order" FROM surveys WHERE id = ? LIMIT 1')
     .bind(surveyId)

@@ -193,8 +193,7 @@ function AttachmentTile({
   }, [load, name, index]);
 
   const caption = name || `${mediaLabel(kind)} ${index + 1}`;
-  const hint =
-    state === "loading" ? "加载中…" : state === "error" ? "预览失败" : isVideo ? "点击播放" : "点此下载";
+  const hint = state === "loading" ? "加载中…" : state === "error" ? "预览失败" : isVideo ? "点击播放" : "点此下载";
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--surface-muted)]">
@@ -203,13 +202,7 @@ function AttachmentTile({
           <img src={url} alt={caption} className="h-28 w-full object-cover" />
         </button>
       ) : url && isVideo ? (
-        <video
-          src={url}
-          className="h-28 w-full bg-black object-contain"
-          controls
-          playsInline
-          preload="metadata"
-        />
+        <video src={url} className="h-28 w-full bg-black object-contain" controls playsInline preload="metadata" />
       ) : (
         <button
           type="button"
@@ -239,13 +232,17 @@ function AttachmentTile({
 }
 
 /** 附件网格。列表里只给数量，展开详情才渲染 —— 缩略图是要真去拉字节的。 */
-function AttachmentGrid({ submissionId, attachments }: { submissionId: number; attachments: { kind: string; name: string | null }[] }) {
+function AttachmentGrid({
+  submissionId,
+  attachments,
+}: {
+  submissionId: number;
+  attachments: { kind: string; name: string | null }[];
+}) {
   if (attachments.length === 0) return null;
   return (
     <div className="space-y-2">
-      <p className="text-[13px] text-[var(--color-muted)]">
-        附件 {attachments.length} 个
-      </p>
+      <p className="text-[13px] text-[var(--color-muted)]">附件 {attachments.length} 个</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {attachments.map((item, index) => (
           <AttachmentTile
@@ -332,9 +329,7 @@ function DetailBlock({ id, onChanged }: { id: number; onChanged: () => void }) {
       </dl>
 
       {detail.flags.length > 0 ? (
-        <p className="text-[13px] text-rose-600 dark:text-rose-400">
-          命中：{detail.flags.join("、")}
-        </p>
+        <p className="text-[13px] text-rose-600 dark:text-rose-400">命中：{detail.flags.join("、")}</p>
       ) : null}
 
       <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--surface-muted)] p-3 text-[13px] leading-relaxed">
@@ -505,11 +500,7 @@ export function WebSubmissionsPage() {
       {!error && loading && !data ? <SkeletonPanel lines={5} /> : null}
 
       {!error && data && items.length === 0 ? (
-        <EmptyPanel
-          text={
-            filter === "pending" ? "没有待审的网页投稿。" : "这个筛选下还没有投稿。"
-          }
-        />
+        <EmptyPanel text={filter === "pending" ? "没有待审的网页投稿。" : "这个筛选下还没有投稿。"} />
       ) : null}
 
       <div className="space-y-3">
@@ -526,9 +517,7 @@ export function WebSubmissionsPage() {
                     <span className="text-[13px] font-semibold">#{item.id}</span>
                     <span className="truncate text-[13px]">{authorLabel(item)}</span>
                     {item.attachments.length > 0 ? (
-                      <span className="text-[12px] text-[var(--color-muted)]">
-                        {item.attachments.length} 个附件
-                      </span>
+                      <span className="text-[12px] text-[var(--color-muted)]">{item.attachments.length} 个附件</span>
                     ) : null}
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-[13px] text-[var(--color-muted)]">{item.preview}</p>
@@ -537,7 +526,11 @@ export function WebSubmissionsPage() {
                     {item.email ? ` · ${item.email}` : ""}
                   </p>
                 </div>
-                <button type="button" className="btn btn-sm shrink-0" onClick={() => setExpanded(open ? null : item.id)}>
+                <button
+                  type="button"
+                  className="btn btn-sm shrink-0"
+                  onClick={() => setExpanded(open ? null : item.id)}
+                >
                   {open ? "收起" : "查看"}
                 </button>
               </div>

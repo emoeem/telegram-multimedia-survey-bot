@@ -96,12 +96,12 @@ SQLite + 全量 migration 建库，跑真实处理器）：完成答卷 + 提交
 Staging 手工验证：上传图片 → 提交 → 检查频道收到 PDF + 附件 → KV 中
 `media:temp:*` 键消失 → 重复触发不重发 → 断网模拟失败后 cron 重试。
 
-
 ## Telegram 归档包 v2
 
 完成答卷的私人频道归档现在统一生成结构化 ZIP（只要 ZIP 不超过发送上限，即使没有图片也会生成），而不是只把 PDF 和附件平铺在频道中。
 
 包内目录：
+
 - `00-index.json`：归档索引、问卷/答卷/用户信息及文件清单；
 - `01-report/report.pdf`：最终报告；
 - `01-report/result.json`：Participant Report 结果快照；

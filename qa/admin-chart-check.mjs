@@ -44,8 +44,14 @@ const GEOMETRY = () => {
   // 图例色块同样是 `fill` 有色的 path，但只有 12×12——不排除它，外接框会被
   // 右侧图例整体拉宽，环看起来像椭圆（第一版就是这么误判的）。
   const arcs = [...svg.querySelectorAll("path")]
-    .map((path) => ({ d: path.getAttribute("d") ?? "", fill: path.getAttribute("fill"), box: path.getBoundingClientRect() }))
-    .filter((arc) => arc.d.includes("A") && arc.fill && arc.fill !== "none" && arc.box.height > 20 && arc.box.width > 5);
+    .map((path) => ({
+      d: path.getAttribute("d") ?? "",
+      fill: path.getAttribute("fill"),
+      box: path.getBoundingClientRect(),
+    }))
+    .filter(
+      (arc) => arc.d.includes("A") && arc.fill && arc.fill !== "none" && arc.box.height > 20 && arc.box.width > 5,
+    );
   if (arcs.length === 0) return null;
   const ring = arcs.reduce(
     (acc, arc) => ({
@@ -68,7 +74,10 @@ const GEOMETRY = () => {
   return {
     svg: { left: box.left, top: box.top, width: box.width, height: box.height },
     arcs: arcs.length,
-    radii: { inner: radii.length ? Math.min(...radii) : Number.NaN, outer: radii.length ? Math.max(...radii) : Number.NaN },
+    radii: {
+      inner: radii.length ? Math.min(...radii) : Number.NaN,
+      outer: radii.length ? Math.max(...radii) : Number.NaN,
+    },
     ring: {
       width: ring.right - ring.left,
       height: ring.bottom - ring.top,
@@ -165,7 +174,8 @@ for (const width of [1280, 375, 320]) {
     : null;
   check(
     `@${width} 圆心标签（数字+总计）落在环孔中心`,
-    Boolean(label) && Boolean(labelCenter) &&
+    Boolean(label) &&
+      Boolean(labelCenter) &&
       Math.abs(labelCenter.cx - geometry.ring.centerX) <= 3 &&
       Math.abs(labelCenter.cy - geometry.ring.centerY) <= 3,
     label
@@ -174,7 +184,8 @@ for (const width of [1280, 375, 320]) {
   );
   check(
     `@${width} 圆心标签装得进环孔（不压扇区）`,
-    Boolean(label) && Number.isFinite(geometry.radii.inner) &&
+    Boolean(label) &&
+      Number.isFinite(geometry.radii.inner) &&
       label.bottom - label.top + 8 <= geometry.radii.inner * 2 &&
       Math.hypot((labelCenter?.cx ?? 0) - geometry.ring.centerX, (labelCenter?.cy ?? 0) - geometry.ring.centerY) +
         (label.bottom - label.top) / 2 <=
@@ -202,7 +213,10 @@ const SAMPLE_RING = () => {
     });
     if (!svg) return 0;
     const arcs = [...svg.querySelectorAll("path")].filter(
-      (path) => (path.getAttribute("d") ?? "").includes("A") && path.getAttribute("fill") && path.getAttribute("fill") !== "none",
+      (path) =>
+        (path.getAttribute("d") ?? "").includes("A") &&
+        path.getAttribute("fill") &&
+        path.getAttribute("fill") !== "none",
     );
     if (arcs.length === 0) return 0;
     return Math.max(...arcs.map((path) => path.getBoundingClientRect().height));

@@ -101,9 +101,7 @@ export async function insertParticipantAchievements(
       ),
   );
   const results = await db.batch(statements);
-  return input.unlocks
-    .filter((_, index) => (results[index]?.meta?.changes ?? 0) > 0)
-    .map((unlock) => unlock.code);
+  return input.unlocks.filter((_, index) => (results[index]?.meta?.changes ?? 0) > 0).map((unlock) => unlock.code);
 }
 
 /** Marks every unseen badge as seen; returns how many rows changed. */

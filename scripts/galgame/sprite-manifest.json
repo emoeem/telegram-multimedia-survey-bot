@@ -18,14 +18,8 @@
       "slug": "sprite-neutral.webp",
       "expression": "neutral",
       "source_file": "Codel3.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41910,
       "sha256": "ce8537ffd12d65283fc6befd489ae543d1e1c70fbc9eacb1423a4c763b52959f",
       "mime": "image/webp",
@@ -35,14 +29,8 @@
       "slug": "sprite-smile.webp",
       "expression": "smile",
       "source_file": "Codel9.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 42038,
       "sha256": "a1d0be6e5e69a2af01bded893e9bcd56de8281530021fd97cb7427d60526934e",
       "mime": "image/webp",
@@ -52,14 +40,8 @@
       "slug": "sprite-soft.webp",
       "expression": "soft",
       "source_file": "Codel6.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41392,
       "sha256": "4bfaf7c4f3ab27c82ff68a8de95d4c68aa8d56437308c3e343965128ad7cca22",
       "mime": "image/webp",
@@ -69,14 +51,8 @@
       "slug": "sprite-shy.webp",
       "expression": "shy",
       "source_file": "Codel1.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 42124,
       "sha256": "5c82971df7ed3f8e29dce4cf98a1f057d57ed33711b1a77cce2bb81577589431",
       "mime": "image/webp",
@@ -86,14 +62,8 @@
       "slug": "sprite-blush.webp",
       "expression": "blush",
       "source_file": "Codel2.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41948,
       "sha256": "7b5285663d194726e0c965ccc9b051515ccf288887372bb4e07a39b902a38ef8",
       "mime": "image/webp",
@@ -103,14 +73,8 @@
       "slug": "sprite-fluster.webp",
       "expression": "fluster",
       "source_file": "Codel10.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 42298,
       "sha256": "74d5c58f5adf23dbd93107a4604af7f48135a3f2c05f81924693dfa6425b444c",
       "mime": "image/webp",
@@ -120,14 +84,8 @@
       "slug": "sprite-sad.webp",
       "expression": "sad",
       "source_file": "Codel7.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 42092,
       "sha256": "6aaf915cba48056388abfee26f0d6b4d68f1fc56f63602e2b6a35eb3e680e520",
       "mime": "image/webp",
@@ -137,14 +95,8 @@
       "slug": "sprite-cry.webp",
       "expression": "cry",
       "source_file": "Codel8.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 42036,
       "sha256": "28ce2297f341cbf0d96ff6fd6a1acb27f50d6670dfbd638a60c5d79ef9d73d45",
       "mime": "image/webp",
@@ -154,14 +106,8 @@
       "slug": "sprite-annoyed.webp",
       "expression": "annoyed",
       "source_file": "Codel5.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41484,
       "sha256": "2312bdbc9166f1bc11936162537497f48b2323c95e9b0bdf77e131699876e92e",
       "mime": "image/webp",
@@ -171,14 +117,8 @@
       "slug": "sprite-think.webp",
       "expression": "think",
       "source_file": "Codel4.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41566,
       "sha256": "cde171c3fa6e56eb8bc025b5e4f28353cfbe8b71609f004e2f16933ad7bb718b",
       "mime": "image/webp",
@@ -188,14 +128,8 @@
       "slug": "sprite-pout.webp",
       "expression": "pout",
       "source_file": "Codel12.png",
-      "source_size": [
-        1078,
-        2089
-      ],
-      "size": [
-        356,
-        1100
-      ],
+      "source_size": [1078, 2089],
+      "size": [356, 1100],
       "bytes": 41542,
       "sha256": "49f4b6a9d41c6545bfbdc5a2b5d08f52697257a89efac673d98a0288a5a544f5",
       "mime": "image/webp",

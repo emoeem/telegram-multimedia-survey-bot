@@ -60,7 +60,9 @@ function textContent(node: Node): string {
     }
     return false;
   });
-  return decodeHtmlEntities(stripInvisible(allNodes.map((child) => String((child as { value: unknown }).value)).join(" ")))
+  return decodeHtmlEntities(
+    stripInvisible(allNodes.map((child) => String((child as { value: unknown }).value)).join(" ")),
+  )
     .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

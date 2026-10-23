@@ -119,9 +119,7 @@ describe("report image resolution", () => {
   });
 
   it("skips an R2 asset with no key rather than fetching an empty object", async () => {
-    repositoryMocks.getMediaAssetById.mockResolvedValue(
-      asset({ storageKind: "r2", storageKey: null, r2Key: null }),
-    );
+    repositoryMocks.getMediaAssetById.mockResolvedValue(asset({ storageKind: "r2", storageKey: null, r2Key: null }));
     const r2Get = vi.fn(async () => null);
 
     await expect(

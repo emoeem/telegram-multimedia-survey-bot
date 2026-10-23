@@ -272,9 +272,7 @@ export function injectReportDownloadAction(html: string, downloadUrl: string): s
   const style =
     "<style>.report-download{position:fixed;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:40;display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border-radius:999px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;text-decoration:none;box-shadow:0 12px 28px -12px rgba(2,6,23,.55)}@media print{.report-download{display:none !important}}</style>";
   const action = `<a class="report-download" href="${safeUrl}" download>⬇︎ 下载 PDF</a>`;
-  return html.includes("</body>")
-    ? html.replace("</body>", `${style}${action}</body>`)
-    : `${html}${style}${action}`;
+  return html.includes("</body>") ? html.replace("</body>", `${style}${action}</body>`) : `${html}${style}${action}`;
 }
 
 function baseCss(): string {

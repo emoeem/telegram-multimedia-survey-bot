@@ -57,9 +57,7 @@ describe("shouldReencode —— 什么时候才值得重编码", () => {
   });
 
   it("尺寸没超标但体积很大的图仍然重编码（已经压过的高分辨率噪声图）", () => {
-    expect(
-      shouldReencode({ width: 1200, height: 900, byteLength: PUBLISH_SKIP_UNDER_BYTES + 1 }),
-    ).toBe(true);
+    expect(shouldReencode({ width: 1200, height: 900, byteLength: PUBLISH_SKIP_UNDER_BYTES + 1 })).toBe(true);
   });
 
   it("读不出尺寸时一律放行——宁可传原图，也不凭猜测重编码", () => {

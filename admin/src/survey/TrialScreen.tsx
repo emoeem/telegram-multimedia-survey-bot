@@ -4,7 +4,14 @@ import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
 import { useDialogs } from "../components/Dialogs";
-import { loadGlobalPreset, saveGlobalPreset, themeBackgroundStyle, themeCssVars, ThemePickerSheet, useResolvedPreset } from "./theme-ui";
+import {
+  loadGlobalPreset,
+  saveGlobalPreset,
+  themeBackgroundStyle,
+  themeCssVars,
+  ThemePickerSheet,
+  useResolvedPreset,
+} from "./theme-ui";
 import { createTrialShare } from "./plaza-api";
 import { submissionTargetFromUrl } from "./submission-target";
 import { BottomNav } from "./BottomNav";
@@ -71,7 +78,6 @@ type Screen = "gate" | "home" | "shop" | "run" | "done";
 const SHOP_PRICES: Record<string, number> = Object.fromEntries(
   TRIAL_SHOP_CONFIG.items.map((item) => [item.kind, item.price]),
 );
-
 
 function formatDayTime(iso: string): string {
   if (!iso) return "";
@@ -1370,7 +1376,10 @@ export function TrialScreen() {
                   </span>
                 ))}
               </div>
-              <a className="mt-2 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline" href="/me">
+              <a
+                className="mt-2 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline"
+                href="/me"
+              >
                 去「我的」看看全部徽章
               </a>
             </div>

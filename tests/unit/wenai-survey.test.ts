@@ -63,9 +63,7 @@ describe("文爱问卷定义（scripts/wenai/wenai-survey.json）", () => {
   });
 
   it("尺度板块的每一项都有 愿意/看情况/不愿意 三档", () => {
-    const scale = survey.questions.filter((q) =>
-      ["q-kiss", "q-explicit", "q-cnc", "q-bond", "q-dirty"].includes(q.id),
-    );
+    const scale = survey.questions.filter((q) => ["q-kiss", "q-explicit", "q-cnc", "q-bond", "q-dirty"].includes(q.id));
     expect(scale.length).toBe(5);
     for (const question of scale) {
       expect(question.options?.map((o) => o.value)).toEqual(["yes", "maybe", "no"]);

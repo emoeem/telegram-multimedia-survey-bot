@@ -176,11 +176,7 @@ export function drawWeighted(items: GachaItemSnapshot[], random: () => number): 
 }
 
 /** 该参与者自上次 SSR 以来的抽数（保底计数）。 */
-async function pullsSinceLastHighRarity(
-  db: D1Database,
-  poolId: number,
-  participantHash: string,
-): Promise<number> {
+async function pullsSinceLastHighRarity(db: D1Database, poolId: number, participantHash: string): Promise<number> {
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM gacha_pulls
@@ -361,7 +357,14 @@ export async function pullGacha(
   // spend[1] 未生效 = 余额不足（抽取行有扣款守卫，必然也全部落空）。
   const chargeApplied = Number(batchResults[1]?.meta?.changes ?? 0) > 0;
   if (!chargeApplied) {
-    return { ok: false, duplicate: false, insufficient: true, poolEmpty: false, results: [], balance: (await getCoinAccount(db, participant.participantHash))?.balance ?? 0 };
+    return {
+      ok: false,
+      duplicate: false,
+      insufficient: true,
+      poolEmpty: false,
+      results: [],
+      balance: (await getCoinAccount(db, participant.participantHash))?.balance ?? 0,
+    };
   }
 
   // 库存差额补偿：单元价 ×（应抽次数 - 实际入账次数），带幂等键的可审计

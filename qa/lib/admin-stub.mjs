@@ -55,7 +55,9 @@ export const dashboard = {
   responses: 2070,
   todayResponses: 47,
   reportDeliveries: { pending: 0, delivering: 0, delivered: 230, failed: 0 },
-  recentSurveys: [{ id: 7, title: "情景大尺度剧情（学校社团）", status: "published", updatedAt: "2026-10-22T08:48:00Z" }],
+  recentSurveys: [
+    { id: 7, title: "情景大尺度剧情（学校社团）", status: "published", updatedAt: "2026-10-22T08:48:00Z" },
+  ],
   recentResponses: [
     {
       id: 101,
@@ -66,7 +68,9 @@ export const dashboard = {
       updatedAt: "2026-10-22T09:59:00Z",
     },
   ],
-  recentActions: [{ id: 1, action: "survey.publish", entityType: "survey", entityId: 7, createdAt: "2026-10-22T08:48:00Z" }],
+  recentActions: [
+    { id: 1, action: "survey.publish", entityType: "survey", entityId: 7, createdAt: "2026-10-22T08:48:00Z" },
+  ],
 };
 
 export const pack = {
@@ -79,7 +83,14 @@ export const pack = {
       issuer: "认证中心",
       subtitle: "CERTIFICATE OF EMPLOYMENT",
       sealText: "专用章",
-      palette: { primary: "#1e3a8a", primary2: "#2563eb", accent: "#f59e0b", ink: "#0f172a", muted: "#64748b", paper: "#f7f9fc" },
+      palette: {
+        primary: "#1e3a8a",
+        primary2: "#2563eb",
+        accent: "#f59e0b",
+        ink: "#0f172a",
+        muted: "#64748b",
+        paper: "#f7f9fc",
+      },
       tags: ["摸鱼时长超标"],
       groups: [{ name: "职场日常", emoji: "💼", tags: ["摸鱼时长超标"] }],
       ranks: [

@@ -57,7 +57,11 @@ function makeDb(): D1Database {
 function makeEnv(): Env {
   return {
     DB: makeDb(),
-    CACHE: { get: vi.fn(async () => null), put: vi.fn(async () => undefined), delete: vi.fn(async () => undefined) } as unknown as KVNamespace,
+    CACHE: {
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    } as unknown as KVNamespace,
     BOT_TOKEN: "test-bot-token",
     ADMIN_IDS: "111",
     ENVIRONMENT: "test",

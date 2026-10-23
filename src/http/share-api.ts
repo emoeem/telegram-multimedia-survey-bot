@@ -88,7 +88,10 @@ async function buildShareCardView(env: Env, share: ReportShareRow): Promise<Shar
         Number.isFinite(Number((raw as { total?: unknown }).total)) &&
         Number((raw as { total?: unknown }).total) > 0
       ) {
-        agreement = { score: Number((raw as { score?: unknown }).score), total: Number((raw as { total?: unknown }).total) };
+        agreement = {
+          score: Number((raw as { score?: unknown }).score),
+          total: Number((raw as { total?: unknown }).total),
+        };
       }
     } catch {
       // 反序列化失败时退回分享行快照，公开页不能因为一次脏数据 500。
@@ -115,8 +118,13 @@ async function buildShareCardView(env: Env, share: ReportShareRow): Promise<Shar
 const CARD_FONT_FACE = `@font-face{font-family:ReportSans;src:url(${bytesToDataUrl(RESULT_VISUAL_FONT)}) format("truetype");font-weight:400;font-style:normal}`;
 
 function cardTheme(view: ShareCardView): { background: string; foreground: string; accent: string } {
-  if (view.adult) return { background: "linear-gradient(135deg,#1f2937 0%,#0f172a 100%)", foreground: "#f9fafb", accent: "#f87171" };
-  return { background: "linear-gradient(135deg,#4f46e5 0%,#7c3aed 55%,#0f172a 100%)", foreground: "#ffffff", accent: "#ffffff" };
+  if (view.adult)
+    return { background: "linear-gradient(135deg,#1f2937 0%,#0f172a 100%)", foreground: "#f9fafb", accent: "#f87171" };
+  return {
+    background: "linear-gradient(135deg,#4f46e5 0%,#7c3aed 55%,#0f172a 100%)",
+    foreground: "#ffffff",
+    accent: "#ffffff",
+  };
 }
 
 /** 与问卷 OG 卡同一尺寸语言；也是 /r/:token 页内展示的封面。 */
@@ -256,7 +264,10 @@ async function getOrRenderShareOg(env: Env, share: ReportShareRow, view: ShareCa
 }
 
 function htmlResponse(html: string, cacheControl: string, status = 200): Response {
-  return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": cacheControl } });
+  return new Response(html, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": cacheControl },
+  });
 }
 
 export async function handleSharePageRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
@@ -369,7 +380,10 @@ h1{margin-top:22px;font-size:64px;overflow:hidden;display:-webkit-box;-webkit-li
 function buildProfilePageHtml(profile: ProfileShareRow, ogUrl: string, origin: string): string {
   const name = profile.displayName || "一位匿名旅行者";
   const stats = profileStats(profile)
-    .map((stat) => `<div class="stat"><div class="num">${escapeMeta(stat.value)}</div><div class="lbl">${escapeMeta(stat.label)}</div></div>`)
+    .map(
+      (stat) =>
+        `<div class="stat"><div class="num">${escapeMeta(stat.value)}</div><div class="lbl">${escapeMeta(stat.label)}</div></div>`,
+    )
     .join("");
   const since = profile.snapshot.since ? new Date(profile.snapshot.since).toLocaleDateString("zh-CN") : "—";
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
@@ -423,7 +437,10 @@ async function serveProfileSharePage(env: Env, url: URL, token: string, isOg: bo
     if (!png) return fail(404, "og_unavailable", "画像图片暂不可用");
     return new Response(png, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
   }
-  await env.DB.prepare("UPDATE profile_shares SET view_count = view_count + 1 WHERE id = ?").bind(profile.id).run().catch(() => undefined);
+  await env.DB.prepare("UPDATE profile_shares SET view_count = view_count + 1 WHERE id = ?")
+    .bind(profile.id)
+    .run()
+    .catch(() => undefined);
   return htmlResponse(buildProfilePageHtml(profile, ogUrl, base), "public, max-age=60");
 }
 
@@ -441,11 +458,7 @@ function fingerprintToken(value: string): string {
 }
 
 /** OG 渲染的通用形态（结局卡与画像共用同一条 KV+Browser Rendering 管线）。 */
-async function getOrRenderOgGeneric(
-  env: Env,
-  cacheKey: string,
-  buildHtml: () => string,
-): Promise<ArrayBuffer | null> {
+async function getOrRenderOgGeneric(env: Env, cacheKey: string, buildHtml: () => string): Promise<ArrayBuffer | null> {
   try {
     const cached = await env.CACHE.get(cacheKey, { type: "arrayBuffer" });
     if (cached) return cached;

@@ -198,6 +198,7 @@ export type MediaAssetScope =
   | "identity_card"
   | "card_template"
   | "gallery_profile"
+  | "web_submission"
   | "legacy";
 
 export interface MediaAsset {
@@ -487,4 +488,3 @@ export interface ShowcaseItem {
 export interface ShowcasePersonWithItems extends ShowcasePerson {
   items: ShowcaseItem[];
 }
-

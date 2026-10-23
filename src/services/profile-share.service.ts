@@ -179,7 +179,10 @@ export async function getActiveProfileShareByToken(db: D1Database, token: string
   return row ? mapRow(row) : null;
 }
 
-export async function getActiveProfileShareFor(db: D1Database, participantHash: string): Promise<ProfileShareRow | null> {
+export async function getActiveProfileShareFor(
+  db: D1Database,
+  participantHash: string,
+): Promise<ProfileShareRow | null> {
   const row = await db
     .prepare(
       `SELECT id, token, participant_hash, display_name, snapshot_json, view_count, revoked_at, created_at, updated_at
@@ -192,7 +195,9 @@ export async function getActiveProfileShareFor(db: D1Database, participantHash: 
 
 export async function revokeProfileShare(db: D1Database, participantHash: string): Promise<boolean> {
   const result = await db
-    .prepare("UPDATE profile_shares SET revoked_at = ?, updated_at = ? WHERE participant_hash = ? AND revoked_at IS NULL")
+    .prepare(
+      "UPDATE profile_shares SET revoked_at = ?, updated_at = ? WHERE participant_hash = ? AND revoked_at IS NULL",
+    )
     .bind(nowIso(), nowIso(), participantHash)
     .run();
   return (result.meta?.changes ?? 0) > 0;

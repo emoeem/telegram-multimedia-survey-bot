@@ -22,11 +22,7 @@ function base64UrlToBytes(value: string): Uint8Array | null {
 
 async function derive(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
-    key,
-    256,
-  );
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256);
   return new Uint8Array(bits);
 }
 
@@ -49,7 +45,8 @@ export async function verifyAdminPassword(password: string, encoded: string): Pr
   const iterations = Number(parts[1]);
   const salt = base64UrlToBytes(parts[2] ?? "");
   const expected = base64UrlToBytes(parts[3] ?? "");
-  if (!Number.isInteger(iterations) || iterations < 100_000 || !salt || !expected || expected.length !== 32) return false;
+  if (!Number.isInteger(iterations) || iterations < 100_000 || !salt || !expected || expected.length !== 32)
+    return false;
   const actual = await derive(password, salt, iterations);
   return constantTimeEqual(actual, expected);
 }

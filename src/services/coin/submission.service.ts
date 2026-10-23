@@ -26,13 +26,7 @@ import { moderateSubmission, type ModerationVerdict } from "./moderation.service
 
 export type SubmissionType = "text" | "image" | "audio" | "survey_report" | "profile_card";
 
-export const SUBMISSION_TYPES: readonly SubmissionType[] = [
-  "text",
-  "image",
-  "audio",
-  "survey_report",
-  "profile_card",
-];
+export const SUBMISSION_TYPES: readonly SubmissionType[] = ["text", "image", "audio", "survey_report", "profile_card"];
 
 export class SubmissionError extends Error {
   readonly code: string;
@@ -96,6 +90,12 @@ export async function createSubmission(
   if (!title || title.length > cfg.submissions.maxTitleLength) {
     throw new SubmissionError("invalid_title", `标题必填且不超过 ${cfg.submissions.maxTitleLength} 字`);
   }
+  // description 与 title/contentText 同为入库字段：它是唯一漏掉上限的那个
+  // （coin-api 的表单/JSON 两路提交都直通这里），补上同样的硬校验。
+  const description = input.description?.trim() || null;
+  if (description && description.length > cfg.submissions.maxDescriptionLength) {
+    throw new SubmissionError("invalid_description", `简介不超过 ${cfg.submissions.maxDescriptionLength} 字`);
+  }
   if (input.authorization?.confirmOwn !== true) {
     // 授权确认不能用默认勾选代替：后端强制要求显式 true。
     throw new SubmissionError("authorization_required", "请确认内容为你本人拥有并同意发布条款");
@@ -133,7 +133,8 @@ export async function createSubmission(
     const file = input.file;
     if (!file || file.size <= 0) throw new SubmissionError("media_required", "请选择要上传的文件");
     const maxBytes = input.type === "image" ? cfg.submissions.maxImageBytes : cfg.submissions.maxAudioBytes;
-    if (file.size > maxBytes) throw new SubmissionError("media_too_large", `文件不能超过 ${Math.floor(maxBytes / 1024 / 1024)}MB`);
+    if (file.size > maxBytes)
+      throw new SubmissionError("media_too_large", `文件不能超过 ${Math.floor(maxBytes / 1024 / 1024)}MB`);
     const bytes = new Uint8Array(await file.arrayBuffer());
     // 声明 MIME 不可信：按字节签名验证（图片/音频魔数）。
     const verified = verifyUploadContent(bytes, file.type || "");
@@ -188,9 +189,7 @@ export async function createSubmission(
     const rid = Number(input.responseId);
     if (!Number.isInteger(rid) || rid <= 0) throw new SubmissionError("response_required", "请选择你的答卷");
     const response = await db
-      .prepare(
-        `SELECT id, survey_id AS surveyId, participant_hash AS hash, status FROM survey_responses WHERE id = ?`,
-      )
+      .prepare(`SELECT id, survey_id AS surveyId, participant_hash AS hash, status FROM survey_responses WHERE id = ?`)
       .bind(rid)
       .first<{ id: number; surveyId: number; hash: string; status: string }>();
     if (!response || response.hash !== participant.participantHash) {
@@ -211,7 +210,7 @@ export async function createSubmission(
   const moderation = await moderateSubmission(env, {
     type: input.type,
     title,
-    description: input.description?.trim() || null,
+    description,
     text: contentText,
     mediaUrl: mediaAssetId === null ? null : `/api/submissions/media/${mediaAssetId}`,
   });
@@ -243,7 +242,7 @@ export async function createSubmission(
         participant.dbUserId,
         input.type,
         title,
-        input.description?.trim() || null,
+        description,
         contentText,
         mediaAssetId,
         thumbMediaAssetId,
@@ -263,7 +262,11 @@ export async function createSubmission(
       .run();
     return { id: Number(result.meta.last_row_id), status, duplicate: false, moderation };
   } catch (error) {
-    if (/UNIQUE constraint failed.*idx_submissions_dedup|submissions\.participant_hash/i.test(String((error as Error)?.message ?? ""))) {
+    if (
+      /UNIQUE constraint failed.*idx_submissions_dedup|submissions\.participant_hash/i.test(
+        String((error as Error)?.message ?? ""),
+      )
+    ) {
       throw new SubmissionError("duplicate_content", "相同内容已提交过，请勿重复投稿");
     }
     throw error;
@@ -363,9 +366,7 @@ export async function withdrawSubmission(
          WHERE id = ? AND participant_hash = ?`,
       )
       .bind(now, submissionId, participantHash),
-    db
-      .prepare(`UPDATE gacha_pool_items SET active = 0 WHERE submission_id = ?`)
-      .bind(submissionId),
+    db.prepare(`UPDATE gacha_pool_items SET active = 0 WHERE submission_id = ?`).bind(submissionId),
   ]);
   return true;
 }
@@ -395,8 +396,7 @@ export async function reviewSubmission(
   options: { qualityTier?: 1 | 2 | 3; note?: string; addToPool?: boolean },
 ): Promise<{ ok: boolean; reward: number | null; capped: boolean }> {
   const row = (await getSubmissionById(db, submissionId)) as
-    | (Record<string, unknown> & { participantHash: string; userId: number | null; status: string })
-    | null;
+    (Record<string, unknown> & { participantHash: string; userId: number | null; status: string }) | null;
   if (!row) throw new SubmissionError("not_found", "投稿不存在");
   const status = String(row.status);
   if (!["pending", "changes_requested", "approved"].includes(status)) {
@@ -443,9 +443,7 @@ export async function reviewSubmission(
   }
 
   await db
-    .prepare(
-      `UPDATE submissions SET status = ?, review_note = ?, reviewer_id = ?, updated_at = ? WHERE id = ?`,
-    )
+    .prepare(`UPDATE submissions SET status = ?, review_note = ?, reviewer_id = ?, updated_at = ? WHERE id = ?`)
     .bind(decision, options.note ?? null, reviewerId, now, submissionId)
     .run();
   return { ok: true, reward: null, capped: false };
@@ -503,8 +501,10 @@ export async function addSubmissionToPool(
     .all();
   await db.batch([
     db
-      .prepare(`INSERT INTO gacha_pool_versions (pool_id, version, snapshot, created_at, created_by)
-                VALUES (?, ?, ?, ?, 'admin')`)
+      .prepare(
+        `INSERT INTO gacha_pool_versions (pool_id, version, snapshot, created_at, created_by)
+                VALUES (?, ?, ?, ?, 'admin')`,
+      )
       .bind(poolId, version, JSON.stringify({ items: items.results ?? [] }), now),
     db.prepare(`UPDATE gacha_pools SET version = ?, updated_at = ? WHERE id = ?`).bind(version, now, poolId),
     db.prepare(`UPDATE submissions SET status = 'in_pool', updated_at = ? WHERE id = ?`).bind(now, submissionId),

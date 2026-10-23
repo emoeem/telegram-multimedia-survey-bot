@@ -472,8 +472,7 @@ export function ShowcasePage() {
       ) : (
         <>
           <p className="muted text-sm">
-            已加载 {persons.length} 位
-            {data.total !== undefined ? ` · 共 ${data.total} 位` : " · 滚动继续加载"}
+            已加载 {persons.length} 位{data.total !== undefined ? ` · 共 ${data.total} 位` : " · 滚动继续加载"}
             {data.publishedTotal !== undefined ? ` · 已公开 ${data.publishedTotal} 位` : ""}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

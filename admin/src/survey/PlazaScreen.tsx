@@ -34,7 +34,6 @@ type Tab = "treehole" | "profiles";
 
 const PAGE_SIZE = 10;
 
-
 function formatDay(iso: string): string {
   return iso.slice(0, 10);
 }
@@ -282,12 +281,7 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
   return (
     <article className="overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]">
       {cover ? (
-        <button
-          type="button"
-          aria-label="查看大图"
-          onClick={() => setLightboxUrl(cover.url)}
-          className="block w-full"
-        >
+        <button type="button" aria-label="查看大图" onClick={() => setLightboxUrl(cover.url)} className="block w-full">
           <img
             src={cover.url}
             alt="个人资料照片"
@@ -488,10 +482,14 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
     : -1;
   const headingField = headingIndex >= 0 && profile ? profile.fields[headingIndex] : undefined;
   const restFields =
-    profile && headingField ? profile.fields.filter((field, index) => index !== headingIndex) : profile?.fields ?? [];
+    profile && headingField ? profile.fields.filter((field, index) => index !== headingIndex) : (profile?.fields ?? []);
 
   return (
-    <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}>
+    <div
+      className="survey-glow min-h-dvh pb-24"
+      data-theme={theme?.preset}
+      style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}
+    >
       <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
           <a href="/plaza" className="flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
@@ -545,7 +543,10 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
                 {headingField?.value ?? ownerDisplayName(profile.owner)}
               </h1>
               {restFields.map((field) => (
-                <div key={field.questionId} className="flex items-baseline gap-x-3 border-t border-[var(--survey-card-border)]/60 pt-3 text-[15px] leading-6">
+                <div
+                  key={field.questionId}
+                  className="flex items-baseline gap-x-3 border-t border-[var(--survey-card-border)]/60 pt-3 text-[15px] leading-6"
+                >
                   <span className="w-24 shrink-0 text-[13px] text-[var(--survey-muted)]">{field.title}</span>
                   <span className="min-w-0 whitespace-pre-wrap break-words font-medium text-[var(--survey-body)]">
                     {field.value}
@@ -699,7 +700,13 @@ export function PlazaScreen() {
               >
                 <Palette className="h-4 w-4" />
               </button>
-              <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+              <button
+                type="button"
+                aria-label="关闭"
+                title="关闭"
+                className="survey-icon-btn"
+                onClick={() => closeWebApp()}
+              >
                 <X className="h-4 w-4" />
               </button>
             </>

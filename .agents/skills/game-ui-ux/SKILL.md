@@ -24,8 +24,8 @@ concrete widget API to the engine UI skill.
   can't be used with a controller, or is wired to game state by per-frame polling.
 - Use to structure screen flow (title → game → pause → settings) as a stack, not flag soup.
 
-**When *not* to use:** for the engine's concrete UI nodes/components and styling, use
-`godot-ui-control` or Unity UI (UGUI/UI Toolkit). For *visual* punch (button pop, damage
+**When _not_ to use:** for the engine's concrete UI nodes/components and styling, use
+`godot-ui-control` or Unity UI (UGUI/UI Toolkit). For _visual_ punch (button pop, damage
 numbers, shake) use `game-feel`. For branching conversation UI use `dialogue-systems`. For
 translating UI strings, that is localization (see `references/` and `input-systems` for
 rebinding screens). For card/board layout specifics, the `card-game` genre composes this skill.

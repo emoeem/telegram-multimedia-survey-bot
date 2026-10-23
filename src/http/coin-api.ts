@@ -8,12 +8,7 @@ import { getMediaAssetById } from "../db/repositories/media.repository";
 import { backfillCheckin, getCheckinStatus, performCheckin, listCheckinDays } from "../services/coin/checkin.service";
 import { listChallengesFor, claimChallenge, ChallengeError } from "../services/coin/challenge.service";
 import { loadCoinConfig, coinDayKey } from "../services/coin/config.service";
-import {
-  resolveCoinGate,
-  unlockSurvey,
-  listUnlocksFor,
-  getSurveyCoinAccess,
-} from "../services/coin/unlock.service";
+import { resolveCoinGate, unlockSurvey, listUnlocksFor, getSurveyCoinAccess } from "../services/coin/unlock.service";
 import {
   listActivePools,
   getPoolBySlug,
@@ -54,11 +49,7 @@ function adminIdsOf(env: Env): number[] {
 
 export async function handleCoinApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   const path = url.pathname;
-  if (
-    !path.startsWith("/api/coins/") &&
-    !path.startsWith("/api/gacha/") &&
-    !path.startsWith("/api/submissions")
-  ) {
+  if (!path.startsWith("/api/coins/") && !path.startsWith("/api/gacha/") && !path.startsWith("/api/submissions")) {
     return null;
   }
   const participantResult = await resolveParticipant(request, env);
@@ -90,12 +81,11 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
       const checkin = await getCheckinStatus(env.DB, participant.participantHash, cfg);
       const checkinDays = await listCheckinDays(env.DB, participant.participantHash, cfg.timezoneOffsetMinutes);
       const today = coinDayKey(Date.now(), cfg.timezoneOffsetMinutes);
-      const earnedToday = await env.DB
-        .prepare(
-          `SELECT COALESCE(SUM(amount), 0) AS n FROM coin_transactions
+      const earnedToday = await env.DB.prepare(
+        `SELECT COALESCE(SUM(amount), 0) AS n FROM coin_transactions
            WHERE participant_hash = ? AND amount > 0 AND kind IN ('checkin','challenge','submission_reward')
              AND created_at >= ?`,
-        )
+      )
         .bind(participant.participantHash, `${today}T00:00:00Z`)
         .first<{ n: number }>();
       return {
@@ -112,7 +102,12 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
         },
         earnedToday: Number(earnedToday?.n ?? 0),
         dailyRewardCap: cfg.submissions.dailyRewardCap,
-        features: { checkin: cfg.checkin.enabled, challenges: cfg.challenges.enabled, gacha: cfg.gacha.enabled, submissions: cfg.submissions.enabled },
+        features: {
+          checkin: cfg.checkin.enabled,
+          challenges: cfg.challenges.enabled,
+          gacha: cfg.gacha.enabled,
+          submissions: cfg.submissions.enabled,
+        },
       };
     });
   }
@@ -127,7 +122,14 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
   }
 
   if (request.method === "POST" && path === "/api/coins/checkin/backfill") {
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "coin-backfill", participant.participantHash, 5, 3600);
+    const limiter = await checkAtomicRateLimit(
+      env.DB,
+      env.CACHE,
+      "coin-backfill",
+      participant.participantHash,
+      5,
+      3600,
+    );
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     return respond(async () => {
       const body = (await request.json().catch(() => null)) as { day?: unknown } | null;
@@ -143,13 +145,12 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
       const pageSize = 20;
       const where = kindFilter ? `AND kind = ?` : "";
       const params = kindFilter ? [participant.participantHash, kindFilter] : [participant.participantHash];
-      const rows = await env.DB
-        .prepare(
-          `SELECT id, amount, balance_after AS balanceAfter, kind, ref_type AS refType, ref_id AS refId,
+      const rows = await env.DB.prepare(
+        `SELECT id, amount, balance_after AS balanceAfter, kind, ref_type AS refType, ref_id AS refId,
                   note, created_at AS createdAt
            FROM coin_transactions WHERE participant_hash = ? ${where}
            ORDER BY id DESC LIMIT ? OFFSET ?`,
-        )
+      )
         .bind(...params, pageSize + 1, (page - 1) * pageSize)
         .all();
       const items = rows.results ?? [];
@@ -192,7 +193,12 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
       const idempotencyKey = typeof body?.idempotencyKey === "string" ? body.idempotencyKey : "";
       const gate = await resolveCoinGate(env.DB, survey, participant, adminIdsOf(env));
       if (gate.unlocked) return { ok: true, required: true, duplicate: true, pricePaid: 0 };
-      const result = await unlockSurvey(env.DB, { id: survey.id, ownerId: survey.ownerId }, participant, idempotencyKey);
+      const result = await unlockSurvey(
+        env.DB,
+        { id: survey.id, ownerId: survey.ownerId },
+        participant,
+        idempotencyKey,
+      );
       return { required: true, ...result };
     });
   }
@@ -201,9 +207,7 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
   if (request.method === "GET" && path === "/api/gacha/pools") {
     return respond(async () => {
       const ageVerified = await isParticipantAgeVerified(env.DB, participant);
-      const pools = (await listActivePools(env.DB)).filter(
-        (pool) => pool.contentRating === "all" || ageVerified,
-      );
+      const pools = (await listActivePools(env.DB)).filter((pool) => pool.contentRating === "all" || ageVerified);
       return {
         pools: pools.map((pool) => ({
           slug: pool.slug,
@@ -288,9 +292,8 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
       if (!(await canViewItem(env.DB, participant.participantHash, itemId))) {
         return fail(403, "not_owned", "尚未获得该内容");
       }
-      const item = await env.DB
-        .prepare(
-          `SELECT item.id, item.title, item.description, item.content_type AS contentType,
+      const item = await env.DB.prepare(
+        `SELECT item.id, item.title, item.description, item.content_type AS contentType,
                   item.media_asset_id AS mediaAssetId, item.submission_id AS submissionId,
                   COALESCE(item.preview_media_id, sub.thumb_media_asset_id, sub.media_asset_id) AS previewAssetId,
                   sub.content_text AS contentText, sub.response_id AS responseId,
@@ -299,7 +302,7 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
            FROM gacha_pool_items item
            LEFT JOIN submissions sub ON sub.id = item.submission_id
            WHERE item.id = ?`,
-        )
+      )
         .bind(participant.participantHash, itemId)
         .first();
       if (!item) return fail(404, "not_found", "内容不存在");
@@ -314,7 +317,12 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
         const responseId = item.responseId == null ? null : Number(item.responseId);
         let reportUrl: string | null = null;
         if (responseId != null) {
-          const token = await createReportAccessToken(env.WEBHOOK_SECRET, responseId, Math.floor(Date.now() / 1000), 7 * 86_400);
+          const token = await createReportAccessToken(
+            env.WEBHOOK_SECRET,
+            responseId,
+            Math.floor(Date.now() / 1000),
+            7 * 86_400,
+          );
           reportUrl = `/report/${responseId}?t=${token}`;
         }
         return { ...base, reportUrl, summary: "该内容为答卷报告的展示版本；作答明细与作者账号信息不可见。" };
@@ -324,11 +332,8 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
         return {
           ...base,
           mediaUrl: `/api/submissions/media/${Number(item.mediaAssetId)}`,
-          previewUrl:
-            item.previewAssetId != null ? `/api/submissions/media/${Number(item.previewAssetId)}` : null,
-          ...(item.mediaDurationSeconds != null
-            ? { durationSeconds: Number(item.mediaDurationSeconds) }
-            : {}),
+          previewUrl: item.previewAssetId != null ? `/api/submissions/media/${Number(item.previewAssetId)}` : null,
+          ...(item.mediaDurationSeconds != null ? { durationSeconds: Number(item.mediaDurationSeconds) } : {}),
         };
       }
       return base;
@@ -341,7 +346,14 @@ export async function handleCoinApiRequest(request: Request, env: Env, url: URL)
   }
 
   if (request.method === "POST" && path === "/api/submissions") {
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "submission-create", participant.participantHash, 5, 86_400);
+    const limiter = await checkAtomicRateLimit(
+      env.DB,
+      env.CACHE,
+      "submission-create",
+      participant.participantHash,
+      5,
+      86_400,
+    );
     if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
     return respond(async () => {
       let input: CreateSubmissionInput;

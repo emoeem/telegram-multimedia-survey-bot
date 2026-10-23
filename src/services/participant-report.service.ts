@@ -1,11 +1,6 @@
 import type { SurveyQuestion } from "../db/schema";
 
-export type ParticipantReportKind =
-  | "personal_profile"
-  | "assessment"
-  | "preference"
-  | "survey"
-  | "form";
+export type ParticipantReportKind = "personal_profile" | "assessment" | "preference" | "survey" | "form";
 
 export interface ParticipantReportClassification {
   kind: ParticipantReportKind;

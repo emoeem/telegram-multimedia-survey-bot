@@ -318,7 +318,11 @@ export function CategoriesPage() {
                         value={draft.sortOrder}
                         onChange={(event) => patchDraft(category.id, { sortOrder: Number(event.target.value) })}
                       />
-                      <button className="btn btn-sm flex-1" disabled={busyId !== null} onClick={() => void save(category)}>
+                      <button
+                        className="btn btn-sm flex-1"
+                        disabled={busyId !== null}
+                        onClick={() => void save(category)}
+                      >
                         <Save className="h-3.5 w-3.5" />
                         保存
                       </button>

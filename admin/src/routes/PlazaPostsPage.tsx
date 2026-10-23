@@ -79,22 +79,12 @@ function PostRow({
   const publishedComments = comments?.filter((comment) => comment.status === "published").length ?? 0;
 
   return (
-    <article
-      className={
-        post.status === "published"
-          ? "card"
-          : "card opacity-80"
-      }
-    >
+    <article className={post.status === "published" ? "card" : "card opacity-80"}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--color-ink)]">
             #{post.id} · {authorLabel(post)}
-            {post.kind === "trial" ? (
-              <span className="ml-2 badge badge-blue">
-                🎯 挑战晒卡
-              </span>
-            ) : null}
+            {post.kind === "trial" ? <span className="ml-2 badge badge-blue">🎯 挑战晒卡</span> : null}
           </p>
           <p className="text-xs text-[var(--color-muted)]">
             {formatDateTime(post.createdAt)} · {post.status === "published" ? "展示中" : "已下架"} · 💬{" "}
@@ -105,11 +95,7 @@ function PostRow({
           <button
             type="button"
             onClick={() => onToggle(post)}
-            className={
-              post.status === "published"
-                ? "btn btn-sm"
-                : "btn btn-primary btn-sm"
-            }
+            className={post.status === "published" ? "btn btn-sm" : "btn btn-primary btn-sm"}
           >
             {post.status === "published" ? "下架" : "恢复展示"}
           </button>
@@ -126,9 +112,7 @@ function PostRow({
           </DeleteWithUndo>
         </div>
       </div>
-      <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-ink)]">
-        {post.content}
-      </p>
+      <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--color-ink)]">{post.content}</p>
       {post.topic ? (
         <p className="mt-2">
           <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-muted)]">
@@ -153,11 +137,7 @@ function PostRow({
       ) : null}
 
       <div className="mt-3 border-t border-[var(--color-edge)] pt-2.5">
-        <button
-          type="button"
-          onClick={toggleComments}
-          className="text-xs font-semibold text-[var(--color-muted)]"
-        >
+        <button type="button" onClick={toggleComments} className="text-xs font-semibold text-[var(--color-muted)]">
           💬 评论（{publishedComments || post.commentCount}）
           <span className="ml-1">{commentsOpen ? "收起" : "展开"}</span>
         </button>
@@ -177,7 +157,9 @@ function PostRow({
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-[var(--color-ink)]">
                       #{comment.id} · {commentAuthorLabel(comment)}
-                      <span className="ml-2 font-normal text-[var(--color-muted-soft)]">{formatDateTime(comment.createdAt)}</span>
+                      <span className="ml-2 font-normal text-[var(--color-muted-soft)]">
+                        {formatDateTime(comment.createdAt)}
+                      </span>
                     </p>
                     <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[var(--color-muted)]">
                       {comment.content}
@@ -187,11 +169,7 @@ function PostRow({
                     type="button"
                     disabled={busyComment === comment.id}
                     onClick={() => void toggleComment(comment)}
-                    className={
-                      comment.status === "published"
-                        ? "btn btn-sm"
-                        : "btn btn-primary btn-sm"
-                    }
+                    className={comment.status === "published" ? "btn btn-sm" : "btn btn-primary btn-sm"}
                   >
                     {comment.status === "published" ? "下架" : "恢复"}
                   </button>
@@ -255,11 +233,7 @@ export function PlazaPostsPage() {
                   setView(option);
                   setPage(0);
                 }}
-                className={
-                  view === option
-                    ? "btn btn-sm"
-                    : "btn btn-sm"
-                }
+                className={view === option ? "btn btn-sm" : "btn btn-sm"}
               >
                 {option === "all" ? "全部" : "展示中"}
               </button>

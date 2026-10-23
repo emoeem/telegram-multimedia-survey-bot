@@ -268,7 +268,12 @@ export function SurveysPage() {
               onChange={(event) => setSearchInput(event.target.value)}
             />
           </div>
-          <select aria-label="问卷状态筛选" className="select" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <select
+            aria-label="问卷状态筛选"
+            className="select"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
             <option value="">全部状态</option>
             {STATUS_OPTIONS.map((value) => (
               <option key={value} value={value}>
@@ -276,12 +281,22 @@ export function SurveysPage() {
               </option>
             ))}
           </select>
-          <select aria-label="内容分级筛选" className="select" value={rating} onChange={(event) => setRating(event.target.value)}>
+          <select
+            aria-label="内容分级筛选"
+            className="select"
+            value={rating}
+            onChange={(event) => setRating(event.target.value)}
+          >
             <option value="">全部分级</option>
             <option value="all">全年龄</option>
             <option value="r18">18+</option>
           </select>
-          <select aria-label="分类筛选" className="select" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <select
+            aria-label="分类筛选"
+            className="select"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
             <option value="">全部分类</option>
             <option value="none">未分类</option>
             {categories.map((option) => (
@@ -335,18 +350,10 @@ export function SurveysPage() {
                     </option>
                   ))}
                 </select>
-                <button
-                  className="btn btn-sm"
-                  disabled={bulkBusy}
-                  onClick={() => void bulkRating("r18")}
-                >
+                <button className="btn btn-sm" disabled={bulkBusy} onClick={() => void bulkRating("r18")}>
                   标为 18+
                 </button>
-                <button
-                  className="btn btn-sm"
-                  disabled={bulkBusy}
-                  onClick={() => void bulkRating("all")}
-                >
+                <button className="btn btn-sm" disabled={bulkBusy} onClick={() => void bulkRating("all")}>
                   标为全年龄
                 </button>
                 <button className="btn btn-sm btn-quiet" onClick={() => setSelected([])}>
@@ -372,9 +379,7 @@ export function SurveysPage() {
                         type="checkbox"
                         aria-label="全选本页"
                         checked={selected.length > 0 && selected.length === data.items.length}
-                        onChange={(event) =>
-                          setSelected(event.target.checked ? data.items.map((item) => item.id) : [])
-                        }
+                        onChange={(event) => setSelected(event.target.checked ? data.items.map((item) => item.id) : [])}
                       />
                     </th>
                     <th className="text-sm font-semibold text-[var(--color-muted)]">标题</th>
@@ -404,9 +409,7 @@ export function SurveysPage() {
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelected((current) =>
-                            current.includes(item.id)
-                              ? current.filter((id) => id !== item.id)
-                              : [...current, item.id],
+                            current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id],
                           );
                         }}
                       >
@@ -495,11 +498,7 @@ export function SurveysPage() {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <StatusBadge status={item.status} />
-                      {item.contentRating === "r18" ? (
-                        <span className="badge badge-red">
-                          18+
-                        </span>
-                      ) : null}
+                      {item.contentRating === "r18" ? <span className="badge badge-red">18+</span> : null}
                     </span>
                   </div>
                   <div className="mt-2 text-sm text-[var(--color-muted)]">

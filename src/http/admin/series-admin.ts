@@ -50,7 +50,8 @@ export async function handleAdminSeriesWrite(
     if (!title) return fail(400, "validation_failed", "系列标题不能为空");
     let slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
     if (slug) {
-      if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug)) return fail(400, "validation_failed", "slug 只能是小写字母、数字与连字符");
+      if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug))
+        return fail(400, "validation_failed", "slug 只能是小写字母、数字与连字符");
       if (await slugExists(db, slug)) return fail(409, "slug_taken", "该 slug 已被使用");
     } else {
       do {

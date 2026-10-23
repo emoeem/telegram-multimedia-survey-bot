@@ -36,7 +36,14 @@ function mapInvite(row: CreatorInviteRow): CreatorInviteRecord {
 
 export async function createCreatorInvite(
   db: D1Database,
-  input: { code: string; days: number; maxUses: number; expiresAt: string; note: string | null; createdBy: number | null },
+  input: {
+    code: string;
+    days: number;
+    maxUses: number;
+    expiresAt: string;
+    note: string | null;
+    createdBy: number | null;
+  },
 ): Promise<CreatorInviteRecord> {
   const createdAt = new Date().toISOString();
   await db
@@ -77,8 +84,7 @@ export async function deleteCreatorInvite(db: D1Database, code: string): Promise
 }
 
 export type RedeemCreatorInviteResult =
-  | { ok: true; days: number }
-  | { ok: false; reason: "not_found" | "expired" | "exhausted" };
+  { ok: true; days: number } | { ok: false; reason: "not_found" | "expired" | "exhausted" };
 
 /**
  * 核销一次。原子性靠单条 UPDATE 的条件（次数 + 有效期），并发兑换只会有一个拿走名额；

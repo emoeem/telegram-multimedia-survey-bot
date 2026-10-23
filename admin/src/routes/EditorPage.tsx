@@ -17,7 +17,15 @@ import {
   Undo2,
 } from "lucide-react";
 import { useApi } from "../hooks";
-import { ApiError, apiSend, apiUpload, generateResultPool, type EditorData, type PublishResult, type WriteResult } from "../api";
+import {
+  ApiError,
+  apiSend,
+  apiUpload,
+  generateResultPool,
+  type EditorData,
+  type PublishResult,
+  type WriteResult,
+} from "../api";
 import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { QuestionCard } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
@@ -318,7 +326,8 @@ function EditableEditor({ data }: { data: EditorData }) {
 
   const publish = async () => {
     if (editor.dirty || publishing) return;
-    if (!(await confirm({ message: `确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` }))) return;
+    if (!(await confirm({ message: `确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` })))
+      return;
     setPublishing(true);
     setPublishError(null);
     try {
@@ -544,7 +553,9 @@ function EditableEditor({ data }: { data: EditorData }) {
                       onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
                       onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
                       onAttachQuestionMedia={(questionId, file) => attachQuestionMedia(questionId, file)}
-                      onRemoveQuestionMedia={(questionId, mediaAssetId) => removeQuestionMedia(questionId, mediaAssetId)}
+                      onRemoveQuestionMedia={(questionId, mediaAssetId) =>
+                        removeQuestionMedia(questionId, mediaAssetId)
+                      }
                       onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
                       onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
                       allQuestions={editor.questions}
@@ -915,9 +926,7 @@ function SurveySettingsPanel({
       <div className="settings-check">
         <div>
           <div className="q-label">18+ 内容</div>
-          <div className="q-help">
-            开启后问卷仅在目录/广场/展示区对已确认年龄的访问者可见，分享预览走安全卡片
-          </div>
+          <div className="q-help">开启后问卷仅在目录/广场/展示区对已确认年龄的访问者可见，分享预览走安全卡片</div>
         </div>
         <button
           type="button"
@@ -927,9 +936,7 @@ function SurveySettingsPanel({
           className="switch"
           data-on={meta.contentRating === "r18"}
           disabled={disabled}
-          onClick={() =>
-            onUpdate({ contentRating: meta.contentRating === "r18" ? "all" : "r18" })
-          }
+          onClick={() => onUpdate({ contentRating: meta.contentRating === "r18" ? "all" : "r18" })}
         />
       </div>
 
@@ -972,7 +979,6 @@ function SurveySettingsPanel({
     </div>
   );
 }
-
 
 /**
  * 结局收集生成器（P1）：把结果设计里的 resultTypes 一键变成抽卡奖池的
@@ -1143,7 +1149,9 @@ function ReportTemplateSetting({
   disabled: boolean;
   onChange: (value: string | null) => void;
 }) {
-  const { data } = useApi<{ templates: Array<{ id: string; name: string; isCustom?: boolean }> }>("/api/admin/report-templates");
+  const { data } = useApi<{ templates: Array<{ id: string; name: string; isCustom?: boolean }> }>(
+    "/api/admin/report-templates",
+  );
   return (
     <label className="settings-field">
       <span className="q-label">填写后报告模板</span>
@@ -1156,7 +1164,8 @@ function ReportTemplateSetting({
         <option value="">平台默认</option>
         {(data?.templates ?? []).map((template) => (
           <option key={template.id} value={template.id}>
-            {template.name}{template.isCustom ? " · 自定义" : ""}
+            {template.name}
+            {template.isCustom ? " · 自定义" : ""}
           </option>
         ))}
       </select>

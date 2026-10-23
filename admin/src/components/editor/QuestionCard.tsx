@@ -294,8 +294,15 @@ export function QuestionCard({
     const saved = (question.condition as { flagJumps?: unknown } | null)?.flagJumps;
     if (!Array.isArray(saved)) return [] as Array<{ flag: string; gte: number; targetQuestionId: number }>;
     return (saved as Array<Record<string, unknown>>)
-      .filter((jump) => typeof jump.flag === "string" && Number.isFinite(Number(jump.gte)) && Number(jump.targetQuestionId) > 0)
-      .map((jump) => ({ flag: String(jump.flag), gte: Number(jump.gte), targetQuestionId: Number(jump.targetQuestionId) }));
+      .filter(
+        (jump) =>
+          typeof jump.flag === "string" && Number.isFinite(Number(jump.gte)) && Number(jump.targetQuestionId) > 0,
+      )
+      .map((jump) => ({
+        flag: String(jump.flag),
+        gte: Number(jump.gte),
+        targetQuestionId: Number(jump.targetQuestionId),
+      }));
   })();
   // 未完成的行只存在于本地草稿（条件里只存完整行，避免发布图谱校验报错）。
   const [jumpDrafts, setJumpDrafts] = useState(flagJumps);
@@ -696,11 +703,7 @@ export function QuestionCard({
                       key={`flag-${option.id}-${ownFlagRules.get(option.id)?.flag ?? ""}`}
                       disabled={!editableNow}
                       onBlur={(event) =>
-                        commitFlagRule(
-                          option.id,
-                          event.target.value,
-                          ownFlagRules.get(option.id)?.score ?? 1,
-                        )
+                        commitFlagRule(option.id, event.target.value, ownFlagRules.get(option.id)?.score ?? 1)
                       }
                     />
                     <input
@@ -812,7 +815,8 @@ export function QuestionCard({
             <span className="q-label">
               剧情 Flag 跳转
               <span className="ml-1 q-help">
-                前面题目用「命中 Flag」累计的值达到门槛时，答题者直接跳到目标题——用于好感路线 / 真结局锁定。删光所有行即回到线性顺序。
+                前面题目用「命中 Flag」累计的值达到门槛时，答题者直接跳到目标题——用于好感路线 /
+                真结局锁定。删光所有行即回到线性顺序。
               </span>
             </span>
             {jumpDrafts.map((jump, jumpIndex) => (

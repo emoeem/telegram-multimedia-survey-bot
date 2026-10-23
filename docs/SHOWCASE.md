@@ -16,13 +16,13 @@
 
 调查结论见 [SHOWCASE_FRONTEND_RESEARCH_2026-10.md](./SHOWCASE_FRONTEND_RESEARCH_2026-10.md)。核心判断：
 
-| 需求 | 方案 | 增量体积 |
-| --- | --- | --- |
-| 左右滑动切换 | CSS `scroll-snap-type: x mandatory` + `scroll-snap-stop: always`，JS 只跟踪当前页 | 0 KB |
-| 背景联动 | 每人物一层背景，透明度 + 缓慢缩放交叉淡入 | 0 KB |
-| 立绘出入场 | 立绘随滚动容器移动，附加 `data-active` 驱动的缩放/淡出 | 0 KB |
-| Bottom Sheet | 手写 Pointer Events 拖拽关闭（沿用仓库既有的 Dialogs 手写风格） | 0 KB |
-| 无障碍 | Esc 关闭、body 滚动锁、`role="dialog"`、`aria-selected` 圆点 | 0 KB |
+| 需求         | 方案                                                                              | 增量体积 |
+| ------------ | --------------------------------------------------------------------------------- | -------- |
+| 左右滑动切换 | CSS `scroll-snap-type: x mandatory` + `scroll-snap-stop: always`，JS 只跟踪当前页 | 0 KB     |
+| 背景联动     | 每人物一层背景，透明度 + 缓慢缩放交叉淡入                                         | 0 KB     |
+| 立绘出入场   | 立绘随滚动容器移动，附加 `data-active` 驱动的缩放/淡出                            | 0 KB     |
+| Bottom Sheet | 手写 Pointer Events 拖拽关闭（沿用仓库既有的 Dialogs 手写风格）                   | 0 KB     |
+| 无障碍       | Esc 关闭、body 滚动锁、`role="dialog"`、`aria-selected` 圆点                      | 0 KB     |
 
 不引入 embla/swiper/vaul/motion 的原因：它们能解决的（循环、多档 snapPoints、物理弹簧）当前需求都不需要，而每个都会永久进入 Service Worker 的离线缓存（`admin/public/sw.js` 是 cache-first），并且会让 Telegram WebView 的首屏变慢。
 
@@ -89,23 +89,23 @@ showcase_items                         -- FeaturedItem：一个人物的作品
 
 公开（无需登录，`ReadOnly`）：
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/showcase?limit&offset` | 仅返回 `published=1` 的人物及其作品；不含 owner / 审计字段 |
-| GET | `/api/showcase/media/:assetId` | 立绘/背景/头像/封面。**只有被已发布人物引用时才可读**，下架即失效（授权边界是一次 JOIN） |
+| 方法 | 路径                           | 说明                                                                                     |
+| ---- | ------------------------------ | ---------------------------------------------------------------------------------------- |
+| GET  | `/api/showcase?limit&offset`   | 仅返回 `published=1` 的人物及其作品；不含 owner / 审计字段                               |
+| GET  | `/api/showcase/media/:assetId` | 立绘/背景/头像/封面。**只有被已发布人物引用时才可读**，下架即失效（授权边界是一次 JOIN） |
 
 后台（仅管理员）：
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/admin/showcase` | 列出全部人物（含草稿）与作品，带媒体 id 供表单回填 |
-| POST | `/api/admin/showcase/persons` | 新建 |
-| PATCH | `/api/admin/showcase/persons/:id` | 局部更新（只写传入字段，`null` 表示清空） |
-| DELETE | `/api/admin/showcase/persons/:id` | 删除人物（作品级联删除，图片保留在媒体库） |
-| POST | `/api/admin/showcase/persons/reorder` | `{ ids: [...] }` 拖拽/上下移动排序 |
-| POST | `/api/admin/showcase/persons/:id/items` | 新增作品 |
-| PATCH/DELETE | `/api/admin/showcase/items/:id` | 修改 / 删除作品 |
-| POST | `/api/admin/showcase/media` | 上传图片（multipart，≤8MB，仅 image/*），返回 `mediaAssetId` |
+| 方法         | 路径                                    | 说明                                                         |
+| ------------ | --------------------------------------- | ------------------------------------------------------------ |
+| GET          | `/api/admin/showcase`                   | 列出全部人物（含草稿）与作品，带媒体 id 供表单回填           |
+| POST         | `/api/admin/showcase/persons`           | 新建                                                         |
+| PATCH        | `/api/admin/showcase/persons/:id`       | 局部更新（只写传入字段，`null` 表示清空）                    |
+| DELETE       | `/api/admin/showcase/persons/:id`       | 删除人物（作品级联删除，图片保留在媒体库）                   |
+| POST         | `/api/admin/showcase/persons/reorder`   | `{ ids: [...] }` 拖拽/上下移动排序                           |
+| POST         | `/api/admin/showcase/persons/:id/items` | 新增作品                                                     |
+| PATCH/DELETE | `/api/admin/showcase/items/:id`         | 修改 / 删除作品                                              |
+| POST         | `/api/admin/showcase/media`             | 上传图片（multipart，≤8MB，仅 image/*），返回 `mediaAssetId` |
 
 所有写操作都写审计日志（`showcase.person.create/update/delete/reorder`、`showcase.item.create/update/delete`）。
 

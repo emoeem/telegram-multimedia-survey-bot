@@ -99,7 +99,11 @@ for (const viewport of VIEWPORTS) {
     };
   });
 
-  check(`${viewport.name} 侧栏固定在视口内`, layout.asideHeight === viewport.height, `aside=${layout.asideHeight} / 视口=${viewport.height}`);
+  check(
+    `${viewport.name} 侧栏固定在视口内`,
+    layout.asideHeight === viewport.height,
+    `aside=${layout.asideHeight} / 视口=${viewport.height}`,
+  );
   check(
     `${viewport.name} 图标轨下导航不需要滚动`,
     layout.navScroll - layout.navClient <= 1,

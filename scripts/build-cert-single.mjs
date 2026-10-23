@@ -40,10 +40,7 @@ let html = read("index.html");
 
 /* 1. 样式 */
 const css = readFileSync(join(certDir, "styles.css"), "utf8");
-html = html.replace(
-  /<link rel="stylesheet" href="styles\.css[^"]*"\s*\/?>/,
-  () => `<style>\n${css}\n</style>`,
-);
+html = html.replace(/<link rel="stylesheet" href="styles\.css[^"]*"\s*\/?>/, () => `<style>\n${css}\n</style>`);
 
 /* 2. 各脚本按原顺序内联，并把本地相对路径换成 CERT_SHARE_BASE */
 const scripts = [
@@ -58,17 +55,15 @@ for (const [file, prefix] of scripts) {
   const src = safeJs(read(file), file);
   const re = new RegExp(`<script src="${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^"]*"></script>`);
   if (!re.test(html)) throw new Error(`[cert-single] index.html 里找不到 ${file} 的 script 标签`);
-  html = html.replace(re, () =>
-    `<script>\n${prefix ? "/* 单文件离线版：分享链接指向线上地址 */\n" + prefix + "\n" : ""}${src}\n</script>`,
+  html = html.replace(
+    re,
+    () => `<script>\n${prefix ? "/* 单文件离线版：分享链接指向线上地址 */\n" + prefix + "\n" : ""}${src}\n</script>`,
   );
 }
 
 /* 3. 成人词库：作为惰性内联块，用户在页面上点了「18+」才真正执行 */
 const adult = safeJs(read("themes-adult.js"), "themes-adult.js");
-html = html.replace(
-  "</body>",
-  `<script type="text/plain" id="cert-adult-pack">\n${adult}\n</script>\n</body>`,
-);
+html = html.replace("</body>", `<script type="text/plain" id="cert-adult-pack">\n${adult}\n</script>\n</body>`);
 
 /* 4. 单文件自己就是「离线版」，把下载它自己的按钮拿掉，避免自我循环 */
 html = html.replace(/<a class="btn primary" href="cert\.html"[^>]*>[^<]*<\/a>\s*/, "");

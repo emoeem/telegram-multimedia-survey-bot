@@ -55,8 +55,12 @@ CREATE TABLE participant_hash_links (
 
 async function seed(db: D1Database) {
   await db.batch([
-    db.prepare("INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'completed', 1)"),
-    db.prepare("INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'in_progress', 0)"),
+    db.prepare(
+      "INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'completed', 1)",
+    ),
+    db.prepare(
+      "INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'in_progress', 0)",
+    ),
     db.prepare("INSERT INTO task_runs (participant_hash, status, score) VALUES ('web_a', 'completed', 620)"),
     db.prepare("INSERT INTO plaza_posts (user_id, status) VALUES (7, 'published')"),
     db.prepare("INSERT INTO plaza_post_comments (user_id, status) VALUES (7, 'published')"),
@@ -89,8 +93,12 @@ describe.skipIf(!sqliteD1Available)("achievement evaluation (real SQLite)", () =
   it("keeps every participant's badges separate", async () => {
     const db = createSqliteD1(SCHEMA);
     await db.batch([
-      db.prepare("INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'completed', 0)"),
-      db.prepare("INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('tg_700', 'completed', 0)"),
+      db.prepare(
+        "INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('web_a', 'completed', 0)",
+      ),
+      db.prepare(
+        "INSERT INTO survey_responses (participant_hash, status, gallery_published) VALUES ('tg_700', 'completed', 0)",
+      ),
     ]);
     const unlocked = await evaluateAchievements(db, { participantHash: "tg_700", userId: 700 });
     expect(unlocked.map((item) => item.code)).toEqual(["first_survey"]);

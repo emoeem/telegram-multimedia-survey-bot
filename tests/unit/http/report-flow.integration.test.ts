@@ -207,11 +207,7 @@ describe.skipIf(!sqliteD1Available)("participant report access (real schema)", (
     const token = await createReportAccessToken(env.WEBHOOK_SECRET, 42);
     const url = new URL(`https://worker.test/report/42.pdf?t=${token}`);
     const download = () =>
-      handleReportRequest(
-        new Request(url, { headers: { "x-participant-key": "integration-probe" } }),
-        env,
-        url,
-      );
+      handleReportRequest(new Request(url, { headers: { "x-participant-key": "integration-probe" } }), env, url);
 
     // 每日 3 次：前三次放行（哪怕命中缓存也算数）。
     for (let attempt = 1; attempt <= 3; attempt += 1) {

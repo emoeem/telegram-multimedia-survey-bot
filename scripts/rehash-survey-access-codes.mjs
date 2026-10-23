@@ -83,11 +83,7 @@ function legacySha256(code) {
 function hashV2(code) {
   const normalized = code.trim();
   const salt = randomBytes(16);
-  const digest = createHash("sha256")
-    .update(salt)
-    .update(PEPPER, "utf8")
-    .update(normalized, "utf8")
-    .digest("hex");
+  const digest = createHash("sha256").update(salt).update(PEPPER, "utf8").update(normalized, "utf8").digest("hex");
   return `sha256v2:${salt.toString("hex")}$${digest}`;
 }
 

@@ -101,7 +101,8 @@ function makeDb() {
         run: vi.fn(async () => ({ success: true, meta: { changes: 0 } })),
         first: vi.fn(async (): Promise<unknown> => {
           // 列表 stamp：count + 最近一次 updated_at。
-          if (sql.includes("COUNT(*) AS total")) return { total: LIST_ROWS.length, updatedAt: "2026-10-03T00:00:00.000Z" };
+          if (sql.includes("COUNT(*) AS total"))
+            return { total: LIST_ROWS.length, updatedAt: "2026-10-03T00:00:00.000Z" };
           // r18 计数（未确认年龄时提示「还有 N 份」）。
           if (sql.includes("content_rating = 'r18'")) return { n: 0 };
           return null;

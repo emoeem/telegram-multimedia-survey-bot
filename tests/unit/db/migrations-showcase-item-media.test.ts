@@ -62,7 +62,13 @@ describe.skipIf(!sqliteD1Available)("migration 0070 (showcase item media)", () =
       mediaAssetId: null,
     });
     db.prepare("UPDATE showcase_items SET media_asset_id = 903 WHERE id = 1").run();
-    expect((db.prepare("SELECT media_asset_id mediaAssetId FROM showcase_items WHERE id = 1").get() as { mediaAssetId: number }).mediaAssetId).toBe(903);
+    expect(
+      (
+        db.prepare("SELECT media_asset_id mediaAssetId FROM showcase_items WHERE id = 1").get() as {
+          mediaAssetId: number;
+        }
+      ).mediaAssetId,
+    ).toBe(903);
 
     // 表没有被重建：到 showcase_persons 的外键与级联仍然生效。
     expect(() =>

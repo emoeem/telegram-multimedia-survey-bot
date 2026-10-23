@@ -80,34 +80,28 @@ export async function createStreamDirectUpload(
   input: { maxDurationSeconds?: number; metaName: string },
 ): Promise<StreamUploadTicket> {
   if (!streamConfigured(env)) throw new Error("Stream 未配置");
-  const response = await fetch(
-    `${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/direct-upload`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.STREAM_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        maxDurationSeconds: Math.min(
-          Math.max(input.maxDurationSeconds ?? STREAM_MAX_DURATION_SECONDS, 1),
-          STREAM_MAX_DURATION_SECONDS,
-        ),
-        expiry: new Date(Date.now() + STREAM_TICKET_TTL_SECONDS * 1000).toISOString(),
-        meta: { name: input.metaName },
-      }),
+  const response = await fetch(`${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/direct-upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STREAM_API_TOKEN}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      maxDurationSeconds: Math.min(
+        Math.max(input.maxDurationSeconds ?? STREAM_MAX_DURATION_SECONDS, 1),
+        STREAM_MAX_DURATION_SECONDS,
+      ),
+      expiry: new Date(Date.now() + STREAM_TICKET_TTL_SECONDS * 1000).toISOString(),
+      meta: { name: input.metaName },
+    }),
+  });
   const payload = (await response.json().catch(() => null)) as {
     success?: boolean;
     errors?: Array<{ message?: string }>;
     result?: { uploadURL?: string; uid?: string };
   } | null;
   if (!response.ok || !payload?.success || !payload.result?.uploadURL || !payload.result.uid) {
-    throw apiError(
-      payload?.errors?.[0]?.message,
-      `Stream direct-upload 创建失败（HTTP ${response.status}）`,
-    );
+    throw apiError(payload?.errors?.[0]?.message, `Stream direct-upload 创建失败（HTTP ${response.status}）`);
   }
   return { videoUid: payload.result.uid, uploadUrl: payload.result.uploadURL };
 }
@@ -115,10 +109,9 @@ export async function createStreamDirectUpload(
 /** 查询视频状态。HTTP 404 → not_found（上传从未完成或已被清理）。 */
 export async function getStreamVideoStatus(env: StreamEnv, videoUid: string): Promise<StreamVideoStatus> {
   if (!streamConfigured(env)) throw new Error("Stream 未配置");
-  const response = await fetch(
-    `${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/${encodeURIComponent(videoUid)}`,
-    { headers: { Authorization: `Bearer ${env.STREAM_API_TOKEN}` } },
-  );
+  const response = await fetch(`${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/${encodeURIComponent(videoUid)}`, {
+    headers: { Authorization: `Bearer ${env.STREAM_API_TOKEN}` },
+  });
   if (response.status === 404) return { state: "not_found" };
   const payload = (await response.json().catch(() => null)) as {
     success?: boolean;
@@ -148,10 +141,10 @@ export async function getStreamVideoStatus(env: StreamEnv, videoUid: string): Pr
 /** 删除 Stream 视频（cron 对账、答卷删除时调用）。404 视为已删除。 */
 export async function deleteStreamVideo(env: StreamEnv, videoUid: string): Promise<void> {
   if (!streamConfigured(env)) throw new Error("Stream 未配置");
-  const response = await fetch(
-    `${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/${encodeURIComponent(videoUid)}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${env.STREAM_API_TOKEN}` } },
-  );
+  const response = await fetch(`${API_BASE}/accounts/${env.STREAM_ACCOUNT_ID}/stream/${encodeURIComponent(videoUid)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${env.STREAM_API_TOKEN}` },
+  });
   if (!response.ok && response.status !== 404) {
     throw new Error(`Stream 删除失败（HTTP ${response.status}）`);
   }

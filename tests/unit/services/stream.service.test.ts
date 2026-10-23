@@ -96,7 +96,10 @@ describe("getStreamVideoStatus", () => {
   });
 
   it("404 → not_found；转码中 → processing；errored → errored", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("nf", { status: 404 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nf", { status: 404 })),
+    );
     expect((await getStreamVideoStatus(ENV, "uid")).state).toBe("not_found");
 
     vi.stubGlobal(
@@ -115,7 +118,10 @@ describe("getStreamVideoStatus", () => {
 
 describe("deleteStreamVideo", () => {
   it("404 视为已删除，不抛错", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("nf", { status: 404 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nf", { status: 404 })),
+    );
     await expect(deleteStreamVideo(ENV, "uid")).resolves.toBeUndefined();
   });
 });

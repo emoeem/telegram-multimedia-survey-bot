@@ -16,19 +16,19 @@ walks it node by node:
 - **Label / knot:** a named entry point you can jump to.
 
 Keep **content** (lines, choices, conditions) separate from **direction** (which sprite, what
-transition). Direction can live as lightweight commands in the script, but the *rendering* of
+transition). Direction can live as lightweight commands in the script, but the _rendering_ of
 those commands belongs in the engine layer so writers don't touch code.
 
 ## 2. Route structures
 
-| Structure | Shape | Cost | Use |
-|-----------|-------|------|-----|
-| Linear | one path, no branches | low | Kinetic novels (story-first). |
-| Branch-and-merge | branches that reconverge | medium | Most VNs; choices vary the trip, not the destination. |
-| Gauntlet / routes | distinct routes per choice/character | high | Dating sims, route-based stories. |
-| Flag-driven (state) | endings/lines computed from accumulated flags | medium | Reactive stories; "affection" systems. |
+| Structure           | Shape                                         | Cost   | Use                                                   |
+| ------------------- | --------------------------------------------- | ------ | ----------------------------------------------------- |
+| Linear              | one path, no branches                         | low    | Kinetic novels (story-first).                         |
+| Branch-and-merge    | branches that reconverge                      | medium | Most VNs; choices vary the trip, not the destination. |
+| Gauntlet / routes   | distinct routes per choice/character          | high   | Dating sims, route-based stories.                     |
+| Flag-driven (state) | endings/lines computed from accumulated flags | medium | Reactive stories; "affection" systems.                |
 
-Branch-and-merge gives the *feeling* of choice at a fraction of the writing/art cost of fully
+Branch-and-merge gives the _feeling_ of choice at a fraction of the writing/art cost of fully
 distinct routes. Reserve full routes for the moments that matter (e.g. character endings).
 
 ## 3. Flags and variables

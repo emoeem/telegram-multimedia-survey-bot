@@ -1,319 +1,280 @@
 {
- "licence": "CC BY 4.0",
- "licence_url": "https://maou.audio/rule/",
- "artist": "森田交一 (Koichi Morita)",
- "credit": "魔王魂 (maou.audio)",
- "tracks": [
-  {
-   "file": "bgm-rain.mp3",
-   "source_title": "ヒーリング14 雨の音無し版",
-   "source_page": "https://maou.audio/bgm_healing14b/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing14b.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "癒し",
-    "ピアノ",
-    "静寂",
-    "夜明け"
-   ],
-   "used_for": "序章 · 雨夜频率 —— 午夜电台、雨窗、独处",
-   "source_meta": {
-    "duration": 155.3,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 115.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -18.6,
-    "lra": 3.9,
-    "true_peak_db": -4.8
-   },
-   "timbre": {
-    "centroid_hz": 610.9,
-    "onset_per_s": 0.47,
-    "mean_rms_db": -29.1
-   }
-  },
-  {
-   "file": "bgm-secret.mp3",
-   "source_title": "ピアノ19",
-   "source_page": "https://maou.audio/bgm_piano19/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_piano19.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "静か",
-    "勇気",
-    "感動"
-   ],
-   "used_for": "第一章 · 交换秘密的游戏 —— 试探着靠近的两个人",
-   "source_meta": {
-    "duration": 114.1,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 110.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -18.6,
-    "lra": 5.4,
-    "true_peak_db": -5.5
-   },
-   "timbre": {
-    "centroid_hz": 972.0,
-    "onset_per_s": 0.74,
-    "mean_rms_db": -28.7
-   }
-  },
-  {
-   "file": "bgm-distance.mp3",
-   "source_title": "ピアノ34",
-   "source_page": "https://maou.audio/bgm_piano34/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_piano34.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "郷愁",
-    "寂しい",
-    "穏やか"
-   ],
-   "used_for": "距离线 · 隔座的月光 —— 克制、留白、想触碰又收回手",
-   "source_meta": {
-    "duration": 234.6,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 115.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -19.3,
-    "lra": 4.3,
-    "true_peak_db": -7.7
-   },
-   "timbre": {
-    "centroid_hz": 671.7,
-    "onset_per_s": 0.58,
-    "mean_rms_db": -29.1
-   }
-  },
-  {
-   "file": "bgm-warm.mp3",
-   "source_title": "アコースティック50",
-   "source_page": "https://maou.audio/bgm_acoustic50/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_acoustic50.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "カフェ",
-    "ピアノ",
-    "のどか",
-    "ランチ"
-   ],
-   "used_for": "慢热线 · 台灯与手稿 —— 日常的暖意",
-   "source_meta": {
-    "duration": 138.4,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 115.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -18.8,
-    "lra": 1.4,
-    "true_peak_db": -7.6
-   },
-   "timbre": {
-    "centroid_hz": 1523.6,
-    "onset_per_s": 0.42,
-    "mean_rms_db": -27.0
-   }
-  },
-  {
-   "file": "bgm-deep.mp3",
-   "source_title": "ヒーリング10",
-   "source_page": "https://maou.audio/bgm_healing10/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing10.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "ピアノ",
-    "ハープ",
-    "回想",
-    "夢",
-    "癒し"
-   ],
-   "used_for": "深入线 · 凌晨三点的语音条 —— 交心、亲密、回忆",
-   "source_meta": {
-    "duration": 124.9,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 110.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -19.2,
-    "lra": 2.4,
-    "true_peak_db": -9.9
-   },
-   "timbre": {
-    "centroid_hz": 960.9,
-    "onset_per_s": 0.22,
-    "mean_rms_db": -30.0
-   }
-  },
-  {
-   "file": "bgm-playful.mp3",
-   "source_title": "アコースティック44",
-   "source_page": "https://maou.audio/bgm_acoustic44/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_acoustic44.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "かわいい",
-    "猫",
-    "犬",
-    "動物",
-    "3拍子"
-   ],
-   "used_for": "默契线 · 猫、外卖与碎碎念 —— 轻快俏皮",
-   "source_meta": {
-    "duration": 95.9,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 95.9,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -19.8,
-    "lra": 4.0,
-    "true_peak_db": -9.3
-   },
-   "timbre": {
-    "centroid_hz": 1519.2,
-    "onset_per_s": 0.8,
-    "mean_rms_db": -26.2
-   }
-  },
-  {
-   "file": "bgm-finale.mp3",
-   "source_title": "オーケストラ03",
-   "source_page": "https://maou.audio/bgm_orchestra03/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_orchestra03.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "オープニング",
-    "壮大",
-    "感動"
-   ],
-   "used_for": "尾声 · 天亮之前 —— 情绪释放与落幕",
-   "source_meta": {
-    "duration": 155.0,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 130.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -18.5,
-    "lra": 8.9,
-    "true_peak_db": -3.4
-   },
-   "timbre": {
-    "centroid_hz": 1566.2,
-    "onset_per_s": 0.31,
-    "mean_rms_db": -30.1
-   }
-  },
-  {
-   "file": "bgm-tension.mp3",
-   "source_title": "ヒーリング11",
-   "source_page": "https://maou.audio/bgm_healing11/",
-   "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing11.mp3",
-   "artist": "森田交一 (Koichi Morita)",
-   "credit": "魔王魂 (maou.audio)",
-   "licence": "CC BY 4.0",
-   "licence_url": "https://maou.audio/rule/",
-   "composer_tags": [
-    "暗い",
-    "悲しみ",
-    "挫折",
-    "雨"
-   ],
-   "used_for": "关键转折节点（byQuestion 覆盖）—— 冲突与停顿",
-   "source_meta": {
-    "duration": 323.0,
-    "kbps": 160,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "mastered": {
-    "duration": 125.0,
-    "kbps": 96,
-    "sample_rate": 44100,
-    "channels": 2
-   },
-   "loudness": {
-    "lufs": -20.2,
-    "lra": 8.5,
-    "true_peak_db": -4.6
-   },
-   "timbre": {
-    "centroid_hz": 1744.2,
-    "onset_per_s": 0.27,
-    "mean_rms_db": -30.0
-   }
-  }
- ]
+  "licence": "CC BY 4.0",
+  "licence_url": "https://maou.audio/rule/",
+  "artist": "森田交一 (Koichi Morita)",
+  "credit": "魔王魂 (maou.audio)",
+  "tracks": [
+    {
+      "file": "bgm-rain.mp3",
+      "source_title": "ヒーリング14 雨の音無し版",
+      "source_page": "https://maou.audio/bgm_healing14b/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing14b.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["癒し", "ピアノ", "静寂", "夜明け"],
+      "used_for": "序章 · 雨夜频率 —— 午夜电台、雨窗、独处",
+      "source_meta": {
+        "duration": 155.3,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 115.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -18.6,
+        "lra": 3.9,
+        "true_peak_db": -4.8
+      },
+      "timbre": {
+        "centroid_hz": 610.9,
+        "onset_per_s": 0.47,
+        "mean_rms_db": -29.1
+      }
+    },
+    {
+      "file": "bgm-secret.mp3",
+      "source_title": "ピアノ19",
+      "source_page": "https://maou.audio/bgm_piano19/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_piano19.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["静か", "勇気", "感動"],
+      "used_for": "第一章 · 交换秘密的游戏 —— 试探着靠近的两个人",
+      "source_meta": {
+        "duration": 114.1,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 110.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -18.6,
+        "lra": 5.4,
+        "true_peak_db": -5.5
+      },
+      "timbre": {
+        "centroid_hz": 972.0,
+        "onset_per_s": 0.74,
+        "mean_rms_db": -28.7
+      }
+    },
+    {
+      "file": "bgm-distance.mp3",
+      "source_title": "ピアノ34",
+      "source_page": "https://maou.audio/bgm_piano34/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_piano34.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["郷愁", "寂しい", "穏やか"],
+      "used_for": "距离线 · 隔座的月光 —— 克制、留白、想触碰又收回手",
+      "source_meta": {
+        "duration": 234.6,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 115.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -19.3,
+        "lra": 4.3,
+        "true_peak_db": -7.7
+      },
+      "timbre": {
+        "centroid_hz": 671.7,
+        "onset_per_s": 0.58,
+        "mean_rms_db": -29.1
+      }
+    },
+    {
+      "file": "bgm-warm.mp3",
+      "source_title": "アコースティック50",
+      "source_page": "https://maou.audio/bgm_acoustic50/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_acoustic50.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["カフェ", "ピアノ", "のどか", "ランチ"],
+      "used_for": "慢热线 · 台灯与手稿 —— 日常的暖意",
+      "source_meta": {
+        "duration": 138.4,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 115.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -18.8,
+        "lra": 1.4,
+        "true_peak_db": -7.6
+      },
+      "timbre": {
+        "centroid_hz": 1523.6,
+        "onset_per_s": 0.42,
+        "mean_rms_db": -27.0
+      }
+    },
+    {
+      "file": "bgm-deep.mp3",
+      "source_title": "ヒーリング10",
+      "source_page": "https://maou.audio/bgm_healing10/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing10.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["ピアノ", "ハープ", "回想", "夢", "癒し"],
+      "used_for": "深入线 · 凌晨三点的语音条 —— 交心、亲密、回忆",
+      "source_meta": {
+        "duration": 124.9,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 110.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -19.2,
+        "lra": 2.4,
+        "true_peak_db": -9.9
+      },
+      "timbre": {
+        "centroid_hz": 960.9,
+        "onset_per_s": 0.22,
+        "mean_rms_db": -30.0
+      }
+    },
+    {
+      "file": "bgm-playful.mp3",
+      "source_title": "アコースティック44",
+      "source_page": "https://maou.audio/bgm_acoustic44/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_acoustic44.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["かわいい", "猫", "犬", "動物", "3拍子"],
+      "used_for": "默契线 · 猫、外卖与碎碎念 —— 轻快俏皮",
+      "source_meta": {
+        "duration": 95.9,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 95.9,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -19.8,
+        "lra": 4.0,
+        "true_peak_db": -9.3
+      },
+      "timbre": {
+        "centroid_hz": 1519.2,
+        "onset_per_s": 0.8,
+        "mean_rms_db": -26.2
+      }
+    },
+    {
+      "file": "bgm-finale.mp3",
+      "source_title": "オーケストラ03",
+      "source_page": "https://maou.audio/bgm_orchestra03/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_orchestra03.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["オープニング", "壮大", "感動"],
+      "used_for": "尾声 · 天亮之前 —— 情绪释放与落幕",
+      "source_meta": {
+        "duration": 155.0,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 130.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -18.5,
+        "lra": 8.9,
+        "true_peak_db": -3.4
+      },
+      "timbre": {
+        "centroid_hz": 1566.2,
+        "onset_per_s": 0.31,
+        "mean_rms_db": -30.1
+      }
+    },
+    {
+      "file": "bgm-tension.mp3",
+      "source_title": "ヒーリング11",
+      "source_page": "https://maou.audio/bgm_healing11/",
+      "source_mp3": "https://maou.audio/sound/bgm/maou_bgm_healing11.mp3",
+      "artist": "森田交一 (Koichi Morita)",
+      "credit": "魔王魂 (maou.audio)",
+      "licence": "CC BY 4.0",
+      "licence_url": "https://maou.audio/rule/",
+      "composer_tags": ["暗い", "悲しみ", "挫折", "雨"],
+      "used_for": "关键转折节点（byQuestion 覆盖）—— 冲突与停顿",
+      "source_meta": {
+        "duration": 323.0,
+        "kbps": 160,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "mastered": {
+        "duration": 125.0,
+        "kbps": 96,
+        "sample_rate": 44100,
+        "channels": 2
+      },
+      "loudness": {
+        "lufs": -20.2,
+        "lra": 8.5,
+        "true_peak_db": -4.6
+      },
+      "timbre": {
+        "centroid_hz": 1744.2,
+        "onset_per_s": 0.27,
+        "mean_rms_db": -30.0
+      }
+    }
+  ]
 }

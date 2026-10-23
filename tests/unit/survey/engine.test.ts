@@ -130,7 +130,9 @@ describe("survey engine", () => {
 });
 
 describe("getNextQuestionAfterAnswers", () => {
-  const baseQuestion = (overrides: Partial<SurveyQuestion> & Pick<SurveyQuestion, "id" | "order" | "type" | "title">) => ({
+  const baseQuestion = (
+    overrides: Partial<SurveyQuestion> & Pick<SurveyQuestion, "id" | "order" | "type" | "title">,
+  ) => ({
     surveyId: 10,
     description: null,
     required: false,

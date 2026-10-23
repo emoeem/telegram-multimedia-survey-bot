@@ -15,6 +15,40 @@ import { fail } from "../api-response";
 type FlowQuestion = Awaited<ReturnType<typeof getSurveyFlow>>["questions"][number];
 
 /**
+ * Hard ceiling for one text answer, regardless of question configuration.
+ *
+ * `validationJson.max_length` is the authoring-time limit and is enforced
+ * first; this ceiling only exists so a question saved WITHOUT any validation
+ * still cannot absorb an arbitrarily large string (D1 rows die past 1MB and
+ * the free-tier row budget is shared platform-wide). Long enough for any
+ * real answer — a long_text essay at this length is ~50k Chinese characters.
+ */
+const MAX_TEXT_ANSWER_CHARS = 100_000;
+
+/**
+ * Reads the question's configured text-length window, tolerating malformed
+ * validation JSON (an authoring bug must not break answering).
+ */
+function textLengthWindow(question: FlowQuestion): { min: number; max: number } {
+  let min = 0;
+  let max = MAX_TEXT_ANSWER_CHARS;
+  if (question.validationJson) {
+    try {
+      const parsed = JSON.parse(question.validationJson) as { min_length?: unknown; max_length?: unknown };
+      if (typeof parsed.min_length === "number" && Number.isFinite(parsed.min_length) && parsed.min_length > 0) {
+        min = Math.floor(parsed.min_length);
+      }
+      if (typeof parsed.max_length === "number" && Number.isFinite(parsed.max_length) && parsed.max_length > 0) {
+        max = Math.min(Math.floor(parsed.max_length), MAX_TEXT_ANSWER_CHARS);
+      }
+    } catch {
+      // Unparseable validation falls back to the absolute ceiling only.
+    }
+  }
+  return { min, max };
+}
+
+/**
  * The writes one answer needs, or the error response that replaces them.
  *
  * Answers are *planned* rather than written here because the caller runs the
@@ -102,6 +136,14 @@ export async function planWebAnswer(
 
   if (type === "text" || type === "long_text") {
     if (typeof value !== "string") return { error: fail(400, "invalid_answer", "文本答案必须是字符串") };
+    const window = textLengthWindow(question);
+    const length = Array.from(value).length;
+    if (length > window.max) {
+      return { error: fail(400, "answer_too_long", `文本答案最多 ${window.max} 字`) };
+    }
+    if (length < window.min) {
+      return { error: fail(400, "answer_too_short", `文本答案至少 ${window.min} 字`) };
+    }
     return {
       statements: [
         upsertAnswerValueStatement(env.DB, {

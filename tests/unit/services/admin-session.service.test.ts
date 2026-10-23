@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createAdminSessionValue, resolveSessionSecret, verifyAdminSessionValue } from "../../../src/services/admin-session.service";
+import {
+  createAdminSessionValue,
+  resolveSessionSecret,
+  verifyAdminSessionValue,
+} from "../../../src/services/admin-session.service";
 
 const SECRET = "test-secret";
 
@@ -22,7 +26,9 @@ describe("admin browser session service", () => {
 
   it("prefers an independent admin session secret and keeps the legacy fallback", () => {
     expect(resolveSessionSecret({ WEBHOOK_SECRET: "webhook" })).toBe("webhook");
-    expect(resolveSessionSecret({ WEBHOOK_SECRET: "webhook", ADMIN_SESSION_SECRET: "admin-session" })).toBe("admin-session");
+    expect(resolveSessionSecret({ WEBHOOK_SECRET: "webhook", ADMIN_SESSION_SECRET: "admin-session" })).toBe(
+      "admin-session",
+    );
     expect(resolveSessionSecret({ WEBHOOK_SECRET: "webhook", ADMIN_SESSION_SECRET: "   " })).toBe("webhook");
   });
 });

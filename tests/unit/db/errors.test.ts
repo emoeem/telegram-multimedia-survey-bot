@@ -21,7 +21,9 @@ describe("database error classification", () => {
     // A non-quota D1 error (missing table, constraint violation, ...) must not
     // be reported as "daily quota exhausted".
     expect(isDatabaseCapacityError(new Error("D1_ERROR: no such table: nope"))).toBe(false);
-    expect(isDatabaseCapacityError(new Error("D1_ERROR: UNIQUE constraint failed: users.telegram_user_id"))).toBe(false);
+    expect(isDatabaseCapacityError(new Error("D1_ERROR: UNIQUE constraint failed: users.telegram_user_id"))).toBe(
+      false,
+    );
   });
 
   it("keeps plan advice out of the message end users see", () => {

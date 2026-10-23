@@ -105,10 +105,7 @@ function numeric(value: unknown): number {
  * `rows_read`/`rows_written`/`duration` to the collector. `bind` returns a
  * wrapped statement too, so chained bind calls stay instrumented.
  */
-function instrumentStatement(
-  statement: D1PreparedStatement,
-  collector: MetricsCollector,
-): D1PreparedStatement {
+function instrumentStatement(statement: D1PreparedStatement, collector: MetricsCollector): D1PreparedStatement {
   const wraps = new Map<PropertyKey, (...args: unknown[]) => Promise<unknown>>();
   wraps.set("all", async (...args: unknown[]) => {
     const result = await (statement.all as (...inner: unknown[]) => Promise<unknown>)(...args);
@@ -135,10 +132,7 @@ function instrumentStatement(
     get(target, property) {
       if (property === "bind") {
         return (...args: unknown[]) =>
-          instrumentStatement(
-            (target.bind as (...inner: unknown[]) => D1PreparedStatement)(...args),
-            collector,
-          );
+          instrumentStatement((target.bind as (...inner: unknown[]) => D1PreparedStatement)(...args), collector);
       }
       const wrapped = wraps.get(property);
       if (wrapped) return wrapped;
@@ -154,10 +148,7 @@ export function instrumentDatabase(db: D1Database | undefined, collector?: Metri
     get(target, property) {
       if (property === "prepare") {
         return (query: string) =>
-          instrumentStatement(
-            (target.prepare as (sql: string) => D1PreparedStatement)(query),
-            collector,
-          );
+          instrumentStatement((target.prepare as (sql: string) => D1PreparedStatement)(query), collector);
       }
       if (property === "batch") {
         return async (statements: D1PreparedStatement[]) => {
@@ -177,10 +168,7 @@ export function instrumentDatabase(db: D1Database | undefined, collector?: Metri
   });
 }
 
-export function instrumentKv(
-  kv: KVNamespace | undefined,
-  collector?: MetricsCollector,
-): KVNamespace | undefined {
+export function instrumentKv(kv: KVNamespace | undefined, collector?: MetricsCollector): KVNamespace | undefined {
   if (!kv || !collector) return kv;
   return new Proxy(kv, {
     get(target, property) {
@@ -280,6 +268,66 @@ export function buildRequestMetrics(input: {
   };
 }
 
+/**
+ * Per-request budget anomaly thresholds.
+ *
+ * The failure mode this module exists for is "one request silently read the
+ * shared free-tier D1 budget dry". The regular `request_metrics` line records
+ * it, but nothing was watching: a runaway query surfaced only as a surprise
+ * "account limited" days later. These thresholds flag a SINGLE request whose
+ * counters are far outside anything a legitimate interaction costs; the
+ * emitted ERROR line is what a Cloudflare Logpush/worker tail alert filters
+ * on. Numbers are hard orders of magnitude, not tuning knobs: normal heavy
+ * endpoints (report generation, editor saves) stay three times below them.
+ */
+const BUDGET_ANOMALY_THRESHOLDS = {
+  d1RowsRead: 50_000,
+  d1RowsWritten: 5_000,
+  kvOps: 5_000,
+  durationMs: 30_000,
+} as const;
+
+export interface BudgetAnomaly {
+  kind: "budget_anomaly";
+  requestId: string;
+  route: string;
+  method: string;
+  status: number;
+  reasons: string[];
+  snapshot: QueryMetricsSnapshot;
+}
+
+/** Returns the thresholds a snapshot breaches, or null when it is inside all of them. */
+export function findBudgetAnomaly(input: {
+  requestId: string;
+  route: string;
+  method: string;
+  status: number;
+  snapshot: QueryMetricsSnapshot;
+}): BudgetAnomaly | null {
+  const { snapshot } = input;
+  const reasons: string[] = [];
+  if (snapshot.d1RowsRead >= BUDGET_ANOMALY_THRESHOLDS.d1RowsRead) {
+    reasons.push(`d1RowsRead=${snapshot.d1RowsRead}>=${BUDGET_ANOMALY_THRESHOLDS.d1RowsRead}`);
+  }
+  if (snapshot.d1RowsWritten >= BUDGET_ANOMALY_THRESHOLDS.d1RowsWritten) {
+    reasons.push(`d1RowsWritten=${snapshot.d1RowsWritten}>=${BUDGET_ANOMALY_THRESHOLDS.d1RowsWritten}`);
+  }
+  if (snapshot.kvOps >= BUDGET_ANOMALY_THRESHOLDS.kvOps) {
+    reasons.push(`kvOps=${snapshot.kvOps}>=${BUDGET_ANOMALY_THRESHOLDS.kvOps}`);
+  }
+  if (reasons.length === 0) return null;
+  return {
+    kind: "budget_anomaly",
+    requestId: input.requestId,
+    route: input.route,
+    method: input.method,
+    status: input.status,
+    reasons,
+    snapshot,
+  };
+}
+
 /** Explicit marker used by the audit pipeline to keep secrets out of logs. */
 export function redactForLog(value: string): string {
   if (value.length <= 4) return "***";
@@ -297,10 +345,7 @@ export interface ObservabilityEnvLike {
  * Returns a shallow copy of `env` whose bindings are instrumented. Bindings
  * that are absent or unsupported are passed through unchanged.
  */
-export function instrumentEnv<T extends ObservabilityEnvLike>(
-  env: T,
-  collector: MetricsCollector,
-): T {
+export function instrumentEnv<T extends ObservabilityEnvLike>(env: T, collector: MetricsCollector): T {
   const instrumented = {
     ...env,
     DB: instrumentDatabase(env.DB, collector),
@@ -372,6 +417,7 @@ export async function withRequestMetrics<TEnv extends ObservabilityEnvLike>(
     // and would otherwise emit one log line per JS/CSS/image byte served.
     const skipLog = status < 400 && isStaticAssetPath(url.pathname);
     if (!skipLog) {
+      const snapshot = collector.snapshot();
       console.log(
         "request_metrics",
         JSON.stringify(
@@ -381,10 +427,14 @@ export async function withRequestMetrics<TEnv extends ObservabilityEnvLike>(
             method: request.method,
             status,
             durationMs: Date.now() - startedAt,
-            snapshot: collector.snapshot(),
+            snapshot,
           }),
         ),
       );
+      // 单请求预算异常:普通 request_metrics 行会被日志体量淹没,这条单独的
+      // ERROR 行是给告警过滤器(Cloudflare worker tail / Logpush)抓的。
+      const anomaly = findBudgetAnomaly({ requestId, route, method: request.method, status, snapshot });
+      if (anomaly) console.error("budget_anomaly", JSON.stringify(anomaly));
     }
   }
 }
@@ -439,6 +489,15 @@ export async function withQueueMetrics<TEnv extends ObservabilityEnvLike>(
       queueMessages: snapshot.queueMessages,
     };
     console.log("queue_metrics", JSON.stringify(event));
+    // 队列批是导出/渲染这类重活的家:预算异常同样可能从这里发生。
+    const anomaly = findBudgetAnomaly({
+      requestId: `queue:${batch.queue}:${batch.messages.length}`,
+      route: `queue/${batch.queue}`,
+      method: "QUEUE",
+      status: ok ? 200 : 500,
+      snapshot,
+    });
+    if (anomaly) console.error("budget_anomaly", JSON.stringify(anomaly));
   }
 }
 

@@ -91,7 +91,11 @@ describe("published flow cache (v2, stamp validated from payload)", () => {
   it("falls back to the database and rewrites the cache when the stamp is stale", async () => {
     const staleFlow = { questions: [{ ...QUESTION_ROW, title: "旧题目", options: [] }] };
     const { cache, store } = makeCache({
-      [publishedFlowCacheKey(1)]: JSON.stringify({ version: 4, updatedAt: "2026-10-14T00:00:00.000Z", flow: staleFlow }),
+      [publishedFlowCacheKey(1)]: JSON.stringify({
+        version: 4,
+        updatedAt: "2026-10-14T00:00:00.000Z",
+        flow: staleFlow,
+      }),
     });
     const { db, batchCalls } = makeDb();
     const env = makeEnv(db, cache);

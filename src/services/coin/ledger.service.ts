@@ -77,7 +77,11 @@ export async function getCoinAccount(db: D1Database, participantHash: string): P
   return row ? rowToAccount(row) : null;
 }
 
-export async function getCoinAccountOrCreate(db: D1Database, participantHash: string, userId: number | null): Promise<CoinAccount> {
+export async function getCoinAccountOrCreate(
+  db: D1Database,
+  participantHash: string,
+  userId: number | null,
+): Promise<CoinAccount> {
   await db
     .prepare(
       `INSERT INTO coin_accounts (participant_hash, user_id, balance, total_earned, total_spent, created_at, updated_at)
@@ -216,9 +220,7 @@ export function describeSpendStatements(input: LedgerEntryInput, now: string): P
  */
 export function describeAdjustStatements(input: LedgerEntryInput, now: string): PreparedStatement[] {
   assertAmount(input.amount);
-  const guarded = input.amount < 0
-    ? `AND balance >= ${Math.abs(input.amount)}`
-    : "";
+  const guarded = input.amount < 0 ? `AND balance >= ${Math.abs(input.amount)}` : "";
   return [
     {
       sql: `INSERT INTO coin_accounts (participant_hash, user_id, balance, total_earned, total_spent, created_at, updated_at)
@@ -261,7 +263,9 @@ export function describeAdjustStatements(input: LedgerEntryInput, now: string): 
 }
 
 function bindAll(db: D1Database, prepared: PreparedStatement[]): D1PreparedStatement[] {
-  return prepared.map((statement) => statement.sql ? db.prepare(statement.sql).bind(...statement.params) : null as never);
+  return prepared.map((statement) =>
+    statement.sql ? db.prepare(statement.sql).bind(...statement.params) : (null as never),
+  );
 }
 
 /**

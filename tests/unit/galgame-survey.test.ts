@@ -17,7 +17,12 @@ const survey = content.survey as {
   settings: {
     theme: {
       background: { image: string; alt?: string };
-      audio: { url: string; byPage: Record<string, string>; byQuestion: Record<string, string>; sfx?: Record<string, string> };
+      audio: {
+        url: string;
+        byPage: Record<string, string>;
+        byQuestion: Record<string, string>;
+        sfx?: Record<string, string>;
+      };
       sprite: {
         name: string;
         default: string;
@@ -73,8 +78,7 @@ function sizeOfSync(path: string): { width: number; height: number } {
     }
     const marker = buf[offset + 1]!;
     const length = word(offset + 2);
-    const isSof =
-      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
     if (isSof) {
       return { height: word(offset + 5), width: word(offset + 7) };
     }
@@ -98,8 +102,7 @@ function webpSizeSync(path: string): { width: number; height: number; hasAlpha: 
   if (!asciiAt(buf, 0, "RIFF")) throw new Error(`不是 RIFF/WebP: ${path}`);
   if (!asciiAt(buf, 8, "WEBP")) throw new Error(`不是 RIFF/WebP: ${path}`);
   if (!asciiAt(buf, 12, "VP8X")) throw new Error(`缺少 VP8X 段: ${path}`);
-  const u24 = (at: number): number =>
-    (buf[at] ?? 0) | ((buf[at + 1] ?? 0) << 8) | ((buf[at + 2] ?? 0) << 16);
+  const u24 = (at: number): number => (buf[at] ?? 0) | ((buf[at + 1] ?? 0) << 8) | ((buf[at + 2] ?? 0) << 16);
   return { width: u24(24) + 1, height: u24(27) + 1, hasAlpha: ((buf[20] ?? 0) & 0x10) !== 0 };
 }
 
@@ -316,9 +319,7 @@ describe("晚安，苏晚棠 问卷定义（scripts/galgame/galgame-survey.json�
 
     const shapes: Array<{ label: string; own: RegExp; answers: Record<string, string> }> = [];
     // order ≤ 8 = 四条线共用的开场；order ≥ 57 = 共用的尾声。
-    const sharedIds = new Set(
-      questions.filter((q) => q.order <= 8 || q.order >= 57).map((q) => q.id),
-    );
+    const sharedIds = new Set(questions.filter((q) => q.order <= 8 || q.order >= 57).map((q) => q.id));
     for (const [start, gateValue] of Object.entries(gates)) {
       const spec = consents[start]!;
       const wrap = wraps[start]!;
@@ -334,10 +335,7 @@ describe("晚安，苏晚棠 问卷定义（scripts/galgame/galgame-survey.json�
       // 不应出现别的线族的节点。
       const foreign = visited.filter((id) => !shape.own.test(id) && !sharedIds.has(id));
       expect(foreign, `${shape.label} 串进了别的线族`).toEqual([]);
-      const chars = visited.reduce(
-        (sum, id) => sum + (questions[indexById.get(id)!]?.description ?? "").length,
-        0,
-      );
+      const chars = visited.reduce((sum, id) => sum + (questions[indexById.get(id)!]?.description ?? "").length, 0);
       const minutes = chars / 250;
       expect(minutes, `${shape.label}: ${chars} 字 ≈ ${minutes.toFixed(1)} 分钟`).toBeGreaterThanOrEqual(15);
       expect(minutes, `${shape.label}: ${chars} 字 ≈ ${minutes.toFixed(1)} 分钟`).toBeLessThanOrEqual(25);
@@ -346,7 +344,10 @@ describe("晚安，苏晚棠 问卷定义（scripts/galgame/galgame-survey.json�
 
   it("四条路线从 GATE 可达尾声；同意节点的「停」跳过亲密夜但保留失联危机", () => {
     const routeStarts = ["n-d1", "n-a1", "n-b1", "n-cg1"];
-    const consents: Record<string, { q: string; stopOption: string; intimate: string; crisis: string; ending: string }> = {
+    const consents: Record<
+      string,
+      { q: string; stopOption: string; intimate: string; crisis: string; ending: string }
+    > = {
       "n-d1": { q: "q-d6", stopOption: "o-d6-c", intimate: "n-d7", crisis: "n-d9", ending: "n-d11" },
       "n-a1": { q: "q-a6", stopOption: "o-a6-c", intimate: "n-a7", crisis: "n-a9", ending: "n-a11" },
       "n-b1": { q: "q-b6", stopOption: "o-b6-c", intimate: "n-b7", crisis: "n-b9", ending: "n-b11" },
@@ -422,7 +423,12 @@ describe("晚安，苏晚棠 问卷定义（scripts/galgame/galgame-survey.json�
     for (const question of questions) {
       if (question.type === "yes_no") expect(question.options).toHaveLength(2);
       if (question.type === "single") expect(question.options).toHaveLength(4);
-      if (question.type !== "note" && question.type !== "long_text" && question.type !== "single" && question.type !== "yes_no") {
+      if (
+        question.type !== "note" &&
+        question.type !== "long_text" &&
+        question.type !== "single" &&
+        question.type !== "yes_no"
+      ) {
         throw new Error(`未预期的题型 ${question.id}: ${question.type}`);
       }
     }

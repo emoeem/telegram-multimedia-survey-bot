@@ -52,6 +52,9 @@ export interface CoinEconomyConfig {
     maxPerDay: number;
     maxTitleLength: number;
     maxTextLength: number;
+    /** 投稿简介（description）的字数上限。服务端硬校验：它曾是与
+     * title/contentText 并列却唯一没有上限的入库字段。 */
+    maxDescriptionLength: number;
     maxImageBytes: number;
     maxAudioBytes: number;
   };
@@ -104,6 +107,7 @@ export const COIN_CONFIG_DEFAULTS: CoinEconomyConfig = {
     maxPerDay: 3,
     maxTitleLength: 80,
     maxTextLength: 5000,
+    maxDescriptionLength: 300,
     maxImageBytes: 5 * 1024 * 1024,
     maxAudioBytes: 8 * 1024 * 1024,
   },
@@ -118,7 +122,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** 深合并覆盖项到默认值（只合并普通对象，数组整体替换）。 */
 function mergeOver<T>(base: T, override: unknown): T {
   if (!isPlainObject(base) || !isPlainObject(override)) {
-    return (override === undefined ? base : (override as T));
+    return override === undefined ? base : (override as T);
   }
   const result: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(override)) {

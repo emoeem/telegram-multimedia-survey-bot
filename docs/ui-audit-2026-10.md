@@ -6,15 +6,15 @@
 
 ## 2. 浏览器走查
 
-| 页面 | 1440×900 | 390×844 | 390×764 WebView | Light/Dark |
-|---|---|---|---|---|
-| /admin 登录/主页面 | ✓ | ✓ | — | ✓ |
-| /s/101 | ✓ | ✓ | ✓ | ✓ |
-| /plaza | ✓ | ✓ | ✓ | ✓ |
-| /showcase | ✓ | ✓ | ✓ | ✓ |
-| /trial | ✓ | ✓ | ✓ | ✓ |
-| /me | ✓ | ✓ | ✓ | ✓ |
-| /auth | ✓ | ✓ | ✓ | ✓ |
+| 页面               | 1440×900 | 390×844 | 390×764 WebView | Light/Dark |
+| ------------------ | -------- | ------- | --------------- | ---------- |
+| /admin 登录/主页面 | ✓        | ✓       | —               | ✓          |
+| /s/101             | ✓        | ✓       | ✓               | ✓          |
+| /plaza             | ✓        | ✓       | ✓               | ✓          |
+| /showcase          | ✓        | ✓       | ✓               | ✓          |
+| /trial             | ✓        | ✓       | ✓               | ✓          |
+| /me                | ✓        | ✓       | ✓               | ✓          |
+| /auth              | ✓        | ✓       | ✓               | ✓          |
 
 检查项包括横向溢出、fixed 元素、短 WebView 高度、touch target、字体、loading/error/empty、主题、meta 信息及控制台错误。
 
@@ -29,6 +29,7 @@
 发现 Showcase 34–36px 图标控件、6px 分页点命中区、Trial `h-8 w-8` 返回键、Plaza 40px 控件、Auth 输入框不足 44px。
 
 **修复：**
+
 - 公共 icon button 命中区统一至少 44px；
 - Showcase dot 保留 6px 视觉点，但外层 hit area 为 44px；
 - CTA 最小高度 44px；
@@ -56,41 +57,41 @@
 
 ## 3. UI/UX 实施
 
-| 改动 | 状态 | 原因 |
-|---|---|---|
-| Public icon button 44px | ✅ | 移动端触控 |
-| Showcase dot 44px hit area | ✅ | 保留视觉、扩大命中 |
-| Bottom tab ≥44px / 12px | ✅ | 移动端可用性 |
-| Auth input ≥44px | ✅ | 触控输入 |
-| Report admin print CSS | ✅ | 打印/归档 |
-| Public OG metadata | ✅ | 分享预览 |
-| Public visual QA 路由 | ✅ | 消除漏测 |
-| AsyncBoundary 全量重构 | ⏸ | 现有 loading/error/ErrorBoundary 已覆盖主要流程 |
-| ECharts 重构 | ⏸ | 已动态 import |
-| i18n | ⏸ | 超过半天级工程量 |
-| PWA | ✅ 已有 | manifest + service worker 已存在 |
+| 改动                       | 状态    | 原因                                            |
+| -------------------------- | ------- | ----------------------------------------------- |
+| Public icon button 44px    | ✅      | 移动端触控                                      |
+| Showcase dot 44px hit area | ✅      | 保留视觉、扩大命中                              |
+| Bottom tab ≥44px / 12px    | ✅      | 移动端可用性                                    |
+| Auth input ≥44px           | ✅      | 触控输入                                        |
+| Report admin print CSS     | ✅      | 打印/归档                                       |
+| Public OG metadata         | ✅      | 分享预览                                        |
+| Public visual QA 路由      | ✅      | 消除漏测                                        |
+| AsyncBoundary 全量重构     | ⏸       | 现有 loading/error/ErrorBoundary 已覆盖主要流程 |
+| ECharts 重构               | ⏸       | 已动态 import                                   |
+| i18n                       | ⏸       | 超过半天级工程量                                |
+| PWA                        | ✅ 已有 | manifest + service worker 已存在                |
 
 ## 4. 功能缺口审计
 
-| 项目 | 状态 | 结论 |
-|---|---|---|
-| 删除/归档二次确认 | ✅ | 已有 Dialog/confirm 保护 |
-| 删除/归档统一 Undo | ⚠️ | 尚无统一 toast Undo；建议 soft-delete + Undo |
-| 问卷列表分页/搜索 | ✅ | Admin 已有 |
-| 广场长列表 | ⚠️ | 已有加载/分页能力，需继续压测大数据量 |
-| Showcase 长列表 | ⚠️ | 有数量上限，缺真正 cursor pagination |
-| 报告历史分页 | ✅ | 已有 |
-| 表单前端校验 | ⚠️ | 核心表单有校验，错误码文案尚未完全统一 |
-| 请求失败重试 | ⚠️ | 主数据路径已有；Auth 缺显式 Retry CTA |
-| 统一成功 Toast | ✅ | 已有统一反馈机制 |
-| i18n | ❌ | 中文硬编码为主，建议 message catalog |
-| aria-label | ⚠️ | 关键 icon controls 较完整，但无自动门禁 |
-| 键盘导航 | ⚠️ | 原生控件可用，复杂拖拽/编辑器需 keyboard fallback |
-| 焦点管理 | ⚠️ | Dialog/抽屉/fixed footer 需专项审查 |
-| 打印样式 | ✅ | 报告模板已有 print 测试；Admin Reports 本轮补齐 |
-| PWA manifest/SW | ✅ | 已存在 |
-| 离线编辑 | ❌ | 需要冲突合并策略，不适合本轮 |
-| 离线自动保存队列 | ❌ | 涉及数据一致性，不适合本轮 |
+| 项目               | 状态 | 结论                                              |
+| ------------------ | ---- | ------------------------------------------------- |
+| 删除/归档二次确认  | ✅   | 已有 Dialog/confirm 保护                          |
+| 删除/归档统一 Undo | ⚠️   | 尚无统一 toast Undo；建议 soft-delete + Undo      |
+| 问卷列表分页/搜索  | ✅   | Admin 已有                                        |
+| 广场长列表         | ⚠️   | 已有加载/分页能力，需继续压测大数据量             |
+| Showcase 长列表    | ⚠️   | 有数量上限，缺真正 cursor pagination              |
+| 报告历史分页       | ✅   | 已有                                              |
+| 表单前端校验       | ⚠️   | 核心表单有校验，错误码文案尚未完全统一            |
+| 请求失败重试       | ⚠️   | 主数据路径已有；Auth 缺显式 Retry CTA             |
+| 统一成功 Toast     | ✅   | 已有统一反馈机制                                  |
+| i18n               | ❌   | 中文硬编码为主，建议 message catalog              |
+| aria-label         | ⚠️   | 关键 icon controls 较完整，但无自动门禁           |
+| 键盘导航           | ⚠️   | 原生控件可用，复杂拖拽/编辑器需 keyboard fallback |
+| 焦点管理           | ⚠️   | Dialog/抽屉/fixed footer 需专项审查               |
+| 打印样式           | ✅   | 报告模板已有 print 测试；Admin Reports 本轮补齐   |
+| PWA manifest/SW    | ✅   | 已存在                                            |
+| 离线编辑           | ❌   | 需要冲突合并策略，不适合本轮                      |
+| 离线自动保存队列   | ❌   | 涉及数据一致性，不适合本轮                        |
 
 本轮没有直接实现大型 ❌ 项：现有 ❌ 均不满足“半天内、高价值、低风险”条件。
 
@@ -126,12 +127,12 @@
 
 共更新 **132 个 snapshot**，原因按测试组归类如下：
 
-| 测试组 | 更新数 | 更新原因 |
-|---|---:|---|
-| `admin.spec.ts-snapshots` | 80 | Admin SPA 当前实现已明显领先旧 golden；移动端布局、桌面信息层级、深色主题和本轮触控/打印相关 UI 均以当前实现为新基线 |
-| `report.spec.ts-snapshots` | 14 | 报告 fixture 与现有报告渲染已经发生设计演进；本轮人工抽查 classic/mobile 与 print A4，差异符合当前实现 |
-| `survey.spec.ts-snapshots` | 36 | Survey 当前 UI 的间距、按钮命中区和输入区域与旧 golden 不一致；人工抽查 101 移动端后确认新基线稳定 |
-| `trial.spec.ts-snapshots` | 2 | Trial 页面当前卡片层级/间距与旧 golden 不一致，人工抽查移动端确认变化为当前设计 |
+| 测试组                     | 更新数 | 更新原因                                                                                                             |
+| -------------------------- | -----: | -------------------------------------------------------------------------------------------------------------------- |
+| `admin.spec.ts-snapshots`  |     80 | Admin SPA 当前实现已明显领先旧 golden；移动端布局、桌面信息层级、深色主题和本轮触控/打印相关 UI 均以当前实现为新基线 |
+| `report.spec.ts-snapshots` |     14 | 报告 fixture 与现有报告渲染已经发生设计演进；本轮人工抽查 classic/mobile 与 print A4，差异符合当前实现               |
+| `survey.spec.ts-snapshots` |     36 | Survey 当前 UI 的间距、按钮命中区和输入区域与旧 golden 不一致；人工抽查 101 移动端后确认新基线稳定                   |
+| `trial.spec.ts-snapshots`  |      2 | Trial 页面当前卡片层级/间距与旧 golden 不一致，人工抽查移动端确认变化为当前设计                                      |
 
 重点人工抽查：Admin Surveys light mobile、Admin Surveys dark desktop、Survey 101 mobile、Report classic mobile、Trial mobile；均确认差异是当前实现的稳定视觉结果，没有发现异常空白、溢出或单主题破坏。Playwright 的 screenshot assertion 会等待截图稳定后再比较，因此更新后的再次回归结果更可靠。citeturn6search5
 

@@ -103,7 +103,11 @@ export function validateSurveyGraph(nodes: SurveyGraphNode[]): SurveyGraphIssue[
       for (const rule of condition.rules) {
         const optionId = Number(rule.optionId);
         if (!optionIds.has(optionId)) {
-          issues.push({ level: "error", questionId: node.id, message: `跳转规则引用了本题不存在的选项 #${rule.optionId ?? "?"}` });
+          issues.push({
+            level: "error",
+            questionId: node.id,
+            message: `跳转规则引用了本题不存在的选项 #${rule.optionId ?? "?"}`,
+          });
           continue;
         }
         coveredOptions.add(optionId);
@@ -114,7 +118,11 @@ export function validateSurveyGraph(nodes: SurveyGraphNode[]): SurveyGraphIssue[
     } else if (condition.kind === "option_equals" && condition.optionId !== undefined) {
       const optionId = Number(condition.optionId);
       if (!optionIds.has(optionId)) {
-        issues.push({ level: "error", questionId: node.id, message: `跳转规则引用了本题不存在的选项 #${condition.optionId ?? "?"}` });
+        issues.push({
+          level: "error",
+          questionId: node.id,
+          message: `跳转规则引用了本题不存在的选项 #${condition.optionId ?? "?"}`,
+        });
       } else if (node.skipToQuestionId != null) {
         coveredOptions.add(optionId);
         const before = issues.length;
@@ -149,7 +157,11 @@ export function validateSurveyGraph(nodes: SurveyGraphNode[]): SurveyGraphIssue[
     } else if (Array.isArray(condition.answerRules)) {
       for (const rule of condition.answerRules) {
         if (!exists(rule.questionId)) {
-          issues.push({ level: "error", questionId: node.id, message: `answerRules 引用了不存在的题目 #${rule.questionId ?? "?"}` });
+          issues.push({
+            level: "error",
+            questionId: node.id,
+            message: `answerRules 引用了不存在的题目 #${rule.questionId ?? "?"}`,
+          });
         }
         const equals = Number(rule.equals);
         if (!Number.isFinite(equals) || equals <= 0) {

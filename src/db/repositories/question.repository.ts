@@ -86,9 +86,7 @@ export async function listQuestionsBySurvey(db: D1Database, surveyId: number): P
  * prepared before either result is known, which a batch requires.
  */
 export function listQuestionsBySurveyStatement(db: D1Database, surveyId: number): D1PreparedStatement {
-  return db
-    .prepare('SELECT * FROM survey_questions WHERE survey_id = ? ORDER BY "order" ASC, id ASC')
-    .bind(surveyId);
+  return db.prepare('SELECT * FROM survey_questions WHERE survey_id = ? ORDER BY "order" ASC, id ASC').bind(surveyId);
 }
 
 export function listOptionsForSurveyStatement(db: D1Database, surveyId: number): D1PreparedStatement {

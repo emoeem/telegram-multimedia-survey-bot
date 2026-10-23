@@ -60,7 +60,9 @@ export function ImportPage() {
       setSummary(result);
       if (result.title?.trim()) {
         try {
-          const matches = await api<{ items: Array<{ id: number; title: string; status: string }> }>(`/api/admin/surveys?search=${encodeURIComponent(result.title.trim())}&page=1&pageSize=5`);
+          const matches = await api<{ items: Array<{ id: number; title: string; status: string }> }>(
+            `/api/admin/surveys?search=${encodeURIComponent(result.title.trim())}&page=1&pageSize=5`,
+          );
           setDuplicates((matches.items ?? []).filter((item) => item.title.trim() === result.title.trim()));
         } catch {
           setDuplicates([]);
@@ -293,20 +295,20 @@ export function ImportPage() {
                 />
               ) : null}
               {duplicates.length ? (
-            <div className="mt-4 rounded-lg border border-[var(--app-warning)]/30 bg-[color-mix(in_srgb,var(--app-warning)_8%,var(--surface))] p-3 text-sm">
-              <div className="font-medium text-[var(--app-warning)]">发现同名问卷</div>
-              <p className="mt-1 text-[var(--color-muted)]">创建前建议确认是否为重复导入，避免产生两份相同问卷。</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {duplicates.map((item) => (
-                  <button key={item.id} className="btn btn-sm" onClick={() => navigate(`/surveys/${item.id}`)}>
-                    #{item.id} · {item.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+                <div className="mt-4 rounded-lg border border-[var(--app-warning)]/30 bg-[color-mix(in_srgb,var(--app-warning)_8%,var(--surface))] p-3 text-sm">
+                  <div className="font-medium text-[var(--app-warning)]">发现同名问卷</div>
+                  <p className="mt-1 text-[var(--color-muted)]">创建前建议确认是否为重复导入，避免产生两份相同问卷。</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {duplicates.map((item) => (
+                      <button key={item.id} className="btn btn-sm" onClick={() => navigate(`/surveys/${item.id}`)}>
+                        #{item.id} · {item.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
-          {summary.reportTemplateId ? (
+              {summary.reportTemplateId ? (
                 <p className="mt-1 text-sm text-[var(--color-primary)]">
                   报告模板：{summary.reportTemplateName ?? summary.reportTemplateId}
                 </p>

@@ -103,7 +103,9 @@ describe.skipIf(!sqliteD1Available)("migration 0068 (plaza images and topics)", 
     );
     expect(mediaSql).not.toContain("plaza_post");
     const kept = db
-      .prepare("SELECT asset_scope scope, storage_kind storageKind, storage_key storageKey, url, expires_at expiresAt FROM media_assets WHERE id = 5")
+      .prepare(
+        "SELECT asset_scope scope, storage_kind storageKind, storage_key storageKey, url, expires_at expiresAt FROM media_assets WHERE id = 5",
+      )
       .get() as Record<string, unknown>;
     expect(kept).toMatchObject({
       scope: "survey",
@@ -114,7 +116,9 @@ describe.skipIf(!sqliteD1Available)("migration 0068 (plaza images and topics)", 
     });
     // 子表数据既没被 DROP 的级联吃掉，RESTRICT 引用也还在（重建父表的真实风险）。
     expect((db.prepare("SELECT COUNT(*) AS count FROM question_media").get() as { count: number }).count).toBe(1);
-    expect((db.prepare("SELECT COUNT(*) AS count FROM visual_template_assets").get() as { count: number }).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM visual_template_assets").get() as { count: number }).count).toBe(
+      1,
+    );
 
     // 新列对旧行是 NULL，可写。
     expect(db.prepare("SELECT image_asset_id imageAssetId, topic FROM plaza_posts WHERE id = 1").get()).toEqual({

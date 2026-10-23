@@ -29,13 +29,23 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const pathname = decodeURIComponent(url.pathname);
     const base = pathname.startsWith("/fixtures/") ? fixturesRoot : root;
-    const relative = pathname.startsWith("/s/") || pathname.startsWith("/trial") || pathname.startsWith("/plaza") || pathname.startsWith("/showcase") || pathname.startsWith("/me") || pathname.startsWith("/auth")
-      ? "/survey.html"
-      : pathname === "/"
-        ? "/index.html"
-        : pathname.startsWith("/fixtures/")
-          ? pathname.slice("/fixtures".length)
-          : pathname;
+    const relative =
+      pathname.startsWith("/s/") ||
+      pathname.startsWith("/trial") ||
+      pathname.startsWith("/plaza") ||
+      pathname.startsWith("/showcase") ||
+      pathname.startsWith("/me") ||
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/submissions") ||
+      pathname.startsWith("/coins") ||
+      pathname.startsWith("/gacha") ||
+      pathname.startsWith("/series")
+        ? "/survey.html"
+        : pathname === "/"
+          ? "/index.html"
+          : pathname.startsWith("/fixtures/")
+            ? pathname.slice("/fixtures".length)
+            : pathname;
     const safe = normalize(join(base, relative));
     if (!safe.startsWith(base + sep)) {
       res.writeHead(403);

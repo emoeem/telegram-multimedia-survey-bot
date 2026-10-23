@@ -16,10 +16,10 @@ function env() {
 
 describe("internal public report render id validation", () => {
   it("rejects an unsafe integer before touching the renderer", async () => {
-    const request = new Request(
-      "https://example.test/internal/render-public-report/9007199254740992",
-      { method: "POST", headers: { "x-internal-token": "secret" } },
-    );
+    const request = new Request("https://example.test/internal/render-public-report/9007199254740992", {
+      method: "POST",
+      headers: { "x-internal-token": "secret" },
+    });
 
     const response = await handleInternalRenderRequest(request, env());
 
@@ -29,10 +29,10 @@ describe("internal public report render id validation", () => {
   });
 
   it("passes a safe integer to the renderer", async () => {
-    const request = new Request(
-      "https://example.test/internal/render-public-report/42",
-      { method: "POST", headers: { "x-internal-token": "secret" } },
-    );
+    const request = new Request("https://example.test/internal/render-public-report/42", {
+      method: "POST",
+      headers: { "x-internal-token": "secret" },
+    });
 
     const response = await handleInternalRenderRequest(request, env());
 

@@ -50,11 +50,7 @@ async function legacySurveyAccessCodeHash(normalizedCode: string): Promise<strin
   return `sha256:${bytesToHex(new Uint8Array(digest))}`;
 }
 
-async function surveyAccessCodeV2Digest(
-  salt: Uint8Array,
-  pepper: string,
-  normalizedCode: string,
-): Promise<string> {
+async function surveyAccessCodeV2Digest(salt: Uint8Array, pepper: string, normalizedCode: string): Promise<string> {
   const codeBytes = new TextEncoder().encode(normalizedCode);
   const pepperBytes = new TextEncoder().encode(pepper);
   const material = new Uint8Array(salt.length + pepperBytes.length + codeBytes.length);

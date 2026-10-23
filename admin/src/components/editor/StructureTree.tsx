@@ -31,8 +31,15 @@ export function StructureTree({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const query = search.trim().toLocaleLowerCase();
-  const toggleSelected = (id: number) => setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  const matches = (question: EditableQuestion) => !query || `${question.title} ${question.description ?? ""}`.toLocaleLowerCase().includes(query);
+  const toggleSelected = (id: number) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const matches = (question: EditableQuestion) =>
+    !query || `${question.title} ${question.description ?? ""}`.toLocaleLowerCase().includes(query);
   const togglePage = (pageId: number) => {
     setCollapsed((current) => {
       const next = new Set(current);
@@ -68,19 +75,50 @@ export function StructureTree({
       </div>
       <div className="structure-search">
         <Search className="h-3.5 w-3.5" />
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索题目…" aria-label="搜索题目" />
-        {search ? <button type="button" title="清除搜索" onClick={() => setSearch("")}><X className="h-3.5 w-3.5" /></button> : null}
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="搜索题目…"
+          aria-label="搜索题目"
+        />
+        {search ? (
+          <button type="button" title="清除搜索" onClick={() => setSearch("")}>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
       {selected.size > 0 && onBatchRequired ? (
         <div className="structure-batch-actions">
           <span>已选 {selected.size} 题</span>
-          <button type="button" disabled={!editable} onClick={() => { onBatchRequired([...selected], true); setSelected(new Set()); }}>全部设为必答</button>
-          <button type="button" disabled={!editable} onClick={() => { onBatchRequired([...selected], false); setSelected(new Set()); }}>全部设为选填</button>
-          <button type="button" onClick={() => setSelected(new Set())}>取消</button>
+          <button
+            type="button"
+            disabled={!editable}
+            onClick={() => {
+              onBatchRequired([...selected], true);
+              setSelected(new Set());
+            }}
+          >
+            全部设为必答
+          </button>
+          <button
+            type="button"
+            disabled={!editable}
+            onClick={() => {
+              onBatchRequired([...selected], false);
+              setSelected(new Set());
+            }}
+          >
+            全部设为选填
+          </button>
+          <button type="button" onClick={() => setSelected(new Set())}>
+            取消
+          </button>
         </div>
       ) : null}
       {query && visibleQuestionIds.length > 0 ? (
-        <button type="button" className="structure-select-all" onClick={() => setSelected(new Set(visibleQuestionIds))}>选择当前搜索结果</button>
+        <button type="button" className="structure-select-all" onClick={() => setSelected(new Set(visibleQuestionIds))}>
+          选择当前搜索结果
+        </button>
       ) : null}
       <div className="structure-tree">
         <button
@@ -117,7 +155,9 @@ export function StructureTree({
                   <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                     {page.title || `第 ${page.order + 1} 页`}
                   </span>
-                  <span className="tree-page-count">{query ? `${items.length}/${total} 题` : `${items.length} 题`}</span>
+                  <span className="tree-page-count">
+                    {query ? `${items.length}/${total} 题` : `${items.length} 题`}
+                  </span>
                   <span className="row-actions">
                     <button
                       type="button"
@@ -140,9 +180,19 @@ export function StructureTree({
                         className={`tree-question ${selection.kind === "question" && selection.id === question.id ? "active" : ""}`}
                         onClick={() => onSelect({ kind: "question", id: question.id })}
                       >
-                        <input type="checkbox" aria-label={`选择第 ${numberById.get(question.id)} 题`} checked={selected.has(question.id)} onChange={() => toggleSelected(question.id)} onClick={(event) => event.stopPropagation()} />
-                        <span className="tree-question-index">{question.type === "note" ? "📖" : numberById.get(question.id)}</span>
-                        <span className="tree-question-title">{question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}</span>
+                        <input
+                          type="checkbox"
+                          aria-label={`选择第 ${numberById.get(question.id)} 题`}
+                          checked={selected.has(question.id)}
+                          onChange={() => toggleSelected(question.id)}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                        <span className="tree-question-index">
+                          {question.type === "note" ? "📖" : numberById.get(question.id)}
+                        </span>
+                        <span className="tree-question-title">
+                          {question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}
+                        </span>
                         <span className="row-actions">
                           <button
                             type="button"
@@ -182,7 +232,9 @@ export function StructureTree({
         )}
 
         {query && pageGroups.length === 0 && unassigned.length === 0 ? (
-          <div className="px-3 py-5 text-center text-xs" style={{ color: "var(--color-muted-soft)" }}>没有找到匹配的题目</div>
+          <div className="px-3 py-5 text-center text-xs" style={{ color: "var(--color-muted-soft)" }}>
+            没有找到匹配的题目
+          </div>
         ) : showUnassigned ? (
           <div>
             <div className="tree-page-head">
@@ -195,9 +247,19 @@ export function StructureTree({
                 className={`tree-question ${selection.kind === "question" && selection.id === question.id ? "active" : ""}`}
                 onClick={() => onSelect({ kind: "question", id: question.id })}
               >
-                <input type="checkbox" aria-label={`选择第 ${numberById.get(question.id)} 题`} checked={selected.has(question.id)} onChange={() => toggleSelected(question.id)} onClick={(event) => event.stopPropagation()} />
-                        <span className="tree-question-index">{question.type === "note" ? "📖" : numberById.get(question.id)}</span>
-                <span className="tree-question-title">{question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}</span>
+                <input
+                  type="checkbox"
+                  aria-label={`选择第 ${numberById.get(question.id)} 题`}
+                  checked={selected.has(question.id)}
+                  onChange={() => toggleSelected(question.id)}
+                  onClick={(event) => event.stopPropagation()}
+                />
+                <span className="tree-question-index">
+                  {question.type === "note" ? "📖" : numberById.get(question.id)}
+                </span>
+                <span className="tree-question-title">
+                  {question.title || (question.type === "note" ? "未命名剧情" : "未命名题目")}
+                </span>
                 <span className="row-actions">
                   <button
                     type="button"

@@ -82,8 +82,7 @@ export function resolvePlanCapabilities(source: PlanCapabilitySource): PlanCapab
     // `STREAM_DISABLED=true` 是显式停用：配置齐了也报无此能力，避免前端继续
     // 渲染视频上传入口而请求必然 404。
     streamVideo: hasConfig(source.STREAM_ACCOUNT_ID, source.STREAM_API_TOKEN) && !isStreamDisabled(source),
-    imagesPipeline:
-      hasConfig(source.IMAGES_ACCOUNT_ID, source.IMAGES_DELIVERY_HASH, source.CLOUDFLARE_API_TOKEN),
+    imagesPipeline: hasConfig(source.IMAGES_ACCOUNT_ID, source.IMAGES_DELIVERY_HASH, source.CLOUDFLARE_API_TOKEN),
     browserRender: hasBinding(source.BROWSER),
     asyncQueue: hasBinding(source.EXPORT_QUEUE),
     rateLimitDO: hasBinding(source.RATE_LIMIT),
@@ -92,7 +91,9 @@ export function resolvePlanCapabilities(source: PlanCapabilitySource): PlanCapab
   const declared = source.PLAN_TIER;
   const tier =
     declared === "free" || declared === "paid" || declared === "pro"
-      ? (TIER_ORDER[declared] < TIER_ORDER[derived] ? declared : derived)
+      ? TIER_ORDER[declared] < TIER_ORDER[derived]
+        ? declared
+        : derived
       : derived;
   return { ...withoutTier, tier };
 }

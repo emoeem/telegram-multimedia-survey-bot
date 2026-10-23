@@ -290,12 +290,15 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
     const share = await getActiveProfileShareFor(env.DB, participant.participantHash);
-    return json({ share: share ? { url: `/u/${share.token}`, snapshot: share.snapshot, updatedAt: share.updatedAt } : null });
+    return json({
+      share: share ? { url: `/u/${share.token}`, snapshot: share.snapshot, updatedAt: share.updatedAt } : null,
+    });
   }
 
   // Opening 「我的」 is what "reads" the badges: the response above carries the
   // unseen flag so the client can show the dot before this lands.
-  if (request.method === "POST" && url.pathname === "/api/me/achievements/seen") {    const participant = await resolveParticipant(request, env);
+  if (request.method === "POST" && url.pathname === "/api/me/achievements/seen") {
+    const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
     const marked = await markAchievementsSeen(env.DB, participant.participantHash);
     return json({ ok: true, marked });

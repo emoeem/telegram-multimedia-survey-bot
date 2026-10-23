@@ -83,8 +83,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
     const participant = await resolveParticipant(request, env).catch(() => null);
     const participantHash = participant && !(participant instanceof Response) ? participant.participantHash : null;
-    const participantDbUserId =
-      participant && !(participant instanceof Response) ? participant.dbUserId : null;
+    const participantDbUserId = participant && !(participant instanceof Response) ? participant.dbUserId : null;
     const entries = await listTaskRunLeaderboard(env.DB, {
       packId,
       mode,
@@ -172,9 +171,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     // this persona/mode — otherwise the player climbs into floors with no tasks
     // and the run dead-ends halfway.
     const matched = items.filter(
-      (item) =>
-        (item.persona === "any" || item.persona === persona) &&
-        (item.mode === "any" || item.mode === mode),
+      (item) => (item.persona === "any" || item.persona === persona) && (item.mode === "any" || item.mode === mode),
     );
     if (matched.length === 0) {
       return fail(409, "empty_pack", "该任务包在你的身份/模式下没有可用任务，请换个设置或联系管理员");

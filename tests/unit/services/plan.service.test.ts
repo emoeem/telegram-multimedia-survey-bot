@@ -32,7 +32,9 @@ describe("resolvePlanCapabilities", () => {
     const base = { MEDIA: {}, BROWSER: {}, EXPORT_QUEUE: {} };
     expect(resolvePlanCapabilities(base).streamVideo).toBe(false);
     expect(resolvePlanCapabilities({ ...base, STREAM_ACCOUNT_ID: "abc" }).streamVideo).toBe(false);
-    expect(resolvePlanCapabilities({ ...base, STREAM_ACCOUNT_ID: "abc", STREAM_API_TOKEN: "t" }).streamVideo).toBe(true);
+    expect(resolvePlanCapabilities({ ...base, STREAM_ACCOUNT_ID: "abc", STREAM_API_TOKEN: "t" }).streamVideo).toBe(
+      true,
+    );
 
     // Stream 停用开关只压它自己的能力，不碰档位：tier 由 R2/渲染/队列决定，
     // 关掉视频通道不该把整个部署从 pro 降成 paid（那会连带关掉导出队列等

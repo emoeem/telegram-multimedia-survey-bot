@@ -70,7 +70,10 @@ export async function listSeriesShelf(
 ): Promise<SeriesListView[]> {
   const seriesList = await listPublishedSeries(db);
   if (!seriesList.length) return [];
-  const counts = await countPublishedChapters(db, seriesList.map((series) => series.id));
+  const counts = await countPublishedChapters(
+    db,
+    seriesList.map((series) => series.id),
+  );
   const completed = viewer ? await completedSurveyIds(db, viewer.participantHash) : new Set<number>();
   const views: SeriesListView[] = [];
   for (const series of seriesList) {
@@ -108,7 +111,12 @@ export async function getSeriesDetail(
     const price = coinPrices.get(chapter.surveyId) ?? null;
     // 价格 0 = 活动免费开放，不算锁；真实解锁状态走 unlock.service 的并集判定
     //（0082：合并前用旧身份买过的解锁继续有效）。
-    const unlocked = price === null || price <= 0 ? true : viewer ? await hasUnlock(db, chapter.surveyId, viewer.participantHash) : false;
+    const unlocked =
+      price === null || price <= 0
+        ? true
+        : viewer
+          ? await hasUnlock(db, chapter.surveyId, viewer.participantHash)
+          : false;
     chapterViews.push({
       ...chapter,
       completed: completed.has(chapter.surveyId),
@@ -139,5 +147,3 @@ export async function getSeriesDetail(
     followerCount: Number(followerCount?.n ?? 0),
   };
 }
-
-

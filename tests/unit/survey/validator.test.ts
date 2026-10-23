@@ -184,9 +184,15 @@ describe("condition validation", () => {
   it("rejects backward and unknown jump targets", () => {
     const issues = validateUnifiedSurvey(
       surveyWith([
-        baseQuestion("q1", 1, { condition: { kind: "option_equals", rules: [{ optionId: "q1-a", targetQuestionId: "q0" }] } }),
-        baseQuestion("q2", 2, { condition: { kind: "option_equals", rules: [{ optionId: "q2-a", targetQuestionId: "q1" }] } }),
-        baseQuestion("q3", 3, { condition: { kind: "option_equals", rules: [{ optionId: "nope", targetQuestionId: "q4" }] } }),
+        baseQuestion("q1", 1, {
+          condition: { kind: "option_equals", rules: [{ optionId: "q1-a", targetQuestionId: "q0" }] },
+        }),
+        baseQuestion("q2", 2, {
+          condition: { kind: "option_equals", rules: [{ optionId: "q2-a", targetQuestionId: "q1" }] },
+        }),
+        baseQuestion("q3", 3, {
+          condition: { kind: "option_equals", rules: [{ optionId: "nope", targetQuestionId: "q4" }] },
+        }),
       ]),
     );
     expect(issues.map((issue) => issue.message)).toEqual([
@@ -200,7 +206,9 @@ describe("condition validation", () => {
   it("rejects malformed answerRules", () => {
     const issues = validateUnifiedSurvey(
       surveyWith([
-        baseQuestion("q1", 1, { condition: { answerRules: [{ questionId: "ghost", equals: 0, targetQuestionId: "q2" }] } }),
+        baseQuestion("q1", 1, {
+          condition: { answerRules: [{ questionId: "ghost", equals: 0, targetQuestionId: "q2" }] },
+        }),
         baseQuestion("q2", 2),
       ]),
     );

@@ -55,7 +55,10 @@ page.on("request", (request) => {
 await page.goto(`${ORIGIN}/admin/login`, { waitUntil: "domcontentloaded" });
 const passwordField = page.locator('input[type="password"]').first();
 await passwordField.fill(PASSWORD);
-await page.getByRole("button", { name: /登录|进入/ }).first().click();
+await page
+  .getByRole("button", { name: /登录|进入/ })
+  .first()
+  .click();
 await page.waitForURL((url) => !url.pathname.endsWith("/admin/login"), { timeout: 20000 });
 check("真实密码登录成功，离开登录页", !page.url().endsWith("/admin/login"), page.url());
 
@@ -76,10 +79,14 @@ check(
 
 // —— 4. 深色下边框色（旧 --color-border 未定义 → currentColor → 发白）——
 const asideBorder = await page.evaluate(() => {
-  const aside = document.querySelector("aside[class*=\"rounded-\"]");
+  const aside = document.querySelector('aside[class*="rounded-"]');
   return aside ? getComputedStyle(aside).borderTopColor : null;
 });
-const channels = (asideBorder ?? "").match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
+const channels =
+  (asideBorder ?? "")
+    .match(/[\d.]+/g)
+    ?.slice(0, 3)
+    .map(Number) ?? [];
 check(
   "深色主题下侧栏边框是深灰而不是近白",
   channels.length === 3 && Math.max(...channels) < 200,
@@ -92,11 +99,7 @@ await idInput.fill("prod-check-theme");
 await page.waitForTimeout(150);
 const stillEditing = (await page.getByText("没有可选主题").count()) === 0;
 const idValue = await idInput.inputValue();
-check(
-  "主题 ID 可以连续编辑，表单不会消失",
-  stillEditing && idValue === "prod-check-theme",
-  `value=${idValue}`,
-);
+check("主题 ID 可以连续编辑，表单不会消失", stillEditing && idValue === "prod-check-theme", `value=${idValue}`);
 
 // —— 6. 非法 ID：标红 + 禁保存 + 不发写请求 ——
 await idInput.fill("主题一");
@@ -139,11 +142,7 @@ await page.waitForTimeout(300);
 check("选择「留下修改」后仍停在认证卡页", page.url().includes("/cert-content"), page.url());
 
 // —— 9. 整场零写入 ——
-check(
-  "整场没有发出任何写请求（生产数据零改动）",
-  writes.length === 0,
-  writes.length ? writes.join(", ") : "0 writes",
-);
+check("整场没有发出任何写请求（生产数据零改动）", writes.length === 0, writes.length ? writes.join(", ") : "0 writes");
 check("页面无脚本异常", pageErrors.length === 0, pageErrors.join(" | "));
 
 await browser.close();

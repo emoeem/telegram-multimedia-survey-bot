@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { HOME_REDIRECT_LOCATION, homeRedirectLocation, escapeMetaAttribute, publicPageHead, submitPageMetaPath } from "../../../src/http/public-page";
+import {
+  HOME_REDIRECT_LOCATION,
+  homeRedirectLocation,
+  escapeMetaAttribute,
+  publicPageHead,
+  submitPageMetaPath,
+} from "../../../src/http/public-page";
 
 /**
  * 两条都跟「国内域名」直接相关：

@@ -53,31 +53,34 @@ function surfaceColor(): string {
 }
 
 export function donutOption(slices: DonutSlice[], opts: DonutOptions = {}) {
-  const data = slices.filter((s) => s.value > 0).map((s) => ({
-    name: s.name,
-    value: s.value,
-    itemStyle: s.color ? { color: s.color } : undefined,
-  }));
+  const data = slices
+    .filter((s) => s.value > 0)
+    .map((s) => ({
+      name: s.name,
+      value: s.value,
+      itemStyle: s.color ? { color: s.color } : undefined,
+    }));
   if (!data.length) return null;
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const [centerX, centerY] = opts.center ?? ["38%", "50%"];
   return {
     tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
-    legend: opts.showLegend === false
-      ? undefined
-      : {
-          orient: "vertical" as const,
-          right: opts.legendRight ?? 0,
-          top: opts.legendTop ?? "middle",
-          itemWidth: 12,
-          itemHeight: 12,
-          itemGap: 10,
-          textStyle: { fontSize: 13, color: "currentColor" },
-          // Pinned to the real slices: ECharts otherwise derives legend items
-          // from every series, which would add a blank row for the invisible
-          // centre-label series below.
-          data: data.map((d) => d.name),
-        },
+    legend:
+      opts.showLegend === false
+        ? undefined
+        : {
+            orient: "vertical" as const,
+            right: opts.legendRight ?? 0,
+            top: opts.legendTop ?? "middle",
+            itemWidth: 12,
+            itemHeight: 12,
+            itemGap: 10,
+            textStyle: { fontSize: 13, color: "currentColor" },
+            // Pinned to the real slices: ECharts otherwise derives legend items
+            // from every series, which would add a blank row for the invisible
+            // centre-label series below.
+            data: data.map((d) => d.name),
+          },
     series: [
       {
         type: "pie" as const,

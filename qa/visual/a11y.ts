@@ -35,15 +35,18 @@ export async function scanA11y(page: Page, label: string): Promise<A11yScanSumma
     const styleDetails = await Promise.all(
       contrastDetails.map(async (detail) => {
         try {
-          const style = await page.locator(detail.target.join(" ")).first().evaluate((element) => {
-            const computed = getComputedStyle(element);
-            return {
-              color: computed.color,
-              backgroundColor: computed.backgroundColor,
-              opacity: computed.opacity,
-              success: computed.getPropertyValue("--color-success"),
-            };
-          });
+          const style = await page
+            .locator(detail.target.join(" "))
+            .first()
+            .evaluate((element) => {
+              const computed = getComputedStyle(element);
+              return {
+                color: computed.color,
+                backgroundColor: computed.backgroundColor,
+                opacity: computed.opacity,
+                success: computed.getPropertyValue("--color-success"),
+              };
+            });
           return { ...detail, style };
         } catch {
           return detail;

@@ -14,14 +14,103 @@
         try {
           var stored = localStorage.getItem("surveyPreset");
           if (stored && known.indexOf(stored) !== -1) preset = stored;
-          else if (stored === "system") preset = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          else if (stored === "system")
+            preset = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         } catch (error) {}
         document.documentElement.setAttribute("data-theme", preset);
       })();
     </script>
+    <!--
+      启动骨架：#root 里的纯 CSS 首帧。慢网络下 HTML 到 SPA chunk 下载执行之间
+      原来是一张纯白页，用户只觉得「打不开」。React createRoot 首次 render 会清空
+      容器，骨架自动让位，不需要任何 JS 配合（也正因此不能依赖构建后的 CSS）。
+    -->
+    <style>
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family:
+          system-ui,
+          -apple-system,
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      .boot-mark {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        color: #fff;
+        background: linear-gradient(135deg, #4f46e5, #7c74f2);
+        box-shadow: 0 10px 24px -10px rgba(79, 70, 229, 0.55);
+      }
+      .boot-name {
+        margin: 0;
+        font-size: 13px;
+        letter-spacing: 0.35em;
+        text-indent: 0.35em;
+        color: #8a93a6;
+      }
+      .boot-track {
+        width: 128px;
+        height: 3px;
+        border-radius: 99px;
+        overflow: hidden;
+        background: rgba(127, 127, 127, 0.16);
+      }
+      .boot-track i {
+        display: block;
+        height: 100%;
+        width: 42%;
+        border-radius: 99px;
+        background: #4f46e5;
+        animation: boot-slide 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      /* 暗色主题（known 列表里的四个暗色系）下文字与轨道跟着压暗。 */
+      [data-theme="dark"] .boot-name,
+      [data-theme="night"] .boot-name,
+      [data-theme="synthwave"] .boot-name,
+      [data-theme="black"] .boot-name {
+        color: #78808f;
+      }
+      [data-theme="dark"] .boot-track,
+      [data-theme="night"] .boot-track,
+      [data-theme="synthwave"] .boot-track,
+      [data-theme="black"] .boot-track {
+        background: rgba(200, 205, 220, 0.14);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-track i {
+          animation: none;
+          transform: translateX(130%);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" aria-hidden="true">
+        <div class="boot-mark">✦</div>
+        <p class="boot-name">问卷平台</p>
+        <div class="boot-track"><i></i></div>
+      </div>
+    </div>
     <script type="module" src="/src/survey/main.tsx"></script>
   </body>
 </html>

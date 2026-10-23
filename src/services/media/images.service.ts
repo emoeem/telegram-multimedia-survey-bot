@@ -44,11 +44,7 @@ export async function uploadImage(
 ): Promise<ImagesUploadResult> {
   if (!imagesConfigured(env)) throw new Error("Images 未配置");
   const form = new FormData();
-  form.append(
-    "file",
-    new Blob([input.bytes as unknown as BlobPart], { type: input.contentType }),
-    input.name,
-  );
+  form.append("file", new Blob([input.bytes as unknown as BlobPart], { type: input.contentType }), input.name);
   form.append("requireSignedURLs", "false");
   const response = await fetch(`${API_BASE}/accounts/${env.IMAGES_ACCOUNT_ID}/images/v1`, {
     method: "POST",
@@ -63,9 +59,7 @@ export async function uploadImage(
   if (!response.ok || !payload?.success || !payload.result?.id) {
     const detail = payload?.errors?.[0]?.message;
     throw new Error(
-      detail
-        ? `Images 上传失败（HTTP ${response.status}）：${detail}`
-        : `Images 上传失败（HTTP ${response.status}）`,
+      detail ? `Images 上传失败（HTTP ${response.status}）：${detail}` : `Images 上传失败（HTTP ${response.status}）`,
     );
   }
   return { imageId: payload.result.id, url: imageDeliveryUrl(env, payload.result.id) };
@@ -74,10 +68,13 @@ export async function uploadImage(
 /** 删除一张图片；404 视为已删除。 */
 export async function deleteImage(env: ImagesEnv, imageId: string): Promise<void> {
   if (!imagesConfigured(env)) throw new Error("Images 未配置");
-  const response = await fetch(`${API_BASE}/accounts/${env.IMAGES_ACCOUNT_ID}/images/v1/${encodeURIComponent(imageId)}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
-  });
+  const response = await fetch(
+    `${API_BASE}/accounts/${env.IMAGES_ACCOUNT_ID}/images/v1/${encodeURIComponent(imageId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
+    },
+  );
   if (!response.ok && response.status !== 404) {
     throw new Error(`Images 删除失败（HTTP ${response.status}）`);
   }

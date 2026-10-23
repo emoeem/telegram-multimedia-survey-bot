@@ -201,7 +201,13 @@ export function buildReportViewModel(
   // A generic unscored response must never be relabeled as personality or
   // behavior analysis. Existing explicitly-scored reports keep their legacy
   // semantic headings for compatibility.
-  const semanticTitles = ["Core Personality", "Behavior Pattern", "Relationship Pattern", "Contradiction", "Final Insight"];
+  const semanticTitles = [
+    "Core Personality",
+    "Behavior Pattern",
+    "Relationship Pattern",
+    "Contradiction",
+    "Final Insight",
+  ];
   const insights = longTexts.slice(0, 5).map((item, index) => ({
     ...item,
     ...(isConfiguredScoredReport ? { title: semanticTitles[index] ?? item.title } : {}),

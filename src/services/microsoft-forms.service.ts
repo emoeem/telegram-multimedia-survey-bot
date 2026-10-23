@@ -508,9 +508,7 @@ function formsDefinitionToSurvey(data: FormsDefinition): UnifiedSurveyImport {
   const branching = convertFormsBranching(
     data.mfpBranchingData,
     surveyQuestions.map((question) => question.id),
-    new Map(
-      surveyQuestions.map((question) => [question.id, question.options.length] as const),
-    ),
+    new Map(surveyQuestions.map((question) => [question.id, question.options.length] as const)),
   );
   for (const [questionId, condition] of branching.conditions) {
     const question = surveyQuestions.find((item) => item.id === questionId);

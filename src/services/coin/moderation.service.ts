@@ -86,10 +86,7 @@ function manualOnly(reason: string | null = null): ModerationVerdict {
   return { consulted: false, action: "review", score: null, reason };
 }
 
-export async function moderateSubmission(
-  env: ModerationEnv,
-  input: ModerationInput,
-): Promise<ModerationVerdict> {
+export async function moderateSubmission(env: ModerationEnv, input: ModerationInput): Promise<ModerationVerdict> {
   const config = await loadModerationConfig(env.DB);
   if (!config.enabled) return manualOnly();
   if (!/^https:\/\//.test(config.endpoint)) {
@@ -122,9 +119,11 @@ export async function moderateSubmission(
       });
       return manualOnly(`审核服务异常（HTTP ${response.status}）`);
     }
-    const payload = (await response.json().catch(() => null)) as
-      | { action?: unknown; score?: unknown; reason?: unknown }
-      | null;
+    const payload = (await response.json().catch(() => null)) as {
+      action?: unknown;
+      score?: unknown;
+      reason?: unknown;
+    } | null;
     if (!payload) return manualOnly("审核服务返回无法解析");
 
     const score = Number.isFinite(Number(payload.score)) ? Number(payload.score) : null;

@@ -429,11 +429,15 @@ export function TemplatesPage() {
           系统模板只读，可复制后编辑；自定义模板保存后即可在问卷详情中选用。
         </p>
         {templates && templates.length === 0 ? (
-          <EmptyPanel text="还没有任何模板" actionLabel="新建模板" onAction={() => {
-            const blank = emptyDraft();
-            draftBaseline.current = JSON.stringify(blank);
-            setDraft(blank);
-          }} />
+          <EmptyPanel
+            text="还没有任何模板"
+            actionLabel="新建模板"
+            onAction={() => {
+              const blank = emptyDraft();
+              draftBaseline.current = JSON.stringify(blank);
+              setDraft(blank);
+            }}
+          />
         ) : templates ? (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template) => (

@@ -52,7 +52,10 @@ function isValidUpdateId(updateId: number): boolean {
  * update. The row doubles as the dedup record that the daily maintenance sweep
  * prunes after {@link UPDATE_DEDUP_RETENTION_DAYS}.
  */
-export function createUpdateDedupStore(db: D1Database, now: () => string = () => new Date().toISOString()): UpdateDedupStore {
+export function createUpdateDedupStore(
+  db: D1Database,
+  now: () => string = () => new Date().toISOString(),
+): UpdateDedupStore {
   // Flipped off the first time the 0053 `status` column turns out to be
   // missing, so a Worker deployed before its migration neither logs nor pays
   // for a failing statement on every update.

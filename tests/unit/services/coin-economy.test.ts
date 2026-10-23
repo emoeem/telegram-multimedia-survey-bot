@@ -3,11 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  CoinLedgerError,
-  earnCoins,
-  getCoinAccount,
-} from "../../../src/services/coin/ledger.service";
+import { CoinLedgerError, earnCoins, getCoinAccount } from "../../../src/services/coin/ledger.service";
 import { performCheckin, getCheckinStatus } from "../../../src/services/coin/checkin.service";
 import { unlockSurvey, resolveCoinGate } from "../../../src/services/coin/unlock.service";
 import { pullGacha, drawWeighted, listActivePools } from "../../../src/services/coin/gacha.service";
@@ -169,7 +165,13 @@ function seedPool(db: D1Database, opts?: { pityAt?: number }): number {
   return Number(sqlite.prepare(`SELECT id FROM gacha_pools WHERE slug='test-pool'`).get()?.id ?? 0);
 }
 
-function seedPoolItem(db: D1Database, poolId: number, rarity: string, weight: number, stock: number | null = null): number {
+function seedPoolItem(
+  db: D1Database,
+  poolId: number,
+  rarity: string,
+  weight: number,
+  stock: number | null = null,
+): number {
   const sqlite = (db as unknown as { sqlite: DatabaseSync }).sqlite;
   sqlite
     .prepare(
@@ -251,11 +253,16 @@ describe("金币账本", () => {
          VALUES (1, 1, 0, 0, 25, '2026-01-01T00:00:00Z')`,
       )
       .run();
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 10, kind: "checkin", idempotencyKey: "t:e" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 10,
+      kind: "checkin",
+      idempotencyKey: "t:e",
+    });
     // 余额不足：业务侧收到 402 语义的 CoinLedgerError，而不是写坏账本。
-    await expect(
-      unlockSurvey(db, { id: 1, ownerId: 999 }, PARTICIPANT, "unlocks-1"),
-    ).rejects.toMatchObject({ code: "insufficient_funds" });
+    await expect(unlockSurvey(db, { id: 1, ownerId: 999 }, PARTICIPANT, "unlocks-1")).rejects.toMatchObject({
+      code: "insufficient_funds",
+    });
     const txn = await db
       .prepare(`SELECT COUNT(*) AS n FROM coin_transactions WHERE kind='survey_unlock'`)
       .first<{ n: number }>();
@@ -287,7 +294,9 @@ describe("每日签到", () => {
     for (const delta of [2, 1]) {
       const day = coinDayKey(today - delta * 86_400_000, cfg.timezoneOffsetMinutes);
       sqlite
-        .prepare(`INSERT INTO coin_checkins (participant_hash, day, streak, amount, created_at) VALUES (?, ?, ?, 5, '2026-01-01T00:00:00Z')`)
+        .prepare(
+          `INSERT INTO coin_checkins (participant_hash, day, streak, amount, created_at) VALUES (?, ?, ?, 5, '2026-01-01T00:00:00Z')`,
+        )
         .run(PARTICIPANT.participantHash, day, delta);
     }
     const result = await performCheckin(db, PARTICIPANT.participantHash, PARTICIPANT.dbUserId);
@@ -314,7 +323,12 @@ describe("问卷解锁", () => {
          VALUES (1, 1, 0, 0, 25, '2026-01-01T00:00:00Z')`,
       )
       .run();
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 100,
+      kind: "checkin",
+      idempotencyKey: "t:seed",
+    });
 
     const first = await unlockSurvey(db, { id: 1, ownerId: 999 }, PARTICIPANT, "attempt-a");
     expect(first.duplicate).toBe(false);
@@ -338,7 +352,12 @@ describe("问卷解锁", () => {
     const other = { participantHash: "web_other", dbUserId: null };
     const otherGate = await resolveCoinGate(db, { id: 1, ownerId: 999 }, other, []);
     expect(otherGate.unlocked).toBe(false);
-    const ownerGate = await resolveCoinGate(db, { id: 1, ownerId: 999 }, { participantHash: "web_owner", dbUserId: 999 }, []);
+    const ownerGate = await resolveCoinGate(
+      db,
+      { id: 1, ownerId: 999 },
+      { participantHash: "web_owner", dbUserId: 999 },
+      [],
+    );
     expect(ownerGate.unlocked).toBe(true);
 
     // 余额不足：解锁行不存在（失败不产生业务状态）。
@@ -354,8 +373,28 @@ describe("问卷解锁", () => {
 describe("抽卡", () => {
   it("加权抽取是纯函数且尊重权重", () => {
     const items = [
-      { id: 1, submissionId: null, title: "N", description: "", contentType: "text", rarity: "N" as const, weight: 0, stock: null, previewMediaId: null },
-      { id: 2, submissionId: null, title: "SSR", description: "", contentType: "text", rarity: "SSR" as const, weight: 10, stock: null, previewMediaId: null },
+      {
+        id: 1,
+        submissionId: null,
+        title: "N",
+        description: "",
+        contentType: "text",
+        rarity: "N" as const,
+        weight: 0,
+        stock: null,
+        previewMediaId: null,
+      },
+      {
+        id: 2,
+        submissionId: null,
+        title: "SSR",
+        description: "",
+        contentType: "text",
+        rarity: "SSR" as const,
+        weight: 10,
+        stock: null,
+        previewMediaId: null,
+      },
     ];
     expect(drawWeighted(items, () => 0.5)?.id).toBe(2);
     expect(drawWeighted(items, () => 0.999)?.id).toBe(2);
@@ -365,11 +404,30 @@ describe("抽卡", () => {
   it("抽取扣款、记录版本与幂等重放", async () => {
     const poolId = seedPool(db);
     seedPoolItem(db, poolId, "N", 1);
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 100,
+      kind: "checkin",
+      idempotencyKey: "t:seed",
+    });
 
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
+      {
+        id: poolId,
+        slug: "test-pool",
+        name: "测试池",
+        description: "",
+        costSingle: 10,
+        costMulti: null,
+        status: "active",
+        startAt: null,
+        endAt: null,
+        pityAt: null,
+        defaultAccess: "permanent",
+        version: 1,
+        contentRating: "all" as const,
+      },
       PARTICIPANT,
       1,
       "pull-key-1",
@@ -384,7 +442,21 @@ describe("抽卡", () => {
     // 同幂等键重放：返回同一批结果，不重复扣款。
     const replay = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
+      {
+        id: poolId,
+        slug: "test-pool",
+        name: "测试池",
+        description: "",
+        costSingle: 10,
+        costMulti: null,
+        status: "active",
+        startAt: null,
+        endAt: null,
+        pityAt: null,
+        defaultAccess: "permanent",
+        version: 1,
+        contentRating: "all" as const,
+      },
       PARTICIPANT,
       1,
       "pull-key-1",
@@ -399,7 +471,21 @@ describe("抽卡", () => {
     seedPoolItem(db, poolId, "N", 1);
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
+      {
+        id: poolId,
+        slug: "test-pool",
+        name: "测试池",
+        description: "",
+        costSingle: 10,
+        costMulti: null,
+        status: "active",
+        startAt: null,
+        endAt: null,
+        pityAt: null,
+        defaultAccess: "permanent",
+        version: 1,
+        contentRating: "all" as const,
+      },
       PARTICIPANT,
       1,
       "pull-poor",
@@ -413,10 +499,29 @@ describe("抽卡", () => {
     const poolId = seedPool(db, { pityAt: 1 });
     seedPoolItem(db, poolId, "N", 1_000_000);
     seedPoolItem(db, poolId, "SSR", 1);
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 100,
+      kind: "checkin",
+      idempotencyKey: "t:seed",
+    });
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: null, status: "active", startAt: null, endAt: null, pityAt: 1, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
+      {
+        id: poolId,
+        slug: "test-pool",
+        name: "测试池",
+        description: "",
+        costSingle: 10,
+        costMulti: null,
+        status: "active",
+        startAt: null,
+        endAt: null,
+        pityAt: 1,
+        defaultAccess: "permanent",
+        version: 1,
+        contentRating: "all" as const,
+      },
       PARTICIPANT,
       1,
       "pull-pity",
@@ -428,10 +533,29 @@ describe("抽卡", () => {
   it("库存耗尽触发补偿退款，不超发", async () => {
     const poolId = seedPool(db);
     const only = seedPoolItem(db, poolId, "N", 1, 1); // 库存 1
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 100, kind: "checkin", idempotencyKey: "t:seed" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 100,
+      kind: "checkin",
+      idempotencyKey: "t:seed",
+    });
     const result = await pullGacha(
       { DB: db } as never,
-      { id: poolId, slug: "test-pool", name: "测试池", description: "", costSingle: 10, costMulti: 90, status: "active", startAt: null, endAt: null, pityAt: null, defaultAccess: "permanent", version: 1, contentRating: "all" as const },
+      {
+        id: poolId,
+        slug: "test-pool",
+        name: "测试池",
+        description: "",
+        costSingle: 10,
+        costMulti: 90,
+        status: "active",
+        startAt: null,
+        endAt: null,
+        pityAt: null,
+        defaultAccess: "permanent",
+        version: 1,
+        contentRating: "all" as const,
+      },
       PARTICIPANT,
       2, // 十连价的 2 连：只有 1 个库存
       "pull-stock",
@@ -439,7 +563,10 @@ describe("抽卡", () => {
     expect(result.ok).toBe(true);
     // 只发出 1 份库存，差额已退：100 - 90(2连价) + 45(1次差额) = 55。
     expect(result.balance).toBe(55);
-    const remaining = await db.prepare(`SELECT remaining FROM gacha_pool_items WHERE id=?`).bind(only).first<{ remaining: number }>();
+    const remaining = await db
+      .prepare(`SELECT remaining FROM gacha_pool_items WHERE id=?`)
+      .bind(only)
+      .first<{ remaining: number }>();
     expect(Number(remaining?.remaining ?? 1)).toBe(0);
     const refund = await db
       .prepare(`SELECT amount FROM coin_transactions WHERE idempotency_key='pull:pull-stock:refund'`)
@@ -454,7 +581,6 @@ describe("抽卡", () => {
   });
 });
 
-
 describe("补签（默认关闭，管理员开启后可用）", () => {
   async function enableBackfill(db: D1Database, cost = 10, maxDays = 7): Promise<void> {
     sqliteOf(db)
@@ -464,8 +590,7 @@ describe("补签（默认关闭，管理员开启后可用）", () => {
       )
       .run(JSON.stringify({ backfill: { enabled: true, cost, maxBackfillDays: maxDays } }));
     const written = sqliteOf(db).prepare(`SELECT value FROM coin_config WHERE key='checkin'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     expect(written?.value).toContain("backfill");
   }
 
@@ -481,7 +606,12 @@ describe("补签（默认关闭，管理员开启后可用）", () => {
 
   it("开启后扣款补签、重复补签不重复扣款", async () => {
     await enableBackfill(db);
-    await earnCoins(db, { participantHash: PARTICIPANT.participantHash, amount: 50, kind: "checkin", idempotencyKey: "t:bf" });
+    await earnCoins(db, {
+      participantHash: PARTICIPANT.participantHash,
+      amount: 50,
+      kind: "checkin",
+      idempotencyKey: "t:bf",
+    });
     const day = dayOffset(2);
     const first = await backfillCheckin(db, PARTICIPANT.participantHash, PARTICIPANT.dbUserId, day);
     expect(first.duplicate).toBe(false);
@@ -552,7 +682,9 @@ describe("内容安全审核适配器", () => {
     const originalFetch = globalThis.fetch;
     // 外部服务返回"拒绝"：投稿必须被拦截，且绝不落库。
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ action: "reject", score: 0.95, reason: "违规示例" }), { status: 200 })) as typeof fetch;
+      new Response(JSON.stringify({ action: "reject", score: 0.95, reason: "违规示例" }), {
+        status: 200,
+      })) as typeof fetch;
     try {
       await expect(
         createSubmission(
@@ -572,19 +704,22 @@ describe("投稿媒体（缩略图与音频时长）", () => {
     const env = { DB: db as D1Database, MEDIA_KV: fakeKv() };
     // 合法 PNG 字节（1x1），签名校验通过。
     const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-      0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-      0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-      0x42, 0x60, 0x82,
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00,
+      0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49,
+      0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00,
+      0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
-    const created = await createSubmission(env, { ...PARTICIPANT, kind: "email" }, {
-      type: "image",
-      title: "图片投稿",
-      file: new File([png], "photo.png", { type: "image/png" }),
-      thumbFile: new File([png], "thumb.png", { type: "image/png" }),
-      authorization: { confirmOwn: true },
-    });
+    const created = await createSubmission(
+      env,
+      { ...PARTICIPANT, kind: "email" },
+      {
+        type: "image",
+        title: "图片投稿",
+        file: new File([png], "photo.png", { type: "image/png" }),
+        thumbFile: new File([png], "thumb.png", { type: "image/png" }),
+        authorization: { confirmOwn: true },
+      },
+    );
     expect(created.status).toBe("pending");
     const row = await db
       .prepare(`SELECT media_asset_id, thumb_media_asset_id FROM submissions WHERE id = ?`)
@@ -594,13 +729,19 @@ describe("投稿媒体（缩略图与音频时长）", () => {
     expect(row?.thumb_media_asset_id).not.toBeNull();
     expect(row?.thumb_media_asset_id).not.toBe(row?.media_asset_id);
 
-    const audio = await createSubmission(env, { ...PARTICIPANT, kind: "email" }, {
-      type: "audio",
-      title: "音频投稿",
-      file: new File([new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00])], "clip.mp3", { type: "audio/mpeg" }),
-      durationSeconds: 42,
-      authorization: { confirmOwn: true },
-    });
+    const audio = await createSubmission(
+      env,
+      { ...PARTICIPANT, kind: "email" },
+      {
+        type: "audio",
+        title: "音频投稿",
+        file: new File([new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00])], "clip.mp3", {
+          type: "audio/mpeg",
+        }),
+        durationSeconds: 42,
+        authorization: { confirmOwn: true },
+      },
+    );
     const audioRow = await db
       .prepare(`SELECT media_duration_seconds FROM submissions WHERE id = ?`)
       .bind(audio.id)
@@ -608,7 +749,6 @@ describe("投稿媒体（缩略图与音频时长）", () => {
     expect(Number(audioRow?.media_duration_seconds)).toBe(42);
   });
 });
-
 
 describe("问卷列表的访问方式展示", () => {
   /** 列表端点用到的环境（KV 只被 bot username 缓存用到，列表本体不缓存）。 */
@@ -702,49 +842,98 @@ describe("投稿", () => {
   const mkEnv = () => ({ DB: db as D1Database, MEDIA_KV: {} as KVNamespace });
 
   it("文本投稿进入待审、重复内容被去重", async () => {
-    const first = await createSubmission(mkEnv(), { ...PARTICIPANT, kind: "email" }, {
-      type: "text",
-      title: "一篇小故事",
-      contentText: "很久很久以前。",
-      authorization: { confirmOwn: true, publishToPool: true },
-    });
+    const first = await createSubmission(
+      mkEnv(),
+      { ...PARTICIPANT, kind: "email" },
+      {
+        type: "text",
+        title: "一篇小故事",
+        contentText: "很久很久以前。",
+        authorization: { confirmOwn: true, publishToPool: true },
+      },
+    );
     expect(first.status).toBe("pending");
     await expect(
-      createSubmission(mkEnv(), { ...PARTICIPANT, kind: "email" }, {
-        type: "text",
-        title: "换个标题",
-        contentText: "很久很久以前。",
-        authorization: { confirmOwn: true },
-      }),
+      createSubmission(
+        mkEnv(),
+        { ...PARTICIPANT, kind: "email" },
+        {
+          type: "text",
+          title: "换个标题",
+          contentText: "很久很久以前。",
+          authorization: { confirmOwn: true },
+        },
+      ),
     ).rejects.toMatchObject({ code: "duplicate_content" });
   });
 
   it("匿名身份不可投稿、缺少授权确认被拒绝", async () => {
     await expect(
-      createSubmission(mkEnv(), { participantHash: "web_anon", dbUserId: null, kind: "anonymous" }, {
-        type: "text",
-        title: "x",
-        contentText: "hello",
-        authorization: { confirmOwn: true },
-      }),
+      createSubmission(
+        mkEnv(),
+        { participantHash: "web_anon", dbUserId: null, kind: "anonymous" },
+        {
+          type: "text",
+          title: "x",
+          contentText: "hello",
+          authorization: { confirmOwn: true },
+        },
+      ),
     ).rejects.toMatchObject({ code: "identity_required" });
     await expect(
-      createSubmission(mkEnv(), { ...PARTICIPANT, kind: "email" }, {
-        type: "text",
-        title: "x",
-        contentText: "hello",
-        authorization: {},
-      }),
+      createSubmission(
+        mkEnv(),
+        { ...PARTICIPANT, kind: "email" },
+        {
+          type: "text",
+          title: "x",
+          contentText: "hello",
+          authorization: {},
+        },
+      ),
     ).rejects.toMatchObject({ code: "authorization_required" });
   });
 
+  it("简介超过 maxDescriptionLength 被拒绝（它曾是无上限的入库字段）", async () => {
+    await expect(
+      createSubmission(
+        mkEnv(),
+        { ...PARTICIPANT, kind: "email" },
+        {
+          type: "text",
+          title: "一篇小故事",
+          description: "长".repeat(301),
+          contentText: "内容。",
+          authorization: { confirmOwn: true },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_description" });
+    // 边界内照常通过。
+    const created = await createSubmission(
+      mkEnv(),
+      { ...PARTICIPANT, kind: "email" },
+      {
+        type: "text",
+        title: "一篇小故事 2",
+        description: "长".repeat(300),
+        contentText: "内容。",
+        authorization: { confirmOwn: true },
+      },
+    );
+    expect(created.status).toBe("pending");
+  });
+
   it("审核通过发放幂等奖励，重复审核不重复发放", async () => {
-    await createSubmission(mkEnv(), { ...PARTICIPANT, kind: "email" }, {
-      type: "text",
-      title: "一篇小故事",
-      contentText: "内容。",
-      authorization: { confirmOwn: true },
-    });
+    await createSubmission(
+      mkEnv(),
+      { ...PARTICIPANT, kind: "email" },
+      {
+        type: "text",
+        title: "一篇小故事",
+        contentText: "内容。",
+        authorization: { confirmOwn: true },
+      },
+    );
     const row = await db.prepare(`SELECT id FROM submissions`).first<{ id: number }>();
     const submissionId = Number(row?.id);
     const first = await reviewSubmission(db, submissionId, "approved", "admin:1", { qualityTier: 2 });

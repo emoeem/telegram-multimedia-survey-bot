@@ -78,11 +78,7 @@ function envFor(fake: FakeDb) {
 const ADMIN_AUTH = { isAdmin: true, userId: 1 };
 
 function get(env: ReturnType<typeof envFor>) {
-  return handleControlApiRequest(
-    new Request("https://example.test/api/control/publication-targets"),
-    env,
-    ADMIN_AUTH,
-  );
+  return handleControlApiRequest(new Request("https://example.test/api/control/publication-targets"), env, ADMIN_AUTH);
 }
 
 function putCertShare(chatId: string, env: ReturnType<typeof envFor>) {

@@ -20,8 +20,7 @@ export const SURVEY_PRIMARY_BTN =
   "inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 text-[15px] font-semibold text-[var(--survey-primary-content)] shadow-md transition disabled:opacity-60";
 
 /** 选项胶囊：整块可点，命中区 ≥44px。 */
-export const SURVEY_CHIP =
-  "min-h-11 rounded-full border px-4 py-2.5 text-[13.5px] transition-colors";
+export const SURVEY_CHIP = "min-h-11 rounded-full border px-4 py-2.5 text-[13.5px] transition-colors";
 
 /** 辅助链接（收件箱、再投一稿…）：视觉权重低于主按钮，只做文字链接。 */
 export const SURVEY_AUX_LINK =

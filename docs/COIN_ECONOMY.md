@@ -19,18 +19,18 @@
 
 ## 2. 数据模型（db/migrations/0078_coin_economy.sql）
 
-| 表 | 作用 | 关键约束 |
-| --- | --- | --- |
-| `coin_accounts` | 余额缓存 + 累计收/支 | `CHECK(balance >= 0)` |
-| `coin_transactions` | 唯一事实来源流水 | `UNIQUE(idempotency_key)`；`balance_after` 同事务子查询回读 |
-| `coin_checkins` | 签到日历 | `UNIQUE(participant_hash, day)` |
-| `coin_challenges` / `coin_challenge_claims` | 挑战定义/领取 | `UNIQUE(challenge, 参与者, 周期键)` |
-| `survey_coin_access` | 问卷金币解锁配置 | **缺行 = 免费问卷（现状不变）** |
-| `survey_unlocks` | 解锁记录 | `UNIQUE(survey_id, participant_hash)` |
-| `gacha_pools` / `gacha_pool_items` / `gacha_pool_versions` | 奖池/内容/版本快照 | 版本快照用于事后审计"当时概率" |
-| `gacha_pulls` | 抽取记录（即收藏） | `UNIQUE(idempotency_key)`；记录 `pool_version` |
-| `submissions` | 投稿状态机 | 部分唯一索引按 (参与者, 内容哈希) 去重 |
-| `coin_config` | 运营配置（键 → JSON） | 业务代码只读默认值兜底，参数不写死 |
+| 表                                                         | 作用                  | 关键约束                                                    |
+| ---------------------------------------------------------- | --------------------- | ----------------------------------------------------------- |
+| `coin_accounts`                                            | 余额缓存 + 累计收/支  | `CHECK(balance >= 0)`                                       |
+| `coin_transactions`                                        | 唯一事实来源流水      | `UNIQUE(idempotency_key)`；`balance_after` 同事务子查询回读 |
+| `coin_checkins`                                            | 签到日历              | `UNIQUE(participant_hash, day)`                             |
+| `coin_challenges` / `coin_challenge_claims`                | 挑战定义/领取         | `UNIQUE(challenge, 参与者, 周期键)`                         |
+| `survey_coin_access`                                       | 问卷金币解锁配置      | **缺行 = 免费问卷（现状不变）**                             |
+| `survey_unlocks`                                           | 解锁记录              | `UNIQUE(survey_id, participant_hash)`                       |
+| `gacha_pools` / `gacha_pool_items` / `gacha_pool_versions` | 奖池/内容/版本快照    | 版本快照用于事后审计"当时概率"                              |
+| `gacha_pulls`                                              | 抽取记录（即收藏）    | `UNIQUE(idempotency_key)`；记录 `pool_version`              |
+| `submissions`                                              | 投稿状态机            | 部分唯一索引按 (参与者, 内容哈希) 去重                      |
+| `coin_config`                                              | 运营配置（键 → JSON） | 业务代码只读默认值兜底，参数不写死                          |
 
 ## 3. 账务安全（需求 3.2）
 
@@ -65,7 +65,7 @@
 - **金币门不替代密码门**：两者都启用时需先解锁再输码；金币支付不会绕过
   密码、作者权限或任何既有访问控制。
 - 定价：`clamp(round(base × (1 + hotWeight·ln1p(近30天完成量)) × quality),
-  min, max)`，系数/上下限/刷新间隔全部在 `coin_config.pricing`；
+min, max)`，系数/上下限/刷新间隔全部在 `coin_config.pricing`；
   价格带缓存，刷量被 `ln1p` 平滑。
 - 解锁后永久有效（`survey_unlocks` 行），涨价不重复收费；重复购买幂等；
   失败不扣款。题目与 `POST /responses` 都在服务端做门禁（402）。
@@ -93,7 +93,7 @@
 - 类型：`text` / `image` / `audio` / `survey_report` / `profile_card`，
   每类独立表单；`multipart` 走文件上传，JSON 走文本。
 - 状态机：`pending → approved → in_pool`（或 `changes_requested / rejected /
-  withdrawn / removed`）。
+withdrawn / removed`）。
 - 分层检测（已实现一、二层）：
   1. 字段/长度/大小限制；MIME 字节签名验证（`verifyUploadContent`，防伪造）；
      SHA-256 内容哈希 + 部分唯一索引去重（同一参与者同一内容仅一条活跃投稿）。

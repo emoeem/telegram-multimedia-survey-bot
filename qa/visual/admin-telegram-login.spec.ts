@@ -20,7 +20,11 @@ test.describe("admin password login", () => {
 
   test("shows incorrect-password errors without navigating", async ({ page }) => {
     await page.route("**/api/admin/auth/password", async (route) => {
-      await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "管理员密码错误" }) });
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "管理员密码错误" }),
+      });
     });
     await page.goto("/admin/login");
     await page.getByLabel("管理员密码").fill("wrong-password");
@@ -31,7 +35,12 @@ test.describe("admin password login", () => {
 
   test("shows rate-limit errors", async ({ page }) => {
     await page.route("**/api/admin/auth/password", async (route) => {
-      await route.fulfill({ status: 429, contentType: "application/json", headers: { "Retry-After": "60" }, body: JSON.stringify({ message: "操作过于频繁，请稍后再试" }) });
+      await route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        headers: { "Retry-After": "60" },
+        body: JSON.stringify({ message: "操作过于频繁，请稍后再试" }),
+      });
     });
     await page.goto("/admin/login");
     await page.getByLabel("管理员密码").fill("test-password");

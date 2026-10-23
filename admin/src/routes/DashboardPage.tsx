@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 import { EChart } from "../components/EChart";
 import { Link, useNavigate } from "react-router";
-import { Activity, Archive, CheckCircle2, ClipboardList, Clock, FileText, Loader, Package, RefreshCw, Users, XCircle } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  FileText,
+  Loader,
+  Package,
+  RefreshCw,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { donutOption } from "../charts";
 import { useApi } from "../hooks";
 import type { DashboardData } from "../api";
@@ -39,9 +51,7 @@ function PlanCapabilityCard() {
   }, []);
   if (!info?.plan) return null;
   const { plan, planFallbacks } = info;
-  const capabilities = Object.entries(PLAN_CAPABILITY_LABELS) as Array<
-    [keyof Omit<PlanCapabilities, "tier">, string]
-  >;
+  const capabilities = Object.entries(PLAN_CAPABILITY_LABELS) as Array<[keyof Omit<PlanCapabilities, "tier">, string]>;
   return (
     <section className="mt-5 card">
       <div className="card-title">
@@ -123,18 +133,67 @@ export function DashboardPage() {
   );
 
   const METRICS = [
-    { key: "users", label: "用户数量", icon: Users, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-    { key: "surveys", label: "问卷数量", icon: ClipboardList, tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]" },
-    { key: "publishedSurveys", label: "已发布问卷", icon: FileText, tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]" },
-    { key: "responses", label: "答卷数量", icon: Archive, tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]" },
-    { key: "todayResponses", label: "今日答卷", icon: Activity, tint: "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]" },
+    {
+      key: "users",
+      label: "用户数量",
+      icon: Users,
+      tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]",
+    },
+    {
+      key: "surveys",
+      label: "问卷数量",
+      icon: ClipboardList,
+      tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]",
+    },
+    {
+      key: "publishedSurveys",
+      label: "已发布问卷",
+      icon: FileText,
+      tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]",
+    },
+    {
+      key: "responses",
+      label: "答卷数量",
+      icon: Archive,
+      tint: "bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))] text-[var(--color-primary)]",
+    },
+    {
+      key: "todayResponses",
+      label: "今日答卷",
+      icon: Activity,
+      tint: "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]",
+    },
   ] as const;
 
   const deliveryItems: Array<{ label: string; value: number; status: string; icon: typeof Package; tint: string }> = [
-    { label: "待处理", value: deliveries.pending, status: "pending", icon: Clock, tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]" },
-    { label: "生成中", value: deliveries.delivering, status: "delivering", icon: Loader, tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]" },
-    { label: "已归档", value: deliveries.delivered, status: "delivered", icon: CheckCircle2, tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]" },
-    { label: "失败", value: deliveries.failed, status: "failed", icon: XCircle, tint: "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]" },
+    {
+      label: "待处理",
+      value: deliveries.pending,
+      status: "pending",
+      icon: Clock,
+      tint: "bg-[var(--surface-muted)] text-[var(--color-muted)]",
+    },
+    {
+      label: "生成中",
+      value: deliveries.delivering,
+      status: "delivering",
+      icon: Loader,
+      tint: "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]",
+    },
+    {
+      label: "已归档",
+      value: deliveries.delivered,
+      status: "delivered",
+      icon: CheckCircle2,
+      tint: "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]",
+    },
+    {
+      label: "失败",
+      value: deliveries.failed,
+      status: "failed",
+      icon: XCircle,
+      tint: "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]",
+    },
   ];
 
   const actionLabels: Record<string, string> = {
@@ -150,7 +209,12 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="admin-page-intro"><div><h2>运营总览</h2><p>查看问卷、答卷与报告交付的实时状态</p></div></div>
+      <div className="admin-page-intro">
+        <div>
+          <h2>运营总览</h2>
+          <p>查看问卷、答卷与报告交付的实时状态</p>
+        </div>
+      </div>
       <section className="card">
         <div className="card-title">
           <div>
@@ -184,7 +248,9 @@ export function DashboardPage() {
             <h2>报告交付队列</h2>
             <p className="card-sub">Telegram 频道自动归档 · 共 {deliveryTotal} 份</p>
           </div>
-          <Link className="btn btn-sm" to="/reports">查看全部</Link>
+          <Link className="btn btn-sm" to="/reports">
+            查看全部
+          </Link>
         </div>
         <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -216,7 +282,9 @@ export function DashboardPage() {
           <section className="card">
             <div className="card-title">
               <h2>最近问卷</h2>
-              <Link className="btn btn-sm" to="/surveys">全部问卷</Link>
+              <Link className="btn btn-sm" to="/surveys">
+                全部问卷
+              </Link>
             </div>
             <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近问卷列表">
               <table className="tbl">
@@ -256,7 +324,9 @@ export function DashboardPage() {
           <section className="card">
             <div className="card-title">
               <h2>最近答卷</h2>
-              <Link className="btn btn-sm" to="/responses">全部答卷</Link>
+              <Link className="btn btn-sm" to="/responses">
+                全部答卷
+              </Link>
             </div>
             <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近答卷列表">
               <table className="tbl">
@@ -271,7 +341,9 @@ export function DashboardPage() {
                   {data.recentResponses.slice(0, 6).map((item) => {
                     const respondentText = item.respondent
                       ? [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ") ||
-                        (item.respondent.username ? `@${item.respondent.username}` : String(item.respondent.telegramUserId))
+                        (item.respondent.username
+                          ? `@${item.respondent.username}`
+                          : String(item.respondent.telegramUserId))
                       : item.participantKey
                         ? `网页参与 · ${item.participantKey}`
                         : "匿名";
@@ -316,7 +388,10 @@ export function DashboardPage() {
               <li key={action.id} className="flex items-center justify-between gap-3 py-2.5 text-sm flex-wrap">
                 <span className="min-w-0 flex-1 truncate">
                   {actionLabels[action.action] ?? action.action}
-                  <span className="muted"> · {action.entityType} #{action.entityId ?? "-"}</span>
+                  <span className="muted">
+                    {" "}
+                    · {action.entityType} #{action.entityId ?? "-"}
+                  </span>
                 </span>
                 <span className="muted shrink-0">{formatDateTime(action.createdAt)}</span>
               </li>

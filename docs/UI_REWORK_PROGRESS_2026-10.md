@@ -6,19 +6,19 @@
 
 ## 状态总览
 
-| 批次 | 状态 | 备注 |
-|---|---|---|
-| P0 修复包（FAB/死页/上一题/评论×2/挑战死锁×5） | ✅ 完成 | tsc 双 0、trial 相关 343 测试绿 |
-| 界面-问卷（报告入口/卡片增强/排序/星级/退出确认等） | ✅ 完成 | 列表缓存版本已升 v2 |
-| 界面-挑战（并入 P0：进度条/道具名/排行榜/价格下发/重摇限次/bot名） | ✅ 完成 | |
-| 界面-广场（详情页+深链/autofocus/按tab拉取/空态/破图/重试） | ✅ 完成 | 双 tsc 0 错误 |
-| 功能-图片灯箱（0依赖） | ✅ 完成 | 广场图片卡与资料详情页内使用 |
-| 功能-「我的」个人中心 v1 | ✅ 完成 | /me + /api/me/overview；成就与展示页已接入 |
-| 功能-成就/徽章系统 | ✅ 完成（2026-10-03） | 迁移 0067；13 枚徽章；bot 文案的"解锁成就"已名副其实 |
-| 功能-画廊转展示页 | ✅ 完成（2026-10-03） | 迁移 0069；参与者只生成草稿，公开由管理员决定 |
-| 功能-树洞图片帖 + #话题# | ✅ 完成（2026-10-03） | 迁移 0068；含图片上传/读图授权/话题筛选 |
-| 功能-问卷列表 最新/热门 排序 | ✅ 完成（客户端排序） | |
-| 收尾（全量 tsc/vitest/build + 重启 dev + 浏览器回归） | 🔶 代码面完成 | 双 tsc 0 + vitest 全绿 + build:admin 通过；浏览器回归待人工 |
+| 批次                                                               | 状态                  | 备注                                                        |
+| ------------------------------------------------------------------ | --------------------- | ----------------------------------------------------------- |
+| P0 修复包（FAB/死页/上一题/评论×2/挑战死锁×5）                     | ✅ 完成               | tsc 双 0、trial 相关 343 测试绿                             |
+| 界面-问卷（报告入口/卡片增强/排序/星级/退出确认等）                | ✅ 完成               | 列表缓存版本已升 v2                                         |
+| 界面-挑战（并入 P0：进度条/道具名/排行榜/价格下发/重摇限次/bot名） | ✅ 完成               |                                                             |
+| 界面-广场（详情页+深链/autofocus/按tab拉取/空态/破图/重试）        | ✅ 完成               | 双 tsc 0 错误                                               |
+| 功能-图片灯箱（0依赖）                                             | ✅ 完成               | 广场图片卡与资料详情页内使用                                |
+| 功能-「我的」个人中心 v1                                           | ✅ 完成               | /me + /api/me/overview；成就与展示页已接入                  |
+| 功能-成就/徽章系统                                                 | ✅ 完成（2026-10-03） | 迁移 0067；13 枚徽章；bot 文案的"解锁成就"已名副其实        |
+| 功能-画廊转展示页                                                  | ✅ 完成（2026-10-03） | 迁移 0069；参与者只生成草稿，公开由管理员决定               |
+| 功能-树洞图片帖 + #话题#                                           | ✅ 完成（2026-10-03） | 迁移 0068；含图片上传/读图授权/话题筛选                     |
+| 功能-问卷列表 最新/热门 排序                                       | ✅ 完成（客户端排序） |                                                             |
+| 收尾（全量 tsc/vitest/build + 重启 dev + 浏览器回归）              | 🔶 代码面完成         | 双 tsc 0 + vitest 全绿 + build:admin 通过；浏览器回归待人工 |
 
 ## 已完成改动摘要
 
@@ -59,10 +59,12 @@
 现象：展示区里写文章 / 小说的作品，点立绘只能看到两行灰字，看不到正文。
 
 根因（本地 Playwright 复现，非点击失效）：
+
 - 面板本身能正常打开，作品也在——但 `.showcase-work-desc` 有 `-webkit-line-clamp: 2`，正文只剩两行预览（实测 scrollHeight 707px 被压成 clientHeight 35px），**没有展开入口**；
 - 作品简介上限只有 400 字，长文根本存不进去，"写文章"这件事在数据层就被卡住了。
 
 修复：
+
 - 服务端：`SHOWCASE_LIMITS.itemDescription` 400 → **20000**；公开 feed 只发 `SHOWCASE_ITEM_PREVIEW_CHARS`（280 字）预览并带 `descriptionTruncated`，全文走新接口 **GET /api/showcase/items/:id**（`getPublishedShowcaseItemById`，只认已公开人物，下架即 404），避免几十篇长文把首屏撑大。
 - 客户端：作品卡片在有正文时变成按钮（保留两行预览 + 「阅读全文」），点击打开全屏**查看层**（`admin/src/survey/ShowcaseViewer.tsx` 的 `.showcase-viewer`：标题 + 完整正文 + 原文链接 + 返回/关闭），Esc 先退查看层再关面板；无正文的卡片行为不变。
 - 后台：作品简介输入框改成正文提示（"文章 / 小说可以直接把正文写在这里，最多 20000 字"）。
@@ -73,6 +75,7 @@
 现象：作品只有 56px 缩略图和一个外链，图片点不出大图，音频类型根本不存在，"点击欣赏作品"不成立。
 
 改动：
+
 - **迁移 0070**：`showcase_items` 加 `media_asset_id`（作品**内容文件**，与卡片缩略图 `cover_media_id` 分开）+ `idx_showcase_items_media_asset`。纯 ADD COLUMN（0068 的教训）。
 - **类型**：新增 `audio`（schema union / 服务端 kind 白名单 / 两端 label / 后台下拉）。
 - **服务端**：`normalizeShowcaseItemInput` 接受 `mediaAssetId`；公开 feed 的 item 增加 `mediaUrl`（管理端走 `/api/admin/media/:id/image`，公开走 `/api/showcase/media/:id`）；`getPublishedShowcasePersonIdForAsset` 把 item 的内容文件也纳入授权（否则图片/视频一上传就 404）；上传接口从"只允许图片 8MB"放宽到"图片/音频/视频 20MB"。
@@ -83,12 +86,12 @@
 
 ## 数据库迁移（本批新增，务必先应用）
 
-| 迁移 | 内容 |
-|---|---|
-| 0067_participant_achievements.sql | 成就解锁表 |
-| 0068_plaza_post_images_and_topics.sql | 树洞配图/话题列（**不重建 media_assets**，见坑） |
-| 0069_showcase_person_response.sql | showcase_persons(response_id) 部分唯一索引 |
-| 0070_showcase_item_media.sql | showcase_items.media_asset_id（作品内容文件）+ 索引 |
+| 迁移                                  | 内容                                                |
+| ------------------------------------- | --------------------------------------------------- |
+| 0067_participant_achievements.sql     | 成就解锁表                                          |
+| 0068_plaza_post_images_and_topics.sql | 树洞配图/话题列（**不重建 media_assets**，见坑）    |
+| 0069_showcase_person_response.sql     | showcase_persons(response_id) 部分唯一索引          |
+| 0070_showcase_item_media.sql          | showcase_items.media_asset_id（作品内容文件）+ 索引 |
 
 本地：pnpm migrate:local；线上：pnpm migrate:remote。**未应用迁移时新功能会直接 500/404**（表/列不存在）。
 
@@ -139,6 +142,7 @@ referrer-policy: no-referrer
 **尚未跑过的**：成功路径的生产端到端（有效票据 → Set-Cookie → 进后台），需要真人从机器人里点「🌐 网页管理后台」；代码层由 `tests/unit/http/admin-magic-link.test.ts` 的第一条用例覆盖（断言 location=/admin 且 set-cookie 含 admin_session）。
 
 验证：`tests/unit/services/creator-invite.service.test.ts`（生成/规范化/一次性/多用/过期/未知）、`tests/unit/http/admin-magic-link.test.ts`（兑换成功、无权限、已用/过期三种 302）、`tests/unit/services/admin-magic-link.service.test.ts`（一次性与并发只赢一个）、`tests/unit/bot/survey-handler-routing.test.ts`（首页按钮带票据、`/invite` 成功与失败文案）、`tests/unit/services/deployment-role.service.test.ts`（邀请码接口属 vendor-only）。
+
 ## 生产部署记录（2026-10-03）
 
 - `wrangler login` 重新登录（旧 OAuth 已过期）；生产账号 / D1 `159e8169-a233-4bd7-b3e9-723586f850c2`。

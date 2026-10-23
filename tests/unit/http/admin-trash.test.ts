@@ -189,19 +189,22 @@ describe.skipIf(!sqliteD1Available)("admin trash write routing", () => {
     const ctx = {
       user: { id: 1 },
       isAdmin: true,
-      fail: (status: number, code: string, message: string) =>
-        Response.json({ code, message }, { status }),
+      fail: (status: number, code: string, message: string) => Response.json({ code, message }, { status }),
       json: (body: unknown) => Response.json(body),
     } as unknown as Parameters<typeof handleAdminTrashRead>[3];
     const url = new URL("https://example.test/api/admin/trash");
 
     // Direct guarantee: only reads are answered here, so a write can never be
     // swallowed by this handler again regardless of route ordering.
-    await expect(handleAdminTrashRead(new Request(url, { method: "DELETE" }), url, makeEnv(db), ctx)).resolves.toBeNull();
+    await expect(
+      handleAdminTrashRead(new Request(url, { method: "DELETE" }), url, makeEnv(db), ctx),
+    ).resolves.toBeNull();
     await expect(
       handleAdminTrashRead(new Request(url, { method: "POST", body: "{}" }), url, makeEnv(db), ctx),
     ).resolves.toBeNull();
-    await expect(handleAdminTrashRead(new Request(url, { method: "GET" }), url, makeEnv(db), ctx)).resolves.not.toBeNull();
+    await expect(
+      handleAdminTrashRead(new Request(url, { method: "GET" }), url, makeEnv(db), ctx),
+    ).resolves.not.toBeNull();
   });
 
   it("refuses a non-admin instead of deleting anything", async () => {

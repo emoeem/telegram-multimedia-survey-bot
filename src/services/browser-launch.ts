@@ -19,8 +19,7 @@ export async function launchBrowser(
     try {
       const limits = await puppeteer.limits(binding);
       const cooldownMs = (limits.timeUntilNextAllowedBrowserAcquisition ?? 0) * 1000;
-      const poolFull =
-        limits.maxConcurrentSessions > 0 && limits.activeSessions.length >= limits.maxConcurrentSessions;
+      const poolFull = limits.maxConcurrentSessions > 0 && limits.activeSessions.length >= limits.maxConcurrentSessions;
       if (limits.allowedBrowserAcquisitions >= 1 && cooldownMs === 0 && !poolFull) break;
       console.info("Browser acquisition gated; waiting", {
         ...context,

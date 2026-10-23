@@ -36,7 +36,10 @@ export function generateCreatorInviteCode(): string {
 
 /** 允许用户带空格、大小写、省略横线地输入。 */
 export function normalizeCreatorInviteCode(raw: string): string | null {
-  const compact = raw.trim().toUpperCase().replace(/[\s-]+/g, "");
+  const compact = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "");
   const match = compact.match(/^CR([A-Z0-9]{8})$/);
   if (!match) return null;
   return `CR-${match[1]!.slice(0, 4)}-${match[1]!.slice(4)}`;

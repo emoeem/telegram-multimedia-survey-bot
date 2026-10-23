@@ -1,9 +1,6 @@
 import type { Env } from "../../index";
 import type { QuestionType } from "../../db/schema";
-import {
-  getMediaAssetByIdStatement,
-  mapMediaAssetStatement,
-} from "../../db/repositories/media.repository";
+import { getMediaAssetByIdStatement, mapMediaAssetStatement } from "../../db/repositories/media.repository";
 import { getQuestionById } from "../../db/repositories/question.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
 import {
@@ -24,7 +21,12 @@ import {
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
 import { checkRateLimit } from "../../services/rate-limit.service";
 import { r18ParticipantGate } from "../../services/content-rating.service";
-import { loadSystemSettings } from "../../services/system-settings.service";
+import {
+  ADMIN_SESSION_COOKIE,
+  resolveSessionSecret,
+  verifyAdminSessionValue,
+} from "../../services/admin-session.service";
+import { loadAdminSessionEpoch, loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
 import { getSurveyByIdStatement, mapSurveyStatementResult } from "../../db/repositories/survey.repository";
 import { mediaPublicUrl } from "./presentation";
@@ -77,11 +79,38 @@ function edgeCache(): Cache | null {
 }
 
 /**
+ * Whether the request carries a valid admin session cookie.
+ *
+ * Only consulted for survey-scope assets that are NOT linked to any
+ * once-published survey (draft uploads, detached media): the admin editor
+ * previews those through this same public URL, and the browser sends the
+ * `admin_session` cookie automatically on same-origin <img>/<audio> requests.
+ * Everything else keeps its zero-extra-cost path.
+ */
+async function hasValidAdminSession(request: Request, env: Env): Promise<boolean> {
+  const cookie = request.headers
+    .get("cookie")
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
+  if (!cookie) return false;
+  const epoch = await loadAdminSessionEpoch(env.DB);
+  const userId = await verifyAdminSessionValue(
+    resolveSessionSecret(env),
+    cookie.slice(ADMIN_SESSION_COOKIE.length + 1),
+    epoch,
+  );
+  return userId !== null;
+}
+
+/**
  * Public media endpoint for survey and response assets.
  *
- * Authorization is scope-based: published survey assets are public, response
- * assets are readable only by the participant who owns the response, and
- * everything else (templates, generated results, identity cards) is refused.
+ * Authorization is scope-based: assets linked to a once-published survey
+ * (published / closed / archived) are public, response assets are readable
+ * only by the participant who owns the response, unlinked survey assets
+ * (draft uploads, detached media) require an admin session, and everything
+ * else (templates, generated results, identity cards) is refused.
  *
  * Cost shape: survey-scope assets cost ONE D1 round trip (asset row plus the
  * published-linkage checks in a single batch) and then nothing at all — an
@@ -103,35 +132,41 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
 
   const [assetResult, linkedResult] = await env.DB.batch([
     getMediaAssetByIdStatement(env.DB, mediaId),
-    // One statement covers both linkage shapes: attached to a published
-    // survey's question/option media, or serving as its cover. The two queries
-    // used to run sequentially as a primary/fallback pair, which doubled the
-    // round trips of every not-yet-cached asset.
+    // One statement covers both linkage shapes: attached to a
+    // once-published survey's question/option media, or serving as its cover.
+    // "Once-published" means published/closed/archived: a closed or archived
+    // survey still has historical respondents reading their reports, and its
+    // media was public while it ran — denying it now would break old reports.
+    // Draft surveys and soft-deleted surveys never linked anything publicly.
+    // The two queries used to run sequentially as a primary/fallback pair,
+    // which doubled the round trips of every not-yet-cached asset.
     env.DB.prepare(
       `SELECT 1 AS linked FROM surveys s
          JOIN survey_questions q ON q.survey_id = s.id
          JOIN question_media qm ON qm.question_id = q.id
-        WHERE s.status = 'published' AND s.deleted_at IS NULL AND qm.media_asset_id = ?
+        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND qm.media_asset_id = ?
       UNION
       SELECT 1 AS linked FROM surveys s
          JOIN survey_questions q ON q.survey_id = s.id
          JOIN question_options o ON o.question_id = q.id
          JOIN option_media om ON om.question_option_id = o.id
-        WHERE s.status = 'published' AND s.deleted_at IS NULL AND om.media_asset_id = ?
+        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND om.media_asset_id = ?
       UNION
       SELECT 1 AS linked FROM surveys s
-        WHERE s.status = 'published' AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
+        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL AND s.cover_media_id = ?`,
     ).bind(mediaId, mediaId, mediaId),
   ]);
   const asset = mapMediaAssetStatement(assetResult);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");
+  const linkedToPublicSurvey = ((linkedResult?.results ?? []) as unknown[]).length > 0;
 
   if (asset.scope === "survey") {
-    // Admin-uploaded temporary media (e.g. background music) is allowed
-    // before it is attached to any published question/option.
-    if (asset.storageKind !== "temporary") {
-      const linked = ((linkedResult?.results ?? []) as unknown[]).length > 0;
-      if (!linked) return fail(404, "media_not_found", "媒体不属于已发布问卷");
+    /* Draft-survey and detached-survey assets are NOT public: they used to be
+     * readable by anyone guessing sequential ids, leaking unreleased content.
+     * The one legitimate consumer of unlinked assets is the admin editor's
+     * preview, which rides the same URL with the admin session cookie. */
+    if (!linkedToPublicSurvey && !(await hasValidAdminSession(request, env))) {
+      return fail(404, "media_not_found", "媒体不属于已发布问卷");
     }
   } else if (asset.scope === "response") {
     const participant = await resolveParticipant(request, env);
@@ -160,8 +195,9 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
   // client still receives the year-long immutable policy; the edge copy trades
   // a shorter TTL for a bounded staleness window after unpublish/close.
   // Response-scope and internal assets are personal or private and never enter
-  // the shared cache.
-  if (asset.scope === "survey" && request.method === "GET" && mediaResponse.status === 200) {
+  // the shared cache — and neither do admin-previewed draft assets: the edge
+  // entry is keyed by URL alone, so caching one would hand it to everyone.
+  if (asset.scope === "survey" && linkedToPublicSurvey && request.method === "GET" && mediaResponse.status === 200) {
     const cache = edgeCache();
     if (cache) {
       try {
@@ -299,12 +335,8 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   const settings = await loadSystemSettings(env.DB);
   // R2 部署放宽单文件天花板（KV 25MB 值上限不复存在）；运营配置仍然取小。
   const hardCeiling = env.MEDIA ? R2_MAX_PER_FILE_BYTES : TEMP_FILE_UPLOAD_MAX_BYTES;
-  const typeDefaultBytes =
-    questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : hardCeiling;
-  const maxUploadBytes = Math.min(
-    maxSizeMb !== null ? maxSizeMb * 1024 * 1024 : typeDefaultBytes,
-    hardCeiling,
-  );
+  const typeDefaultBytes = questionType === "image" ? settings.maxUploadMb * 1024 * 1024 : hardCeiling;
+  const maxUploadBytes = Math.min(maxSizeMb !== null ? maxSizeMb * 1024 * 1024 : typeDefaultBytes, hardCeiling);
   if (file.size > maxUploadBytes) {
     return fail(413, "upload_too_large", `单个文件不能超过 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB`);
   }
@@ -313,7 +345,8 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     Math.min(
       settings.maxResponseMediaMb * 1024 * 1024,
       env.MEDIA ? R2_MAX_RESPONSE_MEDIA_BYTES : MAX_RESPONSE_MEDIA_BYTES,
-    ) / (1024 * 1024),
+    ) /
+      (1024 * 1024),
   );
   const maxResponseBytes = responseCeilingMb * 1024 * 1024;
   if (currentBytes + file.size > maxResponseBytes) {
@@ -341,7 +374,6 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   });
   return json({ ok: true, mediaAssetId: asset.id, url: mediaPublicUrl(asset.id) }, 201);
 }
-
 
 /** 单份答卷最多挂多少条 Stream 视频：云转码按条计费，收敛滥用面。 */
 const MAX_STREAM_ASSETS_PER_RESPONSE = 10;

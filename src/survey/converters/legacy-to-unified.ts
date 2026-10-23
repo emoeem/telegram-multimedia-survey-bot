@@ -38,8 +38,7 @@ function mapCondition(
 ): SurveyCondition {
   const mappedQuestion = (sourceId: unknown): string =>
     generatedIdOfIndex(questionIndexBySource.get(String(sourceId)) ?? -1);
-  const mappedOption = (sourceId: unknown): string =>
-    optionIdBySource.get(String(sourceId)) ?? String(sourceId);
+  const mappedOption = (sourceId: unknown): string => optionIdBySource.get(String(sourceId)) ?? String(sourceId);
 
   const result: SurveyCondition = { kind: "option_equals" };
   const rules: Array<{ optionId: string; targetQuestionId: string }> = [];
@@ -107,12 +106,7 @@ function normalizeQuestion(
     ),
     ...(question.condition
       ? {
-          condition: mapCondition(
-            question.condition,
-            questionIndexBySource,
-            optionIdBySource,
-            surveyQuestionId,
-          ),
+          condition: mapCondition(question.condition, questionIndexBySource, optionIdBySource, surveyQuestionId),
         }
       : {}),
   };

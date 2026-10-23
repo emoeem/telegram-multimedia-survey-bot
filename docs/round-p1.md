@@ -5,12 +5,12 @@
 
 ## 1. 交付结论
 
-| 任务 | 状态 | 关键证据 |
-| --- | --- | --- |
-| 删除 Undo / Soft Delete / 回收站 | ✅ | migration `0074_soft_delete.sql`；删除、恢复、30 天清理均有单测；公开查询统一排除 tombstone |
-| Showcase cursor 分页 | ✅ | migrations `0075_showcase_cursor.sql` / `0076_showcase_cursor_all.sql`；keyset `(created_at,id)`；无 OFFSET；Playwright cursor 交互通过 |
-| Accessibility CI 门禁 | ✅ | `@axe-core/playwright`；WCAG 2.1 AA；serious/critical 阻断，moderate/minor advisory；visual workflow 已执行该门禁 |
-| Admin 拆包 | ✅ | 多页面入口修正为 Vite 8 `rolldownOptions.input`；Admin 首屏入口 JS gzip 约 118 KB（vendor 单独缓存口径） |
+| 任务                             | 状态 | 关键证据                                                                                                                                |
+| -------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 删除 Undo / Soft Delete / 回收站 | ✅   | migration `0074_soft_delete.sql`；删除、恢复、30 天清理均有单测；公开查询统一排除 tombstone                                             |
+| Showcase cursor 分页             | ✅   | migrations `0075_showcase_cursor.sql` / `0076_showcase_cursor_all.sql`；keyset `(created_at,id)`；无 OFFSET；Playwright cursor 交互通过 |
+| Accessibility CI 门禁            | ✅   | `@axe-core/playwright`；WCAG 2.1 AA；serious/critical 阻断，moderate/minor advisory；visual workflow 已执行该门禁                       |
+| Admin 拆包                       | ✅   | 多页面入口修正为 Vite 8 `rolldownOptions.input`；Admin 首屏入口 JS gzip 约 118 KB（vendor 单独缓存口径）                                |
 
 ## 2. Soft Delete / Undo
 
@@ -72,12 +72,12 @@ CI：`.github/workflows/ci.yml` 的 visual job 执行 `pnpm test:visual`，而�
 
 Vite 8.3.2 / Rolldown 最终构建：
 
-| Chunk | Raw | gzip |
-| --- | ---: | ---: |
-| `main-*.js`（Admin entry） | 24.57 KB | 7.76 KB |
-| `react-vendor-*.js` | 313.07 KB | 98.70 KB |
-| `icon-vendor-*.js` | 29.75 KB | 9.99 KB |
-| `survey-*.js`（Public entry） | 158.83 KB | 38.06 KB |
+| Chunk                              |         Raw |      gzip |
+| ---------------------------------- | ----------: | --------: |
+| `main-*.js`（Admin entry）         |    24.57 KB |   7.76 KB |
+| `react-vendor-*.js`                |   313.07 KB |  98.70 KB |
+| `icon-vendor-*.js`                 |    29.75 KB |   9.99 KB |
+| `survey-*.js`（Public entry）      |   158.83 KB |  38.06 KB |
 | `esm-*.js`（ECharts async/shared） | 1,133.02 KB | 376.28 KB |
 
 首屏口径：Admin HTML 直接引用的入口 + 长缓存 vendor 约 118 KB gzip；ECharts 大 chunk 是异步路由资源，不计入“首屏 Admin 入口”口径。路由页面继续 lazy load，二维码、dnd-kit、fingerprint、Telegram SDK 等重型依赖已独立 vendor chunk。

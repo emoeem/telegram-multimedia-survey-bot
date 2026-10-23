@@ -237,14 +237,18 @@ export function Layout() {
   const railMenuGroups = useMemo(() => {
     const groups = railGroups.secondary.map((group) => ({
       label: group.label,
-      items: group.items.map((item) => ({ key: item.to, label: item.label, icon: item.icon, to: item.to, external: false })),
+      items: group.items.map((item) => ({
+        key: item.to,
+        label: item.label,
+        icon: item.icon,
+        to: item.to,
+        external: false,
+      })),
     }));
     groups.push({
       label: "快捷入口",
       items: [
-        ...(isCreator
-          ? []
-          : [{ key: "/trial", label: "挑战任务", icon: Target, to: "/trial", external: true }]),
+        ...(isCreator ? [] : [{ key: "/trial", label: "挑战任务", icon: Target, to: "/trial", external: true }]),
         { key: "/s", label: "问卷列表", icon: ClipboardList, to: "/s", external: true },
       ],
     });
@@ -553,42 +557,42 @@ export function Layout() {
             </div>
           ) : null}
           {compactNav ? null : (
-          <div className="mt-3 border-t border-white/5 pt-2.5">
-            {/* No 线上体验 caption: the divider above already separates these
+            <div className="mt-3 border-t border-white/5 pt-2.5">
+              {/* No 线上体验 caption: the divider above already separates these
                 two shortcuts, and the caption cost 28px of a 900px window. */}
-            <div className="flex flex-col gap-0.5">
-              {/* 打开树洞 / 打开展示区 used to live here pointing at /plaza and
+              <div className="flex flex-col gap-0.5">
+                {/* 打开树洞 / 打开展示区 used to live here pointing at /plaza and
                   /showcase — the exact URLs the 社区 group already links to, so
                   the footer only offered a second way to the same two pages.
                   The community group is the single entry point now. */}
-              {isCreator ? null : (
+                {isCreator ? null : (
+                  <a
+                    href="/trial"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="挑战任务"
+                    aria-label="挑战任务"
+                    className="group flex items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+                  >
+                    <Target className="h-[18px] w-[18px] shrink-0" />
+                    <span className="sm:hidden lg:inline">挑战任务</span>
+                    <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+                  </a>
+                )}
                 <a
-                  href="/trial"
+                  href="/s"
                   target="_blank"
                   rel="noreferrer"
-                  title="挑战任务"
-                  aria-label="挑战任务"
+                  title="问卷列表"
+                  aria-label="问卷列表"
                   className="group flex items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
                 >
-                  <Target className="h-[18px] w-[18px] shrink-0" />
-                  <span className="sm:hidden lg:inline">挑战任务</span>
+                  <ClipboardList className="h-[18px] w-[18px] shrink-0" />
+                  <span className="sm:hidden lg:inline">问卷列表</span>
                   <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
                 </a>
-              )}
-              <a
-                href="/s"
-                target="_blank"
-                rel="noreferrer"
-                title="问卷列表"
-                aria-label="问卷列表"
-                className="group flex items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
-              >
-                <ClipboardList className="h-[18px] w-[18px] shrink-0" />
-                <span className="sm:hidden lg:inline">问卷列表</span>
-                <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
-              </a>
+              </div>
             </div>
-          </div>
           )}
           {/* Only the phone drawer needs this: from 640px up the header's
               `.admin-env-pill` already shows the same string, and at 1000px+

@@ -40,7 +40,10 @@ export class AnswerSaveQueue {
 
   private readonly drainWaiters: Array<() => void> = [];
 
-  constructor(private readonly sender: SaveSender, private readonly options: SaveQueueOptions = {}) {}
+  constructor(
+    private readonly sender: SaveSender,
+    private readonly options: SaveQueueOptions = {},
+  ) {}
 
   /** 等待发送的条数（不含在途请求）。 */
   get pendingCount(): number {

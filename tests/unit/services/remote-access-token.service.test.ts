@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  signRemoteAccessToken,
-  verifyRemoteAccessToken,
-} from "../../../src/services/remote-access-token.service";
+import { signRemoteAccessToken, verifyRemoteAccessToken } from "../../../src/services/remote-access-token.service";
 
 const SECRET = "test-remote-access-secret-value";
 const INSTALLATION = "install-5628d80b64e094664e388e36";
@@ -50,7 +47,9 @@ describe("remote access tokens", () => {
       verifyRemoteAccessToken(SECRET, `${forged}.${signature}`, INSTALLATION, NOW + 1000),
     ).resolves.toBeNull();
     // Sanity: the untouched token still verifies.
-    await expect(verifyRemoteAccessToken(SECRET, `${payload}.${signature}`, INSTALLATION, NOW + 1000)).resolves.not.toBeNull();
+    await expect(
+      verifyRemoteAccessToken(SECRET, `${payload}.${signature}`, INSTALLATION, NOW + 1000),
+    ).resolves.not.toBeNull();
   });
 
   it("refuses a token minted for another installation", async () => {

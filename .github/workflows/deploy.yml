@@ -6,7 +6,39 @@ on:
       - main
 
 jobs:
+  # 等待 CI 的三个门禁(checks / tg-archive / visual)全部绿了才部署。
+  # 之前 deploy 与 ci.yml 并行赛跑:deploy 自己跑 typecheck+单测后就发,
+  # 视觉用例后红时生产已经带伤上线。workflow_run 会把 main 上的推送再触发
+  # 一次本 workflow,所以它不再由 push 直接触发。
+  await-ci:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for CI "checks" job
+        uses: lewagon/wait-on-check-action@v1.4.1
+        with:
+          ref: ${{ github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          check-name: "checks"
+      - name: Wait for CI "tg-archive" job
+        uses: lewagon/wait-on-check-action@v1.4.1
+        with:
+          ref: ${{ github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          check-name: "tg-archive"
+      - name: Wait for CI "visual" job
+        uses: lewagon/wait-on-check-action@v1.4.1
+        with:
+          ref: ${{ github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          check-name: "visual"
+
   deploy:
+    needs: await-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,11 +67,8 @@ jobs:
       - name: Build admin SPA
         run: pnpm build:admin
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
+      # 门禁已由 ci.yml 全量跑过(typecheck / test / lint / admin build /
+      # python 回归 / visual),这里不再重复;deploy 只负责发。
 
       - name: Apply D1 migrations
         run: pnpm exec wrangler d1 migrations apply DB --remote

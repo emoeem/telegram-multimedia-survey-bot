@@ -35,10 +35,7 @@ export async function getEmailAccountByEmail(db: D1Database, email: string): Pro
  * 归档等后台展示据此还原「这个人是谁、用什么填的」）。
  */
 export async function getEmailAccountByUserId(db: D1Database, userId: number): Promise<EmailAccountRecord | null> {
-  const row = await db
-    .prepare("SELECT * FROM email_accounts WHERE user_id = ? LIMIT 1")
-    .bind(userId)
-    .first();
+  const row = await db.prepare("SELECT * FROM email_accounts WHERE user_id = ? LIMIT 1").bind(userId).first();
   return row ? mapRow(row as Record<string, unknown>) : null;
 }
 

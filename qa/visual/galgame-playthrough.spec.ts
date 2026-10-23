@@ -141,8 +141,7 @@ const MEDIA_CACHE_DIR = "qa/.media-cache";
 const mediaCache = new Map<string, MediaEntry>();
 
 /** 生产媒体对默认的脚本类 User-Agent 会返回 403，必须带浏览器 UA。 */
-const BROWSER_UA =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
+const BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
 
 function diskEntry(path: string): MediaEntry | undefined {
   const id = /\/api\/survey\/media\/(\d+)$/.exec(path)?.[1];
@@ -223,7 +222,11 @@ function nextIndex(
 
 /** The UI renders long multi-line titles; a short normalised prefix identifies the node. */
 function heading(title: string): string {
-  const line = title.split("\n").map((part) => part.trim()).filter(Boolean)[0] ?? title;
+  const line =
+    title
+      .split("\n")
+      .map((part) => part.trim())
+      .filter(Boolean)[0] ?? title;
   return line.slice(0, 18);
 }
 
@@ -276,7 +279,9 @@ async function installRoutes(page: Page): Promise<string[]> {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        unlocked: [{ endingKey: "lamplight", resultType: "chapter", title: "台灯与手稿", unlockedAt: "2026-08-23T12:00:00Z" }],
+        unlocked: [
+          { endingKey: "lamplight", resultType: "chapter", title: "台灯与手稿", unlockedAt: "2026-08-23T12:00:00Z" },
+        ],
         total: 4,
         hasGallery: true,
       }),
@@ -564,8 +569,14 @@ test("production survey 118 plays from the prologue to an ending", async ({ page
   expect(await trackedPlayerCount(page), "声音未开启时不应创建音乐播放器").toBe(0);
 
   // Phase 5/6: real bytes, correct MIME, no 404 and no wrong-typed response.
-  expect(mediaTypes.some((entry) => entry.includes("audio/")), `未观察到音频响应：${mediaTypes.join(",")}`).toBe(true);
-  expect(mediaTypes.some((entry) => entry.includes("image/")), `未观察到图片响应：${mediaTypes.join(",")}`).toBe(true);
+  expect(
+    mediaTypes.some((entry) => entry.includes("audio/")),
+    `未观察到音频响应：${mediaTypes.join(",")}`,
+  ).toBe(true);
+  expect(
+    mediaTypes.some((entry) => entry.includes("image/")),
+    `未观察到图片响应：${mediaTypes.join(",")}`,
+  ).toBe(true);
   // Nothing hit an endpoint this suite did not model.
   expect(aborted, `出现了未预期的接口调用：${aborted.join(",")}`).toEqual([]);
   expect(problems).toEqual([]);
@@ -689,7 +700,9 @@ test("the interface sound effects are wired, gesture-gated and never stack a pla
   ).toBe(0);
   expect((await fetchedMedia(page)).filter((id) => Object.values(sfx).some((url) => idOf(url) === id))).toEqual([]);
 
-  const cueIds = Object.values(sfx).map((url) => idOf(url)).filter((id): id is string => Boolean(id));
+  const cueIds = Object.values(sfx)
+    .map((url) => idOf(url))
+    .filter((id): id is string => Boolean(id));
   const waitForCues = async (minimum: number) => {
     await expect
       .poll(async () => (await fetchedMedia(page)).filter((id) => cueIds.includes(id)).length, {
@@ -698,8 +711,7 @@ test("the interface sound effects are wired, gesture-gated and never stack a pla
       })
       .toBeGreaterThanOrEqual(minimum);
   };
-  const cueIdsFor = (...cues: string[]) =>
-    cues.map((cue) => idOf(sfx[cue])).filter((id): id is string => Boolean(id));
+  const cueIdsFor = (...cues: string[]) => cues.map((cue) => idOf(sfx[cue])).filter((id): id is string => Boolean(id));
 
   // Navigating is a gesture: the page-turn cue must actually be requested.
   await page.locator("nav button.btn-primary").click();
@@ -845,8 +857,8 @@ test("leaving the survey silences the music", async ({ page }) => {
   // never unmounts. (`qa/visual/survey-exit.spec.ts` proves the navigation
   // itself happens; this proves the audio lifecycle hook that pairs with it.)
   await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
-  const paused = await page.evaluate(
-    () => (window as unknown as { __audios: Array<{ paused: boolean }> }).__audios.every((audio) => audio.paused),
+  const paused = await page.evaluate(() =>
+    (window as unknown as { __audios: Array<{ paused: boolean }> }).__audios.every((audio) => audio.paused),
   );
   expect(paused, "离开后 BGM 仍在播放").toBe(true);
 });
@@ -858,9 +870,7 @@ test("the whole script is written prose, not filler", async ({ page }) => {
   // used as the play-length measure, because a single run walks only 22 of
   // those nodes. See the next test for the per-run volume.
   const paragraphs = definition.questions.filter((question) => (question.description ?? "").length > 0);
-  const text = definition.questions
-    .map((question) => `${question.title}\n${question.description ?? ""}`)
-    .join("\n");
+  const text = definition.questions.map((question) => `${question.title}\n${question.description ?? ""}`).join("\n");
   expect(paragraphs.length, "全稿叙事段落数量").toBeGreaterThanOrEqual(30);
   expect(text.length, "全稿叙事体量").toBeGreaterThan(4000);
   expect(text).toContain("晚棠");

@@ -36,8 +36,7 @@ function makeDb(overrides: Record<string, unknown> = {}) {
         });
       }
       const linked = overrides.participantLink as
-        | { userId: number; bannedAt: string | null; telegramUserId?: number }
-        | undefined;
+        { userId: number; bannedAt: string | null; telegramUserId?: number } | undefined;
       if (sql.includes("FROM users WHERE telegram_user_id") && linked) {
         // token 身份的用户读取：用 participantLink 覆盖模拟「被拉黑的用户」。
         statement.first.mockResolvedValue({
@@ -55,6 +54,9 @@ function makeDb(overrides: Record<string, unknown> = {}) {
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         });
+      } else if (sql.includes("AS linked FROM surveys")) {
+        // 「素材是否挂在曾发布过的问卷上」的公开可见性查询。
+        statement.all.mockResolvedValue({ results: overrides.linkedSurvey ? [{ linked: 1 }] : [] });
       } else if (sql.includes("SELECT * FROM surveys")) {
         statement.first.mockResolvedValue(
           overrides.survey ?? {
@@ -162,7 +164,11 @@ function makeDb(overrides: Record<string, unknown> = {}) {
         statement.run.mockResolvedValue({ success: true, meta: { last_row_id: 42 } });
       } else if (sql.includes("INSERT INTO media_assets")) {
         statement.run.mockResolvedValue({ success: true, meta: { last_row_id: 77 } });
-      } else if (sql.includes("FROM survey_responses") && sql.includes("status = 'in_progress'") && sql.includes("SELECT id, status")) {
+      } else if (
+        sql.includes("FROM survey_responses") &&
+        sql.includes("status = 'in_progress'") &&
+        sql.includes("SELECT id, status")
+      ) {
         statement.first.mockResolvedValue(overrides.inProgressResponse ?? { id: 42, status: "in_progress" });
       } else if (sql.includes("current_question_id currentQuestionId")) {
         // Resume lookup: no in-progress response unless a test asks for one.
@@ -713,30 +719,31 @@ describe("web survey media endpoint edge cache", () => {
     vi.unstubAllGlobals();
   });
 
-  it("serves survey-scope media through the edge cache: first view fills it, repeat views skip D1", async () => {
+  /** survey-scope 的 BGM 素材行：linked 与否由 linkedSurvey override 决定。 */
+  const BGM_ASSET = {
+    id: 77,
+    asset_scope: "survey",
+    media_type: "audio",
+    telegram_file_id: null,
+    telegram_file_unique_id: null,
+    url: null,
+    storage_kind: "temporary",
+    storage_key: "media:survey:bgm",
+    expires_at: null,
+    mime_type: "audio/mpeg",
+    file_name: "bgm.mp3",
+    file_size: 3,
+    width: null,
+    height: null,
+    duration: null,
+    r2_key: null,
+    created_at: "",
+    updated_at: "",
+  };
+
+  it("serves linked survey-scope media through the edge cache: first view fills it, repeat views skip D1", async () => {
     const { cache, store } = stubEdgeCache();
-    const db = makeDb({
-      mediaAsset: {
-        id: 77,
-        asset_scope: "survey",
-        media_type: "audio",
-        telegram_file_id: null,
-        telegram_file_unique_id: null,
-        url: null,
-        storage_kind: "temporary",
-        storage_key: "media:survey:bgm",
-        expires_at: null,
-        mime_type: "audio/mpeg",
-        file_name: "bgm.mp3",
-        file_size: 3,
-        width: null,
-        height: null,
-        duration: null,
-        r2_key: null,
-        created_at: "",
-        updated_at: "",
-      },
-    });
+    const db = makeDb({ linkedSurvey: 1, mediaAsset: BGM_ASSET });
     const env = makeEnv(db, {
       MEDIA_KV: { put: vi.fn(async () => {}), get: vi.fn(async () => new ArrayBuffer(3)) } as unknown as KVNamespace,
     });
@@ -765,6 +772,40 @@ describe("web survey media endpoint edge cache", () => {
     expect(second?.headers.get("Cache-Control")).toBe("public, max-age=86400");
     expect(batchSpy).not.toHaveBeenCalled();
     expect(store.size).toBe(1);
+  });
+
+  it("refuses unlinked survey-scope media to anonymous visitors (draft assets are not enumerable)", async () => {
+    const { cache } = stubEdgeCache();
+    const db = makeDb({ mediaAsset: BGM_ASSET });
+    const env = makeEnv(db, {
+      MEDIA_KV: { put: vi.fn(async () => {}), get: vi.fn(async () => new ArrayBuffer(3)) } as unknown as KVNamespace,
+    });
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/media/77"),
+      env,
+      new URL("https://worker.test/api/survey/media/77"),
+    );
+    expect(response?.status).toBe(404);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("serves unlinked survey-scope media to an admin session but keeps it out of the shared cache", async () => {
+    const { cache } = stubEdgeCache();
+    const db = makeDb({ mediaAsset: BGM_ASSET });
+    const kvGet = vi.fn(async (_key: string) => new Uint8Array([1, 2, 3]).buffer as ArrayBuffer);
+    const env = makeEnv(db, {
+      MEDIA_KV: { put: vi.fn(async () => {}), get: kvGet } as unknown as KVNamespace,
+    });
+    const { createAdminSessionValue } = await import("../../../src/services/admin-session.service");
+    const session = await createAdminSessionValue("webhook-secret", 1, 0);
+    const response = await handleSurveyApiRequest(
+      request("/api/survey/media/77", { headers: { cookie: `admin_session=${session}` } }),
+      env,
+      new URL("https://worker.test/api/survey/media/77"),
+    );
+    expect(response?.status).toBe(200);
+    // 管理员预览的是未公开素材：进共享边缘缓存等于把它变成人人可读。
+    expect(cache.put).not.toHaveBeenCalled();
   });
 
   it("never caches response-scope (private) media", async () => {

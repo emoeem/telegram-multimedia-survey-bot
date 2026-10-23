@@ -52,7 +52,8 @@ export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
           ? null
           : String(surveyRow["settings_json"]),
       contentRating: surveyRow["content_rating"] === "r18" ? "r18" : "all",
-      seriesId: surveyRow["series_id"] === null || surveyRow["series_id"] === undefined ? null : Number(surveyRow["series_id"]),
+      seriesId:
+        surveyRow["series_id"] === null || surveyRow["series_id"] === undefined ? null : Number(surveyRow["series_id"]),
       seriesOrder:
         surveyRow["series_order"] === null || surveyRow["series_order"] === undefined
           ? null

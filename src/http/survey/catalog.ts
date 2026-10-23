@@ -186,7 +186,6 @@ export interface PublishedSurveyListPayload {
   categories: PublishedSurveyCategory[];
 }
 
-
 /** 公开目录里被分级挡住的 r18 问卷数（给未确认年龄的查看者一个"还有内容"的提示）。 */
 export async function countPublishedRestrictedSurveys(db: D1Database): Promise<number> {
   const row = await db
@@ -293,10 +292,7 @@ export async function loadPublishedSurveyList(env: Env, q: string): Promise<Publ
  * 没有理由再引入第二个失效时钟。
  */
 export async function loadPublishedSurveyListPayload(env: Env, q: string): Promise<PublishedSurveyListPayload> {
-  const [surveys, categories] = await Promise.all([
-    loadPublishedSurveyList(env, q),
-    listPublishedCategories(env.DB),
-  ]);
+  const [surveys, categories] = await Promise.all([loadPublishedSurveyList(env, q), listPublishedCategories(env.DB)]);
   return {
     surveys,
     categories: categories.map(({ id, name, slug, sortOrder }) => ({ id, name, slug, sortOrder })),
@@ -379,10 +375,13 @@ export async function readPublishedSurveyWithCachedFlow(
   env: Env,
   surveyId: number,
   surveyResult: D1Result<unknown> | undefined,
-): Promise<{
-  survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>;
-  flow: Awaited<ReturnType<typeof getSurveyFlow>>;
-} | Response> {
+): Promise<
+  | {
+      survey: NonNullable<Awaited<ReturnType<typeof getSurveyById>>>;
+      flow: Awaited<ReturnType<typeof getSurveyFlow>>;
+    }
+  | Response
+> {
   const cacheRead = beginPublishedFlowRead(env, surveyId);
   const survey = mapSurveyStatementResult(surveyResult);
   if (!survey || survey.status !== "published") {

@@ -138,7 +138,12 @@ describe("normalizeSurveyTheme audio.byPage", () => {
     const theme = normalizeSurveyTheme({
       audio: {
         url: "/api/survey/media/1",
-        byPage: { "1": "javascript:alert(1)", "chapter-two": "/api/survey/media/2", "-1": "/api/survey/media/3", "9999": "" },
+        byPage: {
+          "1": "javascript:alert(1)",
+          "chapter-two": "/api/survey/media/2",
+          "-1": "/api/survey/media/3",
+          "9999": "",
+        },
       },
     });
     expect(theme?.audio).toEqual({ url: "/api/survey/media/1" });

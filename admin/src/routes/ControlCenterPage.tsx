@@ -394,23 +394,32 @@ export function ControlCenterPage() {
             <tbody>
               {filtered.map((d) => (
                 <tr key={d.id} className="hover">
-                  <td> data-label="Worker"
+                  <td>
+                    {" "}
+                    data-label="Worker"
                     <button className="text-left" onClick={() => setSelected(d)}>
                       <div className="font-medium">{d.workerName}</div>
                       <div className="text-xs opacity-50">{d.installationId}</div>
                     </button>
                   </td>
                   <td className="text-sm"> data-label="授权"{d.licenseId}</td>
-                  <td> data-label="状态"
+                  <td>
+                    {" "}
+                    data-label="状态"
                     <StatusBadge status={d.status} />
                   </td>
-                  <td className="text-sm"> data-label="版本"
+                  <td className="text-sm">
+                    {" "}
+                    data-label="版本"
                     {d.currentVersion ?? "—"}
                     {d.desiredVersion && d.desiredVersion !== d.currentVersion ? (
                       <span className="ml-1 opacity-50">→ {d.desiredVersion}</span>
                     ) : null}
                   </td>
-                  <td className="text-xs opacity-60"> data-label="最后在线"{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}</td>
+                  <td className="text-xs opacity-60">
+                    {" "}
+                    data-label="最后在线"{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}
+                  </td>
                   <td>
                     <div className="flex items-center gap-1">
                       <button
@@ -469,7 +478,9 @@ export function ControlCenterPage() {
                   {task.targetVersion ? <span className="text-xs opacity-60">目标 {task.targetVersion}</span> : null}
                   <span className="ml-auto text-xs opacity-50">{formatDateTime(task.requestedAt)}</span>
                 </div>
-                {task.errorMessage ? <p className="mt-2 text-sm text-[var(--app-danger)]">{task.errorMessage}</p> : null}
+                {task.errorMessage ? (
+                  <p className="mt-2 text-sm text-[var(--app-danger)]">{task.errorMessage}</p>
+                ) : null}
                 {task.logText ? (
                   <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-base-200 p-2 text-xs whitespace-pre-wrap">
                     {task.logText}
@@ -540,9 +551,7 @@ export function ControlCenterPage() {
                   {certShare?.source === "archive" ? (
                     <span className="badge badge-ghost badge-sm">未单独配置</span>
                   ) : null}
-                  {certShareDisabled ? (
-                    <span className="badge badge-warning badge-sm">已全局停用</span>
-                  ) : null}
+                  {certShareDisabled ? <span className="badge badge-warning badge-sm">已全局停用</span> : null}
                 </div>
                 <div className="mt-2 text-sm opacity-70">
                   Chat ID: {certShareDisabled ? "—" : (certShare?.chatId ?? "未配置")}
@@ -733,9 +742,7 @@ export function ControlCenterPage() {
                   confirmLabel: "回滚",
                 }).then((ok) => {
                   if (ok)
-                    void act(() =>
-                      apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "rollback" }),
-                    );
+                    void act(() => apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "rollback" }));
                 });
               }}
             >
@@ -763,9 +770,7 @@ export function ControlCenterPage() {
                     confirmLabel: "停用",
                   }).then((ok) => {
                     if (ok)
-                      void act(() =>
-                        apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "disable" }),
-                      );
+                      void act(() => apiSend("POST", `/api/control/deployments/${selected.id}`, { type: "disable" }));
                   });
                 }}
               >
@@ -1124,11 +1129,12 @@ export function ControlCenterPage() {
         <Modal open onClose={() => setShowCertShare(false)} title="设置认证卡作品频道">
           <div className="space-y-3">
             <p className="text-sm text-[var(--color-muted)]">
-              保存后写入系统设置 cert_share_channel_id，优先于环境变量 CERT_SHARE_CHANNEL 与报告归档频道。
-              频道 ID 形如 -100xxxxxxxxxx。
+              保存后写入系统设置 cert_share_channel_id，优先于环境变量 CERT_SHARE_CHANNEL 与报告归档频道。 频道 ID 形如
+              -100xxxxxxxxxx。
             </p>
             <p className="text-xs text-[var(--color-muted)]">
-              当前：{certShareDisabled
+              当前：
+              {certShareDisabled
                 ? "已全局停用（CERT_SHARE_DISABLED=true），保存频道不会生效"
                 : certShare
                   ? `${certShare.chatId}（${certShareSourceLabel[certShare.source]}）`

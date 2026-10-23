@@ -7,11 +7,11 @@
 
 生产部署（`npx wrangler deploy`，三次，每次线上验证通过）：
 
-| 版本 ID | 内容 | 线上前端产物 |
-|---|---|---|
-| `61e0424f-10a9-4851-8412-741385c67361` | 退出问卷修复 + 回收站彻底删除修复 | `survey-i6oC39GK.js` |
-| （byQuestion 版） | 节点级 BGM 覆盖（`theme.audio.byQuestion` + `resolveBgmUrl`） | `survey-C_VBsDfo.js` |
-| `f680f2ce-3674-411c-95a5-95553be9f3e2` | 插画 `alt` 全链路（迁移 0077 + API + UI） | `survey-DWNmWyyj.js` ← **当前线上** |
+| 版本 ID                                | 内容                                                          | 线上前端产物                        |
+| -------------------------------------- | ------------------------------------------------------------- | ----------------------------------- |
+| `61e0424f-10a9-4851-8412-741385c67361` | 退出问卷修复 + 回收站彻底删除修复                             | `survey-i6oC39GK.js`                |
+| （byQuestion 版）                      | 节点级 BGM 覆盖（`theme.audio.byQuestion` + `resolveBgmUrl`） | `survey-C_VBsDfo.js`                |
+| `f680f2ce-3674-411c-95a5-95553be9f3e2` | 插画 `alt` 全链路（迁移 0077 + API + UI）                     | `survey-DWNmWyyj.js` ← **当前线上** |
 
 线上核验：`GET /health` → `200 {"ok":true,"environment":"production","version":"0.3.0"}`；`/s/118` HTML 引用 `assets/survey-DWNmWyyj.js`；旧产物 `survey-B8IvmDiw.js` → `404`。
 问卷内容原地更新到 **`surveys.version = 7`**（每次 `--apply` 递增以失效定义缓存）。
@@ -29,14 +29,14 @@
 
 **改动**
 
-| 文件 | 位置 | 改动 |
-|---|---|---|
-| `admin/src/survey/navigation.ts` | `:13-16` | 新增 `isTelegramMiniApp()`：仅当 `typeof webApp?.initData === "string" && webApp.initData.length > 0` 才视为真 Mini App（唯一可靠信号） |
-| 同上 | `:31-45` | 重写 `closeWebApp(fallbackPath = "/s")`：真 Mini App 走 bridge `close()`；否则 `window.close()` → `window.history.length > 1` 时 `history.back()`（优先返回来源页）→ 兜底 `window.location.assign(fallbackPath)` |
-| `admin/src/survey/SurveyApp.tsx` | `:24` `:128-133` | `closeSurveyPage()` 改为共享助手薄封装（4 个调用点不变） |
-| 同上 | `:1597-1615` | `exitFillingWithConfirm` 改读实时 `answers`，忽略 `null/undefined/空串/空数组`，依赖数组改 `[answers, confirm, screen.kind]` |
-| 同上 | `:713-726` | `BgmPlayer` 新增 `pagehide` → `audioRef.current?.pause()`（退出/返回/Mini App 关闭不走 React 卸载），卸载时先 `removeEventListener` 再 pause/revoke |
-| `MyScreen.tsx:15,92` · `PlazaScreen.tsx:13,699` · `TrialScreen.tsx:10,593,653` · `ShowcaseScreen.tsx:5,349` | — | 另外 4 份复制的关窗实现统一到 `closeWebApp()`（`PlazaScreen` 原先**完全没有兜底跳转**） |
+| 文件                                                                                                        | 位置             | 改动                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin/src/survey/navigation.ts`                                                                            | `:13-16`         | 新增 `isTelegramMiniApp()`：仅当 `typeof webApp?.initData === "string" && webApp.initData.length > 0` 才视为真 Mini App（唯一可靠信号）                                                                          |
+| 同上                                                                                                        | `:31-45`         | 重写 `closeWebApp(fallbackPath = "/s")`：真 Mini App 走 bridge `close()`；否则 `window.close()` → `window.history.length > 1` 时 `history.back()`（优先返回来源页）→ 兜底 `window.location.assign(fallbackPath)` |
+| `admin/src/survey/SurveyApp.tsx`                                                                            | `:24` `:128-133` | `closeSurveyPage()` 改为共享助手薄封装（4 个调用点不变）                                                                                                                                                         |
+| 同上                                                                                                        | `:1597-1615`     | `exitFillingWithConfirm` 改读实时 `answers`，忽略 `null/undefined/空串/空数组`，依赖数组改 `[answers, confirm, screen.kind]`                                                                                     |
+| 同上                                                                                                        | `:713-726`       | `BgmPlayer` 新增 `pagehide` → `audioRef.current?.pause()`（退出/返回/Mini App 关闭不走 React 卸载），卸载时先 `removeEventListener` 再 pause/revoke                                                              |
+| `MyScreen.tsx:15,92` · `PlazaScreen.tsx:13,699` · `TrialScreen.tsx:10,593,653` · `ShowcaseScreen.tsx:5,349` | —                | 另外 4 份复制的关窗实现统一到 `closeWebApp()`（`PlazaScreen` 原先**完全没有兜底跳转**）                                                                                                                          |
 
 **验证**：`qa/visual/survey-exit.spec.ts` **4/4 PASS** — ①非 Telegram 环境确认退出后 URL 离开 `/s/118` ②先访问 `/s` 再进问卷，退出回到 `/s` ③取消只关弹窗、URL 不变、先前所选选项视觉状态与退出前完全一致 ④真 Mini App（非空 `initData`）下 bridge `close()` 被调用 1 次且页面不自行跳转。
 **变异验证**：把两处修复还原为修复前写法后重建 → 4/4 **FAIL**；`cp` 回修复版 + `diff -q` 确认字节一致 + 重建 → 4/4 **PASS**。
@@ -76,28 +76,28 @@
 
 **八条形状实测**（`scripts/galgame/verify_production.py` 对**线上** `/api/survey/118` 独立复算，字/分钟按 250 计）：
 
-| 形状 | 节点数 | 叙事字数 | 估算时长 | 串线节点 |
-|---|---|---|---|---|
-| D 距离线 · 继续 | 22 | 4,154 | ≈16.6 分 | 0 |
-| D 距离线 · 打住 | 20 | 3,902 | ≈15.6 分 | 0 |
-| A 慢热线 · 继续 | 22 | 4,258 | ≈17.0 分 | 0 |
-| A 慢热线 · 打住 | 20 | 3,900 | ≈15.6 分 | 0 |
-| B 深入线 · 继续 | 22 | 4,477 | ≈17.9 分 | 0 |
-| B 深入线 · 打住 | 20 | 4,005 | ≈16.0 分 | 0 |
-| C 默契线 · 继续 | 22 | 4,392 | ≈17.6 分 | 0 |
-| C 默契线 · 打住 | 20 | 4,040 | ≈16.2 分 | 0 |
+| 形状            | 节点数 | 叙事字数 | 估算时长 | 串线节点 |
+| --------------- | ------ | -------- | -------- | -------- |
+| D 距离线 · 继续 | 22     | 4,154    | ≈16.6 分 | 0        |
+| D 距离线 · 打住 | 20     | 3,902    | ≈15.6 分 | 0        |
+| A 慢热线 · 继续 | 22     | 4,258    | ≈17.0 分 | 0        |
+| A 慢热线 · 打住 | 20     | 3,900    | ≈15.6 分 | 0        |
+| B 深入线 · 继续 | 22     | 4,477    | ≈17.9 分 | 0        |
+| B 深入线 · 打住 | 20     | 4,005    | ≈16.0 分 | 0        |
+| C 默契线 · 继续 | 22     | 4,392    | ≈17.6 分 | 0        |
+| C 默契线 · 打住 | 20     | 4,040    | ≈16.2 分 | 0        |
 
 **达标性（如实）**
 
-| 要求 | 结论 | 实测 |
-|---|---|---|
-| ≥18 个有实质内容的剧情场景/节点 | **PASS** | 全稿 58 节点，单轮 20–22 节点，全部带叙事散文 |
-| 单次游玩 15–25 分钟 | **PASS** | 单轮 3,900–4,477 字 → **15.6–17.9 分钟**（250 字/分钟） |
-| 5 次有实际影响的关键选择 | **PARTIAL** | 结构上 5 个分支点（+ 4 条线各自的收口题），但**单次通关只遇到 2 个**（gate + 本线同意关卡） |
-| ≥3 种明显区别的路线/结局 | **PASS** | 4 条互斥路线 × 4 个独立结局 |
-| 所有可达路线不卡死/不循环/能到结局 | **PASS** | BFS 无不可达节点 + 八条形状逐条走通 + 浏览器真实通关 |
-| 选项不会都汇回同一路线 | **PASS** | `*-12` 收口题把四条线族锁死；串线节点实测恒为 0 |
-| 用现有数据模型（确需才最小扩展） | **PASS** | 剧情零结构变更；唯一 DB 变更是 `media_assets.alt_text`（阶段5 的 alt 要求） |
+| 要求                               | 结论        | 实测                                                                                        |
+| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| ≥18 个有实质内容的剧情场景/节点    | **PASS**    | 全稿 58 节点，单轮 20–22 节点，全部带叙事散文                                               |
+| 单次游玩 15–25 分钟                | **PASS**    | 单轮 3,900–4,477 字 → **15.6–17.9 分钟**（250 字/分钟）                                     |
+| 5 次有实际影响的关键选择           | **PARTIAL** | 结构上 5 个分支点（+ 4 条线各自的收口题），但**单次通关只遇到 2 个**（gate + 本线同意关卡） |
+| ≥3 种明显区别的路线/结局           | **PASS**    | 4 条互斥路线 × 4 个独立结局                                                                 |
+| 所有可达路线不卡死/不循环/能到结局 | **PASS**    | BFS 无不可达节点 + 八条形状逐条走通 + 浏览器真实通关                                        |
+| 选项不会都汇回同一路线             | **PASS**    | `*-12` 收口题把四条线族锁死；串线节点实测恒为 0                                             |
+| 用现有数据模型（确需才最小扩展）   | **PASS**    | 剧情零结构变更；唯一 DB 变更是 `media_assets.alt_text`（阶段5 的 alt 要求）                 |
 
 ---
 
@@ -154,34 +154,34 @@ KV 内容取证（`curl` 下载线上字节后 `md5sum` 与本地比对）：`#7
 
 ## 四、测试结果
 
-| 项目 | 结论 | 实际命令 / 可核查记录 |
-|---|---|---|
-| 单元 + 集成测试（全量） | **PASS** | `pnpm test` → **138 test files / 844 tests passed**（基线 137/813；本轮新增 31 条） |
-| 问卷定义单测 | **PASS** | `pnpm vitest run tests/unit/galgame-survey.test.ts` → **16/16**（节点 order 连续、页归属、**41 条媒体引用都存在**、每张题内插画有非空 alt 且声明尺寸==磁盘真实尺寸、封面 alt 与 1600×1000、八条形状不串线、时长 15–25 分钟；新增：5 条音效 cue 与前端白名单一致且是真 MP3、11 张立绘都是 356×1100 带 alpha 的 WebP、页级 7 条 + 节点级 38 条立绘覆盖全部偏离页默认） |
-| 回收站删除回归（真实 schema） | **PASS** | `pnpm vitest run tests/unit/http/admin-trash.test.ts` → 7/7；全部迁移可执行，断言行数归零 + 重查不再出现 + 恢复置空 |
-| 主题归一化 / 音效 / 立绘解析单测 | **PASS** | `pnpm vitest run tests/unit/survey/theme.test.ts` → **29/29**（`resolveBgmUrl` 的节点>页>默认优先级与键校验、`byQuestion` 4 位 order 与 `byPage` 3 位的不对称、音效白名单过滤与黑名单 cue 丢弃、`sprite` 归一化（非法键/不安全 URL）、`resolveSprite` 逐级回退） |
-| 退出流程浏览器回归 | **PASS** | `npx playwright test qa/visual/survey-exit.spec.ts` → **4/4**（确认退出真离开 / 回来源页 / 取消保留答案 / Mini App bridge） |
-| 真实内容通关浏览器回归 | **PASS** | `npx playwright test qa/visual/galgame-playthrough.spec.ts` → **8/8**（真实内容从序章走到结局、拒绝亲密章节真跳过且仍到结局、同一轮只读一条路线页、插画真的解码渲染、BGM 播放与暂停、整稿散文与体量；新增：音效接线+手势门控+不叠播放器、立绘逐节点与模型对账） |
-| 两个 spec 合并最终跑 | **PASS** | `npx playwright test qa/visual/galgame-playthrough.spec.ts qa/visual/survey-exit.spec.ts` → **12 passed (27.1s)** |
-| 生产结构 + 分支 + 素材独立复算 | **PASS** | `python3 scripts/galgame/verify_production.py --write-fixture` → 58 节点 / order 连续 / 页归属有效 / 所有 rules 与 answerRules 只向前 / BFS 无不可达 / 八条形状 20–22 节点 15.6–17.9 分钟且串线 0 / 四结局齐全且分属四页 / BGM url+7 页级+16 节点级 / **音效 5 条 cue 齐备** / **立绘 11 表情 + 7 页级 + 38 节点级（逐条与页默认不同，58 个节点逐个可解析到有素材的表情）** / **41 条媒体全部 200 且 MIME 正确（8 BGM + 5 音效 `audio/mpeg`、17 插画 + 11 立绘 `image/webp`）** / **16 张题内插画 alt 非空**（平均 34 字） |
-| TypeScript | **PASS** | `pnpm typecheck`（`tsc --noEmit`）无输出 |
-| ESLint | **PASS** | `pnpm lint`（`eslint . --ext .ts`）无输出 |
-| 生产构建 | **PASS** | `pnpm build:admin` → `✓ built in 568ms`，`admin/dist/assets/survey-CM53e1qv.js`（165.59 kB / gzip 40.69 kB） |
-| 空白/冲突检查 | **PASS** | `git diff --check` → clean |
-| 线上部署与内容更新 | **PASS** | 四次 `npx wrangler deploy`（末次 **`0494fa4d-6862-46e9-be1c-b07bc9e4a2b0`**）+ `migrations apply`（remote/local）+ 问卷 `version=10`；`/health` 200、`/s/118` 引用 `assets/survey-CM53e1qv.js`、旧产物 404、`/api/survey/118` 58,712 B |
-| 素材真实性（图/音） | **PASS** | 25 条引用媒体逐个 HTTP 200 + MIME 正确；8 首 `ffmpeg` 整轨解码无错；KV 字节与本地 md5 逐条相同 |
-| 素材许可 | **PASS** | 魔王魂 8 首 CC BY 4.0 逐曲记录 + 授权页原文 + 问卷内可见署名；B 站/Pixabay/FreePD 的不可用结论也如实记录 |
-| 插画是否匹配剧情 | **PASS（剪影分镜级）** | 17 张逐张肉眼核验并与节点一一对应；立绘另用第三方 CC-BY 素材补齐；**关键 CG 与缩略图仍是缺口** |
-| alt 文本 | **PASS** | 17/17 张非空，线上 payload 与页面 `<img alt>` 均验证 |
-| `prefers-reduced-motion` 降级 | **未验证（有实现无断言）** | `admin/src/index.css:2009-2015` 有降级规则，但**没有自动化断言**，未做人工核验 |
-| 界面音效 | **PASS** | 5 条 cue 落库并接线（`media_assets` 768–772，线上逐个 200 `audio/mpeg` 且 sha256 与磁盘相同）；Playwright 断言手势前 0 个 AudioContext、首次点击后恰好 1 个、会话内不叠加、5 条音效都被请求；生产浏览器实测首次手势后 5/5 条音效被真实请求 |
-| 立绘 | **PASS** | 11 张表情（CC-BY 4.0）落库并接线（`media_assets` 757–767）；Playwright 断言立绘层唯一、`naturalWidth>0`、渲染高度>120px、11 张全被预热请求、桌面 `z-index=-1`；**生产浏览器**逐节点与模型对账 8/8 命中 |
-| 生产浏览器端到端（不做破坏性操作） | **PASS** | Chromium 直连 `https://emoe.eu.cc/s/118`（390×844 与 1280×900）：立绘层存在且 `img` 解码为 356×1100、开场 `neutral`、序章 8 个节点表情与模型逐一相符、首次手势后 5 条音效被请求、无页面异常（唯一失败请求是 Cloudflare 自己的 `static.cloudflareinsights.com/beacon.min.js`，被本机 DNS 拦掉，与本站无关） |
-| 生产破坏性测试 | **未执行（遵守约束）** | 未用线上真实用户数据做删除/破坏性测试；回收站 117 未动 |
-| 其他页面/其他问卷回归（生产只读） | **PASS（接口层）** | 逐条 `curl` 实测：`/`、`/s`、`/s/117`、`/s/118`、`/admin` 均 200 `text/html`；`/health` 200；`/api/survey/118` 200（58,712 B）；`/api/plaza/posts` 200。`/api/survey/117` → **404 是正确的**（117 处于回收站、`deleted_at` 非空，本就不该对外提供），不是回归 |
-| 移动端视口渲染 | **PASS** | 通关 spec 用例显式 `page.setViewportSize({width:390,height:844})`（iPhone 14 尺寸）走完整个故事；生产浏览器同样跑了 390×844（立绘 `position:relative`、随内容滚动）与 1280×900（`position:fixed` + `z-index:-1`）两种排版；退出流程 spec 仍只用默认视口 |
-| 真机 Telegram Mini App 内实测 | **未验证** | 只有 Chromium 内的 bridge 桩测试，无真机 |
-| iOS Safari / Firefox 兼容 | **未验证** | 只跑了 Playwright 的 Desktop Chrome |
+| 项目                               | 结论                       | 实际命令 / 可核查记录                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 单元 + 集成测试（全量）            | **PASS**                   | `pnpm test` → **138 test files / 844 tests passed**（基线 137/813；本轮新增 31 条）                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 问卷定义单测                       | **PASS**                   | `pnpm vitest run tests/unit/galgame-survey.test.ts` → **16/16**（节点 order 连续、页归属、**41 条媒体引用都存在**、每张题内插画有非空 alt 且声明尺寸==磁盘真实尺寸、封面 alt 与 1600×1000、八条形状不串线、时长 15–25 分钟；新增：5 条音效 cue 与前端白名单一致且是真 MP3、11 张立绘都是 356×1100 带 alpha 的 WebP、页级 7 条 + 节点级 38 条立绘覆盖全部偏离页默认）                                                                                                                                                       |
+| 回收站删除回归（真实 schema）      | **PASS**                   | `pnpm vitest run tests/unit/http/admin-trash.test.ts` → 7/7；全部迁移可执行，断言行数归零 + 重查不再出现 + 恢复置空                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 主题归一化 / 音效 / 立绘解析单测   | **PASS**                   | `pnpm vitest run tests/unit/survey/theme.test.ts` → **29/29**（`resolveBgmUrl` 的节点>页>默认优先级与键校验、`byQuestion` 4 位 order 与 `byPage` 3 位的不对称、音效白名单过滤与黑名单 cue 丢弃、`sprite` 归一化（非法键/不安全 URL）、`resolveSprite` 逐级回退）                                                                                                                                                                                                                                                           |
+| 退出流程浏览器回归                 | **PASS**                   | `npx playwright test qa/visual/survey-exit.spec.ts` → **4/4**（确认退出真离开 / 回来源页 / 取消保留答案 / Mini App bridge）                                                                                                                                                                                                                                                                                                                                                                                                |
+| 真实内容通关浏览器回归             | **PASS**                   | `npx playwright test qa/visual/galgame-playthrough.spec.ts` → **8/8**（真实内容从序章走到结局、拒绝亲密章节真跳过且仍到结局、同一轮只读一条路线页、插画真的解码渲染、BGM 播放与暂停、整稿散文与体量；新增：音效接线+手势门控+不叠播放器、立绘逐节点与模型对账）                                                                                                                                                                                                                                                            |
+| 两个 spec 合并最终跑               | **PASS**                   | `npx playwright test qa/visual/galgame-playthrough.spec.ts qa/visual/survey-exit.spec.ts` → **12 passed (27.1s)**                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 生产结构 + 分支 + 素材独立复算     | **PASS**                   | `python3 scripts/galgame/verify_production.py --write-fixture` → 58 节点 / order 连续 / 页归属有效 / 所有 rules 与 answerRules 只向前 / BFS 无不可达 / 八条形状 20–22 节点 15.6–17.9 分钟且串线 0 / 四结局齐全且分属四页 / BGM url+7 页级+16 节点级 / **音效 5 条 cue 齐备** / **立绘 11 表情 + 7 页级 + 38 节点级（逐条与页默认不同，58 个节点逐个可解析到有素材的表情）** / **41 条媒体全部 200 且 MIME 正确（8 BGM + 5 音效 `audio/mpeg`、17 插画 + 11 立绘 `image/webp`）** / **16 张题内插画 alt 非空**（平均 34 字） |
+| TypeScript                         | **PASS**                   | `pnpm typecheck`（`tsc --noEmit`）无输出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ESLint                             | **PASS**                   | `pnpm lint`（`eslint . --ext .ts`）无输出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 生产构建                           | **PASS**                   | `pnpm build:admin` → `✓ built in 568ms`，`admin/dist/assets/survey-CM53e1qv.js`（165.59 kB / gzip 40.69 kB）                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 空白/冲突检查                      | **PASS**                   | `git diff --check` → clean                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 线上部署与内容更新                 | **PASS**                   | 四次 `npx wrangler deploy`（末次 **`0494fa4d-6862-46e9-be1c-b07bc9e4a2b0`**）+ `migrations apply`（remote/local）+ 问卷 `version=10`；`/health` 200、`/s/118` 引用 `assets/survey-CM53e1qv.js`、旧产物 404、`/api/survey/118` 58,712 B                                                                                                                                                                                                                                                                                     |
+| 素材真实性（图/音）                | **PASS**                   | 25 条引用媒体逐个 HTTP 200 + MIME 正确；8 首 `ffmpeg` 整轨解码无错；KV 字节与本地 md5 逐条相同                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 素材许可                           | **PASS**                   | 魔王魂 8 首 CC BY 4.0 逐曲记录 + 授权页原文 + 问卷内可见署名；B 站/Pixabay/FreePD 的不可用结论也如实记录                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 插画是否匹配剧情                   | **PASS（剪影分镜级）**     | 17 张逐张肉眼核验并与节点一一对应；立绘另用第三方 CC-BY 素材补齐；**关键 CG 与缩略图仍是缺口**                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| alt 文本                           | **PASS**                   | 17/17 张非空，线上 payload 与页面 `<img alt>` 均验证                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `prefers-reduced-motion` 降级      | **未验证（有实现无断言）** | `admin/src/index.css:2009-2015` 有降级规则，但**没有自动化断言**，未做人工核验                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 界面音效                           | **PASS**                   | 5 条 cue 落库并接线（`media_assets` 768–772，线上逐个 200 `audio/mpeg` 且 sha256 与磁盘相同）；Playwright 断言手势前 0 个 AudioContext、首次点击后恰好 1 个、会话内不叠加、5 条音效都被请求；生产浏览器实测首次手势后 5/5 条音效被真实请求                                                                                                                                                                                                                                                                                 |
+| 立绘                               | **PASS**                   | 11 张表情（CC-BY 4.0）落库并接线（`media_assets` 757–767）；Playwright 断言立绘层唯一、`naturalWidth>0`、渲染高度>120px、11 张全被预热请求、桌面 `z-index=-1`；**生产浏览器**逐节点与模型对账 8/8 命中                                                                                                                                                                                                                                                                                                                     |
+| 生产浏览器端到端（不做破坏性操作） | **PASS**                   | Chromium 直连 `https://emoe.eu.cc/s/118`（390×844 与 1280×900）：立绘层存在且 `img` 解码为 356×1100、开场 `neutral`、序章 8 个节点表情与模型逐一相符、首次手势后 5 条音效被请求、无页面异常（唯一失败请求是 Cloudflare 自己的 `static.cloudflareinsights.com/beacon.min.js`，被本机 DNS 拦掉，与本站无关）                                                                                                                                                                                                                 |
+| 生产破坏性测试                     | **未执行（遵守约束）**     | 未用线上真实用户数据做删除/破坏性测试；回收站 117 未动                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 其他页面/其他问卷回归（生产只读）  | **PASS（接口层）**         | 逐条 `curl` 实测：`/`、`/s`、`/s/117`、`/s/118`、`/admin` 均 200 `text/html`；`/health` 200；`/api/survey/118` 200（58,712 B）；`/api/plaza/posts` 200。`/api/survey/117` → **404 是正确的**（117 处于回收站、`deleted_at` 非空，本就不该对外提供），不是回归                                                                                                                                                                                                                                                              |
+| 移动端视口渲染                     | **PASS**                   | 通关 spec 用例显式 `page.setViewportSize({width:390,height:844})`（iPhone 14 尺寸）走完整个故事；生产浏览器同样跑了 390×844（立绘 `position:relative`、随内容滚动）与 1280×900（`position:fixed` + `z-index:-1`）两种排版；退出流程 spec 仍只用默认视口                                                                                                                                                                                                                                                                    |
+| 真机 Telegram Mini App 内实测      | **未验证**                 | 只有 Chromium 内的 bridge 桩测试，无真机                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| iOS Safari / Firefox 兼容          | **未验证**                 | 只跑了 Playwright 的 Desktop Chrome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ---
 
@@ -232,4 +232,4 @@ KV 内容取证（`curl` 下载线上字节后 `md5sum` 与本地比对）：`#7
 
 ---
 
-*报告中每条结论都可在工作区复现：命令见第四节，素材出处与许可见 `scripts/galgame/assets/BGM-SOURCES.md`，素材逐条清单见 `scripts/galgame/ASSET-MANIFEST.md`，需人工获取的资源见 `scripts/galgame/MANUAL-DOWNLOAD-LIST.md`。*
+_报告中每条结论都可在工作区复现：命令见第四节，素材出处与许可见 `scripts/galgame/assets/BGM-SOURCES.md`，素材逐条清单见 `scripts/galgame/ASSET-MANIFEST.md`，需人工获取的资源见 `scripts/galgame/MANUAL-DOWNLOAD-LIST.md`。_

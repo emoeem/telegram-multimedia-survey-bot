@@ -15,17 +15,13 @@ import { HASH_SET_SQL } from "../identity-link.service";
  *   直接返回已解锁（涨价不影响已解锁者）。失败不扣款。
  */
 
-
 /**
  * 列表页批量定价：一次查访问配置、一次分组统计近 30 天完成量，之后纯计算。
  * 不写库（列表是高频只读路径；价格缓存由详情页的 computePrice 负责），
  * 但公式与 computePrice 完全一致，因此列表价与解锁实收价不会打架。
  * 无任何问卷启用金币解锁时零查询返回。
  */
-export async function resolveListCoinPrices(
-  db: D1Database,
-  surveyIds: number[],
-): Promise<Map<number, number>> {
+export async function resolveListCoinPrices(db: D1Database, surveyIds: number[]): Promise<Map<number, number>> {
   const prices = new Map<number, number>();
   if (surveyIds.length === 0) return prices;
   const placeholders = surveyIds.map(() => "?").join(",");
@@ -128,8 +124,10 @@ export async function isCoinAccessEnabled(db: D1Database, surveyId: number): Pro
 
 export async function getSurveyCoinAccess(db: D1Database, surveyId: number): Promise<SurveyCoinAccessRow | null> {
   return db
-    .prepare(`SELECT survey_id, enabled, base_price, auto_price, fixed_price, price_cached, price_computed_at
-              FROM survey_coin_access WHERE survey_id = ?`)
+    .prepare(
+      `SELECT survey_id, enabled, base_price, auto_price, fixed_price, price_cached, price_computed_at
+              FROM survey_coin_access WHERE survey_id = ?`,
+    )
     .bind(surveyId)
     .first<SurveyCoinAccessRow>();
 }
@@ -146,10 +144,7 @@ async function recentCompletions(db: D1Database, surveyId: number): Promise<numb
   return Number(row?.n ?? 0);
 }
 
-export async function computePrice(
-  db: D1Database,
-  access: SurveyCoinAccessRow,
-): Promise<number> {
+export async function computePrice(db: D1Database, access: SurveyCoinAccessRow): Promise<number> {
   const cfg = await loadCoinConfig(db);
   if (access.auto_price && access.fixed_price == null) {
     const now = Date.now();

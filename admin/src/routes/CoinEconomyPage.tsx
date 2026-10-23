@@ -324,13 +324,51 @@ function PoolsTab() {
       <div className="panel space-y-2 p-4">
         <p className="text-sm font-bold">创建奖池（创建后默认草稿；加入内容生成快照后才能上架）</p>
         <div className="grid gap-2 sm:grid-cols-5">
-          <input aria-label="slug" className="input" placeholder="slug（如 spring-2026）" value={form.slug} onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))} />
-          <input aria-label="名称" className="input" placeholder="名称" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
-          <input aria-label="单抽价格" className="input" type="number" placeholder="单抽" value={form.costSingle} onChange={(event) => setForm((prev) => ({ ...prev, costSingle: Number(event.target.value) }))} />
-          <input aria-label="十连价格" className="input" type="number" placeholder="十连（可选）" value={form.costMulti} onChange={(event) => setForm((prev) => ({ ...prev, costMulti: event.target.value }))} />
-          <input aria-label="保底抽数" className="input" type="number" placeholder="保底（可选）" value={form.pityAt} onChange={(event) => setForm((prev) => ({ ...prev, pityAt: event.target.value }))} />
+          <input
+            aria-label="slug"
+            className="input"
+            placeholder="slug（如 spring-2026）"
+            value={form.slug}
+            onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
+          />
+          <input
+            aria-label="名称"
+            className="input"
+            placeholder="名称"
+            value={form.name}
+            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+          />
+          <input
+            aria-label="单抽价格"
+            className="input"
+            type="number"
+            placeholder="单抽"
+            value={form.costSingle}
+            onChange={(event) => setForm((prev) => ({ ...prev, costSingle: Number(event.target.value) }))}
+          />
+          <input
+            aria-label="十连价格"
+            className="input"
+            type="number"
+            placeholder="十连（可选）"
+            value={form.costMulti}
+            onChange={(event) => setForm((prev) => ({ ...prev, costMulti: event.target.value }))}
+          />
+          <input
+            aria-label="保底抽数"
+            className="input"
+            type="number"
+            placeholder="保底（可选）"
+            value={form.pityAt}
+            onChange={(event) => setForm((prev) => ({ ...prev, pityAt: event.target.value }))}
+          />
         </div>
-        <button type="button" className="btn btn-sm btn-accent" disabled={!form.slug || !form.name} onClick={() => void create()}>
+        <button
+          type="button"
+          className="btn btn-sm btn-accent"
+          disabled={!form.slug || !form.name}
+          onClick={() => void create()}
+        >
           <Coins className="h-4 w-4" />
           创建
         </button>
@@ -359,7 +397,6 @@ function PoolsTab() {
     </div>
   );
 }
-
 
 interface ChallengeRow {
   id: number;
@@ -444,26 +481,79 @@ function ChallengesTab() {
       <div className="panel space-y-2 p-4">
         <p className="text-sm font-bold">新建挑战（进度全部由服务端按真实记录计算）</p>
         <div className="grid gap-2 sm:grid-cols-4">
-          <input aria-label="code" className="input" placeholder="code（如 first_survey）" value={form.code} onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))} />
-          <input aria-label="标题" className="input" placeholder="标题" value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} />
-          <input aria-label="图标" className="input" placeholder="图标 emoji" value={form.icon} onChange={(event) => setForm((prev) => ({ ...prev, icon: event.target.value }))} />
-          <select aria-label="目标类型" className="input" value={form.goalType} onChange={(event) => setForm((prev) => ({ ...prev, goalType: event.target.value }))}>
+          <input
+            aria-label="code"
+            className="input"
+            placeholder="code（如 first_survey）"
+            value={form.code}
+            onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
+          />
+          <input
+            aria-label="标题"
+            className="input"
+            placeholder="标题"
+            value={form.title}
+            onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+          />
+          <input
+            aria-label="图标"
+            className="input"
+            placeholder="图标 emoji"
+            value={form.icon}
+            onChange={(event) => setForm((prev) => ({ ...prev, icon: event.target.value }))}
+          />
+          <select
+            aria-label="目标类型"
+            className="input"
+            value={form.goalType}
+            onChange={(event) => setForm((prev) => ({ ...prev, goalType: event.target.value }))}
+          >
             {Object.entries(GOAL_TYPE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
           </select>
-          <input aria-label="目标数" className="input" type="number" placeholder="目标数" value={form.goalTarget} onChange={(event) => setForm((prev) => ({ ...prev, goalTarget: Number(event.target.value) }))} />
-          <input aria-label="奖励金币" className="input" type="number" placeholder="奖励金币" value={form.reward} onChange={(event) => setForm((prev) => ({ ...prev, reward: Number(event.target.value) }))} />
-          <select aria-label="周期" className="input" value={form.period} onChange={(event) => setForm((prev) => ({ ...prev, period: event.target.value }))}>
+          <input
+            aria-label="目标数"
+            className="input"
+            type="number"
+            placeholder="目标数"
+            value={form.goalTarget}
+            onChange={(event) => setForm((prev) => ({ ...prev, goalTarget: Number(event.target.value) }))}
+          />
+          <input
+            aria-label="奖励金币"
+            className="input"
+            type="number"
+            placeholder="奖励金币"
+            value={form.reward}
+            onChange={(event) => setForm((prev) => ({ ...prev, reward: Number(event.target.value) }))}
+          />
+          <select
+            aria-label="周期"
+            className="input"
+            value={form.period}
+            onChange={(event) => setForm((prev) => ({ ...prev, period: event.target.value }))}
+          >
             <option value="once">一次性</option>
             <option value="daily">每日</option>
             <option value="weekly">每周</option>
           </select>
-          <input aria-label="说明" className="input" placeholder="说明（可选）" value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} />
+          <input
+            aria-label="说明"
+            className="input"
+            placeholder="说明（可选）"
+            value={form.description}
+            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          />
         </div>
-        <button type="button" className="btn btn-sm btn-accent" disabled={!form.code || !form.title} onClick={() => void create()}>
+        <button
+          type="button"
+          className="btn btn-sm btn-accent"
+          disabled={!form.code || !form.title}
+          onClick={() => void create()}
+        >
           <Target className="h-4 w-4" />
           创建挑战
         </button>
@@ -482,7 +572,9 @@ function ChallengesTab() {
               <p className="text-sm font-bold">
                 {row.icon} {row.title}
                 <span className="ml-2 text-xs font-normal text-[var(--color-muted)]">({row.code})</span>
-                {row.active !== 1 ? <span className="ml-2 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px]">已停用</span> : null}
+                {row.active !== 1 ? (
+                  <span className="ml-2 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px]">已停用</span>
+                ) : null}
               </p>
               <p className="text-xs text-[var(--color-muted)]">
                 {GOAL_TYPE_LABELS[row.goalType] ?? row.goalType} ≥ {row.goalTarget} · 奖励 {row.reward} ·{" "}
@@ -587,7 +679,10 @@ function ConfigTab() {
               type="number"
               value={config.submissions.dailyRewardCap}
               onChange={(event) =>
-                setConfig({ ...config, submissions: { ...config.submissions, dailyRewardCap: Number(event.target.value) } })
+                setConfig({
+                  ...config,
+                  submissions: { ...config.submissions, dailyRewardCap: Number(event.target.value) },
+                })
               }
             />
           </label>
@@ -624,7 +719,11 @@ function ConfigTab() {
             </label>
           ))}
         </div>
-        <button type="button" className="btn btn-sm btn-accent" onClick={() => void save("submissions", config.submissions)}>
+        <button
+          type="button"
+          className="btn btn-sm btn-accent"
+          onClick={() => void save("submissions", config.submissions)}
+        >
           保存投稿奖励
         </button>
       </div>
@@ -669,7 +768,10 @@ function ConfigTab() {
                 onChange={(event) =>
                   setConfig({
                     ...config,
-                    checkin: { ...config.checkin, backfill: { ...config.checkin.backfill, enabled: event.target.checked } },
+                    checkin: {
+                      ...config.checkin,
+                      backfill: { ...config.checkin.backfill, enabled: event.target.checked },
+                    },
                   })
                 }
               />
@@ -685,7 +787,10 @@ function ConfigTab() {
                 onChange={(event) =>
                   setConfig({
                     ...config,
-                    checkin: { ...config.checkin, backfill: { ...config.checkin.backfill, cost: Number(event.target.value) } },
+                    checkin: {
+                      ...config.checkin,
+                      backfill: { ...config.checkin.backfill, cost: Number(event.target.value) },
+                    },
                   })
                 }
               />
@@ -701,7 +806,10 @@ function ConfigTab() {
                 onChange={(event) =>
                   setConfig({
                     ...config,
-                    checkin: { ...config.checkin, backfill: { ...config.checkin.backfill, maxBackfillDays: Number(event.target.value) } },
+                    checkin: {
+                      ...config.checkin,
+                      backfill: { ...config.checkin.backfill, maxBackfillDays: Number(event.target.value) },
+                    },
                   })
                 }
               />
@@ -718,19 +826,21 @@ function ConfigTab() {
   );
 }
 
-
 /** 外部内容安全审核服务配置。默认关闭 —— 关闭时投稿走人工审核。 */
 function ModerationSection() {
-  const [state, setState] = useState<{ enabled: boolean; endpoint: string; rejectBelow: number; approveAbove: number } | null>(null);
+  const [state, setState] = useState<{
+    enabled: boolean;
+    endpoint: string;
+    rejectBelow: number;
+    approveAbove: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     api<{ moderation?: typeof state }>("/api/admin/coins/config")
       .then((config) =>
-        setState(
-          config.moderation ?? { enabled: false, endpoint: "", rejectBelow: 0.85, approveAbove: 0.2 },
-        ),
+        setState(config.moderation ?? { enabled: false, endpoint: "", rejectBelow: 0.85, approveAbove: 0.2 }),
       )
       .catch(() => setState({ enabled: false, endpoint: "", rejectBelow: 0.85, approveAbove: 0.2 }));
   }, []);
@@ -752,13 +862,17 @@ function ModerationSection() {
     <div className="panel space-y-3 p-4">
       <p className="text-sm font-bold">外部内容安全审核（可选）</p>
       <p className="text-xs text-[var(--color-muted)]">
-        默认关闭：关闭或未配置密钥时，所有投稿都进入人工审核队列；服务不可达/超时也一律转人工，绝不放行。
-        启用需同时配置 <code>MODERATION_API_KEY</code> 环境密钥（wrangler secret）。
+        默认关闭：关闭或未配置密钥时，所有投稿都进入人工审核队列；服务不可达/超时也一律转人工，绝不放行。 启用需同时配置{" "}
+        <code>MODERATION_API_KEY</code> 环境密钥（wrangler secret）。
       </p>
       {error ? <div className="alert alert-error">{error}</div> : null}
       {saved ? <div className="alert alert-success">已保存</div> : null}
       <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
-        <input type="checkbox" checked={state.enabled} onChange={(event) => setState({ ...state, enabled: event.target.checked })} />
+        <input
+          type="checkbox"
+          checked={state.enabled}
+          onChange={(event) => setState({ ...state, enabled: event.target.checked })}
+        />
         启用外部审核服务
       </label>
       <div className="grid gap-2 sm:grid-cols-3">
@@ -867,7 +981,12 @@ function AdjustTab() {
       <div className="panel space-y-2 p-4">
         <p className="text-sm font-bold">查询用户金币（按用户 ID 或 participantHash）</p>
         <div className="flex gap-2">
-          <input aria-label="用户标识" className="input" value={target} onChange={(event) => setTarget(event.target.value)} />
+          <input
+            aria-label="用户标识"
+            className="input"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+          />
           <button type="button" className="btn btn-sm" onClick={() => void resolve()}>
             查询
           </button>
@@ -903,11 +1022,20 @@ function AdjustTab() {
             {transactions ? (
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {transactions.map((txn) => (
-                  <div key={String(txn.id)} className="flex items-center justify-between rounded bg-[var(--surface-muted)] px-2 py-1 text-xs">
+                  <div
+                    key={String(txn.id)}
+                    className="flex items-center justify-between rounded bg-[var(--surface-muted)] px-2 py-1 text-xs"
+                  >
                     <span>
                       {String(txn.kind)} · {String(txn.note ?? "")}
                     </span>
-                    <span className={Number(txn.amount) > 0 ? "font-bold text-[var(--app-success)]" : "font-bold text-[var(--app-danger)]"}>
+                    <span
+                      className={
+                        Number(txn.amount) > 0
+                          ? "font-bold text-[var(--app-success)]"
+                          : "font-bold text-[var(--app-danger)]"
+                      }
+                    >
                       {Number(txn.amount) > 0 ? "+" : ""}
                       {String(txn.amount)}（余 {String(txn.balanceAfter)}）
                     </span>

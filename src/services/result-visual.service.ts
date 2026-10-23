@@ -147,12 +147,16 @@ function fallbackResultProfile(
     return displayAnswer(normalizeAnswer(answer, question.type).value, question.type, optionLabelById);
   };
   const profileTitle = answerValueText(nameQuestion);
-  const profileSubtitle = [answerValueText(identityQuestion), answerValueText(locationQuestion)].filter(Boolean).join(" · ");
+  const profileSubtitle = [answerValueText(identityQuestion), answerValueText(locationQuestion)]
+    .filter(Boolean)
+    .join(" · ");
 
   return {
     resultType: isPersonalProfile ? "identity_card" : classification.kind,
     title: isPersonalProfile && profileTitle ? profileTitle : classification.resultTitle,
-    subtitle: isPersonalProfile ? profileSubtitle || "个人档案 · 本次填写结果" : `${surveyTitle} · ${classification.label}`,
+    subtitle: isPersonalProfile
+      ? profileSubtitle || "个人档案 · 本次填写结果"
+      : `${surveyTitle} · ${classification.label}`,
     fields,
     stats: ratingStats,
     tags: [...tags],
@@ -165,7 +169,9 @@ function fallbackResultProfile(
         ? [
             profileSubtitle ? `身份：${profileSubtitle}` : "",
             tags.size ? `兴趣与标签：${[...tags].slice(0, 8).join("、")}` : "",
-          ].filter(Boolean).join("\n\n")
+          ]
+            .filter(Boolean)
+            .join("\n\n")
         : summary.join("\n\n"),
       reportKind: classification.kind,
       reportLabel: classification.label,
@@ -216,7 +222,15 @@ async function computeAgreement(
 }
 
 /** 答案值列的规范指纹；空答案返回 null（未回答）。 */
-function answerFingerprint(answer: { textValue: string | null; numberValue: number | null; booleanValue: boolean | null; ratingValue: number | null; dateValue: string | null; timeValue: string | null; jsonValue: string | null }): string | null {
+function answerFingerprint(answer: {
+  textValue: string | null;
+  numberValue: number | null;
+  booleanValue: boolean | null;
+  ratingValue: number | null;
+  dateValue: string | null;
+  timeValue: string | null;
+  jsonValue: string | null;
+}): string | null {
   let json: unknown = null;
   if (answer.jsonValue !== null && answer.jsonValue !== undefined) {
     try {

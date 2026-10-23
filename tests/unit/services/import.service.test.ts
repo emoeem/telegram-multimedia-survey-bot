@@ -692,8 +692,14 @@ describe("import service · jump conditions", () => {
         },
         run: async () => ({ success: true, meta: { last_row_id: 300 } }),
         all: async () => {
-          if (sql.includes('FROM survey_questions WHERE survey_id')) {
-            return { results: [{ id: 101, order: 0 }, { id: 102, order: 1 }, { id: 103, order: 2 }] };
+          if (sql.includes("FROM survey_questions WHERE survey_id")) {
+            return {
+              results: [
+                { id: 101, order: 0 },
+                { id: 102, order: 1 },
+                { id: 103, order: 2 },
+              ],
+            };
           }
           return {
             results: [

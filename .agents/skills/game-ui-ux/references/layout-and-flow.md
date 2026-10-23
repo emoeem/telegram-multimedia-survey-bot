@@ -8,11 +8,11 @@ target **Godot 4.7** and **Unity 6.3 LTS**.
 
 **Godot 4.7** (Project Settings → Display → Window → Stretch):
 
-| Setting | Choose | Effect |
-|---------|--------|--------|
-| Mode | `canvas_items` | UI scales with the window (vs `viewport` = pixel-exact, `disabled` = none) |
-| Aspect | `expand` | shows more world/UI space on odd ratios; `keep` letterboxes |
-| Scale | `1.0`+ | global UI multiplier |
+| Setting | Choose         | Effect                                                                     |
+| ------- | -------------- | -------------------------------------------------------------------------- |
+| Mode    | `canvas_items` | UI scales with the window (vs `viewport` = pixel-exact, `disabled` = none) |
+| Aspect  | `expand`       | shows more world/UI space on odd ratios; `keep` letterboxes                |
+| Scale   | `1.0`+         | global UI multiplier                                                       |
 
 Anchor HUD corners so `expand` puts the extra space where you want it. `keep_width`/`keep_height`
 pin one axis for hard 16:9 designs.

@@ -73,10 +73,7 @@ describe("unified media cache-control across storage branches", () => {
   });
 
   it("KV branch: response-scope temporary uploads stay uncacheable", async () => {
-    const response = await buildMediaResponse(
-      kvEnv,
-      makeAsset({ scope: "response", storageKey: "media:temp:1:abc" }),
-    );
+    const response = await buildMediaResponse(kvEnv, makeAsset({ scope: "response", storageKey: "media:temp:1:abc" }));
     expect(response?.headers.get("Cache-Control")).toBe("private, no-store");
   });
 

@@ -208,8 +208,11 @@ export async function handleExportQueue(
           error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
         if (terminal) {
-          await env.DB.prepare("UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?")
-            .bind(new Date().toISOString(), message.body.responseId).run();
+          await env.DB.prepare(
+            "UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?",
+          )
+            .bind(new Date().toISOString(), message.body.responseId)
+            .run();
           message.ack();
         } else {
           // New browser acquisitions are account-wide rate limited; retrying

@@ -37,10 +37,7 @@ describe("public API rate limiter", () => {
 
     try {
       await expect(createKVRateLimiter(cache).allow("login|user@example.com", 5, 3600)).resolves.toBe(true);
-      expect(warn).toHaveBeenCalledWith(
-        "Public API rate limiter unavailable; allowing request",
-        expect.any(Error),
-      );
+      expect(warn).toHaveBeenCalledWith("Public API rate limiter unavailable; allowing request", expect.any(Error));
     } finally {
       warn.mockRestore();
     }

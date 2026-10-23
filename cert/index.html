@@ -51,8 +51,8 @@
           <h2>
             1. 版式样式
             <span class="hint">
-              <strong>证件样式</strong> 照真证件排（身份证 / 学生证 / 工牌 …）· <strong>创意版式</strong> 整活向 ·
-              共 <span id="styleCount">0</span> 种，全部可套任意比例
+              <strong>证件样式</strong> 照真证件排（身份证 / 学生证 / 工牌 …）· <strong>创意版式</strong> 整活向 · 共
+              <span id="styleCount">0</span> 种，全部可套任意比例
             </span>
           </h2>
           <div id="styleList" class="style-groups"></div>
@@ -178,15 +178,7 @@
             <span>按勾选标签自动计算</span>
           </label>
           <div class="row">
-            <input
-              id="manualPct"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              disabled
-              placeholder="手动指定百分比"
-            />
+            <input id="manualPct" type="number" min="0" max="100" step="1" disabled placeholder="手动指定百分比" />
             <span id="pctEcho" class="echo"></span>
           </div>
         </div>
@@ -205,16 +197,12 @@
         <div class="canvas-wrap">
           <canvas id="card" width="1012" height="638"></canvas>
         </div>
-        <p class="stage-foot">
-          导出分辨率：<span id="sizeEcho">1012 × 638</span> · 图片保存在你自己的设备上
-        </p>
+        <p class="stage-foot">导出分辨率：<span id="sizeEcho">1012 × 638</span> · 图片保存在你自己的设备上</p>
         <!-- 投稿入口。同步到作品频道已改为静默：导出即同步，不再提供勾选框。
              要做成可关闭的，把同步勾选框（fShare）加回这一行即可 —— app.js 的
              shareOptIn() 会在找到开关时改以勾选状态为准。 -->
         <div class="publish-row">
-          <a class="publish-link" id="submitLink" href="/submissions" target="_blank" rel="noopener">
-            一键投稿 →
-          </a>
+          <a class="publish-link" id="submitLink" href="/submissions" target="_blank" rel="noopener"> 一键投稿 → </a>
         </div>
       </section>
     </main>

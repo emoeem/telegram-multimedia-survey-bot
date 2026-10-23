@@ -40,15 +40,41 @@ const findCard = async (title) => {
 };
 
 const noHorizontalOverflow = async (label) => {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
   if (overflow > 1) failures.push(label + " 出现横向滚动：" + overflow + "px");
 };
 
 const cases = [
-  { title: "海报：长夜将明", action: "查看大图", selector: ".showcase-viewer-image img", shot: "qa/showcase-viewer-image.png", media: true },
-  { title: "朗读：长夜将明（试听片段）", action: "播放音频", selector: ".showcase-viewer-audio audio", shot: "qa/showcase-viewer-audio.png", media: true },
-  { title: "幕后：写长夜的那一周", action: "播放视频", selector: ".showcase-viewer-video video", shot: "qa/showcase-viewer-video.png", media: true },
-  { title: "长夜将明", action: "阅读全文", selector: ".showcase-viewer-body", shot: "qa/showcase-viewer-article.png", media: false },
+  {
+    title: "海报：长夜将明",
+    action: "查看大图",
+    selector: ".showcase-viewer-image img",
+    shot: "qa/showcase-viewer-image.png",
+    media: true,
+  },
+  {
+    title: "朗读：长夜将明（试听片段）",
+    action: "播放音频",
+    selector: ".showcase-viewer-audio audio",
+    shot: "qa/showcase-viewer-audio.png",
+    media: true,
+  },
+  {
+    title: "幕后：写长夜的那一周",
+    action: "播放视频",
+    selector: ".showcase-viewer-video video",
+    shot: "qa/showcase-viewer-video.png",
+    media: true,
+  },
+  {
+    title: "长夜将明",
+    action: "阅读全文",
+    selector: ".showcase-viewer-body",
+    shot: "qa/showcase-viewer-article.png",
+    media: false,
+  },
 ];
 
 for (const item of cases) {
@@ -58,7 +84,10 @@ for (const item of cases) {
     failures.push("资料面板里找不到作品：" + item.title);
     continue;
   }
-  const hint = await card.locator(".showcase-work-more").innerText().catch(() => "");
+  const hint = await card
+    .locator(".showcase-work-more")
+    .innerText()
+    .catch(() => "");
   if (!hint.includes(item.action)) failures.push(item.title + " 的卡片提示应为「" + item.action + "」，实际：" + hint);
 
   await card.click();

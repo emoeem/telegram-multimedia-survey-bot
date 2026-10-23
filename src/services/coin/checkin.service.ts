@@ -1,9 +1,5 @@
 import type { Env } from "../../index";
-import {
-  coinDayKey,
-  loadCoinConfig,
-  type CoinEconomyConfig,
-} from "./config.service";
+import { coinDayKey, loadCoinConfig, type CoinEconomyConfig } from "./config.service";
 import {
   CoinLedgerError,
   describeEarnStatements,
@@ -78,9 +74,7 @@ export async function getCheckinStatus(
     .prepare(`SELECT streak, amount FROM coin_checkins WHERE participant_hash ${HASH_SET_SQL} AND day = ?`)
     .bind(participantHash, participantHash, today)
     .first<{ streak: number; amount: number }>();
-  const streak = checkedToday
-    ? Number(checkedToday.streak)
-    : await currentStreak(db, participantHash, today);
+  const streak = checkedToday ? Number(checkedToday.streak) : await currentStreak(db, participantHash, today);
   const nextStreak = checkedToday ? Number(checkedToday.streak) + 1 : streak + 1;
   return {
     checkedInToday: Boolean(checkedToday),
@@ -149,9 +143,7 @@ export async function performCheckin(
          VALUES (?, ?, ?, ?, ?)`,
       )
       .bind(participantHash, day, streak, amount, nowIso),
-    ...describeEarnStatements(entry, nowIso).map((prepared) =>
-      db.prepare(prepared.sql).bind(...prepared.params),
-    ),
+    ...describeEarnStatements(entry, nowIso).map((prepared) => db.prepare(prepared.sql).bind(...prepared.params)),
   ];
   try {
     await db.batch(statements);
@@ -196,7 +188,6 @@ export async function listCheckinDays(
     .all<{ day: string }>();
   return (result.results ?? []).map((row) => row.day);
 }
-
 
 /**
  * 补签（可选项，默认关闭，由 coin_config.checkin.backfill 控制）。
@@ -275,7 +266,14 @@ export async function backfillCheckin(
 
   const status = await getCheckinStatus(db, participantHash, cfg);
   const account = await getCoinAccount(db, participantHash);
-  return { ok: true, duplicate: false, day, cost: backfill.cost, balance: account?.balance ?? 0, streak: status.streak };
+  return {
+    ok: true,
+    duplicate: false,
+    day,
+    cost: backfill.cost,
+    balance: account?.balance ?? 0,
+    streak: status.streak,
+  };
 }
 
 export { earnCoins };

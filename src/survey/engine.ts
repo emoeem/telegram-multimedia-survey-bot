@@ -193,11 +193,7 @@ function selectedOptionMatches(
   );
 }
 
-function forwardTarget(
-  flow: SurveyFlow,
-  currentIndex: number,
-  targetQuestionId: unknown,
-): SurveyQuestionView | null {
+function forwardTarget(flow: SurveyFlow, currentIndex: number, targetQuestionId: unknown): SurveyQuestionView | null {
   const targetId = Number(targetQuestionId);
   if (!Number.isInteger(targetId) || targetId <= 0) return null;
   const targetIndex = flow.questions.findIndex((question) => question.id === targetId);

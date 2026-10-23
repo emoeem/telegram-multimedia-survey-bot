@@ -31,10 +31,20 @@ describe("validateSurveyGraph", () => {
 
   it("向前的选项规则合法（GATE 型分支）", () => {
     const graph = [
-      node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [
-        { optionId: 10, targetQuestionId: 3 },
-        { optionId: 11, targetQuestionId: 4 },
-      ] }) }, [10, 11, 12]),
+      node(
+        1,
+        0,
+        {
+          conditionJson: JSON.stringify({
+            kind: "option_equals",
+            rules: [
+              { optionId: 10, targetQuestionId: 3 },
+              { optionId: 11, targetQuestionId: 4 },
+            ],
+          }),
+        },
+        [10, 11, 12],
+      ),
       node(2, 1),
       node(3, 2),
       node(4, 3),
@@ -43,7 +53,15 @@ describe("validateSurveyGraph", () => {
   });
 
   it("拦截引用不存在选项的规则", () => {
-    const graph = [node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 99, targetQuestionId: 2 }] }) }, [10]), node(2, 1)];
+    const graph = [
+      node(
+        1,
+        0,
+        { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 99, targetQuestionId: 2 }] }) },
+        [10],
+      ),
+      node(2, 1),
+    ];
     const issues = validateSurveyGraph(graph);
     expect(issues).toHaveLength(1);
     expect(issues[0]!.level).toBe("error");
@@ -51,7 +69,15 @@ describe("validateSurveyGraph", () => {
   });
 
   it("拦截指向不存在题目的规则", () => {
-    const graph = [node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 10, targetQuestionId: 99 }] }) }, [10]), node(2, 1)];
+    const graph = [
+      node(
+        1,
+        0,
+        { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 10, targetQuestionId: 99 }] }) },
+        [10],
+      ),
+      node(2, 1),
+    ];
     const issues = validateSurveyGraph(graph);
     expect(issues[0]!.message).toContain("不存在的题目");
   });
@@ -59,7 +85,12 @@ describe("validateSurveyGraph", () => {
   it("拦截向后跳转", () => {
     const graph = [
       node(1, 0),
-      node(2, 1, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 10, targetQuestionId: 1 }] }) }, [10]),
+      node(
+        2,
+        1,
+        { conditionJson: JSON.stringify({ kind: "option_equals", rules: [{ optionId: 10, targetQuestionId: 1 }] }) },
+        [10],
+      ),
       node(3, 2),
     ];
     const issues = validateSurveyGraph(graph);
@@ -68,11 +99,21 @@ describe("validateSurveyGraph", () => {
 
   it("不可达的分支节点是错误（规则覆盖全部选项后，线性后继不再可达）", () => {
     const graph = [
-      node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [
-        { optionId: 10, targetQuestionId: 3 },
-        { optionId: 11, targetQuestionId: 3 },
-        { optionId: 12, targetQuestionId: 3 },
-      ] }) }, [10, 11, 12]),
+      node(
+        1,
+        0,
+        {
+          conditionJson: JSON.stringify({
+            kind: "option_equals",
+            rules: [
+              { optionId: 10, targetQuestionId: 3 },
+              { optionId: 11, targetQuestionId: 3 },
+              { optionId: 12, targetQuestionId: 3 },
+            ],
+          }),
+        },
+        [10, 11, 12],
+      ),
       node(2, 1), // 被三门全跳过：不可达
       node(3, 2),
     ];
@@ -82,11 +123,21 @@ describe("validateSurveyGraph", () => {
 
   it("GATE 有未覆盖选项时线性兜底可达（距离线顺延结构）", () => {
     const graph = [
-      node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", rules: [
-        { optionId: 10, targetQuestionId: 3 },
-        { optionId: 11, targetQuestionId: 3 },
-        { optionId: 12, targetQuestionId: 3 },
-      ] }) }, [10, 11, 12, 13]),
+      node(
+        1,
+        0,
+        {
+          conditionJson: JSON.stringify({
+            kind: "option_equals",
+            rules: [
+              { optionId: 10, targetQuestionId: 3 },
+              { optionId: 11, targetQuestionId: 3 },
+              { optionId: 12, targetQuestionId: 3 },
+            ],
+          }),
+        },
+        [10, 11, 12, 13],
+      ),
       node(2, 1), // 选项 13 无规则 → 线性顺延可达
       node(3, 2),
     ];
@@ -111,14 +162,24 @@ describe("validateSurveyGraph", () => {
 
   it("answerRules 计入可达性且校验字段", () => {
     const ok = [
-      node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", answerRules: [{ questionId: 1, equals: 10, targetQuestionId: 3 }] }) }),
+      node(1, 0, {
+        conditionJson: JSON.stringify({
+          kind: "option_equals",
+          answerRules: [{ questionId: 1, equals: 10, targetQuestionId: 3 }],
+        }),
+      }),
       node(2, 1),
       node(3, 2),
     ];
     expect(validateSurveyGraph(ok)).toEqual([]);
 
     const bad = [
-      node(1, 0, { conditionJson: JSON.stringify({ kind: "option_equals", answerRules: [{ questionId: 99, equals: 0, targetQuestionId: 2 }] }) }),
+      node(1, 0, {
+        conditionJson: JSON.stringify({
+          kind: "option_equals",
+          answerRules: [{ questionId: 99, equals: 0, targetQuestionId: 2 }],
+        }),
+      }),
       node(2, 1),
     ];
     const issues = validateSurveyGraph(bad);

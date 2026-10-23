@@ -159,8 +159,7 @@ async function renderPngReport(
   strategy: PngViewportStrategy,
 ): Promise<ResponseReportRenderResult> {
   const pages: ResponseReportRenderedPage[] = [];
-  const plannedIterations =
-    strategy === "probe-fullpage" ? plannedPages.slice(0, 1) : plannedPages;
+  const plannedIterations = strategy === "probe-fullpage" ? plannedPages.slice(0, 1) : plannedPages;
   for (const plannedPage of plannedIterations) {
     if (strategy === "set-viewport") {
       await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 1 });

@@ -51,18 +51,13 @@ export function stubBrowser(options: BrowserStubOptions): BrowserStub {
  * participant-session.service. The client pre-checks `exp` **and** the payload
  * version (a version bump is how outstanding tokens get revoked), so test
  * tokens must carry the current `v` to count as live. */
-export function makeParticipantToken(
-  expSeconds: number,
-  profile?: { username?: string; firstName?: string },
-): string {
+export function makeParticipantToken(expSeconds: number, profile?: { username?: string; firstName?: string }): string {
   const json = JSON.stringify({
     u: 7,
     exp: expSeconds,
     p: "participant",
     v: SURVEY_PARTICIPANT_TOKEN_VERSION,
-    ...(profile?.username || profile?.firstName
-      ? { n: { u: profile.username, f: profile.firstName } }
-      : {}),
+    ...(profile?.username || profile?.firstName ? { n: { u: profile.username, f: profile.firstName } } : {}),
   });
   // 与服务端一致：payload 先 UTF-8 编码再 base64（btoa 只吃 Latin1，中文
   // 资料快照必须走 TextEncoder）。

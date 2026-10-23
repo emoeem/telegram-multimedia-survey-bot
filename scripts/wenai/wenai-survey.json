@@ -3,7 +3,14 @@
   "survey": {
     "title": "文爱偏好与界限问卷 · 18+",
     "description": "在文字里相遇之前，先让彼此看清对方的底色。这份问卷用于文字亲密创作（文爱）开始前的偏好与界限核对：没有标准答案，只有你的答案。请在安静的时候、慢慢填写。",
-    "cover": { "id": "m-cover", "type": "photo", "source": "kv", "url": "kv://cover.jpg", "width": 1600, "height": 1000 },
+    "cover": {
+      "id": "m-cover",
+      "type": "photo",
+      "source": "kv",
+      "url": "kv://cover.jpg",
+      "width": 1600,
+      "height": 1000
+    },
     "pages": [
       { "id": "p1", "title": "序 · 写给深夜的你", "order": 1 },
       { "id": "p2", "title": "一 · 底色", "order": 2 },
@@ -23,7 +30,9 @@
         "order": 1,
         "page_id": "p1",
         "options": [],
-        "media": [{ "id": "m-p1", "type": "photo", "source": "kv", "url": "kv://p1.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p1", "type": "photo", "source": "kv", "url": "kv://p1.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-age",
@@ -77,7 +86,9 @@
         "order": 5,
         "page_id": "p2",
         "options": [],
-        "media": [{ "id": "m-p2", "type": "photo", "source": "kv", "url": "kv://p2.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p2", "type": "photo", "source": "kv", "url": "kv://p2.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-name",
@@ -179,7 +190,9 @@
         "order": 12,
         "page_id": "p3",
         "options": [],
-        "media": [{ "id": "m-p3", "type": "photo", "source": "kv", "url": "kv://p3.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p3", "type": "photo", "source": "kv", "url": "kv://p3.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-scene",
@@ -189,12 +202,102 @@
         "order": 13,
         "page_id": "p3",
         "options": [
-          { "id": "o-latenight", "label": "深夜私语 · 聊天窗里的即时呼吸", "value": "late_night", "order": 1, "media": [{ "id": "m-latenight", "type": "photo", "source": "kv", "url": "kv://scene-latenight.jpg", "width": 800, "height": 600 }] },
-          { "id": "o-hotel", "label": "酒店与旅途 · 陌生的房间与行李箱", "value": "hotel", "order": 2, "media": [{ "id": "m-hotel", "type": "photo", "source": "kv", "url": "kv://scene-hotel.jpg", "width": 800, "height": 600 }] },
-          { "id": "o-office", "label": "办公室与制服 · 白天之下的暗流", "value": "office", "order": 3, "media": [{ "id": "m-office", "type": "photo", "source": "kv", "url": "kv://scene-office.jpg", "width": 800, "height": 600 }] },
-          { "id": "o-ancient", "label": "古风 · 红帐烛影，衣带轻解", "value": "ancient", "order": 4, "media": [{ "id": "m-ancient", "type": "photo", "source": "kv", "url": "kv://scene-ancient.jpg", "width": 800, "height": 600 }] },
-          { "id": "o-fantasy", "label": "幻想 · 精灵、兽耳、异能与月亮", "value": "fantasy", "order": 5, "media": [{ "id": "m-fantasy", "type": "photo", "source": "kv", "url": "kv://scene-fantasy.jpg", "width": 800, "height": 600 }] },
-          { "id": "o-city", "label": "都市日常 · 旧识重逢，或陌生人", "value": "city", "order": 6, "media": [{ "id": "m-city", "type": "photo", "source": "kv", "url": "kv://scene-city.jpg", "width": 800, "height": 600 }] }
+          {
+            "id": "o-latenight",
+            "label": "深夜私语 · 聊天窗里的即时呼吸",
+            "value": "late_night",
+            "order": 1,
+            "media": [
+              {
+                "id": "m-latenight",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-latenight.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          },
+          {
+            "id": "o-hotel",
+            "label": "酒店与旅途 · 陌生的房间与行李箱",
+            "value": "hotel",
+            "order": 2,
+            "media": [
+              {
+                "id": "m-hotel",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-hotel.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          },
+          {
+            "id": "o-office",
+            "label": "办公室与制服 · 白天之下的暗流",
+            "value": "office",
+            "order": 3,
+            "media": [
+              {
+                "id": "m-office",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-office.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          },
+          {
+            "id": "o-ancient",
+            "label": "古风 · 红帐烛影，衣带轻解",
+            "value": "ancient",
+            "order": 4,
+            "media": [
+              {
+                "id": "m-ancient",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-ancient.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          },
+          {
+            "id": "o-fantasy",
+            "label": "幻想 · 精灵、兽耳、异能与月亮",
+            "value": "fantasy",
+            "order": 5,
+            "media": [
+              {
+                "id": "m-fantasy",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-fantasy.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          },
+          {
+            "id": "o-city",
+            "label": "都市日常 · 旧识重逢，或陌生人",
+            "value": "city",
+            "order": 6,
+            "media": [
+              {
+                "id": "m-city",
+                "type": "photo",
+                "source": "kv",
+                "url": "kv://scene-city.jpg",
+                "width": 800,
+                "height": 600
+              }
+            ]
+          }
         ],
         "media": []
       },
@@ -240,81 +343,179 @@
         "order": 16,
         "page_id": "p4",
         "options": [],
-        "media": [{ "id": "m-p4", "type": "photo", "source": "kv", "url": "kv://p4.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p4", "type": "photo", "source": "kv", "url": "kv://p4.jpg", "width": 1600, "height": 1000 }
+        ]
       },
-      { "id": "q-kiss", "type": "single", "title": "亲吻、拥抱与爱抚", "required": true, "order": 17, "page_id": "p4",
+      {
+        "id": "q-kiss",
+        "type": "single",
+        "title": "亲吻、拥抱与爱抚",
+        "required": true,
+        "order": 17,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-whisper", "type": "single", "title": "耳语、情话与挑逗", "required": true, "order": 18, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-whisper",
+        "type": "single",
+        "title": "耳语、情话与挑逗",
+        "required": true,
+        "order": 18,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-voice", "type": "single", "title": "声音的描写——喘息、气音、拟声与叫床", "required": true, "order": 19, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-voice",
+        "type": "single",
+        "title": "声音的描写——喘息、气音、拟声与叫床",
+        "required": true,
+        "order": 19,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-explicit", "type": "single", "title": "直白的性爱场景描写", "required": true, "order": 20, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-explicit",
+        "type": "single",
+        "title": "直白的性爱场景描写",
+        "required": true,
+        "order": 20,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-oral", "type": "single", "title": "口（用嘴的爱抚）", "required": true, "order": 21, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-oral",
+        "type": "single",
+        "title": "口（用嘴的爱抚）",
+        "required": true,
+        "order": 21,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-toys", "type": "single", "title": "穿戴与道具——情趣内衣、玩具", "required": true, "order": 22, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-toys",
+        "type": "single",
+        "title": "穿戴与道具——情趣内衣、玩具",
+        "required": true,
+        "order": 22,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-pain", "type": "single", "title": "轻度的疼痛与痕迹——掐、咬、拍打", "required": true, "order": 23, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-pain",
+        "type": "single",
+        "title": "轻度的疼痛与痕迹——掐、咬、拍打",
+        "required": true,
+        "order": 23,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-bond", "type": "single", "title": "束缚与控制——手腕被按住、领带、绳索", "required": true, "order": 24, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-bond",
+        "type": "single",
+        "title": "束缚与控制——手腕被按住、领带、绳索",
+        "required": true,
+        "order": 24,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-role", "type": "single", "title": "权力与角色扮演——师生、上司、主仆等虚构设定", "required": true, "order": 25, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-role",
+        "type": "single",
+        "title": "权力与角色扮演——师生、上司、主仆等虚构设定",
+        "required": true,
+        "order": 25,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-cnc", "type": "single", "title": "「假装强迫」的剧本（CNC）", "description": "指双方事先完全同意、随时可用安全词喊停的「非自愿」演出。只存在于排练过的虚构里。",
-        "required": true, "order": 26, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-cnc",
+        "type": "single",
+        "title": "「假装强迫」的剧本（CNC）",
+        "description": "指双方事先完全同意、随时可用安全词喊停的「非自愿」演出。只存在于排练过的虚构里。",
+        "required": true,
+        "order": 26,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-orgasm", "type": "single", "title": "高潮的控制——延迟、命令、数数", "required": true, "order": 27, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-orgasm",
+        "type": "single",
+        "title": "高潮的控制——延迟、命令、数数",
+        "required": true,
+        "order": 27,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
-      { "id": "q-dirty", "type": "single", "title": "粗话与语言羞辱", "required": true, "order": 28, "page_id": "p4",
+        ],
+        "media": []
+      },
+      {
+        "id": "q-dirty",
+        "type": "single",
+        "title": "粗话与语言羞辱",
+        "required": true,
+        "order": 28,
+        "page_id": "p4",
         "options": [
           { "id": "o-yes", "label": "愿意", "value": "yes", "order": 1 },
           { "id": "o-maybe", "label": "看情况", "value": "maybe", "order": 2 },
           { "id": "o-no", "label": "不愿意", "value": "no", "order": 3 }
-        ], "media": [] },
+        ],
+        "media": []
+      },
       {
         "id": "q-zones",
         "type": "multiple",
@@ -342,7 +543,9 @@
         "order": 30,
         "page_id": "p5",
         "options": [],
-        "media": [{ "id": "m-p5", "type": "photo", "source": "kv", "url": "kv://p5.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p5", "type": "photo", "source": "kv", "url": "kv://p5.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-limits",
@@ -394,7 +597,9 @@
         "order": 34,
         "page_id": "p6",
         "options": [],
-        "media": [{ "id": "m-p6", "type": "photo", "source": "kv", "url": "kv://p6.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p6", "type": "photo", "source": "kv", "url": "kv://p6.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-safeword",
@@ -475,7 +680,9 @@
         "order": 40,
         "page_id": "p7",
         "options": [],
-        "media": [{ "id": "m-p7", "type": "photo", "source": "kv", "url": "kv://p7.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-p7", "type": "photo", "source": "kv", "url": "kv://p7.jpg", "width": 1600, "height": 1000 }
+        ]
       },
       {
         "id": "q-fantasy",
@@ -519,7 +726,9 @@
         "order": 44,
         "page_id": "p7",
         "options": [],
-        "media": [{ "id": "m-close", "type": "photo", "source": "kv", "url": "kv://closing.jpg", "width": 1600, "height": 1000 }]
+        "media": [
+          { "id": "m-close", "type": "photo", "source": "kv", "url": "kv://closing.jpg", "width": 1600, "height": 1000 }
+        ]
       }
     ],
     "settings": {

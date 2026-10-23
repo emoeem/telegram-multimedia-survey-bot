@@ -166,13 +166,7 @@ function useDialogFocus(id: number, onEscape: () => void) {
   return panelRef;
 }
 
-function DialogStack({
-  items,
-  onClose,
-}: {
-  items: InternalDialogItem[];
-  onClose: (id: number, ok: boolean) => void;
-}) {
+function DialogStack({ items, onClose }: { items: InternalDialogItem[]; onClose: (id: number, ok: boolean) => void }) {
   if (items.length === 0) return null;
   const top = items[items.length - 1]!;
   const variant = top.variant ?? "default";

@@ -11,11 +11,7 @@ function errorMessage(error: unknown): string {
 
 export function isDatabaseCapacityError(error: unknown): boolean {
   const message = errorMessage(error);
-  return (
-    /exceeded d1/i.test(message) ||
-    /daily row (read|write) limit/i.test(message) ||
-    /code:\s*7500/i.test(message)
-  );
+  return /exceeded d1/i.test(message) || /daily row (read|write) limit/i.test(message) || /code:\s*7500/i.test(message);
 }
 
 /**

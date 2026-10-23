@@ -410,7 +410,6 @@ export function revokeProfileShare(): Promise<{ ok: boolean; revoked: boolean }>
   return request<{ ok: boolean; revoked: boolean }>("/api/me/profile-share", { method: "DELETE" });
 }
 
-
 /** 成就徽章：目录由服务端下发，客户端不硬编码任何一条。 */
 export interface AchievementItem {
   code: string;
@@ -488,9 +487,7 @@ export function markAchievementsSeen(): Promise<{ ok: boolean; marked: number }>
   return request<{ ok: boolean; marked: number }>("/api/me/achievements/seen", { method: "POST" });
 }
 
-export function fetchSurveyList(
-  q = "",
-): Promise<{
+export function fetchSurveyList(q = ""): Promise<{
   surveys: SurveyListItem[];
   communityGroupUrl: string | null;
   submissionBotUrl: string | null;
@@ -810,12 +807,21 @@ function coinRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const coinApi = {
   overview: () => coinRequest<CoinOverview>("/api/coins/overview"),
-  checkin: () => coinRequest<{ ok: boolean; duplicate: boolean; amount: number; streak: number; balance: number }>("/api/coins/checkin", { method: "POST", body: "{}" }),
+  checkin: () =>
+    coinRequest<{ ok: boolean; duplicate: boolean; amount: number; streak: number; balance: number }>(
+      "/api/coins/checkin",
+      { method: "POST", body: "{}" },
+    ),
   transactions: (page: number) =>
-    coinRequest<{ items: CoinTransactionDto[]; hasMore: boolean; page: number }>(`/api/coins/transactions?page=${page}`),
+    coinRequest<{ items: CoinTransactionDto[]; hasMore: boolean; page: number }>(
+      `/api/coins/transactions?page=${page}`,
+    ),
   challenges: () => coinRequest<{ challenges: CoinChallengeDto[] }>("/api/coins/challenges"),
   claimChallenge: (id: number) =>
-    coinRequest<{ ok: boolean; duplicate: boolean; reward: number; balance: number }>(`/api/coins/challenges/${id}/claim`, { method: "POST", body: "{}" }),
+    coinRequest<{ ok: boolean; duplicate: boolean; reward: number; balance: number }>(
+      `/api/coins/challenges/${id}/claim`,
+      { method: "POST", body: "{}" },
+    ),
   unlock: (surveyId: number, idempotencyKey: string) =>
     coinRequest<{ ok: boolean; required: boolean; duplicate: boolean; pricePaid: number; balance?: number }>(
       `/api/coins/unlock/${surveyId}`,
@@ -846,9 +852,7 @@ export const coinApi = {
       durationSeconds?: number;
       reportUrl?: string;
       summary?: string;
-    }>(
-      `/api/gacha/items/${itemId}/content`,
-    ),
+    }>(`/api/gacha/items/${itemId}/content`),
   mySubmissions: () => coinRequest<{ submissions: SubmissionDto[] }>("/api/submissions"),
   createSubmission: (body: Record<string, unknown>) =>
     coinRequest<{ id: number; status: string; duplicate: boolean }>("/api/submissions", {
@@ -857,7 +861,8 @@ export const coinApi = {
     }),
   createSubmissionWithFile: (form: FormData) =>
     coinRequest<{ id: number; status: string; duplicate: boolean }>("/api/submissions", { method: "POST", body: form }),
-  withdraw: (id: number) => coinRequest<{ ok: boolean }>(`/api/submissions/${id}/withdraw`, { method: "POST", body: "{}" }),
+  withdraw: (id: number) =>
+    coinRequest<{ ok: boolean }>(`/api/submissions/${id}/withdraw`, { method: "POST", body: "{}" }),
   unlockables: () => coinRequest<{ unlocks: CoinUnlockDto[] }>("/api/coins/unlocks"),
 };
 

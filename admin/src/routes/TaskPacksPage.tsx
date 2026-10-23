@@ -285,7 +285,8 @@ export function TaskPacksPage() {
   };
 
   const remove = async (pack: AdminTaskPack) => {
-    if (!await confirm({ message: `确定删除任务包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })) return;
+    if (!(await confirm({ message: `确定删除任务包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })))
+      return;
     try {
       await deleteAdminTaskPack(pack.id);
       retry();
@@ -435,7 +436,9 @@ export function TaskPacksPage() {
               添加任务
             </button>
           </div>
-          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。</p>
+          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
+            任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。
+          </p>
 
           {editing.items.length === 0 ? (
             <div className="mt-4 rounded-xl border border-dashed border-[var(--color-edge)] p-8 text-center text-sm text-[var(--color-muted-soft)] ">
@@ -579,11 +582,7 @@ export function TaskPacksPage() {
             内容与机制分离：任务文案存库，改动立即对玩家端生效。
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-sm gap-1.5 btn-primary"
-          onClick={openNew}
-        >
+        <button type="button" className="btn btn-sm gap-1.5 btn-primary" onClick={openNew}>
           <Plus className="h-4 w-4" />
           新建任务包
         </button>
@@ -598,10 +597,7 @@ export function TaskPacksPage() {
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {packItems.map((pack) => (
-            <article
-              key={pack.id}
-              className="card"
-            >
+            <article key={pack.id} className="card">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold text-[var(--color-ink)]">{pack.name}</h3>
@@ -609,23 +605,13 @@ export function TaskPacksPage() {
                     {pack.description || "（暂无描述）"}
                   </p>
                 </div>
-                <span
-                  className={
-                    pack.enabled
-                      ? "badge badge-green"
-                      : "badge badge-gray"
-                  }
-                >
+                <span className={pack.enabled ? "badge badge-green" : "badge badge-gray"}>
                   {pack.enabled ? "已启用" : "已停用"}
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-[var(--color-ink)] dark:text-[var(--color-muted-soft)]">
-                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
-                  普通 {pack.normalFloors} 层
-                </span>
-                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
-                  地狱 {pack.hellFloors} 层
-                </span>
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">普通 {pack.normalFloors} 层</span>
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">地狱 {pack.hellFloors} 层</span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
                   {pack.items.filter((item) => item.enabled).length} 个任务
                 </span>

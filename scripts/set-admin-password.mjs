@@ -85,5 +85,5 @@ if (opts.apply) {
     process.exit(1);
   }
 } else {
-  console.log('未加 --apply，仅打印。加上 --apply 会写入生产库。');
+  console.log("未加 --apply，仅打印。加上 --apply 会写入生产库。");
 }

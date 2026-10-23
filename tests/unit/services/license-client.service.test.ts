@@ -198,11 +198,9 @@ describe("callLicenseCenter transport", () => {
   it("falls back to the URL when the deployment has no binding", async () => {
     const globalFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
 
-    await callLicenseCenter(
-      { LICENSE_SERVER_URL: "https://center.workers.dev/" },
-      "/api/v1/licenses/validate",
-      { method: "POST" },
-    );
+    await callLicenseCenter({ LICENSE_SERVER_URL: "https://center.workers.dev/" }, "/api/v1/licenses/validate", {
+      method: "POST",
+    });
 
     expect(globalFetch).toHaveBeenCalledTimes(1);
     // The trailing slash must not double up.

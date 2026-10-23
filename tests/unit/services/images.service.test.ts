@@ -35,9 +35,7 @@ describe("imageDeliveryUrl", () => {
 
 describe("uploadImage", () => {
   it("上传字节并返回 imageId 与交付地址", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse(200, { success: true, result: { id: "img-9" } }),
-    );
+    const fetchMock = vi.fn(async () => jsonResponse(200, { success: true, result: { id: "img-9" } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await uploadImage(ENV, { bytes: BYTES, name: "card.png", contentType: "image/png" });
@@ -61,12 +59,18 @@ describe("uploadImage", () => {
 
 describe("deleteImage", () => {
   it("404 视为已删除", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("nf", { status: 404 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nf", { status: 404 })),
+    );
     await expect(deleteImage(ENV, "img-x")).resolves.toBeUndefined();
   });
 
   it("其他非 2xx 抛错", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
     await expect(deleteImage(ENV, "img-x")).rejects.toThrow("500");
   });
 });

@@ -106,7 +106,10 @@ export function PresetSwatch({ presetId, size = "sm" }: { presetId: string; size
       style={colors ? { backgroundColor: colors.base } : undefined}
     >
       {colors ? (
-        <span className={`flex h-full items-center gap-1.5 px-2 ${size === "md" ? "h-10" : "h-8"}`} style={{ color: colors.content }}>
+        <span
+          className={`flex h-full items-center gap-1.5 px-2 ${size === "md" ? "h-10" : "h-8"}`}
+          style={{ color: colors.content }}
+        >
           <span
             className={`h-4 w-4 shrink-0 rounded-full ${size === "sm" ? "h-3 w-3" : ""}`}
             style={{ backgroundColor: colors.primary }}

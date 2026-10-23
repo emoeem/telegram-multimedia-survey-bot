@@ -103,19 +103,16 @@ function RedirectTo({ to }: { to: string }) {
   useEffect(() => {
     window.location.replace(to);
   }, [to]);
-  return (
-    <div className="grid min-h-dvh place-items-center text-sm text-[var(--survey-muted)]">正在打开投稿中心…</div>
-  );
+  return <div className="grid min-h-dvh place-items-center text-sm text-[var(--survey-muted)]">正在打开投稿中心…</div>;
 }
 const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
-function LazyScreen({ children }: { children: React.ReactNode }) {  return (
+function LazyScreen({ children }: { children: React.ReactNode }) {
+  return (
     <Suspense
-      fallback={
-        <div className="grid min-h-dvh place-items-center text-sm text-[var(--color-muted)]">加载中…</div>
-      }
+      fallback={<div className="grid min-h-dvh place-items-center text-sm text-[var(--color-muted)]">加载中…</div>}
     >
       {children}
     </Suspense>
@@ -182,10 +179,8 @@ function ParticipantIdentityNotice({ done }: { done?: boolean }) {
   return (
     <div className="survey-card mb-4 flex items-center justify-between gap-3 p-3">
       <p className="text-xs leading-relaxed text-[var(--survey-muted)]">
-        {done ? "本答卷已" : "本次填写将"}
-        以 Telegram 账号{" "}
-        <span className="font-semibold text-[var(--survey-heading)]">{label}</span>{" "}
-        的身份归档（来自打开的链接）。
+        {done ? "本答卷已" : "本次填写将"}以 Telegram 账号{" "}
+        <span className="font-semibold text-[var(--survey-heading)]">{label}</span> 的身份归档（来自打开的链接）。
       </p>
       <button
         type="button"
@@ -468,8 +463,8 @@ function AuthRequiredScreen({ onRetry }: { onRetry: () => void }) {
       <p className="text-5xl">🔐</p>
       <h1 className="mt-4 text-lg font-semibold">注册或登录后开始填写</h1>
       <p className="mt-3 text-sm opacity-70">
-        填写问卷需要一个账号（邮箱即可）：这样你的答卷进度、结局收集和追更通知都能找回，换设备也不会丢。
-        用 Telegram 打开则自动使用 TG 身份。
+        填写问卷需要一个账号（邮箱即可）：这样你的答卷进度、结局收集和追更通知都能找回，换设备也不会丢。 用 Telegram
+        打开则自动使用 TG 身份。
       </p>
       <div className="mt-8 flex flex-col items-center gap-3">
         <a className="btn btn-primary px-8" href="/auth">
@@ -672,9 +667,7 @@ function SurveyListPage() {
     );
   }
   if (!surveys) {
-    return shell(
-      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>,
-    );
+    return shell(<div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>);
   }
   if (surveys.length === 0) {
     return shell(
@@ -707,8 +700,7 @@ function SurveyListPage() {
   // 空的分类不出现在筛选条上：未确认年龄时会有一整类 18+ 内容被藏起来，
   // 留一个「0 份」的抽屉只会让人以为页面坏了。选中的分类被清空时回落到全部。
   const visibleCategories = categories.filter((category) => (categoryCounts.get(category.slug) ?? 0) > 0);
-  const effectiveCategory =
-    activeCategory && categoryCounts.has(activeCategory) ? activeCategory : null;
+  const effectiveCategory = activeCategory && categoryCounts.has(activeCategory) ? activeCategory : null;
   const filteredSurveys = effectiveCategory
     ? surveys.filter((survey) => survey.category?.slug === effectiveCategory)
     : surveys;
@@ -902,8 +894,7 @@ function SurveyListPage() {
             const answered = completedIds.includes(survey.id);
             // 金币门：只有启用了金币解锁、且当前身份尚未解锁时才提示。
             const coinPrice = survey.coinUnlock?.price ?? null;
-            const coinLocked =
-              coinPrice !== null && !(unlockedSurveyIds ?? []).includes(survey.id);
+            const coinLocked = coinPrice !== null && !(unlockedSurveyIds ?? []).includes(survey.id);
             return (
               <a
                 key={survey.id}
@@ -947,9 +938,7 @@ function SurveyListPage() {
                   {survey.category ? <span className="chip text-xs">{survey.category.name}</span> : null}
                   <span className="chip text-xs">{survey.questionCount} 道题</span>
                   {survey.anonymous ? <span className="chip text-xs">🎭 匿名</span> : null}
-                  {isClosed ? (
-                    <span className="chip text-xs text-[var(--color-muted)]">已截止</span>
-                  ) : null}
+                  {isClosed ? <span className="chip text-xs text-[var(--color-muted)]">已截止</span> : null}
                   {coinPrice !== null && !coinLocked ? (
                     <span className="chip text-xs text-[var(--color-muted)]">已解锁</span>
                   ) : null}
@@ -1077,15 +1066,17 @@ function selectedOptionId(question: SurveyQuestionDto, value: AnswerValue | unde
 }
 
 /** 剧情 flags（P2）：与服务端 engine.computeFlags 同构，由答案推导。 */
-function computeFlags(
-  questions: SurveyQuestionDto[],
-  answers: Record<number, AnswerValue>,
-): Map<string, number> {
+function computeFlags(questions: SurveyQuestionDto[], answers: Record<number, AnswerValue>): Map<string, number> {
   const flags = new Map<string, number>();
   for (const question of questions) {
     const condition = question.condition as { flagRules?: unknown } | null;
     if (!condition || !Array.isArray(condition.flagRules)) continue;
-    for (const rule of condition.flagRules as Array<{ questionId?: unknown; equals?: unknown; flag?: unknown; score?: unknown }>) {
+    for (const rule of condition.flagRules as Array<{
+      questionId?: unknown;
+      equals?: unknown;
+      flag?: unknown;
+      score?: unknown;
+    }>) {
       const flag = typeof rule.flag === "string" ? rule.flag : null;
       if (!flag) continue;
       const value = answers[Number(rule.questionId)];
@@ -1123,7 +1114,11 @@ function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers
       // fire on note questions, letting narrative cards branch on prior choices.
       const answerRules = (current.condition as { answerRules?: unknown }).answerRules;
       if (Array.isArray(answerRules)) {
-        for (const rule of answerRules as Array<{ questionId?: unknown; equals?: unknown; targetQuestionId?: unknown }>) {
+        for (const rule of answerRules as Array<{
+          questionId?: unknown;
+          equals?: unknown;
+          targetQuestionId?: unknown;
+        }>) {
           const value = answers[Number(rule.questionId)];
           if (value === undefined || value === null) continue;
           if (Number(rule.equals) !== Number(value)) continue;
@@ -1242,7 +1237,9 @@ function MediaBlock({
     <div className="mt-3 grid gap-2">
       {urls.map((media, index) => {
         if (type === "video") {
-          return <video key={index} className="w-full rounded-lg bg-black" src={media.url} controls preload="metadata" />;
+          return (
+            <video key={index} className="w-full rounded-lg bg-black" src={media.url} controls preload="metadata" />
+          );
         }
         if (type === "audio") {
           return <audio key={index} className="w-full" src={media.url} controls preload="none" />;
@@ -1769,7 +1766,9 @@ function QuestionAnswer({ question, value, onChange, disabled, streamVideo }: Qu
           className="input mt-4 min-h-36 w-full"
         />
         {maxLengthAttr ? (
-          <p className={`mt-1 text-right text-[11px] ${currentLength > maxLengthAttr ? "text-[var(--app-danger)]" : "text-[var(--survey-muted)]"}`}>
+          <p
+            className={`mt-1 text-right text-[11px] ${currentLength > maxLengthAttr ? "text-[var(--app-danger)]" : "text-[var(--survey-muted)]"}`}
+          >
             {currentLength}/{maxLengthAttr}
           </p>
         ) : null}
@@ -1804,11 +1803,7 @@ function QuestionAnswer({ question, value, onChange, disabled, streamVideo }: Qu
           const parsed = Number(event.target.value);
           if (Number.isFinite(parsed)) onChange(parsed);
         }}
-        placeholder={
-          Number.isFinite(min) && Number.isFinite(max)
-            ? `请输入 ${min} – ${max} 之间的数字`
-            : "请输入数字"
-        }
+        placeholder={Number.isFinite(min) && Number.isFinite(max) ? `请输入 ${min} – ${max} 之间的数字` : "请输入数字"}
         className="input mt-4 w-full"
       />
     );
@@ -1855,7 +1850,9 @@ function QuestionAnswer({ question, value, onChange, disabled, streamVideo }: Qu
                   />
                 </span>
               ) : null}
-              <span className="min-w-0 truncate">已上传{question.type === "image" ? "图片" : "文件"}（#{mediaAnswer.mediaAssetId}）</span>
+              <span className="min-w-0 truncate">
+                已上传{question.type === "image" ? "图片" : "文件"}（#{mediaAnswer.mediaAssetId}）
+              </span>
             </span>
             <button
               type="button"
@@ -1958,7 +1955,9 @@ function AccessScreen({
           <Lock className="h-7 w-7" />
         </span>
         <h1 className="mt-4 text-xl font-bold tracking-tight text-[var(--color-ink)]">需要访问密码</h1>
-        <p className="mt-1.5 truncate text-sm text-[var(--color-muted)]">「{survey.title}」已加密，输入访问密码后继续填写。</p>
+        <p className="mt-1.5 truncate text-sm text-[var(--color-muted)]">
+          「{survey.title}」已加密，输入访问密码后继续填写。
+        </p>
         <input
           value={code}
           onChange={(event) => setCode(event.target.value)}
@@ -2539,7 +2538,10 @@ export function SurveyApp() {
 
   const earlyTheme: SurveyThemeDto | null = userThemePreset
     ? { preset: userThemePreset }
-    : screen.kind !== "loading" && screen.kind !== "error" && screen.kind !== "age-gate" && screen.kind !== "auth-required"
+    : screen.kind !== "loading" &&
+        screen.kind !== "error" &&
+        screen.kind !== "age-gate" &&
+        screen.kind !== "auth-required"
       ? screen.survey.theme
       : null;
   const earlyVars = themeCssVars(earlyTheme);
@@ -2622,9 +2624,7 @@ export function SurveyApp() {
     );
   }
   if (screen.kind === "access") {
-    const accessTheme: SurveyThemeDto | null = userThemePreset
-      ? { preset: userThemePreset }
-      : screen.survey.theme;
+    const accessTheme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : screen.survey.theme;
     return (
       <div
         className="survey-glow min-h-dvh"
@@ -2703,7 +2703,10 @@ export function SurveyApp() {
                 </span>
               ))}
             </div>
-            <a className="mt-3 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline" href="/me">
+            <a
+              className="mt-3 inline-block text-[11px] font-semibold text-[var(--survey-primary)] underline"
+              href="/me"
+            >
               去「我的」看看全部徽章
             </a>
           </div>
@@ -2820,9 +2823,7 @@ export function SurveyApp() {
   const { survey, responseId } = screen;
   const question = survey.questions[index];
   if (!question) {
-    const emptyTheme: SurveyThemeDto | null = userThemePreset
-      ? { preset: userThemePreset }
-      : survey.theme;
+    const emptyTheme: SurveyThemeDto | null = userThemePreset ? { preset: userThemePreset } : survey.theme;
     return (
       <div
         className="survey-glow min-h-dvh"
@@ -2840,11 +2841,7 @@ export function SurveyApp() {
   const isLast = index === survey.questions.length - 1;
   // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
   // 无任何跳转条件的问卷，重放结果与线性顺序完全一致（行为兼容）。
-  const { done: answerableIndex, total: answerableTotal, percent } = routeProgress(
-    survey.questions,
-    index,
-    answers,
-  );
+  const { done: answerableIndex, total: answerableTotal, percent } = routeProgress(survey.questions, index, answers);
   const total = answerableTotal;
   const pageIndex = currentPage ? survey.pages.findIndex((page) => page.id === currentPage.id) : -1;
   // The participant can override the survey's default theme for this session;
@@ -3053,39 +3050,85 @@ export function SurveyApp() {
           {isLast ? (
             <>
               <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
-                <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={publishToTelegram} disabled={busy} onChange={(event) => setPublishToTelegram(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-primary mt-0.5 shrink-0"
+                  checked={publishToTelegram}
+                  disabled={busy}
+                  onChange={(event) => setPublishToTelegram(event.target.checked)}
+                />
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-[var(--survey-heading)]">📣 公开发布到 Telegram</span>
-                  <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。</span>
+                  <span className="block text-sm font-semibold text-[var(--survey-heading)]">
+                    📣 公开发布到 Telegram
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                    发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。
+                  </span>
                 </span>
               </label>
               {survey.galleryProfile?.enabled && survey.galleryProfile.canPublish ? (
                 <>
                   <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
-                    <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={publishToGallery} disabled={busy} onChange={(event) => setPublishToGallery(event.target.checked)} />
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-primary mt-0.5 shrink-0"
+                      checked={publishToGallery}
+                      disabled={busy}
+                      onChange={(event) => setPublishToGallery(event.target.checked)}
+                    />
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-[var(--survey-heading)]">🌍 发布到个人画廊</span>
-                      <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">默认不展示 Telegram 个人信息，你还可以选择画廊封面</span>
+                      <span className="block text-sm font-semibold text-[var(--survey-heading)]">
+                        🌍 发布到个人画廊
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                        默认不展示 Telegram 个人信息，你还可以选择画廊封面
+                      </span>
                     </span>
                   </label>
                   {publishToGallery ? (
                     <div className="mt-2 space-y-2">
                       <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
-                        <input type="checkbox" className="checkbox checkbox-primary mt-0.5 shrink-0" checked={galleryShowUsername} disabled={busy} onChange={(event) => setGalleryShowUsername(event.target.checked)} />
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-primary mt-0.5 shrink-0"
+                          checked={galleryShowUsername}
+                          disabled={busy}
+                          onChange={(event) => setGalleryShowUsername(event.target.checked)}
+                        />
                         <span className="min-w-0">
                           <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
-                          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">勾选后，资料卡会显示你的 Telegram 用户名和姓名</span>
+                          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                            勾选后，资料卡会显示你的 Telegram 用户名和姓名
+                          </span>
                         </span>
                       </label>
                       <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
                         <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
-                        <select className="select mt-2 w-full" value={galleryCoverMediaId ?? ""} onChange={(event) => setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)}>
+                        <select
+                          className="select mt-2 w-full"
+                          value={galleryCoverMediaId ?? ""}
+                          onChange={(event) =>
+                            setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)
+                          }
+                        >
                           <option value="">默认第一张图片</option>
-                          {survey.questions.filter((item) => ["image", "video", "audio", "file"].includes(item.type)).map((item) => {
-                            const answer = answers[item.id];
-                            const media = answer && typeof answer === "object" && !Array.isArray(answer) && "mediaAssetId" in answer ? answer.mediaAssetId : null;
-                            return typeof media === "number" ? <option key={item.id} value={media}>{item.title}</option> : null;
-                          })}
+                          {survey.questions
+                            .filter((item) => ["image", "video", "audio", "file"].includes(item.type))
+                            .map((item) => {
+                              const answer = answers[item.id];
+                              const media =
+                                answer &&
+                                typeof answer === "object" &&
+                                !Array.isArray(answer) &&
+                                "mediaAssetId" in answer
+                                  ? answer.mediaAssetId
+                                  : null;
+                              return typeof media === "number" ? (
+                                <option key={item.id} value={media}>
+                                  {item.title}
+                                </option>
+                              ) : null;
+                            })}
                         </select>
                       </label>
                     </div>

@@ -3,54 +3,6 @@
   "framework": null,
   "routes": [
     {
-      "src": "/api/submit$",
-      "dest": "https://submission-bot.3353745917.workers.dev/api/submit",
-      "transforms": [
-        {
-          "type": "request.headers",
-          "op": "set",
-          "target": {
-            "key": "x-relay-token"
-          },
-          "args": "$RELAY_SECRET_BOT",
-          "env": [
-            "RELAY_SECRET_BOT"
-          ]
-        },
-        {
-          "type": "request.headers",
-          "op": "delete",
-          "target": {
-            "key": "x-relay-country"
-          }
-        }
-      ]
-    },
-    {
-      "src": "/api/submit/(.*)",
-      "dest": "https://submission-bot.3353745917.workers.dev/api/submit/$1",
-      "transforms": [
-        {
-          "type": "request.headers",
-          "op": "set",
-          "target": {
-            "key": "x-relay-token"
-          },
-          "args": "$RELAY_SECRET_BOT",
-          "env": [
-            "RELAY_SECRET_BOT"
-          ]
-        },
-        {
-          "type": "request.headers",
-          "op": "delete",
-          "target": {
-            "key": "x-relay-country"
-          }
-        }
-      ]
-    },
-    {
       "src": "/(.*)",
       "dest": "https://emoe.eu.cc/$1",
       "transforms": [
@@ -61,9 +13,7 @@
             "key": "x-relay-token"
           },
           "args": "$RELAY_SECRET",
-          "env": [
-            "RELAY_SECRET"
-          ]
+          "env": ["RELAY_SECRET"]
         },
         {
           "type": "request.headers",

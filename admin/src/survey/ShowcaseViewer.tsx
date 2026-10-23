@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, BookOpen, ExternalLink, X } from "lucide-react";
-import {
-  fetchShowcaseItem,
-  SHOWCASE_ITEM_KIND_LABELS,
-  type ShowcaseItem,
-  type ShowcaseItemKind,
-} from "./showcase-api";
+import { fetchShowcaseItem, SHOWCASE_ITEM_KIND_LABELS, type ShowcaseItem, type ShowcaseItemKind } from "./showcase-api";
 
 /**
  * 作品的查看层：一个覆盖全屏的 readonly 视图，按作品类型切换内容形态。
@@ -135,7 +130,13 @@ export function ShowcaseViewer({ item, onClose }: { item: ShowcaseItem; onClose:
           <figure className="showcase-viewer-audio">
             <div className="showcase-viewer-audio-head">
               {current.coverUrl ? (
-                <img src={current.coverUrl} alt="" className="showcase-viewer-audio-cover" loading="lazy" decoding="async" />
+                <img
+                  src={current.coverUrl}
+                  alt=""
+                  className="showcase-viewer-audio-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
               ) : (
                 <span className="showcase-viewer-audio-cover showcase-viewer-audio-fallback" aria-hidden>
                   🎧

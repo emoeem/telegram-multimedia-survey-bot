@@ -70,9 +70,12 @@ export function TrialPlay({ title, questions, startIndex, onExit, preset }: Tria
   const advance = (value: TrialValue | null) => {
     const optionId = value !== null && question?.options.some((option) => option.id === value) ? value : null;
     if (value !== null) setAnswers((previous) => ({ ...previous, [question!.id]: value }));
-    const answerMap = new Map<number, unknown>(Object.entries({ ...answers, ...(value !== null ? { [question!.id]: value } : {}) }).map(
-      ([key, val]) => [Number(key), val],
-    ));
+    const answerMap = new Map<number, unknown>(
+      Object.entries({ ...answers, ...(value !== null ? { [question!.id]: value } : {}) }).map(([key, val]) => [
+        Number(key),
+        val,
+      ]),
+    );
     const next = getNextQuestionAfterAnswers(flow, current, optionId, answerMap);
     setStack((previous) => [...previous, next ? flow.questions.indexOf(next) : questions.length]);
   };
@@ -105,7 +108,11 @@ export function TrialPlay({ title, questions, startIndex, onExit, preset }: Tria
         </button>
       </div>
       <div className="preview-stage">
-        <div className="phone-frame" data-theme={preset ?? undefined} style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}>
+        <div
+          className="phone-frame"
+          data-theme={preset ?? undefined}
+          style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}
+        >
           <div className="phone-notch">
             <span className="phone-notch-dot" />
           </div>

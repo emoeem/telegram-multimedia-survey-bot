@@ -36,7 +36,13 @@ function normalizeHexInput(input: string): string | null {
   const match = HEX_INPUT.exec(input.trim());
   if (!match) return null;
   const digits = match[1]!;
-  const full = digits.length === 3 ? digits.split("").map((c) => c + c).join("") : digits;
+  const full =
+    digits.length === 3
+      ? digits
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : digits;
   return `#${full.toLowerCase()}`;
 }
 
@@ -53,15 +59,7 @@ function normalizeHexInput(input: string): string | null {
  * on the way to `#f59e0b`), commits only once the value parses, and reverts
  * to the stored value on blur so a half-typed string cannot reach the pack.
  */
-function ColorField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-}) {
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (next: string) => void }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
 
@@ -146,10 +144,7 @@ export function CertContentPage() {
   const issues = useMemo(() => validateThemes(themes), [themes]);
 
   /** 当前主题自己的问题（行内提示用）。 */
-  const activeIssues = useMemo(
-    () => issues.filter((issue) => issue.themeIndex === activeIndex),
-    [issues, activeIndex],
-  );
+  const activeIssues = useMemo(() => issues.filter((issue) => issue.themeIndex === activeIndex), [issues, activeIndex]);
   /** 主题 ID 是「改完即错」的字段：单独拿出来，标红 + 直接禁保存。 */
   const idIssue = activeIssues.find((issue) => issue.field === "id") ?? null;
   /** 页头列出「全局 + 当前主题」的问题，其它主题的问题切过去才显示，避免一次糊十几行。 */
@@ -419,12 +414,12 @@ export function CertContentPage() {
           <div className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="form-control">
-                <span className="mb-1 block text-xs text-[var(--color-muted)]">主题 ID（唯一，小写字母/数字/连字符）</span>
+                <span className="mb-1 block text-xs text-[var(--color-muted)]">
+                  主题 ID（唯一，小写字母/数字/连字符）
+                </span>
                 <input
                   className={`input input-sm ${
-                    idIssue
-                      ? "border-[color-mix(in_srgb,var(--app-danger)_60%,var(--control-border))]"
-                      : ""
+                    idIssue ? "border-[color-mix(in_srgb,var(--app-danger)_60%,var(--control-border))]" : ""
                   }`}
                   value={active.id}
                   aria-invalid={idIssue ? true : undefined}
@@ -439,11 +434,19 @@ export function CertContentPage() {
               </label>
               <label className="form-control">
                 <span className="mb-1 block text-xs text-[var(--color-muted)]">主题名称</span>
-                <input className="input input-sm" value={active.name} onChange={(e) => patchActive({ name: e.target.value })} />
+                <input
+                  className="input input-sm"
+                  value={active.name}
+                  onChange={(e) => patchActive({ name: e.target.value })}
+                />
               </label>
               <label className="form-control">
                 <span className="mb-1 block text-xs text-[var(--color-muted)]">发证机构</span>
-                <input className="input input-sm" value={active.issuer} onChange={(e) => patchActive({ issuer: e.target.value })} />
+                <input
+                  className="input input-sm"
+                  value={active.issuer}
+                  onChange={(e) => patchActive({ issuer: e.target.value })}
+                />
               </label>
               <label className="form-control">
                 <span className="mb-1 block text-xs text-[var(--color-muted)]">页眉英文副标题</span>
@@ -492,9 +495,7 @@ export function CertContentPage() {
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs text-[var(--color-muted)]">
-                  分组标签库（用户勾选后计入强度，可自行增删改名）
-                </p>
+                <p className="text-xs text-[var(--color-muted)]">分组标签库（用户勾选后计入强度，可自行增删改名）</p>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
@@ -548,7 +549,10 @@ export function CertContentPage() {
                       className="textarea mt-2 min-h-20 font-mono text-sm"
                       value={group.tags.join("\n")}
                       onChange={(e) => {
-                        const tags = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean);
+                        const tags = e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter(Boolean);
                         patchActive({
                           groups: active.groups.map((g, i) => (i === gIndex ? { ...g, tags } : g)),
                         });
@@ -563,9 +567,7 @@ export function CertContentPage() {
             </div>
 
             <div>
-              <p className="mb-2 text-xs text-[var(--color-muted)]">
-                等级称号（按 0–{hi} 区间命中，边界可共用）
-              </p>
+              <p className="mb-2 text-xs text-[var(--color-muted)]">等级称号（按 0–{hi} 区间命中，边界可共用）</p>
               <div className="flex flex-col gap-2">
                 {active.ranks.map((rank, index) => (
                   <div key={index} className="flex items-center gap-2">

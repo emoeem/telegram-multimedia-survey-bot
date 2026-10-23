@@ -51,9 +51,7 @@ function buildQuestions(count: number): MockQuestion[] {
       validation: null,
       condition: null,
       media:
-        i % 11 === 0
-          ? [{ mediaAssetId: 500 + i, mediaType: "image", fileName: "pic.png", mimeType: "image/png" }]
-          : [],
+        i % 11 === 0 ? [{ mediaAssetId: 500 + i, mediaType: "image", fileName: "pic.png", mimeType: "image/png" }] : [],
       options:
         type === "single" || type === "multiple" || type === "yes_no" || type === "rating"
           ? Array.from({ length: 2 + (i % 4) }, (__, j) => ({
@@ -96,7 +94,9 @@ const BASE_MOCKS: Record<string, unknown> = {
   "/api/admin/deployment": { licenseCenter: false },
   "/api/admin/environment": { environment: "production" },
   "/api/admin/report-templates": {
-    templates: [{ id: "classic", name: "经典报告", theme: "catppuccin-latte", layout: "editorial", renderers: ["web", "pdf"] }],
+    templates: [
+      { id: "classic", name: "经典报告", theme: "catppuccin-latte", layout: "editorial", renderers: ["web", "pdf"] },
+    ],
   },
   "/api/admin/settings": {
     settings: {
@@ -146,12 +146,25 @@ async function readGeometry(page: Page): Promise<Geometry> {
       const el = document.querySelector(sel);
       if (!el) return null;
       const r = el.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, height: r.height, width: r.width, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+      return {
+        top: r.top,
+        bottom: r.bottom,
+        height: r.height,
+        width: r.width,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
     };
     const doc = document.documentElement;
     const columns = [".editor-structure", ".editor-canvas", ".editor-preview"].map((sel) => {
       const b = box(sel)!;
-      return { name: sel, height: Math.round(b.height), top: Math.round(b.top), scrollHeight: b.scrollHeight, clientHeight: b.clientHeight };
+      return {
+        name: sel,
+        height: Math.round(b.height),
+        top: Math.round(b.top),
+        scrollHeight: b.scrollHeight,
+        clientHeight: b.clientHeight,
+      };
     });
     const phone = box(".phone-frame")!;
     const preview = box(".editor-preview")!;

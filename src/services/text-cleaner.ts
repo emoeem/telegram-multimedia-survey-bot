@@ -6,9 +6,7 @@ const INVISIBLE_UNICODE_RE =
 const WHITESPACE_RE = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g;
 
 export function stripInvisible(text: string): string {
-  return text
-    .replace(INVISIBLE_UNICODE_RE, "")
-    .replace(WHITESPACE_RE, " ");
+  return text.replace(INVISIBLE_UNICODE_RE, "").replace(WHITESPACE_RE, " ");
 }
 
 export function decodeHtmlEntities(text: string): string {

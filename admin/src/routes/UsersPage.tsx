@@ -119,7 +119,10 @@ export function UsersPage() {
     if (!selected || !detail) return;
     if (
       banned &&
-      !(await confirm({ message: `确定封禁 ${displayName(detail.user)}？封禁后该用户将无法使用机器人，且进行中的答卷会被取消。`, variant: "danger" }))
+      !(await confirm({
+        message: `确定封禁 ${displayName(detail.user)}？封禁后该用户将无法使用机器人，且进行中的答卷会被取消。`,
+        variant: "danger",
+      }))
     ) {
       return;
     }
@@ -198,8 +201,12 @@ export function UsersPage() {
                       </span>
                     ) : null}
                   </td>
-                  <td data-label="Telegram ID" className="text-sm">{item.telegramUserId}</td>
-                  <td data-label="完成答卷" className="text-sm">{item.completedResponses}</td>
+                  <td data-label="Telegram ID" className="text-sm">
+                    {item.telegramUserId}
+                  </td>
+                  <td data-label="完成答卷" className="text-sm">
+                    {item.completedResponses}
+                  </td>
                   <td data-label="标签" className="text-sm">
                     <div className="flex max-w-56 flex-wrap gap-1">
                       {item.tags.map((value) => (

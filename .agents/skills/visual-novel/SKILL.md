@@ -20,14 +20,14 @@ conveniences that make a VN pleasant to read.
 - Use when designing a choice/route structure, story flags, or VN conveniences (backlog,
   skip, auto-advance, save-anywhere).
 
-**When *not* to use:** dialogue as one feature inside a larger game → `rpg` consuming
+**When _not_ to use:** dialogue as one feature inside a larger game → `rpg` consuming
 `dialogue-systems`. Card/board play → other genres. For the branching-script engine itself,
 use `dialogue-systems` (Ink / Yarn Spinner).
 
 ## Core loop
 
 **Read a line → advance → (at a branch) make a choice → the story branches on flags/choices →
-read on → reach an ending.** The "game" is the *shape of the branching* and whether choices
+read on → reach an ending.** The "game" is the _shape of the branching_ and whether choices
 feel consequential; everything else is presentation and convenience.
 
 ## Must-have systems
@@ -44,16 +44,16 @@ feel consequential; everything else is presentation and convenience.
 
 ## Design knobs
 
-| Knob | Effect | Notes |
-|------|--------|-------|
-| Text speed / instant | reading comfort | Always allow instant + a skip. |
-| Auto-advance delay | hands-free reading | Tunable; pause on choices. |
-| Skip scope | re-reading | Skip *read* text only by default. |
-| Branch breadth/depth | replay value vs. cost | Branches multiply writing/art work. |
-| Flag-gated content | reactivity | Lines/choices that check past decisions. |
-| Route structure | story shape | Branch-and-merge vs. distinct routes (refs). |
-| Choice visibility | fairness | Show locked choices vs. hide them. |
-| Backlog length | convenience | Keep enough to re-read recent context. |
+| Knob                 | Effect                | Notes                                        |
+| -------------------- | --------------------- | -------------------------------------------- |
+| Text speed / instant | reading comfort       | Always allow instant + a skip.               |
+| Auto-advance delay   | hands-free reading    | Tunable; pause on choices.                   |
+| Skip scope           | re-reading            | Skip _read_ text only by default.            |
+| Branch breadth/depth | replay value vs. cost | Branches multiply writing/art work.          |
+| Flag-gated content   | reactivity            | Lines/choices that check past decisions.     |
+| Route structure      | story shape           | Branch-and-merge vs. distinct routes (refs). |
+| Choice visibility    | fairness              | Show locked choices vs. hide them.           |
+| Backlog length       | convenience           | Keep enough to re-read recent context.       |
 
 ## Patterns
 
@@ -104,9 +104,9 @@ if flags.get("helped_npc"): play_route("good_ending") else: play_route("neutral_
 ## Pitfalls / failure modes
 
 - **Save that only stores a checkpoint** → VNs need **save-anywhere**. Persist the exact script
-  position *and* all flags/variables (and seen-text data) so a load resumes the same line.
-- **Presentation logic baked into the script** → unmaintainable. Keep *content* (text, choices)
-  in the script and *how it looks* (sprites, transitions) in the engine layer.
+  position _and_ all flags/variables (and seen-text data) so a load resumes the same line.
+- **Presentation logic baked into the script** → unmaintainable. Keep _content_ (text, choices)
+  in the script and _how it looks_ (sprites, transitions) in the engine layer.
 - **No skip/auto/backlog** → readers feel trapped, especially on replays. These are expected
   baseline features, not extras.
 - **Skipping unread text** → players miss content. Skip should fast-forward **read** text only.

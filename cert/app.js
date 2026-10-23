@@ -357,9 +357,12 @@
 
   /** 当前主题在 state 里的可变数据；主题被收起/换掉时按新主题现建一份 */
   function themeData() {
-    if (!state.themes[state.themeId] || !THEMES.some(function (t) {
-      return t.id === state.themeId;
-    })) {
+    if (
+      !state.themes[state.themeId] ||
+      !THEMES.some(function (t) {
+        return t.id === state.themeId;
+      })
+    ) {
       state.themeId = theme().id || "";
       if (!state.themeId) return { tags: [], ranks: [], form: {} };
       state.themes[state.themeId] = blankThemeData(theme());
@@ -462,7 +465,10 @@
    * 分享链接
    * ------------------------------------------------------------------ */
   function b64url(s) {
-    return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return btoa(unescape(encodeURIComponent(s)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
   }
 
   function unb64url(s) {
@@ -515,9 +521,11 @@
       if (data.g === "f" || data.g === "m") state.gender = data.g;
       if (!state.autoPct && typeof data.mp === "number") state.manualPct = clamp(Math.round(data.mp), 0, 999);
       var d = state.themes[state.themeId];
-      var meta = groupsMeta(THEMES.filter(function (t) {
-        return t.id === state.themeId;
-      })[0] || {});
+      var meta = groupsMeta(
+        THEMES.filter(function (t) {
+          return t.id === state.themeId;
+        })[0] || {},
+      );
       var names = {};
       meta.forEach(function (g) {
         names[g.name] = true;
@@ -632,10 +640,13 @@
     var grid = $("themeGrid");
     if (!grid) return;
     var P = window.CERT_UI_PRESETS || {};
-    var entries = [{ id: "", name: "默认" }, { id: "system", name: "跟随系统" }].concat(
+    var entries = [
+      { id: "", name: "默认" },
+      { id: "system", name: "跟随系统" },
+    ].concat(
       Object.keys(P).map(function (k) {
         return { id: k, name: P[k].label, p: P[k] };
-      })
+      }),
     );
     entries.forEach(function (e) {
       var btn = document.createElement("button");
@@ -947,7 +958,10 @@
     if (!on) return;
     var seg = $("genderSeg");
     seg.innerHTML = "";
-    [["f", "♀ 雌性"], ["m", "♂ 雄性"]].forEach(function (p) {
+    [
+      ["f", "♀ 雌性"],
+      ["m", "♂ 雄性"],
+    ].forEach(function (p) {
       var b = document.createElement("button");
       b.type = "button";
       b.className = "seg-btn" + (state.gender === p[0] ? " active" : "");
@@ -966,7 +980,8 @@
     var note = $("genderNote");
     if (note) {
       var all = themeData().tags.length;
-      note.textContent = "词库共 " + all + " 条 · 当前性别可见 " + visibleTags().length + " 条 · 换性别会换掉可见词与分值";
+      note.textContent =
+        "词库共 " + all + " 条 · 当前性别可见 " + visibleTags().length + " 条 · 换性别会换掉可见词与分值";
     }
   }
 
@@ -1126,9 +1141,11 @@
       return !t.adult;
     });
     var list = visibleThemes();
-    if (!list.some(function (t) {
-      return t.id === state.themeId;
-    })) {
+    if (
+      !list.some(function (t) {
+        return t.id === state.themeId;
+      })
+    ) {
       state.themeId = list.length ? list[0].id : "";
     }
     save();
@@ -1207,14 +1224,28 @@
       var need = g.badge ? badgeNeed(g.name) : 0;
       var got = !!g.badge && on >= need;
       head.innerHTML =
-        '<span class="g-emoji">' + esc(g.emoji) + "</span>" +
-        '<span class="g-name">' + esc(g.name) + "</span>" +
-        '<span class="g-count">' + on + " / " + g.tags.length + "</span>" +
+        '<span class="g-emoji">' +
+        esc(g.emoji) +
+        "</span>" +
+        '<span class="g-name">' +
+        esc(g.name) +
+        "</span>" +
+        '<span class="g-count">' +
+        on +
+        " / " +
+        g.tags.length +
+        "</span>" +
         (g.hidden ? '<span class="g-hidden" title="当前性别下不显示的词条数">' + g.hidden + " 条异性词</span>" : "") +
         (g.badge
-          ? '<span class="g-badge' + (got ? " on" : "") + '" title="' +
-            esc(got ? "已解锁：" + g.badge : "再选 " + Math.max(0, need - on) + " 条解锁：" + g.badge) + '">' +
-            esc(g.emoji) + " " + esc(g.badge) + "</span>"
+          ? '<span class="g-badge' +
+            (got ? " on" : "") +
+            '" title="' +
+            esc(got ? "已解锁：" + g.badge : "再选 " + Math.max(0, need - on) + " 条解锁：" + g.badge) +
+            '">' +
+            esc(g.emoji) +
+            " " +
+            esc(g.badge) +
+            "</span>"
           : "");
       var editBtn = document.createElement("button");
       editBtn.type = "button";
@@ -1780,7 +1811,7 @@
               resolve(out && out.size < blob.size ? out : blob);
             },
             PUBLISH_MIME,
-            PUBLISH_QUALITY
+            PUBLISH_QUALITY,
           );
         });
       })
@@ -1792,10 +1823,14 @@
   /** 卡图导出：优先 WebP（同画质小一个量级），不支持就退回 PNG。 */
   function exportCardBlob(done) {
     var card = $("card");
-    card.toBlob(function (blob) {
-      if (blob) return done(blob);
-      card.toBlob(done, "image/png");
-    }, PUBLISH_MIME, CARD_EXPORT_QUALITY);
+    card.toBlob(
+      function (blob) {
+        if (blob) return done(blob);
+        card.toBlob(done, "image/png");
+      },
+      PUBLISH_MIME,
+      CARD_EXPORT_QUALITY,
+    );
   }
 
   /** 卡上正在展示的原图（按勾选顺序），取回字节用于上传 */
@@ -1816,7 +1851,7 @@
           .catch(function () {
             return null;
           });
-      })
+      }),
     );
   }
 
@@ -1845,7 +1880,7 @@
         signer: readSigner(),
         name: state.shared.name || "",
         tags: selectedTagTexts(),
-      })
+      }),
     );
 
     try {
@@ -2005,9 +2040,11 @@
         tags.forEach(function (t) {
           t.on = Math.random() < ratio;
         });
-        if (!tags.some(function (t) {
+        if (
+          !tags.some(function (t) {
             return t.on;
-          })) {
+          })
+        ) {
           tags[Math.floor(Math.random() * tags.length)].on = true;
         }
       }
@@ -2181,9 +2218,12 @@
         /* ignore */
       }
       state = blankState();
-      if (!visibleThemes().some(function (t) {
-        return t.id === state.themeId;
-      })) state.themeId = visibleThemes().length ? visibleThemes()[0].id : "";
+      if (
+        !visibleThemes().some(function (t) {
+          return t.id === state.themeId;
+        })
+      )
+        state.themeId = visibleThemes().length ? visibleThemes()[0].id : "";
       photos.forEach(function (p) {
         URL.revokeObjectURL(p.url);
       });

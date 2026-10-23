@@ -150,9 +150,7 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
           ← 书架
         </a>
         <h1 className="mt-2 text-xl font-bold text-[var(--color-ink)]">{detail.title}</h1>
-        {detail.description ? (
-          <p className="mt-1.5 text-sm text-[var(--color-muted)]">{detail.description}</p>
-        ) : null}
+        {detail.description ? <p className="mt-1.5 text-sm text-[var(--color-muted)]">{detail.description}</p> : null}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-primary px-5" disabled={followBusy} onClick={follow}>
             <Bell className="h-4 w-4" />
@@ -199,7 +197,8 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
                     {chapter.completed ? "已读完" : chapter.locked ? "需解锁" : "未开始"}
                     {chapter.coinPrice !== null && chapter.coinPrice > 0 ? (
                       <span className="inline-flex items-center gap-0.5">
-                        <Lock className="h-3 w-3" />🪙 {chapter.coinPrice}
+                        <Lock className="h-3 w-3" />
+                        🪙 {chapter.coinPrice}
                       </span>
                     ) : null}
                     {chapter.contentRating === "r18" ? <span className="font-semibold text-red-600">18+</span> : null}

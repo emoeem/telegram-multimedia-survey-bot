@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  BookOpen, ChevronRight, FileCheck2, Images, Link2, Palette, Target, UserRound, X } from "lucide-react";
+import { BookOpen, ChevronRight, FileCheck2, Images, Link2, Palette, Target, UserRound, X } from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
 import { BottomNav } from "./BottomNav";
 import {
@@ -29,7 +28,6 @@ import {
 import { safeGet } from "./storage";
 import { closeWebApp } from "./navigation";
 import { NotificationCenter } from "./SeriesScreen";
-
 
 /** 金币卡片（独立取数：金币服务不可用时不影响「我的」其他区块）。 */
 function CoinCard() {
@@ -281,7 +279,8 @@ function ReportShareButton({ responseId }: { responseId: number }) {
       setState("idle");
     }
   };
-  const label = state === "busy" ? "…" : state === "copied" ? "已复制·撤销" : state === "shared" ? "已分享·撤销" : "分享";
+  const label =
+    state === "busy" ? "…" : state === "copied" ? "已复制·撤销" : state === "shared" ? "已分享·撤销" : "分享";
   return (
     <button
       type="button"
@@ -305,7 +304,9 @@ export function MyScreen() {
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseError, setShowcaseError] = useState<string | null>(null);
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
-  const [hasTelegramIdentity] = useState<boolean>(() => safeGet("tg:linked") === "1" || Boolean(safeGet("tg:identity")));
+  const [hasTelegramIdentity] = useState<boolean>(
+    () => safeGet("tg:linked") === "1" || Boolean(safeGet("tg:identity")),
+  );
 
   const resolvedPreset = useResolvedPreset(themePreset);
   const theme = resolvedPreset ? { preset: resolvedPreset } : null;
@@ -342,7 +343,9 @@ export function MyScreen() {
     try {
       const result = await createMyShowcase();
       setOverview((prev) =>
-        prev ? { ...prev, showcase: { personId: result.showcase.personId, published: result.showcase.published } } : prev,
+        prev
+          ? { ...prev, showcase: { personId: result.showcase.personId, published: result.showcase.published } }
+          : prev,
       );
     } catch (err) {
       setShowcaseError(err instanceof Error ? err.message : "生成失败，请稍后重试");
@@ -369,7 +372,13 @@ export function MyScreen() {
             >
               <Palette className="h-4 w-4" />
             </button>
-            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+            <button
+              type="button"
+              aria-label="关闭"
+              title="关闭"
+              className="survey-icon-btn"
+              onClick={() => closeWebApp()}
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -492,7 +501,11 @@ export function MyScreen() {
                 </a>
               ) : (
                 <p className="mt-2 text-[13px] text-[var(--survey-muted)]">
-                  资料卡功能还未开放，先去逛逛<a className="text-[var(--survey-primary)] underline" href="/plaza">广场</a>吧。
+                  资料卡功能还未开放，先去逛逛
+                  <a className="text-[var(--survey-primary)] underline" href="/plaza">
+                    广场
+                  </a>
+                  吧。
                 </p>
               )}
 
@@ -542,9 +555,7 @@ export function MyScreen() {
               </span>
               <span className="min-w-0 flex-1 text-left">
                 <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">挑战任务</span>
-                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
-                  查看完整对局记录与排行榜
-                </span>
+                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">查看完整对局记录与排行榜</span>
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
             </a>

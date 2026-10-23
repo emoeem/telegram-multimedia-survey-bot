@@ -117,7 +117,7 @@ export interface SurveyTheme {
 /**
  * Ready-made survey themes sourced from the DaisyUI theme library
  * (daisyui/theme/<id>.css). Only these ids are accepted anywhere.
- */export const SURVEY_THEME_PRESETS = [
+ */ export const SURVEY_THEME_PRESETS = [
   { id: "light", name: "明亮" },
   { id: "dark", name: "暗色" },
   { id: "night", name: "深蓝夜" },
@@ -374,9 +374,7 @@ export function resolveBgmUrl(
   const audio = theme?.audio;
   if (!audio) return undefined;
   const cue =
-    questionOrder === null || questionOrder === undefined
-      ? undefined
-      : audio.byQuestion?.[String(questionOrder)];
+    questionOrder === null || questionOrder === undefined ? undefined : audio.byQuestion?.[String(questionOrder)];
   return cue ?? audio.byPage?.[String(pageIndex)] ?? audio.url;
 }
 
@@ -401,9 +399,7 @@ export function resolveSprite(
   if (fallbackKey === undefined) return undefined;
   const pageCue = sprite.byPage?.[String(pageIndex)];
   const wanted =
-    (questionOrder === null || questionOrder === undefined
-      ? undefined
-      : sprite.byQuestion?.[String(questionOrder)]) ??
+    (questionOrder === null || questionOrder === undefined ? undefined : sprite.byQuestion?.[String(questionOrder)]) ??
     pageCue ??
     sprite.default;
   const usable = (candidate: string | undefined): candidate is string =>
@@ -419,7 +415,5 @@ export function resolveSprite(
         : fallbackKey;
   const url = expressions[expression];
   if (url === undefined) return undefined;
-  return sprite.name === undefined
-    ? { url, expression }
-    : { url, expression, name: sprite.name };
+  return sprite.name === undefined ? { url, expression } : { url, expression, name: sprite.name };
 }

@@ -195,7 +195,15 @@ function InteractiveAnswer({
   );
 }
 
-export function SurveyPreview({ title, description, questions, dirty, onClose, inline = false, preset }: SurveyPreviewProps) {
+export function SurveyPreview({
+  title,
+  description,
+  questions,
+  dirty,
+  onClose,
+  inline = false,
+  preset,
+}: SurveyPreviewProps) {
   const titleId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -309,9 +317,7 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
 
             {currentQuestion ? (
               <div className="mt-4">
-                <article
-                  className={`survey-card p-5 ${currentQuestion.type === "note" ? "survey-card-story" : ""}`}
-                >
+                <article className={`survey-card p-5 ${currentQuestion.type === "note" ? "survey-card-story" : ""}`}>
                   {currentQuestion.type === "note" ? (
                     <>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -328,7 +334,10 @@ export function SurveyPreview({ title, description, questions, dirty, onClose, i
                         </h4>
                       ) : null}
                       {currentQuestion.description ? (
-                        <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7" style={{ color: "var(--survey-body)" }}>
+                        <p
+                          className="mt-2 whitespace-pre-wrap text-[15px] leading-7"
+                          style={{ color: "var(--survey-body)" }}
+                        >
                           {currentQuestion.description}
                         </p>
                       ) : null}

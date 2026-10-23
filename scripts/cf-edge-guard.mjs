@@ -63,8 +63,7 @@ const ONLY = only ? new Set(only.split(",")) : null;
  * 刻意**不**包含 `/api/survey/:id` 这类只读问卷页：它们有边缘缓存且是正常
  * 浏览路径，10 次/分钟的规则会把真实用户挡在外面。
  */
-const GUARDED_PATH_REGEX =
-  "^/api/(survey/[0-9]+/media|submit|auth/)(.*)?$";
+const GUARDED_PATH_REGEX = "^/api/(survey/[0-9]+/media|submit|auth/)(.*)?$";
 
 /**
  * 20 次 / 60 秒 / IP。

@@ -59,10 +59,7 @@ await page.getByRole("button", { name: "批量重试" }).click();
 await page.getByRole("status").filter({ hasText: "已提交" }).waitFor({ timeout: 5000 });
 const retryPosts = requests.filter((r) => r.includes("/retry")).length - retryPostsBefore;
 check("批量重试对每个选中项各发一次 retry", retryPosts === ITEMS.length, `POST=${retryPosts}`);
-check(
-  "批量重试后选择被清空（不会误操作到下一页）",
-  (await page.getByText(/已选 \d+ 项/).count()) === 0,
-);
+check("批量重试后选择被清空（不会误操作到下一页）", (await page.getByText(/已选 \d+ 项/).count()) === 0);
 
 // 生成中的任务：强制重试要二次确认
 const deliveringRow = page.locator("tbody tr", { hasText: "生成中" }).first();
@@ -78,10 +75,7 @@ check(
 const beforeForce = requests.filter((r) => r.includes("/retry")).length;
 await page.getByRole("button", { name: "再等等" }).click();
 await forceDialog.waitFor({ state: "detached" });
-check(
-  "取消强制重试不会发请求",
-  requests.filter((r) => r.includes("/retry")).length === beforeForce,
-);
+check("取消强制重试不会发请求", requests.filter((r) => r.includes("/retry")).length === beforeForce);
 
 /* ---------------------------------------------------------------- B5 ---- */
 await page.goto(`${ORIGIN}/admin/reports?status=delivered`, { waitUntil: "networkidle" });
@@ -107,7 +101,11 @@ await page.route("**/api/admin/report-deliveries**", (route) => {
 await page.goto(`${ORIGIN}/admin/reports?status=failed`, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: "报告归档" }).waitFor();
 const emptyText = await page.locator(".empty").first().innerText();
-check("筛选为空时点名当前筛选", emptyText.includes("失败") && emptyText.includes("没有任务"), emptyText.replace(/\s+/g, " "));
+check(
+  "筛选为空时点名当前筛选",
+  emptyText.includes("失败") && emptyText.includes("没有任务"),
+  emptyText.replace(/\s+/g, " "),
+);
 const clearBtn = page.getByRole("button", { name: "清除筛选" });
 check("空状态提供「清除筛选」按钮", (await clearBtn.count()) === 1);
 await clearBtn.click();
@@ -130,22 +128,28 @@ const reportMetrics = await reportCards.first().evaluate((el) => {
   };
 });
 check("报告页 4 张状态卡", reportCardCount === 4, `cards=${reportCardCount}`);
-check("4 张卡在 1280 宽下排成一行（不再留第 5 个空位）", await (async () => {
-  const tops = await reportCards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
-  return new Set(tops.map((t) => Math.round(t))).size === 1;
-})());
+check(
+  "4 张卡在 1280 宽下排成一行（不再留第 5 个空位）",
+  await (async () => {
+    const tops = await reportCards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+    return new Set(tops.map((t) => Math.round(t))).size === 1;
+  })(),
+);
 
 await page.goto(`${ORIGIN}/admin`, { waitUntil: "networkidle" });
 await page.getByRole("heading", { name: "数据总览" }).waitFor();
-const dashMetrics = await page.locator(".admin-stat").first().evaluate((el) => {
-  const style = getComputedStyle(el);
-  const value = el.querySelector(".admin-stat-value");
-  return {
-    radius: style.borderTopLeftRadius,
-    valueFont: value ? getComputedStyle(value).fontSize : null,
-    glow: getComputedStyle(el, "::after").backgroundColor,
-  };
-});
+const dashMetrics = await page
+  .locator(".admin-stat")
+  .first()
+  .evaluate((el) => {
+    const style = getComputedStyle(el);
+    const value = el.querySelector(".admin-stat-value");
+    return {
+      radius: style.borderTopLeftRadius,
+      valueFont: value ? getComputedStyle(value).fontSize : null,
+      glow: getComputedStyle(el, "::after").backgroundColor,
+    };
+  });
 check(
   "总览与报告页共用同一张指标卡（圆角/数字字号/装饰一致）",
   dashMetrics.radius === reportMetrics.radius &&
@@ -263,7 +267,10 @@ const touchAudit = await touch.evaluate(() => {
 check("模拟触屏时 pointer: coarse 生效", touchAudit.coarse === true);
 check(
   "按钮热区 ≥ 44×44（最小者，含只有图标的刷新按钮）",
-  (touchAudit.btn?.w ?? 0) >= 44 && (touchAudit.btn?.h ?? 0) >= 44 && (touchAudit.sm?.w ?? 0) >= 44 && (touchAudit.sm?.h ?? 0) >= 44,
+  (touchAudit.btn?.w ?? 0) >= 44 &&
+    (touchAudit.btn?.h ?? 0) >= 44 &&
+    (touchAudit.sm?.w ?? 0) >= 44 &&
+    (touchAudit.sm?.h ?? 0) >= 44,
   JSON.stringify({ btn: touchAudit.btn, sm: touchAudit.sm }),
 );
 check(

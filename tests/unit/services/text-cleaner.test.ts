@@ -155,7 +155,7 @@ describe("cleanImportText", () => {
 
   it("handles Microsoft Forms rich text pollution combined case", () => {
     const input = '<div class="something">\ufeff\u200bTom &amp; Jerry <br/><span>with &quot;quotes&quot;</span></div>';
-    expect(cleanImportText(input)).toBe("Tom & Jerry\nwith \"quotes\"");
+    expect(cleanImportText(input)).toBe('Tom & Jerry\nwith "quotes"');
   });
 
   it("replaces contact referral strings", () => {

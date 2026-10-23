@@ -61,7 +61,9 @@ export function mapProfileToShowcasePerson(profile: ProfileGalleryItem): Showcas
 
   // Skip the fields already consumed so the 简介 does not repeat the 昵称.
   const consumed = new Set(
-    [nameField, subtitleField, tagField].filter((field): field is ProfileGalleryField => field !== null).map((f) => f.questionId),
+    [nameField, subtitleField, tagField]
+      .filter((field): field is ProfileGalleryField => field !== null)
+      .map((f) => f.questionId),
   );
   const descriptionParts = bioField
     ? [bioField.value]

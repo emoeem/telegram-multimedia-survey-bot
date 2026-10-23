@@ -59,188 +59,210 @@ export function ResponseActivityPage() {
 
   const summary = data.statusSummary ?? {};
   const summaryTotal = STATUS_ORDER.reduce((s, k) => s + (summary[k] ?? 0), 0);
-  const summaryDonut = summaryTotal > 0 ? donutOption(
-    STATUS_ORDER.filter((k) => (summary[k] ?? 0) > 0).map((k) => ({
-      name: STATUS_META[k].label,
-      value: summary[k] ?? 0,
-      color: STATUS_META[k].color,
-    })),
-    { radius: ["48%", "72%"], center: ["35%", "50%"] },
-  ) : null;
+  const summaryDonut =
+    summaryTotal > 0
+      ? donutOption(
+          STATUS_ORDER.filter((k) => (summary[k] ?? 0) > 0).map((k) => ({
+            name: STATUS_META[k].label,
+            value: summary[k] ?? 0,
+            color: STATUS_META[k].color,
+          })),
+          { radius: ["48%", "72%"], center: ["35%", "50%"] },
+        )
+      : null;
 
   return (
     <div className="space-y-5">
-      <div className="admin-page-intro"><div><h2>答卷动态</h2><p>跨问卷查看最新提交与处理状态</p></div></div>
-      <section className="card">
-      <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_220px] items-start">
-        <div className="admin-stat-grid">
-          {STATUS_ORDER.map((k) => {
-            const count = summary[k] ?? 0;
-            const meta = STATUS_META[k];
-            const active = status === k;
-            return (
-              <button
-                key={k}
-                className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
-                  active
-                    ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--surface))]"
-                    : "border-[var(--color-edge)] bg-[var(--surface)]"
-                }`}
-                onClick={() => setStatus(active ? "" : k)}
-              >
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
-                  <span className="text-[var(--color-muted)]">{meta.label}</span>
-                </div>
-                <div className="mt-1 text-2xl font-bold font-tabular-nums">{count}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="rounded-xl border border-[var(--color-edge)] p-2">
-          {summaryDonut ? (
-            <EChart option={summaryDonut} style={{ height: 150 }} opts={{ renderer: "svg" }} />
-          ) : (
-            <div className="grid h-[150px] place-items-center text-sm text-[var(--color-muted)]">暂无数据</div>
-          )}
+      <div className="admin-page-intro">
+        <div>
+          <h2>答卷动态</h2>
+          <p>跨问卷查看最新提交与处理状态</p>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">答卷动态</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 份答卷 · 按最近提交/更新时间排序</p>
+      <section className="card">
+        <div className="mb-5 grid gap-4 lg:grid-cols-[1fr_220px] items-start">
+          <div className="admin-stat-grid">
+            {STATUS_ORDER.map((k) => {
+              const count = summary[k] ?? 0;
+              const meta = STATUS_META[k];
+              const active = status === k;
+              return (
+                <button
+                  key={k}
+                  className={`rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
+                    active
+                      ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--surface))]"
+                      : "border-[var(--color-edge)] bg-[var(--surface)]"
+                  }`}
+                  onClick={() => setStatus(active ? "" : k)}
+                >
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                    <span className="text-[var(--color-muted)]">{meta.label}</span>
+                  </div>
+                  <div className="mt-1 text-2xl font-bold font-tabular-nums">{count}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="rounded-xl border border-[var(--color-edge)] p-2">
+            {summaryDonut ? (
+              <EChart option={summaryDonut} style={{ height: 150 }} opts={{ renderer: "svg" }} />
+            ) : (
+              <div className="grid h-[150px] place-items-center text-sm text-[var(--color-muted)]">暂无数据</div>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <select
-            className="input w-auto"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as "" | ResponseStatus);
-              setPage(1);
-            }}
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <label className="text-xs text-[var(--color-muted-soft)]">
-            开始
-            <input
-              className="input mt-1 block w-full sm:w-36"
-              type="date"
-              value={from}
+
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">答卷动态</h2>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">共 {data.total} 份答卷 · 按最近提交/更新时间排序</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <select
+              className="input w-auto"
+              value={status}
               onChange={(event) => {
-                setFrom(event.target.value);
-                setPage(1);
-              }}
-            />
-          </label>
-          <label className="text-xs text-[var(--color-muted-soft)]">
-            结束
-            <input
-              className="input mt-1 block w-full sm:w-36"
-              type="date"
-              value={to}
-              onChange={(event) => {
-                setTo(event.target.value);
-                setPage(1);
-              }}
-            />
-          </label>
-          <div className="flex gap-2">
-            <input
-              className="input w-full sm:w-auto sm:flex-1 min-w-0"
-              placeholder="问卷 / 用户 / ID / 答卷编号"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  setAppliedSearch(search.trim());
-                  setPage(1);
-                }
-              }}
-            />
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setAppliedSearch(search.trim());
+                setStatus(event.target.value as "" | ResponseStatus);
                 setPage(1);
               }}
             >
-              <Search className="h-4 w-4" />
-              搜索
-            </button>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <label className="text-xs text-[var(--color-muted-soft)]">
+              开始
+              <input
+                className="input mt-1 block w-full sm:w-36"
+                type="date"
+                value={from}
+                onChange={(event) => {
+                  setFrom(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </label>
+            <label className="text-xs text-[var(--color-muted-soft)]">
+              结束
+              <input
+                className="input mt-1 block w-full sm:w-36"
+                type="date"
+                value={to}
+                onChange={(event) => {
+                  setTo(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </label>
+            <div className="flex gap-2">
+              <input
+                className="input w-full sm:w-auto sm:flex-1 min-w-0"
+                placeholder="问卷 / 用户 / ID / 答卷编号"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    setAppliedSearch(search.trim());
+                    setPage(1);
+                  }
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setAppliedSearch(search.trim());
+                  setPage(1);
+                }}
+              >
+                <Search className="h-4 w-4" />
+                搜索
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {data.items.length ? (
-        <div className="mt-5 overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th className="text-sm text-[var(--color-muted)]">答卷</th>
-                <th className="text-sm text-[var(--color-muted)]">问卷</th>
-                <th className="text-sm text-[var(--color-muted)]">填写者</th>
-                <th className="text-sm text-[var(--color-muted)]">状态</th>
-                <th className="text-sm text-[var(--color-muted)]">时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((item) => (
-                <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
-                  <td data-label="答卷" className="text-sm">
-                    <Link
-                      className="font-semibold text-[var(--app-info)]"
-                      to={`/surveys/${item.surveyId}/responses/${item.id}`}
-                    >
-                      #{item.id}
-                    </Link>
-                  </td>
-                  <td data-label="问卷" className="text-sm">{item.surveyTitle || `问卷 ${item.surveyId}`}</td>
-                  <td data-label="填写者" className="text-sm">{displayRespondent(item)}</td>
-                  <td data-label="状态" className="text-sm">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        item.status === "completed"
-                          ? "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]"
-                          : item.status === "in_progress"
-                            ? "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]"
-                            : item.status === "abandoned"
-                              ? "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]"
-                              : item.status === "cancelled"
-                                ? "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]"
-                                : "bg-[var(--surface-muted)] text-[var(--color-muted)]"
-                      }`}
-                    >
-                      {item.statusLabel}
-                    </span>
-                  </td>
-                  <td data-label="时间" className="text-sm">{formatDateTime(item.completedAt ?? item.updatedAt)}</td>
+        {data.items.length ? (
+          <div className="mt-5 overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th className="text-sm text-[var(--color-muted)]">答卷</th>
+                  <th className="text-sm text-[var(--color-muted)]">问卷</th>
+                  <th className="text-sm text-[var(--color-muted)]">填写者</th>
+                  <th className="text-sm text-[var(--color-muted)]">状态</th>
+                  <th className="text-sm text-[var(--color-muted)]">时间</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyPanel text="没有符合条件的答卷" />
-      )}
+              </thead>
+              <tbody>
+                {data.items.map((item) => (
+                  <tr key={item.id} className="hover:bg-[var(--surface-hover)]">
+                    <td data-label="答卷" className="text-sm">
+                      <Link
+                        className="font-semibold text-[var(--app-info)]"
+                        to={`/surveys/${item.surveyId}/responses/${item.id}`}
+                      >
+                        #{item.id}
+                      </Link>
+                    </td>
+                    <td data-label="问卷" className="text-sm">
+                      {item.surveyTitle || `问卷 ${item.surveyId}`}
+                    </td>
+                    <td data-label="填写者" className="text-sm">
+                      {displayRespondent(item)}
+                    </td>
+                    <td data-label="状态" className="text-sm">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          item.status === "completed"
+                            ? "bg-[color-mix(in_srgb,var(--app-success)_12%,var(--surface))] text-[var(--app-success)]"
+                            : item.status === "in_progress"
+                              ? "bg-[color-mix(in_srgb,var(--app-info)_12%,var(--surface))] text-[var(--app-info)]"
+                              : item.status === "abandoned"
+                                ? "bg-[color-mix(in_srgb,var(--app-warning)_12%,var(--surface))] text-[var(--app-warning)]"
+                                : item.status === "cancelled"
+                                  ? "bg-[color-mix(in_srgb,var(--app-danger)_10%,var(--surface))] text-[var(--app-danger)]"
+                                  : "bg-[var(--surface-muted)] text-[var(--color-muted)]"
+                        }`}
+                      >
+                        {item.statusLabel}
+                      </span>
+                    </td>
+                    <td data-label="时间" className="text-sm">
+                      {formatDateTime(item.completedAt ?? item.updatedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyPanel text="没有符合条件的答卷" />
+        )}
 
-      <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
-        <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
-          上一页
-        </button>
-        <span>
-          第 {data.page}/{Math.max(1, data.totalPages)} 页
-        </span>
-        <button className="btn btn-sm" disabled={page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>
-          下一页
-        </button>
-      </div>
-    </section>
+        <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
+          <button
+            className="btn btn-sm"
+            disabled={page <= 1}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            上一页
+          </button>
+          <span>
+            第 {data.page}/{Math.max(1, data.totalPages)} 页
+          </span>
+          <button
+            className="btn btn-sm"
+            disabled={page >= data.totalPages}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            下一页
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

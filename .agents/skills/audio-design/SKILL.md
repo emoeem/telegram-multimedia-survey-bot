@@ -11,7 +11,7 @@ description: >
 # Audio design
 
 Game audio is a **mixing graph plus a music system**. Route every sound through a
-small set of buses so you can balance and process groups; make music *react* to
+small set of buses so you can balance and process groups; make music _react_ to
 play through layering and re-sequencing rather than looping one track. This skill
 teaches the portable practice; bind it to `godot-audio`, Unity's AudioMixer, or
 middleware (FMOD/Wwise) for concrete APIs.
@@ -24,14 +24,14 @@ middleware (FMOD/Wwise) for concrete APIs.
 - Use to build adaptive music that responds to combat/exploration intensity.
 - Use to add SFX variation (pitch/sample randomization) and sync events to a beat.
 
-**When *not* to use:** for the engine's concrete audio nodes/streams, use
+**When _not_ to use:** for the engine's concrete audio nodes/streams, use
 `godot-audio` or the engine's audio skill. Loading/streaming and asset import are
 engine concerns. For UI sliders that drive bus volume, see the engine UI skill.
 
 ## Core workflow
 
 1. **Lay out buses, not per-sound volume.** A typical tree: `Master ← {Music,
-   SFX, Ambience, UI, Voice}`. Everything plays into a bus; the player's settings
+SFX, Ambience, UI, Voice}`. Everything plays into a bus; the player's settings
    sliders map to bus volumes. Never set hundreds of clip volumes by hand.
 2. **Work in decibels, not linear.** Perceived loudness is logarithmic. Volume
    controls and automation should operate in dB; convert only at the edges.
@@ -39,8 +39,8 @@ engine concerns. For UI sliders that drive bus volume, see the engine UI skill.
    loudness, e.g. around -14 to -16 LUFS for many games) to avoid clipping.
 4. **Duck competing sources** with a sidechain compressor (or volume automation):
    when voice/important SFX plays, the music bus dips, then recovers.
-5. **Make music adaptive** via *vertical* layering (stems faded in/out) and/or
-   *horizontal* re-sequencing (swap segments at musical boundaries). See the
+5. **Make music adaptive** via _vertical_ layering (stems faded in/out) and/or
+   _horizontal_ re-sequencing (swap segments at musical boundaries). See the
    reference.
 6. **Vary repeated SFX** with small random pitch/volume offsets and sample pools
    so footsteps and hits don't sound robotic.

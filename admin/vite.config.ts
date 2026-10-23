@@ -13,6 +13,12 @@ export default defineConfig({
     // Route-only heavy dependencies (ECharts, dnd-kit, QR/fingerprint) are
     // intentionally left to dynamic imports instead of forcing them into the
     // initial vendor chunk.
+    //
+    // react-router is deliberately NOT in this group: only the admin SPA
+    // (index.html) imports it. The group is shared by both entry points, and a
+    // group travels as one chunk — grouping the router here shipped ~170KB of
+    // minified react-router to every public survey/submissions visitor who
+    // never executes it. Left ungrouped it lands in the admin's own graph.
     rolldownOptions: {
       input: {
         main: "index.html",
@@ -23,7 +29,7 @@ export default defineConfig({
           groups: [
             {
               name: "react-vendor",
-              test: /node_modules[\\/](?:react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+              test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
               priority: 30,
             },
             {

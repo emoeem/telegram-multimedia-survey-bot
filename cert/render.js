@@ -22,8 +22,7 @@
 window.CERT_RENDER = (function () {
   "use strict";
 
-  var FONT =
-    '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif';
+  var FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif';
   var MONO = 'Consolas,"Liberation Mono",Menlo,"Courier New",monospace';
   var SERIF = '"Times New Roman",Georgia,"Songti SC","SimSun",serif';
 
@@ -45,9 +44,10 @@ window.CERT_RENDER = (function () {
     var ws = chars.map(function (c) {
       return ctx.measureText(c).width;
     });
-    var total = ws.reduce(function (a, b) {
-      return a + b + sp;
-    }, 0) - sp;
+    var total =
+      ws.reduce(function (a, b) {
+        return a + b + sp;
+      }, 0) - sp;
     var cx = x;
     if (ctx.textAlign === "center") cx = x - total / 2;
     else if (ctx.textAlign === "right") cx = x - total;
@@ -372,7 +372,12 @@ window.CERT_RENDER = (function () {
         }
       }
     } catch (e) {
-      txt(ctx, "QR", x + size / 2, y + size / 2, { size: size * 0.2, color: dark, align: "center", baseline: "middle" });
+      txt(ctx, "QR", x + size / 2, y + size / 2, {
+        size: size * 0.2,
+        color: dark,
+        align: "center",
+        baseline: "middle",
+      });
     }
     ctx.restore();
   }
@@ -610,7 +615,12 @@ window.CERT_RENDER = (function () {
     txt(ctx, "发证机构 / ISSUED BY", pad, top + lh, { size: lh * 0.62, color: m.pal.muted, spacing: 1.4 });
     txt(ctx, m.form.issuer, pad, top + lh * 2.4, { size: h * 0.22, weight: 700, color: m.pal.ink, maxW: colW - 10 });
     txt(ctx, "发证日期 / DATE", pad, top + h * 0.66, { size: lh * 0.62, color: m.pal.muted, spacing: 1.4 });
-    txt(ctx, m.shared.issueDate, pad, top + h * 0.9, { size: h * 0.19, weight: 600, color: m.pal.ink, maxW: colW - 10 });
+    txt(ctx, m.shared.issueDate, pad, top + h * 0.9, {
+      size: h * 0.19,
+      weight: 600,
+      color: m.pal.ink,
+      maxW: colW - 10,
+    });
     txt(ctx, "有效期至 / VALID", pad + colW, top + h * 0.66, { size: lh * 0.62, color: m.pal.muted, spacing: 1.4 });
     txt(ctx, m.shared.validUntil, pad + colW, top + h * 0.9, {
       size: h * 0.19,
@@ -661,9 +671,11 @@ window.CERT_RENDER = (function () {
       widths = labels.map(function (s2) {
         return Math.min(measure(ctx, s2, size, 600) + padX * 2 + slack, w);
       });
-      total = widths.reduce(function (a, b) {
-        return a + b;
-      }, 0) + gap * Math.max(0, labels.length - 1);
+      total =
+        widths.reduce(function (a, b) {
+          return a + b;
+        }, 0) +
+        gap * Math.max(0, labels.length - 1);
       if (total <= w) break;
       if (labels.length > 1 && guard < 3) {
         labels.pop();
@@ -712,10 +724,10 @@ window.CERT_RENDER = (function () {
 
     // 证件照尽量填满正文高度
     var photoW = Math.min(m.W * 0.32, bodyH * 0.78);
-    var photoH = photoW * 4 / 3;
+    var photoH = (photoW * 4) / 3;
     if (photoH > bodyH) {
       photoH = bodyH;
-      photoW = photoH * 3 / 4;
+      photoW = (photoH * 3) / 4;
     }
     var photoY = top + (bodyH - photoH) / 2;
     photoBox(ctx, m, pad, photoY, photoW, photoH, 10 * u);
@@ -733,7 +745,7 @@ window.CERT_RENDER = (function () {
 
     var y = top;
     txt(ctx, m.shared.name || "未填写姓名", ix, y + 34 * u, {
-      size: Math.min(40 * u, iw / Math.max(4, (m.shared.name || "未填写").length) * 1.6),
+      size: Math.min(40 * u, (iw / Math.max(4, (m.shared.name || "未填写").length)) * 1.6),
       weight: 700,
       color: m.pal.ink,
       maxW: iw,
@@ -777,7 +789,15 @@ window.CERT_RENDER = (function () {
     bandBottom(ctx, m, Math.min(20 * u, m.H * 0.03));
 
     var qrSize = Math.min(footH * 0.85, m.W * 0.11);
-    qr(ctx, m.qrText, m.W - pad - qrSize, m.H - footH - qrSize * 0.1 - Math.min(20 * u, m.H * 0.03), qrSize, m.pal.ink, "#ffffff");
+    qr(
+      ctx,
+      m.qrText,
+      m.W - pad - qrSize,
+      m.H - footH - qrSize * 0.1 - Math.min(20 * u, m.H * 0.03),
+      qrSize,
+      m.pal.ink,
+      "#ffffff",
+    );
     seal(ctx, pad + photoW * 0.82, photoY + photoH * 0.84, photoW * 0.3, m.form.sealText, m.pal.accent);
   }
 
@@ -935,7 +955,12 @@ window.CERT_RENDER = (function () {
     var headH = m.H * 0.1;
     var footH = m.H * 0.13;
 
-    txt(ctx, m.form.issuer, pad, headH * 0.62, { size: 20 * u, weight: 700, color: m.pal.primary, maxW: m.W - pad * 2 });
+    txt(ctx, m.form.issuer, pad, headH * 0.62, {
+      size: 20 * u,
+      weight: 700,
+      color: m.pal.primary,
+      maxW: m.W - pad * 2,
+    });
     txt(ctx, rankLabel(m), m.W - pad, headH * 0.62, {
       size: 22 * u,
       weight: 700,
@@ -982,7 +1007,7 @@ window.CERT_RENDER = (function () {
 
     /* 这张卡的通栏就是词本身，任何附加小字都会糊在词上，故不画徽章/判词 */
     bar(ctx, pad, m.H - footH - 6 * u, m.W - pad * 2, 14 * u, m.pct, m.pal);
-    txt(ctx, m.pct + "% · " + (rankLabel(m)), m.W - pad, m.H - footH - 26 * u, {
+    txt(ctx, m.pct + "% · " + rankLabel(m), m.W - pad, m.H - footH - 26 * u, {
       size: 17 * u,
       weight: 700,
       color: m.pal.ink,
@@ -1013,7 +1038,7 @@ window.CERT_RENDER = (function () {
       for (var x = -r; x < m.W + r; x += step) {
         ctx.save();
         ctx.globalAlpha = 0.12 + rand() * 0.1;
-        ctx.translate(x + (y / step % 2 ? step / 2 : 0), y);
+        ctx.translate(x + ((y / step) % 2 ? step / 2 : 0), y);
         ctx.rotate(-0.3 + rand() * 0.6);
         ctx.strokeStyle = rand() > 0.5 ? m.pal.accent : m.pal.primary;
         ctx.fillStyle = ctx.strokeStyle;
@@ -1166,13 +1191,19 @@ window.CERT_RENDER = (function () {
     }
 
     badgeRow(ctx, m, pad, m.H - pad * 0.7 - 36 * u, m.W - pad * 2, 12 * u, false);
-    txt(ctx, "连成 " + Object.keys(on).length + " 格 · " + (rankLabel(m)) + " · " + m.pct + "%", m.W / 2, m.H - pad * 0.7, {
-      size: 16 * u,
-      weight: 600,
-      color: m.pal.ink,
-      align: "center",
-      maxW: m.W - pad * 2,
-    });
+    txt(
+      ctx,
+      "连成 " + Object.keys(on).length + " 格 · " + rankLabel(m) + " · " + m.pct + "%",
+      m.W / 2,
+      m.H - pad * 0.7,
+      {
+        size: 16 * u,
+        weight: 600,
+        color: m.pal.ink,
+        align: "center",
+        maxW: m.W - pad * 2,
+      },
+    );
     seal(ctx, gx + gw - cell * 0.5, gy + cell * 0.5, cell * 0.42, m.form.sealText, m.pal.accent, 0.3);
   }
 
@@ -1222,7 +1253,11 @@ window.CERT_RENDER = (function () {
     y += 26 * u;
 
     var infoFs = 13 * u;
-    txt(ctx, "姓名：" + (m.shared.name || "—"), pad, y, { size: infoFs, color: m.pal.ink, maxW: (m.W - pad * 2) * 0.5 });
+    txt(ctx, "姓名：" + (m.shared.name || "—"), pad, y, {
+      size: infoFs,
+      color: m.pal.ink,
+      maxW: (m.W - pad * 2) * 0.5,
+    });
     txt(ctx, "编号：" + (m.shared.no || "—"), m.W - pad, y, {
       size: infoFs,
       color: m.pal.ink,
@@ -1230,7 +1265,11 @@ window.CERT_RENDER = (function () {
       maxW: (m.W - pad * 2) * 0.5,
     });
     y += 20 * u;
-    txt(ctx, "送检日期：" + m.shared.issueDate, pad, y, { size: infoFs, color: m.pal.ink, maxW: (m.W - pad * 2) * 0.5 });
+    txt(ctx, "送检日期：" + m.shared.issueDate, pad, y, {
+      size: infoFs,
+      color: m.pal.ink,
+      maxW: (m.W - pad * 2) * 0.5,
+    });
     txt(ctx, "有效期：" + m.shared.validUntil, m.W - pad, y, {
       size: infoFs,
       color: m.pal.ink,
@@ -1268,7 +1307,7 @@ window.CERT_RENDER = (function () {
         ctx.fillRect(pad, ry - rowH * 0.6, m.W - pad * 2, rowH);
       }
       var hit = !!on[rows[i]];
-      var val = hit ? (60 + Math.round(rand() * 40)) + "%" : "未检出";
+      var val = hit ? 60 + Math.round(rand() * 40) + "%" : "未检出";
       txt(ctx, rows[i], cols[0].x + 6 * u, ry, { size: 13 * u, color: m.pal.ink, maxW: cols[0].w - 12 * u });
       txt(ctx, val, cols[1].x + 6 * u, ry, {
         size: 13 * u,
@@ -1326,8 +1365,7 @@ window.CERT_RENDER = (function () {
     var rowH = Math.max(15 * u, Math.min(26 * u, (m.H * 0.6) / Math.max(rows.length, 1)));
     var barcodeH = 60 * u;
     var decorH = m.score && m.score.on ? 62 * u : 0;
-    var contentH =
-      46 * u + 70 * u + rows.length * rowH + 118 * u + barcodeH + 44 * u + 24 * u + decorH;
+    var contentH = 46 * u + 70 * u + rows.length * rowH + 118 * u + barcodeH + 44 * u + 24 * u + decorH;
     var paperH = Math.min(m.H - pad * 2, Math.max(contentH, 900 * u));
     var paperY = Math.max(pad, (m.H - paperH) / 2);
 
@@ -1443,7 +1481,15 @@ window.CERT_RENDER = (function () {
       family: MONO,
       maxW: w,
     });
-    seal(ctx, pad + paperW * 0.78, bottom - 92 * u, Math.min(paperW, paperH) * 0.09, m.form.sealText, m.pal.accent, 0.35);
+    seal(
+      ctx,
+      pad + paperW * 0.78,
+      bottom - 92 * u,
+      Math.min(paperW, paperH) * 0.09,
+      m.form.sealText,
+      m.pal.accent,
+      0.35,
+    );
   }
 
   function dash(ctx, x, y, w, color, u) {
@@ -1760,11 +1806,7 @@ window.CERT_RENDER = (function () {
     /* 中性主题的「成分表」列出全部成分、勾选的加亮；成人向词库有一千多条，
      * 全列会溢出画布，所以只列你选中的那些（它们本来就是 100% 的那几行）。 */
     var scoreMode = m.score && m.score.on;
-    var rows = scoreMode
-      ? m.tags.slice(0, 60)
-      : m.allTags.length
-        ? m.allTags
-        : ["（暂无成分）"];
+    var rows = scoreMode ? m.tags.slice(0, 60) : m.allTags.length ? m.allTags : ["（暂无成分）"];
     if (!rows.length) rows = ["（暂无成分）"];
     var on = {};
     m.tags.forEach(function (t) {
@@ -1903,7 +1945,7 @@ window.CERT_RENDER = (function () {
     }
 
     badgeRow(ctx, m, m.W * 0.08, m.H - pad - 80 * u, m.W * 0.84, 13 * u, false);
-    txt(ctx, "危险等级 · " + (rankLabel(m)), m.W / 2, m.H - pad - 34 * u, {
+    txt(ctx, "危险等级 · " + rankLabel(m), m.W / 2, m.H - pad - 34 * u, {
       size: 20 * u,
       weight: 700,
       color: "#7c2d12",
@@ -2469,15 +2511,7 @@ window.CERT_RENDER = (function () {
     ];
     for (var i = 0; i < toes.length; i++) {
       ctx.beginPath();
-      ctx.ellipse(
-        cx + r * toes[i][0],
-        cy + r * toes[i][1],
-        r * toes[i][2],
-        r * toes[i][2] * 1.16,
-        0,
-        0,
-        Math.PI * 2,
-      );
+      ctx.ellipse(cx + r * toes[i][0], cy + r * toes[i][1], r * toes[i][2], r * toes[i][2] * 1.16, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -2540,9 +2574,7 @@ window.CERT_RENDER = (function () {
     if (h < 30 * u) return;
     /* 长图时这一块有 1000px 以上，按普通尺寸排会全挤在顶部；三种档位分开处理 */
     var tall = h > 620 * u;
-    var qrSize = tall
-      ? Math.min(w * 0.42, 520 * u)
-      : Math.min(w * 0.26, Math.max(120 * u, h * 0.42), 300 * u);
+    var qrSize = tall ? Math.min(w * 0.42, 520 * u) : Math.min(w * 0.26, Math.max(120 * u, h * 0.42), 300 * u);
     var gap = 20 * u;
     var leftW = w - qrSize - gap;
     fLabel(ctx, "认证项目 / ENDORSEMENTS", x, y + 11 * u, {
@@ -2594,9 +2626,7 @@ window.CERT_RENDER = (function () {
     bar(ctx, x, by + pctSize * 0.35, leftW, tall ? 18 * u : 12 * u, m.pct, m.pal);
 
     /* 二维码：普通比例贴着等级块；竖长/长图贴右下角，长图时它就是视觉落点 */
-    var qy = tall
-      ? Math.min(y + h - qrSize, by + pctSize + 90 * u)
-      : Math.min(y + h - qrSize, by + 44 * u);
+    var qy = tall ? Math.min(y + h - qrSize, by + pctSize + 90 * u) : Math.min(y + h - qrSize, by + 44 * u);
     qr(ctx, m.qrText, x + leftW + gap, qy, qrSize, "rgba(255,255,255,0.92)", "rgba(255,255,255,0.08)");
 
     var iy = y + h - 6 * u;
@@ -2796,7 +2826,7 @@ window.CERT_RENDER = (function () {
 
     fLabel(ctx, "姓 名", fx, y, { size: 13 * u, maxW: labW, color: dMix(pal.primary, pal.ink, 0.35) });
     fValue(ctx, m.shared.name || "未填写姓名", valX, y + 1 * u, {
-      size: Math.min(26 * u, valW / Math.max(3, (m.shared.name || "未填写姓名").length) * 1.6),
+      size: Math.min(26 * u, (valW / Math.max(3, (m.shared.name || "未填写姓名").length)) * 1.6),
       color: pal.ink,
       maxW: valW,
     });
@@ -2876,15 +2906,7 @@ window.CERT_RENDER = (function () {
       0.4,
     );
     var qrSize = Math.min(footH * 0.78, W * 0.1);
-    qr(
-      ctx,
-      m.qrText,
-      W - pad - qrSize,
-      fy + (footH - qrSize) / 2 - 2 * u,
-      qrSize,
-      pal.ink,
-      "rgba(255,255,255,0.9)",
-    );
+    qr(ctx, m.qrText, W - pad - qrSize, fy + (footH - qrSize) / 2 - 2 * u, qrSize, pal.ink, "rgba(255,255,255,0.9)");
     holoSeal(ctx, phX - 34 * u, phY - 4 * u, Math.min(22 * u, phW * 0.28));
   }
 
@@ -3003,7 +3025,7 @@ window.CERT_RENDER = (function () {
       ctx.beginPath();
       ctx.arc(cx, sealY, sealR, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.font = (sealR * 0.8) + "px " + FONT;
+      ctx.font = sealR * 0.8 + "px " + FONT;
       ctx.fillStyle = pal.primary;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -3294,7 +3316,15 @@ window.CERT_RENDER = (function () {
       0.3,
     );
     var qrSize = Math.min(footH * 0.72, W * 0.09);
-    qr(ctx, m.qrText, W - pad - qrSize, fy + (footH - qrSize) / 2, qrSize, "rgba(255,255,255,0.95)", "rgba(255,255,255,0.1)");
+    qr(
+      ctx,
+      m.qrText,
+      W - pad - qrSize,
+      fy + (footH - qrSize) / 2,
+      qrSize,
+      "rgba(255,255,255,0.95)",
+      "rgba(255,255,255,0.1)",
+    );
     seal(ctx, phX + phW * 0.5, phY + phH * 0.52, Math.min(phW * 0.6, 60 * u), m.form.sealText, pal.accent, -0.3);
   }
 
@@ -3510,7 +3540,15 @@ window.CERT_RENDER = (function () {
     /* 右侧：条形码 + 二维码 */
     var bx = W * 0.62;
     var bw = W - pad - bx;
-    barcode(ctx, bx, bodyTop + bodyH * 0.24, bw, Math.min(bodyH * 0.22, 28 * u), m.shared.no || "0000", dShade(pal.ink, -0.1));
+    barcode(
+      ctx,
+      bx,
+      bodyTop + bodyH * 0.24,
+      bw,
+      Math.min(bodyH * 0.22, 28 * u),
+      m.shared.no || "0000",
+      dShade(pal.ink, -0.1),
+    );
     txt(ctx, m.shared.no || "—", bx + bw / 2, bodyTop + bodyH * 0.24 + Math.min(bodyH * 0.22, 28 * u) + 13 * u, {
       size: 8.5 * u,
       family: MONO,
@@ -3824,7 +3862,12 @@ window.CERT_RENDER = (function () {
       maxW: bw,
     });
     fLabel(ctx, "考生须知", pad + bw + 18 * u, fy + footH * 0.26, { size: 9.5 * u, maxW: W * 0.3 });
-    var notes = ["1. 凭本证与有效身份证件入场", "2. 开考 15 分钟后不得入场", "3. 禁止携带电子设备", "4. 本证为趣味生成，不作为凭证"];
+    var notes = [
+      "1. 凭本证与有效身份证件入场",
+      "2. 开考 15 分钟后不得入场",
+      "3. 禁止携带电子设备",
+      "4. 本证为趣味生成，不作为凭证",
+    ];
     for (var k = 0; k < notes.length; k++) {
       txt(ctx, notes[k], pad + bw + 18 * u, fy + footH * 0.26 + 16 * u + k * 13 * u, {
         size: 8 * u,
@@ -3890,7 +3933,15 @@ window.CERT_RENDER = (function () {
     var phX = pad;
     var phY = bodyTop + (bodyH - phH) / 2;
     photoBox(ctx, m, phX, phY, phW, phH, 8 * u);
-    seal(ctx, phX + phW * 0.5, phY + phH * 0.55, Math.min(phW * 0.5, 54 * u), m.form.sealText, dShade(pal.accent, -0.2), -0.3);
+    seal(
+      ctx,
+      phX + phW * 0.5,
+      phY + phH * 0.55,
+      Math.min(phW * 0.5, 54 * u),
+      m.form.sealText,
+      dShade(pal.accent, -0.2),
+      -0.3,
+    );
 
     var fx = phX + phW + 22 * u;
     var fw = W - pad - fx;
@@ -4192,11 +4243,17 @@ window.CERT_RENDER = (function () {
       });
     }
     if (terms.length > maxLines) {
-      txt(ctx, "…… 另 " + (terms.length - maxLines) + " 条见附页", rx + 42 * u, bodyTop + bodyH * 0.1 + 24 * u + maxLines * lineH, {
-        size: 9.5 * u,
-        color: pal.muted,
-        maxW: rw,
-      });
+      txt(
+        ctx,
+        "…… 另 " + (terms.length - maxLines) + " 条见附页",
+        rx + 42 * u,
+        bodyTop + bodyH * 0.1 + 24 * u + maxLines * lineH,
+        {
+          size: 9.5 * u,
+          color: pal.muted,
+          maxW: rw,
+        },
+      );
     }
 
     /* 签名区：三栏铺满，印章盖在立约方那一栏（真合同的盖章位置），手印放最右 */
@@ -4281,14 +4338,20 @@ window.CERT_RENDER = (function () {
     ctx.beginPath();
     ctx.arc(tagX + 12 * u, tagY + tagH / 2, 5 * u, 0, Math.PI * 2);
     ctx.fill();
-    txt(ctx, dDigits(m.shared.no, Math.max(4, Math.floor(tagW / (11 * u)))), tagX + tagW / 2 + 6 * u, tagY + tagH * 0.62, {
-      size: Math.min(15 * u, tagW * 0.14),
-      weight: 800,
-      family: MONO,
-      color: "#ffffff",
-      align: "center",
-      maxW: tagW - 18 * u,
-    });
+    txt(
+      ctx,
+      dDigits(m.shared.no, Math.max(4, Math.floor(tagW / (11 * u)))),
+      tagX + tagW / 2 + 6 * u,
+      tagY + tagH * 0.62,
+      {
+        size: Math.min(15 * u, tagW * 0.14),
+        weight: 800,
+        family: MONO,
+        color: "#ffffff",
+        align: "center",
+        maxW: tagW - 18 * u,
+      },
+    );
     ctx.restore();
 
     txt(ctx, "畜籍登记证", tagX + tagW + 16 * u, tagY + tagH * 0.42, {
@@ -4332,7 +4395,15 @@ window.CERT_RENDER = (function () {
     ctx.fillStyle = dShade(pal.ink, -0.1);
     ctx.fillRect(pad, phY + phH * 0.36, phW, phH * 0.1);
     ctx.restore();
-    seal(ctx, pad + phW * 0.5, phY + phH * 0.72, Math.min(phW * 0.42, 48 * u), m.form.sealText, dShade(pal.accent, -0.15), -0.28);
+    seal(
+      ctx,
+      pad + phW * 0.5,
+      phY + phH * 0.72,
+      Math.min(phW * 0.42, 48 * u),
+      m.form.sealText,
+      dShade(pal.accent, -0.15),
+      -0.28,
+    );
 
     var fx = pad + phW + 20 * u;
     var fw = W - pad - fx;
@@ -4373,7 +4444,12 @@ window.CERT_RENDER = (function () {
     fLabel(ctx, "登记日期", pad, fy + 15 * u, { size: 10 * u });
     fValue(ctx, m.shared.issueDate, pad, fy + 33 * u, { size: 12.5 * u, family: MONO, color: pal.ink, maxW: W * 0.26 });
     fLabel(ctx, "有效期至", pad + W * 0.3, fy + 15 * u, { size: 10 * u });
-    fValue(ctx, m.shared.validUntil, pad + W * 0.3, fy + 33 * u, { size: 12.5 * u, family: MONO, color: pal.ink, maxW: W * 0.26 });
+    fValue(ctx, m.shared.validUntil, pad + W * 0.3, fy + 33 * u, {
+      size: 12.5 * u,
+      family: MONO,
+      color: pal.ink,
+      maxW: W * 0.26,
+    });
     var barcodeH = Math.min(footH * 0.3, 26 * u);
     barcode(ctx, W * 0.58, fy + footH * 0.26, W * 0.26, barcodeH, m.shared.no || "0000", dShade(pal.ink, -0.1));
     var qrSize = Math.min(footH * 0.5, W * 0.062);
@@ -4495,7 +4571,15 @@ window.CERT_RENDER = (function () {
     /* 底部条码 + 二维码 + 有效期 */
     var fy = H - pad * 0.9;
     var barcodeH = Math.min(26 * u, H * 0.07);
-    barcode(ctx, pad, fy - barcodeH, Math.min(W * 0.4, W - pad * 2 - 80 * u), barcodeH, m.shared.no || "0000", "rgba(255,255,255,0.75)");
+    barcode(
+      ctx,
+      pad,
+      fy - barcodeH,
+      Math.min(W * 0.4, W - pad * 2 - 80 * u),
+      barcodeH,
+      m.shared.no || "0000",
+      "rgba(255,255,255,0.75)",
+    );
     txt(ctx, m.shared.no || "—", pad, fy, {
       size: 8.5 * u,
       family: MONO,
@@ -4511,7 +4595,15 @@ window.CERT_RENDER = (function () {
       maxW: W * 0.36,
     });
     var qrSize = Math.min(H * 0.13, W * 0.075);
-    qr(ctx, m.qrText, W - pad - qrSize, fy - barcodeH - qrSize - 4 * u, qrSize, "rgba(255,255,255,0.9)", "rgba(255,255,255,0.08)");
+    qr(
+      ctx,
+      m.qrText,
+      W - pad - qrSize,
+      fy - barcodeH - qrSize - 4 * u,
+      qrSize,
+      "rgba(255,255,255,0.9)",
+      "rgba(255,255,255,0.08)",
+    );
   }
 
   function docIdentifier(ctx, m) {

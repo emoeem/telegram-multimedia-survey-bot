@@ -25,16 +25,16 @@
 
 ## 二、逐曲记录
 
-| 目标文件 | 曲名 | 情调标签（作者自打） | 授权页 | 直接下载地址 | 原始参数 | 成品参数 |
-|---|---|---|---|---|---|---|
-| `bgm-rain.mp3` | ヒーリング14 雨の音無し版 | 癒し / ピアノ / 静寂 / 夜明け | https://maou.audio/bgm_healing14b/ | https://maou.audio/sound/bgm/maou_bgm_healing14b.mp3 | 155.3s / 160kbps | 115.0s / 96kbps |
-| `bgm-secret.mp3` | ピアノ19 | 静か / 勇気 / 感動 | https://maou.audio/bgm_piano19/ | https://maou.audio/sound/bgm/maou_bgm_piano19.mp3 | 114.1s / 160kbps | 110.0s / 96kbps |
-| `bgm-distance.mp3` | ピアノ34 | 郷愁 / 寂しい / 穏やか | https://maou.audio/bgm_piano34/ | https://maou.audio/sound/bgm/maou_bgm_piano34.mp3 | 234.6s / 160kbps | 115.0s / 96kbps |
-| `bgm-warm.mp3` | アコースティック50 | カフェ / ピアノ / のどか / ランチ | https://maou.audio/bgm_acoustic50/ | https://maou.audio/sound/bgm/maou_bgm_acoustic50.mp3 | 138.4s / 160kbps | 115.0s / 96kbps |
-| `bgm-deep.mp3` | ヒーリング10 | ピアノ / ハープ / 回想 / 夢 / 癒し | https://maou.audio/bgm_healing10/ | https://maou.audio/sound/bgm/maou_bgm_healing10.mp3 | 124.9s / 160kbps | 110.0s / 96kbps |
-| `bgm-playful.mp3` | アコースティック44 | かわいい / 猫 / 犬 / 動物 / 3拍子 | https://maou.audio/bgm_acoustic44/ | https://maou.audio/sound/bgm/maou_bgm_acoustic44.mp3 | 95.9s / 160kbps | 95.9s / 96kbps |
-| `bgm-finale.mp3` | オーケストラ03 | オープニング / 壮大 / 感動 | https://maou.audio/bgm_orchestra03/ | https://maou.audio/sound/bgm/maou_bgm_orchestra03.mp3 | 155.0s / 160kbps | 130.0s / 96kbps |
-| `bgm-tension.mp3` | ヒーリング11 | 暗い / 悲しみ / 挫折 / 雨 | https://maou.audio/bgm_healing11/ | https://maou.audio/sound/bgm/maou_bgm_healing11.mp3 | 323.0s / 160kbps | 125.0s / 96kbps |
+| 目标文件           | 曲名                      | 情调标签（作者自打）               | 授权页                              | 直接下载地址                                          | 原始参数         | 成品参数        |
+| ------------------ | ------------------------- | ---------------------------------- | ----------------------------------- | ----------------------------------------------------- | ---------------- | --------------- |
+| `bgm-rain.mp3`     | ヒーリング14 雨の音無し版 | 癒し / ピアノ / 静寂 / 夜明け      | https://maou.audio/bgm_healing14b/  | https://maou.audio/sound/bgm/maou_bgm_healing14b.mp3  | 155.3s / 160kbps | 115.0s / 96kbps |
+| `bgm-secret.mp3`   | ピアノ19                  | 静か / 勇気 / 感動                 | https://maou.audio/bgm_piano19/     | https://maou.audio/sound/bgm/maou_bgm_piano19.mp3     | 114.1s / 160kbps | 110.0s / 96kbps |
+| `bgm-distance.mp3` | ピアノ34                  | 郷愁 / 寂しい / 穏やか             | https://maou.audio/bgm_piano34/     | https://maou.audio/sound/bgm/maou_bgm_piano34.mp3     | 234.6s / 160kbps | 115.0s / 96kbps |
+| `bgm-warm.mp3`     | アコースティック50        | カフェ / ピアノ / のどか / ランチ  | https://maou.audio/bgm_acoustic50/  | https://maou.audio/sound/bgm/maou_bgm_acoustic50.mp3  | 138.4s / 160kbps | 115.0s / 96kbps |
+| `bgm-deep.mp3`     | ヒーリング10              | ピアノ / ハープ / 回想 / 夢 / 癒し | https://maou.audio/bgm_healing10/   | https://maou.audio/sound/bgm/maou_bgm_healing10.mp3   | 124.9s / 160kbps | 110.0s / 96kbps |
+| `bgm-playful.mp3`  | アコースティック44        | かわいい / 猫 / 犬 / 動物 / 3拍子  | https://maou.audio/bgm_acoustic44/  | https://maou.audio/sound/bgm/maou_bgm_acoustic44.mp3  | 95.9s / 160kbps  | 95.9s / 96kbps  |
+| `bgm-finale.mp3`   | オーケストラ03            | オープニング / 壮大 / 感動         | https://maou.audio/bgm_orchestra03/ | https://maou.audio/sound/bgm/maou_bgm_orchestra03.mp3 | 155.0s / 160kbps | 130.0s / 96kbps |
+| `bgm-tension.mp3`  | ヒーリング11              | 暗い / 悲しみ / 挫折 / 雨          | https://maou.audio/bgm_healing11/   | https://maou.audio/sound/bgm/maou_bgm_healing11.mp3   | 323.0s / 160kbps | 125.0s / 96kbps |
 
 全部为**合法自动获取**：直接 HTTP 下载，无登录、无验证码、无付费墙。
 获取与处理脚本：`scripts/galgame/fetch_bgm.py`（清单 `scripts/galgame/bgm-manifest.json`，
@@ -50,16 +50,16 @@
 
 ### 实测（`ffmpeg -af ebur128=peak=true`，非估算）
 
-| 文件 | 时长 | 综合响度 | 真峰值 | 谱心 | 起始密度 |
-|---|---|---|---|---|---|
-| `bgm-rain.mp3` | 115.0s | −18.6 LUFS | −4.8 dBTP | 610.9 Hz | 0.47 /s |
-| `bgm-secret.mp3` | 110.0s | −18.6 LUFS | −5.5 dBTP | 972.0 Hz | 0.74 /s |
-| `bgm-distance.mp3` | 115.0s | −19.3 LUFS | −7.7 dBTP | 671.7 Hz | 0.58 /s |
-| `bgm-warm.mp3` | 115.0s | −18.8 LUFS | −7.6 dBTP | 1523.6 Hz | 0.42 /s |
-| `bgm-deep.mp3` | 110.0s | −19.2 LUFS | −9.9 dBTP | 960.9 Hz | 0.22 /s |
-| `bgm-playful.mp3` | 95.9s | −19.8 LUFS | −9.3 dBTP | 1519.2 Hz | 0.80 /s |
-| `bgm-finale.mp3` | 130.0s | −18.5 LUFS | −3.4 dBTP | 1566.2 Hz | 0.31 /s |
-| `bgm-tension.mp3` | 125.0s | −20.2 LUFS | −4.6 dBTP | 1744.2 Hz | 0.27 /s |
+| 文件               | 时长   | 综合响度   | 真峰值    | 谱心      | 起始密度 |
+| ------------------ | ------ | ---------- | --------- | --------- | -------- |
+| `bgm-rain.mp3`     | 115.0s | −18.6 LUFS | −4.8 dBTP | 610.9 Hz  | 0.47 /s  |
+| `bgm-secret.mp3`   | 110.0s | −18.6 LUFS | −5.5 dBTP | 972.0 Hz  | 0.74 /s  |
+| `bgm-distance.mp3` | 115.0s | −19.3 LUFS | −7.7 dBTP | 671.7 Hz  | 0.58 /s  |
+| `bgm-warm.mp3`     | 115.0s | −18.8 LUFS | −7.6 dBTP | 1523.6 Hz | 0.42 /s  |
+| `bgm-deep.mp3`     | 110.0s | −19.2 LUFS | −9.9 dBTP | 960.9 Hz  | 0.22 /s  |
+| `bgm-playful.mp3`  | 95.9s  | −19.8 LUFS | −9.3 dBTP | 1519.2 Hz | 0.80 /s  |
+| `bgm-finale.mp3`   | 130.0s | −18.5 LUFS | −3.4 dBTP | 1566.2 Hz | 0.31 /s  |
+| `bgm-tension.mp3`  | 125.0s | −20.2 LUFS | −4.6 dBTP | 1744.2 Hz | 0.27 /s  |
 
 响度极差仅 1.7dB，真峰值全部 ≤ −3.4dBTP（无削波）。
 谱心/起始密度可用于客观校验选曲不是拍脑袋：`playful` 最亮最密（1519Hz / 0.80），
@@ -70,14 +70,14 @@
 
 页级（`theme.audio.byPage`，键 = 0 起的页码）：
 
-| 页 | 章节 | 曲目 | 选曲依据 |
-|---|---|---|---|
-| 0 / 1 | 序章 · 雨夜频率 | `bgm-rain` | 午夜电台、雨窗、独处；最暗最疏 |
-| 2 | 距离线 · 隔座的月光 | `bgm-distance` | 克制、留白、想触碰又收回手 |
-| 3 | 慢热线 · 台灯与手稿 | `bgm-warm` | 日常的暖意 |
-| 4 | 深入线 · 凌晨三点的语音条 | `bgm-deep` | 交心、亲密、回忆；起始密度最低（0.22） |
-| 5 | 默契线 · 猫、外卖与碎碎念 | `bgm-playful` | 轻快俏皮；作者标签直接写着「猫」 |
-| 6 | 尾声 · 天亮之前 | `bgm-finale` | 情绪释放与落幕；管弦、LRA 最大（8.9） |
+| 页    | 章节                      | 曲目           | 选曲依据                               |
+| ----- | ------------------------- | -------------- | -------------------------------------- |
+| 0 / 1 | 序章 · 雨夜频率           | `bgm-rain`     | 午夜电台、雨窗、独处；最暗最疏         |
+| 2     | 距离线 · 隔座的月光       | `bgm-distance` | 克制、留白、想触碰又收回手             |
+| 3     | 慢热线 · 台灯与手稿       | `bgm-warm`     | 日常的暖意                             |
+| 4     | 深入线 · 凌晨三点的语音条 | `bgm-deep`     | 交心、亲密、回忆；起始密度最低（0.22） |
+| 5     | 默契线 · 猫、外卖与碎碎念 | `bgm-playful`  | 轻快俏皮；作者标签直接写着「猫」       |
+| 6     | 尾声 · 天亮之前           | `bgm-finale`   | 情绪释放与落幕；管弦、LRA 最大（8.9）  |
 
 节点级覆盖（`theme.audio.byQuestion`，16 项，键 = 题目 `order`）：
 
@@ -101,13 +101,13 @@
 
 ## 六、评估过但未采用的音源（如实记录）
 
-| 音源 | 实测结果 | 处置 |
-|---|---|---|
-| **哔哩哔哩**（用户建议用 `yt-dlp` 取音频） | 单视频可下载，但 `license` 元数据为 **NA**；命中的是版权唱片公司官方 MV（如索尼音乐中国）。`bilisearch5:` 检索直接 **HTTP 412** 风控 | **不采用**。无许可元数据 + 默认版权音乐，不能用于公开问卷；除非用户提供自己拥有权利的具体链接 |
-| **FreePD.com** | 站点已关停（抓到 5,391 字节关闭公告，页内 0 个 mp3 链接） | 剔除 |
-| **Pixabay Music** | `/music/` 返回 **403**（拦截脚本）；且其条款含「不得以独立文件再分发」 | 剔除（另见下方说明） |
-| **DOVA-SYNDROME** | 首页可达（301），但目录为 JS 站内检索，无静态直链 | 未采用 |
-| **OpenGameArt（CC0 筛选）** | 可达；抓取 `field_art_licenses_tid[]` 实测得 **CC0 = 4**（早期误把 17981=CC-BY 4.0 当成 CC0）；逐页读到 `License(s): CC0` 的有 6 首（Another August / November Snow / Calm Piano 1 / Calm Ambient 3 / Summers / First Light Particles） | **未采用**（只覆盖 6 个曲名，会让同一问卷混用两套许可；原始文件与逐曲记录仍在 `/tmp/cc0/` 与本文件历史版本中） |
+| 音源                                       | 实测结果                                                                                                                                                                                                                                | 处置                                                                                                           |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **哔哩哔哩**（用户建议用 `yt-dlp` 取音频） | 单视频可下载，但 `license` 元数据为 **NA**；命中的是版权唱片公司官方 MV（如索尼音乐中国）。`bilisearch5:` 检索直接 **HTTP 412** 风控                                                                                                    | **不采用**。无许可元数据 + 默认版权音乐，不能用于公开问卷；除非用户提供自己拥有权利的具体链接                  |
+| **FreePD.com**                             | 站点已关停（抓到 5,391 字节关闭公告，页内 0 个 mp3 链接）                                                                                                                                                                               | 剔除                                                                                                           |
+| **Pixabay Music**                          | `/music/` 返回 **403**（拦截脚本）；且其条款含「不得以独立文件再分发」                                                                                                                                                                  | 剔除（另见下方说明）                                                                                           |
+| **DOVA-SYNDROME**                          | 首页可达（301），但目录为 JS 站内检索，无静态直链                                                                                                                                                                                       | 未采用                                                                                                         |
+| **OpenGameArt（CC0 筛选）**                | 可达；抓取 `field_art_licenses_tid[]` 实测得 **CC0 = 4**（早期误把 17981=CC-BY 4.0 当成 CC0）；逐页读到 `License(s): CC0` 的有 6 首（Another August / November Snow / Calm Piano 1 / Calm Ambient 3 / Summers / First Light Particles） | **未采用**（只覆盖 6 个曲名，会让同一问卷混用两套许可；原始文件与逐曲记录仍在 `/tmp/cc0/` 与本文件历史版本中） |
 
 > Pixabay 的「不得以独立文件再分发」与公开无鉴权媒体端点 `/api/survey/media/<id>` 的
 > 潜在冲突，是本轮主动回避 Pixabay 的原因之一，需由项目方自行确认后再考虑。

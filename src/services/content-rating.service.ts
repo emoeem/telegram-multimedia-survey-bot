@@ -23,7 +23,10 @@ export function isRestrictedRating(rating: string | null | undefined): boolean {
 }
 
 /** 未确认年龄的查看者能否看到该内容。 */
-export function viewerCanSeeRating(ageVerifiedAt: string | null | undefined, rating: string | null | undefined): boolean {
+export function viewerCanSeeRating(
+  ageVerifiedAt: string | null | undefined,
+  rating: string | null | undefined,
+): boolean {
   return !isRestrictedRating(rating) || Boolean(ageVerifiedAt);
 }
 
@@ -34,7 +37,9 @@ export interface AgeAttestation {
 
 export async function getAgeAttestation(db: D1Database, participantHash: string): Promise<AgeAttestation | null> {
   return db
-    .prepare("SELECT participant_hash participantHash, age_verified_at ageVerifiedAt FROM participant_preferences WHERE participant_hash = ? LIMIT 1")
+    .prepare(
+      "SELECT participant_hash participantHash, age_verified_at ageVerifiedAt FROM participant_preferences WHERE participant_hash = ? LIMIT 1",
+    )
     .bind(participantHash)
     .first<AgeAttestation>();
 }

@@ -74,8 +74,21 @@ export async function setResponseReportPublication(
   publicationTargetThreadId: number | null = null,
 ): Promise<void> {
   const timestamp = nowIso();
-  await db.prepare(`UPDATE survey_responses SET report_publication_requested = ?, report_publication_status = ?, report_published_at = ?, publication_target_id = ?, publication_target_chat_id = ?, publication_target_thread_id = ?, updated_at = ? WHERE id = ?`)
-    .bind(requested ? 1 : 0, status, status === "published" ? timestamp : null, publicationTargetId, publicationTargetChatId, publicationTargetThreadId, timestamp, id).run();
+  await db
+    .prepare(
+      `UPDATE survey_responses SET report_publication_requested = ?, report_publication_status = ?, report_published_at = ?, publication_target_id = ?, publication_target_chat_id = ?, publication_target_thread_id = ?, updated_at = ? WHERE id = ?`,
+    )
+    .bind(
+      requested ? 1 : 0,
+      status,
+      status === "published" ? timestamp : null,
+      publicationTargetId,
+      publicationTargetChatId,
+      publicationTargetThreadId,
+      timestamp,
+      id,
+    )
+    .run();
 }
 
 export async function setResponseGalleryPublished(db: D1Database, id: number, published: boolean): Promise<void> {
@@ -504,11 +517,7 @@ export function upsertAnswerValueStatement(
 }
 
 /** Statements that detach every option/media link of one answer and drop the answer row. */
-export function clearAnswerStatements(
-  db: D1Database,
-  responseId: number,
-  questionId: number,
-): D1PreparedStatement[] {
+export function clearAnswerStatements(db: D1Database, responseId: number, questionId: number): D1PreparedStatement[] {
   const scope = "SELECT id FROM answers WHERE response_id = ? AND question_id = ?";
   const scopeBinds = [responseId, questionId];
   return [

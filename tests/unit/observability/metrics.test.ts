@@ -6,16 +6,14 @@ import {
   instrumentDatabase,
   instrumentKv,
   instrumentQueue,
+  findBudgetAnomaly,
   normalizeRoute,
   redactForLog,
   withQueueMetrics,
   withRequestMetrics,
 } from "../../../src/observability/metrics";
 
-function stubStatement(options: {
-  allResult?: unknown;
-  runResult?: unknown;
-}): D1PreparedStatement {
+function stubStatement(options: { allResult?: unknown; runResult?: unknown }): D1PreparedStatement {
   const statement = {
     bind: vi.fn(() => statement),
     all: vi.fn(async () => options.allResult ?? { results: [], meta: {} }),
@@ -107,9 +105,7 @@ describe("query metrics", () => {
 
 describe("normalizeRoute", () => {
   it("collapses numeric ids and tokens", () => {
-    expect(normalizeRoute("/api/admin/surveys/12/responses/340")).toBe(
-      "/api/admin/surveys/:id/responses/:id",
-    );
+    expect(normalizeRoute("/api/admin/surveys/12/responses/340")).toBe("/api/admin/surveys/:id/responses/:id");
     expect(normalizeRoute("/api/report/media/123")).toBe("/api/report/media/:id");
   });
 });
@@ -145,13 +141,9 @@ describe("withRequestMetrics", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(
-      withRequestMetrics(
-        new Request("https://example.test/api/surveys"),
-        {},
-        async () => {
-          throw new Error("boom");
-        },
-      ),
+      withRequestMetrics(new Request("https://example.test/api/surveys"), {}, async () => {
+        throw new Error("boom");
+      }),
     ).rejects.toThrow("boom");
 
     const metricCall = log.mock.calls.find(([label]) => label === "request_metrics");
@@ -278,6 +270,53 @@ describe("buildRequestMetrics", () => {
 
     expect(event.ok).toBe(false);
     expect(JSON.stringify(event)).not.toMatch(/token|password|secret/i);
+  });
+});
+
+describe("findBudgetAnomaly", () => {
+  const base = { requestId: "r1", route: "/api/survey/:id", method: "GET", status: 200 };
+
+  it("returns null for a normal request", () => {
+    expect(findBudgetAnomaly({ ...base, snapshot: new MetricsCollector().snapshot() })).toBeNull();
+  });
+
+  it("flags a single request that reads past the D1 row threshold", () => {
+    const collector = new MetricsCollector();
+    collector.recordD1Result({ meta: { rows_read: 50_000 } });
+    const anomaly = findBudgetAnomaly({ ...base, snapshot: collector.snapshot() });
+    expect(anomaly?.reasons[0]).toContain("d1RowsRead");
+  });
+
+  it("flags write and KV breaches, listing every reason", () => {
+    const collector = new MetricsCollector();
+    collector.recordD1Result({ meta: { rows_written: 5_000 } });
+    const anomaly = findBudgetAnomaly({ ...base, snapshot: collector.snapshot() });
+    expect(anomaly?.reasons.some((reason) => reason.startsWith("d1RowsWritten"))).toBe(true);
+  });
+
+  it("does not flag the normal heavy path (report generation stays 3x below thresholds)", () => {
+    const collector = new MetricsCollector();
+    collector.recordD1Result({ meta: { rows_read: 15_000, rows_written: 1_500 } });
+    expect(findBudgetAnomaly({ ...base, snapshot: collector.snapshot() })).toBeNull();
+  });
+
+  it("withRequestMetrics emits an ERROR budget_anomaly line when a request breaches", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const statement = stubStatement({ allResult: { results: [], meta: { rows_read: 60_000 } } });
+    const env = { DB: { prepare: () => statement } as unknown as D1Database };
+
+    await withRequestMetrics(new Request("https://example.test/api/reports/5"), env, async (instrumented) => {
+      await instrumented.DB!.prepare("SELECT 1").all();
+      return Response.json({ ok: true });
+    });
+
+    const anomalyCall = errorSpy.mock.calls.find(([label]) => label === "budget_anomaly");
+    expect(anomalyCall).toBeTruthy();
+    const parsed = JSON.parse(anomalyCall![1] as string) as { reasons: string[] };
+    expect(parsed.reasons[0]).toContain("d1RowsRead");
+    log.mockRestore();
+    errorSpy.mockRestore();
   });
 });
 

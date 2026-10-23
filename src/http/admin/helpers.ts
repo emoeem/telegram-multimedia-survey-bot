@@ -437,7 +437,16 @@ export function validateQuestionPayload(
       // allowed_mime_types / max_size_mb, so rejecting them here meant a rule
       // the creator could never set. `decimal` was in the type and handled
       // below, but the whitelist already rejected it — dead code.
-      const numeric = ["min_length", "max_length", "min", "max", "min_selections", "max_selections", "max_count", "max_size_mb"];
+      const numeric = [
+        "min_length",
+        "max_length",
+        "min",
+        "max",
+        "min_selections",
+        "max_selections",
+        "max_count",
+        "max_size_mb",
+      ];
       const boolean = ["decimal"];
       const normalized: Record<string, number | boolean | string[]> = {};
       for (const [key, value] of Object.entries(body.validation)) {

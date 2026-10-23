@@ -36,7 +36,6 @@ import {
  * "减少动态效果"时动画自动禁用（全局 CSS 已处理）。
  */
 
-
 /** 音频时长探测：仅用于展示与提示；读不出就返回 null，不影响投稿。 */
 async function probeAudioDuration(file: File): Promise<number | null> {
   try {
@@ -71,7 +70,13 @@ function CoinPageShell(props: { title: string; subtitle: string; embedded?: bool
             <p className="text-[15px] font-bold text-[var(--survey-heading)]">{props.title}</p>
             <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">{props.subtitle}</p>
           </div>
-          <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+          <button
+            type="button"
+            aria-label="关闭"
+            title="关闭"
+            className="survey-icon-btn"
+            onClick={() => closeWebApp()}
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -102,7 +107,6 @@ const KIND_LABELS: Record<string, string> = {
   gacha_pull: "报告抽卡",
   admin_adjust: "平台调整",
 };
-
 
 /** 近 30 天签到日历；补签只在管理员开启时出现（点击漏签日补齐）。 */
 function CheckinCalendar({
@@ -172,7 +176,11 @@ function CheckinCalendar({
           ? `补签开放：点击最近 ${backfill.maxDays} 天内的漏签日补签（每次 ${backfill.cost} 金币）。`
           : "补签未开放。"}
       </p>
-      {done ? <p className="coin-claim-flash" role="status">已补签 {done} ✓</p> : null}
+      {done ? (
+        <p className="coin-claim-flash" role="status">
+          已补签 {done} ✓
+        </p>
+      ) : null}
       {error ? <p className="mt-1 text-[11px] text-rose-500">{error}</p> : null}
     </section>
   );
@@ -234,7 +242,9 @@ export function CoinsScreen() {
       setClaimedId(challenge.id);
       setChallenges((prev) =>
         (prev ?? []).map((entry) =>
-          entry.id === challenge.id ? { ...entry, claimed: true, progress: result.reward > 0 ? entry.progress : entry.progress } : entry,
+          entry.id === challenge.id
+            ? { ...entry, claimed: true, progress: result.reward > 0 ? entry.progress : entry.progress }
+            : entry,
         ),
       );
       reloadOverview();
@@ -282,7 +292,11 @@ export function CoinsScreen() {
                   </p>
                   <p className="mt-0.5 text-[11px] text-white/70">
                     连续 {checkin?.streak ?? 0} 天 ·{" "}
-                    {checkin ? (checkin.checkedInToday ? `明天 +${checkin.nextAmount}` : `今日 +${checkin.nextAmount}`) : ""}
+                    {checkin
+                      ? checkin.checkedInToday
+                        ? `明天 +${checkin.nextAmount}`
+                        : `今日 +${checkin.nextAmount}`
+                      : ""}
                   </p>
                 </div>
                 <button
@@ -349,11 +363,21 @@ export function CoinsScreen() {
                           {challenge.title}
                           <span className="coin-reward-chip">+{challenge.reward}</span>
                         </p>
-                        <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">{challenge.description}</p>
-                        <div className="coin-progress-track" role="progressbar" aria-valuenow={challenge.progress} aria-valuemin={0} aria-valuemax={challenge.goalTarget}>
+                        <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
+                          {challenge.description}
+                        </p>
+                        <div
+                          className="coin-progress-track"
+                          role="progressbar"
+                          aria-valuenow={challenge.progress}
+                          aria-valuemin={0}
+                          aria-valuemax={challenge.goalTarget}
+                        >
                           <div
                             className="coin-progress-bar"
-                            style={{ width: `${Math.min(100, Math.round((challenge.progress / Math.max(1, challenge.goalTarget)) * 100))}%` }}
+                            style={{
+                              width: `${Math.min(100, Math.round((challenge.progress / Math.max(1, challenge.goalTarget)) * 100))}%`,
+                            }}
                           />
                         </div>
                         <p className="mt-1 text-[11px] text-[var(--survey-muted)]">
@@ -401,12 +425,18 @@ export function CoinsScreen() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-semibold text-[var(--survey-heading)]">
                         {KIND_LABELS[txn.kind] ?? txn.kind}
-                        {txn.note ? <span className="ml-1.5 font-normal text-[var(--survey-muted)]">{txn.note}</span> : null}
+                        {txn.note ? (
+                          <span className="ml-1.5 font-normal text-[var(--survey-muted)]">{txn.note}</span>
+                        ) : null}
                       </p>
-                      <p className="text-[11px] text-[var(--survey-muted)]">{txn.createdAt.replace("T", " ").slice(0, 16)}</p>
+                      <p className="text-[11px] text-[var(--survey-muted)]">
+                        {txn.createdAt.replace("T", " ").slice(0, 16)}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-black ${txn.amount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                      <p
+                        className={`text-sm font-black ${txn.amount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}
+                      >
                         {txn.amount > 0 ? "+" : ""}
                         {txn.amount}
                       </p>
@@ -500,7 +530,14 @@ export function GachaScreen() {
       const content = await coinApi.itemContent(itemId);
       setViewingItem({
         title: content.title,
-        body: content.text ?? content.summary ?? (content.reportUrl ? `查看报告：${content.reportUrl}` : content.mediaUrl ? `媒体：${content.mediaUrl}` : content.description),
+        body:
+          content.text ??
+          content.summary ??
+          (content.reportUrl
+            ? `查看报告：${content.reportUrl}`
+            : content.mediaUrl
+              ? `媒体：${content.mediaUrl}`
+              : content.description),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "内容加载失败");
@@ -509,16 +546,24 @@ export function GachaScreen() {
 
   if (detail) {
     return (
-      <CoinPageShell title={`🎁 ${detail.pool.name}`} subtitle={`单抽 ${detail.pool.costSingle} 金币${detail.pool.costMulti ? ` · ${detail.pool.costMulti} 金币十连` : ""}`}>
+      <CoinPageShell
+        title={`🎁 ${detail.pool.name}`}
+        subtitle={`单抽 ${detail.pool.costSingle} 金币${detail.pool.costMulti ? ` · ${detail.pool.costMulti} 金币十连` : ""}`}
+      >
         {error ? <ErrorBox message={error} /> : null}
         {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
         <section className="coin-card">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--survey-muted)]">概率公示</p>
           <ul className="mt-2 space-y-1.5">
             {detail.items.map((item) => (
-              <li key={item.id} className="flex items-center justify-between gap-2 text-[13px] text-[var(--survey-body)]">
+              <li
+                key={item.id}
+                className="flex items-center justify-between gap-2 text-[13px] text-[var(--survey-body)]"
+              >
                 <span className="min-w-0 truncate">
-                  <span className={`${RARITY_STYLES[item.rarity] ?? "coin-rarity-n"} mr-1.5 inline-block rounded px-1 text-[10px] font-black`}>
+                  <span
+                    className={`${RARITY_STYLES[item.rarity] ?? "coin-rarity-n"} mr-1.5 inline-block rounded px-1 text-[10px] font-black`}
+                  >
                     {item.rarity}
                   </span>
                   {item.title}
@@ -538,7 +583,12 @@ export function GachaScreen() {
             {pulling ? "抽取中…" : `单抽 ${detail.pool.costSingle}`}
           </button>
           {detail.pool.costMulti ? (
-            <button type="button" className="coin-pull-btn coin-pull-multi flex-1" disabled={pulling} onClick={() => void doPull(10)}>
+            <button
+              type="button"
+              className="coin-pull-btn coin-pull-multi flex-1"
+              disabled={pulling}
+              onClick={() => void doPull(10)}
+            >
               {pulling ? "抽取中…" : `十连 ${detail.pool.costMulti}`}
             </button>
           ) : null}
@@ -548,7 +598,12 @@ export function GachaScreen() {
         </button>
 
         {pulling || reveal ? (
-          <div className="coin-reveal-layer" role="dialog" aria-label="抽卡结果" data-skipped={skipReveal ? "true" : undefined}>
+          <div
+            className="coin-reveal-layer"
+            role="dialog"
+            aria-label="抽卡结果"
+            data-skipped={skipReveal ? "true" : undefined}
+          >
             {!skipReveal ? <div className="coin-reveal-glow" aria-hidden /> : null}
             <div className="coin-reveal-panel">
               {reveal ? (
@@ -556,7 +611,10 @@ export function GachaScreen() {
                   <p className="text-sm font-bold text-[var(--survey-heading)]">获得 {reveal.results.length} 份内容</p>
                   <ul className="mt-3 space-y-2">
                     {reveal.results.map((entry, index) => (
-                      <li key={`${entry.itemId}-${index}`} className={`coin-reveal-card ${RARITY_STYLES[entry.rarity] ?? "coin-rarity-n"}`}>
+                      <li
+                        key={`${entry.itemId}-${index}`}
+                        className={`coin-reveal-card ${RARITY_STYLES[entry.rarity] ?? "coin-rarity-n"}`}
+                      >
                         <span className="rounded px-1.5 py-0.5 text-[10px] font-black">{entry.rarity}</span>
                         <span className="min-w-0 flex-1 truncate">{entry.title}</span>
                       </li>
@@ -591,11 +649,23 @@ export function GachaScreen() {
       {error ? <ErrorBox message={error} /> : null}
       {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
       <div className="flex gap-2" role="tablist" aria-label="抽卡页面切换">
-        <button type="button" role="tab" aria-selected={tab === "pools"} className={`coin-tab ${tab === "pools" ? "is-active" : ""}`} onClick={() => setTab("pools")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "pools"}
+          className={`coin-tab ${tab === "pools" ? "is-active" : ""}`}
+          onClick={() => setTab("pools")}
+        >
           <Sparkles className="h-3.5 w-3.5" />
           奖池
         </button>
-        <button type="button" role="tab" aria-selected={tab === "collection"} className={`coin-tab ${tab === "collection" ? "is-active" : ""}`} onClick={() => void showCollection()}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "collection"}
+          className={`coin-tab ${tab === "collection" ? "is-active" : ""}`}
+          onClick={() => void showCollection()}
+        >
           <UserRound className="h-3.5 w-3.5" />
           我的收藏
         </button>
@@ -608,11 +678,18 @@ export function GachaScreen() {
           <ErrorBox message="暂无开放的奖池，欢迎参与投稿" />
         ) : (
           pools.map((pool) => (
-            <button key={pool.slug} type="button" className="coin-card w-full text-left" onClick={() => openPool(pool.slug)}>
+            <button
+              key={pool.slug}
+              type="button"
+              className="coin-card w-full text-left"
+              onClick={() => openPool(pool.slug)}
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[var(--survey-heading)]">{pool.name}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[var(--survey-muted)]">{pool.description}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[var(--survey-muted)]">
+                    {pool.description}
+                  </p>
                   <p className="mt-1 text-[11px] text-[var(--survey-primary)]">
                     单抽 {pool.costSingle}
                     {pool.costMulti ? ` · 十连 ${pool.costMulti}` : ""}
@@ -630,9 +707,16 @@ export function GachaScreen() {
         <ErrorBox message="还没有抽到过内容" />
       ) : (
         collection.map((item) => (
-          <button key={item.pullId} type="button" className="coin-card w-full text-left" onClick={() => void viewItem(item.itemId)}>
+          <button
+            key={item.pullId}
+            type="button"
+            className="coin-card w-full text-left"
+            onClick={() => void viewItem(item.itemId)}
+          >
             <div className="flex items-center gap-3">
-              <span className={`${RARITY_STYLES[item.rarity] ?? "coin-rarity-n"} rounded px-1.5 py-0.5 text-[10px] font-black`}>
+              <span
+                className={`${RARITY_STYLES[item.rarity] ?? "coin-rarity-n"} rounded px-1.5 py-0.5 text-[10px] font-black`}
+              >
                 {item.rarity}
               </span>
               <div className="min-w-0 flex-1">
@@ -652,7 +736,9 @@ export function GachaScreen() {
         <div className="coin-reveal-layer" role="dialog" aria-label="内容详情">
           <div className="coin-reveal-panel">
             <p className="text-sm font-bold text-[var(--survey-heading)]">{viewingItem.title}</p>
-            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-body)]">{viewingItem.body}</p>
+            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-body)]">
+              {viewingItem.body}
+            </p>
             <button type="button" className="coin-pull-btn mt-3 w-full" onClick={() => setViewingItem(null)}>
               关闭
             </button>
@@ -775,11 +861,7 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
   const selectedMeta = SUBMISSION_TYPE_META.find((entry) => entry.type === type);
 
   return (
-    <CoinPageShell
-      title="📮 投稿中心"
-      subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池"
-      embedded={embedded}
-    >
+    <CoinPageShell title="📮 投稿中心" subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池" embedded={embedded}>
       {error ? <ErrorBox message={error} /> : null}
       {success ? (
         <div className="coin-success-box" role="status">
@@ -791,7 +873,12 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
         <>
           <section className="grid grid-cols-2 gap-2.5">
             {SUBMISSION_TYPE_META.map((meta) => (
-              <button key={meta.type} type="button" className="coin-entry flex-col items-start" onClick={() => setType(meta.type)}>
+              <button
+                key={meta.type}
+                type="button"
+                className="coin-entry flex-col items-start"
+                onClick={() => setType(meta.type)}
+              >
                 <meta.icon className="h-5 w-5 text-[var(--survey-primary)]" />
                 <span className="text-[13px] font-bold text-[var(--survey-heading)]">{meta.label}</span>
                 <span className="text-[11px] leading-4 text-[var(--survey-muted)]">{meta.hint}</span>
@@ -812,16 +899,32 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
           </div>
           <label className="block">
             <span className="coin-field-label">标题</span>
-            <input className="coin-input" value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} />
+            <input
+              className="coin-input"
+              value={title}
+              maxLength={80}
+              onChange={(event) => setTitle(event.target.value)}
+            />
           </label>
           <label className="block">
             <span className="coin-field-label">简介（可选）</span>
-            <input className="coin-input" value={description} onChange={(event) => setDescription(event.target.value)} />
+            {/* 300 与服务端 maxDescriptionLength 默认值一致；超限会在服务端被拒。 */}
+            <input
+              className="coin-input"
+              value={description}
+              maxLength={300}
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </label>
           {type === "text" ? (
             <label className="block">
               <span className="coin-field-label">正文</span>
-              <textarea className="coin-input min-h-32" value={contentText} maxLength={5000} onChange={(event) => setContentText(event.target.value)} />
+              <textarea
+                className="coin-input min-h-32"
+                value={contentText}
+                maxLength={5000}
+                onChange={(event) => setContentText(event.target.value)}
+              />
             </label>
           ) : null}
           {type === "image" || type === "audio" ? (
@@ -830,7 +933,11 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
               <input
                 className="coin-input"
                 type="file"
-                accept={type === "image" ? "image/jpeg,image/png,image/webp,image/gif" : "audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/flac"}
+                accept={
+                  type === "image"
+                    ? "image/jpeg,image/png,image/webp,image/gif"
+                    : "audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/flac"
+                }
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               />
             </label>
@@ -851,11 +958,21 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
             </label>
           ) : null}
           <label className="flex items-start gap-2 text-[12px] leading-4 text-[var(--survey-body)]">
-            <input type="checkbox" className="mt-0.5" checked={publishToPool} onChange={(event) => setPublishToPool(event.target.checked)} />
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={publishToPool}
+              onChange={(event) => setPublishToPool(event.target.checked)}
+            />
             <span>希望进入报告抽卡池（进入前仍需审核；管理员配置后生效）</span>
           </label>
           <label className="flex items-start gap-2 text-[12px] leading-4 text-[var(--survey-body)]">
-            <input type="checkbox" className="mt-0.5" checked={confirmOwn} onChange={(event) => setConfirmOwn(event.target.checked)} />
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={confirmOwn}
+              onChange={(event) => setConfirmOwn(event.target.checked)}
+            />
             <span>
               我确认此内容由我本人创作/拥有权利，且理解公开后其他用户可通过抽卡查看（可随时撤回，已抽走的用户按平台规则保留查看权）。
             </span>
@@ -899,7 +1016,9 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
                     {submission.rewardAmount ? ` · 奖励 +${submission.rewardAmount}` : ""}
                   </p>
                   {submission.reviewNote ? (
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">审核备注：{submission.reviewNote}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">
+                      审核备注：{submission.reviewNote}
+                    </p>
                   ) : null}
                 </div>
                 {["pending", "approved", "in_pool", "changes_requested"].includes(submission.status) ? (
@@ -962,7 +1081,9 @@ export function CoinGateScreen(props: {
       <div className={`coin-gate-card ${done ? "coin-gate-open" : ""}`}>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--survey-muted)]">金币解锁</p>
         <p className="mt-1 text-lg font-black text-[var(--survey-heading)]">{props.title}</p>
-        {props.description ? <p className="mt-1 line-clamp-3 text-[12px] text-[var(--survey-muted)]">{props.description}</p> : null}
+        {props.description ? (
+          <p className="mt-1 line-clamp-3 text-[12px] text-[var(--survey-muted)]">{props.description}</p>
+        ) : null}
         <p className="coin-gate-price">
           <CoinsIcon className="h-5 w-5" />
           {props.price} 金币
@@ -973,7 +1094,12 @@ export function CoinGateScreen(props: {
         </p>
         {error ? <p className="mt-2 text-[12px] text-rose-500">{error}</p> : null}
         <div className="mt-4 flex gap-2">
-          <button type="button" className="coin-pull-btn flex-1" disabled={busy || done || !affordable} onClick={() => void unlock()}>
+          <button
+            type="button"
+            className="coin-pull-btn flex-1"
+            disabled={busy || done || !affordable}
+            onClick={() => void unlock()}
+          >
             {done ? "已解锁 ✓" : busy ? "解锁中…" : "确认解锁"}
           </button>
           <button type="button" className="coin-skip-btn" onClick={props.onSkip}>

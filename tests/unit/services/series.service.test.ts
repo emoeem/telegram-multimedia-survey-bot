@@ -81,9 +81,7 @@ beforeEach(() => {
 
 async function seedChapter(surveyId: number, seriesId: number, order: number, status = "published") {
   db.sqlite
-    .prepare(
-      "INSERT INTO surveys (id, title, status, series_id, series_order) VALUES (?, ?, ?, ?, ?)",
-    )
+    .prepare("INSERT INTO surveys (id, title, status, series_id, series_order) VALUES (?, ?, ?, ?, ?)")
     .run(surveyId, `第${order}章`, status, seriesId, order);
 }
 

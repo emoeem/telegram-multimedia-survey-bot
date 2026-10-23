@@ -163,8 +163,12 @@ describe("showcase serialization", () => {
   });
 
   it("keeps external URLs verbatim when no media asset is attached", () => {
-    const externalOnly = { ...row, backgroundMediaId: null, illustrationMediaId: null, avatarMediaId: null } as
-      typeof row;
+    const externalOnly = {
+      ...row,
+      backgroundMediaId: null,
+      illustrationMediaId: null,
+      avatarMediaId: null,
+    } as typeof row;
     const admin = toAdminShowcasePerson(externalOnly);
     expect(admin.illustrationUrl).toBeNull();
     expect(admin.background.imageUrl).toBe("https://cdn.example/bg.png");
@@ -212,7 +216,9 @@ describe("showcase serialization", () => {
   });
 
   it("accepts the audio kind and keeps the item media file", () => {
-    expect(normalizeShowcaseItemInput({ title: "朗读", kind: "audio", mediaAssetId: 903 }, { creating: true })).toMatchObject({
+    expect(
+      normalizeShowcaseItemInput({ title: "朗读", kind: "audio", mediaAssetId: 903 }, { creating: true }),
+    ).toMatchObject({
       value: { kind: "audio", mediaAssetId: 903 },
     });
     expect(normalizeShowcaseItemInput({ title: "x", kind: "music" }, { creating: true })).toMatchObject({
@@ -249,7 +255,10 @@ describe("showcase serialization", () => {
     });
 
     // 没有内容文件时不产生 mediaUrl，前台据此回退成「跳外链」。
-    const noMedia = { ...withMedia, items: [{ ...audioItem, mediaAssetId: null }] } as unknown as ShowcasePersonWithItems;
+    const noMedia = {
+      ...withMedia,
+      items: [{ ...audioItem, mediaAssetId: null }],
+    } as unknown as ShowcasePersonWithItems;
     expect(toPublicShowcasePerson(noMedia).items[0]?.mediaUrl).toBeNull();
   });
 
@@ -259,7 +268,10 @@ describe("showcase serialization", () => {
       value: { description: body },
     });
     expect(
-      normalizeShowcaseItemInput({ title: "长文", description: "文".repeat(SHOWCASE_LIMITS.itemDescription + 1) }, { creating: true }),
+      normalizeShowcaseItemInput(
+        { title: "长文", description: "文".repeat(SHOWCASE_LIMITS.itemDescription + 1) },
+        { creating: true },
+      ),
     ).toMatchObject({ error: expect.stringContaining("作品简介长度不能超过") });
   });
 });

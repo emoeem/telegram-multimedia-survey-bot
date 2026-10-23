@@ -282,7 +282,9 @@ function SurveysPanel({
                 <tbody>
                   {data.items.map((survey) => (
                     <tr key={survey.id} className="hover">
-                      <td data-label="ID" className="text-sm">#{survey.id}</td>
+                      <td data-label="ID" className="text-sm">
+                        #{survey.id}
+                      </td>
                       <td data-label="标题" className="text-sm">
                         <div className="font-medium">{survey.title}</div>
                         {survey.description ? (
@@ -296,8 +298,12 @@ function SurveysPanel({
                           <span className="badge badge-sm">{survey.status}</span>
                         )}
                       </td>
-                      <td data-label="创建时间" className="text-xs opacity-60">{formatDateTime(survey.createdAt)}</td>
-                      <td data-label="更新时间" className="text-xs opacity-60">{formatDateTime(survey.updatedAt)}</td>
+                      <td data-label="创建时间" className="text-xs opacity-60">
+                        {formatDateTime(survey.createdAt)}
+                      </td>
+                      <td data-label="更新时间" className="text-xs opacity-60">
+                        {formatDateTime(survey.updatedAt)}
+                      </td>
                       <td>
                         <button className="btn btn-ghost btn-xs" onClick={() => onOpenResponses(survey.id)}>
                           看答卷
@@ -308,13 +314,7 @@ function SurveysPanel({
                 </tbody>
               </table>
             </div>
-            <Pager
-              total={data.total}
-              limit={data.limit}
-              offset={data.offset}
-              unit="份问卷"
-              onOffset={onOffset}
-            />
+            <Pager total={data.total} limit={data.limit} offset={data.offset} unit="份问卷" onOffset={onOffset} />
           </>
         ) : (
           <EmptyPanel text="该实例还没有问卷" />
@@ -415,14 +415,22 @@ function ResponsesPanel({
                 <tbody>
                   {data.items.map((item) => (
                     <tr key={item.id} className="hover">
-                      <td data-label="ID" className="text-sm">#{item.id}</td>
+                      <td data-label="ID" className="text-sm">
+                        #{item.id}
+                      </td>
                       <td data-label="问卷" className="text-sm">
                         <div className="max-w-56 truncate font-medium">{item.surveyTitle ?? "（问卷已删除）"}</div>
                         <div className="text-xs opacity-50">surveyId {item.surveyId}</div>
                       </td>
-                      <td data-label="填写者" className="text-sm">{respondentName(item)}</td>
-                      <td data-label="状态" className="text-sm">{RESPONSE_STATUS_LABELS[item.status] ?? item.status}</td>
-                      <td data-label="开始时间" className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
+                      <td data-label="填写者" className="text-sm">
+                        {respondentName(item)}
+                      </td>
+                      <td data-label="状态" className="text-sm">
+                        {RESPONSE_STATUS_LABELS[item.status] ?? item.status}
+                      </td>
+                      <td data-label="开始时间" className="text-xs opacity-60">
+                        {formatDateTime(item.createdAt)}
+                      </td>
                       <td data-label="完成时间" className="text-xs opacity-60">
                         {item.completedAt ? formatDateTime(item.completedAt) : "—"}
                       </td>
@@ -473,8 +481,12 @@ function ResponsesPanel({
                   <tbody>
                     {detail.data.answers.map((answer) => (
                       <tr key={answer.id}>
-                        <td data-label="题目" className="text-sm">questionId {answer.questionId}</td>
-                        <td data-label="答案" className="text-sm break-all">{answerText(answer)}</td>
+                        <td data-label="题目" className="text-sm">
+                          questionId {answer.questionId}
+                        </td>
+                        <td data-label="答案" className="text-sm break-all">
+                          {answerText(answer)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -555,9 +567,15 @@ function UsersPanel({
                             <div className="text-xs opacity-50">@{item.username}</div>
                           ) : null}
                         </td>
-                        <td data-label="Telegram ID" className="text-sm">{item.telegramUserId}</td>
-                        <td data-label="角色" className="text-sm">{item.systemRole}</td>
-                        <td data-label="注册时间" className="text-xs opacity-60">{formatDateTime(item.createdAt)}</td>
+                        <td data-label="Telegram ID" className="text-sm">
+                          {item.telegramUserId}
+                        </td>
+                        <td data-label="角色" className="text-sm">
+                          {item.systemRole}
+                        </td>
+                        <td data-label="注册时间" className="text-xs opacity-60">
+                          {formatDateTime(item.createdAt)}
+                        </td>
                         <td data-label="最近启动" className="text-xs opacity-60">
                           {item.botStartedAt ? formatDateTime(item.botStartedAt) : "—"}
                         </td>
@@ -582,13 +600,7 @@ function UsersPanel({
   );
 }
 
-export function RemoteDataViewer({
-  deployment,
-  onClose,
-}: {
-  deployment: DeploymentView;
-  onClose: () => void;
-}) {
+export function RemoteDataViewer({ deployment, onClose }: { deployment: DeploymentView; onClose: () => void }) {
   const client = useMemo(() => createRemoteClient(deployment.id), [deployment.id]);
   const [tab, setTab] = useState<RemoteTab>("summary");
   const [viewKey, setViewKey] = useState(0);
@@ -637,8 +649,8 @@ export function RemoteDataViewer({
     client,
     tab === "responses"
       ? `/api/remote/responses?limit=${PAGE_SIZE}&offset=${responseOffset}` +
-        (responseSurveyId ? `&surveyId=${responseSurveyId}` : "") +
-        (responseStatus ? `&status=${responseStatus}` : "")
+          (responseSurveyId ? `&surveyId=${responseSurveyId}` : "") +
+          (responseStatus ? `&status=${responseStatus}` : "")
       : null,
     viewKey,
   );
@@ -646,7 +658,7 @@ export function RemoteDataViewer({
     client,
     tab === "users"
       ? `/api/remote/users?limit=${PAGE_SIZE}&offset=${userOffset}` +
-        (userSearch ? `&search=${encodeURIComponent(userSearch)}` : "")
+          (userSearch ? `&search=${encodeURIComponent(userSearch)}` : "")
       : null,
     viewKey,
   );
@@ -661,77 +673,70 @@ export function RemoteDataViewer({
     // previously re-implemented the daisyUI modal classes, which are not
     // generated by this build (so it wasn't an overlay at all).
     <Modal open onClose={onClose} size="xl" title={`客户数据 · ${deployment.workerName}`}>
-        <p className="text-sm text-[var(--color-muted)]">只读浏览 · {deployment.workerUrl ?? deployment.installationId}</p>
+      <p className="text-sm text-[var(--color-muted)]">
+        只读浏览 · {deployment.workerUrl ?? deployment.installationId}
+      </p>
 
-        <p className="mt-3 rounded-xl bg-base-200 p-3 text-xs text-[var(--color-muted)]">
-          数据由浏览器直接向该客户实例读取，控制中心不中转、不缓存，且只发 GET 请求；每次打开或刷新会重新申请 5
-          分钟有效的只读令牌。该实例需要至少完成一次心跳，控制中心才能签发令牌。
-        </p>
+      <p className="mt-3 rounded-xl bg-base-200 p-3 text-xs text-[var(--color-muted)]">
+        数据由浏览器直接向该客户实例读取，控制中心不中转、不缓存，且只发 GET 请求；每次打开或刷新会重新申请 5
+        分钟有效的只读令牌。该实例需要至少完成一次心跳，控制中心才能签发令牌。
+      </p>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {TABS.map(({ id, label }) => (
-            <button
-              key={id}
-              className={id === tab ? "btn btn-primary btn-sm" : "btn btn-sm"}
-              onClick={() => open(id)}
-            >
-              {label}
-            </button>
-          ))}
-          <button className="btn btn-sm ml-auto" onClick={refresh}>
-            <RefreshCw className="h-4 w-4" />
-            刷新
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {TABS.map(({ id, label }) => (
+          <button key={id} className={id === tab ? "btn btn-primary btn-sm" : "btn btn-sm"} onClick={() => open(id)}>
+            {label}
           </button>
-        </div>
+        ))}
+        <button className="btn btn-sm ml-auto" onClick={refresh}>
+          <RefreshCw className="h-4 w-4" />
+          刷新
+        </button>
+      </div>
 
-        <div className="mt-4">
-          {tab === "summary" ? <SummaryPanel state={summary} /> : null}
-          {tab === "surveys" ? (
-            <SurveysPanel
-              state={surveys}
-              onOffset={setSurveyOffset}
-              onOpenResponses={(surveyId) => {
-                setResponseSurveyId(String(surveyId));
-                setResponseOffset(0);
-                open("responses");
-              }}
-            />
-          ) : null}
-          {tab === "responses" ? (
-            <ResponsesPanel
-              state={responses}
-              options={surveyOptions}
-              surveyId={responseSurveyId}
-              status={responseStatus}
-              onSurvey={(value) => {
-                setResponseSurveyId(value);
-                setResponseOffset(0);
-              }}
-              onStatus={(value) => {
-                setResponseStatus(value);
-                setResponseOffset(0);
-              }}
-              onOffset={setResponseOffset}
-              detail={detail}
-              detailId={detailId}
-              onDetail={setDetailId}
-            />
-          ) : null}
-          {tab === "users" ? (
-            <UsersPanel
-              state={users}
-              search={userSearchInput}
-              onSearch={setUserSearchInput}
-              onOffset={setUserOffset}
-            />
-          ) : null}
-        </div>
+      <div className="mt-4">
+        {tab === "summary" ? <SummaryPanel state={summary} /> : null}
+        {tab === "surveys" ? (
+          <SurveysPanel
+            state={surveys}
+            onOffset={setSurveyOffset}
+            onOpenResponses={(surveyId) => {
+              setResponseSurveyId(String(surveyId));
+              setResponseOffset(0);
+              open("responses");
+            }}
+          />
+        ) : null}
+        {tab === "responses" ? (
+          <ResponsesPanel
+            state={responses}
+            options={surveyOptions}
+            surveyId={responseSurveyId}
+            status={responseStatus}
+            onSurvey={(value) => {
+              setResponseSurveyId(value);
+              setResponseOffset(0);
+            }}
+            onStatus={(value) => {
+              setResponseStatus(value);
+              setResponseOffset(0);
+            }}
+            onOffset={setResponseOffset}
+            detail={detail}
+            detailId={detailId}
+            onDetail={setDetailId}
+          />
+        ) : null}
+        {tab === "users" ? (
+          <UsersPanel state={users} search={userSearchInput} onSearch={setUserSearchInput} onOffset={setUserOffset} />
+        ) : null}
+      </div>
 
-        <div className="toolbar mt-4 justify-end">
-          <button className="btn" onClick={onClose}>
-            关闭
-          </button>
-        </div>
+      <div className="toolbar mt-4 justify-end">
+        <button className="btn" onClick={onClose}>
+          关闭
+        </button>
+      </div>
     </Modal>
   );
 }

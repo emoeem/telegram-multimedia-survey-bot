@@ -38,7 +38,11 @@ export async function recordEndingUnlock(
 }
 
 /** 该参与者在某卷上已解锁的结局（并集读取）。 */
-export async function listUnlockedEndings(db: D1Database, participantHash: string, surveyId: number): Promise<EndingUnlockRow[]> {
+export async function listUnlockedEndings(
+  db: D1Database,
+  participantHash: string,
+  surveyId: number,
+): Promise<EndingUnlockRow[]> {
   const rows = await db
     .prepare(
       `SELECT result_type AS resultType, result_title AS title, unlocked_at AS unlockedAt

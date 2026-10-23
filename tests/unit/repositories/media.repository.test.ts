@@ -73,9 +73,10 @@ interface CapturedStatement {
  * Fake D1 that records every prepared statement and answers `.all()` with rows
  * derived from the bound ids, so a test can prove N ids produce one query.
  */
-function createCapturingDb(
-  answer: (sql: string, bound: unknown[]) => Array<Record<string, unknown>>,
-): { db: D1Database; statements: CapturedStatement[] } {
+function createCapturingDb(answer: (sql: string, bound: unknown[]) => Array<Record<string, unknown>>): {
+  db: D1Database;
+  statements: CapturedStatement[];
+} {
   const statements: CapturedStatement[] = [];
   const db = {
     prepare(sql: string) {
@@ -121,9 +122,7 @@ function mediaRow(id: number): Record<string, unknown> {
 
 describe("media repository batching", () => {
   it("loads many assets with one IN query per 90 ids", async () => {
-    const { db, statements } = createCapturingDb((_sql, bound) =>
-      (bound as number[]).map((id) => mediaRow(id)),
-    );
+    const { db, statements } = createCapturingDb((_sql, bound) => (bound as number[]).map((id) => mediaRow(id)));
 
     const assets = await getMediaAssetsByIds(db, [1, 2, 3]);
 
@@ -138,9 +137,7 @@ describe("media repository batching", () => {
   });
 
   it("deduplicates and drops invalid asset ids", async () => {
-    const { db, statements } = createCapturingDb((_sql, bound) =>
-      (bound as number[]).map((id) => mediaRow(id)),
-    );
+    const { db, statements } = createCapturingDb((_sql, bound) => (bound as number[]).map((id) => mediaRow(id)));
 
     await getMediaAssetsByIds(db, [5, 5, 0, -1, 7]);
 

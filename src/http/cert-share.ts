@@ -155,9 +155,7 @@ export function certShareChannel(env: CertShareEnv): number | null {
  * `env.DB` 缺省时（纯环境变量的单元测试、极简部署）跳过所有数据库档，
  * 退化成 {@link certShareChannel}，不会因为拿不到 DB 就静默不发。
  */
-export async function resolveCertShareChannel(
-  env: CertShareEnv,
-): Promise<ResolvedCertShareChannel | null> {
+export async function resolveCertShareChannel(env: CertShareEnv): Promise<ResolvedCertShareChannel | null> {
   if (isCertShareDisabled(env)) return null;
 
   const envChannel = parseChatId(env.CERT_SHARE_CHANNEL);
@@ -218,9 +216,7 @@ function captionTags(value: unknown): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const entry of value) {
-    const text = captionField(entry, "")
-      .replace(/^#+/, "")
-      .trim();
+    const text = captionField(entry, "").replace(/^#+/, "").trim();
     if (!text || text.length > TAG_MAX_CHARS) continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;
@@ -258,12 +254,7 @@ function captionTimestamp(now: Date): string {
   return `${text.replace(/\//g, "-")} (UTC+8)`;
 }
 
-function buildCaption(
-  meta: Record<string, unknown>,
-  sourceCount: number,
-  fingerprint: string,
-  now: Date,
-): string {
+function buildCaption(meta: Record<string, unknown>, sourceCount: number, fingerprint: string, now: Date): string {
   /* 第一行就是"这是谁的"——频道里认人靠它，所以放在最上面。 */
   const signer = captionField(meta.signer);
   const lines = ["🎴 认证卡生成器 · 新作品"];
@@ -351,10 +342,7 @@ export async function handleCertShare(
   }
 
   if (!isAppOrigin(request)) {
-    return Response.json(
-      { ok: false, code: "missing_origin", message: "请求未标明来自认证卡生成器" },
-      { status: 403 },
-    );
+    return Response.json({ ok: false, code: "missing_origin", message: "请求未标明来自认证卡生成器" }, { status: 403 });
   }
 
   if (env.CACHE) {

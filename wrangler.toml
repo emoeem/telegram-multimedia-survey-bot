@@ -69,22 +69,11 @@ COMMUNITY_GROUP_URL = "https://t.me/+qf4zUA8SvNEwNWFh"
 # 由 cn-relay 反代到本站；国内可直接打开。
 # 想改回 Telegram 机器人就把值换成 https://t.me/tougaojiqirbot。
 SUBMISSION_BOT_URL = "https://emoemok.top/submissions?tab=anon"
-# 免登录投稿的后端是一个独立部署的 Worker（/api/submit/*：表单定义、收件箱、
-# 回复）。不配这一项，那些接口只在中继域名 emoemok.top 上存在（cn-relay 的
-# vercel.json 里有专门的两条 routes），本域上会静默回落成 SPA 的 index.html。
-# 投稿中心的「免登录投稿」页签依赖它，必须配。
-SUBMISSION_BOT_API_ORIGIN = "https://submission-bot.3353745917.workers.dev"
-# 网页投稿审核的共享密钥，**必须和投稿机器人 Worker 上的 REVIEW_API_SECRET 完全
-# 相同**。浏览器永远拿不到它：后台先验证管理员会话，再由本站 Worker 带上
-# `x-review-secret` 转发给 /api/admin/review/*（见 src/http/admin/web-submission.ts）。
-#
-# 没配 = 后台的「网页投稿」页面明确报 503，而不是退化成"无鉴权也能转发"。要配就
-# 两边一起配，只配一边的表现是 401/503（对方的密钥为空或对不上）。
-#
-# 用 secret 存，不要写进这个文件：
-#   npx wrangler secret put WEB_REVIEW_SECRET    # 本站（管理员账号 ed1957…）
-#   # 投稿机器人那边（另一个 Cloudflare 账号 fb8f4c…）：
-#   #   REVIEW_API_SECRET 必须填同一个值，见 /home/emo/code/bot/README.md
+# 免登录投稿(/api/submit/*)已并轨进本 Worker(见 src/http/submit-api.ts 与
+# migration 0088):表单定义、提交、收件箱、管理端审核全部走本站 D1。
+# 历史变量 SUBMISSION_BOT_API_ORIGIN / WEB_REVIEW_SECRET 随旧 submission-bot
+# Worker 一起退役;保留 SUBMISSION_BOT_LEGACY_TOKEN(可选,secret)只为读出
+# 迁移前旧投稿的 Telegram 附件(只读 getFile,无写能力)。
 # Canonical origin for user-facing links (Telegram buttons, admin login deep
 # link, og: metadata). The webhook deliberately keeps arriving on the
 # workers.dev hostname, so without this pin the bot would keep handing users

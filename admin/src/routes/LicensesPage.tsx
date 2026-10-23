@@ -352,10 +352,14 @@ export function LicensesPage() {
             <tbody>
               {(releases.data?.items ?? []).map((release) => (
                 <tr key={release.version}>
-                  <td data-label="版本" className="font-mono text-sm">{release.version}</td>
+                  <td data-label="版本" className="font-mono text-sm">
+                    {release.version}
+                  </td>
                   <td data-label="渠道">{release.channel}</td>
                   <td data-label="发布时间">{formatDateTime(release.releasedAt)}</td>
-                  <td data-label="说明" className="text-[var(--color-muted)]">{release.notes ?? "—"}</td>
+                  <td data-label="说明" className="text-[var(--color-muted)]">
+                    {release.notes ?? "—"}
+                  </td>
                 </tr>
               ))}
               {!(releases.data?.items ?? []).length ? (
@@ -492,8 +496,8 @@ export function LicensesPage() {
           </div>
           {createdInvite ? (
             <p className="mt-3 rounded-lg border border-[var(--color-edge)] bg-[var(--surface-2)] px-3 py-2 text-sm">
-              新邀请码：<strong className="font-mono text-base">{createdInvite}</strong> —— 发给她/他，让对方在机器人里发{" "}
-              <code>/invite {createdInvite}</code>
+              新邀请码：<strong className="font-mono text-base">{createdInvite}</strong> ——
+              发给她/他，让对方在机器人里发 <code>/invite {createdInvite}</code>
             </p>
           ) : null}
           {(invites.data?.items ?? []).length > 0 ? (
@@ -512,7 +516,9 @@ export function LicensesPage() {
                 <tbody>
                   {(invites.data?.items ?? []).map((invite) => (
                     <tr key={invite.code}>
-                      <td data-label="邀请码" className="font-mono">{invite.code}</td>
+                      <td data-label="邀请码" className="font-mono">
+                        {invite.code}
+                      </td>
                       <td data-label="体验天数">{invite.days} 天</td>
                       <td data-label="已用/可用">
                         {invite.usedCount}/{invite.maxUses}

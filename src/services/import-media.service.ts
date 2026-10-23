@@ -21,7 +21,10 @@ function isMicrosoftMediaHost(host: string): boolean {
  * with small D1 rows and are served through the normal media pipeline.
  * Oversized or unfetchable payloads fall back to their original form.
  */
-export function createImportMediaResolver(env: { MEDIA_KV: KVNamespace; MEDIA?: R2Bucket | undefined }): ImportedMediaResolver {
+export function createImportMediaResolver(env: {
+  MEDIA_KV: KVNamespace;
+  MEDIA?: R2Bucket | undefined;
+}): ImportedMediaResolver {
   const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   return async (media: ImportedMedia) => {
     if (media.url?.startsWith("data:")) {

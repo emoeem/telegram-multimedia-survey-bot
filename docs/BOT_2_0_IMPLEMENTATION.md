@@ -101,12 +101,12 @@ POST /telegram/webhook
 
 构建产物（`pnpm build:admin`，vite 8）：
 
-| chunk | raw | gzip | 说明 |
-| --- | --- | --- | --- |
-| `main-*.js` | 110.96 kB | **36.41 kB** | 初始 JS（管理端） |
-| `esm-*.js`（ECharts） | 1,133.79 kB | 376.49 kB | 懒加载，初始请求不包含 |
-| `survey-*.js` | 145.39 kB | 42.64 kB | 问卷/试用/广场入口 |
-| `pwa-*.js`（共享运行时/react-dom） | 194.01 kB | 61.89 kB | 两个入口共享 |
+| chunk                              | raw         | gzip         | 说明                   |
+| ---------------------------------- | ----------- | ------------ | ---------------------- |
+| `main-*.js`                        | 110.96 kB   | **36.41 kB** | 初始 JS（管理端）      |
+| `esm-*.js`（ECharts）              | 1,133.79 kB | 376.49 kB    | 懒加载，初始请求不包含 |
+| `survey-*.js`                      | 145.39 kB   | 42.64 kB     | 问卷/试用/广场入口     |
+| `pwa-*.js`（共享运行时/react-dom） | 194.01 kB   | 61.89 kB     | 两个入口共享           |
 
 初始管理端加载为 `main + react + pwa`（≈313 kB raw / ≈101 kB gzip），
 相比拆分前单包 ≈1.54 MB / 490 KB gzip 明显下降。

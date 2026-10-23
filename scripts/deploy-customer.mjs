@@ -802,7 +802,15 @@ async function setBotCommands(botToken, dryRun) {
   }
 }
 
-async function registerCustomerDeployment({ licenseServerUrl, licenseKey, installationId, workerName, workerUrl, remoteAccessSecret, dryRun }) {
+async function registerCustomerDeployment({
+  licenseServerUrl,
+  licenseKey,
+  installationId,
+  workerName,
+  workerUrl,
+  remoteAccessSecret,
+  dryRun,
+}) {
   if (dryRun || !licenseKey) return;
   const response = await fetch(`${licenseServerUrl.replace(/\/+$/, "")}/api/control/customer/heartbeat`, {
     method: "POST",
@@ -1086,8 +1094,7 @@ async function updateDeployment(args, values) {
   // Prefer explicit flags, then the account recorded at deploy time. Reading
   // only the environment meant a runner updating a cross-account customer
   // silently deployed it into the VENDOR's account instead.
-  const accountId =
-    values["account-id"]?.trim() || manifest.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || "";
+  const accountId = values["account-id"]?.trim() || manifest.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || "";
   const apiToken = values["api-token"]?.trim() || process.env.CLOUDFLARE_API_TOKEN || "";
   if (apiToken) process.env.CLOUDFLARE_API_TOKEN = apiToken;
   if (accountId) process.env.CLOUDFLARE_ACCOUNT_ID = accountId;

@@ -6,19 +6,60 @@ import {
   isWebSubmissionAdminPath,
   WEB_SUBMISSION_PREFIX,
 } from "../../../src/http/admin/web-submission";
+import { createSqliteD1, sqliteD1Available } from "../../helpers/sqlite-d1";
 
 /**
- * 后台审核网页投稿的代理层。
+ * 后台审核网页投稿 —— 并轨后的**本地实现**(数据在本站 D1)。
  *
- * 它存在的意义是**两把钥匙分开**：浏览器只持管理员会话，投稿机器人只认
- * 共享密钥。所以这里要钉住的不是"能不能转发"，而是几条边界：
- *
- *  - 没配密钥时不能退化成"不带头也转发"（那等于把对方的审核接口挂在一个
- *    只靠本站会话保护的位置上）；
- *  - 只有管理员能走（创作者试用会话看得见 /admin，但不该能往公开频道发帖）；
- *  - 路径必须走白名单，不能把用户给的 suffix 直接拼到上游（`../webhook/<secret>`
- *    这类会打到别的地方）。
+ * 要钉住的边界从「转发是否安全」换成了「状态机与数据是否正确」:
+ *  - 只有管理员能进(试用会话看得见 /admin,但不能审稿);
+ *  - 路径白名单仍在(防路径穿越/未知动作);
+ *  - approve 是 CAS:并发双击只有一次生效,已发布的不能驳回;
+ *  - reject/approve 都会给投稿者线程留言(收件箱的未读数靠它);
+ *  - 附件的 inline/attachment 语义(photo 内联,document 强制下载,防 XSS)。
+ * 真库跑:这些行为全是 SQL 状态迁移,mock 钉不住。
  */
+
+const SCHEMA = `
+CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT, updated_by INTEGER, updated_at TEXT);
+CREATE TABLE web_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  viewer_token TEXT, email TEXT, nickname TEXT, ip TEXT,
+  template_id TEXT NOT NULL DEFAULT 'default',
+  data TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+  flags TEXT, content_hash TEXT, publish_chat_id TEXT, publish_message_id INTEGER,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, published_at INTEGER
+);
+CREATE TABLE web_submission_threads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL, direction TEXT NOT NULL, text TEXT NOT NULL,
+  seen_by_author INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+);
+CREATE TABLE web_submission_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL, telegram_chat_id TEXT, telegram_message_id INTEGER,
+  author_name TEXT, text TEXT, kind TEXT NOT NULL DEFAULT 'user', parent_author TEXT, created_at INTEGER NOT NULL
+);
+CREATE TABLE web_rate_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL);
+CREATE TABLE media_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_scope TEXT NOT NULL, media_type TEXT NOT NULL,
+  telegram_file_id TEXT, telegram_file_unique_id TEXT, url TEXT,
+  storage_kind TEXT, storage_key TEXT, expires_at TEXT,
+  mime_type TEXT, file_name TEXT, file_size INTEGER,
+  width INTEGER, height INTEGER, duration INTEGER, r2_key TEXT,
+  created_at TEXT, updated_at TEXT
+);
+`;
+
+function makeEnv(): Env {
+  const db = createSqliteD1(SCHEMA);
+  return {
+    DB: db,
+    BOT_TOKEN: "test-token",
+    WEBHOOK_SECRET: "webhook-secret",
+  } as unknown as Env;
+}
 
 function ctx(isAdmin = true) {
   return {
@@ -28,17 +69,31 @@ function ctx(isAdmin = true) {
   };
 }
 
-function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    SUBMISSION_BOT_API_ORIGIN: "https://bot.example.com",
-    WEB_REVIEW_SECRET: "shared-secret",
-    ...overrides,
-  } as Env;
-}
-
 function req(path: string, init: RequestInit = {}): Request {
   return new Request(`https://site.example${path}`, init);
 }
+
+/** 种一条投稿;data 覆盖默认模板的关键字段。 */
+async function seedSubmission(
+  env: Env,
+  overrides: Partial<{ status: string; viewer: string; data: Record<string, unknown> }> = {},
+): Promise<number> {
+  const data = {
+    category: "文字分享",
+    body: "正文内容",
+    author: "匿名投稿",
+    ...(overrides.data ?? {}),
+  };
+  const result = await env.DB.prepare(
+    `INSERT INTO web_submissions (viewer_token, email, nickname, ip, data, status, created_at, updated_at)
+       VALUES (?, 'a@b.c', '测试投稿者', '127.0.0.1', ?, ?, strftime('%s','now'), strftime('%s','now'))`,
+  )
+    .bind(overrides.viewer ?? "abcdef0123456789", JSON.stringify(data), overrides.status ?? "pending")
+    .run();
+  return Number(result.meta?.last_row_id ?? 0);
+}
+
+const describeIf = sqliteD1Available ? describe : describe.skip;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -51,250 +106,292 @@ describe("路径归属", () => {
     expect(isWebSubmissionAdminPath("/api/admin/web-submissions/list")).toBe(true);
   });
 
-  it("不吞金币投稿（/api/admin/submissions）", () => {
-    /* 只差一个 web-：那条属于本站 D1，被代理走会让「金币经济 · 投稿管理」失效。 */
+  it("不吞金币投稿(/api/admin/submissions)", () => {
     expect(isWebSubmissionAdminPath("/api/admin/submissions")).toBe(false);
     expect(isWebSubmissionAdminPath("/api/admin/submissions/12")).toBe(false);
   });
 });
 
-describe("鉴权与 fail-closed", () => {
-  it("非管理员直接 403，不发起任何上游请求", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+describeIf("鉴权与白名单", () => {
+  it("非管理员 403,不触库", async () => {
+    const env = makeEnv();
     const url = new URL("https://site.example/api/admin/web-submissions/list");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx(false));
+    const response = await handleWebSubmissionAdmin(req(url.pathname), url, env, ctx(false));
     expect(response?.status).toBe(403);
-    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("没配 WEB_REVIEW_SECRET 时 503，而不是放行", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-    const url = new URL("https://site.example/api/admin/web-submissions/list");
-    const response = await handleWebSubmissionAdmin(
-      req(url.pathname),
-      url,
-      makeEnv({ WEB_REVIEW_SECRET: "" }),
-      ctx(),
-    );
-    expect(response?.status).toBe(503);
-    expect(fetchSpy).not.toHaveBeenCalled();
+  it("未知动作 404;前缀本身(无动作)也 404", async () => {
+    const env = makeEnv();
+    const bad = new URL("https://site.example/api/admin/web-submissions/drop-tables");
+    expect((await handleWebSubmissionAdmin(req(bad.pathname), bad, env, ctx()))?.status).toBe(404);
+    const bare = new URL("https://site.example/api/admin/web-submissions");
+    expect((await handleWebSubmissionAdmin(req(bare.pathname), bare, env, ctx()))?.status).toBe(404);
   });
 
-  it("没配投稿机器人源站时 503", async () => {
-    const url = new URL("https://site.example/api/admin/web-submissions/list");
-    const response = await handleWebSubmissionAdmin(
-      req(url.pathname),
-      url,
-      makeEnv({ SUBMISSION_BOT_API_ORIGIN: "" }),
-      ctx(),
-    );
-    expect(response?.status).toBe(503);
-  });
-});
-
-describe("路径白名单", () => {
-  it("未知动作 404", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-    const url = new URL("https://site.example/api/admin/web-submissions/drop-tables");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response?.status).toBe(404);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("路径穿越在 URL 规范化阶段就被消掉，根本进不了本模块", async () => {
-    /* 这里有两层，缺一不可：
-     *   1) `new URL()` 把 `/api/admin/web-submissions/../webhook/abc` 规范化成
-     *      `/api/admin/webhook/abc`，所以 `isWebSubmissionAdminPath` 直接不认；
-     *   2) 就算它认了，upstreamPath() 用的是白名单，不会把 suffix 拼过去。
-     *
-     * 第 2 层是真正兜底的那层 —— `Wrangler` 在某些配置下会把原始路径放进
-     * `request.url`，那时第 1 层不一定发生。所以两层都要留着。 */
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+  it("URL 规范化把穿越路径消掉后,本模块直接不认(返回 null)", async () => {
+    const env = makeEnv();
     const url = new URL("https://site.example/api/admin/web-submissions/../webhook/abc");
     expect(url.pathname).toBe("/api/admin/webhook/abc");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("同前缀但不在白名单里的动作仍然 404（第二层兜底）", async () => {
-    /* 直接构造一个"规范化后仍是本模块前缀、但动作非法"的路径，验证白名单
-     * 本身在工作 —— 不依赖 URL 规范化那一层。 */
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-    const url = new URL("https://site.example/api/admin/web-submissions/webhook/abc");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response?.status).toBe(404);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("前缀本身（没有动作）也是 404", async () => {
-    const url = new URL("https://site.example/api/admin/web-submissions");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response?.status).toBe(404);
+    expect(await handleWebSubmissionAdmin(req(url.pathname), url, env, ctx())).toBeNull();
   });
 });
 
-describe("转发行为", () => {
-  it("带上共享密钥、转发访客 IP，但绝不透传 cookie", async () => {
-    let captured: { url: string; init: RequestInit } | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string, init: RequestInit) => {
-        captured = { url: String(input), init };
-        return Response.json({ ok: true, items: [] });
-      }),
-    );
-
-    const url = new URL("https://site.example/api/admin/web-submissions/list?status=pending&limit=20");
-    const response = await handleWebSubmissionAdmin(
-      req(url.pathname + url.search, {
-        headers: {
-          cookie: "admin_session=should-not-leak",
-          "cf-connecting-ip": "203.0.113.9",
-        },
-      }),
-      url,
-      makeEnv(),
-      ctx(),
-    );
-
-    expect(response?.status).toBe(200);
-    expect(captured).not.toBeNull();
-    const { url: upstreamUrl, init } = captured!;
-    expect(upstreamUrl).toBe("https://bot.example.com/api/admin/review/list?status=pending&limit=20");
-
-    const headers = init.headers as Headers;
-    expect(headers.get("x-review-secret")).toBe("shared-secret");
-    expect(headers.get("x-forwarded-for")).toBe("203.0.113.9");
-    expect(headers.get("cookie")).toBeNull();
+describeIf("count 与 list", () => {
+  it("count 按状态分桶", async () => {
+    const env = makeEnv();
+    await seedSubmission(env);
+    await seedSubmission(env, { status: "published" });
+    const url = new URL("https://site.example/api/admin/web-submissions/count");
+    const response = await handleWebSubmissionAdmin(req(url.pathname), url, env, ctx());
+    const body = (await response!.json()) as { ok: boolean; pending: number; total: number };
+    expect(body.ok).toBe(true);
+    expect(body.pending).toBe(1);
+    expect(body.total).toBe(2);
   });
 
-  it("POST 的动作带 body 转发过去", async () => {
-    let method = "";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_input: string, init: RequestInit) => {
-        method = String(init.method);
-        return Response.json({ ok: true });
-      }),
-    );
+  it("list 只回摘要(preview 截断),不回整段正文", async () => {
+    const env = makeEnv();
+    await seedSubmission(env, { data: { body: "长".repeat(400) } });
+    const url = new URL("https://site.example/api/admin/web-submissions/list?status=pending");
+    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, env, ctx());
+    const body = (await response!.json()) as {
+      items: Array<{ preview: string; email: string; attachments: unknown[] }>;
+    };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.preview.length).toBeLessThanOrEqual(160);
+    expect(body.items[0]!.email).toBe("a@b.c");
+  });
+
+  it("detail 摊平附件与状态", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, {
+      data: { photos: [{ kind: "photo", mediaAssetId: 1, name: "a.png" }] },
+    });
+    const url = new URL(`https://site.example/api/admin/web-submissions/detail?id=${id}`);
+    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, env, ctx());
+    const body = (await response!.json()) as { submission: { attachments: Array<{ kind: string }>; text: string } };
+    expect(body.submission.attachments).toEqual([{ kind: "photo", name: "a.png" }]);
+    expect(body.submission.text).toContain("正文内容");
+    expect(body.submission.text).toContain("附件 1 个");
+  });
+});
+
+describeIf("approve 状态机", () => {
+  it("pending → published,并给投稿者线程留言", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env);
     const url = new URL("https://site.example/api/admin/web-submissions/approve");
     const response = await handleWebSubmissionAdmin(
-      req(url.pathname, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: 12 }),
-      }),
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id }) }),
       url,
-      makeEnv(),
+      env,
       ctx(),
     );
     expect(response?.status).toBe(200);
-    expect(method).toBe("POST");
+    const row = await env.DB.prepare("SELECT status, published_at FROM web_submissions WHERE id = ?")
+      .bind(id)
+      .first<{ status: string; published_at: number }>();
+    expect(row?.status).toBe("published");
+    expect(Number(row?.published_at)).toBeGreaterThan(0);
+    const thread = await env.DB.prepare("SELECT direction, text FROM web_submission_threads WHERE submission_id = ?")
+      .bind(id)
+      .first<{ direction: string; text: string }>();
+    expect(thread?.direction).toBe("to_author");
+    expect(thread?.text).toContain("已通过");
   });
 
-  it("上游不可达时 502，不把异常抛给调用方", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("network down");
-      }),
+  it("已发布的再点通过 → 409 already_published", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, { status: "published" });
+    const url = new URL("https://site.example/api/admin/web-submissions/approve");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id }) }),
+      url,
+      env,
+      ctx(),
     );
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const url = new URL("https://site.example/api/admin/web-submissions/list");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response?.status).toBe(502);
-  });
-
-  it("上游返回 HTML 错误页时转成结构化 502，而不是让它去炸 JSON.parse", async () => {
-    /* Cloudflare 的 5xx 拦截页就是 HTML。原样透传的话前端 response.json()
-     * 会抛 SyntaxError，界面只剩「加载失败」，看不到任何可行动的信息。 */
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("<html>bad gateway</html>", { headers: { "content-type": "text/html" } })),
-    );
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const url = new URL("https://site.example/api/admin/web-submissions/list");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response?.status).toBe(502);
+    expect(response?.status).toBe(409);
     const body = (await response!.json()) as { code: string };
-    expect(body.code).toBe("review_service_bad_response");
+    expect(body.code).toBe("already_published");
   });
 
-  it("附件字节原样透传，不会被「非 JSON 一律转错误」那条规则吃掉", async () => {
-    /* 这条最容易写错：图片本来就不是 JSON。如果 media 落进下面那个归一化分支，
-     * 每一次缩略图请求都会变成 502，前端只能显示「预览失败」。 */
-    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-    let capturedUrl = "";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string) => {
-        capturedUrl = String(input);
-        return new Response(bytes, {
-          status: 200,
-          headers: {
-            "content-type": "image/jpeg",
-            "content-length": String(bytes.length),
-            "x-content-type-options": "nosniff",
-          },
-        });
-      }),
+  it("rejected 的稿件可以重新通过(failed 语义并入)", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, { status: "failed" });
+    const url = new URL("https://site.example/api/admin/web-submissions/approve");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id }) }),
+      url,
+      env,
+      ctx(),
     );
-
-    const url = new URL("https://site.example/api/admin/web-submissions/media?submission=24&index=0");
-    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, makeEnv(), ctx());
-
-    expect(capturedUrl).toBe("https://bot.example.com/api/admin/review/media?submission=24&index=0");
     expect(response?.status).toBe(200);
-    expect(response!.headers.get("content-type")).toBe("image/jpeg");
-    expect(response!.headers.get("content-length")).toBe(String(bytes.length));
-    expect(response!.headers.get("x-content-type-options")).toBe("nosniff");
-    const received = new Uint8Array(await response!.arrayBuffer());
-    expect(Array.from(received)).toEqual(Array.from(bytes));
   });
 
-  it("附件绝不能被共享缓存：上游声明 private，转发层也不许改回 public", async () => {
+  it("频道推送失败不回滚状态", async () => {
+    const env = makeEnv();
+    await env.DB.prepare(
+      "INSERT INTO system_settings (key, value, updated_by, updated_at) VALUES ('web_submit_form', ?, NULL, '')",
+    )
+      .bind(JSON.stringify({ publishChannelId: "-100123" }))
+      .run();
+    const id = await seedSubmission(env);
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(new Uint8Array([1, 2]), {
-            status: 200,
-            headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" },
-          }),
-      ),
+      vi.fn(async () => new Response("<html>", { status: 500 })),
     );
-    const url = new URL("https://site.example/api/admin/web-submissions/media?submission=24&index=1");
-    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, makeEnv(), ctx());
-    expect(response!.headers.get("cache-control")).toBe("private, max-age=300");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = new URL("https://site.example/api/admin/web-submissions/approve");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id }) }),
+      url,
+      env,
+      ctx(),
+    );
+    expect(response?.status).toBe(200);
+    const row = await env.DB.prepare("SELECT status FROM web_submissions WHERE id = ?")
+      .bind(id)
+      .first<{ status: string }>();
+    expect(row?.status).toBe("published");
+  });
+});
+
+describeIf("reject 状态机", () => {
+  it("pending → rejected,理由写进线程", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env);
+    const url = new URL("https://site.example/api/admin/web-submissions/reject");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id, reason: "内容与主题无关" }) }),
+      url,
+      env,
+      ctx(),
+    );
+    expect(response?.status).toBe(200);
+    const row = await env.DB.prepare("SELECT status FROM web_submissions WHERE id = ?")
+      .bind(id)
+      .first<{ status: string }>();
+    expect(row?.status).toBe("rejected");
+    const thread = await env.DB.prepare("SELECT text FROM web_submission_threads WHERE submission_id = ?")
+      .bind(id)
+      .first<{ text: string }>();
+    expect(thread?.text).toContain("内容与主题无关");
   });
 
-  it("附件上游失败时把它的诊断带出来，而不是统一 502", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ ok: false, error: "附件超过 20MB，后台预览不了，请到审核群查看" }), {
-            status: 413,
-            headers: { "content-type": "application/json" },
-          }),
-      ),
+  it("已发布的不能直接驳回(409)", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, { status: "published" });
+    const url = new URL("https://site.example/api/admin/web-submissions/reject");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id, reason: "x" }) }),
+      url,
+      env,
+      ctx(),
     );
-    const url = new URL("https://site.example/api/admin/web-submissions/media?submission=24&index=0");
-    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, makeEnv(), ctx());
-    expect(response?.status).toBe(413);
-    const body = (await response!.json()) as { message: string };
-    expect(body.message).toContain("审核群");
+    expect(response?.status).toBe(409);
   });
 
-  it("不属于本模块的路径返回 null，交回给后续路由", async () => {
-    const url = new URL("https://site.example/api/admin/coins/overview");
-    const response = await handleWebSubmissionAdmin(req(url.pathname), url, makeEnv(), ctx());
-    expect(response).toBeNull();
+  it("理由超 300 字 → 422", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env);
+    const url = new URL("https://site.example/api/admin/web-submissions/reject");
+    const response = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id, reason: "长".repeat(301) }) }),
+      url,
+      env,
+      ctx(),
+    );
+    expect(response?.status).toBe(422);
+  });
+});
+
+describeIf("reply 与 media", () => {
+  it("reply 落线程并限 800 字", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env);
+    const url = new URL("https://site.example/api/admin/web-submissions/reply");
+    const ok = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id, text: "请补充出处" }) }),
+      url,
+      env,
+      ctx(),
+    );
+    expect(ok?.status).toBe(200);
+    const tooLong = await handleWebSubmissionAdmin(
+      req(url.pathname, { method: "POST", body: JSON.stringify({ id, text: "长".repeat(801) }) }),
+      url,
+      env,
+      ctx(),
+    );
+    expect(tooLong?.status).toBe(422);
+  });
+
+  it("photo 内联、document 强制下载(防存储型 XSS)", async () => {
+    const env = makeEnv();
+    /* 直接往 MEDIA store 放两个字节块,再挂 media_assets。 */
+    await env.DB.prepare(
+      "INSERT INTO media_assets (asset_scope, media_type, storage_kind, storage_key, mime_type, file_name, file_size, created_at, updated_at) VALUES ('web_submission', 'photo', 'temporary', 'k1', 'image/png', 'p.png', 3, '', '')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO media_assets (asset_scope, media_type, storage_kind, storage_key, mime_type, file_name, file_size, created_at, updated_at) VALUES ('web_submission', 'document', 'temporary', 'k2', 'application/octet-stream', 'x.bin', 3, '', '')",
+    ).run();
+    const photoAsset = await env.DB.prepare("SELECT id FROM media_assets WHERE storage_key = 'k1'").first<{
+      id: number;
+    }>();
+    const docAsset = await env.DB.prepare("SELECT id FROM media_assets WHERE storage_key = 'k2'").first<{
+      id: number;
+    }>();
+    const id = await seedSubmission(env, {
+      data: {
+        photos: [
+          { kind: "photo", mediaAssetId: photoAsset!.id, name: "p.png" },
+          { kind: "document", mediaAssetId: docAsset!.id, name: "x.bin" },
+        ],
+      },
+    });
+    /* MEDIA_KV stub:两个 key 都能读。 */
+    (env as { MEDIA_KV: KVNamespace }).MEDIA_KV = {
+      get: vi.fn(async (key: string) => new Uint8Array([1, 2, 3])),
+    } as unknown as KVNamespace;
+
+    const photo = await handleWebSubmissionAdmin(
+      req(`/api/admin/web-submissions/media?submission=${id}&index=0`),
+      new URL(`https://site.example/api/admin/web-submissions/media?submission=${id}&index=0`),
+      env,
+      ctx(),
+    );
+    expect(photo?.status).toBe(200);
+    expect(photo!.headers.get("content-type")).toBe("image/png");
+    expect(photo!.headers.get("content-disposition")).toBeNull();
+    expect(photo!.headers.get("cache-control")).toBe("private, max-age=300");
+
+    const doc = await handleWebSubmissionAdmin(
+      req(`/api/admin/web-submissions/media?submission=${id}&index=1`),
+      new URL(`https://site.example/api/admin/web-submissions/media?submission=${id}&index=1`),
+      env,
+      ctx(),
+    );
+    expect(doc?.status).toBe(200);
+    expect(doc!.headers.get("content-disposition")).toContain("attachment");
+  });
+
+  it("旧迁移附件(legacy file_id)在未配 SUBMISSION_BOT_LEGACY_TOKEN 时 403", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, {
+      data: { photos: [{ kind: "photo", legacyFileId: "AAA", name: "old.png" }] },
+    });
+    const url = new URL(`https://site.example/api/admin/web-submissions/media?submission=${id}&index=0`);
+    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, env, ctx());
+    expect(response?.status).toBe(403);
+  });
+
+  it("迁移数据的旧键名 fileId 同样被归一成 legacy 引用(不配 token 时 403,而非 404)", async () => {
+    const env = makeEnv();
+    const id = await seedSubmission(env, {
+      data: { photos: [{ kind: "photo", fileId: "BBB", uniqueId: "u1", name: "old.jpg" }] },
+    });
+    const url = new URL(`https://site.example/api/admin/web-submissions/media?submission=${id}&index=0`);
+    const response = await handleWebSubmissionAdmin(req(url.pathname + url.search), url, env, ctx());
+    expect(response?.status).toBe(403);
   });
 });
