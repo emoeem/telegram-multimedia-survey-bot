@@ -1,6 +1,22 @@
 import type { SyntheticEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, ImagePlus, Palette, Pencil, Send, Users, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  EyeOff,
+  ImagePlus,
+  MessageCircle,
+  Palette,
+  Pencil,
+  PencilLine,
+  Send,
+  Target,
+  TreePine,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 import {
   loadGlobalPreset,
   saveGlobalPreset,
@@ -118,8 +134,9 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
     <article className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
       {payload ? (
         <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-[var(--survey-primary-soft)] px-2.5 py-0.5 text-[11px] font-bold text-[var(--survey-primary)]">
-            🎯 挑战晒卡
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-2.5 py-0.5 text-[11px] font-bold text-[var(--survey-primary)]">
+            <Target className="h-3 w-3" aria-hidden="true" />
+            挑战晒卡
           </span>
           <span
             className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${TRIAL_GRADE_CHIP[payload.grade] ?? TRIAL_GRADE_CHIP.C}`}
@@ -166,7 +183,8 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
           aria-expanded={open}
           className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--survey-muted)]"
         >
-          💬 {total}
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          {total}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
@@ -211,7 +229,19 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
                   : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
               }`}
             >
-              {anonymous ? "🎭 匿名" : "👤 署名"}
+              <span className="inline-flex items-center gap-1">
+                {anonymous ? (
+                  <>
+                    <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    匿名
+                  </>
+                ) : (
+                  <>
+                    <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+                    署名
+                  </>
+                )}
+              </span>
             </button>
             <input
               value={content}
@@ -687,7 +717,7 @@ export function PlazaScreen() {
     <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
       <div className="relative">
         <PageHeader
-          title="🏛 广场"
+          title="广场"
           subtitle="个人资料 · 树洞心里话"
           actions={
             <>
@@ -713,24 +743,28 @@ export function PlazaScreen() {
           }
           tabs={(
             [
-              { id: "profiles", label: "🧑 个人资料" },
-              { id: "treehole", label: "🌳 树洞" },
+              { id: "profiles", label: "个人资料", icon: Users },
+              { id: "treehole", label: "树洞", icon: TreePine },
             ] as const
-          ).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              aria-pressed={tab === item.id}
-              className={`min-h-11 flex-1 rounded-[var(--survey-button-radius)] border px-3 py-2 text-[13px] font-semibold transition-colors ${
-                tab === item.id
-                  ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                  : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          ).map((item) => {
+            const TabIcon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                aria-pressed={tab === item.id}
+                className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  tab === item.id
+                    ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                    : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
+                }`}
+              >
+                <TabIcon className="h-4 w-4" aria-hidden="true" />
+                {item.label}
+              </button>
+            );
+          })}
         />
 
         <main className="mx-auto max-w-xl px-5 pb-28 pt-4 lg:max-w-3xl">
@@ -808,7 +842,8 @@ export function PlazaScreen() {
               href={`/s/${profiles.surveyId}`}
               className="mb-4 flex items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-3 text-sm font-semibold text-[var(--survey-primary-content)] shadow-md"
             >
-              ✍️ 填写我的个人资料
+              <PencilLine className="h-4 w-4" aria-hidden="true" />
+              填写我的个人资料
             </a>
           ) : null}
           {activeFeed.error ? (
@@ -822,6 +857,23 @@ export function PlazaScreen() {
                 重新加载
               </button>
             </div>
+          ) : activeFeed.loading && activeFeed.items.length === 0 ? (
+            /* 首屏骨架：复刻信息流卡面（头像行 + 两行文字），替换原来的整块空白。 */
+            <div className="space-y-3" aria-busy="true" aria-label="正在加载内容">
+              {[0, 1].map((index) => (
+                <div
+                  key={index}
+                  className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-10 w-10 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                    <div className="h-3.5 w-1/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                  </div>
+                  <div className="mt-3 h-3 w-full animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                  <div className="mt-2 h-3 w-3/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                </div>
+              ))}
+            </div>
           ) : !activeFeed.loading && activeFeed.items.length === 0 ? (
             <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-8 text-center">
               <p className="text-sm font-medium text-[var(--survey-heading)]">
@@ -829,7 +881,7 @@ export function PlazaScreen() {
               </p>
               <p className="mt-1.5 text-xs text-[var(--survey-muted)]">
                 {tab === "treehole"
-                  ? "点击右下角 ✏️ 说出第一句心里话（可以匿名）。"
+                  ? "点击右下角按钮说出第一句心里话（可以匿名）。"
                   : profiles.surveyId
                     ? "填写一份个人介绍问卷，提交时选择「发布到个人画廊」，就会出现在这里。"
                     : "还没有人发布个人资料，先去逛逛树洞吧。"}
@@ -881,7 +933,7 @@ export function PlazaScreen() {
             />
             <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] shadow-[0_-12px_40px_-16px_rgba(15,23,42,.3)]">
               <div className="flex items-center justify-between">
-                <span className="text-[15px] font-semibold text-[var(--survey-heading)]">✏️ 投稿树洞</span>
+                <span className="text-[15px] font-semibold text-[var(--survey-heading)]">投稿树洞</span>
                 <button
                   type="button"
                   className="survey-icon-btn h-8 w-8"
@@ -947,23 +999,27 @@ export function PlazaScreen() {
                 <div className="flex gap-1.5">
                   {(
                     [
-                      { id: true, label: "🎭 匿名" },
-                      { id: false, label: "👤 署名" },
+                      { id: true, label: "匿名", icon: EyeOff },
+                      { id: false, label: "署名", icon: UserRound },
                     ] as const
-                  ).map((option) => (
-                    <button
-                      key={String(option.id)}
-                      type="button"
-                      onClick={() => setAnonymous(option.id)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                        anonymous === option.id
-                          ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
-                          : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                  ).map((option) => {
+                    const OptionIcon = option.icon;
+                    return (
+                      <button
+                        key={String(option.id)}
+                        type="button"
+                        onClick={() => setAnonymous(option.id)}
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${
+                          anonymous === option.id
+                            ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
+                            : "border-[var(--survey-card-border)] text-[var(--survey-muted)]"
+                        }`}
+                      >
+                        <OptionIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <span className="text-[11px] text-[var(--survey-muted)]">{content.trim().length}/500</span>
               </div>

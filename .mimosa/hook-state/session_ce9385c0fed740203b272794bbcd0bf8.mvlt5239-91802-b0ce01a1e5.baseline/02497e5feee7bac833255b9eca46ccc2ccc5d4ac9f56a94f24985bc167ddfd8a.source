@@ -1,0 +1,27 @@
+// End-to-end check against the user-reported live form: the multi-select
+// question must import as `multiple`, and the JSON must pass parseImportedSurvey.
+import { fetchMicrosoftFormsSurveyJson } from "../../../src/services/microsoft-forms.service";
+import { parseImportedSurvey } from "../../../src/services/import.service";
+
+const url = process.argv[2];
+const content = await fetchMicrosoftFormsSurveyJson(url);
+const parsed = parseImportedSurvey(content); // throws on validation issues
+
+const types = {};
+for (const question of parsed.questions) types[question.type] = (types[question.type] ?? 0) + 1;
+console.log("title:", parsed.title);
+console.log("question count:", parsed.questions.length);
+console.log("type distribution:", types);
+
+const multi = parsed.questions.filter((question) => question.type === "multiple");
+for (const question of multi) {
+  console.log(
+    `multi: "${question.title.slice(0, 30)}" options=${question.options.length} conditions=${JSON.stringify(
+      question.condition ?? null,
+    )}`,
+  );
+}
+const conditioned = parsed.questions.filter((question) => question.condition);
+console.log("questions with conditions:", conditioned.length);
+console.log("import warnings:", parsed.questions.flatMap((q) => q.warnings ?? []));
+console.log("OK");

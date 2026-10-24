@@ -1,0 +1,850 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const surveyRepositoryMocks = vi.hoisted(() => ({
+  createSurvey: vi.fn(),
+  deleteSurvey: vi.fn(),
+}));
+
+vi.mock("../../../src/db/repositories/survey.repository", () => ({
+  createSurvey: surveyRepositoryMocks.createSurvey,
+  deleteSurvey: surveyRepositoryMocks.deleteSurvey,
+}));
+
+import {
+  decodeDataUrl,
+  ImportValidationError,
+  parseImportedSurvey,
+  saveImportedSurvey,
+  type ImportedSurvey,
+  type ImportedMediaResolver,
+} from "../../../src/services/import.service";
+
+interface StatementMock {
+  sql: string;
+  bindings: unknown[];
+  bind: ReturnType<typeof vi.fn>;
+  run: ReturnType<typeof vi.fn>;
+}
+
+function createD1Mock(batchError?: Error): {
+  db: D1Database;
+  statements: StatementMock[];
+  batch: ReturnType<typeof vi.fn>;
+} {
+  const statements: StatementMock[] = [];
+  const prepare = vi.fn((sql: string) => {
+    const statement: StatementMock = {
+      sql,
+      bindings: [],
+      bind: vi.fn((...bindings: unknown[]) => {
+        statement.bindings = bindings;
+        return statement;
+      }),
+      run: vi.fn(async () => ({ success: true, meta: { last_row_id: 300 } })),
+    };
+    statements.push(statement);
+    return statement;
+  });
+  const batch = batchError
+    ? vi.fn(async () => {
+        throw batchError;
+      })
+    : vi.fn(async () => []);
+
+  return {
+    db: { prepare, batch } as unknown as D1Database,
+    statements,
+    batch,
+  };
+}
+
+function importedSurvey(): ImportedSurvey {
+  return {
+    title: "导入问卷",
+    questions: [
+      {
+        type: "single",
+        title: "请选择",
+        options: [
+          {
+            label: "选项一",
+            value: "选项一",
+            media: [
+              {
+                id: "option-image",
+                type: "photo",
+                source: "url",
+                url: "data:image/png;base64,YQ==",
+              },
+            ],
+          },
+          {
+            label: "选项二",
+            value: "选项二",
+            media: [],
+          },
+        ],
+        media: [
+          {
+            id: "question-image",
+            type: "photo",
+            source: "url",
+            url: "data:image/png;base64,Yg==",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("import service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    surveyRepositoryMocks.createSurvey.mockResolvedValue({
+      id: 41,
+      ownerId: 7,
+      title: "导入问卷",
+      status: "draft",
+    });
+  });
+
+  it("prefers option text and keeps question and option media", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "PDF 问卷",
+        questions: [
+          {
+            type: "single",
+            title: "请选择",
+            media: [
+              {
+                type: "photo",
+                source: "url",
+                url: "data:image/png;base64,YQ==",
+              },
+            ],
+            options: [
+              {
+                label: "A",
+                text: "实际选项正文",
+                value: "实际选项正文",
+                media: [
+                  {
+                    type: "audio",
+                    source: "url",
+                    url: "https://example.test/audio.mp3",
+                  },
+                ],
+              },
+              {
+                label: "B",
+                text: "第二个选项",
+                value: "第二个选项",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.options?.[0]?.label).toBe("实际选项正文");
+    expect(parsed.questions[0]?.media?.[0]?.type).toBe("photo");
+    expect(parsed.questions[0]?.options?.[0]?.media[0]?.type).toBe("audio");
+  });
+
+  it("repairs a choice containing only the Forms other field", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "PDF 问卷",
+          questions: [
+            {
+              id: "q1",
+              type: "single",
+              title: "补充信息",
+              required: true,
+              options: [
+                {
+                  id: "q1_o1",
+                  label: "1",
+                  text: "其他",
+                  value: "其他",
+                  media: [
+                    {
+                      type: "photo",
+                      source: "url",
+                      url: "data:image/png;base64,YQ==",
+                    },
+                  ],
+                },
+              ],
+              media: [],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("text");
+    expect(parsed.questions[0]?.options).toEqual([]);
+    expect(parsed.questions[0]?.media?.[0]?.type).toBe("photo");
+    expect(parsed.importWarnings).toEqual(["第 1 题“补充信息”只有“其他”填写项，已自动转为文本题"]);
+  });
+
+  it("keeps pages that only carry an id so PDF pagination survives", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "分页问卷",
+          pages: [
+            { id: "pdf_page_1", order: 1, pdf_pages: [1] },
+            { id: "pdf_page_2", order: 2, pdf_pages: [2] },
+          ],
+          questions: [
+            {
+              id: "q_1",
+              type: "text",
+              title: "第一题",
+              page_id: "pdf_page_1",
+            },
+            {
+              id: "q_2",
+              type: "text",
+              title: "第二题",
+              page_id: "pdf_page_2",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed.pages?.map((page) => page.id)).toEqual(["pdf_page_1", "pdf_page_2"]);
+    expect(parsed.questions.map((question) => question.pageId)).toEqual(["pdf_page_1", "pdf_page_2"]);
+  });
+
+  it("passes parser warnings and confidence through for the import preview", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "置信度问卷",
+          questions: [
+            {
+              id: "q_1",
+              type: "text",
+              title: "可疑题目",
+              type_confidence: 0.52,
+              required_confidence: 0.9,
+              warnings: ["选项疑似并入题干"],
+            },
+            {
+              id: "q_2",
+              type: "single",
+              title: "正常题目",
+              type_confidence: 0.98,
+              required_confidence: 0.95,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed.questions[0]?.confidence).toEqual({ type: 0.52, required: 0.9 });
+    expect(parsed.questions[0]?.warnings).toEqual(["选项疑似并入题干"]);
+    expect(parsed.questions[1]?.confidence).toEqual({ type: 0.98, required: 0.95 });
+    expect(parsed.questions[1]?.warnings).toBeUndefined();
+  });
+
+  it("decodes base64 and percent-encoded data URLs", () => {
+    expect(decodeDataUrl("data:image/png;base64,YQ==")).toEqual({
+      bytes: new Uint8Array([97]),
+      mimeType: "image/png",
+    });
+    expect(decodeDataUrl("data:text/plain,%E4%BD%A0%E5%A5%BD")).toEqual({
+      bytes: new TextEncoder().encode("你好"),
+      mimeType: "text/plain",
+    });
+    expect(decodeDataUrl("not-a-data-url")).toBeNull();
+  });
+
+  it("throws structured issues with question context on invalid imports", () => {
+    let caught: ImportValidationError | null = null;
+    try {
+      parseImportedSurvey(
+        JSON.stringify({
+          title: "坏问卷",
+          questions: [
+            {
+              id: "q1",
+              type: "text",
+              title: "",
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      caught = error as ImportValidationError;
+    }
+
+    expect(caught).toBeInstanceOf(ImportValidationError);
+    expect(caught?.issues.length).toBeGreaterThan(0);
+    expect(caught?.issues[0]).toMatchObject({
+      questionNumber: 1,
+      field: "title",
+    });
+  });
+
+  it("rejects relative media paths instead of storing broken links", () => {
+    let caught: ImportValidationError | null = null;
+    try {
+      parseImportedSurvey(
+        JSON.stringify({
+          title: "旧版 JSON",
+          questions: [
+            {
+              id: "q1",
+              type: "image",
+              title: "看图",
+              required: true,
+              media: [{ type: "photo", source: "url", url: "assets/img.png" }],
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      caught = error as ImportValidationError;
+    }
+
+    expect(caught).toBeInstanceOf(ImportValidationError);
+    expect(caught?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          questionNumber: 1,
+          field: "media.url",
+          message: expect.stringContaining("本地路径"),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts data: and https media URLs", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "媒体问卷",
+        questions: [
+          {
+            id: "q1",
+            type: "image",
+            title: "看图",
+            required: true,
+            media: [
+              {
+                type: "photo",
+                source: "url",
+                url: "data:image/png;base64,aGVsbG8=",
+              },
+            ],
+          },
+          {
+            id: "q2",
+            type: "text",
+            title: "文字",
+            options: [],
+          },
+        ],
+      }),
+    );
+    expect(parsed.questions[0]?.media?.[0]?.url?.startsWith("data:")).toBe(true);
+  });
+
+  it("parses cover media from unified survey JSON", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带封面",
+          cover: {
+            type: "photo",
+            source: "url",
+            url: "https://hive.forms.usercontent.microsoft/images/x/cover.jpg",
+            mime_type: "image/jpeg",
+            width: 800,
+          },
+          questions: [{ type: "text", title: "问题" }],
+        },
+      }),
+    );
+
+    expect(parsed.cover?.url).toBe("https://hive.forms.usercontent.microsoft/images/x/cover.jpg");
+    expect(parsed.cover?.mimeType).toBe("image/jpeg");
+    expect(parsed.cover?.width).toBe(800);
+  });
+
+  it("persists cover media and links it to the survey row", async () => {
+    const { db, statements } = createD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "带封面",
+      cover: {
+        type: "photo",
+        source: "url",
+        storageKind: "temporary",
+        storageKey: "media:import:cover-key",
+        mimeType: "image/jpeg",
+      },
+      questions: [{ type: "text", title: "问题" }],
+    });
+
+    const update = statements.find((statement) => statement.sql.includes("cover_media_id"));
+    expect(update).toBeDefined();
+    expect(update?.bindings).toEqual(expect.arrayContaining(["media:import:cover-key"]));
+  });
+
+  it("parses report template and theme from unified survey settings", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带模板的问卷",
+          settings: {
+            report_template_id: "magazine-dark",
+            theme: { background: "#111", primary_color: "#e11" },
+          },
+          questions: [{ type: "text", title: "问题" }],
+        },
+      }),
+    );
+
+    expect(parsed.settings?.reportTemplateId).toBe("magazine-dark");
+    expect(parsed.settings?.theme).toEqual({
+      background: "#111",
+      primary_color: "#e11",
+    });
+  });
+
+  it("binds report template and theme settings when creating the survey", async () => {
+    const { db } = createD1Mock();
+    const surveyId = await saveImportedSurvey(db, 7, {
+      title: "模板问卷",
+      settings: {
+        anonymous: false,
+        allowMultipleResponses: false,
+        maxResponsesPerUser: 1,
+        reportTemplateId: "magazine-dark",
+        theme: { background: "#111" },
+      },
+      questions: [{ type: "text", title: "问题" }],
+    });
+
+    expect(surveyId).toBe(41);
+    expect(surveyRepositoryMocks.createSurvey).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        reportTemplateId: "magazine-dark",
+        settingsJson: JSON.stringify({ theme: { background: "#111" } }),
+      }),
+    );
+  });
+
+  it("stores resolver-produced KV media with storage_key instead of url/r2", async () => {
+    const { db, statements } = createD1Mock();
+    const resolver: ImportedMediaResolver = async (media) => {
+      if (!media.url?.startsWith("data:")) return media;
+      return {
+        type: media.type,
+        source: "url",
+        storageKind: "temporary",
+        storageKey: "media:import:kv-1",
+        mimeType: media.mimeType ?? "image/png",
+        ...(media.fileName ? { fileName: media.fileName } : {}),
+        ...(media.width !== undefined ? { width: media.width } : {}),
+        ...(media.height !== undefined ? { height: media.height } : {}),
+        size: 3,
+      };
+    };
+
+    const surveyId = await saveImportedSurvey(
+      db,
+      7,
+      {
+        title: "KV 媒体问卷",
+        questions: [
+          {
+            type: "single",
+            title: "看图选择",
+            options: [
+              {
+                label: "A",
+                value: "A",
+                media: [
+                  {
+                    type: "photo",
+                    source: "url",
+                    url: "data:image/png;base64,YQ==",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      resolver,
+    );
+
+    expect(surveyId).toBe(41);
+    const mediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO media_assets"));
+    expect(mediaInsert?.sql).toContain("storage_key");
+    const rows = JSON.parse(String(mediaInsert?.bindings[2])) as Array<Record<string, unknown>>;
+    expect(rows[0]).toMatchObject({
+      storageKind: "temporary",
+      storageKey: "media:import:kv-1",
+      r2Key: null,
+      url: null,
+    });
+  });
+
+  it("splits two short options that PDF extraction joined with a line break", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "换行选项",
+        questions: [
+          {
+            type: "single",
+            title: "是否继续",
+            options: [{ label: "是\n还没有", value: "是\n还没有" }],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("single");
+    expect(parsed.questions[0]?.options?.map((option) => option.label)).toEqual(["是", "还没有"]);
+    expect(parsed.importWarnings).toEqual(["第 1 题“是否继续”检测到两个被换行合并的选项，已自动拆分"]);
+  });
+
+  it("converts an ambiguous long singleton option to text and preserves it", () => {
+    const longOption = `是
+这是被 PDF 识别到的长选项正文，不能按换行拆成多个选项。`;
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "长选项",
+        questions: [
+          {
+            type: "single",
+            title: "请回答",
+            options: [{ label: longOption, value: longOption }],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("text");
+    expect(parsed.questions[0]?.options).toEqual([]);
+    expect(parsed.questions[0]?.description).toContain("导入识别到的原选项内容：");
+    expect(parsed.questions[0]?.description).toContain("不能按换行拆成多个选项");
+    expect(parsed.importWarnings).toEqual(["第 1 题“请回答”可识别选项不足两个，已自动转为文本题，请检查题目"]);
+  });
+
+  it("converts a choice with no recognized options instead of rejecting the import", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        title: "缺少选项",
+        questions: [
+          {
+            type: "multiple",
+            title: "请选择",
+            options: [],
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.questions[0]?.type).toBe("text");
+    expect(parsed.questions[0]?.options).toEqual([]);
+    expect(parsed.importWarnings).toEqual(["第 1 题“请选择”可识别选项不足两个，已自动转为文本题，请检查题目"]);
+  });
+
+  it("saves a large import through a small batch of JSON1 statements", async () => {
+    const { db, statements, batch } = createD1Mock();
+    let activeResolvers = 0;
+    let maxActiveResolvers = 0;
+    const resolver = vi.fn(async (media: { id?: string }) => {
+      activeResolvers += 1;
+      maxActiveResolvers = Math.max(maxActiveResolvers, activeResolvers);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      activeResolvers -= 1;
+      return {
+        type: "photo" as const,
+        source: "telegram" as const,
+        telegramFileId: `telegram-${media.id}`,
+      };
+    });
+
+    const surveyId = await saveImportedSurvey(db, 7, importedSurvey(), resolver);
+
+    expect(surveyId).toBe(41);
+    expect(resolver).toHaveBeenCalledTimes(2);
+    expect(maxActiveResolvers).toBe(1);
+    expect(batch).toHaveBeenCalledOnce();
+    expect(statements).toHaveLength(5);
+    expect(statements.every((statement) => statement.sql.includes("json_each"))).toBe(true);
+    expect(surveyRepositoryMocks.deleteSurvey).not.toHaveBeenCalled();
+  });
+
+  it("removes the partial survey when the batch fails", async () => {
+    const { db } = createD1Mock(new Error("D1 batch failed"));
+
+    await expect(
+      saveImportedSurvey(db, 7, {
+        title: "失败导入",
+        questions: [
+          {
+            type: "text",
+            title: "问题",
+            options: [],
+            media: [],
+          },
+        ],
+      }),
+    ).rejects.toThrow("D1 batch failed");
+
+    expect(surveyRepositoryMocks.deleteSurvey).toHaveBeenCalledWith(db, 41);
+  });
+
+  it("persists URL media and page structure without a resolver", async () => {
+    const { db, statements, batch } = createD1Mock();
+    const surveyId = await saveImportedSurvey(db, 7, {
+      title: "带分页问卷",
+      pages: [
+        { id: "cover-page", title: "第一页", description: "开始" },
+        { id: "main-page", title: "主体" },
+      ],
+      questions: [
+        {
+          type: "single",
+          title: "请选择",
+          pageId: "cover-page",
+          options: [
+            { label: "A", value: "A", media: [] },
+            {
+              label: "B",
+              value: "B",
+              media: [
+                {
+                  id: "b-media",
+                  type: "photo",
+                  source: "url",
+                  url: "https://example.com/b.png",
+                  mimeType: "image/png",
+                },
+              ],
+            },
+          ],
+          media: [
+            {
+              id: "q-media",
+              type: "photo",
+              source: "url",
+              url: "https://example.com/q.png",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(surveyId).toBe(41);
+
+    const pageInsert = statements.find((statement) => statement.sql.includes("INSERT INTO survey_pages"));
+    expect(pageInsert).toBeDefined();
+    expect(pageInsert?.bindings.slice(1, 4)).toEqual(["第一页", "开始", 0]);
+
+    const questionInsert = statements.find((statement) => statement.sql.includes("INSERT INTO survey_questions"));
+    expect(questionInsert?.sql).toContain("page_id");
+
+    const mediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO media_assets"));
+    expect(mediaInsert?.sql).toContain("url");
+    const mediaBindings = JSON.parse(String(mediaInsert?.bindings[2])) as Array<Record<string, unknown>>;
+    expect(mediaBindings).toHaveLength(2);
+    expect(mediaBindings.map((row) => row.url)).toEqual(["https://example.com/q.png", "https://example.com/b.png"]);
+
+    const questionMediaInsert = statements.find((statement) => statement.sql.includes("INSERT INTO question_media"));
+    expect(questionMediaInsert?.sql).toContain("mediaKey");
+    expect(JSON.parse(String(questionMediaInsert?.bindings[1]))).toEqual([
+      { questionOrder: 0, mediaKey: "https://example.com/q.png", sortOrder: 0 },
+    ]);
+
+    expect(batch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("import service · jump conditions", () => {
+  /** D1 mock that also answers the two id lookups the condition remap runs. */
+  function createConditionAwareD1Mock(): { db: D1Database; batched: Array<{ sql: string; bindings: unknown[] }> } {
+    const batched: Array<{ sql: string; bindings: unknown[] }> = [];
+    const prepare = (sql: string) => {
+      const statement = {
+        sql,
+        bindings: [] as unknown[],
+        bind(...bindings: unknown[]) {
+          statement.bindings = bindings;
+          return statement;
+        },
+        run: async () => ({ success: true, meta: { last_row_id: 300 } }),
+        all: async () => {
+          if (sql.includes("FROM survey_questions WHERE survey_id")) {
+            return {
+              results: [
+                { id: 101, order: 0 },
+                { id: 102, order: 1 },
+                { id: 103, order: 2 },
+              ],
+            };
+          }
+          return {
+            results: [
+              { id: 501, question_order: 0, option_order: 0 },
+              { id: 502, question_order: 0, option_order: 1 },
+              { id: 503, question_order: 1, option_order: 0 },
+              { id: 504, question_order: 1, option_order: 1 },
+            ],
+          };
+        },
+      };
+      return statement;
+    };
+    return {
+      db: {
+        prepare,
+        batch: async (statements: Array<{ sql: string; bindings: unknown[] }>) => {
+          batched.push(...statements);
+          return [];
+        },
+      } as unknown as D1Database,
+      batched,
+    };
+  }
+
+  it("keeps valid jump conditions through parse and validation", () => {
+    const parsed = parseImportedSurvey(
+      JSON.stringify({
+        schema_version: 1,
+        survey: {
+          title: "带跳转",
+          questions: [
+            {
+              id: "qa",
+              type: "single",
+              title: "第一题",
+              options: [
+                { id: "qa_o1", label: "去第三题", value: "去第三题", media: [] },
+                { id: "qa_o2", label: "顺序继续", value: "顺序继续", media: [] },
+              ],
+            },
+            {
+              id: "qb",
+              type: "single",
+              title: "第二题",
+              options: [
+                { id: "qb_o1", label: "甲", value: "甲", media: [] },
+                { id: "qb_o2", label: "乙", value: "乙", media: [] },
+              ],
+            },
+            {
+              id: "qc",
+              type: "text",
+              title: "第三题",
+              options: [],
+              condition: {
+                kind: "option_equals",
+                answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qd" }],
+              },
+            },
+            { id: "qd", type: "text", title: "第四题", options: [] },
+          ],
+        },
+      }),
+    );
+    expect(parsed.questions[2]?.condition).toEqual({
+      kind: "option_equals",
+      answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qd" }],
+    });
+  });
+
+  it("rejects conditions referencing unknown questions", () => {
+    expect(() =>
+      parseImportedSurvey(
+        JSON.stringify({
+          schema_version: 1,
+          survey: {
+            title: "坏跳转",
+            questions: [
+              {
+                id: "qa",
+                type: "single",
+                title: "第一题",
+                options: [
+                  { id: "qa_o1", label: "甲", value: "甲", media: [] },
+                  { id: "qa_o2", label: "乙", value: "乙", media: [] },
+                ],
+                condition: { kind: "option_equals", rules: [{ optionId: "qa_o1", targetQuestionId: "ghost" }] },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toThrow(ImportValidationError);
+  });
+
+  it("remaps condition source ids to numeric row ids on save", async () => {
+    const { db, batched } = createConditionAwareD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "带跳转落库",
+      questions: [
+        {
+          id: "qa",
+          type: "single",
+          title: "第一题",
+          options: [
+            { id: "qa_o1", label: "跳去第三题", value: "跳去第三题", media: [] },
+            { id: "qa_o2", label: "顺序继续", value: "顺序继续", media: [] },
+          ],
+        },
+        {
+          id: "qb",
+          type: "single",
+          title: "第二题",
+          options: [
+            { id: "qb_o1", label: "甲", value: "甲", media: [] },
+            { id: "qb_o2", label: "乙", value: "乙", media: [] },
+          ],
+          condition: {
+            kind: "option_equals",
+            rules: [{ optionId: "qb_o2", targetQuestionId: "qc" }],
+            answerRules: [{ questionId: "qa", equals: "qa_o1", targetQuestionId: "qc" }],
+          },
+        },
+        { id: "qc", type: "text", title: "第三题", options: [] },
+      ],
+    });
+
+    const update = batched.find((statement) => statement.sql.includes("condition_json"));
+    expect(update).toBeDefined();
+    const [conditionJson, skipTo] = update!.bindings as [string, number];
+    expect(JSON.parse(conditionJson)).toEqual({
+      kind: "option_equals",
+      rules: [{ optionId: 504, targetQuestionId: 103 }],
+      answerRules: [{ questionId: 101, equals: 501, targetQuestionId: 103 }],
+    });
+    expect(skipTo).toBe(103);
+  });
+
+  it("skips the remap entirely when no question carries a condition", async () => {
+    const { db, batched } = createConditionAwareD1Mock();
+    await saveImportedSurvey(db, 7, {
+      title: "普通导入",
+      questions: [{ type: "text", title: "问题" }],
+    });
+    expect(batched.find((statement) => statement.sql.includes("condition_json"))).toBeUndefined();
+  });
+});

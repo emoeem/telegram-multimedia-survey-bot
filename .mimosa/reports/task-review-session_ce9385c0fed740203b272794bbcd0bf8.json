@@ -1,0 +1,838 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20261024T025610479Z-91516-2661f194e227",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "candidate-select",
+      "target": "admin/src/survey/theme-ui.tsx",
+      "reason": "candidate_limit_exceeded: 6 changed reviewable file(s) were not scanned because the limit is 20"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 1616,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 23
+    },
+    "change_tracking": {
+      "touched_observed": 3,
+      "touched_retained": 3,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 26,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 26,
+      "selected_files": 20,
+      "limit": 20,
+      "truncated": true
+    },
+    "scanning": {
+      "required_files": 20,
+      "scanned_files": 20,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "candidate_limit_exceeded": 1,
+      "project_check_failed": 1
+    },
+    "reasons": [
+      {
+        "code": "candidate_limit_exceeded",
+        "stage": "candidate-select",
+        "target": "admin/src/survey/theme-ui.tsx",
+        "detail": "6 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "admin/src/survey/theme-ui.tsx",
+        "detail": "candidate_limit_exceeded: 6 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-10-24T02:56:10.479Z",
+  "session_id": "session_ce9385c0fed740203b272794bbcd0bf8",
+  "target": ".",
+  "revision": "a3cc76a4d3fddb39d5dc25671a03e03e3397c6ef",
+  "rules_version": "unavailable",
+  "diff_hash": "5cf46844995e1ab795401b85d431d774f437e96a0b0a61ac9d32e6649442d0e6",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 20,
+    "changed_files": [
+      {
+        "file": "admin/src/routes/SettingsPage.tsx",
+        "ranges": [
+          {
+            "start": 36,
+            "end": 36
+          }
+        ],
+        "before_hash": "7341e6af1ec6f7dbcc5f53833d4b5b06daad629efefadfe70c6cf20a70c66d33",
+        "after_hash": "95195e21a208f6ac7e8a49a255b915459d7cbbb38f0925bb013979efb2bde233"
+      },
+      {
+        "file": "admin/src/survey/AchievementWall.tsx",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 1
+          },
+          {
+            "start": 19,
+            "end": 19
+          }
+        ],
+        "before_hash": "94981c9f63d19a5b1e287db7fb6702501ea22876d3a8d74f4afc63641ef7a28a",
+        "after_hash": "8eff21fca6c91bc21b19875b2eefa33fc2505e8b79044f3fbdc6fd24b0f08796"
+      },
+      {
+        "file": "admin/src/survey/BottomNav.tsx",
+        "ranges": [
+          {
+            "start": 26,
+            "end": 33
+          },
+          {
+            "start": 38,
+            "end": 38
+          },
+          {
+            "start": 42,
+            "end": 42
+          },
+          {
+            "start": 50,
+            "end": 50
+          },
+          {
+            "start": 58,
+            "end": 59
+          },
+          {
+            "start": 62,
+            "end": 65
+          }
+        ],
+        "before_hash": "b573055ce00da3fe838667cc2085618a230713779ae683ee95d9d371fef4a274",
+        "after_hash": "a019cbf9a051bd9455b165ccca4b26455036d33ca88ffbea1f842bf25c3dde07"
+      },
+      {
+        "file": "admin/src/survey/CoinCenter.tsx",
+        "ranges": [
+          {
+            "start": 267,
+            "end": 267
+          },
+          {
+            "start": 276,
+            "end": 279
+          },
+          {
+            "start": 281,
+            "end": 283
+          },
+          {
+            "start": 285,
+            "end": 285
+          },
+          {
+            "start": 289,
+            "end": 292
+          },
+          {
+            "start": 297,
+            "end": 297
+          },
+          {
+            "start": 300,
+            "end": 300
+          },
+          {
+            "start": 319,
+            "end": 319
+          },
+          {
+            "start": 557,
+            "end": 557
+          },
+          {
+            "start": 655,
+            "end": 655
+          },
+          {
+            "start": 871,
+            "end": 871
+          }
+        ],
+        "before_hash": "431e66a361c040d52e396c54359139c5d31e3480efaab473486fec94a72ec2fc",
+        "after_hash": "1505a9f33362a8970c53f6a0290771b6b033fcce9b226472d46dd924fbbdcc95"
+      },
+      {
+        "file": "admin/src/survey/EmailAuthScreen.tsx",
+        "ranges": [
+          {
+            "start": 96,
+            "end": 96
+          },
+          {
+            "start": 148,
+            "end": 148
+          },
+          {
+            "start": 163,
+            "end": 164
+          }
+        ],
+        "before_hash": "28f503496160da4958d47ec38fd37964a19ba9f874716e8a2de2ba3c013ac16e",
+        "after_hash": "0ff36c96e15c328c365384bc3fc4d59be00ade889654ada00ad755833ed04747"
+      },
+      {
+        "file": "admin/src/survey/MyScreen.tsx",
+        "ranges": [
+          {
+            "start": 65,
+            "end": 68
+          },
+          {
+            "start": 70,
+            "end": 72
+          },
+          {
+            "start": 75,
+            "end": 75
+          },
+          {
+            "start": 366,
+            "end": 369
+          }
+        ],
+        "before_hash": "734f6eb73222c0ad656681df932a80fe54a115249aed28d1e4e9c6563c91d783",
+        "after_hash": "08e9b2921603b8f11f39b8d18222c2c488c58e8a6ef5b4ef506b08ffc106c056"
+      },
+      {
+        "file": "admin/src/survey/PageHeader.tsx",
+        "ranges": [
+          {
+            "start": 31,
+            "end": 33
+          },
+          {
+            "start": 40,
+            "end": 42
+          }
+        ],
+        "before_hash": "00ebdd18e60ba6daf4d7307f038cc680d0d6200182517099b20081cbbc131443",
+        "after_hash": "1b59e7764d154e423ecdc8a6d0dd4f3d25643d3a8d62189322bce8528bd2610b"
+      },
+      {
+        "file": "admin/src/survey/PlazaScreen.tsx",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 19
+          },
+          {
+            "start": 137,
+            "end": 139
+          },
+          {
+            "start": 186,
+            "end": 187
+          },
+          {
+            "start": 232,
+            "end": 244
+          },
+          {
+            "start": 720,
+            "end": 720
+          },
+          {
+            "start": 746,
+            "end": 747
+          },
+          {
+            "start": 749,
+            "end": 767
+          },
+          {
+            "start": 845,
+            "end": 846
+          },
+          {
+            "start": 860,
+            "end": 876
+          },
+          {
+            "start": 884,
+            "end": 884
+          },
+          {
+            "start": 936,
+            "end": 936
+          },
+          {
+            "start": 1002,
+            "end": 1003
+          },
+          {
+            "start": 1005,
+            "end": 1022
+          }
+        ],
+        "before_hash": "d0c582e7f3fff2e659932025cb4349183cdfcabd7b93901aa4e33f706fcee390",
+        "after_hash": "87c2531f7eed5801aabc98c94c4d529dd645fd7bdc02fa4909bac6fc6b64521b"
+      },
+      {
+        "file": "admin/src/survey/SeriesScreen.tsx",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 201,
+            "end": 202
+          }
+        ],
+        "before_hash": "8884983cfacb1d0ac18bbb0603d19e59839767dc2502578b7153eacc21ab7fe3",
+        "after_hash": "f5f26a9b53330b3be2419e817dc4411787ccfce06eb18bad867e23e8122bad28"
+      },
+      {
+        "file": "admin/src/survey/ShowcaseScreen.tsx",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 350,
+            "end": 353
+          }
+        ],
+        "before_hash": "703c087f00e8c676c377a7c4da4c4e12103870f916967a045845d5e059714946",
+        "after_hash": "b8919d11eb3f6fd1667c2f4d9e4ea4bc4eb122b38c1da0526644bdcd3ec9a69f"
+      },
+      {
+        "file": "admin/src/survey/ShowcaseViewer.tsx",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 37,
+            "end": 39
+          },
+          {
+            "start": 95,
+            "end": 95
+          },
+          {
+            "start": 143,
+            "end": 143
+          }
+        ],
+        "before_hash": "8df535107867ef2c54b30e52b57c5fb72ce4354695f89682edd0cc43561d95a7",
+        "after_hash": "d032324f3333124a93313fad18f5c49f0cbf8dc60ebcc9506aca2785bedaa7bf"
+      },
+      {
+        "file": "admin/src/survey/SubmissionHub.tsx",
+        "ranges": [
+          {
+            "start": 27,
+            "end": 27
+          },
+          {
+            "start": 42,
+            "end": 43
+          },
+          {
+            "start": 46,
+            "end": 47
+          },
+          {
+            "start": 108,
+            "end": 108
+          },
+          {
+            "start": 145,
+            "end": 145
+          },
+          {
+            "start": 153,
+            "end": 153
+          },
+          {
+            "start": 159,
+            "end": 159
+          }
+        ],
+        "before_hash": "7f2edca4c9907d38ed863b6b7ed52836db7ef213c65c364fec74153b0f2012dc",
+        "after_hash": "0a7a1909bbb270643693e003b8febd066a8a055594f91ffbc7ff534bbe7b2a09"
+      },
+      {
+        "file": "admin/src/survey/SubmitScreen.tsx",
+        "ranges": [
+          {
+            "start": 12,
+            "end": 12
+          },
+          {
+            "start": 239,
+            "end": 241
+          },
+          {
+            "start": 246,
+            "end": 248
+          },
+          {
+            "start": 268,
+            "end": 268
+          },
+          {
+            "start": 273,
+            "end": 274
+          },
+          {
+            "start": 277,
+            "end": 278
+          },
+          {
+            "start": 434,
+            "end": 434
+          },
+          {
+            "start": 556,
+            "end": 556
+          },
+          {
+            "start": 560,
+            "end": 561
+          }
+        ],
+        "before_hash": "cdbac9a04c9f341fad3304f060d1abf9f088a1fa2e12115e4bb3083e35fba873",
+        "after_hash": "b7eefc9363840f2efc24849bb29e4112c65fda003a18d95fe8a819f5471c4b69"
+      },
+      {
+        "file": "admin/src/survey/SurveyApp.tsx",
+        "ranges": [
+          {
+            "start": 8,
+            "end": 8
+          },
+          {
+            "start": 14,
+            "end": 16
+          },
+          {
+            "start": 18,
+            "end": 18
+          },
+          {
+            "start": 21,
+            "end": 22
+          },
+          {
+            "start": 28,
+            "end": 28
+          },
+          {
+            "start": 318,
+            "end": 322
+          },
+          {
+            "start": 330,
+            "end": 331
+          },
+          {
+            "start": 476,
+            "end": 476
+          },
+          {
+            "start": 512,
+            "end": 512
+          },
+          {
+            "start": 683,
+            "end": 710
+          },
+          {
+            "start": 760,
+            "end": 760
+          },
+          {
+            "start": 763,
+            "end": 765
+          },
+          {
+            "start": 886,
+            "end": 886
+          },
+          {
+            "start": 888,
+            "end": 890
+          },
+          {
+            "start": 914,
+            "end": 914
+          },
+          {
+            "start": 921,
+            "end": 921
+          },
+          {
+            "start": 945,
+            "end": 945
+          },
+          {
+            "start": 983,
+            "end": 988
+          },
+          {
+            "start": 1082,
+            "end": 1085
+          },
+          {
+            "start": 1091,
+            "end": 1094
+          },
+          {
+            "start": 2994,
+            "end": 3001
+          },
+          {
+            "start": 3055,
+            "end": 3056
+          },
+          {
+            "start": 3124,
+            "end": 3125
+          },
+          {
+            "start": 3144,
+            "end": 3145
+          }
+        ],
+        "before_hash": "87e068240909e2b7929ea75235638953e94ad9e698ec95b1a56ba26748c22bee",
+        "after_hash": "61aef1fe737d17b73be8f93902f385df8a0aaa503c5223361ade1c6133cdbc60"
+      },
+      {
+        "file": "admin/src/survey/TrialScreen.tsx",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 22
+          },
+          {
+            "start": 630,
+            "end": 632
+          },
+          {
+            "start": 634,
+            "end": 651
+          },
+          {
+            "start": 660,
+            "end": 665
+          },
+          {
+            "start": 670,
+            "end": 674
+          },
+          {
+            "start": 703,
+            "end": 706
+          },
+          {
+            "start": 852,
+            "end": 852
+          },
+          {
+            "start": 888,
+            "end": 891
+          },
+          {
+            "start": 951,
+            "end": 954
+          },
+          {
+            "start": 967,
+            "end": 976
+          },
+          {
+            "start": 1059,
+            "end": 1062
+          },
+          {
+            "start": 1189,
+            "end": 1198
+          },
+          {
+            "start": 1246,
+            "end": 1246
+          },
+          {
+            "start": 1285,
+            "end": 1285
+          },
+          {
+            "start": 1294,
+            "end": 1305
+          },
+          {
+            "start": 1320,
+            "end": 1323
+          },
+          {
+            "start": 1359,
+            "end": 1359
+          },
+          {
+            "start": 1362,
+            "end": 1363
+          },
+          {
+            "start": 1371,
+            "end": 1371
+          },
+          {
+            "start": 1374,
+            "end": 1375
+          },
+          {
+            "start": 1382,
+            "end": 1382
+          },
+          {
+            "start": 1384,
+            "end": 1385
+          },
+          {
+            "start": 1440,
+            "end": 1443
+          },
+          {
+            "start": 1478,
+            "end": 1479
+          },
+          {
+            "start": 1507,
+            "end": 1507
+          },
+          {
+            "start": 1509,
+            "end": 1510
+          },
+          {
+            "start": 1609,
+            "end": 1609
+          }
+        ],
+        "before_hash": "75345d83a52ba96a7898fd643ee32b5a7cac99aedcc189a33ad556bade0aaaa6",
+        "after_hash": "31db3453a63d1628490f55cdf72a7dbfb538253c8c230f131e5d01083b556594"
+      },
+      {
+        "file": "admin/src/theme.ts",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 3
+          },
+          {
+            "start": 5,
+            "end": 9
+          },
+          {
+            "start": 11,
+            "end": 11
+          },
+          {
+            "start": 13,
+            "end": 13
+          },
+          {
+            "start": 17,
+            "end": 17
+          },
+          {
+            "start": 21,
+            "end": 31
+          },
+          {
+            "start": 33,
+            "end": 36
+          },
+          {
+            "start": 41,
+            "end": 41
+          },
+          {
+            "start": 43,
+            "end": 43
+          },
+          {
+            "start": 49,
+            "end": 50
+          },
+          {
+            "start": 52,
+            "end": 52
+          }
+        ],
+        "before_hash": "0ab7c822862f6719cfb0ebad43a59f56e9d4bd8d21ec69be4535222f8ba27ae9",
+        "after_hash": "4ef18c5c69a7bd0e3ad6e50da6588caa46f22433b0f6d5f7d11d950f295ad9c3"
+      },
+      {
+        "file": "cert/app.js",
+        "ranges": [
+          {
+            "start": 573,
+            "end": 584
+          },
+          {
+            "start": 587,
+            "end": 588
+          },
+          {
+            "start": 623,
+            "end": 623
+          },
+          {
+            "start": 642,
+            "end": 651
+          }
+        ],
+        "before_hash": "4c8490ccac0be14244655296d2f41fc9a8b1d8dc9cebc4fdf3e1f7e878872af0",
+        "after_hash": "31910a65ccf3db1bb31c4d38fcafa59102bfa8caa36832850961fbe7c2f62927"
+      },
+      {
+        "file": "cert/presets.js",
+        "ranges": [
+          {
+            "start": 19,
+            "end": 29
+          }
+        ],
+        "before_hash": "6436f91eac8cf64bff43a7911ea377f192e7db899497131d30f49af45fe3b43a",
+        "after_hash": "c21668d893eead3a45780593c905a396055276ddcaf646e809adccca0b0aca07"
+      },
+      {
+        "file": "src/survey/theme.ts",
+        "ranges": [
+          {
+            "start": 118,
+            "end": 120
+          },
+          {
+            "start": 122,
+            "end": 122
+          },
+          {
+            "start": 124,
+            "end": 124
+          },
+          {
+            "start": 127,
+            "end": 137
+          },
+          {
+            "start": 207,
+            "end": 211
+          }
+        ],
+        "before_hash": "854264d420da581724f36ea0a3a124609d6a86811a74986cf1e2bd38dd0a4de7",
+        "after_hash": "b8d4d481ccebfb2c2717708eeffaf853cd9aacd87d558f0b72170638cd3a0f60"
+      },
+      {
+        "file": "tests/unit/survey/theme.test.ts",
+        "ranges": [
+          {
+            "start": 80,
+            "end": 85
+          },
+          {
+            "start": 109,
+            "end": 109
+          }
+        ],
+        "before_hash": "3f85ddcaa3877480ca24d001b3584503f29d772080d2c750c84fe98ac370448d",
+        "after_hash": "a35c300a79c775bfae55a59f23aed26aa88f69471b26f30f652583d28375d6aa"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-10-24T02:56:08.990Z",
+    "completed_at": "2026-10-24T02:56:10.479Z",
+    "duration_ms": 1489,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 1489,
+    "peakMemoryBytes": 231743488,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 20,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-session_ce9385c0fed740203b272794bbcd0bf8-20261024T025610479Z-91516-2661f194e227.json",
+    "latest_report": ".mimosa/reports/task-review-session_ce9385c0fed740203b272794bbcd0bf8.json",
+    "history_summary": ".mimosa/history/run-20261024T025610479Z-91516-2661f194e227.json"
+  }
+}

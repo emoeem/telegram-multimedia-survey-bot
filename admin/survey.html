@@ -3,19 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f6fa" />
+    <meta name="theme-color" content="#0f0e17" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6fa" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="data:," />
     <title>问卷</title>
     <script>
       (function () {
-        var known = ["light", "dark", "night", "luxury", "retro", "cupcake", "synthwave", "black"];
-        var preset = "light";
+        var known = ["foxgold", "dark", "light"];
+        var legacy = {
+          system: "foxgold",
+          night: "dark",
+          luxury: "foxgold",
+          synthwave: "dark",
+          black: "foxgold",
+          retro: "light",
+          cupcake: "light",
+        };
+        var preset = "foxgold";
         try {
           var stored = localStorage.getItem("surveyPreset");
-          if (stored && known.indexOf(stored) !== -1) preset = stored;
-          else if (stored === "system")
-            preset = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          if (stored) preset = legacy[stored] || (known.indexOf(stored) !== -1 ? stored : preset);
         } catch (error) {}
         document.documentElement.setAttribute("data-theme", preset);
       })();
@@ -48,6 +56,13 @@
         display: grid;
         place-items: center;
         font-size: 21px;
+        color: #17141f;
+        /* 默认暗金：foxsir 同款金色渐变 #f5d6a8 → #d4a574 → #b8865a。 */
+        background: linear-gradient(135deg, #f5d6a8 0%, #d4a574 60%, #b8865a 100%);
+        box-shadow: 0 10px 24px -10px rgba(212, 165, 116, 0.55);
+      }
+      [data-theme="light"] .boot-mark,
+      [data-theme="dark"] .boot-mark {
         color: #fff;
         background: linear-gradient(135deg, #4f46e5, #7c74f2);
         box-shadow: 0 10px 24px -10px rgba(79, 70, 229, 0.55);
@@ -57,21 +72,21 @@
         font-size: 13px;
         letter-spacing: 0.35em;
         text-indent: 0.35em;
-        color: #8a93a6;
+        color: #9a917f;
       }
       .boot-track {
         width: 128px;
         height: 3px;
         border-radius: 99px;
         overflow: hidden;
-        background: rgba(127, 127, 127, 0.16);
+        background: rgba(212, 165, 116, 0.16);
       }
       .boot-track i {
         display: block;
         height: 100%;
         width: 42%;
         border-radius: 99px;
-        background: #4f46e5;
+        background: #d4a574;
         animation: boot-slide 1.1s ease-in-out infinite;
       }
       @keyframes boot-slide {
@@ -82,18 +97,20 @@
           transform: translateX(320%);
         }
       }
-      /* 暗色主题（known 列表里的四个暗色系）下文字与轨道跟着压暗。 */
-      [data-theme="dark"] .boot-name,
-      [data-theme="night"] .boot-name,
-      [data-theme="synthwave"] .boot-name,
-      [data-theme="black"] .boot-name {
+      /* 明/暗两套历史主题下，boot 跟随各自的品牌色。 */
+      [data-theme="light"] .boot-name {
+        color: #8a93a6;
+      }
+      [data-theme="dark"] .boot-name {
         color: #78808f;
       }
-      [data-theme="dark"] .boot-track,
-      [data-theme="night"] .boot-track,
-      [data-theme="synthwave"] .boot-track,
-      [data-theme="black"] .boot-track {
-        background: rgba(200, 205, 220, 0.14);
+      [data-theme="light"] .boot-track,
+      [data-theme="dark"] .boot-track {
+        background: rgba(127, 127, 127, 0.16);
+      }
+      [data-theme="light"] .boot-track i,
+      [data-theme="dark"] .boot-track i {
+        background: #4f46e5;
       }
       @media (prefers-reduced-motion: reduce) {
         .boot-track i {

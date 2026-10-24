@@ -1,0 +1,161 @@
+import { nowIso } from "../db/client";
+import {
+  createReportDelivery,
+  getReportDeliveryByDeliveryId,
+  getReportDeliveryById,
+  getReportDeliveryByResponseId,
+  resetReportDeliveryForRetry,
+} from "../db/repositories/report-delivery.repository";
+import type { ReportDelivery } from "../db/schema";
+
+export const REPORT_DELIVERY_MAX_ATTEMPTS = 5;
+
+/** KV key where the admin-configured report archive channel id is cached. */
+export const REPORT_CHANNEL_CACHE_KEY = "report-channel:v1";
+
+export function reportChannelPendingKey(userId: number): string {
+  return `report-channel-pending:${userId}`;
+}
+
+export function reportDeliveryId(responseId: number, reportVersion: number): string {
+  return `response_${responseId}_v${reportVersion}`;
+}
+
+/** Exponential backoff for delivery retries: 1m / 5m / 15m / 1h cap. */
+export function nextReportRetryAt(attempts: number, now = new Date()): string | null {
+  if (attempts >= REPORT_DELIVERY_MAX_ATTEMPTS) return null;
+  const delaysMinutes = [1, 5, 15, 60];
+  const delayMinutes = delaysMinutes[Math.min(Math.max(0, attempts - 1), delaysMinutes.length - 1)] ?? 60;
+  return new Date(now.getTime() + delayMinutes * 60_000).toISOString();
+}
+
+export interface EnqueueReportDeliveryResult {
+  delivery: ReportDelivery;
+  queued: boolean;
+}
+
+/**
+ * Creates (or reopens) the delivery row and enqueues the archive job.
+ * response_id is UNIQUE, so concurrent submissions collapse to one row; the
+ * queue message is only sent for newly created rows or explicit retries.
+ */
+export async function enqueueReportDelivery(
+  db: D1Database,
+  queue: Queue,
+  input: {
+    responseId: number;
+    reportVersion?: number;
+    force?: boolean;
+  },
+): Promise<EnqueueReportDeliveryResult> {
+  const reportVersion = input.reportVersion ?? 1;
+  const deliveryId = reportDeliveryId(input.responseId, reportVersion);
+  let delivery = await getReportDeliveryByResponseId(db, input.responseId);
+  if (!delivery) {
+    try {
+      delivery = await createReportDelivery(db, {
+        responseId: input.responseId,
+        reportVersion,
+        deliveryId,
+      });
+    } catch {
+      // Race: another submit created the row first.
+      delivery =
+        (await getReportDeliveryByDeliveryId(db, deliveryId)) ??
+        (await getReportDeliveryByResponseId(db, input.responseId));
+      if (!delivery) throw new Error("Failed to create report delivery");
+    }
+  }
+
+  // An explicit admin resend/regenerate must actually re-archive the report.
+  // The worker returns early for `delivered` rows and `claimReportDelivery`
+  // only accepts `pending`/`failed`, so without this reset the queue message
+  // was silently acked with zero Telegram traffic. Reset in the same request
+  // that enqueues, so the two can never drift apart.
+  if (input.force === true) {
+    await resetReportDeliveryForRetry(db, delivery.id);
+    delivery = (await getReportDeliveryById(db, delivery.id)) ?? delivery;
+  }
+
+  const shouldQueue = delivery.status === "pending" || delivery.status === "failed";
+  if (!shouldQueue) {
+    return { delivery, queued: false };
+  }
+
+  await queue.send({ kind: "report_delivery", deliveryId } satisfies ReportDeliveryMessage);
+  return { delivery, queued: true };
+}
+
+export interface ReportDeliveryMessage {
+  kind: "report_delivery";
+  deliveryId: string;
+}
+
+export function isReportDeliveryMessage(value: unknown): value is ReportDeliveryMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  return message.kind === "report_delivery" && typeof message.deliveryId === "string";
+}
+
+export function reportDeliveryStatusTimestamp(): string {
+  return nowIso();
+}
+
+/**
+ * Cron driver for report delivery retries: re-enqueues pending deliveries
+ * whose backoff window has elapsed. Attempts past the cap are marked failed.
+ * Deliveries stuck in "delivering" (worker died after claiming) are rolled
+ * back to pending so the next pass re-enqueues them.
+ */
+export async function retryPendingReportDeliveries(
+  db: D1Database,
+  queue: Queue,
+  now = new Date(),
+): Promise<{ requeued: number }> {
+  const timestamp = now.toISOString();
+  await db
+    .prepare(
+      `UPDATE report_deliveries
+       SET status = 'failed', updated_at = ?
+       WHERE status = 'pending'
+         AND attempts >= ?
+         AND next_retry_at IS NOT NULL
+         AND next_retry_at <= ?`,
+    )
+    .bind(timestamp, REPORT_DELIVERY_MAX_ATTEMPTS, timestamp)
+    .run();
+
+  // A claim is only valid while the worker is alive; anything still
+  // "delivering" after 10 minutes died mid-flight and is reclaimable.
+  // Deliveries that already burned through the attempt cap are failed
+  // instead so a poison row cannot loop forever.
+  const staleDelivering = await db
+    .prepare(
+      `UPDATE report_deliveries
+       SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
+           updated_at = ?
+       WHERE status = 'delivering'
+         AND updated_at < ?`,
+    )
+    .bind(REPORT_DELIVERY_MAX_ATTEMPTS, timestamp, new Date(now.getTime() - 10 * 60 * 1000).toISOString())
+    .run();
+  const reclaimed = staleDelivering.meta?.changes ?? 0;
+
+  const rows = await db
+    .prepare(
+      `SELECT delivery_id deliveryId
+       FROM report_deliveries
+       WHERE status = 'pending'
+         AND attempts < ?
+         AND (next_retry_at IS NULL OR next_retry_at <= ?)
+       ORDER BY next_retry_at ASC
+       LIMIT 100`,
+    )
+    .bind(REPORT_DELIVERY_MAX_ATTEMPTS, timestamp)
+    .all<{ deliveryId: string }>();
+  const deliveries = rows.results ?? [];
+  for (const row of deliveries) {
+    await queue.send({ kind: "report_delivery", deliveryId: row.deliveryId } satisfies ReportDeliveryMessage);
+  }
+  return { requeued: deliveries.length + reclaimed };
+}

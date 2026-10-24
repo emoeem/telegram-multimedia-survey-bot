@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Probe an OpenGameArt content page: title, author, licenses, files, attribution notice."""
+import sys, re, html, subprocess
+
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"
+
+
+def fetch(url):
+    r = subprocess.run(["curl", "-sL", "-A", UA, url], capture_output=True, text=True, timeout=60)
+    return r.stdout
+
+
+def text_of(s):
+    s = re.sub(r"<[^>]+>", " ", s)
+    return re.sub(r"\s+", " ", html.unescape(s)).strip()
+
+
+def probe(url):
+    t = fetch(url)
+    out = {"url": url}
+    m = re.search(r'<h1[^>]*class="[^"]*title[^"]*"[^>]*>(.*?)</h1>', t, re.S) or re.search(r"<h1[^>]*>(.*?)</h1>", t, re.S)
+    out["title"] = text_of(m.group(1)) if m else "?"
+    a = re.search(r'Author:\s*(?:&nbsp;|\s)*<a href="/users/[^"]+"[^>]*>([^<]+)</a>', t, re.S)
+    out["author"] = html.unescape(a.group(1)) if a else "?"
+    # license block
+    lic = re.findall(r'license_images/([a-z0-9\-_\.]+)\.png"[^>]*>\s*</a>\s*([^<]{0,60})', t, re.S)
+    if not lic:
+        lic = re.findall(r'license_images/([a-z0-9\-_\.]+)\.png', t)
+    out["license_imgs"] = lic[:10]
+    # the "License(s):" section html
+    li = re.search(r"License\(s\):(.{0,2500}?)(?:Collections:|Favorites:|Preview:)", t, re.S)
+    out["license_block"] = text_of(li.group(1))[:400] if li else "NOT FOUND"
+    # attribution notice
+    at = re.search(r"Copyright/Attribution Notice:(.{0,600}?)(?:File\(s\):|<div[^>]*class)", t, re.S)
+    out["attribution"] = text_of(at.group(1))[:300] if at else "(none)"
+    files = re.findall(r'href="(https://opengameart\.org/sites/default/files/[^"]+)"[^>]*>\s*([^<]+?)\s*</a>\s*([0-9\.]+ ?[KMG]?b)', t, re.S)
+    out["files"] = [(f[0], text_of(f[1]), f[2]) for f in files[:40]]
+    # description paragraphs
+    d = re.search(r'<div class="field field-name-body[^"]*"[^>]*>(.*?)</div>\s*</div>', t, re.S)
+    out["body"] = text_of(d.group(1))[:700] if d else ""
+    return out
+
+
+for u in sys.argv[1:]:
+    p = probe(u)
+    print("#" * 70)
+    for k, v in p.items():
+        print(f"{k}: {v}")

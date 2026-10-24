@@ -28,15 +28,18 @@ export function PageHeader({
   backLabel?: string;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
-      <div className="mx-auto max-w-xl px-4 pb-2.5 pt-[calc(env(safe-area-inset-top,0px)+10px)] lg:max-w-3xl">
+    <header className="sticky top-0 z-30 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md lg:top-14">
+      {/* 容器：移动 max-w-xl（拇指热区），桌面与 foxsir 同款 1200px 居中列。 */}
+      <div className="mx-auto max-w-xl px-4 pb-2.5 pt-[calc(env(safe-area-inset-top,0px)+10px)] lg:max-w-[1200px]">
         <div className="flex items-center gap-2.5">
           <a href={backHref} className="survey-home-link" aria-label={`返回${backLabel}`} title={`返回${backLabel}`}>
             <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} />
             <span>{backLabel}</span>
           </a>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold text-[var(--survey-heading)]">{title}</p>
+            <p className="truncate text-[15px] font-bold text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:text-[17px] lg:tracking-[0.04em]">
+              {title}
+            </p>
             {subtitle ? <p className="mt-0.5 truncate text-[11px] text-[var(--survey-muted)]">{subtitle}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}

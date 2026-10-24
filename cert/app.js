@@ -562,10 +562,6 @@
   /* ------------------------------------------------------------------ *
    * 主题选择（与问卷主页共用 localStorage.surveyPreset，双向同步）
    * ------------------------------------------------------------------ */
-  function systemPrefersDark() {
-    return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  }
-
   function rawPresetChoice() {
     try {
       return localStorage.getItem(SURVEY_PRESET_KEY);
@@ -574,10 +570,22 @@
     }
   }
 
+  /* 2026-10 重设计收敛为三套（foxgold/dark/light）。旧 id 与 "system"
+   * 迁移到最近似主题；没有选择时默认暗金，与问卷主页一致。 */
+  var LEGACY_PRESET_MAP = {
+    system: "foxgold",
+    night: "dark",
+    luxury: "foxgold",
+    synthwave: "dark",
+    black: "foxgold",
+    retro: "light",
+    cupcake: "light",
+  };
+
   function resolvePreset(raw) {
     if (!raw) return null;
-    if (raw === "system") return systemPrefersDark() ? "dark" : "light";
-    return window.CERT_UI_PRESETS && window.CERT_UI_PRESETS[raw] ? raw : null;
+    var mapped = LEGACY_PRESET_MAP[raw] || raw;
+    return window.CERT_UI_PRESETS && window.CERT_UI_PRESETS[mapped] ? mapped : null;
   }
 
   function setPresetChoice(raw) {
@@ -612,18 +620,9 @@
     }
     var label = $("themePresetLabel");
     if (label) {
-      label.textContent = raw === "system" ? "跟随系统" : preset ? window.CERT_UI_PRESETS[preset].label : "默认";
+      label.textContent = preset ? window.CERT_UI_PRESETS[preset].label : "默认";
     }
     markSheetSelection(raw);
-  }
-
-  /* 跟随系统时，系统切换深浅色实时换肤 */
-  if (window.matchMedia) {
-    var mql = window.matchMedia("(prefers-color-scheme: dark)");
-    var onSchemeChange = function () {
-      if (rawPresetChoice() === "system") applyPreset();
-    };
-    if (mql.addEventListener) mql.addEventListener("change", onSchemeChange);
   }
 
   function markSheetSelection(raw) {
@@ -640,13 +639,16 @@
     var grid = $("themeGrid");
     if (!grid) return;
     var P = window.CERT_UI_PRESETS || {};
-    var entries = [
-      { id: "", name: "默认" },
-      { id: "system", name: "跟随系统" },
-    ].concat(
-      Object.keys(P).map(function (k) {
-        return { id: k, name: P[k].label, p: P[k] };
-      }),
+    var entries = [{ id: "", name: "默认" }].concat(
+      Object.keys(P)
+        /* 收敛后的三套 + 遗留 id（仅当 localStorage 里还存着时才有意义，
+           但格子里保留它们会让选择面板越长越乱 —— 只出三套。 */
+        .filter(function (k) {
+          return ["foxgold", "dark", "light"].indexOf(k) !== -1;
+        })
+        .map(function (k) {
+          return { id: k, name: P[k].label, p: P[k] };
+        }),
     );
     entries.forEach(function (e) {
       var btn = document.createElement("button");

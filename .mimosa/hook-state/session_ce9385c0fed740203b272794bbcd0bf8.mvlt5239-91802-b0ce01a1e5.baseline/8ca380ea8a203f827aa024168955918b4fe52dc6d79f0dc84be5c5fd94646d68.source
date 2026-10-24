@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# deploy-netlify.sh — 部署到 Netlify。
+# 前置: node / npm；首次运行会引导浏览器登录 Netlify。
+# 用法: ./scripts/deploy/deploy-netlify.sh [站点名]
+#   站点名可选，用于第一次创建站点；如 NETLIFY_SITE=my-blog ./scripts/deploy/deploy-netlify.sh
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+NETLIFY_TOML="$SITE_ROOT/netlify.toml"
+
+if [[ ! -f "$NETLIFY_TOML" ]]; then
+    info "首次运行，生成 netlify.toml（指定构建命令与发布目录）..."
+    cat > "$NETLIFY_TOML" <<'EOF'
+[build]
+  command = "pnpm install --frozen-lockfile && pnpm run build"
+  publish = "public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Hexo 生成的目录型 URL（如 /about/）默认可访问，无需额外重写规则
+EOF
+    warn "netlify.toml 已生成并会加入 git，方便下次部署与其他人使用。"
+fi
+
+cd "$SITE_ROOT"
+require_cmd node || die "请先安装 Node.js (>=18)。"
+command -v netlify >/dev/null 2>&1 && NETLIFY_CMD="netlify" || NETLIFY_CMD="npx --yes netlify-cli"
+
+info "登录状态检查..."
+if ! $NETLIFY_CMD status >/dev/null 2>&1; then
+    info "未登录，打开浏览器完成 Netlify 登录..."
+    $NETLIFY_CMD login
+fi
+
+SITE_ARGS=()
+if [[ -n "${1:-}" ]]; then
+    SITE_ARGS=(--site "$1")
+elif [[ -n "${NETLIFY_SITE:-}" ]]; then
+    SITE_ARGS=(--site "$NETLIFY_SITE")
+fi
+
+info "开始构建并部署..."
+$NETLIFY_CMD deploy --build --prod "${SITE_ARGS[@]}"
+
+info "完成！Netlify 会分配 *.netlify.app 域名，也可在控制台绑定自定义域名。"

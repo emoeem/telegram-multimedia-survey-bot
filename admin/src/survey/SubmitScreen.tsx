@@ -9,6 +9,7 @@
  * （localStorage: webSubmitViewer，和旧的独立投稿页共用同一把 key，历史投稿不丢）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BadgeCheck, Clapperboard, Inbox, MailCheck, PencilLine, Send } from "lucide-react";
 
 import { PageHeader } from "./PageHeader";
 import { prepareImageForPublish } from "../lib/image-publish";
@@ -235,13 +236,16 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     return (
       <main className="mx-auto max-w-xl px-4 pb-24 pt-6">
         <div className={`${CARD} p-6 text-center`}>
-          <div className="text-4xl">✅</div>
+          <div className="grid h-14 w-14 mx-auto place-items-center rounded-full bg-[var(--survey-primary-soft)]">
+            <Send className="h-7 w-7 text-[var(--survey-primary)]" aria-hidden="true" />
+          </div>
           <h1 className="mt-2 text-lg font-semibold text-[var(--survey-heading)]">投稿已收到</h1>
           <p className="mt-1 text-[13px] text-[var(--survey-muted)]">
             编号 #{done.id} · {done.status === "published" ? "已发布，多谢投稿！" : "管理员审核通过后会发布"}
           </p>
-          <a className={`${BTN} mt-4`} href="/submissions?tab=inbox">
-            📬 打开我的投稿收件箱
+          <a className={`${BTN} mt-4 inline-flex items-center justify-center gap-2`} href="/submissions?tab=inbox">
+            <Inbox className="h-4 w-4" aria-hidden="true" />
+            打开我的投稿收件箱
           </a>
           <p className="mt-3 text-[12px] text-[var(--survey-muted)]">
             收件箱能看到审核进度、别人的评论（可直接回复）和管理员留言；留了邮箱的话新评论会发邮件通知你。
@@ -261,15 +265,17 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     <div className={embedded ? "" : "survey-glow min-h-dvh"}>
       {embedded ? null : (
         <PageHeader
-          title={form?.title ?? "📮 投稿"}
+          title={form?.title ?? "投稿"}
           subtitle="不用注册 · 审核通过后发布"
           actions={
             <>
               <a className="survey-header-pill" href="/cert/" aria-label="认证卡生成器" title="认证卡生成器">
-                🪪<span className="pill-text"> 认证卡</span>
+                <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="pill-text"> 认证卡</span>
               </a>
               <a className="survey-header-pill" href="/submissions?tab=inbox" aria-label="我的投稿收件箱">
-                📬<span className="pill-text"> 收件箱</span>
+                <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="pill-text"> 收件箱</span>
               </a>
             </>
           }
@@ -425,7 +431,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
                           <img alt={file.name} className="h-full w-full object-cover" src={URL.createObjectURL(file)} />
                         ) : (
                           <span className="grid h-full w-full place-items-center text-[11px] text-[var(--survey-muted)]">
-                            🎬
+                            <Clapperboard className="h-5 w-5" aria-hidden="true" />
                           </span>
                         )}
                         <button
@@ -547,11 +553,12 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
     <div className={embedded ? "" : "survey-glow min-h-dvh"}>
       {embedded ? null : (
         <PageHeader
-          title="📬 我的投稿"
+          title="我的投稿"
           subtitle="进度 · 评论 · 管理员留言"
           actions={
             <a className="survey-header-pill" href="/submissions?tab=anon">
-              ✍️<span className="pill-text"> 再投一稿</span>
+              <PencilLine className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="pill-text"> 再投一稿</span>
             </a>
           }
         />

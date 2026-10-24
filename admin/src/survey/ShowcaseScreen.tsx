@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Info, Palette, RefreshCw, Sprout, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Palette, RefreshCw, Sparkles, Sprout, X } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 import { ShowcaseSheet } from "./ShowcaseSheet";
 import { closeWebApp } from "./navigation";
@@ -347,7 +347,10 @@ export function ShowcaseScreen() {
 
         <header className="showcase-topbar">
           <div className="min-w-0">
-            <p className="text-[15px] font-bold text-white">✨ 展示区</p>
+            <p className="inline-flex items-center gap-1.5 text-[15px] font-bold text-white">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              展示区
+            </p>
             <p className="mt-0.5 truncate text-[11px] text-white/60">
               {total > 0 ? `左右滑动浏览 ${total} 位创作者` : "创作者的作品展览空间"}
             </p>

@@ -24,6 +24,7 @@
  * 热的。
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Coins, Zap } from "lucide-react";
 
 import { PageHeader } from "./PageHeader";
 import { searchForTab, tabFromSearch, directEntryFromSearch, type SubmissionTab } from "./submission-tab";
@@ -38,9 +39,11 @@ const InboxTab = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.S
 type FormMode = "coins" | "direct";
 
 const MODE_META: { id: FormMode; label: string; hint: string }[] = [
-  { id: "coins", label: "🪙 拿金币投稿", hint: "审核通过发金币，可进报告抽卡池" },
-  { id: "direct", label: "⚡ 免登录直投", hint: "不用注册 · 留邮箱可收审核通知" },
+  { id: "coins", label: "拿金币投稿", hint: "审核通过发金币，可进报告抽卡池" },
+  { id: "direct", label: "免登录直投", hint: "不用注册 · 留邮箱可收审核通知" },
 ];
+
+const MODE_ICON = { coins: Coins, direct: Zap } as const;
 
 /** 切页签时改写地址栏，但**不新增历史记录**。
  *
@@ -102,7 +105,7 @@ export function SubmissionHub() {
   return (
     <div className="survey-glow min-h-dvh" data-submission-hub={tab}>
       <PageHeader
-        title="📮 投稿中心"
+        title="投稿中心"
         subtitle={subtitle}
         tabs={
           <>
@@ -139,6 +142,7 @@ export function SubmissionHub() {
             >
               {MODE_META.map((entry) => {
                 const isActive = entry.id === mode;
+                const ModeIcon = MODE_ICON[entry.id];
                 return (
                   <button
                     key={entry.id}
@@ -146,12 +150,13 @@ export function SubmissionHub() {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setMode(entry.id)}
-                    className={`h-8 flex-1 rounded-full text-[12.5px] font-semibold transition-colors ${
+                    className={`inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-[12.5px] font-semibold transition-colors ${
                       isActive
                         ? "bg-[var(--survey-card-bg)] text-[var(--survey-heading)] shadow-sm"
                         : "text-[var(--survey-muted)]"
                     }`}
                   >
+                    <ModeIcon className="h-3.5 w-3.5" aria-hidden="true" />
                     {entry.label}
                   </button>
                 );

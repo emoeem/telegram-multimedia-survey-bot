@@ -1,0 +1,270 @@
+/**
+ * Public API abuse damping.
+ *
+ * The new interface hashes the subject before it becomes part of a KV key, so
+ * raw email addresses and IPs never become persistent KV key material. KV is
+ * eventually consistent and the counter uses get-then-put because this bot's
+ * current concurrency does not justify a more expensive atomic backend here.
+ */
+const RATE_LIMIT_PREFIX = "ratelimit:v1";
+
+export interface RateLimiter {
+  /** 未超限返回 true，并已记录本次请求；超限返回 false。 */
+  allow(key: string, limit: number, windowSeconds: number): Promise<boolean>;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function subjectHash(subject: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(subject));
+  return bytesToHex(new Uint8Array(digest)).slice(0, 16);
+}
+
+export function createKVRateLimiter(cache: KVNamespace): RateLimiter {
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      if (limit <= 0 || windowSeconds <= 0) return false;
+
+      try {
+        const separator = key.indexOf("|");
+        const scope = separator >= 0 ? key.slice(0, separator) : key;
+        const subject = separator >= 0 ? key.slice(separator + 1) : key;
+        const hashed = await subjectHash(subject);
+        const kvKey = `${RATE_LIMIT_PREFIX}:${scope}:${hashed}`;
+        const current = Number((await cache.get(kvKey)) ?? "0");
+        if (!Number.isFinite(current) || current < 0) {
+          console.warn("Public API rate limiter counter was invalid; allowing request", { kvKey });
+          return true;
+        }
+        if (current >= limit) return false;
+
+        // This is intentionally get-then-put rather than D1-backed atomic
+        // increment: public API concurrency is currently low enough that the
+        // simpler KV path is the better availability/cost trade-off.
+        await cache.put(kvKey, String(current + 1), { expirationTtl: windowSeconds });
+        return true;
+      } catch (error) {
+        // Rate limiting must never become an availability dependency. A KV
+        // outage therefore fails open and leaves an auditable warning.
+        console.warn("Public API rate limiter unavailable; allowing request", error);
+        return true;
+      }
+    },
+  };
+}
+
+/**
+ * Atomic limiter backed by the `RateLimitDO` Durable Object.
+ *
+ * Same `RateLimiter` contract as the KV implementation, but the increment
+ * happens inside a serialised Durable Object instead of a KV get-then-put, so
+ * two simultaneous requests cannot both read the same counter and write the
+ * same value (KV permits one write per key per second, so the loser's write is
+ * silently dropped).
+ *
+ * Hashing still happens here rather than in the DO: the object is not a
+ * trusted vault for raw addresses, and keeping the hash on this side means the
+ * DO's persisted keys are never reversible to an email or an IP.
+ *
+ * Failure policy matches the KV limiter — fail open. Rate limiting must not
+ * become an availability dependency, so a DO that is unavailable allows the
+ * request and leaves an auditable warning rather than locking users out.
+ */
+export function createAtomicRateLimiter(namespace: DurableObjectNamespace): RateLimiter {
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      if (limit <= 0 || windowSeconds <= 0) return false;
+
+      try {
+        const separator = key.indexOf("|");
+        const scope = separator >= 0 ? key.slice(0, separator) : key;
+        const subject = separator >= 0 ? key.slice(separator + 1) : key;
+        // Hash first, then shard on the scope: the instance name is derived
+        // from an allow-listed label, so no request-derived string becomes an
+        // object identifier.
+        const stub = namespace.get(namespace.idFromName(scope));
+        const response = await stub.fetch("https://rate-limit/allow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scope, subject: await subjectHash(subject), limit, windowSeconds }),
+        });
+        if (!response.ok) {
+          console.warn("Atomic rate limiter returned a non-OK response; allowing request", {
+            scope,
+            status: response.status,
+          });
+          return true;
+        }
+        const decision = (await response.json()) as { allowed?: unknown };
+        return decision?.allowed !== false;
+      } catch (error) {
+        console.warn("Atomic rate limiter unavailable; allowing request", error);
+        return true;
+      }
+    },
+  };
+}
+
+/**
+ * Pick the strongest limiter the deployment can support.
+ *
+ * Deployments that bind `RATE_LIMIT` get the atomic path; anything else (local
+ * dev, a customer Worker without the binding) keeps working on KV with its
+ * known concurrency caveat instead of failing to boot.
+ */
+export function createPreferredRateLimiter(env: {
+  /* Typed `unknown` so this module never has to import the Durable Object
+   * class to name it; the guard below narrows it once, at the single point
+   * where the binding is actually used. */
+  RATE_LIMIT?: unknown;
+  CACHE: KVNamespace;
+}): RateLimiter {
+  const namespace = env.RATE_LIMIT as DurableObjectNamespace | undefined;
+  return namespace ? createAtomicRateLimiter(namespace) : createKVRateLimiter(env.CACHE);
+}
+
+export function createMemoryRateLimiter(): RateLimiter {
+  const windows = new Map<string, { count: number; expiresAt: number }>();
+
+  return {
+    async allow(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+      const now = Date.now();
+      const current = windows.get(key);
+      if (!current || current.expiresAt <= now) {
+        windows.set(key, { count: 1, expiresAt: now + windowSeconds * 1000 });
+        return true;
+      }
+      if (current.count >= limit) return false;
+      current.count += 1;
+      return true;
+    },
+  };
+}
+
+/**
+ * Legacy fixed-window limiter kept for existing endpoint-specific abuse
+ * damping. New high-value public API guards should use RateLimiter above.
+ */
+const LEGACY_RATE_LIMIT_PREFIX = "rl:v1";
+
+export interface RateLimitResult {
+  allowed: boolean;
+  /** Seconds until the current window resets (for Retry-After). */
+  retryAfterSeconds: number;
+}
+
+export async function checkRateLimit(
+  cache: KVNamespace,
+  bucket: string,
+  identity: string,
+  limit: number,
+  windowSeconds: number,
+  now = Date.now(),
+): Promise<RateLimitResult> {
+  const windowIndex = Math.floor(now / (windowSeconds * 1000));
+  const key = `${LEGACY_RATE_LIMIT_PREFIX}:${bucket}:${identity}:${windowIndex}`;
+  const retryAfterSeconds = Math.max(1, Math.ceil(((windowIndex + 1) * windowSeconds * 1000 - now) / 1000));
+  if (!cache) return { allowed: true, retryAfterSeconds };
+
+  const current = Number((await cache.get(key)) ?? "0");
+  if (Number.isFinite(current) && current >= limit) {
+    return { allowed: false, retryAfterSeconds };
+  }
+  await cache.put(key, String(current + 1), {
+    expirationTtl: Math.max(120, windowSeconds * 2),
+  });
+  return { allowed: true, retryAfterSeconds };
+}
+
+export function rateLimitResponse(retryAfterSeconds: number): Response {
+  return Response.json(
+    { code: "rate_limited", message: "操作过于频繁，请稍后再试" },
+    {
+      status: 429,
+      headers: { "Cache-Control": "no-store", "Retry-After": String(retryAfterSeconds) },
+    },
+  );
+}
+
+/**
+ * Atomic fixed-window rate limiter backed by the `rate_limits` D1 table.
+ */
+export async function checkAtomicRateLimit(
+  db: D1Database,
+  cache: KVNamespace,
+  bucket: string,
+  identity: string,
+  limit: number,
+  windowSeconds: number,
+  now = Date.now(),
+): Promise<RateLimitResult> {
+  const { retryAfterSeconds } = atomicRateLimitWindow(bucket, identity, windowSeconds, now);
+  try {
+    const result = await buildAtomicRateLimitStatement(db, bucket, identity, windowSeconds, now).first<{
+      count: number;
+    }>();
+    return { allowed: atomicRateLimitCount(result) <= limit, retryAfterSeconds };
+  } catch (error) {
+    console.warn("Atomic rate limit unavailable; falling back to KV", { bucket, error });
+    return checkRateLimit(cache, bucket, identity, limit, windowSeconds, now);
+  }
+}
+
+/** Fixed-window bookkeeping (key, bounds and Retry-After) for one rate-limit subject. */
+export function atomicRateLimitWindow(
+  bucket: string,
+  identity: string,
+  windowSeconds: number,
+  now = Date.now(),
+): { key: string; windowStart: number; retryAfterSeconds: number } {
+  const windowIndex = Math.floor(now / (windowSeconds * 1000));
+  const windowStart = windowIndex * windowSeconds * 1000;
+  return {
+    key: `${bucket}:${identity}`,
+    windowStart,
+    retryAfterSeconds: Math.max(1, Math.ceil((windowStart + windowSeconds * 1000 - now) / 1000)),
+  };
+}
+
+/**
+ * The counter increment as a prepared statement, so a caller that is about to
+ * write the thing being limited can carry the limiter inside its own
+ * `db.batch()` instead of paying another round trip to the database's region.
+ * Read the resulting count with {@link atomicRateLimitCount}, and only run the
+ * write when it is within the limit.
+ */
+export function buildAtomicRateLimitStatement(
+  db: D1Database,
+  bucket: string,
+  identity: string,
+  windowSeconds: number,
+  now = Date.now(),
+): D1PreparedStatement {
+  const { key, windowStart } = atomicRateLimitWindow(bucket, identity, windowSeconds, now);
+  return db
+    .prepare(
+      `INSERT INTO rate_limits (key, count, window_start)
+       VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE
+           WHEN rate_limits.window_start = excluded.window_start THEN rate_limits.count + 1
+           ELSE 1
+         END,
+         window_start = excluded.window_start
+       RETURNING count`,
+    )
+    .bind(key, windowStart);
+}
+
+/** The count produced by {@link buildAtomicRateLimitStatement}, however it was executed. */
+export function atomicRateLimitCount(result: { count?: unknown } | null | undefined): number {
+  const count = Number(result?.count ?? 1);
+  return Number.isFinite(count) && count > 0 ? count : 1;
+}
+
+/** The count of a {@link buildAtomicRateLimitStatement} that ran inside a `db.batch()`. */
+export function readAtomicRateLimitCountFromBatch(result: D1Result<unknown> | undefined): number {
+  return atomicRateLimitCount(((result?.results ?? []) as Array<{ count?: unknown }>)[0]);
+}

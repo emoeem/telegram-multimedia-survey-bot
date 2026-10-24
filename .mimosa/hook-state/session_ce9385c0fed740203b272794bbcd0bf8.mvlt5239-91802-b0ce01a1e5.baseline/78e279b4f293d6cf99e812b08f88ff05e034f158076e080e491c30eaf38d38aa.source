@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# deploy-github.sh — GitHub Pages 部署脚本，提供两种模式：
+#
+#   ./scripts/deploy/deploy-github.sh ci     [目标仓库]
+#       模式一（推荐）：在"你的" GitHub 仓库上启用 Actions 自动部署。
+#       会安装 docs/templates/github-pages.yml.example 到 .github/workflows/pages.yml，
+#       并用 gh CLI 开启 Pages（build_type=workflow）。之后每次 push 自动构建部署，零配置。
+#
+#   ./scripts/deploy/deploy-github.sh branch <git-url> [分支]
+#       模式二：本地构建后，把 public/ 推送到指定仓库的分支（用户名仓库默认 main，其他默认 gh-pages）。
+#       例: ./scripts/deploy/deploy-github.sh branch git@github.com:alice/alice.github.io.git
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+WORKFLOW_SRC="$SITE_ROOT/docs/templates/github-pages.yml.example"
+WORKFLOW_DST="$SITE_ROOT/.github/workflows/pages.yml"
+
+install_workflow() {
+    [[ -f "$WORKFLOW_SRC" ]] || die "找不到工作流模板: $WORKFLOW_SRC"
+    if [[ -f "$WORKFLOW_DST" ]]; then
+        warn "已存在 $WORKFLOW_DST，跳过安装（如需覆盖请先删除）。"
+        return 0
+    fi
+    mkdir -p "$(dirname "$WORKFLOW_DST")"
+    cp "$WORKFLOW_SRC" "$WORKFLOW_DST"
+    info "已安装 GitHub Pages 工作流: $WORKFLOW_DST"
+}
+
+mode_ci() {
+    local repo="${1:-}"
+    require_cmd git gh || die "模式一需要 git 和 GitHub CLI (gh)。"
+
+    if [[ -n "$repo" ]]; then
+        REPO="$repo"
+    else
+        # 尝试从 origin 推断 owner/repo
+        REPO="$(git -C "$SITE_ROOT" remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/](.+)(\.git)?$#\1#' || true)"
+        [[ -n "$REPO" && "$REPO" != *github.com* ]] || ask "目标仓库 (owner/repo，即你的博客源码仓库)" "" REPO
+        [[ -n "$REPO" ]] || die "无法确定目标仓库，请传入参数: $0 ci owner/repo"
+    fi
+    info "目标仓库: $REPO"
+
+    install_workflow
+
+    info "开启 GitHub Pages（工作流构建模式）..."
+    gh api -X POST "repos/$REPO/pages" -f build_type=workflow >/dev/null 2>&1 \
+        || info "Pages 可能已开启（若报 409 可忽略）。"
+
+    git -C "$SITE_ROOT" add .github/workflows/pages.yml
+    if git -C "$SITE_ROOT" diff --cached --quiet; then
+        info "工作流文件无变化。"
+    else
+        git -C "$SITE_ROOT" commit -m "ci: 添加 GitHub Pages 自动部署工作流"
+    fi
+
+    info "推送到远程以触发部署..."
+    git -C "$SITE_ROOT" push origin HEAD
+
+    info "完成！首次部署约 2~3 分钟，进度见: https://github.com/$REPO/actions"
+    gh run watch 2>/dev/null || true
+}
+
+mode_branch() {
+    local git_url="${1:-}" branch="${2:-}"
+    [[ -n "$git_url" ]] || die "用法: $0 branch <git-url> [分支]"
+
+    build_site
+
+    if [[ -z "$branch" ]]; then
+        # 用户名.github.io 仓库推 main，项目仓库推 gh-pages
+        if [[ "$git_url" == *github.io* ]]; then branch="main"; else branch="gh-pages"; fi
+    fi
+
+    local tmp
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    info "准备推送目录（分支: $branch）..."
+    if git ls-remote "$git_url" "$branch" | grep -q "$branch"; then
+        git clone --depth 1 --branch "$branch" "$git_url" "$tmp/deploy"
+        find "$tmp/deploy" -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+    else
+        git init -b "$branch" "$tmp/deploy"
+    fi
+
+    cp -a "$SITE_ROOT/public/." "$tmp/deploy/"
+    git -C "$tmp/deploy" add -A
+    git -C "$tmp/deploy" -c user.name="$(git -C "$SITE_ROOT" config user.name || echo blog)" \
+        -c user.email="$(git -C "$SITE_ROOT" config user.email || echo blog@local)" \
+        commit -m "deploy: $(date '+%Y-%m-%d %H:%M:%S')"
+
+    info "推送到 $git_url ($branch)..."
+    git -C "$tmp/deploy" push -f "$git_url" "$branch"
+
+    info "完成！"
+}
+
+case "${1:-}" in
+    ci)     shift; mode_ci "$@" ;;
+    branch) shift; mode_branch "$@" ;;
+    *) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

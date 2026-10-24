@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# init-site.sh — 把模板博客改造成"属于你自己的"博客。
+# 交互式收集信息后，自动修改站点与主题配置中的标题、作者、URL、个人链接等。
+# 用法: ./scripts/deploy/init-site.sh
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+cd "$SITE_ROOT"
+ROOT_CONFIG="$SITE_ROOT/_config.yml"
+THEME_CONFIG="$SITE_ROOT/themes/hexo-theme-matery/_config.yml"
+[[ -f "$ROOT_CONFIG" && -f "$THEME_CONFIG" ]] || die "找不到 Hexo 配置文件，请在仓库根目录结构下运行。"
+
+command -v git >/dev/null || die "需要 git。"
+
+echo "=============================================="
+echo "  博客个性化初始化"
+echo "  会修改 _config.yml 与主题配置，git 可随时回滚"
+echo "=============================================="
+
+ask "GitHub 用户名（用于生成站点地址和个人链接）" "" GH_USER
+[[ -n "$GH_USER" ]] || die "GitHub 用户名不能为空。"
+
+ask "自定义域名（没有就回车，将使用 ${GH_USER}.github.io）" "" CUSTOM_DOMAIN
+if [[ -n "$CUSTOM_DOMAIN" ]]; then
+    SITE_URL="$CUSTOM_DOMAIN"
+else
+    SITE_URL="https://${GH_USER}.github.io"
+fi
+
+ask "站点标题" "$GH_USER" SITE_TITLE
+ask "副标题（一句话定位）" "" SITE_SUBTITLE
+ask "SEO 描述（description）" "" SITE_DESC
+ask "作者名" "$GH_USER" AUTHOR
+ask "About 页职业头衔（回车保留默认）" "" CAREER
+ask "About 页个人介绍（回车保留默认）" "" INTRO
+
+# 记录旧站点地址，做全局替换（含主题内“我的项目”等链接）
+OLD_URL="$(grep -m1 '^url:' "$ROOT_CONFIG" | awk '{print $2}' | tr -d "'\"")"
+
+# sed 替换助手: replace <文件> <正则> <替换文本>
+replace() {
+    local file="$1" regex="$2" value="$3"
+    value="${value//\\/\\\\}"
+    value="${value//&/\\&}"
+    value="${value//|/\\|}"
+    sed -i -E "s|$regex|$value|" "$file"
+}
+
+info "写入根配置 _config.yml..."
+replace "$ROOT_CONFIG" '^title: .*$'          "title: '${SITE_TITLE}'"
+replace "$ROOT_CONFIG" '^subtitle: .*$'       "subtitle: '${SITE_SUBTITLE:-${SITE_TITLE}}'"
+replace "$ROOT_CONFIG" '^description: .*$'    "description: '${SITE_DESC:-${SITE_TITLE}}'"
+replace "$ROOT_CONFIG" '^keywords: .*$'       "keywords: 'hexo, blog, 技术博客, ${AUTHOR}'"
+replace "$ROOT_CONFIG" '^author: .*$'         "author: '${AUTHOR}'"
+replace "$ROOT_CONFIG" '^url: .*$'            "url: '${SITE_URL}'"
+
+info "写入主题配置 themes/hexo-theme-matery/_config.yml..."
+# 先替换指向“旧仓库”的 Fork Me 链接（两级路径），再替换一级路径的个人主页链接
+replace "$THEME_CONFIG" '^  url: https://github\.com/[^/]*/[^/]*$' "  url: 'https://github.com/${GH_USER}'"
+replace "$THEME_CONFIG" '^  url: https://github\.com/[^/]*$'       "  url: 'https://github.com/${GH_USER}'"
+replace "$THEME_CONFIG" '^  github: .*$'                           "  github: 'https://github.com/${GH_USER}'"
+
+if [[ -n "$CAREER" ]]; then
+    replace "$THEME_CONFIG" '^  career: .*$' "  career: '${CAREER}'"
+fi
+if [[ -n "$INTRO" ]]; then
+    replace "$THEME_CONFIG" '^  introduction: .*$' "  introduction: '${INTRO}'"
+fi
+
+if [[ -n "$OLD_URL" ]]; then
+    info "全局替换旧站点地址 $OLD_URL -> $SITE_URL ..."
+    replace "$ROOT_CONFIG" "${OLD_URL//./\\.}" "$SITE_URL"
+    replace "$THEME_CONFIG" "${OLD_URL//./\\.}" "$SITE_URL"
+fi
+
+echo
+info "完成！修改概览:"
+git --no-pager diff --stat -- _config.yml themes/hexo-theme-matery/_config.yml || true
+cat <<'EOF'
+
+以下内容脚本不会自动改，建议手动检查:
+  1. 首页打字机文案:      主题配置 subtitle.sub 列表
+  2. About 页技能/项目:   主题配置 mySkills / myProjects
+  3. 头像与 LOGO:         source/medias/（avatar.jpg、logo.png）
+  4. 打赏二维码:          source/medias/reward/（不想要可把 reward.enable 改为 false）
+  5. 友链:                source/_data/friends.json
+  6. 导航菜单:            主题配置 menu
+  7. 音乐播放器歌单 ID:   主题配置 music.id
+  8. 评论系统 envId:      主题配置 twikoo.envId（需自行部署）
+EOF

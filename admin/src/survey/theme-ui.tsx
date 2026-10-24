@@ -1,40 +1,49 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Monitor, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { SurveyThemeDto } from "./api";
 
-/** DaisyUI presets shared by the survey fill page and the plaza page. */
+/** DaisyUI presets shared by the survey fill page and the plaza page.
+ *  2026-10 界面重设计收敛为三套：暗金（默认，色值见 index.css foxgold 块）、
+ *  暗色、明亮。被移除的旧预设 id 由 LEGACY_PRESET_MAP 迁移到最近似主题，
+ *  避免老 localStorage / 老问卷数据解析成空值后闪回浅色。 */
 export const SURVEY_THEME_PRESETS = [
-  { id: "light", name: "明亮" },
+  { id: "foxgold", name: "暗金" },
   { id: "dark", name: "暗色" },
-  { id: "night", name: "深蓝夜" },
-  { id: "luxury", name: "黑金奢华" },
-  { id: "retro", name: "复古纸张" },
-  { id: "cupcake", name: "粉彩" },
-  { id: "synthwave", name: "霓虹" },
-  { id: "black", name: "纯黑" },
+  { id: "light", name: "明亮" },
 ];
 
 export const SYSTEM_PRESET_ID = "system";
 
+/** 旧预设 id → 收敛后的最近似主题。"system" 归入默认暗金。 */
+export const LEGACY_PRESET_MAP: Record<string, string> = {
+  system: "foxgold",
+  night: "dark",
+  luxury: "foxgold",
+  synthwave: "dark",
+  black: "foxgold",
+  retro: "light",
+  cupcake: "light",
+};
+
 /** Presets that are light-themed — used to pick the right fallback
- *  when the OS is in light vs. dark mode and `system` is active. */
-const LIGHT_PRESETS = new Set(["light", "retro", "cupcake"]);
+ *  when a caller needs to know whether a preset reads as bright. */
+const LIGHT_PRESETS = new Set(["light"]);
 
-function systemPrefersDark(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-/** Resolve the "system" pseudo-preset to an actual DaisyUI preset id. */
-export function resolvePresetId(presetId: string | null | undefined): string | null {
+/** Normalize any stored id (including legacy ones) to a surviving preset id,
+ *  or null when there is nothing to apply. */
+export function normalizePresetId(presetId: string | null | undefined): string | null {
   if (!presetId) return null;
-  if (presetId === SYSTEM_PRESET_ID) {
-    return systemPrefersDark() ? "dark" : "light";
-  }
+  if (LEGACY_PRESET_MAP[presetId]) return LEGACY_PRESET_MAP[presetId];
   return SURVEY_THEME_PRESETS.some((p) => p.id === presetId) ? presetId : null;
 }
 
-/** Like resolvePresetId but also re-renders when OS theme changes. */
+/** Resolve a stored preset to a concrete id; null means "platform default". */
+export function resolvePresetId(presetId: string | null | undefined): string | null {
+  return normalizePresetId(presetId);
+}
+
+/** Like resolvePresetId but also re-renders when OS theme changes. Kept for
+ *  API compatibility with the screens that call it on every mount. */
 export function useResolvedPreset(presetId: string | null | undefined): string | null {
   const [resolved, setResolved] = useState<string | null>(() => resolvePresetId(presetId));
 
@@ -48,11 +57,6 @@ export function useResolvedPreset(presetId: string | null | undefined): string |
         // SSR guard
       }
     }
-    if (presetId !== SYSTEM_PRESET_ID) return;
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => setResolved(systemPrefersDark() ? "dark" : "light");
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
   }, [presetId]);
 
   return resolved;
@@ -65,7 +69,9 @@ export const isValidPresetId = (id: string): boolean =>
 export function loadGlobalPreset(): string | null {
   try {
     const stored = localStorage.getItem(GLOBAL_THEME_KEY);
-    return stored && isValidPresetId(stored) ? stored : null;
+    // 迁移遗留 id（luxury→foxgold、night→dark…），否则原始值会经
+    // data-theme={preset} 落到内层容器上，命中不了任何 CSS 变量块。
+    return normalizePresetId(stored);
   } catch {
     return null;
   }
@@ -121,7 +127,7 @@ export function PresetSwatch({ presetId, size = "sm" }: { presetId: string; size
   );
 }
 
-const DARK_PRESETS = new Set(["dark", "night", "luxury", "synthwave", "black"]);
+const DARK_PRESETS = new Set(["dark", "foxgold"]);
 
 export function themeCssVars(theme: SurveyThemeDto | null): Record<string, string> {
   if (!theme) return {};
@@ -221,10 +227,8 @@ export function ThemePickerSheet({
   defaultLabel?: string;
 }) {
   if (!open) return null;
-  const isSystem = selected === SYSTEM_PRESET_ID;
-  const resolvedSystem = resolvePresetId(SYSTEM_PRESET_ID);
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button aria-label="关闭主题选择" className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] shadow-[0_-12px_40px_-16px_rgba(15,23,42,.3)]">
         <div className="flex items-center justify-between">
@@ -243,22 +247,6 @@ export function ThemePickerSheet({
           >
             <div className="h-8 w-full rounded-lg bg-[var(--surface-muted)]" />
             <span className="mt-1 block text-[11px] text-[var(--survey-muted)]">{defaultLabel}</span>
-          </button>
-          <button
-            type="button"
-            className={`rounded-lg border p-1.5 text-left ${
-              isSystem ? "border-[var(--survey-primary)]" : "border-[var(--survey-card-border)]"
-            }`}
-            onClick={() => onSelect(SYSTEM_PRESET_ID)}
-          >
-            {resolvedSystem ? (
-              <PresetSwatch presetId={resolvedSystem} />
-            ) : (
-              <div className="flex h-8 w-full items-center justify-center rounded-lg border border-dashed border-[var(--survey-card-border)] text-[var(--survey-muted)]">
-                <Monitor className="h-4 w-4" />
-              </div>
-            )}
-            <span className="mt-1 block text-[11px] text-[var(--survey-body)]">跟随系统</span>
           </button>
           {SURVEY_THEME_PRESETS.map((preset) => (
             <button

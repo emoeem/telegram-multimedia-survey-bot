@@ -1,0 +1,44 @@
+{
+  "touched": [
+    "/home/emo/code/telegram-bot/admin/src/survey/theme-ui.tsx",
+    "/home/emo/code/telegram-bot/admin/src/theme.ts"
+  ],
+  "bashMutation": false,
+  "reportedFindings": [],
+  "findingEvents": [],
+  "baseline": {
+    "storageId": "mvlqauri-25090-789f387557",
+    "createdAt": "2026-10-24T01:37:08.670Z",
+    "files": {
+      "src/survey/theme-ui.tsx": {
+        "existed": true,
+        "snapshot": "5d9935b23a633a156647393f01e2683e4cffcb2603c2a7b8c62d012b7ab83fb6.source"
+      },
+      "src/theme.ts": {
+        "existed": true,
+        "snapshot": "0e21fb1c9519a397050defc2148a2d1b966a0982cc4cf196e1e6b007f8d095e5.source"
+      }
+    },
+    "complete": false,
+    "candidateLimit": 5000,
+    "discoveredFiles": 0,
+    "capturedFiles": 2,
+    "truncated": false,
+    "omittedAtLeast": 0,
+    "firstOmitted": "",
+    "errors": [
+      {
+        "stage": "baseline-capture",
+        "target": ".",
+        "reason": "global task baseline was unavailable; captured only the touched file"
+      },
+      { "stage": "baseline-snapshot", "target": "../src/survey/theme.ts", "reason": "file is outside project" },
+      { "stage": "baseline-snapshot", "target": "../src/survey/theme.ts", "reason": "file is outside project" }
+    ]
+  },
+  "stateErrors": [],
+  "omittedReportedFindings": 0,
+  "omittedFindingEvents": 0,
+  "processing": null,
+  "updatedAt": "2026-10-24T01:40:37.364Z"
+}

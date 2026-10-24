@@ -93,7 +93,7 @@ export function EmailAuthScreen() {
   };
 
   const inputClass =
-    "mt-1 min-h-11 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]";
+    "mt-1 min-h-11 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5 text-sm text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)]";
 
   return (
     <div
@@ -145,6 +145,7 @@ export function EmailAuthScreen() {
           <input
             type="email"
             autoComplete="email"
+            spellCheck={false}
             className={inputClass}
             value={email}
             placeholder="you@example.com"
@@ -159,6 +160,8 @@ export function EmailAuthScreen() {
                 验证码
                 <input
                   inputMode="numeric"
+                  autoComplete="one-time-code"
+                  spellCheck={false}
                   maxLength={6}
                   className={inputClass}
                   value={code}

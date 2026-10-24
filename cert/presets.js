@@ -16,6 +16,17 @@
  * 其余派生色（边框、软底、阴影等）由 styles.css 用 color-mix 现场混合。
  */
 window.CERT_UI_PRESETS = {
+  /* 暗金 = 平台默认主题（admin/src/index.css 的 [data-theme="foxgold"] 块）。
+   * legacy 的六套旧 daisyUI 预设保留在表尾：老 localStorage 值仍能渲染，
+   * 新选择只会来自收敛后的三套。 */
+  foxgold: {
+    label: "暗金",
+    page: "#0f0e17",
+    card: "#1a1a2e",
+    ink: "#f3eee3",
+    primary: "#d4a574",
+    onPrimary: "#17141f",
+  },
   light: {
     label: "明亮",
     page: "oklch(98% 0 0)",

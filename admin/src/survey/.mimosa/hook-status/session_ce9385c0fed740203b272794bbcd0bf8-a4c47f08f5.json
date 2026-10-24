@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-10-24T02:39:08.848Z",
+  "sessionId": "session_ce9385c0fed740203b272794bbcd0bf8",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": "PlazaScreen.tsx",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 4,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

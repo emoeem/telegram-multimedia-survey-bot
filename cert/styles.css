@@ -2,16 +2,17 @@
  *
  * 设计令牌与问卷填写页（admin/src/survey + index.css）对齐：
  * 同一套字体栈、圆角（卡片 18px / 按钮 12px）、主色与中性色阶。
- * 未选主题时用问卷默认的「明亮」配色；用户在问卷页选过 daisyUI
- * 预设时，app.js 会把 base/primary 等语义色写到 ：root 上，
- * 下面所有派生色（边框、软底、焦点环等）用 color-mix 自动跟随。
+ * 未选主题时用平台默认的「暗金」（与 admin/src/index.css 的
+ * [data-theme="foxgold"] 块同值）；用户在问卷页选过主题时，app.js 会把
+ * base/primary 等语义色写到 ：root 上，下面所有派生色（边框、软底、焦点
+ * 环等）用 color-mix 自动跟随。
  */
 :root {
-  --bg: #f4f6fa;
-  --panel: #ffffff;
-  --ink: #172033;
-  --brand: #4f46e5;
-  --on-brand: #ffffff;
+  --bg: #0f0e17;
+  --panel: #1a1a2e;
+  --ink: #f3eee3;
+  --brand: #d4a574;
+  --on-brand: #17141f;
   --danger: #dc2626;
 
   /* 派生色：全部由 ink / panel / brand 现场混合，换主题时自动生效 */
@@ -24,9 +25,9 @@
   --brand-2: color-mix(in srgb, var(--brand) 84%, #000000);
   --chip-bg: color-mix(in srgb, var(--ink) 4%, var(--panel));
   --canvas-bg: color-mix(in srgb, var(--ink) 8%, var(--panel));
-  --radius: 18px;
-  --radius-btn: 12px;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px color-mix(in srgb, var(--ink) 7%, transparent);
+  --radius: 16px;
+  --radius-btn: 10px;
+  --shadow: 0 4px 20px rgba(212, 165, 116, 0.08), 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 * {

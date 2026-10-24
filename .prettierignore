@@ -8,6 +8,8 @@ package-lock.json
 
 # Local assistant/tooling state
 .zcode/
+.mimosa/
+**/.mimosa/
 
 # Standalone tg-archive MVP (Python, separate toolchain)
 tg-archive/

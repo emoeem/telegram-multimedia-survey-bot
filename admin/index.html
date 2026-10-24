@@ -3,21 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f6fa" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#080d18" />
+    <meta name="theme-color" content="#0f0e17" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6fa" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="data:," />
     <title>问卷管理后台</title>
     <script>
-      /* Apply the stored theme before first paint so dark-OS users don't get
-       * a light flash; theme.ts re-applies the same resolution on boot. */
+      /* Apply the stored theme before first paint so the default 暗金 (foxgold)
+       * palette (or a stored choice) never flashes the wrong background;
+       * theme.ts re-applies the same resolution on boot. */
       (function () {
-        var known = ["light", "dark", "night", "luxury", "retro", "cupcake", "synthwave", "black"];
-        var theme = "light";
+        var known = ["foxgold", "dark", "light"];
+        var legacy = {
+          system: "foxgold",
+          night: "dark",
+          luxury: "foxgold",
+          synthwave: "dark",
+          black: "foxgold",
+          retro: "light",
+          cupcake: "light",
+        };
+        var theme = "foxgold";
         try {
           var stored = localStorage.getItem("admin_theme");
-          if (stored && known.indexOf(stored) !== -1) theme = stored;
-          else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+          if (stored) theme = legacy[stored] || (known.indexOf(stored) !== -1 ? stored : theme);
         } catch (error) {}
         document.documentElement.setAttribute("data-theme", theme);
       })();

@@ -5,19 +5,27 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  BookOpen,
   Check,
   CheckCircle2,
   ChevronRight,
   Coins,
   Download,
+  EyeOff,
+  Flag,
+  Globe,
   Home,
+  Link2,
   Lock,
   MailCheck,
+  Map as MapIcon,
+  Megaphone,
   Palette,
   Paperclip,
   RefreshCw,
   Send,
   Share2,
+  ShieldAlert,
   Sparkles,
   Star,
   Users,
@@ -307,7 +315,11 @@ function EndingsCard({ surveyId, allowMultiple }: { surveyId: number; allowMulti
   return (
     <div className="mt-5 w-full max-w-sm rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
       <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
-        🗺️ 结局图鉴 {endings.unlocked.length}/{endings.total}
+        <MapIcon className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+        结局图鉴{" "}
+        <span className="tabular-nums">
+          {endings.unlocked.length}/{endings.total}
+        </span>
       </p>
       <ul className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
         {endings.unlocked.map((ending) => (
@@ -315,7 +327,8 @@ function EndingsCard({ surveyId, allowMultiple }: { surveyId: number; allowMulti
             key={ending.resultType}
             className="flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--survey-heading)]"
           >
-            🏁 {ending.title ?? "隐藏结局"}
+            <Flag className="h-3 w-3" aria-hidden="true" />
+            {ending.title ?? "隐藏结局"}
           </li>
         ))}
         {Array.from({ length: Math.max(0, endings.total - endings.unlocked.length) }, (_, index) => (
@@ -460,7 +473,7 @@ function AuthRequiredScreen({ onRetry }: { onRetry: () => void }) {
   const hasEmailSession = typeof localStorage !== "undefined" && Boolean(localStorage.getItem("emailSessionToken"));
   return (
     <div className="mx-auto max-w-xl px-5 py-16 text-center">
-      <p className="text-5xl">🔐</p>
+      <Lock className="mx-auto h-12 w-12 text-[var(--survey-primary)]" aria-hidden="true" />
       <h1 className="mt-4 text-lg font-semibold">注册或登录后开始填写</h1>
       <p className="mt-3 text-sm opacity-70">
         填写问卷需要一个账号（邮箱即可）：这样你的答卷进度、结局收集和追更通知都能找回，换设备也不会丢。 用 Telegram
@@ -496,7 +509,7 @@ function AgeGateScreen({ onConfirmed }: { onConfirmed: () => void }) {
   };
   return (
     <div className="mx-auto max-w-xl px-5 py-16 text-center">
-      <p className="text-5xl">🔞</p>
+      <ShieldAlert className="mx-auto h-12 w-12 text-amber-500" aria-hidden="true" />
       <h1 className="mt-4 text-lg font-semibold">该内容为 18+ 内容</h1>
       <p className="mt-3 text-sm opacity-70">
         此问卷包含成人内容，仅限已满 18 周岁的访问者查看。确认后本次设备将记住你的选择。
@@ -667,7 +680,34 @@ function SurveyListPage() {
     );
   }
   if (!surveys) {
-    return shell(<div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">问卷加载中…</div>);
+    return shell(
+      <div className="mx-auto w-full max-w-[1200px] px-5 pt-5">
+        {/* 骨架屏复刻列表结构（入口卡 + 三张问卷卡），替代原来一行「加载中…」文字。 */}
+        <div className="survey-card mb-4 flex items-center gap-3 px-4 py-3" aria-hidden="true">
+          <div className="h-11 w-11 shrink-0 animate-pulse rounded-2xl bg-[var(--survey-primary-soft)]" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-1/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+            <div className="h-3 w-2/5 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="正在加载问卷列表">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="survey-card p-4">
+              <div className="mb-3 h-3.5 w-3/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+              <div className="mb-2 h-3 w-1/2 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+              <div className="mb-4 flex gap-1.5">
+                <div className="h-6 w-14 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                <div className="h-6 w-14 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                <div className="h-9 w-24 animate-pulse rounded-xl bg-[var(--survey-primary-soft)]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>,
+    );
   }
   if (surveys.length === 0) {
     return shell(
@@ -717,10 +757,12 @@ function SurveyListPage() {
       style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
     >
       <header className="border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] px-5 pb-4 pt-7 backdrop-blur-md">
-        <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto w-full max-w-[1200px]">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)]">可填写问卷</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)] lg:font-[family-name:var(--fx-font-serif)] lg:tracking-[0.04em]">
+                可填写问卷
+              </h1>
               <p className="mt-1 text-sm text-[var(--color-muted)]">选择一份问卷，开始你的回答</p>
             </div>
             <div className="mt-1 flex shrink-0 items-center gap-1.5">
@@ -841,10 +883,11 @@ function SurveyListPage() {
         </div>
       </header>
       {!ageVerified && hiddenCount > 0 ? (
-        <div className="mx-auto w-full max-w-6xl px-5 pt-4">
+        <div className="mx-auto w-full max-w-[1200px] px-5 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-            <p className="text-sm text-[var(--color-ink)]">
-              🔞 目录中还有 <span className="font-bold">{hiddenCount}</span> 份 18+ 问卷未显示
+            <p className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+              目录中还有 <span className="font-bold">{hiddenCount}</span> 份 18+ 问卷未显示
             </p>
             <button
               type="button"
@@ -868,14 +911,14 @@ function SurveyListPage() {
           </div>
         </div>
       ) : null}
-      <main className="mx-auto w-full max-w-6xl px-5 pt-5">
+      <main className="mx-auto w-full max-w-[1200px] px-5 pt-5">
         {/* 认证卡生成器入口卡：它和问卷、挑战、广场是同一个产品的功能，不该
             只靠「自己记得 /cert」才进得去。卡片完全复用 .survey-card（与下面的
             问卷卡同一套边框、圆角、阴影、悬停位移），所以一眼就是同体系的一块，
             视觉权重低于问卷列表、高于页脚文字链。 */}
         <a
           href="/cert/"
-          className="survey-card mb-4 flex items-center gap-3 px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-lg"
+          className="survey-card mb-4 flex items-center gap-3 px-4 py-3 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
         >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
             <BadgeCheck className="h-5 w-5" />
@@ -899,7 +942,7 @@ function SurveyListPage() {
               <a
                 key={survey.id}
                 href={`/s/${survey.id}`}
-                className="survey-card block p-4 transition hover:-translate-y-0.5 hover:shadow-lg"
+                className="survey-card block p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
               >
                 {survey.coverUrl ? (
                   <img
@@ -937,7 +980,12 @@ function SurveyListPage() {
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                   {survey.category ? <span className="chip text-xs">{survey.category.name}</span> : null}
                   <span className="chip text-xs">{survey.questionCount} 道题</span>
-                  {survey.anonymous ? <span className="chip text-xs">🎭 匿名</span> : null}
+                  {survey.anonymous ? (
+                    <span className="chip inline-flex items-center gap-1 text-xs">
+                      <EyeOff className="h-3 w-3" aria-hidden="true" />
+                      匿名
+                    </span>
+                  ) : null}
                   {isClosed ? <span className="chip text-xs text-[var(--color-muted)]">已截止</span> : null}
                   {coinPrice !== null && !coinLocked ? (
                     <span className="chip text-xs text-[var(--color-muted)]">已解锁</span>
@@ -1031,13 +1079,19 @@ function TelegramLinkCard() {
 
   return (
     <div className="mt-4 w-full max-w-sm rounded-2xl border border-dashed border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-5 py-4">
-      <p className="text-sm font-semibold text-[var(--survey-heading)]">🔗 把答卷关联到 Telegram？</p>
+      <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
+        <Link2 className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+        把答卷关联到 Telegram？
+      </p>
       <p className="mt-1 text-xs leading-5 text-[var(--survey-muted)]">
         绑定后，这个浏览器填写的答卷会归到你的 Telegram 账号下，方便你以后查看与找回。 不绑定也完全不影响本次填写。
       </p>
       {linked?.linked ? (
         <p className="mt-3 rounded-xl bg-[var(--survey-primary-soft)] px-3 py-2 text-xs font-medium text-[var(--survey-primary)]">
-          ✅ 已绑定{displayName ? `：${displayName}` : ""}
+          <span className="inline-flex items-center gap-1">
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+            已绑定{displayName ? `：${displayName}` : ""}
+          </span>
         </p>
       ) : (
         <>
@@ -2937,7 +2991,14 @@ export function SurveyApp() {
                 <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
               </div>
               <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--survey-muted)]">
-                {isNote ? "📖 剧情" : `${answerableIndex}/${answerableTotal} · ${percent}%`}
+                {isNote ? (
+                  <span className="inline-flex items-center gap-1">
+                    <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                    剧情
+                  </span>
+                ) : (
+                  `${answerableIndex}/${answerableTotal} · ${percent}%`
+                )}
               </span>
             </div>
           </div>
@@ -2991,7 +3052,8 @@ export function SurveyApp() {
               <>
                 {question.title ? (
                   <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    📖 <Typewriter text={question.title} enabled={vnMode} className="whitespace-pre-wrap" />
+                    <BookOpen className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                    <Typewriter text={question.title} enabled={vnMode} className="whitespace-pre-wrap" />
                   </h1>
                 ) : null}
                 {question.description ? (
@@ -3059,7 +3121,8 @@ export function SurveyApp() {
                 />
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-[var(--survey-heading)]">
-                    📣 公开发布到 Telegram
+                    <Megaphone className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                    公开发布到 Telegram
                   </span>
                   <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
                     发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。
@@ -3078,7 +3141,8 @@ export function SurveyApp() {
                     />
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-[var(--survey-heading)]">
-                        🌍 发布到个人画廊
+                        <Globe className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                        发布到个人画廊
                       </span>
                       <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
                         默认不展示 Telegram 个人信息，你还可以选择画廊封面

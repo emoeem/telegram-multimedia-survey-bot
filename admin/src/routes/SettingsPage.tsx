@@ -33,7 +33,7 @@ function ThemeSwatch({
   return (
     <button
       type="button"
-      data-theme={themeId === "system" ? "light" : themeId}
+      data-theme={themeId}
       onClick={onSelect}
       aria-pressed={selected}
       className={`flex w-full sm:w-36 flex-col gap-1.5 rounded-xl border p-2 text-left transition ${

@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261024T024512440Z-81357-3e8c1c4c7848",
+  "runId": "20261024T024512440Z-81357-3e8c1c4c7848",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "a3cc76a4d3fddb39d5dc25671a03e03e3397c6ef",
+  "diffHash": "57f8bb2f34311fb54a3720b3b74b61c04e51edbe6d1f0721819b52f9e1d9b968",
+  "rulesVersion": "unavailable",
+  "sessionHash": "a4c47f08f59bc9aed541762b1637ecd60eab5518f1f1910590272588ae27811f",
+  "reportRef": ".mimosa/reports/task-review-session_ce9385c0fed740203b272794bbcd0bf8-20261024T024512440Z-81357-3e8c1c4c7848.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "BottomNav.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "PageHeader.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "theme-ui.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "SurveyApp.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "PlazaScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "TrialScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "SubmissionHub.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "SeriesScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-10-24T02:45:12.793Z"
+}

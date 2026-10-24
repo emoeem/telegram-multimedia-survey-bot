@@ -1,0 +1,77 @@
+import type { CustomerDeployment, DeploymentTask, DeploymentTaskStatus, DeploymentTaskType } from "../schema";
+
+interface DeploymentRow {
+  id:number; license_id:number; installation_id:string; worker_name:string; worker_url:string|null;
+  status:CustomerDeployment["status"]; current_version:string|null; desired_version:string|null;
+  last_seen_at:string|null; metadata_json:string|null; created_at:string; updated_at:string;
+}
+interface TaskRow {
+  id:number; deployment_id:number; type:DeploymentTaskType; target_version:string|null; status:DeploymentTaskStatus;
+  requested_by:number|null; requested_at:string; started_at:string|null; finished_at:string|null;
+  log_text:string|null; result_json:string|null; error_message:string|null;
+}
+const mapDeployment=(r:DeploymentRow):CustomerDeployment=>({
+  id:r.id,licenseId:r.license_id,installationId:r.installation_id,workerName:r.worker_name,workerUrl:r.worker_url,
+  status:r.status,currentVersion:r.current_version,desiredVersion:r.desired_version,lastSeenAt:r.last_seen_at,
+  metadataJson:r.metadata_json,createdAt:r.created_at,updatedAt:r.updated_at,
+});
+const mapTask=(r:TaskRow):DeploymentTask=>({
+  id:r.id,deploymentId:r.deployment_id,type:r.type,targetVersion:r.target_version,status:r.status,
+  requestedBy:r.requested_by,requestedAt:r.requested_at,startedAt:r.started_at,finishedAt:r.finished_at,
+  logText:r.log_text,resultJson:r.result_json,errorMessage:r.error_message,
+});
+const now=()=>new Date().toISOString();
+
+export async function listCustomerDeployments(db:D1Database, licenseId?:number){
+  const q=licenseId===undefined
+    ? db.prepare("SELECT * FROM customer_deployments ORDER BY updated_at DESC,id DESC")
+    : db.prepare("SELECT * FROM customer_deployments WHERE license_id=? ORDER BY updated_at DESC,id DESC").bind(licenseId);
+  const rows=await q.all<DeploymentRow>(); return rows.results.map(mapDeployment);
+}
+export async function getCustomerDeployment(db:D1Database,id:number){
+  const row=await db.prepare("SELECT * FROM customer_deployments WHERE id=?").bind(id).first<DeploymentRow>();
+  return row?mapDeployment(row):null;
+}
+export async function upsertCustomerDeployment(db:D1Database,input:{licenseId:number;installationId:string;workerName:string;workerUrl?:string|null;currentVersion?:string|null;metadata?:Record<string,unknown>|null}){
+  const timestamp=now();
+  await db.prepare("INSERT INTO customer_deployments (license_id,installation_id,worker_name,worker_url,status,current_version,last_seen_at,metadata_json,created_at,updated_at) VALUES(?,?,?,?, 'online',?,?,?, ?,?) ON CONFLICT(license_id,installation_id) DO UPDATE SET worker_name=excluded.worker_name,worker_url=excluded.worker_url,status=CASE WHEN customer_deployments.status='disabled' THEN 'disabled' ELSE 'online' END,current_version=excluded.current_version,last_seen_at=excluded.last_seen_at,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at")
+    .bind(input.licenseId,input.installationId,input.workerName,input.workerUrl??null,input.currentVersion??null,timestamp,input.metadata?JSON.stringify(input.metadata):null,timestamp,timestamp).run();
+  const row=await db.prepare("SELECT * FROM customer_deployments WHERE license_id=? AND installation_id=?").bind(input.licenseId,input.installationId).first<DeploymentRow>();
+  if(!row) throw new Error("客户部署注册失败"); return mapDeployment(row);
+}
+export async function setDeploymentStatus(db:D1Database,id:number,status:CustomerDeployment["status"],currentVersion?:string|null){
+  await db.prepare("UPDATE customer_deployments SET status=?,current_version=COALESCE(?,current_version),updated_at=? WHERE id=?").bind(status,currentVersion??null,now(),id).run();
+  return getCustomerDeployment(db,id);
+}
+export async function createDeploymentTask(db:D1Database,input:{deploymentId:number;type:DeploymentTaskType;targetVersion?:string|null;requestedBy?:number|null}){
+  const timestamp=now();
+  await db.prepare("INSERT INTO deployment_tasks(deployment_id,type,target_version,status,requested_by,requested_at) VALUES(?,?,?,'queued',?,?)").bind(input.deploymentId,input.type,input.targetVersion??null,input.requestedBy??null,timestamp).run();
+  const row=await db.prepare("SELECT * FROM deployment_tasks WHERE id=last_insert_rowid()").first<TaskRow>();
+  if(!row) throw new Error("部署任务创建失败"); return mapTask(row);
+}
+export async function listDeploymentTasks(db:D1Database,deploymentId:number,limit=30){
+  const rows=await db.prepare("SELECT * FROM deployment_tasks WHERE deployment_id=? ORDER BY id DESC LIMIT ?").bind(deploymentId,Math.min(Math.max(limit,1),100)).all<TaskRow>();
+  return rows.results.map(mapTask);
+}
+export async function claimDeploymentTask(db:D1Database){
+  const row=await db.prepare("SELECT * FROM deployment_tasks WHERE status='queued' ORDER BY id ASC LIMIT 1").first<TaskRow>();
+  if(!row) return null;
+  const timestamp=now();
+  const result=await db.prepare("UPDATE deployment_tasks SET status='running',started_at=? WHERE id=? AND status='queued'").bind(timestamp,row.id).run();
+  if(!result.meta.changes) return null;
+  await db.prepare("UPDATE customer_deployments SET status='deploying',desired_version=COALESCE(?,desired_version),updated_at=? WHERE id=?").bind(row.target_version,timestamp,row.deployment_id).run();
+  return mapTask({...row,status:"running",started_at:timestamp});
+}
+export async function finishDeploymentTask(db:D1Database,input:{taskId:number;status:"succeeded"|"failed";logText?:string|null;result?:Record<string,unknown>|null;errorMessage?:string|null;currentVersion?:string|null}){
+  const timestamp=now();
+  await db.prepare("UPDATE deployment_tasks SET status=?,finished_at=?,log_text=?,result_json=?,error_message=? WHERE id=? AND status='running'").bind(input.status,timestamp,input.logText??null,input.result?JSON.stringify(input.result):null,input.errorMessage??null,input.taskId).run();
+  const row=await db.prepare("SELECT * FROM deployment_tasks WHERE id=?").bind(input.taskId).first<TaskRow>();
+  if(!row) return null;
+  const deploymentStatus = input.status === "failed"
+    ? "failed"
+    : row.type === "disable"
+      ? "disabled"
+      : "online";
+  await db.prepare("UPDATE customer_deployments SET status=?,current_version=COALESCE(?,current_version),updated_at=? WHERE id=?").bind(deploymentStatus,input.currentVersion??null,timestamp,row.deployment_id).run();
+  return mapTask(row);
+}

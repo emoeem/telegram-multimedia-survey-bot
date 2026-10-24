@@ -77,8 +77,12 @@ describe("normalizeSurveyTheme", () => {
     expect(normalizeSurveyTheme({ background: {}, card: {} })).toBeNull();
   });
 
-  it("accepts only known DaisyUI presets", () => {
-    expect(normalizeSurveyTheme({ preset: "night" })).toEqual({ preset: "night" });
+  it("accepts only known presets and migrates retired DaisyUI ids", () => {
+    // 2026-10 重设计收敛为三套：旧 id 迁移到最近似主题，而不是丢弃。
+    expect(normalizeSurveyTheme({ preset: "night" })).toEqual({ preset: "dark" });
+    expect(normalizeSurveyTheme({ preset: "luxury" })).toEqual({ preset: "foxgold" });
+    expect(normalizeSurveyTheme({ preset: "retro" })).toEqual({ preset: "light" });
+    expect(normalizeSurveyTheme({ preset: "foxgold" })).toEqual({ preset: "foxgold" });
     expect(normalizeSurveyTheme({ preset: "dark", primaryColor: "#ff0000" })).toEqual({
       preset: "dark",
       primaryColor: "#ff0000",
@@ -102,7 +106,7 @@ describe("normalizeSurveyTheme", () => {
 });
 
 describe("normalizeStoredSurveyTheme", () => {
-  const theme = { preset: "black", primaryColor: "#d4576b", audio: { url: "/api/survey/media/716" } };
+  const theme = { preset: "foxgold", primaryColor: "#d4576b", audio: { url: "/api/survey/media/716" } };
 
   it("unwraps the {theme: ...} wrapper written by the admin editor and imports", () => {
     expect(normalizeStoredSurveyTheme({ theme })).toEqual(theme);

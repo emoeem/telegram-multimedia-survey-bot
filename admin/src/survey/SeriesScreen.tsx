@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Bell, Check, ChevronRight, Lock, RefreshCw, Users } from "lucide-react";
+import { BookOpen, Bell, Check, ChevronRight, Coins, Lock, RefreshCw, Users } from "lucide-react";
 import {
   fetchNotifications,
   fetchSeriesDetail,
@@ -198,7 +198,8 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
                     {chapter.coinPrice !== null && chapter.coinPrice > 0 ? (
                       <span className="inline-flex items-center gap-0.5">
                         <Lock className="h-3 w-3" />
-                        🪙 {chapter.coinPrice}
+                        <Coins className="h-3 w-3" aria-hidden="true" />
+                        {chapter.coinPrice}
                       </span>
                     ) : null}
                     {chapter.contentRating === "r18" ? <span className="font-semibold text-red-600">18+</span> : null}

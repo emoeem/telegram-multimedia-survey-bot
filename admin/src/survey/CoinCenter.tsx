@@ -264,7 +264,7 @@ export function CoinsScreen() {
   const checkin = overview?.checkin;
 
   return (
-    <CoinPageShell title="🪙 我的金币" subtitle="签到、做任务、赚金币；解锁问卷与抽报告都花在这里">
+    <CoinPageShell title="我的金币" subtitle="签到、做任务、赚金币；解锁问卷与抽报告都花在这里">
       {error ? <ErrorBox message={error} /> : null}
       {overview === null ? (
         <Loading />
@@ -273,24 +273,31 @@ export function CoinsScreen() {
           <section className="coin-balance-card">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">当前余额</p>
-                <p className="mt-1 text-4xl font-black text-white">
-                  {overview.balance}
-                  <span className="ml-1.5 text-sm font-bold text-white/80">金币</span>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--survey-primary-content)_72%,transparent)]">
+                  当前余额
                 </p>
-                <p className="mt-1 text-[11px] text-white/70">
+                <p className="mt-1 text-4xl font-black tabular-nums text-[var(--survey-primary-content)]">
+                  {overview.balance}
+                  <span className="ml-1.5 text-sm font-bold text-[color-mix(in_srgb,var(--survey-primary-content)_85%,transparent)]">
+                    金币
+                  </span>
+                </p>
+                <p className="mt-1 text-[11px] text-[color-mix(in_srgb,var(--survey-primary-content)_72%,transparent)]">
                   累计获得 {overview.totalEarned} · 累计消费 {overview.totalSpent}
                 </p>
               </div>
-              <CoinsIcon className="h-14 w-14 text-white/50" aria-hidden />
+              <CoinsIcon
+                className="h-14 w-14 text-[color-mix(in_srgb,var(--survey-primary-content)_55%,transparent)]"
+                aria-hidden
+              />
             </div>
             {overview.features.checkin ? (
               <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/10 p-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white">
+                  <p className="text-xs font-semibold text-[var(--survey-primary-content)]">
                     {checkin?.checkedInToday ? `今日已签到 +${checkin.todayAmount ?? 0}` : "今日未签到"}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-white/70">
+                  <p className="mt-0.5 text-[11px] text-[color-mix(in_srgb,var(--survey-primary-content)_72%,transparent)]">
                     连续 {checkin?.streak ?? 0} 天 ·{" "}
                     {checkin
                       ? checkin.checkedInToday
@@ -309,7 +316,7 @@ export function CoinsScreen() {
                 </button>
               </div>
             ) : null}
-            <p className="mt-2 text-[10px] leading-4 text-white/50">
+            <p className="mt-2 text-[10px] leading-4 text-[color-mix(in_srgb,var(--survey-primary-content)_55%,transparent)]">
               今日已获得 {overview.earnedToday}/{overview.dailyRewardCap}（投稿奖励每日上限）·
               金币为站内虚拟积分，不可兑换现金
             </p>
@@ -547,7 +554,7 @@ export function GachaScreen() {
   if (detail) {
     return (
       <CoinPageShell
-        title={`🎁 ${detail.pool.name}`}
+        title={detail.pool.name}
         subtitle={`单抽 ${detail.pool.costSingle} 金币${detail.pool.costMulti ? ` · ${detail.pool.costMulti} 金币十连` : ""}`}
       >
         {error ? <ErrorBox message={error} /> : null}
@@ -645,7 +652,7 @@ export function GachaScreen() {
   }
 
   return (
-    <CoinPageShell title="🎁 报告抽卡" subtitle="用金币抽取其他用户主动公开并授权的报告与内容">
+    <CoinPageShell title="报告抽卡" subtitle="用金币抽取其他用户主动公开并授权的报告与内容">
       {error ? <ErrorBox message={error} /> : null}
       {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
       <div className="flex gap-2" role="tablist" aria-label="抽卡页面切换">
@@ -861,7 +868,7 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
   const selectedMeta = SUBMISSION_TYPE_META.find((entry) => entry.type === type);
 
   return (
-    <CoinPageShell title="📮 投稿中心" subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池" embedded={embedded}>
+    <CoinPageShell title="投稿中心" subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池" embedded={embedded}>
       {error ? <ErrorBox message={error} /> : null}
       {success ? (
         <div className="coin-success-box" role="status">

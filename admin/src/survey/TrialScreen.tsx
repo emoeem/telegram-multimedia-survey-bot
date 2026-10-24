@@ -1,5 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Palette, Send, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Coins,
+  Dices,
+  House,
+  Luggage,
+  Medal,
+  Megaphone,
+  Palette,
+  ScrollText,
+  Send,
+  Settings,
+  Shield,
+  Ticket,
+  TriangleAlert,
+  Trophy,
+  X,
+  Zap,
+} from "lucide-react";
 import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
@@ -607,24 +627,28 @@ export function TrialScreen() {
       <div className="flex gap-1.5 overflow-x-auto border-b border-[var(--survey-card-border)] py-2.5">
         {(
           [
-            { id: "home", label: "🏠 开局" },
-            { id: "runs", label: "📜 我的记录" },
-            { id: "board", label: "🏆 排行榜" },
+            { id: "home", label: "开局", icon: House },
+            { id: "runs", label: "我的记录", icon: ScrollText },
+            { id: "board", label: "排行榜", icon: Trophy },
           ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => changeTab(tab.id)}
-            className={`rounded-full px-4 py-1.5 text-[13px] font-semibold transition-colors ${
-              activeTab === tab.id
-                ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                : "text-[var(--survey-muted)] hover:bg-[var(--survey-primary-soft)]"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        ).map((tab) => {
+          const TabIcon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => changeTab(tab.id)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-semibold transition-colors ${
+                activeTab === tab.id
+                  ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                  : "text-[var(--survey-muted)] hover:bg-[var(--survey-primary-soft)]"
+              }`}
+            >
+              <TabIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -633,14 +657,21 @@ export function TrialScreen() {
     <div className="grid min-h-dvh place-items-center px-5 py-10">
       <div className="w-full max-w-md overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] shadow-xl">
         <div className="bg-gradient-to-br from-[color-mix(in_srgb,var(--survey-primary)_25%,transparent)] to-[var(--survey-bg)] px-6 py-8 text-center">
-          <p className="text-5xl">🏮</p>
-          <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)]">挑战任务</h1>
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[var(--survey-primary-soft)]">
+            <Trophy className="h-8 w-8 text-[var(--survey-primary)]" aria-hidden="true" />
+          </div>
+          <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:tracking-[0.04em]">
+            挑战任务
+          </h1>
           <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">文字扮演 · 逐层上行 · 每层一个任务</p>
         </div>
         <div className="p-6">
           <div className="rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
-            <p>
-              ⚠️ 本页面为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
+            <p className="flex items-start gap-1.5">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+              <span>
+                本页面为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
+              </span>
             </p>
             <p className="mt-1">全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
           </div>
@@ -669,7 +700,10 @@ export function TrialScreen() {
         <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-bold text-[var(--survey-heading)]">⚙️ 管理员快捷入口</p>
+              <p className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--survey-heading)]">
+                <Settings className="h-4 w-4 text-[var(--survey-muted)]" aria-hidden="true" />
+                管理员快捷入口
+              </p>
               <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
                 在这里手动编写任务包与任务文案，保存后玩家端实时生效
               </p>
@@ -815,7 +849,7 @@ export function TrialScreen() {
                 key={pack.id}
                 type="button"
                 onClick={() => choosePack(pack.id)}
-                className={`block w-full rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                className={`block w-full rounded-xl border p-3 text-left transition-[transform,box-shadow,border-color] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)] ${
                   packId === pack.id
                     ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] shadow-sm"
                     : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
@@ -851,7 +885,10 @@ export function TrialScreen() {
             </select>
             {selectedPack.prepItems.length > 0 || selectedPack.prepText ? (
               <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3 text-left">
-                <p className="text-xs font-bold text-[var(--survey-heading)]">🧳 开始前请准备好</p>
+                <p className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--survey-heading)]">
+                  <Luggage className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                  开始前请准备好
+                </p>
                 {selectedPack.prepText ? (
                   <p className="mt-1 text-[11px] leading-5 text-[var(--survey-muted)]">{selectedPack.prepText}</p>
                 ) : null}
@@ -911,8 +948,10 @@ export function TrialScreen() {
           <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-[var(--survey-heading)]">
-                  🪙 开局金币 <span className="text-xl font-black text-[var(--survey-primary)]">{run.coins}</span>
+                <p className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--survey-heading)]">
+                  <Coins className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                  开局金币{" "}
+                  <span className="text-xl font-black text-[var(--survey-primary)] tabular-nums">{run.coins}</span>
                 </p>
                 <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">
                   {modeLabel(run.mode)}模式范围 {economyRange[0]}–{economyRange[1]}
@@ -925,7 +964,16 @@ export function TrialScreen() {
                 onClick={() => void rerollCoins()}
                 className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-4 py-2 text-xs font-semibold text-[var(--survey-body)] disabled:opacity-50"
               >
-                {shopBusy ? "重摇中…" : rerollsLeft > 0 ? `🎲 重摇金币（${rerollsLeft}）` : "重摇已用完"}
+                {shopBusy ? (
+                  "重摇中…"
+                ) : rerollsLeft > 0 ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Dices className="h-3.5 w-3.5" aria-hidden="true" />
+                    重摇金币（{rerollsLeft}）
+                  </span>
+                ) : (
+                  "重摇已用完"
+                )}
               </button>
             </div>
           </section>
@@ -1008,7 +1056,10 @@ export function TrialScreen() {
             </button>
             {selectedPack && (selectedPack.prepItems.length > 0 || selectedPack.prepText) ? (
               <p className="mt-3 rounded-lg border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-2.5 text-[11px] leading-5 text-[var(--survey-muted)]">
-                🧳 出发前记得按准备清单确认：{selectedPack.prepItems.join("、")}
+                <p className="flex items-start gap-1.5 text-[13px]">
+                  <Luggage className="mt-0.5 h-4 w-4 shrink-0 text-[var(--survey-primary)]" aria-hidden="true" />
+                  <span>出发前记得按准备清单确认：{selectedPack.prepItems.join("、")}</span>
+                </p>
                 {selectedPack.prepText ? `。${selectedPack.prepText}` : ""}
               </p>
             ) : null}
@@ -1135,8 +1186,16 @@ export function TrialScreen() {
                     : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
                 }`}
               >
-                <span className="w-7 shrink-0 text-center text-lg font-black text-[var(--survey-heading)]">
-                  {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
+                <span
+                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[13px] font-black tabular-nums ${
+                    index === 0
+                      ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                      : index < 3
+                        ? "bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
+                        : "text-[var(--survey-muted)]"
+                  }`}
+                >
+                  {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-[var(--survey-heading)]">
@@ -1184,7 +1243,7 @@ export function TrialScreen() {
               onClick={() => {}}
             />
             <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-amber-300/40 bg-[var(--survey-card-bg)] p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] shadow-[0_-16px_50px_-20px_rgba(180,83,9,.45)]">
-              <p className="text-center text-3xl">⚠️</p>
+              <TriangleAlert className="mx-auto h-10 w-10 text-amber-500" aria-hidden="true" />
               <h2 className="mt-2 text-center text-lg font-black text-[var(--survey-heading)]">开始前请先阅读提醒</h2>
               <p className="mt-1 text-center text-[11px] text-[var(--survey-muted)]">
                 第 {run.currentFloor} 层任务「{task.title}」
@@ -1223,7 +1282,7 @@ export function TrialScreen() {
             </div>
             <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[var(--survey-bg)]">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[var(--survey-primary)] to-[var(--survey-secondary)] transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-r from-[var(--survey-primary)] to-[var(--survey-secondary)] transition-[width] duration-500 ease-[var(--fx-ease)]"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -1232,9 +1291,18 @@ export function TrialScreen() {
                 积分 <b className="text-base font-black text-[var(--survey-heading)]">{run.score}</b>
               </span>
               <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[var(--survey-heading)]">
-                <span>🎫 跳过 ×{run.inventory.skipTickets}</span>
-                <span>⚡ 加倍 ×{run.inventory.boosters}</span>
-                <span>🛡 护盾 ×{run.inventory.shields}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Ticket className="h-3.5 w-3.5" aria-hidden="true" />
+                  跳过 ×{run.inventory.skipTickets}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+                  加倍 ×{run.inventory.boosters}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+                  护盾 ×{run.inventory.shields}
+                </span>
               </span>
             </div>
           </section>
@@ -1249,8 +1317,10 @@ export function TrialScreen() {
                   {run.boosted ? `×2 · ${task.score * 2} 分` : `+${task.score} 分`}
                 </span>
               </div>
-              <h2 className="mt-2 text-xl font-black leading-7 text-[var(--survey-heading)]">
-                {run.boosted ? "⚡ " : ""}
+              <h2 className="mt-2 inline-flex items-center gap-2 text-xl font-black leading-7 text-[var(--survey-heading)]">
+                {run.boosted ? (
+                  <Zap className="h-5 w-5 shrink-0 text-[var(--survey-primary)]" aria-hidden="true" />
+                ) : null}
                 {task.title}
               </h2>
               <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
@@ -1286,10 +1356,11 @@ export function TrialScreen() {
                   type="button"
                   disabled={acting}
                   onClick={() => void act("boost")}
-                  className="shrink-0 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-3.5 text-sm font-semibold text-[var(--survey-body)] disabled:opacity-50"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-3.5 text-sm font-semibold text-[var(--survey-body)] disabled:opacity-50"
                   title="本层完成后积分 ×2"
                 >
-                  ⚡ 加倍
+                  <Zap className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                  加倍
                 </button>
               ) : null}
             </div>
@@ -1297,19 +1368,21 @@ export function TrialScreen() {
               type="button"
               disabled={acting || !task || run.inventory.skipTickets <= 0}
               onClick={() => void act("skip")}
-              className="w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-semibold text-[var(--survey-body)] disabled:opacity-40"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-semibold text-[var(--survey-body)] disabled:opacity-40"
               title={run.inventory.skipTickets <= 0 ? "商店里买跳过券后可用" : "跳过本层，不拿积分"}
             >
-              {run.inventory.skipTickets > 0 ? `🎫 跳过本层 ×${run.inventory.skipTickets}` : "没有跳过券"}
+              <Ticket className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+              {run.inventory.skipTickets > 0 ? `跳过本层 ×${run.inventory.skipTickets}` : "没有跳过券"}
             </button>
             {run.inventory.shields > 0 ? (
               <button
                 type="button"
                 disabled={acting}
                 onClick={() => void act("shield_exit")}
-                className="w-full rounded-[var(--survey-button-radius)] border border-emerald-200 py-2.5 text-[13px] font-semibold text-emerald-600 dark:border-emerald-900 dark:text-emerald-400"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-emerald-200 py-2.5 text-[13px] font-semibold text-emerald-600 dark:border-emerald-900 dark:text-emerald-400"
               >
-                🛡 用护盾提前结算（保留成绩）
+                <Shield className="h-4 w-4" aria-hidden="true" />
+                用护盾提前结算（保留成绩）
               </button>
             ) : null}
           </section>
@@ -1364,7 +1437,10 @@ export function TrialScreen() {
 
           {settlement.newAchievements?.length ? (
             <div className="mx-auto mt-5 max-w-md rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3">
-              <p className="text-xs font-semibold text-[var(--survey-heading)]">🏅 解锁新成就</p>
+              <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--survey-heading)]">
+                <Medal className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                解锁新成就
+              </p>
               <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                 {settlement.newAchievements.map((item) => (
                   <span
@@ -1399,8 +1475,8 @@ export function TrialScreen() {
               {shareBusy
                 ? "发布中…"
                 : sharedPostId
-                  ? `已匿名晒到树洞 ✅ #${sharedPostId}`
-                  : "📢 匿名晒进度到树洞（自动同步频道）"}
+                  ? `已匿名晒到树洞 #${sharedPostId}`
+                  : "匿名晒进度到树洞（自动同步频道）"}
             </button>
             {sharedPostId ? (
               <a
@@ -1428,9 +1504,10 @@ export function TrialScreen() {
                 setActiveTab("board");
                 void loadBoard(finishedRun.packId, finishedRun.mode);
               }}
-              className="rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] py-2.5 text-sm font-semibold text-[var(--survey-body)]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] py-2.5 text-sm font-semibold text-[var(--survey-body)]"
             >
-              🏆 看看这个任务包的排行榜
+              <Trophy className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+              看看这个任务包的排行榜
             </button>
             <button
               type="button"
@@ -1529,7 +1606,7 @@ export function TrialScreen() {
       data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
-      {renderHeader("🌆 挑战任务", "选一个任务包和起始层，一路向上挑战", false)}
+      {renderHeader("挑战任务", "选一个任务包和起始层，一路向上挑战", false)}
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
       {renderThemePicker()}

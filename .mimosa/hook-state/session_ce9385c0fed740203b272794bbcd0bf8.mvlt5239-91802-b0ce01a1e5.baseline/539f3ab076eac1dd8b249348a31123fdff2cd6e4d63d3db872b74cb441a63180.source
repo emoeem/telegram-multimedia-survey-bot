@@ -1,0 +1,89 @@
+import { expect, test } from "@playwright/test";
+import { scanA11y } from "./a11y";
+
+// 报告页也挂了 ECharts（同一条动画）。理由见 admin.spec.ts 的同名声明：
+// 截图要的是终态，不是「机器有多快」。
+test.use({ reducedMotion: "reduce" });
+
+const TEMPLATES = [
+  { id: "classic", name: "经典报告" },
+  { id: "magazine-dark", name: "杂志暗色" },
+  { id: "data", name: "数据分析" },
+  { id: "identity", name: "身份档案" },
+  { id: "magazine", name: "杂志" },
+  { id: "minimal", name: "极简" },
+  { id: "gallery", name: "影集" },
+];
+
+const VIEWPORTS = [
+  { width: 375, height: 812 },
+  { width: 390, height: 844 },
+  { width: 430, height: 932 },
+  { width: 768, height: 1024 },
+  { width: 1280, height: 800 },
+  { width: 1920, height: 1080 },
+];
+
+for (const template of TEMPLATES) {
+  for (const viewport of VIEWPORTS) {
+    test(`report ${template.id} @ ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+
+      const problems: string[] = [];
+      page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
+      page.on("console", (message) => {
+        if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
+      });
+
+      await page.goto(`/fixtures/report/${template.id}.html`);
+      await expect(page.locator("h1").first()).toBeVisible();
+
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
+      expect(problems).toEqual([]);
+
+      await scanA11y(page, test.info().title);
+
+      await expect(page).toHaveScreenshot(`report-${template.id}-${viewport.width}x${viewport.height}.png`, {
+        maxDiffPixelRatio: 0.002,
+      });
+    });
+  }
+}
+
+// PDF layout is independent from the responsive web layout: print media is
+// forced to a single A4 column even though the viewport width would otherwise
+// trigger the desktop grid.
+for (const template of TEMPLATES) {
+  test(`report ${template.id} print (A4)`, async ({ page }) => {
+    await page.setViewportSize({ width: 794, height: 1123 });
+    await page.emulateMedia({ media: "print" });
+
+    const problems: string[] = [];
+    page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
+    page.on("console", (message) => {
+      if (message.type() === "error") problems.push(`console.error: ${message.text()}`);
+    });
+
+    await page.goto(`/fixtures/report/${template.id}.html`);
+    await expect(page.locator("h1").first()).toBeVisible();
+
+    const wrapDisplay = await page.evaluate(() => {
+      const el = document.querySelector(".wrap") ?? document.querySelector(".page");
+      return el ? getComputedStyle(el).display : null;
+    });
+    expect(["block", "flex"]).toContain(wrapDisplay);
+    const regionColumns = await page.evaluate(() => {
+      const region = document.querySelector(".composition-region");
+      return region ? getComputedStyle(region).gridTemplateColumns : null;
+    });
+    if (regionColumns !== null) {
+      expect(regionColumns).not.toContain(" ");
+    }
+    expect(problems).toEqual([]);
+
+    await scanA11y(page, test.info().title);
+
+    await expect(page).toHaveScreenshot(`report-${template.id}-print-A4.png`, { maxDiffPixelRatio: 0.002 });
+  });
+}

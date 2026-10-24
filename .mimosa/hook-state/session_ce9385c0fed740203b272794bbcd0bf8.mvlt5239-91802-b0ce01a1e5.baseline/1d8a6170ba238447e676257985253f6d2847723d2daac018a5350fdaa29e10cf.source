@@ -1,0 +1,41 @@
+const DEFAULT_COVERS = [
+  "/img/covers/cover-1.jpg",
+  "/img/covers/cover-2.jpg",
+  "/img/covers/cover-3.jpg",
+  "/img/covers/cover-4.jpg",
+  "/img/covers/cover-5.jpg",
+  "/img/covers/cover-6.jpg",
+  "/img/cover.jpg",
+  ...Array.from({ length: 24 }, (_, i) => `/img/featureimages/${i}.jpg`),
+  "/img/featureimages/custom_0.jpg",
+  "/img/featureimages/custom_1.jpg",
+  "/img/featureimages/custom_2.jpg",
+  "/img/featureimages/custom_3.jpg",
+  "/img/featureimages/custom_4.jpg",
+  "/img/featureimages/custom_5.jpg",
+];
+
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+function pickCover(slug) {
+  const idx = hashString(slug || "") % DEFAULT_COVERS.length;
+  return DEFAULT_COVERS[idx];
+}
+
+hexo.extend.filter.register(
+  "after_post_render",
+  function (data) {
+    if (!data.cover) {
+      data.cover = pickCover(data.slug);
+    }
+    return data;
+  },
+  1,
+);

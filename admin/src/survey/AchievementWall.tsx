@@ -1,4 +1,4 @@
-import { Trophy } from "lucide-react";
+import { Lock, Trophy } from "lucide-react";
 import type { AchievementItem, AchievementOverview } from "./api";
 
 const GROUP_ORDER: AchievementItem["group"][] = ["问卷", "挑战", "广场", "彩蛋"];
@@ -16,7 +16,7 @@ function Badge({ item }: { item: AchievementItem }) {
       }`}
     >
       <span className={`text-xl leading-none ${item.unlocked ? "" : "grayscale"}`} aria-hidden>
-        {item.unlocked ? item.icon : "🔒"}
+        {item.unlocked ? item.icon : <Lock className="h-5 w-5" aria-hidden="true" />}
       </span>
       <span
         className={`w-full truncate text-[10px] font-semibold ${

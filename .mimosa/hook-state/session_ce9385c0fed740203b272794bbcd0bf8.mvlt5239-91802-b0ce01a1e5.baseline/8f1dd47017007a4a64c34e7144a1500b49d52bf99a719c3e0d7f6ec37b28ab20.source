@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Inventory every PNG under .sprite-raw: path, size, dimensions, mode, alpha coverage.
+Also a rough style probe (flat-fill ratio, outline darkness, edge antialiasing) so a
+sprite can be sanity-checked as 'anime-style flat-shaded with linework' without eyes on it."""
+import csv, os, sys
+from PIL import Image
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+rows = []
+for dirpath, dirnames, filenames in os.walk(ROOT):
+    for fn in sorted(filenames):
+        if not fn.lower().endswith(".png"):
+            continue
+        p = os.path.join(dirpath, fn)
+        rel = os.path.relpath(p, ROOT)
+        if rel.startswith("_"):
+            continue
+        try:
+            im = Image.open(p)
+        except Exception as e:  # noqa
+            rows.append([rel, os.path.getsize(p), "", "", "error:" + str(e), ""])
+            continue
+        w, h = im.size
+        mode = im.mode
+        alpha_frac = ""
+        if mode in ("RGBA", "LA"):
+            a = im.getchannel("A")
+            hist = a.histogram()
+            tot = sum(hist)
+            alpha_frac = round((tot - hist[0]) / tot, 3)
+        # style probe on the RGB, transparent pixels excluded
+        flat = dark = 0
+        try:
+            rgb = im.convert("RGB")
+            if mode in ("RGBA", "LA"):
+                bg = Image.new("RGBA", im.size, (0, 0, 0, 0))
+                comp = Image.composite(im.convert("RGBA"), bg, im.getchannel("A"))
+                rgb = Image.new("RGB", im.size, (255, 255, 255))
+                rgb.paste(comp, mask=comp.getchannel("A"))
+            q = rgb.quantize(colors=48)
+            pal = q.getpalette()
+            counts = sorted(q.getcolors(), reverse=True)
+            tot_px = w * h
+            flat = round(sum(c for c, _ in counts[:6]) / tot_px, 3)
+            # count very dark pixels (linework) and intermediate gray pixels (antialias)
+            g = rgb.convert("L")
+            gh = g.histogram()
+            dark = round(sum(gh[:40]) / tot_px, 4)
+        except Exception:
+            pass
+        rows.append([rel, os.path.getsize(p), f"{w}x{h}", mode, alpha_frac, f"flat6={flat} dark={dark}"])
+
+out = os.path.join(ROOT, "INVENTORY.csv")
+with open(out, "w", newline="", encoding="utf-8") as f:
+    wtr = csv.writer(f)
+    wtr.writerow(["path", "bytes", "dimensions", "mode", "alpha_coverage", "style_probe"])
+    wtr.writerows(rows)
+print("rows:", len(rows), "->", out)
+# summary per top dir
+from collections import defaultdict
+agg = defaultdict(lambda: [0, 0])
+for r in rows:
+    top = r[0].split(os.sep)[0]
+    agg[top][0] += 1
+    agg[top][1] += r[1]
+for k in sorted(agg):
+    print(f"{k}: {agg[k][0]} png, {agg[k][1]/1024/1024:.1f} MB")

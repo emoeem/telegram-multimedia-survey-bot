@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261024T025610479Z-91516-2661f194e227",
+  "runId": "20261024T025610479Z-91516-2661f194e227",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "candidate_limit_exceeded",
+        "stage": "candidate-select",
+        "target": "admin/src/survey/theme-ui.tsx",
+        "detail": "6 changed reviewable file(s) were not scanned because the limit is 20",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "admin/src/survey/theme-ui.tsx",
+        "detail": "candidate_limit_exceeded: 6 changed reviewable file(s) were not scanned because the limit is 20",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "a3cc76a4d3fddb39d5dc25671a03e03e3397c6ef",
+  "diffHash": "5cf46844995e1ab795401b85d431d774f437e96a0b0a61ac9d32e6649442d0e6",
+  "rulesVersion": "unavailable",
+  "sessionHash": "a4c47f08f59bc9aed541762b1637ecd60eab5518f1f1910590272588ae27811f",
+  "reportRef": ".mimosa/reports/task-review-session_ce9385c0fed740203b272794bbcd0bf8-20261024T025610479Z-91516-2661f194e227.json",
+  "events": [],
+  "observedFindingIds": [
+    "mimosa-ef8887b2b1b6240ef8360d2b",
+    "mimosa-4a2ef6ca7b43fa2290b58c84"
+  ],
+  "verifiedFiles": [
+    {
+      "file": "admin/src/routes/SettingsPage.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests/unit/survey/theme.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/SurveyApp.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/survey/theme.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "cert/app.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "cert/presets.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/theme.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/AchievementWall.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/BottomNav.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/CoinCenter.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/EmailAuthScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/MyScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/PageHeader.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/PlazaScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/SeriesScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/ShowcaseScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/ShowcaseViewer.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/SubmissionHub.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/SubmitScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "admin/src/survey/TrialScreen.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-10-24T02:56:10.829Z"
+}

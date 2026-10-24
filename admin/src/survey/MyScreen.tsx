@@ -62,13 +62,17 @@ function CoinCard() {
     <section className="coin-balance-card">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">我的金币</p>
-          <p className="mt-0.5 text-3xl font-black text-white">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--survey-primary-content)_72%,transparent)]">
+            我的金币
+          </p>
+          <p className="mt-0.5 text-3xl font-black tabular-nums text-[var(--survey-primary-content)]">
             {overview ? overview.balance : "—"}
-            <span className="ml-1.5 text-xs font-bold text-white/80">金币</span>
+            <span className="ml-1.5 text-xs font-bold text-[color-mix(in_srgb,var(--survey-primary-content)_85%,transparent)]">
+              金币
+            </span>
           </p>
           {overview ? (
-            <p className="mt-0.5 text-[11px] text-white/70">
+            <p className="mt-0.5 text-[11px] text-[color-mix(in_srgb,var(--survey-primary-content)_72%,transparent)]">
               连续签到 {overview.checkin.streak} 天 · 累计获得 {overview.totalEarned}
             </p>
           ) : null}
@@ -359,7 +363,10 @@ export function MyScreen() {
       <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
           <div>
-            <p className="text-[15px] font-bold text-[var(--survey-heading)]">👤 我的</p>
+            <p className="inline-flex items-center gap-1.5 text-[15px] font-bold text-[var(--survey-heading)]">
+              <UserRound className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+              我的
+            </p>
             <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">你的答卷、资料卡与挑战记录</p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">

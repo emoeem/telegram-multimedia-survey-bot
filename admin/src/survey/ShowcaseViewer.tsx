@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, BookOpen, ExternalLink, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Clapperboard, ExternalLink, FileText, Headphones, Image, X } from "lucide-react";
 import { fetchShowcaseItem, SHOWCASE_ITEM_KIND_LABELS, type ShowcaseItem, type ShowcaseItemKind } from "./showcase-api";
 
 /**
@@ -34,8 +34,9 @@ function isExternal(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
 }
 
-function kindIcon(kind: ShowcaseItemKind) {
-  return kind === "audio" ? "🎧" : kind === "video" ? "🎬" : kind === "image" ? "🖼️" : "📄";
+function KindIcon({ kind }: { kind: ShowcaseItemKind }) {
+  const Icon = kind === "audio" ? Headphones : kind === "video" ? Clapperboard : kind === "image" ? Image : FileText;
+  return <Icon className="h-8 w-8" aria-hidden="true" />;
 }
 
 export function ShowcaseViewer({ item, onClose }: { item: ShowcaseItem; onClose: () => void }) {
@@ -91,7 +92,7 @@ export function ShowcaseViewer({ item, onClose }: { item: ShowcaseItem; onClose:
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span className="showcase-viewer-kind">
-          <span aria-hidden>{kindIcon(current.kind)}</span>
+          <KindIcon kind={current.kind} />
           {SHOWCASE_ITEM_KIND_LABELS[current.kind] ?? "作品"}
         </span>
         {current.url ? (
@@ -139,7 +140,7 @@ export function ShowcaseViewer({ item, onClose }: { item: ShowcaseItem; onClose:
                 />
               ) : (
                 <span className="showcase-viewer-audio-cover showcase-viewer-audio-fallback" aria-hidden>
-                  🎧
+                  <Headphones className="h-8 w-8" />
                 </span>
               )}
               <figcaption className="showcase-viewer-audio-meta">

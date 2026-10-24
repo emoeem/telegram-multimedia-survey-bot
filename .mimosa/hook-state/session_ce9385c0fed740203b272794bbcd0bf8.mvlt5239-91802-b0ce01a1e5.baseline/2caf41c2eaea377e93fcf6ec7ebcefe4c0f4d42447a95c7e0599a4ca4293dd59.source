@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# quick-start.sh — 一键部署向导：个性化配置 + 选择平台部署。
+# 用法: ./scripts/deploy/quick-start.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+cat <<'BANNER'
+==============================================
+   Hexo + Matery 博客一键部署向导
+==============================================
+  0) 初始化个性化配置（站名/作者/链接，首次必做）
+  1) GitHub Pages    —— 免费、fork 后零配置，推荐
+  2) Vercel          —— 免费托管，全球 CDN
+  3) Netlify         —— 免费托管，全球 CDN
+  4) Cloudflare Pages —— 免费托管
+  5) VPS 服务器      —— rsync + Nginx（需要自己的服务器）
+  6) Docker 本地运行 —— 打包镜像，本地或自有主机运行
+  7) 仅本地构建并预览
+  q) 退出
+==============================================
+BANNER
+
+read -r -p "请选择 [0-7/q]: " choice || choice="q"
+
+case "$choice" in
+    0) exec bash "$SCRIPT_DIR/init-site.sh" ;;
+    1) exec bash "$SCRIPT_DIR/deploy-github.sh" ;;
+    2) exec bash "$SCRIPT_DIR/deploy-vercel.sh" ;;
+    3) exec bash "$SCRIPT_DIR/deploy-netlify.sh" ;;
+    4) exec bash "$SCRIPT_DIR/deploy-cloudflare.sh" ;;
+    5) exec bash "$SCRIPT_DIR/deploy-vps.sh" ;;
+    6)
+        require_cmd docker || die "未检测到 docker，请先安装: https://docs.docker.com/engine/install/"
+        cd "$SITE_ROOT"
+        info "构建镜像 my-blog..."
+        docker compose build
+        info "启动容器（http://localhost:8080）..."
+        docker compose up -d
+        info "访问 http://localhost:8080 预览，停止: docker compose down"
+        ;;
+    7) exec bash "$SCRIPT_DIR/build.sh" ;;
+    *) info "已退出。"; exit 0 ;;
+esac

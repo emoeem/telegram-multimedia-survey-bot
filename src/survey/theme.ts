@@ -115,18 +115,25 @@ export interface SurveyTheme {
 }
 
 /**
- * Ready-made survey themes sourced from the DaisyUI theme library
- * (daisyui/theme/<id>.css). Only these ids are accepted anywhere.
+ * Ready-made survey themes. 2026-10 界面重设计收敛为三套（暗金为平台默认，
+ * 色值见 admin/src/index.css 的 [data-theme="foxgold"] 块）。被移除的旧
+ * DaisyUI 预设 id 由 LEGACY_PRESET_MAP 迁移到最近似主题，老问卷数据不丢意图。
  */ export const SURVEY_THEME_PRESETS = [
-  { id: "light", name: "明亮" },
+  { id: "foxgold", name: "暗金" },
   { id: "dark", name: "暗色" },
-  { id: "night", name: "深蓝夜" },
-  { id: "luxury", name: "黑金奢华" },
-  { id: "retro", name: "复古纸张" },
-  { id: "cupcake", name: "粉彩" },
-  { id: "synthwave", name: "霓虹" },
-  { id: "black", name: "纯黑" },
+  { id: "light", name: "明亮" },
 ] as const;
+
+/** 旧预设 id → 收敛后的最近似主题。与 admin/src/survey/theme-ui.tsx 保持同步。 */
+const LEGACY_PRESET_MAP: Record<string, string> = {
+  system: "foxgold",
+  night: "dark",
+  luxury: "foxgold",
+  synthwave: "dark",
+  black: "foxgold",
+  retro: "light",
+  cupcake: "light",
+};
 
 const PRESET_IDS = new Set<string>(SURVEY_THEME_PRESETS.map((preset) => preset.id));
 
@@ -197,7 +204,11 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
   const theme: SurveyTheme = {};
 
   const preset = safeString(value.preset, 40);
-  if (preset && PRESET_IDS.has(preset)) theme.preset = preset;
+  if (preset) {
+    // 旧预设先迁移再校验：luxury→foxgold、night→dark…，映射目标都在白名单里。
+    const mapped = LEGACY_PRESET_MAP[preset] ?? preset;
+    if (PRESET_IDS.has(mapped)) theme.preset = mapped;
+  }
 
   if (isRecord(value.background)) {
     const color = safeColor(value.background.color);
