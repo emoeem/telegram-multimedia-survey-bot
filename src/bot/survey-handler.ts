@@ -1329,14 +1329,28 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         const participantParam = ctx.webhookSecret
           ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(ctx.webhookSecret, userId, message.from ?? undefined)}`
           : "";
-        await replyMessage(
-          ctx,
-          message.chat.id,
-          `📝 请打开问卷开始填写：${ctx.origin}/s/${surveyId}?v=3${participantParam}`,
-          {
-            inline_keyboard: [[{ text: "填写问卷", url: `${ctx.origin}/s/${surveyId}?v=3${participantParam}` }]],
-          },
-        );
+        const fillUrl = `${ctx.origin}/s/${surveyId}?v=3${participantParam}`;
+        // 含小游戏题的问卷：Bot 端不能玩，普通 url 按钮会让玩家跳出去再找回来。
+        // 用 web_app 内嵌打开（Mini App 直接作答）；web_app 要求 HTTPS 且域名
+        // 已在 BotFather 配置——非 https 的 origin 或查询失败时回落普通按钮。
+        let useWebApp = false;
+        if (ctx.origin.startsWith("https://")) {
+          try {
+            const questions = await listQuestionsBySurvey(ctx.db, surveyId);
+            useWebApp = questions.some((question) => question.type === "game");
+          } catch (error) {
+            console.warn("survey game-question probe failed; falling back to url button", { surveyId, error });
+          }
+        }
+        await replyMessage(ctx, message.chat.id, `📝 请打开问卷开始填写：${fillUrl}`, {
+          inline_keyboard: [
+            [
+              useWebApp
+                ? { text: "🎮 打开问卷作答", web_app: { url: fillUrl } }
+                : { text: "填写问卷", url: fillUrl },
+            ],
+          ],
+        });
       } else {
         await replyMessage(ctx, message.chat.id, "请在下方选择“浏览问卷”开始填写。");
       }
