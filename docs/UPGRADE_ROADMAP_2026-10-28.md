@@ -95,12 +95,17 @@
 
 ## 阶段 E：低优四批（各自可独立上线）
 
-### E1 基础设施清理　☐
-- 删除 `test.yml`（与 ci.yml 的 PR 触发完全重叠且混用 npm/pnpm）。
-- 确认 typescript-eslint 8 × ESLint 10 官方兼容矩阵；不兼容则升级或钉版。
-- `vite-node` 解钉 3.2.4，跟随 vitest 3.2.7。
-- 评估 root TS 5.8.3 与 admin TS 7.0.2 对齐（单独 commit；wrangler/workers-types
-  兼容性失败即回退 lockfile）。
+### E1 基础设施清理　✅（2026-10-29）
+- ✅ 删除 `test.yml`（与 ci.yml 的 push/PR 触发完全重叠且混用 npm/pnpm）。
+- ✅ typescript-eslint 8 × ESLint 10 官方兼容矩阵**确认兼容**，无需动作：
+  已装 `@typescript-eslint/parser` 8.67.0 的 peer 范围为
+  `eslint ^8.57.0 || ^9.0.0 || ^10.0.0`（ESLint 10 在列）、`typescript >=4.8.4 <6.1.0`。
+- ✅ `vite-node` 解钉 `3.2.4` → `^3.2.4`：事实核查发现 **vite-node 3.2.5–3.2.7 从未发布**
+  （3.x 最后一版即 3.2.4，vitest 3.2.5+ 未同步发布）；当前解析 3.2.4 已是与 vitest 3.2.7
+  同代的最新版，锁文件不变。
+- ✅ root TS 5.8.3 与 admin TS 7.0.2 对齐评估：**不动**。硬阻断是 @typescript-eslint 8 的
+  TS peer 上限 `<6.1.0`（TS 7 直接越界，lint 工具链断裂）；wrangler 4 / workers-types 与
+  Go 原生 tsc 的兼容性也未经验证；收益只有版本号一致。结论记录在案，不改代码。
 
 ### E2 echarts 按需引入　☐
 - 1.1MB 最大 chunk（esm-*.js，占 assets 约 40%）只注册用到的 renderer/chart 系列，
