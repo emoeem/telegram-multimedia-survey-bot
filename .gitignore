@@ -49,3 +49,6 @@ _review/
 
 # survey-tool 的编译产物（三平台各 ~90MB，用 pnpm build:tool 重新生成）
 tools/survey-tool/dist/
+
+# gitguard 本地工作流状态（activation 快照，机器本地产物，不入库）
+.gitflow/
