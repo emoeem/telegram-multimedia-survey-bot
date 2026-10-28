@@ -20,6 +20,15 @@ const VIEWPORTS = [
 
 const THEMES = ["light", "dark"] as const;
 
+/** 挂 EChart 的页面（含 /admin/analytics——它兜底渲染 DashboardPage）：截图前等真图。 */
+const CHART_PAGES = new Set([
+  "/admin/",
+  "/admin/analytics",
+  "/admin/reports",
+  "/admin/surveys/1",
+  "/admin/surveys/1/analytics",
+]);
+
 const PAGES = [
   "/admin/",
   "/admin/login",
@@ -347,6 +356,11 @@ for (const theme of THEMES) {
 
         await page.goto(path, { waitUntil: "domcontentloaded" });
         await expect(page.locator("h1, main").first()).toBeVisible();
+        // 图表懒加载 chunk 与下面的固定 250ms 等待是竞态：骨架屏或成图两种状态
+        // 都可能被截到（/admin/analytics 历史间歇失败的根源）。图表页等真图出现。
+        if (CHART_PAGES.has(path)) {
+          await page.waitForSelector(".echarts-for-react svg path", { timeout: 10_000 });
+        }
         await page.waitForTimeout(250);
         if (path === "/admin/surveys/3/editor") {
           await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
