@@ -340,6 +340,9 @@ test("lets the participant switch the survey theme", async ({ page }) => {
   await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", "night");
 
   await page.getByRole("button", { name: "选择主题" }).click();
-  await page.getByRole("button", { name: /黑金奢华/ }).click();
-  await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", "luxury");
+  // 2026-10 界面重设计把 presets 收敛成 foxgold(暗金)/dark(暗色)/light(明亮)，
+  // 旧的「黑金奢华」和 luxury id 已经不存在（legacy 映射到 foxgold）。
+  // 这里改成切到「明亮」：它一定不同于初始主题，才真的测到「切换」。
+  await page.getByRole("button", { name: "明亮" }).click();
+  await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-theme", "light");
 });
