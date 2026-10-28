@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   SortableContext,
   useSortable,
@@ -11,6 +12,7 @@ import type { BuilderSelection } from "../StructureTree";
 import { EmptyPanel } from "../../ui";
 import { QuestionSummaryRow } from "../QuestionSummaryRow";
 import { QuickBar } from "./QuickBar";
+import { LogicLayer } from "./LogicLayer";
 
 /**
  * P2 画布（中栏）：题目摘要卡列表 + 选中高亮 + 快捷条 + S4 拖拽。
@@ -50,6 +52,13 @@ export function Canvas({
   onToggleRequired: (questionId: number) => void;
 }) {
   const activeId = selection.kind === "question" ? selection.id : null;
+  const onSelectQuestion = (questionId: number) => onSelect({ kind: "question", id: questionId });
+  // S6 连线层：坐标基准是画布内容区（CanvasDropArea 的 relative 包裹）。
+  const baseRef = useRef<HTMLDivElement>(null);
+  const [edgeBase, setEdgeBase] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setEdgeBase(baseRef.current);
+  }, []);
   // 不自建滚动容器：.editor-canvas 列本身就是滚动层（.editor-col overflow-y:auto），
   // 与旧壳同构，editor-layout 的几何断言（栏内滚动）才能同时约束两套壳。
   return (
@@ -70,7 +79,7 @@ export function Canvas({
         </span>
       </div>
 
-      <CanvasDropArea>
+      <CanvasDropArea baseRef={baseRef}>
         <div className="p-3">
           {selection.kind === "settings" ? (
             <p className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs" style={{ color: "var(--color-muted)" }}>
@@ -115,6 +124,14 @@ export function Canvas({
           {questions.length === 0 ? (
             <EmptyPanel text={draggingType ? "松手即把该题型加到问卷末尾" : "这份问卷还没有内容，从左侧物料区拖入或点选一个题型"} />
           ) : null}
+          {edgeBase ? (
+            <LogicLayer
+              questions={questions}
+              selectedId={activeId}
+              base={edgeBase}
+              onSelect={onSelectQuestion}
+            />
+          ) : null}
         </div>
       </CanvasDropArea>
 
@@ -132,12 +149,16 @@ export function Canvas({
   );
 }
 
-/** 画布内容区是物料拖入的落点；排序落点由 SortableContext 的行决定。 */
-function CanvasDropArea({ children }: { children: React.ReactNode }) {
+/** 画布内容区是物料拖入的落点 + 连线层坐标基准；排序落点由摘要卡行决定。 */
+function CanvasDropArea({ baseRef, children }: { baseRef: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" });
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        baseRef.current = node;
+      }}
+      className="relative"
       style={isOver ? { outline: "2px dashed var(--color-primary)", outlineOffset: "-2px" } : undefined}
     >
       {children}
