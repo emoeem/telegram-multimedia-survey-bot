@@ -27,11 +27,14 @@ describe("admin code splitting", () => {
     expect(routeImports.every((line) => line.includes("lazy("))).toBe(true);
   });
 
-  it("defers echarts-for-react to a dynamic import", () => {
+  it("defers echarts-for-react to a dynamic import (on-demand echarts/core build)", () => {
     const source = readFileSync(join(adminSrc, "components", "EChart.tsx"), "utf8");
 
-    expect(source).toContain('import("echarts-for-react")');
-    expect(source).not.toMatch(/^import\s+ReactECharts\s+from\s+["']echarts-for-react["']/m);
+    // E2：加载走 esm/core 深入口 + echarts/core 按需注册，整包 barrel 不得回来。
+    expect(source).toContain('import("echarts-for-react/esm/core")');
+    expect(source).toContain('import("echarts/core")');
+    expect(source).toContain("echarts/lib/chart/bar/install");
+    expect(source).not.toMatch(/^import\s+ReactECharts\s+from\s+["']echarts-for-react/m);
   });
 
   it("has no static echarts import anywhere in the admin source", () => {

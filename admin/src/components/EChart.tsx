@@ -1,19 +1,72 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType, type CSSProperties } from "react";
+import type { EChartsReactProps } from "echarts-for-react/esm/types";
 
 /**
- * ECharts is the single heaviest client dependency (~600 kB minified) and only
- * six screens ever render a chart. Importing `echarts-for-react` at the top of
- * every route pulled it into the initial admin bundle, so the login page and
- * the survey list paid for it before showing anything.
+ * ECharts is the single heaviest client dependency and only six screens ever
+ * render a chart. Two layers of laziness apply here:
  *
- * This wrapper defers the library to a dynamic import that runs the first time
- * a chart actually mounts. Combined with route-level lazy loading, the initial
- * bundle no longer contains ECharts at all; charts arrive as their own async
- * chunk.
+ * 1. Route-level: this wrapper defers the library to a dynamic import that
+ *    runs the first time a chart actually mounts, so the login page and the
+ *    survey list never pay for it at all.
+ * 2. On-demand registration (E2): the import goes through `echarts/core` and
+ *    registers only what this app uses — Pie + Bar series, the axes/grid,
+ *    tooltip and legend — instead of `echarts-for-react`'s default full-bundle
+ *    import. The whole chart family (line/scatter/map/…) is tree-shaken away,
+ *    which is what keeps the async chunk around a third of the full size.
+ *
+ * New chart types must be added to the `use([...])` list below, otherwise the
+ * chart silently renders nothing. `AxisPointerComponent` backs the axis tooltip
+ * trigger used by the bar charts.
  */
 const ReactECharts = lazy(async () => {
-  const mod = await import("echarts-for-react");
-  return { default: mod.default as unknown as ComponentType<Record<string, unknown>> };
+  // Deep install-module imports, NOT the `echarts/charts` / `echarts/components`
+  // barrels: echarts declares every `lib/chart/*.js` / `lib/component/*.js`
+  // wrapper as side-effectful, so importing a barrel forces the bundler to keep
+  // the whole family (maps, geo parsers and all). Each `install.js` is a pure
+  // extension installer that `use` registers — nothing else comes along.
+  const [
+    { default: EChartsReactCore },
+    echartsCore,
+    barInstall,
+    pieInstall,
+    gridInstall,
+    tooltipInstall,
+    axisPointerInstall,
+    legendInstall,
+    canvasRendererInstall,
+    svgRendererInstall,
+  ] = await Promise.all([
+    // The `esm/core` entry, not `lib/core`: the lib build is CJS with
+    // `__esModule` set, and under rolldown's interop the dynamically imported
+    // namespace's `default` can come back as the whole exports object instead
+    // of the component class — which then crashes as React error #130
+    // ("element type invalid: got object") the moment a chart mounts.
+    import("echarts-for-react/esm/core"),
+    import("echarts/core"),
+    import("echarts/lib/chart/bar/install"),
+    import("echarts/lib/chart/pie/install"),
+    import("echarts/lib/component/grid/install"),
+    import("echarts/lib/component/tooltip/install"),
+    import("echarts/lib/component/axisPointer/install"),
+    import("echarts/lib/component/legend/install"),
+    import("echarts/lib/renderer/installCanvasRenderer"),
+    import("echarts/lib/renderer/installSVGRenderer"),
+  ]);
+  echartsCore.use([
+    barInstall.install,
+    pieInstall.install,
+    gridInstall.install,
+    tooltipInstall.install,
+    axisPointerInstall.install,
+    legendInstall.install,
+    canvasRendererInstall.install,
+    svgRendererInstall.install,
+  ]);
+  // The `/esm/core` entry takes the echarts namespace as a prop (the default
+  // entry binds the full bundle itself). Handing it `echarts/core` — with our
+  // registrations applied — is what makes the on-demand build actually draw.
+  const BoundCore = (props: EChartsReactProps) => <EChartsReactCore {...props} echarts={echartsCore} />;
+  return { default: BoundCore as unknown as ComponentType<Record<string, unknown>> };
 });
 
 export interface EChartProps {
