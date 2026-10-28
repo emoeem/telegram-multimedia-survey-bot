@@ -1,4 +1,11 @@
-import { FilePlus2, MousePointerClick, Settings2 } from "lucide-react";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useDroppable } from "@dnd-kit/core";
+import { FilePlus2, GripVertical, MousePointerClick, Settings2 } from "lucide-react";
 import type { EditableQuestion } from "../../../editor/useSurveyEditor";
 import type { BuilderSelection } from "../StructureTree";
 import { EmptyPanel } from "../../ui";
@@ -6,9 +13,13 @@ import { QuestionSummaryRow } from "../QuestionSummaryRow";
 import { QuickBar } from "./QuickBar";
 
 /**
- * P2 画布（中栏）：题目摘要卡列表 + 选中高亮 + 快捷条。编辑发生在右栏属性面板
- * （选中即配置），画布承载导航与排序（S4 拖拽、S6 连线逐层加上）。
- * 模板入口常驻左栏物料区，这里不再重复。
+ * P2 画布（中栏）：题目摘要卡列表 + 选中高亮 + 快捷条 + S4 拖拽。
+ * 编辑发生在右栏属性面板（选中即配置）。
+ *
+ * DndContext 在 EditorShell（包住物料区+画布两栏，useDraggable 靠 React
+ * Context 感知宿主）；这里只负责排序上下文与落点。拖拽语义（交接文档 S4）：
+ * drop 才产生命令——排序走 reorderQuestions（幂等合并，只发一次），
+ * 物料拖入走 addQuestion（追加到末尾）；取消/落点非法零网络请求。
  */
 export function Canvas({
   questions,
@@ -17,6 +28,7 @@ export function Canvas({
   onOpenPicker,
   onAddScene,
   sceneBusy,
+  draggingType,
   onSelect,
   onMove,
   onDuplicate,
@@ -29,6 +41,8 @@ export function Canvas({
   onOpenPicker: () => void;
   onAddScene: () => void;
   sceneBusy: boolean;
+  /** 当前被拖拽的物料题型（仅左栏物料拖入时有值，用于空态提示）。 */
+  draggingType: string | null;
   onSelect: (selection: BuilderSelection) => void;
   onMove: (questionId: number, direction: -1 | 1) => void;
   onDuplicate: (questionId: number) => void;
@@ -56,48 +70,53 @@ export function Canvas({
         </span>
       </div>
 
-      <div className="p-3">
-        {selection.kind === "settings" ? (
-          <p className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs" style={{ color: "var(--color-muted)" }}>
-            正在编辑问卷设置（右侧属性面板）。
-          </p>
-        ) : null}
-        <div className="block-list">
-          {questions.map((question, index) => {
-            const active = activeId === question.id;
-            return (
-              <div
-                key={question.id}
-                data-block-id={question.id}
-                className="block-item"
-                style={active ? { position: "relative" } : undefined}
-              >
-                {active ? (
-                  <QuickBar
-                    question={question}
-                    editable={editable}
-                    onDuplicate={() => onDuplicate(question.id)}
-                    onDelete={() => onDelete(question.id)}
-                    onMove={(direction) => onMove(question.id, direction)}
-                    onToggleRequired={() => onToggleRequired(question.id)}
-                  />
-                ) : null}
-                <QuestionSummaryRow
-                  question={question}
-                  index={index}
-                  editable={editable}
-                  active={active}
-                  onOpen={() => onSelect({ kind: "question", id: question.id })}
-                  onMove={(direction) => onMove(question.id, direction)}
-                />
-              </div>
-            );
-          })}
+      <CanvasDropArea>
+        <div className="p-3">
+          {selection.kind === "settings" ? (
+            <p className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs" style={{ color: "var(--color-muted)" }}>
+              正在编辑问卷设置（右侧属性面板）。
+            </p>
+          ) : null}
+          <SortableContext items={questions.map((question) => question.id)} strategy={verticalListSortingStrategy}>
+            <div className="block-list">
+              {questions.map((question, index) => {
+                const active = activeId === question.id;
+                return (
+                  <SortableBlock key={question.id} id={question.id} disabled={!editable}>
+                    <div
+                      data-block-id={question.id}
+                      className="block-item"
+                      style={active ? { position: "relative" } : undefined}
+                    >
+                      {active ? (
+                        <QuickBar
+                          question={question}
+                          editable={editable}
+                          onDuplicate={() => onDuplicate(question.id)}
+                          onDelete={() => onDelete(question.id)}
+                          onMove={(direction) => onMove(question.id, direction)}
+                          onToggleRequired={() => onToggleRequired(question.id)}
+                        />
+                      ) : null}
+                      <QuestionSummaryRow
+                        question={question}
+                        index={index}
+                        editable={editable}
+                        active={active}
+                        onOpen={() => onSelect({ kind: "question", id: question.id })}
+                        onMove={(direction) => onMove(question.id, direction)}
+                      />
+                    </div>
+                  </SortableBlock>
+                );
+              })}
+            </div>
+          </SortableContext>
+          {questions.length === 0 ? (
+            <EmptyPanel text={draggingType ? "松手即把该题型加到问卷末尾" : "这份问卷还没有内容，从左侧物料区拖入或点选一个题型"} />
+          ) : null}
         </div>
-        {questions.length === 0 ? (
-          <EmptyPanel text="这份问卷还没有内容，从左侧物料区点一个题型开始" />
-        ) : null}
-      </div>
+      </CanvasDropArea>
 
       <div className="add-block-bar">
         <button className="btn" disabled={!editable} onClick={onOpenPicker}>
@@ -108,6 +127,49 @@ export function Canvas({
           <MousePointerClick className="h-4 w-4" />
           添加互动场景
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** 画布内容区是物料拖入的落点；排序落点由 SortableContext 的行决定。 */
+function CanvasDropArea({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" });
+  return (
+    <div
+      ref={setNodeRef}
+      style={isOver ? { outline: "2px dashed var(--color-primary)", outlineOffset: "-2px" } : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** 摘要卡的 sortable 包装：拖拽柄在卡片左侧，整行点击仍是选中。 */
+function SortableBlock({ id, disabled, children }: { id: number; disabled: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={isDragging ? "opacity-60" : undefined}
+    >
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          className="grid w-5 cursor-grab touch-none place-items-center rounded text-[var(--color-muted-soft)] hover:text-[var(--color-primary)] disabled:opacity-30"
+          aria-label="拖动排序"
+          title="拖动排序"
+          disabled={disabled}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );

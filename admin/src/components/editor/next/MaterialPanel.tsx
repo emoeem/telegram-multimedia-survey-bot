@@ -1,7 +1,42 @@
-import { MousePointerClick, Plus, Sparkles, Trash2 } from "lucide-react";
+import { useDraggable } from "@dnd-kit/core";
+import { GripVertical, MousePointerClick, Plus, Sparkles, Trash2 } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../../format";
 import { TYPE_GROUPS } from "../TypePickerSheet";
 import { TEMPLATE_OPTIONS } from "../../../editor/templates";
+
+/** 物料区题型条目：点击加到末尾，拖到画布也是加到末尾（drop 才产生命令）。 */
+function MaterialChip({ type, label, desc, disabled, onAdd }: { type: string; label: string; desc: string; disabled: boolean; onAdd: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `material:${type}`, disabled });
+  return (
+    <span
+      ref={setNodeRef}
+      className={`inline-flex items-stretch overflow-hidden rounded-lg border transition ${
+        isDragging ? "opacity-40" : ""
+      } ${disabled ? "opacity-50" : "border-[var(--color-edge)]"}`}
+      title={desc}
+    >
+      <button
+        type="button"
+        className="grid w-4 cursor-grab touch-none place-items-center text-[var(--color-muted-soft)] hover:text-[var(--color-primary)]"
+        aria-label={`拖动 ${label} 到画布`}
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        className="px-2 py-1 text-xs hover:text-[var(--color-primary)] disabled:opacity-50"
+        disabled={disabled}
+        onClick={onAdd}
+      >
+        {type === "note" ? "📖 " : ""}
+        {label}
+      </button>
+    </span>
+  );
+}
 
 /**
  * P2 物料区（左栏）：题目类型、互动场景、分页、模板。
@@ -42,17 +77,14 @@ export function MaterialPanel({
               </div>
               <div className="flex flex-wrap gap-1">
                 {group.types.map(({ type, desc }) => (
-                  <button
+                  <MaterialChip
                     key={type}
-                    type="button"
-                    title={desc}
+                    type={type}
+                    label={`${type === "note" ? "📖 " : ""}${QUESTION_TYPE_LABELS[type] ?? type}`}
+                    desc={desc}
                     disabled={disabled}
-                    className="rounded-lg border border-[var(--color-edge)] px-2 py-1 text-xs transition hover:border-[var(--color-primary)] disabled:opacity-50"
-                    onClick={() => onAddQuestion(type)}
-                  >
-                    {type === "note" ? "📖 " : ""}
-                    {QUESTION_TYPE_LABELS[type] ?? type}
-                  </button>
+                    onAdd={() => onAddQuestion(type)}
+                  />
                 ))}
               </div>
             </div>

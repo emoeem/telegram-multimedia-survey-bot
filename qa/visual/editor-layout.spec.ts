@@ -466,7 +466,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await mockEditorApi(page, { "/api/admin/surveys/122/editor": EMPTY });
     await page.goto("/admin/surveys/122/editor?ui=next", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
-    await expect(page.getByText("这份问卷还没有内容，从左侧物料区点一个题型开始")).toBeVisible();
+    await expect(page.getByText(/这份问卷还没有内容/)).toBeVisible();
     const g = await readNextGeometry(page);
     expect(g.docOverflowY).toBeLessThanOrEqual(1);
     expect(g.docOverflowX).toBeLessThanOrEqual(1);
@@ -484,5 +484,50 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await expect(page.locator(".editor-mobile-bar")).toBeVisible();
     const g = await readNextGeometry(page);
     expect(g.docOverflowX).toBeLessThanOrEqual(1);
+  });
+
+  test("S4 拖拽：物料拖入画布产生一道新题（drop 才产生命令）", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    const rows = page.locator(".editor-canvas .q-row");
+    await expect(rows).toHaveCount(135);
+
+    const source = page.locator('aside[aria-label="物料区"] [aria-label="拖动 单选 到画布"]');
+    const target = page.locator(".editor-canvas .block-list").first();
+    const sourceBox = await source.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    // dnd-kit PointerSensor 需要 pointerdown → 移动超过激活阈值 → up 的完整序列。
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + 80, { steps: 12 });
+    await page.mouse.up();
+
+    // drop 才产生命令：恰好一道新题追加到末尾并进入选中态。
+    await expect(rows).toHaveCount(136);
+    await expect(page.locator(".editor-preview .q-chip-unsaved")).toBeVisible();
+  });
+
+  test("S4 拖拽：画布内拖拽柄排序不改变题目数量", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+
+    const handles = page.locator('.editor-canvas [aria-label="拖动排序"]');
+    const first = await handles.nth(0).boundingBox();
+    const third = await handles.nth(2).boundingBox();
+    expect(first).not.toBeNull();
+    expect(third).not.toBeNull();
+    await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(third!.x + third!.width / 2, third!.y + third!.height + 8, { steps: 12 });
+    await page.mouse.up();
+
+    // 排序只重排全序，不增减题目；选中态不变（第一题仍是第一题卡内容）。
+    await expect(page.locator(".editor-canvas .q-row")).toHaveCount(135);
   });
 });

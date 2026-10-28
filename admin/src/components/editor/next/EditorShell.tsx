@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBlocker, useNavigate } from "react-router";
 import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Undo2 } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import type { EditorData } from "../../../api";
 import { StatusBadge } from "../../ui";
 import { SurveyPreview } from "../SurveyPreview";
@@ -122,6 +132,46 @@ export function EditorShellNext({ data }: { data: EditorData }) {
     const next = !question.required;
     editor.patchQuestionLocal(questionId, { required: next });
     editor.queueQuestionPatch(questionId, { required: next }, next ? "设为必答" : "设为选答");
+  };
+
+  // ---- S4 拖拽：DndContext 必须包住物料区与画布两栏（useDraggable 靠
+  // React Context 感知宿主；放在 Canvas 里会让 MaterialPanel 的拖柄失效）。
+  // drop 才产生命令：排序走 reorderQuestions（幂等合并只发一次），
+  // 物料拖入走 addQuestion（追加末尾）；取消/非法落点零网络请求。
+  const [draggingType, setDraggingType] = useState<string | null>(null);
+  const dndSensors = useSensors(
+    // 6px 激活阈值：按下小位移仍是点击，避免把选中误判成拖拽。
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+  const handleDragStart = (event: DragStartEvent) => {
+    if (String(event.active.id).startsWith("material:")) {
+      setDraggingType(String(event.active.id).slice("material:".length));
+    }
+  };
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggingType(null);
+    const { active, over } = event;
+    if (!over || editingDisabled) return;
+    if (String(active.id).startsWith("material:")) {
+      // 落点是画布（canvas-drop）或任何摘要卡行都算命中——closestCenter
+      // 可能返回更近的行 droppable。追加到末尾；插入到指定间隙等 S5
+      // 命令日志统一 insertBlock 语义。
+      if (over.id === "canvas-drop" || editor.questions.some((question) => question.id === over.id)) {
+        addDefaultQuestion(String(active.id).slice("material:".length));
+      }
+      return;
+    }
+    if (over.id === "canvas-drop" || active.id === over.id) return;
+    const from = editor.questions.findIndex((question) => question.id === active.id);
+    const to = editor.questions.findIndex((question) => question.id === over.id);
+    if (from < 0 || to < 0) return;
+    editor.reorderQuestions(
+      arrayMove(
+        editor.questions.map((question) => question.id),
+        from,
+        to,
+      ),
+    );
   };
 
   const saveStateLabel =
@@ -246,6 +296,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       ) : null}
 
       <div className="editor-body">
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setDraggingType(null)}>
         <aside className="editor-structure editor-col" aria-label="物料区">
           <MaterialPanel
             disabled={editingDisabled}
@@ -265,6 +316,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             selection={selection}
             editable={!editingDisabled}
             sceneBusy={actions.sceneBusy}
+            draggingType={draggingType}
             onOpenPicker={() => setPickerOpen(true)}
             onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null)}
             onSelect={setSelection}
@@ -286,6 +338,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             onSelect={selectQuestion}
           />
         </aside>
+        </DndContext>
       </div>
 
       {previewOpen ? (
