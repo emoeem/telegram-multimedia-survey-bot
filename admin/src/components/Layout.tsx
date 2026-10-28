@@ -8,7 +8,6 @@ import {
   ClipboardList,
   Coins,
   Contact,
-  FileDown,
   FileUp,
   LayoutDashboard,
   ListChecks,
@@ -53,7 +52,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/categories", icon: Tags, label: "分类" },
       { to: "/responses", icon: ListChecks, label: "答卷动态" },
       { to: "/imports", icon: FileUp, label: "导入" },
-      { to: "/exports", icon: FileDown, label: "导出" },
     ],
   },
   {

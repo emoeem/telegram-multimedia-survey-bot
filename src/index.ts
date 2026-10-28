@@ -13,7 +13,7 @@ import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
 import { handleSubmitApiRequest, isSubmitApiPath } from "./http/submit-api";
-import { escapeMetaAttribute, homeRedirectLocation, publicPageHead, submitPageMetaPath } from "./http/public-page";
+import { bareAdminRedirect, escapeMetaAttribute, homeRedirectLocation, publicPageHead, submitPageMetaPath } from "./http/public-page";
 import { handleInternalRenderRequest } from "./http/internal-render";
 import { createExportJobSender } from "./services/export-job-dispatch.service";
 import { handleLicenseApiRequest } from "./http/license-api";
@@ -533,6 +533,11 @@ export default {
       // 直接发 index.html 就是一张纯白页。首页是问卷列表，指过去。
       const homeRedirect = homeRedirectLocation(url.pathname);
       if (homeRedirect) return new Response(null, { status: 302, headers: { Location: homeRedirect } });
+
+      // 后台视图的裸路径（/exports、/settings …）补回 /admin 前缀。
+      // 不补的话它们会走 SPA 兜底，然后在 React Router 里静默跳回总览。
+      const bareAdmin = bareAdminRedirect(url.pathname);
+      if (bareAdmin) return new Response(null, { status: 302, headers: { Location: bareAdmin } });
 
       // Internal endpoints (queue consumers hand browser renders to a request
       // context); token-authenticated, must be routed before the SPA/API blocks.

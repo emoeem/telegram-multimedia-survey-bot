@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   HOME_REDIRECT_LOCATION,
+  bareAdminRedirect,
   homeRedirectLocation,
   escapeMetaAttribute,
   publicPageHead,
@@ -29,6 +30,48 @@ describe("裸域名重定向", () => {
   it("其它路径不受影响", () => {
     for (const path of ["/s", "/s/1", "/plaza", "/submit", "/admin/", "/cert/"]) {
       expect(homeRedirectLocation(path), path).toBeNull();
+    }
+  });
+});
+
+/**
+ * 后台 SPA 的 basename 是 /admin。裸路径进兜底后 React Router 匹配不到，
+ * 会命中 `*` 静默跳回总览——页面看起来正常，只是不是用户点的那个。
+ * 这组用例锁住「补前缀」这一层，以及「别把公开页劫进后台」这条边界。
+ */
+describe("后台裸路径补 /admin 前缀", () => {
+  it("导出的旧地址被补回前缀（文档里写错成 /exports 也不会跳到总览）", () => {
+    expect(bareAdminRedirect("/exports")).toBe("/admin/exports");
+    expect(bareAdminRedirect("/settings")).toBe("/admin/settings");
+    expect(bareAdminRedirect("/surveys")).toBe("/admin/surveys");
+  });
+
+  it("带子路径与查询串时整段保留", () => {
+    expect(bareAdminRedirect("/surveys/12/editor")).toBe("/admin/surveys/12/editor");
+    expect(bareAdminRedirect("/surveys/12/responses/7")).toBe("/admin/surveys/12/responses/7");
+  });
+
+  it("公开页一个都不拦（否则会把前台流量劫进后台）", () => {
+    for (const path of ["/s", "/s/1", "/s/1/og.png", "/submit", "/submit/inbox", "/plaza", "/showcase", "/trial", "/cert", "/me", "/report/42", "/report/42.pdf"]) {
+      expect(bareAdminRedirect(path), path).toBeNull();
+    }
+  });
+
+  it("根路径交给 homeRedirectLocation，不在这里重复处理", () => {
+    expect(bareAdminRedirect("/")).toBeNull();
+  });
+
+  it("API 与静态资源不受影响（第一段不是后台视图名）", () => {
+    for (const path of ["/api/admin/surveys", "/api/survey/1", "/assets/main.js", "/health"]) {
+      expect(bareAdminRedirect(path), path).toBeNull();
+    }
+  });
+
+  it("只是名字相近的路径不会被误判", () => {
+    /* `/report/:id` 是公开报告页，`/reports` 才是后台归档；
+     * `/submission` 不是 `/submit`，两者都不该命中。 */
+    for (const path of ["/reports-archive", "/surveyss", "/settings-backup", "/usersx"]) {
+      expect(bareAdminRedirect(path), path).toBeNull();
     }
   });
 });

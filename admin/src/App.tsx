@@ -23,7 +23,6 @@ const ResponseActivityPage = lazy(() =>
   import("./routes/ResponseActivityPage").then((m) => ({ default: m.ResponseActivityPage })),
 );
 const ImportPage = lazy(() => import("./routes/ImportPage").then((m) => ({ default: m.ImportPage })));
-const ExportPage = lazy(() => import("./routes/ExportPage").then((m) => ({ default: m.ExportPage })));
 const AnalyticsPage = lazy(() => import("./routes/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })));
 const UsersPage = lazy(() => import("./routes/UsersPage").then((m) => ({ default: m.UsersPage })));
 const VersionsPage = lazy(() => import("./routes/VersionsPage").then((m) => ({ default: m.VersionsPage })));
@@ -76,7 +75,9 @@ const router = createBrowserRouter(
         { path: "categories", element: lazyElement(<CategoriesPage />) },
         { path: "responses", element: lazyElement(<ResponseActivityPage />) },
         { path: "imports", element: lazyElement(<ImportPage />) },
-        { path: "exports", element: lazyElement(<ExportPage />) },
+        // 导出不再是独立页面：它是问卷列表里的批量动作（勾选 → 导出）。
+        // 这个 URL 留着兜旧书签和外面贴过的链接，落到问卷页。
+        { path: "exports", element: <Navigate to="/surveys" replace /> },
         { path: "surveys/:id", element: lazyElement(<SurveyDetailPage />) },
         { path: "surveys/:id/editor", element: lazyElement(<EditorPage />) },
         { path: "surveys/:id/scene/:qid", element: lazyElement(<SceneEditorPage />) },

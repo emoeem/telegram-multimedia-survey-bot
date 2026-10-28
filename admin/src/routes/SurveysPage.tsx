@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { EChart } from "../components/EChart";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Plus, Search } from "lucide-react";
+import { Download, Loader2, Plus, Printer, Search } from "lucide-react";
 import { donutOption } from "../charts";
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
@@ -16,8 +16,16 @@ import {
   type SurveyStatus,
   type WriteResult,
 } from "../api";
-import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
+import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { STATUS_LABELS, formatDateTime } from "../format";
+import { downloadSurveyExport, printSurveyExport } from "../lib/survey-export-run";
+import type { ExportFormat } from "../lib/survey-export";
+
+const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; hint: string }> = [
+  { value: "html", label: "HTML", hint: "打印视图，可直接印成 PDF" },
+  { value: "markdown", label: "Markdown", hint: "贴进知识库或 GitHub" },
+  { value: "json", label: "JSON", hint: "结构与导入器兼容，可再导回" },
+];
 
 const SEARCH_DEBOUNCE_MS = 300;
 const STATUS_OPTIONS: SurveyStatus[] = ["draft", "published", "closed", "archived"];
@@ -63,6 +71,13 @@ export function SurveysPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // 导出就在这里做：它是「管理问卷」的一个动作，不是独立的一项工作台功能。
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("html");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [exportProblem, setExportProblem] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -150,6 +165,36 @@ export function SurveysPage() {
     } finally {
       setBulkBusy(false);
     }
+  };
+
+  /** 导出选中问卷：下载文件或唤起打印视图（PDF 由浏览器打印引擎产出）。 */
+  const runExport = async (mode: "download" | "print") => {
+    if (exportBusy || !selected.length) return;
+    setExportBusy(true);
+    setExportProblem(null);
+    setExportNotice(null);
+    try {
+      const onProgress = (done: number, total: number) => setExportProgress({ done, total });
+      const outcome =
+        mode === "print"
+          ? await printSurveyExport(selected, onProgress)
+          : await downloadSurveyExport(selected, exportFormat, onProgress);
+      setExportNotice(outcome.notice);
+      toast({ message: outcome.notice, variant: "success" });
+      // 打印视图已经把用户带走了，弹窗留着只会挡路。
+      if (mode === "print") setExportOpen(false);
+    } catch (requestError) {
+      setExportProblem(requestError instanceof Error ? requestError.message : "导出失败");
+    } finally {
+      setExportBusy(false);
+      setExportProgress(null);
+    }
+  };
+
+  const openExport = () => {
+    setExportNotice(null);
+    setExportProblem(null);
+    setExportOpen(true);
   };
 
   const createSurvey = async () => {
@@ -356,6 +401,10 @@ export function SurveysPage() {
                 <button className="btn btn-sm" disabled={bulkBusy} onClick={() => void bulkRating("all")}>
                   标为全年龄
                 </button>
+                <button className="btn btn-sm" disabled={bulkBusy} onClick={openExport}>
+                  <Download className="h-4 w-4" />
+                  导出
+                </button>
                 <button className="btn btn-sm btn-quiet" onClick={() => setSelected([])}>
                   取消选择
                 </button>
@@ -534,6 +583,81 @@ export function SurveysPage() {
           </div>
         ) : null}
       </section>
+
+      <Modal
+        open={exportOpen}
+        onClose={() => {
+          if (!exportBusy) setExportOpen(false);
+        }}
+        title={`导出 ${selected.length} 份问卷`}
+        size="md"
+        footer={
+          <>
+            <button className="btn btn-quiet" disabled={exportBusy} onClick={() => setExportOpen(false)}>
+              取消
+            </button>
+            <button className="btn" disabled={exportBusy || !selected.length} onClick={() => void runExport("print")}>
+              {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              打印 / 另存为 PDF
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={exportBusy || !selected.length}
+              onClick={() => void runExport("download")}
+            >
+              {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              下载
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--color-muted)]">
+          勾选的问卷会合成一个文件；选 HTML 后点「打印 / 另存为 PDF」，浏览器的打印对话框即可产出分页正确的
+          PDF（每份问卷单独起页）。
+        </p>
+
+        <fieldset className="mt-4">
+          <legend className="text-sm font-medium">导出格式</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {EXPORT_FORMATS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                  exportFormat === option.value
+                    ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+                    : "border-[var(--control-border)] bg-[var(--surface)]"
+                }`}
+                onClick={() => setExportFormat(option.value)}
+                disabled={exportBusy}
+                aria-pressed={exportFormat === option.value}
+              >
+                <span className="block font-medium">{option.label}</span>
+                <span className="block text-xs text-[var(--color-muted)]">{option.hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <ul className="mt-4 max-h-52 space-y-1 overflow-auto text-sm">
+          {data?.items
+            .filter((item) => selected.includes(item.id))
+            .map((item) => (
+              <li key={item.id} className="flex items-center gap-2 truncate">
+                <span className="truncate">{item.title}</span>
+                <span className="ml-auto shrink-0 text-xs text-[var(--color-muted)]">#{item.id}</span>
+              </li>
+            ))}
+        </ul>
+
+        {exportProgress ? (
+          <p className="mt-3 text-sm text-[var(--color-muted)]">
+            正在读取 {exportProgress.done}/{exportProgress.total} 份…
+          </p>
+        ) : null}
+        {exportNotice ? <p className="mt-3 text-sm text-[var(--app-success)]">{exportNotice}</p> : null}
+        {exportProblem ? <p className="mt-3 text-sm text-[var(--app-danger)]">{exportProblem}</p> : null}
+      </Modal>
     </div>
   );
 }

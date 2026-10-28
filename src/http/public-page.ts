@@ -23,6 +23,45 @@ export function homeRedirectLocation(pathname: string): string | null {
   return pathname === "/" ? HOME_REDIRECT_LOCATION : null;
 }
 
+/**
+ * 后台视图的「裸路径」补前缀。
+ *
+ * 后台 SPA 的 `basename` 是 `/admin`。任何脱离这个前缀访问的地址（旧书签、
+ * 外面贴过的链接、文档里写错的 `/exports`）都会落到 SPA 兜底：返回
+ * index.html，但 React Router 在 `/admin` 前缀下匹配不到 `/exports`，于是
+ * 命中 `*` 分支**静默跳回总览**——用户看到的是一个正常页面，只是不是他点的
+ * 那个，最难排查的一类失效。
+ *
+ * 这里只补后台独有的段。公开页（`/s`、`/submit`、`/plaza`、`/showcase`、
+ * `/trial`、`/report/:id`、`/me`）一个都不在表里，所以不会把公开流量劫进后台。
+ */
+const BARE_ADMIN_SEGMENTS = new Set([
+  "surveys",
+  "categories",
+  "responses",
+  "imports",
+  "exports",
+  "reports",
+  "templates",
+  "cert-content",
+  "web-submissions",
+  "profile-gallery",
+  "trash",
+  "task-packs",
+  "audit",
+  "settings",
+  "licenses",
+  "control",
+  "coin-economy",
+  "users",
+]);
+
+export function bareAdminRedirect(pathname: string): string | null {
+  const segment = pathname.split("/")[1] ?? "";
+  if (!BARE_ADMIN_SEGMENTS.has(segment)) return null;
+  return `/admin${pathname}`;
+}
+
 /** 投稿表单 / 收件箱两屏的 meta 键。
  *
  * 这两条路径原来直接 `serveHtmlAsset("/survey.html")`，于是**完全没有**
