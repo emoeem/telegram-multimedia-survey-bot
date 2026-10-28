@@ -154,6 +154,23 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
 - ☐ CSS 按主题拆分（可选，有闪烁风险）。
 - ☐ Lighthouse 复测（当前 Performance 75）：留待标准环境。
 
+## CI 全绿恢复（2026-10-29，随 E 批收尾）
+
+本轮盘点发现 main 的 CI 自 P2 S4 起持续红（三条独立欠账叠加），已全部清偿：
+
+1. **Format check**：CI `checks` job 的 `pnpm format:check` 是本地门禁清单之外的一步，
+   S4 起累积 60 文件未格式化——全仓 `pnpm format` 清偿（83dd562）。
+2. **admin.spec 编辑器断言未适配 S10**：`/admin/surveys/1/editor @390px` 仍断言
+   「上传题面附件可见」，新壳窄屏隐藏属性栏——按视口分支，<900px 改断
+   `.editor-mobile-bar`（83dd562）。
+3. **视觉基线陈旧 + Dashboard flake**：S4–S10 期间基线未再生；且 `/admin/analytics`
+   （兜底渲染 DashboardPage）有两个真随机源——活时钟「更新于 HH:MM」渲染进像素、
+   环形图懒 chunk 的骨架/成图竞态。修法：Dashboard 两条渲染路径等
+   `.echarts-for-react` attached + 截图屏蔽时钟文本（498bb93），基线再生（99bb1e5）。
+   教训：mask 会画进截图，**改 mask 必须重生成基线**。
+
+恢复后 CI（checks + visual + tg-archive）全绿；deploy 恢复随 ci 门禁放行。
+
 ---
 
 ## 附：本轮盘点结论（2026-10-28）
