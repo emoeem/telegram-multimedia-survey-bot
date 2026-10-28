@@ -394,33 +394,26 @@ export function ControlCenterPage() {
             <tbody>
               {filtered.map((d) => (
                 <tr key={d.id} className="hover">
-                  <td>
-                    {" "}
-                    data-label="Worker"
+                  <td data-label="Worker">
                     <button className="text-left" onClick={() => setSelected(d)}>
                       <div className="font-medium">{d.workerName}</div>
                       <div className="text-xs opacity-50">{d.installationId}</div>
                     </button>
                   </td>
-                  <td className="text-sm"> data-label="授权"{d.licenseId}</td>
-                  <td>
-                    {" "}
-                    data-label="状态"
+                  <td className="text-sm" data-label="授权">{d.licenseId}</td>
+                  <td data-label="状态">
                     <StatusBadge status={d.status} />
                   </td>
-                  <td className="text-sm">
-                    {" "}
-                    data-label="版本"
+                  <td className="text-sm" data-label="版本">
                     {d.currentVersion ?? "—"}
                     {d.desiredVersion && d.desiredVersion !== d.currentVersion ? (
                       <span className="ml-1 opacity-50">→ {d.desiredVersion}</span>
                     ) : null}
                   </td>
-                  <td className="text-xs opacity-60">
-                    {" "}
-                    data-label="最后在线"{d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}
+                  <td className="text-xs opacity-60" data-label="最后在线">
+                    {d.lastSeenAt ? formatDateTime(d.lastSeenAt) : "—"}
                   </td>
-                  <td>
+                  <td data-label="操作">
                     <div className="flex items-center gap-1">
                       <button
                         className="btn btn-ghost btn-xs"

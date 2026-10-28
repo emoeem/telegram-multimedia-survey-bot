@@ -560,24 +560,24 @@ function LicenseRow({
   return (
     <>
       <tr className="align-top">
-        <td>
+        <td data-label="客户">
           <div className="font-medium">{name}</div>
           {license.customerContact ? (
             <div className="text-xs text-[var(--color-muted-soft)]">{license.customerContact}</div>
           ) : null}
           <div className="mt-0.5 font-mono text-xs text-[var(--color-muted-soft)]">{license.publicId}</div>
         </td>
-        <td>{LICENSE_TYPE_LABELS[license.licenseType] ?? license.licenseType}</td>
-        <td>
+        <td data-label="类型">{LICENSE_TYPE_LABELS[license.licenseType] ?? license.licenseType}</td>
+        <td data-label="状态">
           <span
             className={`badge ${license.status === "active" ? "badge-green" : license.status === "suspended" ? "badge-amber" : "badge-red"}`}
           >
             {LICENSE_STATUS_LABELS[license.status] ?? license.status}
           </span>
         </td>
-        <td>{license.expiresAt ? formatDateTime(license.expiresAt) : "永久"}</td>
-        <td>{license.updatesUntil ? formatDateTime(license.updatesUntil) : "永久"}</td>
-        <td>
+        <td data-label="到期">{license.expiresAt ? formatDateTime(license.expiresAt) : "永久"}</td>
+        <td data-label="升级有效期">{license.updatesUntil ? formatDateTime(license.updatesUntil) : "永久"}</td>
+        <td data-label="激活">
           {license.activationCount} / {license.maxActivations}
           <button
             className="ml-2 text-xs text-[var(--color-primary)] hover:underline"
@@ -586,7 +586,7 @@ function LicenseRow({
             {expanded ? "收起" : "详情"}
           </button>
         </td>
-        <td>
+        <td data-label="操作">
           <div className="flex flex-wrap gap-1.5">
             {license.status === "active" ? (
               <button

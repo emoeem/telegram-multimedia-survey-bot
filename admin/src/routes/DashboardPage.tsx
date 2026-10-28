@@ -278,7 +278,7 @@ export function DashboardPage() {
       </section>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        {data.recentSurveys?.length ? (
+        {
           <section className="card">
             <div className="card-title">
               <h2>最近问卷</h2>
@@ -286,10 +286,11 @@ export function DashboardPage() {
                 全部问卷
               </Link>
             </div>
-            <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近问卷列表">
-              <table className="tbl">
-                <tbody>
-                  {data.recentSurveys.map((item) => (
+            {(data.recentSurveys ?? []).length ? (
+              <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近问卷列表">
+                <table className="tbl">
+                  <tbody>
+                  {(data.recentSurveys ?? []).slice(0, 6).map((item) => (
                     <tr
                       key={item.id}
                       className="cursor-pointer"
@@ -314,13 +315,19 @@ export function DashboardPage() {
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="mt-3">
+                {/* 空态整块消失会被误读成加载失败——区块常驻，只换内容。 */}
+                <EmptyPanel text="还没有问卷。创建第一份问卷后，这里会显示最近编辑的问卷。" />
+              </div>
+            )}
           </section>
-        ) : null}
+        }
 
-        {data.recentResponses?.length ? (
+        {
           <section className="card">
             <div className="card-title">
               <h2>最近答卷</h2>
@@ -328,17 +335,18 @@ export function DashboardPage() {
                 全部答卷
               </Link>
             </div>
-            <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近答卷列表">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th className="text-sm text-[var(--color-muted)]">问卷</th>
-                    <th className="text-sm text-[var(--color-muted)]">填写者</th>
-                    <th className="text-sm text-[var(--color-muted)]">时间</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recentResponses.slice(0, 6).map((item) => {
+            {(data.recentResponses ?? []).length ? (
+              <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近答卷列表">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th className="text-sm text-[var(--color-muted)]">问卷</th>
+                      <th className="text-sm text-[var(--color-muted)]">填写者</th>
+                      <th className="text-sm text-[var(--color-muted)]">时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  {(data.recentResponses ?? []).slice(0, 6).map((item) => {
                     const respondentText = item.respondent
                       ? [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ") ||
                         (item.respondent.username
@@ -373,11 +381,16 @@ export function DashboardPage() {
                       </tr>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <EmptyPanel text="还没有答卷。问卷收到提交后，这里会显示最近的答卷。" />
+              </div>
+            )}
           </section>
-        ) : null}
+        }
       </div>
 
       {data.recentActions?.length ? (

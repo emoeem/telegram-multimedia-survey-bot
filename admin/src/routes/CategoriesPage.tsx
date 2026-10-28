@@ -225,7 +225,7 @@ export function CategoriesPage() {
                     const draft = drafts[category.id] ?? toDraft(category);
                     return (
                       <tr key={category.id}>
-                        <td>
+                        <td data-label="排序">
                           <input
                             className="input w-16"
                             type="number"
@@ -233,7 +233,7 @@ export function CategoriesPage() {
                             onChange={(event) => patchDraft(category.id, { sortOrder: Number(event.target.value) })}
                           />
                         </td>
-                        <td>
+                        <td data-label="名称">
                           <input
                             className="input"
                             value={draft.name}
@@ -241,14 +241,14 @@ export function CategoriesPage() {
                             onChange={(event) => patchDraft(category.id, { name: event.target.value })}
                           />
                         </td>
-                        <td>
+                        <td data-label="slug">
                           <input
                             className="input font-mono text-xs"
                             value={draft.slug}
                             onChange={(event) => patchDraft(category.id, { slug: event.target.value })}
                           />
                         </td>
-                        <td>
+                        <td data-label="说明">
                           <input
                             className="input"
                             placeholder="这个抽屉装什么"
@@ -257,12 +257,12 @@ export function CategoriesPage() {
                             onChange={(event) => patchDraft(category.id, { description: event.target.value })}
                           />
                         </td>
-                        <td className="text-sm">
+                        <td className="text-sm" data-label="问卷">
                           <Link to={`/surveys?category=${category.id}`} className="link">
                             {category.count} 份
                           </Link>
                         </td>
-                        <td>
+                        <td data-label="操作">
                           <div className="flex items-center gap-1.5">
                             <button
                               className="btn btn-sm"

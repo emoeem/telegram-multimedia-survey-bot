@@ -304,7 +304,7 @@ function SurveysPanel({
                       <td data-label="更新时间" className="text-xs opacity-60">
                         {formatDateTime(survey.updatedAt)}
                       </td>
-                      <td>
+                      <td data-label="操作">
                         <button className="btn btn-ghost btn-xs" onClick={() => onOpenResponses(survey.id)}>
                           看答卷
                         </button>
@@ -434,7 +434,7 @@ function ResponsesPanel({
                       <td data-label="完成时间" className="text-xs opacity-60">
                         {item.completedAt ? formatDateTime(item.completedAt) : "—"}
                       </td>
-                      <td>
+                      <td data-label="操作">
                         <button
                           className="btn btn-ghost btn-xs"
                           onClick={() => onDetail(detailId === item.id ? null : item.id)}
@@ -579,7 +579,7 @@ function UsersPanel({
                         <td data-label="最近启动" className="text-xs opacity-60">
                           {item.botStartedAt ? formatDateTime(item.botStartedAt) : "—"}
                         </td>
-                        <td>
+                        <td data-label="操作">
                           <a className="btn btn-ghost btn-xs" href={userChatLink(item.telegramUserId)}>
                             私聊
                           </a>

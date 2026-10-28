@@ -455,6 +455,7 @@ export function SurveysPage() {
                     >
                       <td
                         className="text-sm"
+                        data-label=""
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelected((current) =>
@@ -478,15 +479,15 @@ export function SurveysPage() {
                           }
                         />
                       </td>
-                      <td className="text-sm">
+                      <td className="text-sm" data-label="标题">
                         <Link to={`/surveys/${item.id}`} className="font-semibold text-inherit no-underline">
                           {item.title || "未命名问卷"}
                         </Link>
                       </td>
-                      <td className="text-sm">
+                      <td className="text-sm" data-label="状态">
                         <StatusBadge status={item.status} />
                       </td>
-                      <td className="text-sm" onClick={(event) => event.stopPropagation()}>
+                      <td className="text-sm" data-label="分级" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
                           className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
@@ -500,7 +501,7 @@ export function SurveysPage() {
                           {item.contentRating === "r18" ? "18+" : "全年龄"}
                         </button>
                       </td>
-                      <td className="text-sm">
+                      <td className="text-sm" data-label="分类">
                         {item.categoryName ? (
                           <span className="rounded-full border border-[var(--color-edge)] px-2.5 py-0.5 text-xs">
                             {item.categoryName}
@@ -509,9 +510,9 @@ export function SurveysPage() {
                           <span className="text-xs text-[var(--color-muted-soft)]">未分类</span>
                         )}
                       </td>
-                      <td className="text-sm">{item.questionCount} 题</td>
-                      <td className="text-sm">{item.responseCount} 答卷</td>
-                      <td className="text-sm">{formatDateTime(item.updatedAt)}</td>
+                      <td className="text-sm" data-label="题目">{item.questionCount} 题</td>
+                      <td className="text-sm" data-label="答卷">{item.responseCount} 答卷</td>
+                      <td className="text-sm" data-label="更新时间">{formatDateTime(item.updatedAt)}</td>
                     </tr>
                   ))}
                 </tbody>
