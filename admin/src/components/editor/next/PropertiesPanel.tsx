@@ -23,6 +23,7 @@ export function PropertiesPanel({
   editable,
   editorMode,
   onSelect,
+  onOpenScene,
 }: {
   data: EditorData;
   editor: Editor;
@@ -31,6 +32,8 @@ export function PropertiesPanel({
   editable: boolean;
   editorMode: "basic" | "pro";
   onSelect: (questionId: number) => void;
+  /** P3：scene 题打开壳内全屏浮层（不再页面跳转）。 */
+  onOpenScene: (questionId: number) => void;
 }) {
   // 属性 / 逻辑（逻辑仅专业模式可见，与旧壳右栏页签同一规则）。
   const [tab, setTab] = useState<"props" | "logic">("props");
@@ -117,7 +120,7 @@ export function PropertiesPanel({
               actions.attachOptionMediaFromLibrary(optionId, assetId)
             }
             onRemoveOptionMedia={(optionId, mediaAssetId) => actions.removeOptionMedia(optionId, mediaAssetId)}
-            onOpenSceneEditor={(questionId) => void actions.openSceneEditor(questionId)}
+            onOpenSceneEditor={onOpenScene}
             allQuestions={editor.questions}
             pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
           />

@@ -58,7 +58,8 @@ export function useEditorActions(data: EditorData, editor: Editor) {
 
   // 新建空 scene 题（settings 为空，场景配置在编辑器里写入）。
   // insertQuestionWithOptions 只为 matrix 持久化 settings，所以这里不传场景配置。
-  const addSceneQuestion = async (pageId: number | null) => {
+  // openInShell：P3 新壳传「打开壳内浮层」回调（创建后不跳页）；旧壳缺省导航。
+  const addSceneQuestion = async (pageId: number | null, openInShell?: (questionId: number) => void) => {
     if (sceneBusy) return;
     if (!(await flushDraft())) return;
     setSceneBusy(true);
@@ -71,7 +72,8 @@ export function useEditorActions(data: EditorData, editor: Editor) {
         pageId,
       });
       if (!created?.id) throw new Error("创建互动场景题失败");
-      navigate(`/surveys/${survey.id}/scene/${created.id}`);
+      if (openInShell) openInShell(created.id);
+      else navigate(`/surveys/${survey.id}/scene/${created.id}`);
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
     } finally {

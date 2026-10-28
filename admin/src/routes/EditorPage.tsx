@@ -51,15 +51,16 @@ export function EditorPage() {
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={6} />;
   if (!data.survey.editable) return <ReadOnlyEditor data={data} />;
-  // P2 三栏外壳并行验证：默认仍走旧壳，?ui=next 才进新壳（交接文档 S0）。
-  if (searchParams.get("ui") === "next") {
-    return (
-      <Suspense fallback={<SkeletonPanel lines={6} />}>
-        <EditorShellNext data={data} />
-      </Suspense>
-    );
+  // P3/S10：三栏外壳已设为默认；旧壳保留两个版本周期作为兜底，?ui=legacy 才进入
+  // （期间发现的阻塞性问题可即时切回）。旧壳删除与 /scene/:qid 重定向留待下个周期。
+  if (searchParams.get("ui") === "legacy") {
+    return <EditableEditor data={data} />;
   }
-  return <EditableEditor data={data} />;
+  return (
+    <Suspense fallback={<SkeletonPanel lines={6} />}>
+      <EditorShellNext data={data} />
+    </Suspense>
+  );
 }
 
 function EditableEditor({ data }: { data: EditorData }) {

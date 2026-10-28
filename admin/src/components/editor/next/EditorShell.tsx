@@ -25,6 +25,8 @@ import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
 import { Canvas } from "./Canvas";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { SceneEditorPage } from "../../../routes/SceneEditorPage";
+import { X } from "lucide-react";
 
 /**
  * P2 三栏画布外壳（S2）：左物料 / 中画布 / 右属性。只在 /surveys/:id/editor?ui=next
@@ -44,6 +46,8 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // P3：scene 编辑从「页面跳转」改为壳内全屏浮层——选中即配置、不出现页面跳转。
+  const [sceneOverlayId, setSceneOverlayId] = useState<number | null>(null);
   /**
    * 基础 / 专业模式与旧壳共用同一个 localStorage 键：两个壳看到的模式一致，
    * 切换只改可见性，不动文档。
@@ -303,7 +307,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             sceneBusy={actions.sceneBusy}
             pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
             onAddQuestion={addDefaultQuestion}
-            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null)}
+            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
             onApplyTemplate={(templateId) => actions.applyTemplate(templateId)}
             onAddPage={() => void actions.addPage()}
             onDeletePage={(pageId) => void actions.deletePage(pageId)}
@@ -318,7 +322,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             sceneBusy={actions.sceneBusy}
             draggingType={draggingType}
             onOpenPicker={() => setPickerOpen(true)}
-            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null)}
+            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
             onSelect={setSelection}
             onMove={actions.moveQuestion}
             onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
@@ -336,10 +340,30 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             editable={!editingDisabled}
             editorMode={editorMode}
             onSelect={selectQuestion}
+            onOpenScene={(questionId) => setSceneOverlayId(questionId)}
           />
         </aside>
         </DndContext>
       </div>
+
+      {sceneOverlayId !== null ? (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--color-page)" }} role="dialog" aria-label="互动场景编辑器">
+          <div className="flex items-center justify-between border-b border-[var(--color-edge)] px-3 py-2">
+            <span className="text-xs font-semibold text-[var(--color-muted)]">编辑互动场景（关闭返回编辑器）</span>
+            <button type="button" className="btn btn-sm" aria-label="关闭场景编辑器" onClick={() => setSceneOverlayId(null)}>
+              <X className="h-4 w-4" />
+              关闭
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <SceneEditorPage
+              surveyId={survey.id}
+              sceneId={sceneOverlayId}
+              onExit={() => setSceneOverlayId(null)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {previewOpen ? (
         <SurveyPreview
@@ -359,7 +383,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
           onPick={(type) => addDefaultQuestion(type)}
           onScene={() => {
             setPickerOpen(false);
-            void actions.addSceneQuestion(selectedQuestion?.pageId ?? null);
+            void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId);
           }}
         />
       ) : null}

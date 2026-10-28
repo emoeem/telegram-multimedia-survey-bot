@@ -68,12 +68,21 @@ function loadImageSize(url: string): Promise<{ width: number; height: number }> 
  * 独立路由而不是塞进 builder：useSurveyEditor 的 EditableQuestion 只保留
  * columns/speaker，diffOps 也只会发 {columns}，场景配置会被覆盖掉。
  * 这里直接读写题目 settings.scene，保存走既有 PATCH 端点（后端已白名单 scene）。
+ *
+ * 两种形态（P3）：独立路由页（旧壳与直达链接，useParams 取参）；编辑器壳内
+ * 全屏浮层（新壳传 props——surveyId/sceneId/onExit，「选中即配置不跳页」）。
  */
-export function SceneEditorPage() {
-  const { id, qid } = useParams();
-  const surveyId = Number(id);
-  const questionId = Number(qid);
+export function SceneEditorPage(props?: {
+  surveyId?: number;
+  sceneId?: number;
+  /** 浮层形态的退出回调；缺省（独立路由）为导航回编辑器。 */
+  onExit?: () => void;
+}) {
+  const params = useParams();
   const navigate = useNavigate();
+  const surveyId = props?.surveyId ?? Number(params.id);
+  const questionId = props?.sceneId ?? Number(params.qid);
+  const exitEditor = props?.onExit ?? (() => navigate(`/surveys/${surveyId}/editor`));
   const { confirm, toast } = useDialogs();
 
   const path =
@@ -460,7 +469,7 @@ export function SceneEditorPage() {
         <EmptyPanel
           text="这道题不是互动场景，或已经被删除。"
           actionLabel="返回问卷编辑器"
-          onAction={() => navigate(`/surveys/${surveyId}/editor`)}
+          onAction={exitEditor}
         />
       </div>
     );
@@ -477,7 +486,7 @@ export function SceneEditorPage() {
     <div className="scene-editor">
       <div className="scene-editor-topbar">
         <div className="scene-editor-topbar-main">
-          <button type="button" className="btn btn-sm" onClick={() => navigate(`/surveys/${surveyId}/editor`)}>
+          <button type="button" className="btn btn-sm" onClick={exitEditor}>
             <ArrowLeft className="h-4 w-4" />
             返回编辑器
           </button>

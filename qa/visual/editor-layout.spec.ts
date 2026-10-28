@@ -189,7 +189,7 @@ for (const viewport of [
   test(`135-question editor fills the viewport at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
 
@@ -220,7 +220,7 @@ for (const viewport of [
 test("question switching, search and preview sync survive 135 questions", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-  await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
 
   // Jump to question 60 from the left tree; the canvas must scroll it into view
@@ -259,7 +259,7 @@ test("question switching, search and preview sync survive 135 questions", async 
 test("empty survey renders without overflow", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/122/editor": EMPTY });
-  await page.goto("/admin/surveys/122/editor", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/122/editor?ui=legacy", { waitUntil: "networkidle" });
   await expect(page.getByText("这份问卷还没有内容")).toBeVisible();
   const g = await readGeometry(page);
   expect(g.docOverflowY).toBeLessThanOrEqual(1);
@@ -272,7 +272,7 @@ test("empty survey renders without overflow", async ({ page }) => {
 test("a few questions fill the columns without inner scroll", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/123/editor": FEW });
-  await page.goto("/admin/surveys/123/editor", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/123/editor?ui=legacy", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
   const g = await readGeometry(page);
   expect(g.docOverflowY).toBeLessThanOrEqual(1);
@@ -289,7 +289,7 @@ test("a few questions fill the columns without inner scroll", async ({ page }) =
 test("narrow viewport degrades to the stacked mobile layout", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-  await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
   await expect(page.locator(".editor-preview")).toBeHidden();
   await expect(page.locator(".editor-mobile-bar")).toBeVisible();
@@ -345,7 +345,7 @@ test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", as
     }),
   );
 
-  await page.goto("/admin/surveys/1/editor", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/1/editor?ui=legacy", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "添加互动场景" }).click();
 
   await expect.poll(() => posts.length).toBe(1);
@@ -549,5 +549,24 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
     await scanA11y(page, "editor next shell (pro) @ 1600x900");
+  });
+
+  test("S8 往返前提：新壳打开不做修改 → 不产生任何写请求（数据零漂移）", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const writes: string[] = [];
+    await page.route("**/api/**", (route) => {
+      const method = route.request().method();
+      const path = new URL(route.request().url()).pathname;
+      if (method !== "GET" && path !== "/api/admin/session") writes.push(`${method} ${path}`);
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(BIG) });
+    });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    // 选中几道题、切设置页签、切回——纯导航不得触发保存。
+    await page.locator(".editor-canvas .q-row").nth(3).click();
+    await page.locator(".editor-canvas [aria-pressed]", { hasText: "问卷设置" }).click();
+    await page.locator(".editor-canvas .q-row").first().click();
+    await page.waitForTimeout(2600); // 超过 autosave 的 2s 防抖窗口
+    expect(writes, `unexpected writes: ${writes.join(", ")}`).toEqual([]);
   });
 });
