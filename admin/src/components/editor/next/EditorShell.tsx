@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBlocker, useNavigate } from "react-router";
 import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Undo2 } from "lucide-react";
 import {
@@ -127,7 +127,9 @@ export function EditorShellNext({ data }: { data: EditorData }) {
     setSelection({ kind: "question", id: tempId });
     setPickerOpen(false);
   };
-  const selectQuestion = (questionId: number) => setSelection({ kind: "question", id: questionId });
+  // 稳定身份：下游 QuestionSummaryRow / PropertiesPanel 是 memo 组件。
+  const selectQuestion = useCallback((questionId: number) => setSelection({ kind: "question", id: questionId }), []);
+  const openSceneOverlay = useCallback((questionId: number) => setSceneOverlayId(questionId), []);
 
   // 必答开关：本地立即生效 + 入队待保存（与旧壳批量必答同一条语义）。
   const toggleRequired = (questionId: number) => {
@@ -340,7 +342,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             editable={!editingDisabled}
             editorMode={editorMode}
             onSelect={selectQuestion}
-            onOpenScene={(questionId) => setSceneOverlayId(questionId)}
+            onOpenScene={openSceneOverlay}
           />
         </aside>
         </DndContext>

@@ -35,7 +35,7 @@ import { LogicPanel } from "../components/editor/LogicPanel";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime, matrixColumns, QUESTION_TYPE_LABELS } from "../format";
 
-// P2 新壳按需加载：只有 ?ui=next 时才拉取这份 chunk，旧壳路径的包体不变。
+// P2 新壳 chunk 随默认路由按需加载；?ui=legacy 兜底（P3/S10 切默认后旧壳保留两个版本周期）。
 const EditorShellNext = lazy(() =>
   import("../components/editor/next/EditorShell").then((module) => ({ default: module.EditorShellNext })),
 );
@@ -463,8 +463,8 @@ function EditableEditor({ data }: { data: EditorData }) {
                     question={question}
                     index={index}
                     editable={!editingDisabled}
-                    onOpen={() => selectQuestion(question.id)}
-                    onMove={(direction) => moveQuestion(question.id, direction)}
+                    onOpen={selectQuestion}
+                    onMove={moveQuestion}
                   />
                 </div>
               );

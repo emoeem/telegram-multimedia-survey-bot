@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { EditorData } from "../../../api";
 import type { useSurveyEditor } from "../../../editor/useSurveyEditor";
 import type { useEditorActions } from "../../../editor/editor-actions";
@@ -14,8 +14,12 @@ type Actions = ReturnType<typeof useEditorActions>;
  * P2 属性区（右栏）：选中即配置，不出现页面跳转。
  * 选中题目 → QuestionCard（与旧壳同一份卡片：头部 + QuestionForm）；
  * 选中问卷设置 → SurveySettingsPanel；专业模式追加「逻辑」页签（LogicPanel）。
+ *
+ * memo（E4）：选中/编辑态之外的重渲染（busy 翻转等）整栏跳过。生效前提是
+ * 调用方传稳定回调——壳侧 selectQuestion/onOpenScene 已 useCallback，
+ * actions 身份由 useEditorActions 的 latest-ref 钉死。
  */
-export function PropertiesPanel({
+function PropertiesPanelImpl({
   data,
   editor,
   actions,
@@ -129,3 +133,5 @@ export function PropertiesPanel({
     </div>
   );
 }
+
+export const PropertiesPanel = memo(PropertiesPanelImpl);

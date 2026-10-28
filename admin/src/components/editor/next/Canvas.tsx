@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SortableContext,
   useSortable,
@@ -52,7 +52,9 @@ export function Canvas({
   onToggleRequired: (questionId: number) => void;
 }) {
   const activeId = selection.kind === "question" ? selection.id : null;
-  const onSelectQuestion = (questionId: number) => onSelect({ kind: "question", id: questionId });
+  // 稳定身份：QuestionSummaryRow 是 memo 组件，行内闭包会让 memo 全部失效。
+  // onSelect 来自壳的 setState（本身稳定），这里 useCallback 包一层即可。
+  const onSelectQuestion = useCallback((questionId: number) => onSelect({ kind: "question", id: questionId }), [onSelect]);
   // S6 连线层：坐标基准是画布内容区（CanvasDropArea 的 relative 包裹）。
   const baseRef = useRef<HTMLDivElement>(null);
   const [edgeBase, setEdgeBase] = useState<HTMLElement | null>(null);
@@ -112,8 +114,8 @@ export function Canvas({
                         index={index}
                         editable={editable}
                         active={active}
-                        onOpen={() => onSelect({ kind: "question", id: question.id })}
-                        onMove={(direction) => onMove(question.id, direction)}
+                        onOpen={onSelectQuestion}
+                        onMove={onMove}
                       />
                     </div>
                   </SortableBlock>

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
@@ -11,8 +12,12 @@ export function branchCountOf(question: EditableQuestion): number {
 /**
  * 画布摘要卡（S2 从 EditorPage 抽出，两套壳共用）：
  * 序号 / 标题 / 类型 / 必答·分支·附件·未保存 标签 + 上下移。
+ *
+ * memo（E4）：打字热路径上壳每键击重渲染，未受影响的行靠 memo 跳过。
+ * 生效前提是回调按 id 派发（见下）且调用方传稳定函数——useEditorActions
+ * 已把动作身份钉死，Canvas 侧的选择回调也做了 useCallback。
  */
-export function QuestionSummaryRow({
+function QuestionSummaryRowImpl({
   question,
   index,
   editable,
@@ -24,8 +29,9 @@ export function QuestionSummaryRow({
   index: number;
   editable: boolean;
   active?: boolean;
-  onOpen: () => void;
-  onMove: (direction: -1 | 1) => void;
+  /** 按题目 id 派发：闭包不捕获单题，调用方才能传同一个稳定函数。 */
+  onOpen: (questionId: number) => void;
+  onMove: (questionId: number, direction: -1 | 1) => void;
 }) {
   const isNote = question.type === "note";
   const branches = branchCountOf(question);
@@ -38,11 +44,11 @@ export function QuestionSummaryRow({
       aria-current={active ? "true" : undefined}
       aria-label={`${index + 1}. ${question.title || (isNote ? "未命名剧情" : "未命名题目")}`}
       style={active ? { outline: "2px solid var(--color-primary)", outlineOffset: "-2px" } : undefined}
-      onClick={onOpen}
+      onClick={() => onOpen(question.id)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen();
+          onOpen(question.id);
         }
       }}
     >
@@ -70,7 +76,7 @@ export function QuestionSummaryRow({
           disabled={!editable}
           onClick={(event) => {
             event.stopPropagation();
-            onMove(-1);
+            onMove(question.id, -1);
           }}
         >
           <ArrowUp className="h-3.5 w-3.5" />
@@ -82,7 +88,7 @@ export function QuestionSummaryRow({
           disabled={!editable}
           onClick={(event) => {
             event.stopPropagation();
-            onMove(1);
+            onMove(question.id, 1);
           }}
         >
           <ArrowDown className="h-3.5 w-3.5" />
@@ -92,3 +98,5 @@ export function QuestionSummaryRow({
     </div>
   );
 }
+
+export const QuestionSummaryRow = memo(QuestionSummaryRowImpl);
