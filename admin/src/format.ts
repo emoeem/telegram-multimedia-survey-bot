@@ -1,4 +1,6 @@
-import type { SurveyStatus } from "./api";
+// 问卷状态类型定义在纯模块里（P2 起编辑器纯函数会被根 tsconfig——无 DOM
+// lib——经单测间接编译，不能从这里拉进 api.ts 等浏览器代码）。
+export type SurveyStatus = "draft" | "published" | "closed" | "archived";
 
 export const STATUS_LABELS: Record<SurveyStatus, string> = {
   draft: "草稿",

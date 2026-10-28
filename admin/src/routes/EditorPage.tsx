@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
   BookOpen,
-  ChevronDown,
   Eye,
   FilePlus2,
-  GitBranch,
   MousePointerClick,
-  Pencil,
   Plus,
   Redo2,
   Rocket,
@@ -19,90 +16,49 @@ import {
   Undo2,
 } from "lucide-react";
 import { useApi } from "../hooks";
-import {
-  ApiError,
-  apiSend,
-  apiUpload,
-  generateResultPool,
-  type EditorData,
-  type PublishResult,
-  type WriteResult,
-} from "../api";
+import { apiSend, type EditorData, type WriteResult } from "../api";
 import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { QuestionCard } from "../components/editor/QuestionCard";
 import { StructureTree, type BuilderSelection } from "../components/editor/StructureTree";
+import { QuestionSummaryRow } from "../components/editor/QuestionSummaryRow";
+import { TypePickerSheet } from "../components/editor/TypePickerSheet";
+import { SurveySettingsPanel } from "../components/editor/SurveySettingsPanel";
+import { EditableTitle } from "../components/editor/EditableTitle";
 import { LivePreview } from "../components/editor/LivePreview";
 import { TrialPlay } from "../components/editor/TrialPlay";
 import { SurveyPreview } from "../components/editor/SurveyPreview";
-import { useSurveyEditor, type EditableQuestion, type SurveyMetaState } from "../editor/useSurveyEditor";
+import { useSurveyEditor } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
+import { useEditorActions } from "../editor/editor-actions";
+import { TEMPLATE_OPTIONS } from "../editor/templates";
+import { LogicPanel } from "../components/editor/LogicPanel";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime, matrixColumns, QUESTION_TYPE_LABELS } from "../format";
-import { ResultRulesPanel } from "../components/editor/ResultRulesPanel";
-import { LogicPanel } from "../components/editor/LogicPanel";
-import { findDependents, stripReferences } from "../editor/dependencies";
 
-// 添加题目面板按用途分组；剧情文段放最前面，因为"多文段剧情"是这份编辑器的主场景。
-const TYPE_GROUPS: Array<{ title: string; hint: string; types: Array<{ type: string; desc: string }> }> = [
-  {
-    title: "剧情",
-    hint: "不收集答案的叙述节点，配合选项跳转即可实现不同答案、不同过程",
-    types: [{ type: "note", desc: "展示一段故事文字（可配图），答题者读完继续" }],
-  },
-  {
-    title: "选择",
-    hint: "单选 / 是非 / 评分的每个选项都可以设置「选择后跳转」",
-    types: [
-      { type: "single", desc: "从多个选项里选一个" },
-      { type: "multiple", desc: "可同时选中多个选项" },
-      { type: "yes_no", desc: "是 / 否 二选一" },
-      { type: "rating", desc: "星级评分" },
-      { type: "matrix", desc: "多行 × 多列的网格作答" },
-    ],
-  },
-  {
-    title: "填写",
-    hint: "",
-    types: [
-      { type: "text", desc: "单行文字" },
-      { type: "long_text", desc: "多行长文本" },
-      { type: "number", desc: "数字输入" },
-      { type: "date", desc: "日期选择" },
-      { type: "time", desc: "时间选择" },
-    ],
-  },
-  {
-    title: "上传",
-    hint: "由答题者上传对应媒体文件",
-    types: [
-      { type: "image", desc: "上传照片" },
-      { type: "video", desc: "上传视频" },
-      { type: "audio", desc: "上传音频" },
-      { type: "file", desc: "上传任意文件" },
-    ],
-  },
-  {
-    title: "互动",
-    hint: "答题者在网页端完成一次互动挑战，成绩驱动后续分支",
-    types: [{ type: "game", desc: "完成一个小游戏挑战（当前为爬塔），通关与否可控制跳转" }],
-  },
-];
-
-function branchCountOf(question: EditableQuestion): number {
-  const rules = (question.condition as { rules?: unknown } | null)?.rules;
-  return Array.isArray(rules) ? rules.length : 0;
-}
+// P2 新壳按需加载：只有 ?ui=next 时才拉取这份 chunk，旧壳路径的包体不变。
+const EditorShellNext = lazy(() =>
+  import("../components/editor/next/EditorShell").then((module) => ({ default: module.EditorShellNext })),
+);
 
 // Phase 2.4: field edits commit on blur into a pending-op
 // queue; 保存 flushes it sequentially (temp ids resolve to server ids).
 // Dirty state protects browser and SPA navigation; stale writes require reload.
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { data, error, retry } = useApi<EditorData>(id ? `/api/admin/surveys/${id}/editor` : null);
 
   if (error) return <ErrorPanel error={error} onRetry={retry} />;
   if (!data) return <SkeletonPanel lines={6} />;
   if (!data.survey.editable) return <ReadOnlyEditor data={data} />;
+  // P2 三栏外壳并行验证：默认仍走旧壳，?ui=next 才进新壳（交接文档 S0）。
+  if (searchParams.get("ui") === "next") {
+    return (
+      <Suspense fallback={<SkeletonPanel lines={6} />}>
+        <EditorShellNext data={data} />
+      </Suspense>
+    );
+  }
   return <EditableEditor data={data} />;
 }
 
@@ -115,9 +71,6 @@ function EditableEditor({ data }: { data: EditorData }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [trialFrom, setTrialFrom] = useState<number | null>(null);
-  const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [sceneBusy, setSceneBusy] = useState(false);
   /**
    * 基础 / 专业模式。基础模式隐藏高级配置（结果规则、逻辑面板）并给引导，
    * 专业模式开放全量。只影响可见性，不重建文档，所以切换天然不丢进度。
@@ -143,6 +96,30 @@ function EditableEditor({ data }: { data: EditorData }) {
   }, [editorMode, rightTab]);
   const { survey } = data;
   const { confirm } = useDialogs();
+
+  // 结构/媒体/发布等动作与 P2 新壳共用同一份实现（editor-actions）。
+  const {
+    publishing,
+    publishError,
+    sceneBusy,
+    duplicateQuestion,
+    duplicateOption,
+    openSceneEditor,
+    addSceneQuestion,
+    requestDeleteQuestion,
+    applyTemplate,
+    addQuestionOfType,
+    attachQuestionMedia,
+    attachQuestionMediaFromLibrary,
+    removeQuestionMedia,
+    attachOptionMedia,
+    attachOptionMediaFromLibrary,
+    removeOptionMedia,
+    addPage,
+    deletePage,
+    moveQuestion,
+    publish,
+  } = useEditorActions(data, editor);
 
   useEffect(() => {
     // Autosave: flush pending edits after 2s of inactivity (unless saving or
@@ -219,296 +196,13 @@ function EditableEditor({ data }: { data: EditorData }) {
   };
 
   const addDefaultQuestion = (type: string) => {
-    const defaults: Record<string, { title: string; options?: { label: string }[]; columns?: string[] }> = {
-      single: { title: "新的单选题", options: [{ label: "选项 1" }, { label: "选项 2" }] },
-      multiple: { title: "新的多选题", options: [{ label: "选项 1" }, { label: "选项 2" }] },
-      yes_no: { title: "新的是非题", options: [{ label: "是" }, { label: "否" }] },
-      rating: { title: "新的评分题", options: [{ label: "1 星" }, { label: "5 星" }] },
-      matrix: { title: "新的矩阵题", options: [{ label: "行 1" }], columns: ["列 1", "列 2"] },
-      text: { title: "新的文本题" },
-      long_text: { title: "新的长文本题" },
-      number: { title: "新的数字题" },
-      date: { title: "新的日期题" },
-      time: { title: "新的时间题" },
-      image: { title: "上传照片（资料卡图片题）" },
-      video: { title: "上传视频题" },
-      audio: { title: "上传音频题" },
-      file: { title: "上传文件题" },
-      note: { title: "剧情" },
-      game: { title: "小游戏挑战" },
-    };
-    const draft = defaults[type] ?? { title: "新题目" };
-    const tempId = editor.addQuestion({ type, ...draft });
+    const tempId = addQuestionOfType(type);
     applySelection({ kind: "question", id: tempId });
     setPickerOpen(false);
   };
 
-  // Structural actions hit the server directly and then reload, so any
-  // pending ops must be flushed first — silently reloading would drop them.
-  const duplicateQuestion = async (questionId: number) => {
-    if (editor.dirty && !(await editor.save())) return;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${survey.id}/questions/${questionId}/duplicate`, {});
-      editor.discardAndReload();
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "复制题目失败");
-    }
-  };
-
-  const duplicateOption = async (questionId: number, optionId: number) => {
-    if (editor.dirty && !(await editor.save())) return;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${survey.id}/options/${optionId}/duplicate`, {});
-      editor.discardAndReload();
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "复制选项失败");
-    }
-  };
-
-  const flushDraft = async (): Promise<boolean> => {
-    if (editor.dirty && !(await editor.save())) return false;
-    return true;
-  };
-
-  // 场景题走独立编辑器：先把 builder 里的待保存修改落库，再跳转。
-  const openSceneEditor = async (questionId: number) => {
-    if (!(await flushDraft())) return;
-    navigate(`/surveys/${survey.id}/scene/${questionId}`);
-  };
-
-  // 新建空 scene 题（settings 为空，场景配置在编辑器里写入）。
-  // insertQuestionWithOptions 只为 matrix 持久化 settings，所以这里不传场景配置。
-  const addSceneQuestion = async () => {
-    if (sceneBusy) return;
-    if (!(await flushDraft())) return;
-    setSceneBusy(true);
-    setPublishError(null);
-    try {
-      const created = await apiSend<{ id: number }>("POST", `/api/admin/surveys/${survey.id}/questions`, {
-        type: "scene",
-        title: "互动场景",
-        required: true,
-        pageId: selectedQuestion?.pageId ?? null,
-      });
-      if (!created?.id) throw new Error("创建互动场景题失败");
-      navigate(`/surveys/${survey.id}/scene/${created.id}`);
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
-    } finally {
-      setSceneBusy(false);
-    }
-  };
-
-  /**
-   * 删除题目：先算影响面。有跳转指向它时，确认框逐条列出，确认后级联清掉
-   * 这些引用（作为同一批待保存操作入队，撤销可整体回退）。
-   */
-  const requestDeleteQuestion = async (questionId: number) => {
-    const target = editor.questions.find((question) => question.id === questionId);
-    const snapshot = editor.questions.map((question) => ({
-      id: question.id,
-      title: question.title,
-      condition: question.condition,
-    }));
-    const dependents = findDependents(snapshot, questionId);
-    if (dependents.length > 0) {
-      const lines = dependents
-        .slice(0, 6)
-        .map((ref) => `· ${ref.fromTitle}：${ref.detail}`)
-        .join("\n");
-      const ok = await confirm({
-        title: "删除会影响跳转",
-        message: `有 ${dependents.length} 条跳转指向「${target?.title || `第 ${questionId} 题`}」：\n${lines}${
-          dependents.length > 6 ? "\n…" : ""
-        }\n\n删除后会一并清除这些跳转（可用撤销恢复）。`,
-        confirmLabel: "删除并清除跳转",
-        variant: "danger",
-      });
-      if (!ok) return;
-      for (const patch of stripReferences(snapshot, questionId)) {
-        editor.patchQuestionLocal(patch.id, { condition: patch.condition });
-        editor.queueQuestionPatch(patch.id, { condition: patch.condition }, "清除指向已删除题目的跳转");
-      }
-    }
-    editor.deleteQuestion(questionId);
-  };
-
   /** 模板选择弹层。 */
   const [templateOpen, setTemplateOpen] = useState(false);
-
-  /** 模板：按顺序插入一组组件（含小游戏配置）。整批走同一条待保存队列。 */
-  const applyTemplate = (templateId: "survey" | "single-game" | "mixed") => {
-    const insert = (draft: { type: string; title: string; options?: { label: string }[]; settings?: Record<string, unknown> }) => {
-      const tempId = editor.addQuestion({
-        type: draft.type,
-        title: draft.title,
-        ...(draft.options ? { options: draft.options } : {}),
-        ...(draft.settings ? { settings: draft.settings } : {}),
-      });
-      return tempId;
-    };
-    if (templateId === "survey") {
-      insert({ type: "text", title: "你的称呼（可选）" });
-      insert({ type: "single", title: "你最喜欢哪种放松方式？", options: [{ label: "散步" }, { label: "听歌" }, { label: "发呆" }] });
-      insert({ type: "long_text", title: "还有什么想补充的吗？" });
-    } else if (templateId === "single-game") {
-      insert({ type: "note", title: "挑战开始前", settings: {} });
-      insert({ type: "game", title: "小游戏挑战" });
-    } else {
-      insert({ type: "single", title: "先热个身：今天心情如何？", options: [{ label: "不错" }, { label: "一般" }, { label: "糟糕" }] });
-      insert({ type: "game", title: "来玩一局" });
-      insert({ type: "long_text", title: "玩完感觉怎么样？" });
-    }
-    setTemplateOpen(false);
-  };
-
-  const attachQuestionMedia = async (questionId: number, file: File): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiUpload(`/api/admin/surveys/${survey.id}/questions/${questionId}/media`, file);
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "上传题面附件失败");
-      return false;
-    }
-  };
-
-  /** 从素材库选择：只建关联（JSON {assetId}），不重传文件。 */
-  const attachQuestionMediaFromLibrary = async (questionId: number, assetId: number): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${survey.id}/questions/${questionId}/media`, { assetId });
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "引用素材失败");
-      return false;
-    }
-  };
-
-  const removeQuestionMedia = async (questionId: number, mediaAssetId: number): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("DELETE", `/api/admin/surveys/${survey.id}/questions/${questionId}/media/${mediaAssetId}`);
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "移除题面附件失败");
-      return false;
-    }
-  };
-
-  /** 从素材库为选项挂已有素材（与题目附件同一套 JSON {assetId} 分支）。 */
-  const attachOptionMediaFromLibrary = async (optionId: number, assetId: number): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${survey.id}/options/${optionId}/media`, { assetId });
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "引用素材失败");
-      return false;
-    }
-  };
-
-  const attachOptionMedia = async (optionId: number, file: File): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiUpload(`/api/admin/surveys/${survey.id}/options/${optionId}/media`, file);
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "上传选项媒体失败");
-      return false;
-    }
-  };
-
-  const removeOptionMedia = async (optionId: number, mediaAssetId: number): Promise<boolean> => {
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("DELETE", `/api/admin/surveys/${survey.id}/options/${optionId}/media/${mediaAssetId}`);
-      setPublishError(null);
-      editor.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "移除选项媒体失败");
-      return false;
-    }
-  };
-
-  const addPage = async () => {
-    if (editor.dirty && !(await editor.save())) return;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${survey.id}/pages`, {
-        title: `第 ${data.pages.length + 1} 页`,
-      });
-      editor.discardAndReload();
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "新建分页失败");
-    }
-  };
-
-  const deletePage = async (pageId: number) => {
-    if (!(await confirm({ message: "删除该分页？题目不会被删除，只会变为不分页。" }))) return;
-    if (editor.dirty && !(await editor.save())) return;
-    try {
-      await apiSend("DELETE", `/api/admin/surveys/${survey.id}/pages/${pageId}`);
-      editor.discardAndReload();
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "删除分页失败");
-    }
-  };
-
-  const moveQuestion = (questionId: number, direction: -1 | 1) => {
-    const ids = editor.questions.map((question) => question.id);
-    const index = ids.indexOf(questionId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= ids.length) return;
-    const next = [...ids];
-    const current = next[index]!;
-    const swap = next[target]!;
-    next[index] = swap;
-    next[target] = current;
-    editor.reorderQuestions(next);
-  };
-
-  const publish = async () => {
-    if (editor.dirty || publishing) return;
-    if (!(await confirm({ message: `确定发布“${editor.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` })))
-      return;
-    setPublishing(true);
-    setPublishError(null);
-    try {
-      await apiSend<PublishResult>("POST", `/api/admin/surveys/${survey.id}/publish`, {});
-      window.location.reload();
-    } catch (error) {
-      setPublishError((error as ApiError).message);
-      setPublishing(false);
-    }
-  };
-
-  const saveStateLabel =
-    editor.saveState === "saving"
-      ? "保存中…"
-      : editor.saveState === "error"
-        ? "保存失败"
-        : editor.saveState === "dirty"
-          ? "有未保存的修改"
-          : "已保存";
-  const saveStateClass =
-    editor.saveState === "saving"
-      ? ""
-      : editor.saveState === "error"
-        ? "is-error"
-        : editor.saveState === "dirty"
-          ? "is-dirty"
-          : "is-saved";
 
   // 选中即展开对应卡片；切换后滚到可视区，手机上尤其需要（列表就是导航）。
   const applySelection = (next: BuilderSelection) => {
@@ -528,6 +222,23 @@ function EditableEditor({ data }: { data: EditorData }) {
     const question = previewQuestions[index];
     if (question) selectQuestion(question.id);
   };
+
+  const saveStateLabel =
+    editor.saveState === "saving"
+      ? "保存中…"
+      : editor.saveState === "error"
+        ? "保存失败"
+        : editor.saveState === "dirty"
+          ? "有未保存的修改"
+          : "已保存";
+  const saveStateClass =
+    editor.saveState === "saving"
+      ? ""
+      : editor.saveState === "error"
+        ? "is-error"
+        : editor.saveState === "dirty"
+          ? "is-dirty"
+          : "is-saved";
 
   return (
     <div className="editor-page">
@@ -610,7 +321,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             className="btn btn-sm btn-accent editor-desktop-action"
             disabled={editingDisabled || editor.dirty || publishing || editor.questions.length === 0}
             title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
-            onClick={publish}
+            onClick={() => void publish()}
           >
             {publishing ? (
               "发布中…"
@@ -775,7 +486,7 @@ function EditableEditor({ data }: { data: EditorData }) {
             <button
               className="btn"
               disabled={editingDisabled || sceneBusy}
-              onClick={() => void addSceneQuestion()}
+              onClick={() => void addSceneQuestion(selectedQuestion?.pageId ?? null)}
               title="新建一道互动场景题，并打开场景编辑器"
             >
               <MousePointerClick className="h-4 w-4" />
@@ -826,7 +537,7 @@ function EditableEditor({ data }: { data: EditorData }) {
                 condition: question.condition,
               }))}
               selectedId={selection.kind === "question" ? selection.id : null}
-              onSelect={(questionId) => selectQuestion(questionId)}
+              onSelect={selectQuestion}
             />
           ) : trialFrom !== null ? (
             <TrialPlay
@@ -870,7 +581,7 @@ function EditableEditor({ data }: { data: EditorData }) {
           onPick={(type) => addDefaultQuestion(type)}
           onScene={() => {
             setPickerOpen(false);
-            void addSceneQuestion();
+            void addSceneQuestion(selectedQuestion?.pageId ?? null);
           }}
         />
       ) : null}
@@ -881,16 +592,15 @@ function EditableEditor({ data }: { data: EditorData }) {
             模板会按顺序插入组件（可撤销、可再改）。插在当前问卷末尾。
           </p>
           <div className="mt-3 flex flex-col gap-2">
-            {[
-              { id: "survey" as const, title: "问卷基础", desc: "称呼 + 单选 + 长文本，适合普通问卷" },
-              { id: "single-game" as const, title: "单题小游戏", desc: "开场文段 + 一道小游戏题" },
-              { id: "mixed" as const, title: "混合互动", desc: "热身单选 + 小游戏 + 感受长文本" },
-            ].map((template) => (
+            {TEMPLATE_OPTIONS.map((template) => (
               <button
                 key={template.id}
                 type="button"
                 className="rounded-xl border border-[var(--color-edge)] p-3 text-left hover:border-[var(--color-primary)]"
-                onClick={() => applyTemplate(template.id)}
+                onClick={() => {
+                  applyTemplate(template.id);
+                  setTemplateOpen(false);
+                }}
               >
                 <span className="block text-sm font-semibold text-[var(--color-ink)]">{template.title}</span>
                 <span className="mt-0.5 block text-xs text-[var(--color-muted)]">{template.desc}</span>
@@ -928,523 +638,6 @@ function EditableEditor({ data }: { data: EditorData }) {
         </button>
       </nav>
     </div>
-  );
-}
-
-function EditableTitle({
-  value,
-  disabled,
-  onCommit,
-}: {
-  value: string;
-  disabled: boolean;
-  onCommit: (next: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        className="editor-title-edit"
-        disabled={disabled}
-        title={disabled ? undefined : "点击修改问卷标题"}
-        onClick={() => {
-          setDraft(value);
-          setEditing(true);
-        }}
-      >
-        <span className="truncate">{value}</span>
-        {!disabled ? <Pencil className="editor-title-edit-icon h-3.5 w-3.5" /> : null}
-      </button>
-    );
-  }
-
-  return (
-    <input
-      autoFocus
-      className="editor-title-input"
-      value={draft}
-      maxLength={200}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => {
-        setEditing(false);
-        const next = draft.trim();
-        if (next) onCommit(next);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          (event.target as HTMLInputElement).blur();
-        } else if (event.key === "Escape") {
-          setEditing(false);
-        }
-      }}
-    />
-  );
-}
-
-function QuestionSummaryRow({
-  question,
-  index,
-  editable,
-  onOpen,
-  onMove,
-}: {
-  question: EditableQuestion;
-  index: number;
-  editable: boolean;
-  onOpen: () => void;
-  onMove: (direction: -1 | 1) => void;
-}) {
-  const isNote = question.type === "note";
-  const branches = branchCountOf(question);
-  return (
-    <div
-      className="q-row"
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <span className={`q-row-index ${isNote ? "is-note" : ""}`}>{isNote ? "📖" : index + 1}</span>
-      <span className="q-row-main">
-        <span className="q-row-title">{question.title || (isNote ? "未命名剧情" : "未命名题目")}</span>
-        <span className="q-row-meta">
-          <span className="q-row-type">{QUESTION_TYPE_LABELS[question.type] ?? question.type}</span>
-          {question.required && !isNote ? <span className="q-row-tag is-req">必答</span> : null}
-          {branches > 0 ? (
-            <span className="q-row-tag is-branch">
-              <GitBranch className="h-3 w-3" />
-              {branches} 分支
-            </span>
-          ) : null}
-          {question.media.length ? <span className="q-row-tag">附件 ×{question.media.length}</span> : null}
-          {question.id < 0 ? <span className="q-row-tag is-unsaved">未保存</span> : null}
-        </span>
-      </span>
-      <span className="row-actions">
-        <button
-          type="button"
-          className="row-action"
-          title="上移"
-          disabled={!editable}
-          onClick={(event) => {
-            event.stopPropagation();
-            onMove(-1);
-          }}
-        >
-          <ArrowUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          className="row-action"
-          title="下移"
-          disabled={!editable}
-          onClick={(event) => {
-            event.stopPropagation();
-            onMove(1);
-          }}
-        >
-          <ArrowDown className="h-3.5 w-3.5" />
-        </button>
-      </span>
-      <ChevronDown className="q-row-chevron" />
-    </div>
-  );
-}
-
-function TypePickerSheet({
-  disabled,
-  onClose,
-  onPick,
-  onScene,
-}: {
-  disabled: boolean;
-  onClose: () => void;
-  onPick: (type: string) => void;
-  onScene: () => void;
-}) {
-  return (
-    <Modal open onClose={onClose} title="添加题目 / 互动内容" size="lg">
-      <div className="type-picker">
-        <section className="type-picker-group">
-          <header className="type-picker-head">
-            <h3>互动内容</h3>
-            <p>场景图 + 可点击热点；探索过的区域会记入答案</p>
-          </header>
-          <div className="type-picker-grid">
-            <button type="button" className="type-picker-item is-note" disabled={disabled} onClick={onScene}>
-              <span className="type-picker-label">🖱 互动场景</span>
-              <span className="type-picker-desc">场景图 + 可点击热点，点击展开内层内容</span>
-            </button>
-          </div>
-        </section>
-        {TYPE_GROUPS.map((group) => (
-          <section key={group.title} className="type-picker-group">
-            <header className="type-picker-head">
-              <h3>{group.title}</h3>
-              {group.hint ? <p>{group.hint}</p> : null}
-            </header>
-            <div className="type-picker-grid">
-              {group.types.map(({ type, desc }) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`type-picker-item ${type === "note" ? "is-note" : ""}`}
-                  disabled={disabled}
-                  onClick={() => onPick(type)}
-                >
-                  <span className="type-picker-label">
-                    {type === "note" ? "📖 " : ""}
-                    {QUESTION_TYPE_LABELS[type] ?? type}
-                  </span>
-                  <span className="type-picker-desc">{desc}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        ))}
-        <p className="type-picker-note">
-          图片 / 视频 / 音频 / 文件上传题由作答者上传对应媒体；题干与选项附件可在题卡内直接上传。
-        </p>
-      </div>
-    </Modal>
-  );
-}
-
-function SurveySettingsPanel({
-  surveyId,
-  questions,
-  meta,
-  disabled,
-  coinAccess,
-  onUpdate,
-}: {
-  surveyId: number;
-  questions: Array<{ id: number; type: string; title: string; options: Array<{ id: number; label: string }> }>;
-  meta: SurveyMetaState;
-  disabled: boolean;
-  coinAccess: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
-  onUpdate: (patch: Partial<SurveyMetaState>) => void;
-}) {
-  return (
-    <div className="settings-panel">
-      <div>
-        <div className="settings-panel-title">问卷设置</div>
-        <div className="settings-panel-sub">标题、描述与填写规则会应用到整个问卷</div>
-      </div>
-
-      <label className="settings-field">
-        <span className="q-label">标题</span>
-        <input
-          className="settings-input"
-          value={meta.title}
-          disabled={disabled}
-          placeholder="问卷标题"
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next !== meta.title) onUpdate({ title: next });
-          }}
-        />
-      </label>
-
-      <label className="settings-field">
-        <span className="q-label">描述</span>
-        <input
-          className="settings-input"
-          value={meta.description}
-          disabled={disabled}
-          placeholder="给答题者的整体说明（可选）"
-          onChange={(event) => {
-            const next = event.target.value;
-            if (next !== meta.description) onUpdate({ description: next });
-          }}
-        />
-      </label>
-
-      <ReportTemplateSetting
-        value={meta.reportTemplateId}
-        disabled={disabled}
-        onChange={(value) => onUpdate({ reportTemplateId: value })}
-      />
-
-      <CoinAccessSetting surveyId={surveyId} initial={coinAccess} disabled={disabled} />
-
-      <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
-
-      <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
-
-      <div className="settings-check">
-        <div>
-          <div className="q-label">匿名填写</div>
-          <div className="q-help">开启后不记录答题者的 Telegram 身份</div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={meta.anonymous}
-          aria-label="匿名填写"
-          className="switch"
-          data-on={meta.anonymous}
-          disabled={disabled}
-          onClick={() => onUpdate({ anonymous: !meta.anonymous })}
-        />
-      </div>
-
-      <div className="settings-check">
-        <div>
-          <div className="q-label">18+ 内容</div>
-          <div className="q-help">开启后问卷仅在目录/广场/展示区对已确认年龄的访问者可见，分享预览走安全卡片</div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={meta.contentRating === "r18"}
-          aria-label="18+ 内容"
-          className="switch"
-          data-on={meta.contentRating === "r18"}
-          disabled={disabled}
-          onClick={() => onUpdate({ contentRating: meta.contentRating === "r18" ? "all" : "r18" })}
-        />
-      </div>
-
-      <div className="settings-check">
-        <div>
-          <div className="q-label">允许重复填写</div>
-          <div className="q-help">同一用户可多次提交本问卷</div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={meta.allowMultipleResponses}
-          aria-label="允许重复填写"
-          className="switch"
-          data-on={meta.allowMultipleResponses}
-          disabled={disabled}
-          onClick={() => onUpdate({ allowMultipleResponses: !meta.allowMultipleResponses })}
-        />
-      </div>
-
-      {meta.allowMultipleResponses ? (
-        <label className="settings-field">
-          <span className="q-label">每人填写上限（0 = 不限）</span>
-          <input
-            type="number"
-            min={0}
-            max={999}
-            className="settings-input"
-            defaultValue={meta.maxResponsesPerUser}
-            disabled={disabled}
-            onBlur={(event) => {
-              const next = Number(event.target.value);
-              if (Number.isInteger(next) && next !== meta.maxResponsesPerUser) {
-                onUpdate({ maxResponsesPerUser: next });
-              }
-            }}
-          />
-        </label>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * 结局收集生成器（P1）：把结果设计里的 resultTypes 一键变成抽卡奖池的
- * 第一方结局卡。池子默认草稿态，价格与上下架在「社区 → 抽卡」管理页调整。
- */
-function ResultPoolGenerator({ surveyId, disabled }: { surveyId: number; disabled: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const generate = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const result = await generateResultPool(surveyId, 20);
-      setMessage(`已生成结局奖池（${result.items} 张结局卡，草稿态）——到「社区 → 抽卡」调整价格并上架。`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "生成失败，请稍后重试");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="settings-check">
-      <div>
-        <div className="q-label">结局收集奖池</div>
-        <div className="q-help">把「结果设计」里的结局变成抽卡内容：读者完成答卷后花金币抽取结局卡</div>
-        {message ? <div className="q-help mt-1 text-[var(--app-success)]">{message}</div> : null}
-        {error ? <div className="q-help mt-1 text-[var(--app-danger)]">{error}</div> : null}
-      </div>
-      <button type="button" className="btn btn-sm" disabled={disabled || busy} onClick={generate}>
-        {busy ? "生成中…" : "生成结局奖池"}
-      </button>
-    </div>
-  );
-}
-
-/**
- * 作者侧「金币解锁」配置卡片。金币解锁与密码访问互相独立：这里开启后，
- * 未解锁的访问者需要支付金币才能看到题目；密码问卷仍需输入密码。
- * 关闭只停用，不会删除任何已产生的解锁记录（已解锁者继续有效）。
- */
-function CoinAccessSetting({
-  surveyId,
-  initial,
-  disabled,
-}: {
-  surveyId: number;
-  initial: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
-  disabled: boolean;
-}) {
-  const [state, setState] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setState(initial);
-  }, [initial]);
-
-  const save = async (next: typeof state) => {
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      await apiSend("PUT", `/api/admin/surveys/${surveyId}/coin-access`, {
-        enabled: next.enabled,
-        autoPrice: next.autoPrice,
-        basePrice: next.basePrice,
-        fixedPrice: next.autoPrice ? null : next.fixedPrice,
-      });
-      setState(next);
-      setMessage("已保存。价格在问卷公开页对访问者展示，热度变动会按配置自动调整。");
-      window.setTimeout(() => setMessage(null), 3000);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "保存失败");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="settings-check-block">
-      <div className="settings-check">
-        <div>
-          <div className="q-label">金币解锁</div>
-          <div className="q-help">
-            开启后访问者需支付金币解锁本题问卷；免费问卷与密码问卷保持原样，密码仍需单独输入。
-          </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={state.enabled}
-          aria-label="金币解锁"
-          className="switch"
-          data-on={state.enabled}
-          disabled={disabled || busy}
-          onClick={() => void save({ ...state, enabled: !state.enabled })}
-        />
-      </div>
-      {state.enabled ? (
-        <div className="settings-coin-fields">
-          <label className="settings-field">
-            <span className="q-label">定价方式</span>
-            <select
-              className="settings-input"
-              value={state.autoPrice ? "auto" : "fixed"}
-              disabled={disabled || busy}
-              onChange={(event) => void save({ ...state, autoPrice: event.target.value === "auto" })}
-            >
-              <option value="auto">按热度自动定价（推荐）</option>
-              <option value="fixed">固定价格</option>
-            </select>
-          </label>
-          {state.autoPrice ? (
-            <label className="settings-field">
-              <span className="q-label">基础价格（金币）</span>
-              <input
-                type="number"
-                min={1}
-                className="settings-input"
-                defaultValue={state.basePrice}
-                disabled={disabled || busy}
-                onBlur={(event) => {
-                  const next = Number(event.target.value);
-                  if (Number.isInteger(next) && next > 0 && next !== state.basePrice) {
-                    void save({ ...state, basePrice: next });
-                  }
-                }}
-              />
-              <span className="q-help">实际价格 = 基础价 × 热度系数，受平台最低/最高价约束。</span>
-            </label>
-          ) : (
-            <label className="settings-field">
-              <span className="q-label">固定价格（金币，0 = 限时免费）</span>
-              <input
-                type="number"
-                min={0}
-                className="settings-input"
-                defaultValue={state.fixedPrice ?? 0}
-                disabled={disabled || busy}
-                onBlur={(event) => {
-                  const next = Number(event.target.value);
-                  if (Number.isInteger(next) && next >= 0 && next !== state.fixedPrice) {
-                    void save({ ...state, fixedPrice: next });
-                  }
-                }}
-              />
-              <span className="q-help">固定价格不受热度影响；填 0 表示活动期免费开放。</span>
-            </label>
-          )}
-        </div>
-      ) : null}
-      {message ? <div className="q-help settings-coin-ok">{message}</div> : null}
-      {error ? <div className="q-help settings-coin-error">{error}</div> : null}
-    </div>
-  );
-}
-
-function ReportTemplateSetting({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string | null;
-  disabled: boolean;
-  onChange: (value: string | null) => void;
-}) {
-  const { data } = useApi<{ templates: Array<{ id: string; name: string; isCustom?: boolean }> }>(
-    "/api/admin/report-templates",
-  );
-  return (
-    <label className="settings-field">
-      <span className="q-label">填写后报告模板</span>
-      <select
-        className="settings-input"
-        value={value ?? ""}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value || null)}
-      >
-        <option value="">平台默认</option>
-        {(data?.templates ?? []).map((template) => (
-          <option key={template.id} value={template.id}>
-            {template.name}
-            {template.isCustom ? " · 自定义" : ""}
-          </option>
-        ))}
-      </select>
-      <span className="q-help">发布后，填写者看到的个人结果报告会使用这里指定的模板。</span>
-    </label>
   );
 }
 

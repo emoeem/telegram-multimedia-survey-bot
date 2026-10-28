@@ -1,0 +1,342 @@
+import { useEffect, useMemo, useState } from "react";
+import { useBlocker, useNavigate } from "react-router";
+import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Undo2 } from "lucide-react";
+import type { EditorData } from "../../../api";
+import { StatusBadge } from "../../ui";
+import { SurveyPreview } from "../SurveyPreview";
+import { TypePickerSheet, } from "../TypePickerSheet";
+import { EditableTitle } from "../EditableTitle";
+import type { BuilderSelection } from "../StructureTree";
+import { useSurveyEditor } from "../../../editor/useSurveyEditor";
+import { buildEditorPreviewFlow } from "../../../editor/previewModel";
+import { useEditorActions } from "../../../editor/editor-actions";
+import { useDialogs } from "../../Dialogs";
+import { formatDateTime } from "../../../format";
+import { MaterialPanel } from "./MaterialPanel";
+import { Canvas } from "./Canvas";
+import { PropertiesPanel } from "./PropertiesPanel";
+
+/**
+ * P2 三栏画布外壳（S2）：左物料 / 中画布 / 右属性。只在 /surveys/:id/editor?ui=next
+ * 时渲染，旧壳保持默认——视觉基线与既有行为都不受影响。
+ *
+ * 状态与动作与旧壳完全共用：useSurveyEditor（待保存队列 + 快照撤销）与
+ * useEditorActions（结构/媒体/发布动作）。本轮不引入命令日志（S5）。
+ */
+export function EditorShellNext({ data }: { data: EditorData }) {
+  const editor = useSurveyEditor(data);
+  const navigate = useNavigate();
+  const { confirm } = useDialogs();
+  const actions = useEditorActions(data, editor);
+  const { survey } = data;
+  const [selection, setSelection] = useState<BuilderSelection>(() =>
+    data.questions.length ? { kind: "question", id: data.questions[0]!.id } : { kind: "settings" },
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  /**
+   * 基础 / 专业模式与旧壳共用同一个 localStorage 键：两个壳看到的模式一致，
+   * 切换只改可见性，不动文档。
+   */
+  const [editorMode, setEditorMode] = useState<"basic" | "pro">(() => {
+    try {
+      return window.localStorage.getItem("admin:editor-mode") === "pro" ? "pro" : "basic";
+    } catch {
+      return "basic";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("admin:editor-mode", editorMode);
+    } catch {
+      // 隐私模式写不进去不影响本次编辑
+    }
+  }, [editorMode]);
+
+  useEffect(() => {
+    // Autosave：与旧壳同一节奏——2 秒无操作后落库（保存中或出错时让位）。
+    if (!editor.dirty || editor.saveState === "saving" || editor.saveState === "error") return;
+    const timer = window.setTimeout(() => {
+      void editor.save();
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [editor]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) editor.redo();
+        else editor.undo();
+      } else if (key === "y") {
+        event.preventDefault();
+        editor.redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editor]);
+
+  // Keep the selection valid as questions are added / removed / reloaded.
+  useEffect(() => {
+    if (selection.kind !== "question") return;
+    if (!editor.questions.some((question) => question.id === selection.id)) {
+      setSelection(editor.questions.length ? { kind: "question", id: editor.questions[0]!.id } : { kind: "settings" });
+    }
+  }, [editor.questions, selection]);
+
+  const editingDisabled = editor.saveState === "saving" || Boolean(editor.saveError?.stale);
+  const previewQuestions = useMemo(
+    () => buildEditorPreviewFlow(survey.id, editor.questions),
+    [editor.questions, survey.id],
+  );
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => editor.dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void (async () => {
+      const ok = await confirm({ message: "有未保存的修改，确定离开？" });
+      if (ok) blocker.proceed();
+      else blocker.reset();
+    })();
+  }, [blocker, confirm]);
+
+  const selectedQuestion =
+    selection.kind === "question" ? (editor.questions.find((question) => question.id === selection.id) ?? null) : null;
+
+  const addDefaultQuestion = (type: string) => {
+    const tempId = actions.addQuestionOfType(type);
+    setSelection({ kind: "question", id: tempId });
+    setPickerOpen(false);
+  };
+  const selectQuestion = (questionId: number) => setSelection({ kind: "question", id: questionId });
+
+  // 必答开关：本地立即生效 + 入队待保存（与旧壳批量必答同一条语义）。
+  const toggleRequired = (questionId: number) => {
+    const question = editor.questions.find((item) => item.id === questionId);
+    if (!question) return;
+    const next = !question.required;
+    editor.patchQuestionLocal(questionId, { required: next });
+    editor.queueQuestionPatch(questionId, { required: next }, next ? "设为必答" : "设为选答");
+  };
+
+  const saveStateLabel =
+    editor.saveState === "saving"
+      ? "保存中…"
+      : editor.saveState === "error"
+        ? "保存失败"
+        : editor.saveState === "dirty"
+          ? "有未保存的修改"
+          : "已保存";
+  const saveStateClass =
+    editor.saveState === "saving"
+      ? ""
+      : editor.saveState === "error"
+        ? "is-error"
+        : editor.saveState === "dirty"
+          ? "is-dirty"
+          : "is-saved";
+
+  return (
+    <div className="editor-page">
+      <header className="editor-topbar">
+        <div className="editor-topbar-main">
+          <button
+            className="btn btn-icon"
+            title="返回详情（有未保存修改时会确认）"
+            onClick={() => navigate(`/surveys/${survey.id}`)}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="editor-title">
+            <div className="editor-title-name">
+              <EditableTitle
+                value={editor.surveyMeta.title || "未命名问卷"}
+                disabled={editingDisabled}
+                onCommit={(next) => {
+                  if (next && next !== editor.surveyMeta.title) {
+                    editor.updateSurveyMeta({ title: next });
+                  }
+                }}
+              />
+              <StatusBadge status={survey.status} />
+            </div>
+            <div className="editor-title-meta">
+              {editor.questions.length} 题 · 最后保存于 {formatDateTime(editor.baseUpdatedAt)}
+            </div>
+          </div>
+        </div>
+        <div className="editor-actions">
+          <span className={`editor-save-state ${saveStateClass}`}>{saveStateLabel}</span>
+          <div className="flex overflow-hidden rounded-full border border-[var(--color-edge)]" role="group" aria-label="编辑模式">
+            {(["basic", "pro"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={`px-2.5 py-1 text-[11px] font-semibold ${
+                  editorMode === value
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-contrast,#fff)]"
+                    : "text-[var(--color-muted)]"
+                }`}
+                aria-pressed={editorMode === value}
+                onClick={() => setEditorMode(value)}
+              >
+                {value === "basic" ? "基础" : "专业"}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-sm btn-quiet" disabled={!editor.canUndo} title="撤销（Ctrl+Z）" onClick={() => editor.undo()}>
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button
+            className="btn btn-sm btn-quiet"
+            disabled={!editor.canRedo}
+            title="重做（Ctrl+Shift+Z / Ctrl+Y）"
+            onClick={() => editor.redo()}
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+          <button className="btn btn-sm editor-desktop-action" disabled={editor.saveState === "saving"} onClick={() => editor.save()}>
+            <Save className="h-4 w-4" />
+            保存
+          </button>
+          <button className="btn btn-sm editor-desktop-action" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
+            <Eye className="h-4 w-4" />
+            预览
+          </button>
+          <button
+            className="btn btn-sm btn-accent editor-desktop-action"
+            disabled={editingDisabled || editor.dirty || actions.publishing || editor.questions.length === 0}
+            title={editor.dirty ? "请先保存修改" : "发布后问卷将进入只读状态"}
+            onClick={() => void actions.publish()}
+          >
+            {actions.publishing ? (
+              "发布中…"
+            ) : (
+              <>
+                <Rocket className="h-4 w-4" />
+                发布
+              </>
+            )}
+          </button>
+        </div>
+      </header>
+
+      {actions.publishError ? <div className="alert alert-error">操作失败：{actions.publishError}</div> : null}
+      {editor.saveError ? (
+        <div className="alert alert-error">
+          <span>
+            {editor.saveError.stale ? "检测到其他窗口的更新：" : "保存失败："}
+            {editor.saveError.message}
+          </span>
+          {!editor.saveError.stale ? (
+            <button className="btn btn-sm" onClick={() => editor.save()}>
+              重试保存
+            </button>
+          ) : null}
+          <button className="btn btn-sm" onClick={editor.discardAndReload}>
+            {editor.saveError.stale ? "放弃本地修改并加载最新版" : "放弃修改并刷新"}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="editor-body">
+        <aside className="editor-structure editor-col" aria-label="物料区">
+          <MaterialPanel
+            disabled={editingDisabled}
+            sceneBusy={actions.sceneBusy}
+            pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+            onAddQuestion={addDefaultQuestion}
+            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null)}
+            onApplyTemplate={(templateId) => actions.applyTemplate(templateId)}
+            onAddPage={() => void actions.addPage()}
+            onDeletePage={(pageId) => void actions.deletePage(pageId)}
+          />
+        </aside>
+
+        <main className="editor-canvas editor-col" aria-label="画布">
+          <Canvas
+            questions={editor.questions}
+            selection={selection}
+            editable={!editingDisabled}
+            sceneBusy={actions.sceneBusy}
+            onOpenPicker={() => setPickerOpen(true)}
+            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null)}
+            onSelect={setSelection}
+            onMove={actions.moveQuestion}
+            onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
+            onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
+            onToggleRequired={toggleRequired}
+          />
+        </main>
+
+        <aside className="editor-preview editor-col" aria-label="属性区">
+          <PropertiesPanel
+            data={data}
+            editor={editor}
+            actions={actions}
+            selection={selection}
+            editable={!editingDisabled}
+            editorMode={editorMode}
+            onSelect={selectQuestion}
+          />
+        </aside>
+      </div>
+
+      {previewOpen ? (
+        <SurveyPreview
+          title={editor.surveyMeta.title}
+          description={editor.surveyMeta.description}
+          questions={previewQuestions}
+          dirty={editor.dirty}
+          onClose={() => setPreviewOpen(false)}
+          preset={survey.theme?.preset ?? null}
+        />
+      ) : null}
+
+      {pickerOpen ? (
+        <TypePickerSheet
+          disabled={editingDisabled}
+          onClose={() => setPickerOpen(false)}
+          onPick={(type) => addDefaultQuestion(type)}
+          onScene={() => {
+            setPickerOpen(false);
+            void actions.addSceneQuestion(selectedQuestion?.pageId ?? null);
+          }}
+        />
+      ) : null}
+
+      {/* 手机端底部操作栏：桌面端按钮在窄屏下藏进这里 */}
+      <nav className="editor-mobile-bar" aria-label="编辑器操作">
+        <button className="editor-mobile-btn is-add" disabled={editingDisabled} onClick={() => setPickerOpen(true)}>
+          <Plus className="h-5 w-5" />
+          添加
+        </button>
+        <button
+          className="editor-mobile-btn"
+          disabled={editor.saveState === "saving"}
+          onClick={() => void editor.save()}
+        >
+          <Save className="h-5 w-5" />
+          保存
+        </button>
+        <button className="editor-mobile-btn" onClick={() => setPreviewOpen(true)}>
+          <Eye className="h-5 w-5" />
+          预览
+        </button>
+        <button
+          className="editor-mobile-btn is-publish"
+          disabled={editingDisabled || editor.dirty || actions.publishing || editor.questions.length === 0}
+          onClick={() => void actions.publish()}
+        >
+          <Rocket className="h-5 w-5" />
+          发布
+        </button>
+      </nav>
+    </div>
+  );
+}

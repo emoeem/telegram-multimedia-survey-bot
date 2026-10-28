@@ -560,7 +560,10 @@ export function createRemoteClient(deploymentId: number): RemoteClient {
   };
 }
 
-export type SurveyStatus = "draft" | "published" | "closed" | "archived";
+// 状态类型已移到纯模块 format.ts（避免 format → api 的反向依赖把浏览器代码
+// 拉进 Worker 侧的根编译）；这里导入并 re-export 保持既有用法不变。
+import type { SurveyStatus } from "./format";
+export type { SurveyStatus };
 
 export interface SurveySummary {
   id: number;

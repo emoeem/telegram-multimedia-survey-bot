@@ -12,7 +12,7 @@
 ```bash
 pnpm install
 pnpm --dir admin install
-pnpm test          # 期望：194 个文件 / 1410 个测试全绿
+pnpm test          # 期望：196 个文件 / 1422 个测试全绿（2026-10-28 晚起，见 §2 进度）
 pnpm typecheck     # Worker
 cd admin && pnpm exec tsc --noEmit && cd ..   # admin
 pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象）
@@ -55,6 +55,11 @@ pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象�
 ---
 
 ## 2. P2：三栏画布外壳（优先做，工作量最大）
+
+> **进度（2026-10-28 晚）**：S0–S3 已完成（`?ui=next` 路由开关、QuestionForm 抽取、三栏新壳、
+> QuickBar），单测 196 文件 / 1422 用例全绿，详见 `docs/RELEASE_2026-10-28_EDITOR_P2_SHELL.md`。
+> 两壳的动作已收拢到 `admin/src/editor/editor-actions.ts`（共用一份实现）。
+> 基线数字已更新：**196 文件 / 1422 用例**。下一步从 S4（拖拽）继续。
 
 ### 2.1 为什么本轮没做
 
@@ -292,7 +297,7 @@ pnpm test:visual:prod
 ## 8. 交接检查清单
 
 - [ ] 读完本文 + `EDITOR_PLUGIN_ARCHITECTURE.md` + `HOTSPOT_EDITOR_HANDOVER.md`
-- [ ] 跑通 §0 的命令，记下当前数字（194 / 1410）
+- [ ] 跑通 §0 的命令，记下当前数字（196 / 1422）
 - [ ] 确认 CI 三条流水线（checks / tg-archive / visual）与 nightly 冒烟是绿的
 - [ ] 明确本轮**未验证**的三项：Playwright 视觉、生产冒烟、axe —— 接手第一件事就是补跑
 - [ ] 需要动编辑器前：确认理解"五条不变量"

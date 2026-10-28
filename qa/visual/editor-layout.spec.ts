@@ -355,3 +355,134 @@ test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", as
   // 空配置落在题目面板：提示先添加场景。
   await expect(page.locator(".scene-editor-empty")).toContainText("还没有场景");
 });
+
+// ---------------------------------------------------------------------------
+// P2 三栏画布外壳（?ui=next）：与旧壳共用 .editor-* 三栏 CSS，所以几何断言
+// 同型（三栏等高、无页面级滚动、无死带、大问卷栏内滚动）；差异在于右栏是
+// 属性面板（选中即配置），预览改为顶栏按钮的弹层，没有 phone-frame。
+// 新壳在 ?ui=next 之后的独立 chunk，不影响旧壳任何截图基线。
+// ---------------------------------------------------------------------------
+
+async function readNextGeometry(page: Page) {
+  return page.evaluate(() => {
+    const box = (sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        height: Math.round(r.height),
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
+    };
+    const doc = document.documentElement;
+    return {
+      docOverflowY: doc.scrollHeight - doc.clientHeight,
+      docOverflowX: doc.scrollWidth - window.innerWidth,
+      columns: [".editor-structure", ".editor-canvas", ".editor-preview"].map((sel) => box(sel)!),
+      pageBottom: Math.round(box(".editor-page")!.bottom),
+      viewportHeight: window.innerHeight,
+      phoneFrame: document.querySelector(".phone-frame") !== null,
+    };
+  });
+}
+
+test.describe("P2 三栏外壳（?ui=next）", () => {
+  test("135 题：三栏等高、无页面级滚动、画布内部滚动、右栏默认选中第一题", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    await page.waitForTimeout(300);
+
+    const g = await readNextGeometry(page);
+    expect(g.docOverflowY, "page-level vertical scrollbar").toBeLessThanOrEqual(1);
+    expect(g.docOverflowX, "horizontal overflow").toBeLessThanOrEqual(1);
+    expect(g.pageBottom, "editor page bottom").toBeGreaterThanOrEqual(g.viewportHeight - 34);
+    const heights = g.columns.map((column) => column.height);
+    expect(Math.max(...heights) - Math.min(...heights), "column height mismatch").toBeLessThanOrEqual(2);
+    // 135 张摘要卡必须在自己的栏内滚动；物料区内容短，不强制内部滚动。
+    const canvas = g.columns[1]!;
+    expect(canvas.scrollHeight).toBeGreaterThan(canvas.clientHeight);
+    // 新壳没有旧壳的手机预览；右栏是属性面板，默认选中第一题显示题卡。
+    expect(g.phoneFrame, "new shell has no inline phone preview").toBe(false);
+    await expect(page.locator("aside.editor-preview .q-editor")).toBeVisible();
+    await expect(page.locator('.editor-canvas [data-block-id="1000"].block-item')).toBeVisible();
+  });
+
+  test("选中即配置：点摘要卡 → 属性面板切题，快捷条出现且必答可切换", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+
+    await page.locator(".editor-canvas .q-row", { hasText: "第60题：" }).first().click();
+    const activeRow = page.locator('.editor-canvas .block-item[data-block-id="1059"]');
+    await expect(activeRow).toBeVisible();
+    // 快捷条只在激活卡上出现。
+    const quickBar = activeRow.getByRole("toolbar");
+    await expect(quickBar).toBeVisible();
+    // 属性面板展示同一道题（右栏题卡的题号 = 第 60 题）。
+    await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 60 题");
+
+    // 必答切换：本地立即生效（buildQuestions 里第 60 题 required=false）。
+    const requiredSwitch = quickBar.getByRole("switch", { name: "必答" });
+    await expect(requiredSwitch).toHaveAttribute("aria-checked", "false");
+    await requiredSwitch.click();
+    await expect(requiredSwitch).toHaveAttribute("aria-checked", "true");
+    // 摘要卡上的必答标签同步出现。
+    await expect(activeRow.locator(".q-row-tag.is-req")).toBeVisible();
+  });
+
+  test("问卷设置入口：右栏切到设置面板", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+
+    await page.locator('.editor-canvas [aria-pressed]', { hasText: "问卷设置" }).click();
+    // ResultRulesPanel 也带 settings-panel 类，这里认主面板的标题。
+    await expect(page.locator(".editor-preview .settings-panel-title", { hasText: "问卷设置" })).toBeVisible();
+  });
+
+  test("物料区添加题目：插入到画布并选中（待保存态）", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+
+    const rows = page.locator(".editor-canvas .q-row");
+    await expect(rows).toHaveCount(135);
+    await page.locator('aside[aria-label="物料区"] button', { hasText: "单选" }).first().click();
+    await expect(rows).toHaveCount(136);
+    // 新题进入选中态：属性面板出现未保存标记。
+    await expect(page.locator(".editor-preview .q-chip-unsaved")).toBeVisible();
+  });
+
+  test("空问卷：空态文案 + 三栏等高 + 右栏设置面板", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/122/editor": EMPTY });
+    await page.goto("/admin/surveys/122/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    await expect(page.getByText("这份问卷还没有内容，从左侧物料区点一个题型开始")).toBeVisible();
+    const g = await readNextGeometry(page);
+    expect(g.docOverflowY).toBeLessThanOrEqual(1);
+    expect(g.docOverflowX).toBeLessThanOrEqual(1);
+    const heights = g.columns.map((column) => column.height);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(2);
+    await expect(page.locator(".editor-preview .settings-panel-title", { hasText: "问卷设置" })).toBeVisible();
+  });
+
+  test("窄屏 900px：属性栏隐藏、手机操作栏可见、无横向溢出", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    await expect(page.locator(".editor-preview")).toBeHidden();
+    await expect(page.locator(".editor-mobile-bar")).toBeVisible();
+    const g = await readNextGeometry(page);
+    expect(g.docOverflowX).toBeLessThanOrEqual(1);
+  });
+});
