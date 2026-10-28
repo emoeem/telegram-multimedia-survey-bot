@@ -4,6 +4,8 @@
 > 配套阅读：`docs/EDITOR_PLUGIN_ARCHITECTURE.md`（插件协议与接入）、
 > `docs/RELEASE_2026-10-28_EDITOR_PLUGIN.md`（本轮更新日志）、
 > `docs/HOTSPOT_EDITOR_HANDOVER.md`（场景编辑器的三条禁令，动编辑器前必读）。
+> **后续执行的唯一计划表是 `docs/UPGRADE_ROADMAP_2026-10-28.md`**——本文档保留背景与方案细节，
+> 执行进度以路线图的勾选为准。
 
 ---
 
