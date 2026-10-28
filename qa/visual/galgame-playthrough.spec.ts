@@ -502,14 +502,14 @@ async function play(
 // load. (That cancellation is a real property of the player: see the note in
 // the final report.)
 test.beforeAll(async () => {
-  // 25 个素材约 15MB。CI runner 每次都是全新环境、没有落盘缓存，60 秒的默认
-  // hook 超时不够——这一步失败会把整条 playthrough 用例判成 beforeAll 超时，
-  // 看起来像功能坏了，其实只是下载慢。
-  test.setTimeout(180_000);
+  // 25 个素材约 15MB，全部来自生产站点。CI runner 每次都是全新环境、没有落盘
+  // 缓存，吞吐又不稳定，这一步失败会把整条 playthrough 判成 beforeAll 超时。
+  // 这些用例打 @production：不阻塞 push 门禁，由 production-smoke.yml 每天跑。
+  test.setTimeout(300_000);
   await Promise.all(mediaPaths().map((url) => loadMedia(url)));
 });
 
-test("production survey 118 plays from the prologue to an ending", async ({ page }) => {
+test("@production survey 118 plays from the prologue to an ending", async ({ page }) => {
   const problems: string[] = [];
   page.on("pageerror", (error) => problems.push(`pageerror: ${String(error)}`));
   page.on("console", (message) => {
@@ -585,7 +585,9 @@ test("production survey 118 plays from the prologue to an ending", async ({ page
   expect(problems).toEqual([]);
 });
 
-test("declining the intimate chapter really skips it, and both routes still reach an ending", async ({ page }) => {
+test("@production declining the intimate chapter really skips it, and both routes still reach an ending", async ({
+  page,
+}) => {
   await installRoutes(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
@@ -617,7 +619,9 @@ test("declining the intimate chapter really skips it, and both routes still reac
   expect(declined.pages).toContain(definition.pages[definition.pages.length - 1]!.title);
 });
 
-test("BGM is downloaded only after the sound toggle, then follows the page and node map", async ({ page }) => {
+test("@production BGM is downloaded only after the sound toggle, then follows the page and node map", async ({
+  page,
+}) => {
   await installRoutes(page);
   await page.setViewportSize({ width: 390, height: 844 });
   // 音乐现在由 <audio src> 自己流式加载，不经过 window.fetch，所以这里按网络请求
@@ -684,7 +688,7 @@ test("BGM is downloaded only after the sound toggle, then follows the page and n
   expect(await trackedPlayerCount(page), "关闭声音不应产生第二个播放器").toBe(1);
 });
 
-test("the interface sound effects are wired, gesture-gated and never stack a player", async ({ page }) => {
+test("@production the interface sound effects are wired, gesture-gated and never stack a player", async ({ page }) => {
   const sfx = definition.theme?.audio?.sfx ?? {};
   // The cue names are the contract with `src/survey/theme.ts`: a rename on
   // either side must fail here rather than silently going mute.
@@ -766,7 +770,9 @@ test("the interface sound effects are wired, gesture-gated and never stack a pla
   expect(new Set(Object.values(sfx)).size, "5 条音效必须各自独立").toBe(5);
 });
 
-test("the character sprite renders, changes with the scene and stays behind the dialogue", async ({ page }) => {
+test("@production the character sprite renders, changes with the scene and stays behind the dialogue", async ({
+  page,
+}) => {
   const sprite = definition.theme?.sprite;
   const expressions = sprite?.expressions ?? {};
   expect(Object.keys(expressions).length, "立绘表情表为空").toBe(11);
@@ -846,7 +852,7 @@ test("the character sprite renders, changes with the scene and stays behind the 
   await page.screenshot({ path: `${SHOTS}/sprite-desktop.png` });
 });
 
-test("leaving the survey silences the music", async ({ page }) => {
+test("@production leaving the survey silences the music", async ({ page }) => {
   await installRoutes(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/s/${SURVEY_ID}`);
@@ -866,7 +872,7 @@ test("leaving the survey silences the music", async ({ page }) => {
   expect(paused, "离开后 BGM 仍在播放").toBe(true);
 });
 
-test("the whole script is written prose, not filler", async ({ page }) => {
+test("@production the whole script is written prose, not filler", async ({ page }) => {
   // The prose is split between the prompt (`title`) and the narrative
   // paragraphs (`description`); the reader reads both. This is the WHOLE
   // script (all 58 nodes across all four route pages) — it is deliberately not
@@ -886,7 +892,7 @@ test("the whole script is written prose, not filler", async ({ page }) => {
   await expect(page.locator("body")).toContainText(definition.pages[0]!.title);
 });
 
-test("a single run reads one route page, and the sitting volume is recorded", async ({ page }) => {
+test("@production a single run reads one route page, and the sitting volume is recorded", async ({ page }) => {
   // The gate picks ONE of four mutually exclusive route pages, so a sitting
   // reads 22 of the 58 nodes. Measuring the volume on the walked path (not on
   // the whole script) is what keeps the length claim honest.

@@ -1,0 +1,63 @@
+name: production-smoke
+
+# 打 @production 标签的用例直接跑生产站点（emoemok.top 上的 118 号 galgame
+# 问卷、真实 15MB 素材）。它们断言的是「生产上那份问卷还能从头玩到结局」，
+# 不是「这次提交有没有改坏样式」，所以不进 push 门禁：
+#
+#   - 网络吞吐不稳定时 beforeAll 会超时，把与本次改动无关的提交拦下来；
+#   - deploy workflow 与本 workflow 并行时，跑到一半正好在生产切版本。
+#
+# 每天跑一次 + 手动触发，失败说明生产真的有问题，而不是构建环境抖了。
+
+on:
+  schedule:
+    - cron: "30 19 * * *" # 03:30 CST
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install root deps
+        run: pnpm install --frozen-lockfile
+      - name: Install admin deps
+        working-directory: admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium + CJK fonts
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Cache survey media (25 files, ~15MB)
+        uses: actions/cache@v4
+        with:
+          path: qa/.media-cache
+          key: galgame-media-${{ hashFiles('qa/visual/galgame-playthrough.spec.ts') }}
+          restore-keys: galgame-media-
+
+      - name: Production smoke
+        run: pnpm test:visual:prod
+        env:
+          QA_PROD_ORIGIN: https://emoemok.top
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-results
+          path: |
+            test-results/
+            qa/visual/__screenshots__/
+          retention-days: 7
