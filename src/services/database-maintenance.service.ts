@@ -2,6 +2,8 @@ import { telegramUpdateDedupCutoff } from "./update-dedup.service";
 
 export interface DatabaseMaintenanceSummary {
   expiredResponses: number;
+  /** 0089 纸条聊天：到期自动下架的纸条数。 */
+  expiredNotes: number;
   expiredSurveyDrafts: number;
   expiredDeletedSurveys: number;
   expiredDeletedShowcasePeople: number;
@@ -373,6 +375,7 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
   const scoped = withReadBudget(db, budget);
   const summary: DatabaseMaintenanceSummary = {
     expiredResponses: 0,
+    expiredNotes: 0,
     expiredSurveyDrafts: 0,
     expiredDeletedSurveys: 0,
     expiredDeletedShowcasePeople: 0,
@@ -407,6 +410,15 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
        AND updated_at < ?`,
           )
           .bind(staleResponseBefore),
+      );
+    },
+    async () => {
+      // 纸条 7 天有效期（0089）：到期即下架。走 idx_notes_pool 前缀索引，
+      // 行数 = 当日到期数；查询本身恒定只扫 active + 已到期这一小段。
+      summary.expiredNotes = await changes(
+        scoped
+          .prepare(`UPDATE notes SET status = 'expired' WHERE status = 'active' AND expires_at <= ?`)
+          .bind(new Date().toISOString()),
       );
     },
     async () => {

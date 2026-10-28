@@ -23,6 +23,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
   audio: "音频",
   file: "文件",
   note: "剧情文段",
+  scene: "互动场景",
 };
 
 export function formatDateTime(value?: string | null): string {

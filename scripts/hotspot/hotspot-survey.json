@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "survey": {
+    "title": "雨夜书房 · 互动场景",
+    "description": "一张画，几个可以走进去的地方。点开高亮区域，看看今晚留下了什么——你探索过的地方会记进答卷。",
+    "anonymous": 1,
+    "pages": [{ "id": "p1", "title": "雨夜书房", "description": null }],
+    "questions": [
+      {
+        "id": "q-scene",
+        "type": "scene",
+        "title": "探索这间书房",
+        "description": "下面是一张画，也是一间房间。点击画面里发亮的区域查看细节；书架那扇门会带你走进另一个场景。看过的每一处都会记下来。",
+        "required": true,
+        "order": 0,
+        "page_id": "p1",
+        "options": [],
+        "media": [
+          {
+            "url": "kv://scene-room.webp",
+            "alt": "雨夜书房：左侧是雨中的窗，右侧是亮着台灯的书桌和书架，猫睡在地毯上。"
+          },
+          { "url": "kv://scene-shelf.webp", "alt": "书架特写：一排旧书，一本红书和一个相框，下层放着一盆绿植。" },
+          { "url": "kv://detail-window.webp", "alt": "窗外：雨夜的街，霓虹招牌亮着，伞下站着两个人。" },
+          { "url": "kv://detail-cat.webp", "alt": "一只黑猫蜷在软垫上睡觉。" },
+          { "url": "kv://detail-desk.webp", "alt": "书桌：一封写到一半的信，一枚火漆信封，一杯还冒热气的咖啡。" },
+          { "url": "kv://detail-book.webp", "alt": "摊开的旧书，书页里夹着一朵干花和一张去海边的车票。" },
+          { "url": "kv://detail-photo.webp", "alt": "相框里的照片：雨夜路灯下，两个人挤一把伞。" },
+          { "url": "kv://detail-plant.webp", "alt": "陶盆里的绿植，叶子上的水珠还没干。" }
+        ],
+        "settings": {
+          "scene": {
+            "version": 1,
+            "start": "room",
+            "scenes": {
+              "room": {
+                "id": "room",
+                "title": "雨夜书房",
+                "intro": "点击画面里发亮的区域；书架那扇门会带你走进另一个场景。",
+                "image": "kv://scene-room.webp",
+                "width": 1600,
+                "height": 1000,
+                "alt": "雨夜书房全景插画",
+                "hotspots": [
+                  {
+                    "id": "window",
+                    "x": 0.05,
+                    "y": 0.08,
+                    "w": 0.31,
+                    "h": 0.58,
+                    "label": "窗外",
+                    "meta": "01",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-window.webp",
+                      "title": "窗外",
+                      "caption": "雨没有停。街角的灯还亮着。",
+                      "note": "你看了很久，才听见自己的呼吸。"
+                    }
+                  },
+                  {
+                    "id": "cat",
+                    "x": 0.37,
+                    "y": 0.76,
+                    "w": 0.18,
+                    "h": 0.22,
+                    "label": "猫",
+                    "meta": "02",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-cat.webp",
+                      "title": "猫",
+                      "caption": "它睡了。尾巴收得很紧。",
+                      "note": "你把手放轻，像怕碰坏一个梦。"
+                    }
+                  },
+                  {
+                    "id": "desk",
+                    "x": 0.6,
+                    "y": 0.6,
+                    "w": 0.36,
+                    "h": 0.34,
+                    "label": "书桌",
+                    "meta": "03",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-desk.webp",
+                      "title": "书桌",
+                      "caption": "信写到一半，落款处空着。",
+                      "note": "雨停之前，见一面吧。"
+                    }
+                  },
+                  {
+                    "id": "shelf",
+                    "x": 0.835,
+                    "y": 0.08,
+                    "w": 0.15,
+                    "h": 0.5,
+                    "label": "书架",
+                    "meta": "04",
+                    "action": { "kind": "scene", "sceneId": "shelf" }
+                  }
+                ]
+              },
+              "shelf": {
+                "id": "shelf",
+                "title": "书架 · 第二层",
+                "intro": "有些东西被放在这里，不是为了被忘记。",
+                "image": "kv://scene-shelf.webp",
+                "width": 1600,
+                "height": 1000,
+                "alt": "书架特写插画",
+                "hotspots": [
+                  {
+                    "id": "book",
+                    "x": 0.175,
+                    "y": 0.3,
+                    "w": 0.115,
+                    "h": 0.24,
+                    "label": "旧书",
+                    "meta": "05",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-book.webp",
+                      "title": "旧书",
+                      "caption": "书页里夹着一张去海边的车票。",
+                      "note": "G 1207。日期被雨洇开了。"
+                    }
+                  },
+                  {
+                    "id": "photo",
+                    "x": 0.585,
+                    "y": 0.25,
+                    "w": 0.205,
+                    "h": 0.25,
+                    "label": "相框",
+                    "meta": "06",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-photo.webp",
+                      "title": "相框",
+                      "caption": "去年夏天，两个人在雨里。",
+                      "note": "伞太小，谁也没说。"
+                    }
+                  },
+                  {
+                    "id": "plant",
+                    "x": 0.39,
+                    "y": 0.54,
+                    "w": 0.2,
+                    "h": 0.33,
+                    "label": "绿植",
+                    "meta": "07",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://detail-plant.webp",
+                      "title": "绿植",
+                      "caption": "叶子上的水珠还没干。",
+                      "note": "它活得比很多事情都久。"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "q-farewell",
+        "type": "long_text",
+        "title": "离开之前",
+        "description": "雨快停了。走之前，留一句话给这个房间（可以不填）。",
+        "required": false,
+        "order": 1,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": { "max_length": 500 }
+      }
+    ]
+  },
+  "mediaMeta": {
+    "scene-room.webp": { "width": 1600, "height": 1000, "alt": "雨夜书房全景插画" },
+    "scene-shelf.webp": { "width": 1600, "height": 1000, "alt": "书架特写插画" },
+    "detail-window.webp": { "width": 1200, "height": 800, "alt": "窗外雨夜的街" },
+    "detail-cat.webp": { "width": 1200, "height": 800, "alt": "熟睡的黑猫" },
+    "detail-desk.webp": { "width": 1200, "height": 800, "alt": "书桌上的信与咖啡" },
+    "detail-book.webp": { "width": 1200, "height": 800, "alt": "夹着车票的旧书" },
+    "detail-photo.webp": { "width": 1200, "height": 800, "alt": "相框里的雨夜合影" },
+    "detail-plant.webp": { "width": 1200, "height": 800, "alt": "带水珠的绿植" }
+  }
+}

@@ -505,10 +505,13 @@ export async function handleAdminEditorWrite(
       }
       if (body.settings !== undefined) {
         if (!isMatrixQuestionType(targetType) && payload!.settingsJson) {
-          // 非 matrix 题只允许剧情说话人（VN 名牌，P1.5）。
+          // 非 matrix 题只允许剧情说话人（VN 名牌，P1.5）；scene 题允许整体
+          // 场景配置（validateQuestionPayload 已经用共享校验器消毒过）。
           const parsedSettings = JSON.parse(payload!.settingsJson) as Record<string, unknown>;
-          const speakerOnly = Object.keys(parsedSettings).every((key) => key === "speaker");
-          if (!speakerOnly) {
+          const keys = Object.keys(parsedSettings);
+          const speakerOnly = keys.every((key) => key === "speaker");
+          const sceneConfig = targetType === "scene" && keys.includes("scene");
+          if (!speakerOnly && !sceneConfig) {
             return fail(400, "validation_failed", "仅 matrix 题支持 settings（说话人除外）");
           }
         }

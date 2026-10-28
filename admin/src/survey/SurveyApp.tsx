@@ -20,6 +20,7 @@ import {
   MailCheck,
   Map as MapIcon,
   Megaphone,
+  MousePointerClick,
   Palette,
   Paperclip,
   RefreshCw,
@@ -95,6 +96,7 @@ import { prepareImageForPublish } from "../lib/image-publish";
 const PlazaScreen = lazy(() => import("./PlazaScreen").then((m) => ({ default: m.PlazaScreen })));
 const MyScreen = lazy(() => import("./MyScreen").then((m) => ({ default: m.MyScreen })));
 const CoinsScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.CoinsScreen })));
+const NoteChatScreen = lazy(() => import("./NoteScreen").then((m) => ({ default: m.NoteScreen })));
 const GachaScreen = lazy(() => import("./CoinCenter").then((m) => ({ default: m.GachaScreen })));
 /* 投稿中心：把原来分开的 /submit（免登录）与 /submissions（金币）收进一个页面。
  * 旧的 /submit 与 /submit/inbox 现在重定向到对应页签，见下方 RedirectTo。 */
@@ -210,6 +212,7 @@ import {
   sfxEnabled,
   subscribeSfxEnabled,
 } from "./sfx";
+import { HotspotScene } from "./HotspotScene";
 
 declare global {
   interface Window {
@@ -276,10 +279,27 @@ function Typewriter({ text, enabled, className }: { text: string; enabled: boole
     return () => window.clearInterval(timer);
   }, [text, enabled]);
   const complete = () => setShown(text.length);
+  const animating = enabled && shown < text.length;
   return (
-    <span className={className} onClick={complete} role={enabled && shown < text.length ? "button" : undefined}>
+    <span
+      className={className}
+      onClick={complete}
+      /* 逐字动画要能被键盘跳过：role=button 的元素必须可聚焦、可回车触发。 */
+      role={animating ? "button" : undefined}
+      tabIndex={animating ? 0 : undefined}
+      onKeyDown={
+        animating
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                complete();
+              }
+            }
+          : undefined
+      }
+    >
       {text.slice(0, shown)}
-      {enabled && shown < text.length ? <span className="animate-pulse">▌</span> : null}
+      {animating ? <span className="animate-pulse">▌</span> : null}
     </span>
   );
 }
@@ -1238,6 +1258,13 @@ function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | unde
       return "请为每一行选择一个选项";
     }
   }
+  if (question.type === "scene" && value && typeof value === "object" && !Array.isArray(value)) {
+    // 空 visited 的答案对象不算已作答：探索是要有动作的。
+    const visited = (value as { kind?: unknown; visited?: unknown }).visited;
+    if (question.required && (!Array.isArray(visited) || visited.length === 0)) {
+      return "至少探索一处高亮区域";
+    }
+  }
   return null;
 }
 
@@ -2020,6 +2047,7 @@ function AccessScreen({
           }}
           placeholder="访问密码"
           className="input mt-5 w-full text-center"
+          autoComplete="off"
           autoFocus
         />
         {error ? <p className="mt-2 text-sm text-[var(--app-danger)]">{error}</p> : null}
@@ -2071,6 +2099,14 @@ export function SurveyApp() {
     return (
       <LazyScreen>
         <CoinsScreen />
+      </LazyScreen>
+    );
+  }
+  // 纸条聊天（0089）：放/抽/对话三页签。
+  if (window.location.pathname === "/notes" || window.location.pathname.startsWith("/notes/")) {
+    return (
+      <LazyScreen>
+        <NoteChatScreen />
       </LazyScreen>
     );
   }
@@ -2891,6 +2927,7 @@ export function SurveyApp() {
   const currentPage = survey.pages.find((page) => page.id === question.pageId);
   const value = answers[question.id];
   const isNote = question.type === "note";
+  const isScene = question.type === "scene";
   const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
   const isLast = index === survey.questions.length - 1;
   // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
@@ -3062,6 +3099,40 @@ export function SurveyApp() {
                   </p>
                 ) : null}
                 <MediaBlock urls={question.media} type="image" />
+              </>
+            ) : isScene ? (
+              /* 互动场景：叙事头 + 热点查看器；question.media 是场景图的
+               * 素材池（含内层图），由 HotspotScene 按 URL 取用，不再整列渲染。 */
+              <>
+                {question.title ? (
+                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                    <MousePointerClick
+                      className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
+                      aria-hidden="true"
+                    />
+                    {question.title}
+                  </h1>
+                ) : null}
+                {question.description ? (
+                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                    {question.description}
+                  </p>
+                ) : null}
+                <div className="mt-4">
+                  <HotspotScene
+                    question={question}
+                    value={value}
+                    onChange={(next) => {
+                      updateAnswer(question.id, next);
+                      // 探索即落库：与文本输入「翻题才存」不同，点击热点本身就是
+                      // 要被记录的数据，关页/断网不该丢掉已看过的内容。
+                      if (screen.responseId > 0) {
+                        saveQueue.enqueue({ questionId: question.id, value: next });
+                      }
+                    }}
+                    disabled={busy}
+                  />
+                </div>
               </>
             ) : (
               <>
@@ -3243,7 +3314,7 @@ export function SurveyApp() {
                     <Check className="h-4 w-4" />
                     提交问卷
                   </>
-                ) : isNote ? (
+                ) : isNote || isScene ? (
                   <>
                     继续
                     <ArrowRight className="h-4 w-4" />

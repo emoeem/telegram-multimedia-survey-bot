@@ -17,6 +17,7 @@ import {
   minOptionCount,
 } from "../../survey/question-rules";
 import { createQuestion, createQuestionOption } from "../../db/repositories/question.repository";
+import { parseHotspotScene } from "../../survey/hotspot";
 
 export const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 export const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
@@ -334,7 +335,8 @@ export function validateQuestionPayload(
     }
   }
   // note（剧情文段）：正文存 description（放宽到 5000 字），标题可选，永不必答。
-  const isNote = (creating || type !== undefined ? type : currentType) === "note";
+  const questionType = (creating || type !== undefined ? type : currentType) as QuestionType | undefined;
+  const isNote = questionType === "note";
 
   let title: string | undefined;
   if (body.title !== undefined || creating) {
@@ -418,6 +420,13 @@ export function validateQuestionPayload(
         return { error: "说话人必须是 ≤60 字符的字符串" };
       }
       if (speaker.trim()) next.speaker = speaker.trim();
+    }
+    // scene（互动场景）：settings 整体是场景配置，经共享校验器消毒后原样存。
+    // 校验器会剥掉一切未登记字段，所以这里不存在注入面。
+    if (questionType === "scene") {
+      const config = parseHotspotScene(body.settings);
+      if (!config) return { error: "场景配置无效（settings.scene，见 docs/HOTSPOT_SCENES.md）" };
+      next.scene = config;
     }
     settingsJson = Object.keys(next).length ? JSON.stringify(next) : null;
   } else if (body.settings === null) {

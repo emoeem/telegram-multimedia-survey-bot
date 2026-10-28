@@ -9,6 +9,7 @@ import {
   Eye,
   FilePlus2,
   GitBranch,
+  MousePointerClick,
   Pencil,
   Plus,
   Redo2,
@@ -108,6 +109,7 @@ function EditableEditor({ data }: { data: EditorData }) {
   const [trialFrom, setTrialFrom] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [sceneBusy, setSceneBusy] = useState(false);
   const { survey } = data;
   const { confirm } = useDialogs();
 
@@ -234,6 +236,35 @@ function EditableEditor({ data }: { data: EditorData }) {
   const flushDraft = async (): Promise<boolean> => {
     if (editor.dirty && !(await editor.save())) return false;
     return true;
+  };
+
+  // 场景题走独立编辑器：先把 builder 里的待保存修改落库，再跳转。
+  const openSceneEditor = async (questionId: number) => {
+    if (!(await flushDraft())) return;
+    navigate(`/surveys/${survey.id}/scene/${questionId}`);
+  };
+
+  // 新建空 scene 题（settings 为空，场景配置在编辑器里写入）。
+  // insertQuestionWithOptions 只为 matrix 持久化 settings，所以这里不传场景配置。
+  const addSceneQuestion = async () => {
+    if (sceneBusy) return;
+    if (!(await flushDraft())) return;
+    setSceneBusy(true);
+    setPublishError(null);
+    try {
+      const created = await apiSend<{ id: number }>("POST", `/api/admin/surveys/${survey.id}/questions`, {
+        type: "scene",
+        title: "互动场景",
+        required: true,
+        pageId: selectedQuestion?.pageId ?? null,
+      });
+      if (!created?.id) throw new Error("创建互动场景题失败");
+      navigate(`/surveys/${survey.id}/scene/${created.id}`);
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
+    } finally {
+      setSceneBusy(false);
+    }
   };
 
   const attachQuestionMedia = async (questionId: number, file: File): Promise<boolean> => {
@@ -558,6 +589,7 @@ function EditableEditor({ data }: { data: EditorData }) {
                       }
                       onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
                       onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
+                      onOpenSceneEditor={(questionId) => void openSceneEditor(questionId)}
                       allQuestions={editor.questions}
                       pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
                     />
@@ -592,6 +624,15 @@ function EditableEditor({ data }: { data: EditorData }) {
             >
               <BookOpen className="h-4 w-4" />
               添加剧情文段
+            </button>
+            <button
+              className="btn"
+              disabled={editingDisabled || sceneBusy}
+              onClick={() => void addSceneQuestion()}
+              title="新建一道互动场景题，并打开场景编辑器"
+            >
+              <MousePointerClick className="h-4 w-4" />
+              添加互动场景
             </button>
           </div>
         </main>
@@ -637,6 +678,10 @@ function EditableEditor({ data }: { data: EditorData }) {
           disabled={editingDisabled}
           onClose={() => setPickerOpen(false)}
           onPick={(type) => addDefaultQuestion(type)}
+          onScene={() => {
+            setPickerOpen(false);
+            void addSceneQuestion();
+          }}
         />
       ) : null}
 
@@ -803,14 +848,28 @@ function TypePickerSheet({
   disabled,
   onClose,
   onPick,
+  onScene,
 }: {
   disabled: boolean;
   onClose: () => void;
   onPick: (type: string) => void;
+  onScene: () => void;
 }) {
   return (
-    <Modal open onClose={onClose} title="添加题目 / 剧情文段" size="lg">
+    <Modal open onClose={onClose} title="添加题目 / 互动内容" size="lg">
       <div className="type-picker">
+        <section className="type-picker-group">
+          <header className="type-picker-head">
+            <h3>互动内容</h3>
+            <p>场景图 + 可点击热点；探索过的区域会记入答案</p>
+          </header>
+          <div className="type-picker-grid">
+            <button type="button" className="type-picker-item is-note" disabled={disabled} onClick={onScene}>
+              <span className="type-picker-label">🖱 互动场景</span>
+              <span className="type-picker-desc">场景图 + 可点击热点，点击展开内层内容</span>
+            </button>
+          </div>
+        </section>
         {TYPE_GROUPS.map((group) => (
           <section key={group.title} className="type-picker-group">
             <header className="type-picker-head">

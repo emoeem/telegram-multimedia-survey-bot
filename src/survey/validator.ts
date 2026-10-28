@@ -1,5 +1,6 @@
 import { SURVEY_SCHEMA_VERSION, type UnifiedSurveyImport } from "./schema";
 import { MATRIX_COLUMN_MIN, SURVEY_QUESTION_TYPES, isSurveyQuestionType, minOptionCount } from "./question-rules";
+import { parseHotspotScene } from "./hotspot";
 
 export interface ValidationIssue {
   path: string;
@@ -98,6 +99,12 @@ export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
             message: `matrix questions require at least ${MATRIX_COLUMN_MIN} columns`,
           });
         }
+      }
+      if (question.type === "scene" && !parseHotspotScene(question.settings, { allowPlaceholderRefs: true })) {
+        issues.push({
+          path: `${path}.settings.scene`,
+          message: "scene questions require a valid settings.scene config (see docs/HOTSPOT_SCENES.md)",
+        });
       }
     }
 

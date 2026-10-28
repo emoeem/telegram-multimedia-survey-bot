@@ -5159,3 +5159,1365 @@ button.admin-stat:focus-visible {
     min-height: 44px;
   }
 }
+
+/* ---------------------------------------------------------------------- */
+/* 互动场景题（scene）：热点查看器。配色全部走 --survey-* 变量，                */
+/* 自动适配 foxgold / dark / light 三套预设。原型见 hotspot-scene-demo。      */
+/* ---------------------------------------------------------------------- */
+
+.hotspot {
+  container-type: inline-size;
+}
+
+.hotspot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: var(--survey-muted, #64748b);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.hotspot-meta[data-complete="true"],
+.hotspot[data-complete="true"] .hotspot-meta {
+  color: var(--survey-primary);
+  font-weight: 600;
+}
+
+.hotspot-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--survey-primary);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hotspot-back:focus-visible {
+  outline: 2px solid var(--survey-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.hotspot-stage-wrap {
+  padding: 7px;
+  border-radius: 10px;
+  border: 1px solid var(--survey-card-border, rgba(15, 23, 42, 0.12));
+  background: var(--survey-card-bg, #fff);
+  box-shadow: 0 18px 44px -22px rgba(15, 23, 42, 0.45);
+}
+
+.hotspot-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #05080c;
+  isolation: isolate;
+}
+
+.hotspot-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hotspot-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.hotspot-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(0, 0, 0, 0.24) 100%);
+}
+
+.hotspot-spot {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  animation: hotspot-in 0.4s both;
+  animation-delay: calc(var(--hotspot-i, 0) * 55ms + 60ms);
+}
+
+.hotspot-spot:focus {
+  outline: none;
+}
+
+.hotspot-spot[disabled] {
+  cursor: default;
+}
+
+.hotspot-box {
+  position: absolute;
+  inset: 0;
+  border: 1.5px dashed color-mix(in srgb, var(--survey-primary) 78%, white);
+  background: color-mix(in srgb, var(--survey-primary) 7%, transparent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.25s ease;
+}
+
+.hotspot-spot:hover .hotspot-box,
+.hotspot-spot:focus-visible .hotspot-box {
+  border-style: solid;
+  background: color-mix(in srgb, var(--survey-primary) 16%, transparent);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.22),
+    0 0 26px color-mix(in srgb, var(--survey-primary) 30%, transparent);
+}
+
+.hotspot-spot:focus-visible {
+  outline: 2px solid var(--survey-primary);
+  outline-offset: 3px;
+}
+
+.hotspot-handle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: color-mix(in srgb, var(--survey-primary) 85%, white);
+  border: 1px solid rgba(5, 8, 12, 0.85);
+}
+
+.hotspot-handle.tl {
+  top: -3px;
+  left: -3px;
+}
+
+.hotspot-handle.tr {
+  top: -3px;
+  right: -3px;
+}
+
+.hotspot-handle.bl {
+  bottom: -3px;
+  left: -3px;
+}
+
+.hotspot-handle.br {
+  right: -3px;
+  bottom: -3px;
+}
+
+.hotspot-index {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  min-width: 20px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--survey-primary);
+  color: var(--survey-btn-text, #fff);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  transition: opacity 0.2s ease;
+}
+
+.hotspot-index em {
+  margin-left: 3px;
+  font-style: normal;
+  font-size: 9px;
+}
+
+.hotspot-label {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: var(--survey-card-bg, #fff);
+  color: var(--survey-heading, #172033);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  z-index: 2;
+}
+
+.hotspot-label b {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.hotspot-label small {
+  color: var(--survey-muted, #64748b);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.hotspot-spot:hover .hotspot-label,
+.hotspot-spot:focus-visible .hotspot-label {
+  opacity: 1;
+  transform: none;
+}
+
+.hotspot-spot[data-label-below="true"] .hotspot-label {
+  top: calc(100% + 7px);
+  bottom: auto;
+}
+
+.hotspot-spot[data-label-left="true"] .hotspot-label {
+  right: 0;
+  left: auto;
+}
+
+.hotspot-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--survey-primary) 85%, white);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--survey-primary) 16%, transparent),
+    0 0 16px color-mix(in srgb, var(--survey-primary) 55%, transparent);
+  animation: hotspot-pulse 3s ease-in-out infinite;
+  animation-delay: calc(var(--hotspot-i, 0) * 0.25s);
+}
+
+.hotspot-spot:hover .hotspot-dot {
+  transform: scale(1.25);
+}
+
+.hotspot-spot.is-visited .hotspot-box {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--survey-primary) 40%, transparent);
+  background: transparent;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.hotspot-spot.is-visited .hotspot-index {
+  background: color-mix(in srgb, var(--survey-primary) 30%, var(--survey-card-bg, #fff));
+  color: var(--survey-heading, #172033);
+}
+
+.hotspot-spot.is-visited .hotspot-dot {
+  background: color-mix(in srgb, var(--survey-primary) 45%, transparent);
+  box-shadow: none;
+  opacity: 0.4;
+  animation: none;
+}
+
+.hotspot-plate {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 9px 2px 1px;
+  color: var(--survey-muted, #64748b);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+}
+
+/* 弹层：clip-path 从热点矩形展开到全屏。 */
+
+.hotspot-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 7, 11, 0);
+  clip-path: inset(
+    var(--clip-top, 50%) var(--clip-right, 50%) var(--clip-bottom, 50%) var(--clip-left, 50%) round 12px
+  );
+  transition:
+    clip-path 0.55s cubic-bezier(0.2, 0.85, 0.2, 1),
+    background 0.35s ease;
+  overscroll-behavior: contain;
+}
+
+.hotspot-modal.is-open {
+  background: rgba(4, 7, 11, 0.74);
+  clip-path: inset(0 0 0 0 round 0);
+}
+
+.hotspot-modal-card {
+  position: relative;
+  width: min(880px, 94vw);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--survey-card-bg, #fff);
+  color: var(--survey-heading, #172033);
+  box-shadow: 0 40px 110px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: scale(0.985);
+  transition:
+    opacity 0.28s ease,
+    transform 0.45s cubic-bezier(0.2, 0.85, 0.2, 1);
+  scrollbar-width: thin;
+}
+
+.hotspot-modal.is-open .hotspot-modal-card {
+  opacity: 1;
+  transform: none;
+}
+
+.hotspot-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--survey-heading, #172033) 86%, transparent);
+  color: var(--survey-card-bg, #fff);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.hotspot-modal-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.hotspot-modal-close:hover {
+  background: var(--survey-primary);
+  color: var(--survey-btn-text, #fff);
+}
+
+.hotspot-modal-close:focus-visible,
+.hotspot-modal-back:focus-visible {
+  outline: 2px solid var(--survey-primary);
+  outline-offset: 3px;
+}
+
+.hotspot-modal-media {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #05080c;
+}
+
+.hotspot-modal-media img {
+  display: block;
+  width: 100%;
+  max-height: 56dvh;
+  object-fit: contain;
+}
+
+.hotspot-modal-caption {
+  padding: 14px 8px 4px;
+}
+
+.hotspot-modal-meta {
+  margin: 0 0 4px;
+  color: var(--survey-muted, #64748b);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hotspot-modal-caption h3 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hotspot-modal-caption > p {
+  margin: 0;
+  color: var(--survey-body, #334155);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.hotspot-modal-note {
+  margin-top: 12px !important;
+  padding-top: 12px;
+  border-top: 1px solid var(--survey-card-border, rgba(15, 23, 42, 0.12));
+  font-style: italic;
+  color: var(--survey-muted, #64748b) !important;
+}
+
+.hotspot-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--survey-card-border, rgba(15, 23, 42, 0.12));
+  color: var(--survey-muted, #64748b);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.hotspot-modal-back {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--survey-primary);
+  color: var(--survey-btn-text, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.hotspot-modal-back:hover {
+  filter: brightness(1.08);
+}
+
+body.hotspot-lock {
+  overflow: hidden;
+}
+
+@keyframes hotspot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hotspot-pulse {
+  0%,
+  100% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+@media (max-width: 640px) {
+  .hotspot-stage-wrap {
+    padding: 5px;
+  }
+
+  .hotspot-label {
+    opacity: 0.94;
+    transform: none;
+  }
+
+  .hotspot-modal {
+    padding: 10px;
+  }
+
+  .hotspot-modal-card {
+    width: 100%;
+    padding: 8px;
+  }
+
+  .hotspot-modal-media img {
+    max-height: 46dvh;
+  }
+
+  .hotspot-modal-caption h3 {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotspot-spot,
+  .hotspot-dot,
+  .hotspot-modal,
+  .hotspot-modal-card {
+    animation: none !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .hotspot-modal {
+    clip-path: none;
+  }
+}
+
+/* 场景引导语：配置里有 scene.intro，查看器在进度行下面显示一行提示。 */
+.hotspot-intro {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-left: 3px solid var(--survey-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--survey-primary) 9%, transparent);
+  color: var(--survey-body, #334155);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* ---------------------------------------------------------------------- */
+/* 互动场景题（scene）：独立场景编辑器。                                      */
+/* 三栏 = 场景/热点侧栏 220px · 画布 1fr · 检查器 360px；≤999px 堆叠。         */
+/* 全部走 admin 语义变量，foxgold / dark / light 三套主题自动适配。            */
+/* ---------------------------------------------------------------------- */
+
+.scene-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ---- 顶栏 -------------------------------------------------------------- */
+
+.scene-editor-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 8px 24px -18px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.scene-editor-topbar-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.scene-editor-heading {
+  min-width: 0;
+}
+
+.scene-editor-heading p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(46vw, 560px);
+}
+
+.scene-editor-heading h1 {
+  margin: 1px 0 0;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(46vw, 560px);
+}
+
+.scene-editor-topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.scene-editor-dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 2px;
+  font-size: 12px;
+  color: var(--app-warning);
+  white-space: nowrap;
+}
+
+.scene-editor-dirty::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--app-warning);
+}
+
+.scene-editor-banner {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-warning) 36%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-warning) 10%, var(--surface));
+  color: var(--app-warning);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.scene-editor-error {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-danger) 38%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-danger) 10%, var(--surface));
+  color: var(--app-danger);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* ---- 三栏布局 ---------------------------------------------------------- */
+
+.scene-editor-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) and (min-width: 1000px) {
+  .scene-editor-body {
+    grid-template-columns: 200px minmax(0, 1fr) 320px;
+  }
+}
+
+.scene-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scene-editor-section,
+.scene-editor-inspector {
+  padding: 10px;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  min-width: 0;
+}
+
+.scene-editor-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 8px;
+}
+
+.scene-editor-section-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.scene-editor-section-head > span {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.scene-editor-scene-list,
+.scene-editor-hotspot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.scene-editor-scene,
+.scene-editor-hotspot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.scene-editor-scene:hover,
+.scene-editor-hotspot:hover {
+  background: var(--surface-hover);
+}
+
+.scene-editor-scene.is-active,
+.scene-editor-hotspot.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--surface));
+}
+
+.scene-editor-scene:focus-visible,
+.scene-editor-hotspot:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.scene-editor-scene-title,
+.scene-editor-hotspot-title {
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-editor-scene-meta,
+.scene-editor-hotspot-meta {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.scene-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scene-editor-canvas-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* ---- 画布 -------------------------------------------------------------- */
+
+.scene-canvas {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-edge);
+  border-radius: 12px;
+  background: #05080c;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 18px 44px -26px rgba(15, 23, 42, 0.55);
+}
+
+.scene-canvas[data-readonly="true"] {
+  cursor: default;
+}
+
+.scene-canvas-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* 命中只发生在热点本身：layer 铺满画布但放行指针，空白处落到 .scene-canvas
+ * 上开始绘制（否则 layer 会把空白点击吃掉）。 */
+.scene-canvas-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-canvas-spot {
+  position: absolute;
+  pointer-events: auto;
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 58%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  cursor: move;
+  touch-action: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.scene-canvas-spot:hover {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+.scene-canvas-spot.is-selected {
+  z-index: 3;
+  border-style: solid;
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-primary) 28%, transparent),
+    0 8px 22px -12px rgba(0, 0, 0, 0.7);
+}
+
+.scene-canvas-spot.is-drawing {
+  pointer-events: none;
+  border-style: dashed;
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.scene-canvas[data-readonly="true"] .scene-canvas-spot {
+  cursor: default;
+}
+
+.scene-canvas-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-primary) 85%, #000);
+  color: var(--color-primary-content);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.scene-canvas-index:empty {
+  display: none;
+}
+
+.scene-canvas-label {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  max-width: calc(100% - 8px);
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(5, 8, 12, 0.72);
+  color: #f6f1e7;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---- 8 向缩放手柄 ------------------------------------------------------ */
+
+.scene-canvas-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.scene-canvas-handle.is-nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.scene-canvas-handle.is-n {
+  top: -6px;
+  left: calc(50% - 6px);
+  cursor: ns-resize;
+}
+
+.scene-canvas-handle.is-ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.scene-canvas-handle.is-e {
+  top: calc(50% - 6px);
+  right: -6px;
+  cursor: ew-resize;
+}
+
+.scene-canvas-handle.is-se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+.scene-canvas-handle.is-s {
+  bottom: -6px;
+  left: calc(50% - 6px);
+  cursor: ns-resize;
+}
+
+.scene-canvas-handle.is-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.scene-canvas-handle.is-w {
+  top: calc(50% - 6px);
+  left: -6px;
+  cursor: ew-resize;
+}
+
+/* ---- 空状态 ------------------------------------------------------------ */
+
+.scene-canvas-empty,
+.scene-editor-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  border: 1px dashed var(--color-edge);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  text-align: center;
+}
+
+.scene-editor-empty {
+  padding: 60px 24px;
+}
+
+.scene-canvas-empty-icon,
+.scene-editor-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.scene-canvas-empty h2,
+.scene-editor-empty h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-ink);
+}
+
+.scene-canvas-empty p,
+.scene-editor-empty p {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+.scene-editor-empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* ---- 检查器 ------------------------------------------------------------ */
+
+.scene-editor-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scene-editor-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.scene-editor-tabs button {
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scene-editor-tabs button:hover:not(:disabled) {
+  color: var(--color-ink);
+}
+
+.scene-editor-tabs button.is-active {
+  border-color: var(--color-edge);
+  background: var(--surface);
+  color: var(--color-ink);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+}
+
+.scene-editor-tabs button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.scene-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.scene-editor-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scene-editor-panel-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--color-ink);
+}
+
+.scene-editor-code {
+  margin: 1px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-muted);
+}
+
+.scene-editor-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+.scene-editor-meta-line {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.scene-editor-field-error {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--app-danger);
+}
+
+.scene-editor-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 检查器里的 checkbox 是「标签在右」，覆盖 builder 里 space-between 的排布。 */
+.scene-editor .settings-check {
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+/* ---- 图片字段 / 媒体选择器 --------------------------------------------- */
+
+.scene-editor-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.scene-editor-image-row img,
+.scene-editor-image-empty {
+  width: 72px;
+  height: 54px;
+  border-radius: 8px;
+  border: 1px solid var(--color-edge);
+  background: #05080c;
+  object-fit: cover;
+}
+
+.scene-editor-image-empty {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  border-color: var(--control-border);
+  background: var(--surface-muted);
+  color: var(--color-muted);
+}
+
+.scene-editor-media-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scene-editor-media-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scene-editor-media-head p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.scene-editor-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.scene-editor-media-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--color-edge);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.scene-editor-media-item:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-edge));
+}
+
+.scene-editor-media-item.is-current {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.scene-editor-media-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.scene-editor-media-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #05080c;
+}
+
+.scene-editor-media-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-editor-media-item em {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* ---- 全屏预览 ---------------------------------------------------------- */
+
+.scene-editor-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: color-mix(in srgb, #05080c 94%, transparent);
+  backdrop-filter: blur(6px);
+  /* HotspotScene 的颜色全部来自 --survey-*；预览层映射到 admin 主题，
+   * 否则 color-mix 里的 var(--survey-primary) 未定义会整块失效。 */
+  --survey-primary: var(--color-primary);
+  --survey-primary-content: var(--color-primary-content);
+  --survey-primary-soft: var(--color-primary-soft);
+  --survey-bg: var(--color-page);
+  --survey-card-bg: var(--surface);
+  --survey-card-border: var(--color-edge);
+  --survey-heading: var(--color-ink);
+  --survey-body: color-mix(in srgb, var(--color-ink) 85%, var(--surface));
+  --survey-muted: var(--color-muted);
+  --survey-btn-text: var(--color-primary-content);
+}
+
+/* HotspotScene 自己的弹层是全屏 fixed；预览层是 70，弹层必须再高一层。 */
+.scene-editor-preview .hotspot-modal {
+  z-index: 80;
+}
+
+.scene-editor-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f3eee3;
+  font-size: 12px;
+}
+
+.scene-editor-preview-bar .btn {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3eee3;
+}
+
+.scene-editor-preview-bar .btn:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.scene-editor-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: start center;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.scene-editor-preview-body .hotspot {
+  width: min(960px, 100%);
+}
+
+/* ---- 响应式 ------------------------------------------------------------ */
+
+@media (max-width: 999px) {
+  .scene-editor-body {
+    display: flex;
+    flex-direction: column;
+    /* 桌面端是 grid + align-items:start；堆叠后必须让子项撑满宽度，
+     * 否则侧栏会缩成内容宽度。 */
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .scene-editor-sidebar {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .scene-editor-sidebar > .scene-editor-section {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .scene-editor-scene-list,
+  .scene-editor-hotspot-list {
+    max-height: 200px;
+  }
+
+  .scene-editor-heading p,
+  .scene-editor-heading h1 {
+    max-width: calc(100vw - 96px);
+  }
+}
+
+@media (max-width: 640px) {
+  .scene-editor-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .scene-editor-topbar-main {
+    min-width: 0;
+  }
+
+  .scene-editor-heading p,
+  .scene-editor-heading h1 {
+    max-width: calc(100vw - 90px);
+  }
+
+  .scene-editor-topbar-actions {
+    margin-left: 0;
+  }
+
+  .scene-editor-inspector-col {
+    min-width: 0;
+  }
+
+  .scene-editor-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
+
+  .scene-editor-preview {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .scene-editor-preview-bar {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-canvas-spot {
+    transition: none;
+  }
+}

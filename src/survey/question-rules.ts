@@ -21,11 +21,16 @@ export const SURVEY_QUESTION_TYPES: readonly QuestionType[] = [
   "audio",
   "file",
   "note",
+  "scene",
 ];
 
 // 叙述节点：只展示内容、不收集答案，可被其他选项的跳题规则作为目标。
 export function isNarrativeQuestionType(type: QuestionType): boolean {
   return type === "note";
+}
+
+export function isSceneQuestionType(type: QuestionType): boolean {
+  return type === "scene";
 }
 
 export const CHOICE_OPTION_MIN = 2;

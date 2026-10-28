@@ -22,6 +22,8 @@ export type CoinTxnKind =
   | "submission_reward"
   | "survey_unlock"
   | "gacha_pull"
+  /** 0089 纸条聊天：免费额用完后的付费抽取。 */
+  | "note_draw"
   | "admin_adjust"
   /** 0082 身份合并：source 账户余额整笔搬入 canonical 的那笔流水。 */
   | "merge_in";

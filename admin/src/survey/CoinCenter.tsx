@@ -2,10 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ChevronRight,
   Coins as CoinsIcon,
+  CornerDownLeft,
+  Flag,
   Gift,
   History,
   Images,
+  Loader2,
+  MailCheck,
   Music,
+  RefreshCw,
   ScrollText,
   Sparkles,
   Upload,
@@ -14,6 +19,13 @@ import {
 } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
+import {
+  drawNote as drawNoteApi,
+  fetchNoteMe,
+  reportNote as reportNoteApi,
+  NoteApiError,
+  type NoteCardDto,
+} from "./note-api";
 import { makeThumbnailFile, prepareImageForPublish } from "../lib/image-publish";
 import {
   coinApi,
@@ -465,6 +477,198 @@ export function CoinsScreen() {
   );
 }
 
+// ---- 抽奖中心 · 缘分纸条区（0089 整合）---------------------------------
+// 抽纸条与报告抽卡共用「抽奖中心」一个入口：纸条在顶部（每天 3 次免费，
+// 之后 5 金币/次，服务端判定），报告奖池在下方。抽中即建会话，去 /notes 回信。
+
+const NOTE_CARD_CLS =
+  "rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]";
+
+function genderLabelOf(id: string): string {
+  return id === "m" ? "男生" : id === "f" ? "女生" : "保密";
+}
+
+function NoteDrawCard() {
+  const [noteMe, setNoteMe] = useState<{
+    hasNote: boolean;
+    balance: number;
+    freeDrawsPerDay: number;
+    drawCostCoins: number;
+  } | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [hit, setHit] = useState<{
+    threadId: number;
+    note: NoteCardDto;
+    kind: "free" | "coin";
+    freeLeft: number;
+  } | null>(null);
+  const [empty, setEmpty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reported, setReported] = useState(false);
+
+  useEffect(() => {
+    void fetchNoteMe()
+      .then((data) =>
+        setNoteMe({
+          hasNote: Boolean(data.note),
+          balance: data.balance,
+          freeDrawsPerDay: data.freeDrawsPerDay,
+          drawCostCoins: data.drawCostCoins,
+        }),
+      )
+      .catch(() => setNoteMe(null));
+  }, []);
+
+  const draw = async () => {
+    setDrawing(true);
+    setError(null);
+    setEmpty(false);
+    setHit(null);
+    setReported(false);
+    try {
+      const result = await drawNoteApi();
+      if (result.empty) {
+        setEmpty(true);
+      } else {
+        setHit({
+          threadId: result.threadId ?? 0,
+          note: result.note!,
+          kind: result.kind ?? "free",
+          freeLeft: result.freeLeft ?? 0,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof NoteApiError ? err.message : "抽取失败，请重试");
+    } finally {
+      setDrawing(false);
+    }
+  };
+
+  return (
+    <section className={`${NOTE_CARD_CLS} p-4`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--survey-heading)]">
+            <MailCheck className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+            缘分纸条
+          </p>
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
+            {noteMe
+              ? `每天前 ${noteMe.freeDrawsPerDay} 次免费，之后 ${noteMe.drawCostCoins} 金币/次 · 余额 ${noteMe.balance} 金币`
+              : "抽到同路人的纸条，抽中就能开始私聊"}
+          </p>
+        </div>
+        <a href="/notes" className="shrink-0 text-[11px] font-semibold text-[var(--survey-primary)]">
+          我的纸条 →
+        </a>
+      </div>
+
+      {hit ? (
+        <div className="mt-3 rounded-[var(--survey-radius)] border border-[var(--survey-primary)]/40 bg-[var(--survey-primary-soft)] p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[10px] font-black text-[var(--survey-primary-content)]">
+              {hit.kind === "free" ? "免费抽取" : "金币抽取"}
+              {hit.freeLeft > 0 ? ` · 今日还可免费抽 ${hit.freeLeft} 次` : ""}
+            </span>
+            <button type="button" aria-label="收起" className="survey-icon-btn h-7 w-7" onClick={() => setHit(null)}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="mt-2.5 flex gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--survey-card-bg)] text-xs font-black text-[var(--survey-primary)]">
+              {hit.note.gender === "m" ? "他" : hit.note.gender === "f" ? "她" : "?"}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--survey-muted)]">
+                <span>{genderLabelOf(hit.note.gender)}</span>
+                <span>·</span>
+                <span>{hit.note.ageBand} 岁</span>
+                {hit.note.region ? (
+                  <>
+                    <span>·</span>
+                    <span>{hit.note.region}</span>
+                  </>
+                ) : null}
+              </p>
+              <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[13px] leading-5 text-[var(--survey-heading)]">
+                {hit.note.content}
+              </p>
+            </div>
+          </div>
+          {reported ? (
+            <p className="mt-2 text-[11px] text-[var(--survey-muted)]">已收到举报，感谢反馈。</p>
+          ) : (
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center gap-1 text-[11px] text-[var(--survey-muted)] underline"
+              onClick={() => {
+                void reportNoteApi(hit.note.id, "用户举报").then(() => setReported(true));
+              }}
+            >
+              <Flag className="h-3 w-3" aria-hidden="true" />
+              举报这张纸条
+            </button>
+          )}
+          <div className="mt-3 flex gap-2">
+            <a
+              href={`/notes?thread=${hit.threadId}&tab=chat`}
+              className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-3 py-2 text-[13px] font-bold text-[var(--survey-primary-content)]"
+            >
+              <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              去回信
+            </a>
+            <button
+              type="button"
+              className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-3 py-2 text-[13px] font-semibold text-[var(--survey-body)] disabled:opacity-50"
+              disabled={drawing}
+              onClick={() => void draw()}
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              再抽一张
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="coin-pull-btn mt-3 w-full"
+            disabled={drawing || (noteMe !== null && !noteMe.hasNote)}
+            onClick={() => void draw()}
+          >
+            {drawing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                抽取中…
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                {noteMe !== null && !noteMe.hasNote ? "先放一张纸条才能抽" : "抽一张纸条"}
+              </>
+            )}
+          </button>
+          {empty ? (
+            <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
+              池子里的纸条都被你聊过啦，晚点再来看看。
+            </p>
+          ) : null}
+          {error ? <p className="mt-2 text-center text-[11px] text-[var(--app-danger)]">{error}</p> : null}
+          {noteMe !== null && !noteMe.hasNote ? (
+            <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
+              先去{" "}
+              <a href="/notes" className="font-semibold text-[var(--survey-primary)] underline">
+                放一张纸条
+              </a>{" "}
+              —— 放纸条的人才有回信。
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ---- /gacha：奖池、抽取、收藏 -------------------------------------------
 
 const RARITY_STYLES: Record<string, string> = {
@@ -652,7 +856,7 @@ export function GachaScreen() {
   }
 
   return (
-    <CoinPageShell title="报告抽卡" subtitle="用金币抽取其他用户主动公开并授权的报告与内容">
+    <CoinPageShell title="抽奖中心" subtitle="缘分纸条每天前 3 次免费；报告奖池用金币抽取">
       {error ? <ErrorBox message={error} /> : null}
       {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
       <div className="flex gap-2" role="tablist" aria-label="抽卡页面切换">
@@ -677,6 +881,12 @@ export function GachaScreen() {
           我的收藏
         </button>
       </div>
+
+      {tab === "pools" ? (
+        <div className="mb-3">
+          <NoteDrawCard />
+        </div>
+      ) : null}
 
       {tab === "pools" ? (
         pools === null ? (

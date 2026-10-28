@@ -10,6 +10,7 @@ import {
 import type { getSurveyFlow } from "../../services/question.service";
 import { getFirstQuestion, getNextQuestionAfterAnswers } from "../../survey/engine";
 import { getMatrixColumns } from "../../survey/question-presentation";
+import { parseHotspotSceneFromJson } from "../../survey/hotspot";
 import { fail } from "../api-response";
 
 type FlowQuestion = Awaited<ReturnType<typeof getSurveyFlow>>["questions"][number];
@@ -24,6 +25,9 @@ type FlowQuestion = Awaited<ReturnType<typeof getSurveyFlow>>["questions"][numbe
  * real answer — a long_text essay at this length is ~50k Chinese characters.
  */
 const MAX_TEXT_ANSWER_CHARS = 100_000;
+
+/** 场景答案 visited 数组的输入上限（配置护栏是 12 场景 × 24 热点 = 288）。 */
+const HOTSPOT_VISITED_MAX = 288;
 
 /**
  * Reads the question's configured text-length window, tolerating malformed
@@ -129,6 +133,42 @@ export async function planWebAnswer(
           responseId,
           questionId: question.id,
           values: { jsonValue: JSON.stringify({ kind: "matrix", selections: normalized }) },
+        }),
+      ],
+    };
+  }
+
+  if (type === "scene") {
+    // 场景答案 = 探索过的热点 id 列表，存成 matrix 同款的 kind-tagged JSON。
+    // 形状错误（非数组/非字符串项）是客户端 bug，直接拒绝；已失效的热点 id
+    // （内容更新后不再存在）则静默丢弃，旧答卷仍可无损重放。
+    const config = parseHotspotSceneFromJson(question.settingsJson);
+    if (!config) return { error: fail(400, "invalid_answer", "场景配置无效") };
+    const visited =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? (value as { visited?: unknown }).visited
+        : undefined;
+    if (!Array.isArray(visited) || visited.length > HOTSPOT_VISITED_MAX) {
+      return { error: fail(400, "invalid_answer", "场景答案无效") };
+    }
+    const known = new Set(Object.values(config.scenes).flatMap((scene) => scene.hotspots.map((hotspot) => hotspot.id)));
+    const normalized: string[] = [];
+    for (const entry of visited) {
+      // 非字符串项 = 客户端 bug，拒绝；未知 id / 重复探索 = 内容漂移，丢弃。
+      if (typeof entry !== "string") {
+        return { error: fail(400, "invalid_answer", "场景答案无效") };
+      }
+      if (known.has(entry) && !normalized.includes(entry)) normalized.push(entry);
+    }
+    if (normalized.length === 0) {
+      return { statements: clearAnswerStatements(env.DB, responseId, question.id) };
+    }
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: { jsonValue: JSON.stringify({ kind: "scene", visited: normalized }) },
         }),
       ],
     };
@@ -273,9 +313,16 @@ export function isWebAnswerPresent(answer: Answer | undefined): boolean {
     try {
       const parsed = JSON.parse(answer.jsonValue) as unknown;
       if (Array.isArray(parsed)) return parsed.length > 0;
-      if (parsed && typeof parsed === "object" && (parsed as { kind?: unknown }).kind === "matrix") {
-        const selections = (parsed as { selections?: Record<string, unknown> }).selections ?? {};
-        return Object.keys(selections).length > 0;
+      if (parsed && typeof parsed === "object") {
+        const kind = (parsed as { kind?: unknown }).kind;
+        if (kind === "matrix") {
+          const selections = (parsed as { selections?: Record<string, unknown> }).selections ?? {};
+          return Object.keys(selections).length > 0;
+        }
+        if (kind === "scene") {
+          const visited = (parsed as { visited?: unknown }).visited;
+          return Array.isArray(visited) && visited.length > 0;
+        }
       }
     } catch {
       return true;

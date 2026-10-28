@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 
 import type { QuestionType } from "../db/schema";
+import { parseHotspotSceneFromJson } from "../survey/hotspot";
 
 interface QuestionColumn {
   id: number;
@@ -97,6 +98,29 @@ function answerValue(
                 `${optionLabels.get(Number(rowId)) ?? `行 #${rowId}`}：${columns[Number(columnIndex)] ?? `列 ${Number(columnIndex) + 1}`}`,
             )
             .join(" | ");
+        }
+      }
+      if (
+        column?.type === "scene" &&
+        parsed &&
+        typeof parsed === "object" &&
+        "kind" in parsed &&
+        (parsed as { kind?: unknown }).kind === "scene"
+      ) {
+        // 场景答案导出为探索过的热点 label；多场景配置时带场景名前缀防歧义。
+        const visited = (parsed as { visited?: unknown }).visited;
+        if (Array.isArray(visited)) {
+          const config = parseHotspotSceneFromJson(column.settingsJson ?? null);
+          if (config) {
+            const multiScene = Object.keys(config.scenes).length > 1;
+            const labels = new Map<string, string>();
+            for (const scene of Object.values(config.scenes)) {
+              for (const hotspot of scene.hotspots) {
+                labels.set(hotspot.id, multiScene ? `${scene.title}·${hotspot.label}` : hotspot.label);
+              }
+            }
+            return visited.map((id) => labels.get(String(id)) ?? String(id)).join(" | ");
+          }
         }
       }
       if (Array.isArray(parsed)) {

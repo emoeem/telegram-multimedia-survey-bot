@@ -830,7 +830,7 @@ export interface EditorQuestion {
   required: boolean;
   order: number;
   pageId: number | null;
-  settings: { columns?: unknown; speaker?: unknown } | null;
+  settings: { columns?: unknown; speaker?: unknown; scene?: unknown } | null;
   validation: Record<string, unknown> | null;
   condition: Record<string, unknown> | null;
   media: EditorMediaRef[];

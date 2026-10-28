@@ -46,3 +46,6 @@ delivery/*/delivery/
 
 # 多代理评审的中间产物（after-A … after-final），属于临时工作目录
 _review/
+
+# survey-tool 的编译产物（三平台各 ~90MB，用 pnpm build:tool 重新生成）
+tools/survey-tool/dist/

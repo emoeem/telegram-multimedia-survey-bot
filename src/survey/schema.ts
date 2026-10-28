@@ -16,7 +16,8 @@ export type SurveyQuestionType =
   | "image"
   | "video"
   | "audio"
-  | "note";
+  | "note"
+  | "scene";
 
 export type MediaType = "photo" | "video" | "audio" | "voice" | "animation" | "gif" | "sticker" | "document";
 

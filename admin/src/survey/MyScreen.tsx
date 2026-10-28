@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ChevronRight, FileCheck2, Images, Link2, Palette, Target, UserRound, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  FileCheck2,
+  Images,
+  Link2,
+  MailCheck,
+  Palette,
+  Target,
+  UserRound,
+  X,
+} from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
 import { BottomNav } from "./BottomNav";
 import {
@@ -437,6 +448,23 @@ export function MyScreen() {
             </section>
 
             <CoinCard />
+
+            {/* 纸条聊天（0089）：个人中心的一等入口。 */}
+            <a
+              href="/notes"
+              className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+                <MailCheck className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-[var(--survey-heading)]">纸条聊天</span>
+                <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">
+                  放一张纸条，抽到同路的人就开始私聊
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+            </a>
 
             <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
               <div className="flex items-center justify-between">

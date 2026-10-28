@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Coins,
   Contact,
+  FileDown,
   FileUp,
   LayoutDashboard,
   ListChecks,
@@ -52,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/categories", icon: Tags, label: "分类" },
       { to: "/responses", icon: ListChecks, label: "答卷动态" },
       { to: "/imports", icon: FileUp, label: "导入" },
+      { to: "/exports", icon: FileDown, label: "导出" },
     ],
   },
   {
@@ -348,6 +350,7 @@ export function Layout() {
     if (/^\/surveys\/\d+\/responses\/\d+$/.test(path)) return "答卷详情";
     if (/^\/surveys\/\d+\/responses$/.test(path)) return "答卷";
     if (/^\/surveys\/\d+\/analytics$/.test(path)) return "统计";
+    if (/^\/surveys\/\d+\/scene\/\d+$/.test(path)) return "场景编辑器";
     if (/^\/surveys\/\d+\/editor$/.test(path)) return "问卷编辑器";
     if (/^\/surveys\/\d+/.test(path)) return "问卷详情";
     if (path.startsWith("/surveys")) return "问卷";

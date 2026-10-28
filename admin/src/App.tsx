@@ -14,6 +14,7 @@ const SurveysPage = lazy(() => import("./routes/SurveysPage").then((m) => ({ def
 const CategoriesPage = lazy(() => import("./routes/CategoriesPage").then((m) => ({ default: m.CategoriesPage })));
 const SurveyDetailPage = lazy(() => import("./routes/SurveyDetailPage").then((m) => ({ default: m.SurveyDetailPage })));
 const EditorPage = lazy(() => import("./routes/EditorPage").then((m) => ({ default: m.EditorPage })));
+const SceneEditorPage = lazy(() => import("./routes/SceneEditorPage").then((m) => ({ default: m.SceneEditorPage })));
 const ResponsesPage = lazy(() => import("./routes/ResponsesPage").then((m) => ({ default: m.ResponsesPage })));
 const ResponseDetailPage = lazy(() =>
   import("./routes/ResponseDetailPage").then((m) => ({ default: m.ResponseDetailPage })),
@@ -22,6 +23,7 @@ const ResponseActivityPage = lazy(() =>
   import("./routes/ResponseActivityPage").then((m) => ({ default: m.ResponseActivityPage })),
 );
 const ImportPage = lazy(() => import("./routes/ImportPage").then((m) => ({ default: m.ImportPage })));
+const ExportPage = lazy(() => import("./routes/ExportPage").then((m) => ({ default: m.ExportPage })));
 const AnalyticsPage = lazy(() => import("./routes/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })));
 const UsersPage = lazy(() => import("./routes/UsersPage").then((m) => ({ default: m.UsersPage })));
 const VersionsPage = lazy(() => import("./routes/VersionsPage").then((m) => ({ default: m.VersionsPage })));
@@ -74,8 +76,10 @@ const router = createBrowserRouter(
         { path: "categories", element: lazyElement(<CategoriesPage />) },
         { path: "responses", element: lazyElement(<ResponseActivityPage />) },
         { path: "imports", element: lazyElement(<ImportPage />) },
+        { path: "exports", element: lazyElement(<ExportPage />) },
         { path: "surveys/:id", element: lazyElement(<SurveyDetailPage />) },
         { path: "surveys/:id/editor", element: lazyElement(<EditorPage />) },
+        { path: "surveys/:id/scene/:qid", element: lazyElement(<SceneEditorPage />) },
         { path: "surveys/:id/responses", element: lazyElement(<ResponsesPage />) },
         { path: "surveys/:id/responses/:responseId", element: lazyElement(<ResponseDetailPage />) },
         { path: "surveys/:id/analytics", element: lazyElement(<AnalyticsPage />) },

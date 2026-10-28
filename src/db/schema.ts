@@ -71,7 +71,11 @@ export type QuestionType =
   | "audio"
   | "file"
   // 剧情文段：不收集答案的叙述节点，用于"不同答案不同过程"的剧情分支。
-  | "note";
+  | "note"
+  // 互动场景：场景图上的可点区域，点开内层图片或切换子场景；
+  // 探索过的热点 id 记入答案（json_value = {kind:"scene",visited}）。
+  // 配置存 settings_json（src/survey/hotspot.ts 校验），媒体挂 question_media。
+  | "scene";
 
 export interface SurveyQuestion {
   id: number;

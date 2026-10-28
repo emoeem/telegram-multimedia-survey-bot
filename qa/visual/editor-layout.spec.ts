@@ -297,3 +297,61 @@ test("narrow viewport degrades to the stacked mobile layout", async ({ page }) =
   }));
   expect(doc.overflowX).toBeLessThanOrEqual(1);
 });
+
+test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const builderPayload = editorPayload(1, buildQuestions(2));
+  const scenePayload = {
+    ...builderPayload,
+    questions: [
+      {
+        id: 77,
+        type: "scene",
+        title: "互动场景",
+        description: null,
+        required: true,
+        order: 0,
+        pageId: null,
+        settings: null,
+        validation: null,
+        condition: null,
+        media: [],
+        options: [],
+      },
+    ],
+  };
+  await mockEditorApi(page, { "/api/admin/surveys/1/editor": builderPayload });
+
+  // 后注册的精确路由优先于 mockEditorApi 的通配符：POST 之后 GET 返回带
+  // scene 题的编辑器数据，模拟「创建完跳到场景编辑器」的真实服务端状态。
+  let created = false;
+  const posts: Array<Record<string, unknown>> = [];
+  await page.route("**/api/admin/surveys/1/questions", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    posts.push(route.request().postDataJSON() as Record<string, unknown>);
+    created = true;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 77, order: 0, updatedAt: now }),
+    });
+  });
+  await page.route("**/api/admin/surveys/1/editor", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(created ? scenePayload : builderPayload),
+    }),
+  );
+
+  await page.goto("/admin/surveys/1/editor", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "添加互动场景" }).click();
+
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0]).toMatchObject({ type: "scene", title: "互动场景", required: true, pageId: null });
+  await expect(page).toHaveURL(/\/admin\/surveys\/1\/scene\/77$/);
+  await expect(page.locator(".scene-editor")).toBeVisible();
+  await expect(page.locator(".scene-editor-topbar")).toContainText("互动场景");
+  // 空配置落在题目面板：提示先添加场景。
+  await expect(page.locator(".scene-editor-empty")).toContainText("还没有场景");
+});

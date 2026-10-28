@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Copy, GitBranch, Paperclip, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Copy, GitBranch, MousePointerClick, Paperclip, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -54,6 +54,8 @@ interface QuestionCardProps {
   onRemoveQuestionMedia: (questionId: number, mediaAssetId: number) => Promise<boolean>;
   onAttachOptionMedia: (optionId: number, file: File) => Promise<boolean>;
   onRemoveOptionMedia: (optionId: number, mediaAssetId: number) => Promise<boolean>;
+  /** scene 题：打开独立的场景热点编辑器（标题/描述也在这里改）。 */
+  onOpenSceneEditor?: (questionId: number) => void;
 }
 
 interface AttachmentMedia {
@@ -174,6 +176,7 @@ export function QuestionCard({
   onRemoveQuestionMedia,
   onAttachOptionMedia,
   onRemoveOptionMedia,
+  onOpenSceneEditor,
 }: QuestionCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newOptionLabel, setNewOptionLabel] = useState("");
@@ -373,6 +376,11 @@ export function QuestionCard({
             </span>
           )}
           {question.id < 0 ? <span className="q-chip q-chip-unsaved">未保存</span> : null}
+          {question.type === "scene" ? (
+            <span className="q-chip" title="场景热点、标题与描述在「编辑场景」中维护。">
+              互动场景 · 用「编辑场景」配置
+            </span>
+          ) : null}
           {question.media.length ? (
             <span className="q-chip q-chip-media">
               <Paperclip className="h-3.5 w-3.5" />
@@ -381,6 +389,17 @@ export function QuestionCard({
           ) : null}
         </div>
         <div className="q-head-actions">
+          {question.type === "scene" ? (
+            <button
+              className="btn btn-sm btn-quiet"
+              disabled={!editable || question.id < 0}
+              onClick={() => onOpenSceneEditor?.(question.id)}
+              title={question.id < 0 ? "先保存问卷再编辑场景" : "编辑场景热点、标题与描述"}
+            >
+              <MousePointerClick className="h-3.5 w-3.5" />
+              编辑场景
+            </button>
+          ) : null}
           <button
             className="btn btn-sm btn-quiet"
             disabled={!editable}

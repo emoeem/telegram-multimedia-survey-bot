@@ -25,6 +25,7 @@ import { CERT_CONTENT_SETTING_KEY } from "./http/admin/cert-content";
 import { getSystemSetting } from "./db/repositories/system-settings.repository";
 import { handleSurveyApiRequest } from "./http/survey-api";
 import { handlePlazaApiRequest } from "./http/plaza-api";
+import { handleNoteApiRequest } from "./http/note-api";
 import { handleMeApiRequest } from "./http/me-api";
 import { handleCoinApiRequest } from "./http/coin-api";
 import { handleShowcaseApiRequest } from "./http/showcase-api";
@@ -674,6 +675,11 @@ export default {
         return servePublicPageWithMeta(env, request, "/series");
       }
 
+      // 纸条聊天（0089）：放/抽/对话三页签，与其它公开页共用问卷 SPA。
+      if (url.pathname === "/notes" || url.pathname.startsWith("/notes/")) {
+        return servePublicPageWithMeta(env, request, "/notes");
+      }
+
       if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
         return servePublicPageWithMeta(env, request, "/auth");
       }
@@ -712,6 +718,11 @@ export default {
 
       if (url.pathname.startsWith("/api/plaza/")) {
         return guardApiResponse(request, env, url, () => handlePlazaApiRequest(request, env, url));
+      }
+
+      // 纸条聊天（0089）：放/抽/会话/消息/举报 + 管理端下架复核。
+      if (url.pathname === "/api/note" || url.pathname.startsWith("/api/note/")) {
+        return guardApiResponse(request, env, url, () => handleNoteApiRequest(request, env, url));
       }
 
       if (url.pathname === "/api/showcase" || url.pathname.startsWith("/api/showcase/")) {

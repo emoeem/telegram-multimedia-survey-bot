@@ -137,7 +137,14 @@ export interface SurveyListItem {
   theme: SurveyThemeDto | null;
 }
 
-export type AnswerValue = number | string | number[] | Record<string, number> | { mediaAssetId: number } | null;
+export type AnswerValue =
+  | number
+  | string
+  | number[]
+  | Record<string, number>
+  | { mediaAssetId: number }
+  | { kind: "scene"; visited: string[] }
+  | null;
 
 let participantKey: string | null = null;
 
