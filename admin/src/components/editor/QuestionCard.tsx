@@ -12,6 +12,8 @@ interface QuestionCardProps {
   question: EditableQuestion;
   index: number;
   editable: boolean;
+  /** 基础/专业模式（S7）：透传给 QuestionForm 过滤高级区块；缺省 pro。 */
+  editorMode?: "basic" | "pro";
   dragHandle?: ReactNode;
   onFieldCommit: (questionId: number, patch: Record<string, unknown>, label: string) => void;
   onLocalChange: (questionId: number, patch: Partial<EditableQuestion>) => void;
@@ -44,6 +46,7 @@ export function QuestionCard({
   question,
   index,
   editable,
+  editorMode = "pro",
   dragHandle,
   onFieldCommit,
   onLocalChange,
@@ -188,6 +191,7 @@ export function QuestionCard({
         question={question}
         index={index}
         editable={editable}
+        editorMode={editorMode}
         onFieldCommit={onFieldCommit}
         onLocalChange={onLocalChange}
         onOptionRename={onOptionRename}

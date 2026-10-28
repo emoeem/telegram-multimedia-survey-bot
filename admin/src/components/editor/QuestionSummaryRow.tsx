@@ -29,12 +29,14 @@ export function QuestionSummaryRow({
 }) {
   const isNote = question.type === "note";
   const branches = branchCountOf(question);
+  // 外层不用 role="button"：内部还有上移/下移按钮，交互 role 嵌套会触发
+  // axe nested-interactive（serious）。保留 tabIndex + 键盘激活的等价行为。
   return (
     <div
-      className="q-row"
-      role="button"
+      className="q-row cursor-pointer"
       tabIndex={0}
       aria-current={active ? "true" : undefined}
+      aria-label={`${index + 1}. ${question.title || (isNote ? "未命名剧情" : "未命名题目")}`}
       style={active ? { outline: "2px solid var(--color-primary)", outlineOffset: "-2px" } : undefined}
       onClick={onOpen}
       onKeyDown={(event) => {

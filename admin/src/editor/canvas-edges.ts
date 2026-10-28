@@ -1,11 +1,19 @@
-import type { EditableQuestion } from "./useSurveyEditor";
-
 /**
  * S6 画布连线的数据层（纯函数）：从 condition 四区段提取「题目 → 题目」的边。
  * 只保留**向后**的目标（与引擎一致：跳转只允许向后，向前/自环不画）。
  * 跨页连线留 v2——这里不过滤 pageId，由渲染层决定（画布按全序列出，页内页外
  * 用样式区分是下一步；本轮画布按平铺序列呈现，无分页分组）。
  */
+
+/**
+ * 最小题目形状：不 import useSurveyEditor（会把浏览器代码拉进 Worker 侧的
+ * 根 tsconfig 编译，见 format.ts 的同类处理）；buildCanvasEdges 只消费这三项。
+ */
+export interface EdgeQuestion {
+  id: number;
+  order: number;
+  condition: Record<string, unknown> | null;
+}
 
 export type EdgeKind = "option" | "flagJump" | "answerRule" | "skipTo";
 
@@ -22,7 +30,7 @@ function num(value: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export function buildCanvasEdges(questions: EditableQuestion[]): CanvasEdge[] {
+export function buildCanvasEdges(questions: EdgeQuestion[]): CanvasEdge[] {
   const byId = new Map(questions.map((question) => [question.id, question]));
   const edges: CanvasEdge[] = [];
   for (const question of questions) {

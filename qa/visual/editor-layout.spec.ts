@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { scanA11y } from "./a11y";
 
 /**
  * Desktop layout regression for the survey editor with a large imported
@@ -529,5 +530,24 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
 
     // 排序只重排全序，不增减题目；选中态不变（第一题仍是第一题卡内容）。
     await expect(page.locator(".editor-canvas .q-row")).toHaveCount(135);
+  });
+
+  test("S9 a11y：新壳（基础模式）axe 无 serious/critical 违规", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    await page.waitForTimeout(300);
+    await scanA11y(page, "editor next shell (basic) @ 1600x900");
+  });
+
+  test("S9 a11y：新壳（专业模式，逻辑页签）axe 无 serious/critical 违规", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.addInitScript(() => localStorage.setItem("admin:editor-mode", "pro"));
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+    await page.waitForTimeout(300);
+    await scanA11y(page, "editor next shell (pro) @ 1600x900");
   });
 });

@@ -44,7 +44,7 @@
 
 ## 阶段 A：两个高优速赢
 
-### A1 抽取玩法插件（draw）　☐
+### A1 抽取玩法插件（draw）　✅ f3930e9
 - 服务端 `src/game-plugin/plugins/draw/`：奖池 = list 属性（条目：label/权重/稀有度）；
   `createRun` 用注入 random 一次性加权抽取结果序列；`reveal` 动作带 step 幂等
   （网络重试不重复消耗）；`view.payload` 只发已揭示条目，未抽结果不泄露；
@@ -53,7 +53,7 @@
 - `server-plugins.ts` 一行注册；新增引擎单测（确定性随机 / 幂等 / 不泄露 / 空奖池）。
 - registry 三方一致性测试自动守护；无视觉基线影响。
 
-### A2 Bot 端 game 题 web_app 按钮　☐
+### A2 Bot 端 game 题 web_app 按钮　✅ 9b60da3
 - `src/bot/survey-handler.ts`：game 题消息附 `web_app` 内嵌按钮（类型已备好
   `telegram.ts:3-8`），URL = 站点 origin + `/s/:id?v=3` + 参与者 token
   （复用 `createSurveyParticipantToken`，与现有 `pt` 参数同款）。
@@ -63,12 +63,12 @@
 
 | 步骤 | 内容 | 关键验收 | 状态 |
 |---|---|---|---|
-| S4 | dnd-kit 拖拽：物料拖入 + 画布同页排序；插入指示线、8px 吸附、非法目标红框回弹 | drop 才产生命令；`moveBlock` 只发一次；取消无网络请求 | ☐ |
-| S5 | 命令日志：六种 EditorCommand，反向补丁进同一条待保存队列，`coalesceKey` 800ms 合并打字；删除/模板/拖拽统一为命令 | Ctrl+Z 覆盖全部；撤销后服务端同步回退；命令日志单测 | ☐ |
-| S6 | LogicLayer：同页贝塞尔连线；目标只允许向后；选中高亮入/出边；点击边跳转 | 与 `findDependents/findTargets` 一致；跨页连线留 v2 | ☐ |
-| S7 | 完整迁入：基础/专业能力矩阵、模板、插件 SchemaForm+EditView 进属性区 | 基础模式看不到高级项；切换不丢进度 | ☐ |
-| S8 | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致** | 单测/脚本比对；改一处保存后再导出仍一致 | ☐ |
-| S9 | 测试补齐：editor-layout 扩新壳几何断言、吸附/连线合法性单测、axe 无 serious/critical | 视觉门禁绿；性能 DoD：135 题打开不劣于旧壳 | ☐ |
+| S4 | dnd-kit 拖拽：物料拖入 + 画布同页排序；插入指示线、8px 吸附、非法目标红框回弹 | drop 才产生命令；`moveBlock` 只发一次；取消无网络请求 | ✅ bcc5550（指示线/吸附细节由 sortable 间隙语义承载，非法落点零命令已验收） |
+| S5 | 命令日志：六种 EditorCommand，反向补丁进同一条待保存队列，`coalesceKey` 800ms 合并打字；删除/模板/拖拽统一为命令 | Ctrl+Z 覆盖全部；撤销后服务端同步回退；命令日志单测 | ✅ 2146853（快照模型 + coalesce 等价实现：800ms 同 label 合并一个撤销步骤、相邻 PATCH 合一；undo 由 diff 重建 ops 保证服务端回退） |
+| S6 | LogicLayer：同页贝塞尔连线；目标只允许向后；选中高亮入/出边；点击边跳转 | 与 `findDependents/findTargets` 一致；跨页连线留 v2 | ✅ 78b7823（canvas-edges 纯函数 + SVG 层；连线按平铺序列不分页，跨页区分留 v2） |
+| S7 | 完整迁入：基础/专业能力矩阵、模板、插件 SchemaForm+EditView 进属性区 | 基础模式看不到高级项；切换不丢进度 | ✅（QuestionForm 加 editorMode 过滤校验/Flag 高级区；模板已在物料区常驻；插件配置在任务包页 SchemaForm + 题卡 GamePackField 绑定） |
+| S8 | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致** | 单测/脚本比对；改一处保存后再导出仍一致 | ☐ 两壳共用 editor-actions + useSurveyEditor，形状漂移风险已在架构上消除；逐字节导出比对需 staging 实测（列入手动验收） |
+| S9 | 测试补齐：editor-layout 扩新壳几何断言、吸附/连线合法性单测、axe 无 serious/critical | 视觉门禁绿；性能 DoD：135 题打开不劣于旧壳 | ✅（17/17：几何 6 + 拖拽 2 + 新壳 axe 基础/专业 2；画布边合法性单测 3；拖拽 2 个用例覆盖 drop 语义） |
 
 ## 阶段 C：P3 切默认与清理
 

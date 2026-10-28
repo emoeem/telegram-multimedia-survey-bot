@@ -96,6 +96,7 @@ export function PropertiesPanel({
             question={selectedQuestion}
             index={selectedIndex}
             editable={editable}
+            editorMode={editorMode}
             onFieldCommit={(questionId, patch, label) => {
               if (Object.keys(patch).length) editor.queueQuestionPatch(questionId, patch, label);
             }}

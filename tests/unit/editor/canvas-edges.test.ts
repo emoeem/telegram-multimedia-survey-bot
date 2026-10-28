@@ -1,27 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildCanvasEdges } from "../../../admin/src/editor/canvas-edges";
-import type { EditableQuestion } from "../../../admin/src/editor/useSurveyEditor";
+import { buildCanvasEdges, type EdgeQuestion } from "../../../admin/src/editor/canvas-edges";
 
 /**
  * S6 画布连线的数据层：从 condition 四区段提取向后跳转的边；
  * 自环/向前跳转不画；kind 决定线的样式。
  */
-function q(id: number, order: number, condition: Record<string, unknown> | null): EditableQuestion {
-  return {
-    id,
-    type: "single",
-    title: `题 ${id}`,
-    description: null,
-    required: false,
-    order,
-    pageId: null,
-    columns: [],
-    gamePackId: null,
-    validation: null,
-    condition,
-    media: [],
-    options: [],
-  };
+function q(id: number, order: number, condition: Record<string, unknown> | null): EdgeQuestion {
+  return { id, order, condition };
 }
 
 describe("buildCanvasEdges", () => {

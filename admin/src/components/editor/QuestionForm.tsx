@@ -15,6 +15,12 @@ interface QuestionFormProps {
   question: EditableQuestion;
   index: number;
   editable: boolean;
+  /**
+   * 基础/专业模式（S7 能力矩阵）：基础模式只留 标题/描述/必答/附件/选项/
+   * 分页/小游戏包，隐藏 校验、命中 Flag、剧情 Flag 跳转。缺省 pro（旧壳与
+   * 直接使用方行为不变）。
+   */
+  editorMode?: "basic" | "pro";
   onFieldCommit: (questionId: number, patch: Record<string, unknown>, label: string) => void;
   onLocalChange: (questionId: number, patch: Partial<EditableQuestion>) => void;
   onOptionRename: (questionId: number, optionId: number, label: string) => void;
@@ -266,6 +272,7 @@ export function QuestionForm({
   question,
   index,
   editable,
+  editorMode = "pro",
   onFieldCommit,
   onLocalChange,
   onOptionRename,
@@ -286,6 +293,8 @@ export function QuestionForm({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const editableNow = editable && isEditableType(question.type);
   const isNote = question.type === "note";
+  // S7 能力矩阵：基础模式隐藏校验 / Flag 类高级配置；专业模式全量。
+  const proOnly = editorMode === "pro";
   const jumpable = JUMPABLE_TYPES.has(question.type) && editableNow;
   const validation = question.validation ?? {};
   const commitValidation = (patch: Record<string, number | boolean>) => {
@@ -746,7 +755,7 @@ export function QuestionForm({
                   </select>
                 </div>
               ) : null}
-              {question.type === "single" && editableNow ? (
+              {question.type === "single" && editableNow && proOnly ? (
                 <div className="q-branch-row">
                   <Sparkles className="h-3.5 w-3.5 shrink-0" />
                   <span className="q-branch-label">命中 Flag</span>
@@ -866,7 +875,7 @@ export function QuestionForm({
         </div>
       ) : null}
 
-      {editableNow ? (
+      {editableNow && proOnly ? (
         <div className="q-field">
           <span className="q-label">
             剧情 Flag 跳转
@@ -960,7 +969,7 @@ export function QuestionForm({
         </div>
       ) : null}
 
-      {question.type === "text" || question.type === "long_text" ? (
+      {proOnly && (question.type === "text" || question.type === "long_text") ? (
         <div className="flex flex-wrap gap-4">
           <NumberField
             label="最小长度"
@@ -977,7 +986,7 @@ export function QuestionForm({
         </div>
       ) : null}
 
-      {question.type === "number" ? (
+      {proOnly && question.type === "number" ? (
         <div className="flex flex-wrap gap-4">
           <NumberField
             label="最小值"
@@ -994,7 +1003,7 @@ export function QuestionForm({
         </div>
       ) : null}
 
-      {question.type === "multiple" ? (
+      {proOnly && question.type === "multiple" ? (
         <div className="flex flex-wrap gap-4">
           <NumberField
             label="最少选择"
