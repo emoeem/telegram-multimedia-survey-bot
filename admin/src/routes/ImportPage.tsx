@@ -1,7 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ApiError, api, apiSend, type ImportIssue, type ImportSummary, type ReportTemplateOption } from "../api";
-import { AlertTriangle, FilePlus2, FileSearch, FolderOpen, Link2 } from "lucide-react";
+import {
+  parseImportLines,
+  summarizeBatch,
+  type ImportBatchItem,
+} from "../lib/import-lines";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FilePlus2,
+  FileSearch,
+  FolderOpen,
+  Link2,
+  ListChecks,
+  Loader2,
+  Square,
+  XCircle,
+} from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   single: "单选",
@@ -28,8 +44,10 @@ export function ImportPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [content, setContent] = useState("");
-  const [urlInput, setUrlInput] = useState("");
-  const [importingUrl, setImportingUrl] = useState(false);
+  const [urlText, setUrlText] = useState("");
+  const [batchItems, setBatchItems] = useState<ImportBatchItem[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchCancelRef = useRef(false);
   const [validating, setValidating] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,28 +98,120 @@ export function ImportPage() {
     }
   };
 
-  const importFromUrl = async () => {
-    if (importingUrl || !urlInput.trim()) return;
-    setImportingUrl(true);
+  const parsedUrls = useMemo(() => parseImportLines(urlText), [urlText]);
+  const batchSummary = useMemo(() => summarizeBatch(batchItems), [batchItems]);
+
+  /** 把某一条已经抓回来的 JSON 放进下方编辑器，复用单卷校验/预览流程。 */
+  const openInEditor = async (item: ImportBatchItem) => {
+    if (!item.content) return;
+    setContent(item.content);
     setError(null);
     setIssues([]);
     setSummary(null);
     setDuplicates([]);
-    try {
-      const result = await apiSend<{ content: string; title: string }>("POST", "/api/admin/imports/from-url", {
-        url: urlInput.trim(),
-      });
-      setContent(result.content);
-      setUrlInput("");
-      await validate(result.content);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "从 URL 导入失败");
-      if (requestError instanceof ApiError && Array.isArray(requestError.data?.issues)) {
-        setIssues(requestError.data.issues as ImportIssue[]);
-      }
-    } finally {
-      setImportingUrl(false);
+    await validate(item.content);
+  };
+
+  /**
+   * 批量导入：逐条串行打 `/api/admin/imports/from-url`。
+   *
+   * 串行而不是并发，是因为每一行背后都是一次真实的外部抓取（Microsoft /
+   * Zoho 页面），并发发出去只会让目标站更容易限流，而我们本来就没有重试
+   * 预算。串行的代价是 N 个链接要等 N 倍时间，用逐条状态把进度显性化即可。
+   *
+   * `mode="create"` 会紧接着调用创建草稿接口；任一条失败只标记该条，不中断
+   * 整批——批量场景里停下来意味着用户还得从头再来一遍。
+   */
+  const runBatch = async (mode: "preview" | "create") => {
+    if (batchRunning) return;
+    if (parsedUrls.empty) {
+      setError("请先粘贴至少一个问卷链接，每行一个");
+      return;
     }
+    if (parsedUrls.lines.length === 0) {
+      setError("没有可导入的有效链接，请检查是否写成了完整的 http/https 地址");
+      return;
+    }
+    batchCancelRef.current = false;
+    setBatchRunning(true);
+    setError(null);
+    setIssues([]);
+    setSummary(null);
+    setDuplicates([]);
+    const queue = parsedUrls.lines;
+    setBatchItems(
+      queue.map((line) => ({
+        url: line.url,
+        raw: line.raw,
+        lineNumber: line.lineNumber,
+        status: "pending" as const,
+      })),
+    );
+
+    for (let index = 0; index < queue.length; index += 1) {
+      if (batchCancelRef.current) {
+        setBatchItems((prev) =>
+          prev.map((item, itemIndex) =>
+            itemIndex >= index && item.status === "pending"
+              ? { ...item, status: "failed" as const, error: "已手动停止" }
+              : item,
+          ),
+        );
+        break;
+      }
+      const line = queue[index]!;
+      setBatchItems((prev) =>
+        prev.map((item, itemIndex) =>
+          itemIndex === index ? { ...item, status: "importing" as const, error: undefined } : item,
+        ),
+      );
+      try {
+        const result = await apiSend<{ content: string; title?: string; questionCount?: number }>(
+          "POST",
+          "/api/admin/imports/from-url",
+          { url: line.url },
+        );
+        setBatchItems((prev) =>
+          prev.map((item, itemIndex) =>
+            itemIndex === index
+              ? { ...item, title: result.title, questionCount: result.questionCount, content: result.content }
+              : item,
+          ),
+        );
+        if (mode === "create") {
+          setBatchItems((prev) =>
+            prev.map((item, itemIndex) =>
+              itemIndex === index ? { ...item, status: "creating" as const } : item,
+            ),
+          );
+          const created = await apiSend<{ id: number }>("POST", "/api/admin/imports", {
+            content: result.content,
+            ...(templateId ? { reportTemplateId: templateId } : {}),
+          });
+          setBatchItems((prev) =>
+            prev.map((item, itemIndex) =>
+              itemIndex === index
+                ? { ...item, status: "created" as const, surveyId: created.id }
+                : item,
+            ),
+          );
+        } else {
+          setBatchItems((prev) =>
+            prev.map((item, itemIndex) =>
+              itemIndex === index ? { ...item, status: "imported" as const } : item,
+            ),
+          );
+        }
+      } catch (requestError) {
+        const message = requestError instanceof Error ? requestError.message : "导入失败";
+        setBatchItems((prev) =>
+          prev.map((item, itemIndex) =>
+            itemIndex === index ? { ...item, status: "failed" as const, error: message } : item,
+          ),
+        );
+      }
+    }
+    setBatchRunning(false);
   };
 
   const createDraft = async () => {
@@ -145,39 +255,145 @@ export function ImportPage() {
   return (
     <div className="space-y-4">
       <section className="card">
-        <h2 className="text-lg font-semibold">从 Microsoft / Zoho URL 导入</h2>
+        <h2 className="text-lg font-semibold">从 Microsoft / Zoho URL 批量导入</h2>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
-          输入公开的 Microsoft Forms 或 Zoho Forms 问卷链接，自动转换为标准问卷 JSON。PDF 与 Office 文档请在本地运行
+          每行一个链接，可一次导入多份问卷；空行与 <code className="rounded bg-[var(--surface-muted)] px-1 py-0.5 font-mono text-xs">#</code>{" "}
+          开头的行会被忽略。PDF 与 Office 文档请在本地运行
           <code className="mx-1 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-xs">
             uv run python scripts/import_survey_from_url.py
           </code>
           后把生成的 survey.json 粘贴到下方。
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <input
-            type="url"
-            className="min-w-0 sm:min-w-64 flex-1 rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
-            placeholder="https://forms.office.com/r/… 或 forms.zohopublic.com/…"
-            value={urlInput}
-            onChange={(event) => {
-              setUrlInput(event.target.value);
-              setIssues([]);
-              setError(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void importFromUrl();
-            }}
-          />
-          <button className="btn" disabled={importingUrl || !urlInput.trim()} onClick={() => void importFromUrl()}>
-            {importingUrl ? (
-              "导入中…"
-            ) : (
-              <>
-                <Link2 className="h-4 w-4" />从 URL 导入
-              </>
-            )}
-          </button>
+        <textarea
+          className="mt-4 min-h-32 w-full rounded-lg border border-[var(--control-border)] bg-[var(--surface)] p-3 font-mono text-sm leading-relaxed"
+          placeholder={"https://forms.office.com/r/xxxxxxxxxx\nhttps://forms.zohopublic.com/xxx/form/yyyyyyyy\n# 这一行是备注，不会导入"}
+          value={urlText}
+          disabled={batchRunning}
+          onChange={(event) => {
+            setUrlText(event.target.value);
+            setIssues([]);
+            setError(null);
+          }}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--color-muted)]">
+          <span className="inline-flex items-center gap-1">
+            <ListChecks className="h-4 w-4" />
+            识别到 <span className="font-semibold text-[var(--text-soft)]">{parsedUrls.lines.length}</span> 个链接
+          </span>
+          {parsedUrls.rejected.length ? (
+            <span className="text-[var(--app-danger)]">{parsedUrls.rejected.length} 行格式不合法</span>
+          ) : null}
+          {parsedUrls.duplicates.length ? <span>{parsedUrls.duplicates.length} 行重复已合并</span> : null}
+          {parsedUrls.overflow ? (
+            <span className="text-[var(--app-warning)]">{parsedUrls.overflow} 行超出单批上限，请分批导入</span>
+          ) : null}
         </div>
+        {parsedUrls.rejected.length ? (
+          <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-sm text-[var(--app-danger)]">
+            {parsedUrls.rejected.map((item) => (
+              <li key={`${item.lineNumber}-${item.raw}`}>
+                第 {item.lineNumber} 行：{item.raw} — {item.reason}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            className="btn"
+            disabled={batchRunning || parsedUrls.lines.length === 0}
+            onClick={() => void runBatch("preview")}
+          >
+            {batchRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+            批量导入并预览
+          </button>
+          <button
+            className="btn"
+            disabled={batchRunning || parsedUrls.lines.length === 0}
+            onClick={() => void runBatch("create")}
+          >
+            {batchRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus2 className="h-4 w-4" />}
+            批量导入并创建草稿
+          </button>
+          {batchRunning ? (
+            <button
+              className="btn"
+              onClick={() => {
+                batchCancelRef.current = true;
+              }}
+            >
+              <Square className="h-4 w-4" />
+              停止
+            </button>
+          ) : null}
+          {batchItems.length && !batchRunning ? (
+            <span className="text-sm text-[var(--color-muted)]">
+              共 {batchSummary.total} 条：成功 {batchSummary.imported + batchSummary.created} · 失败{" "}
+              {batchSummary.failed}
+              {batchSummary.created ? ` · 已建草稿 ${batchSummary.created}` : ""}
+            </span>
+          ) : null}
+        </div>
+
+        {batchItems.length ? (
+          <ul className="mt-4 divide-y divide-[var(--color-edge)] rounded-lg border border-[var(--color-edge)]">
+            {batchItems.map((item, index) => (
+              <li key={`${item.url}-${index}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
+                <span className="font-mono text-xs text-[var(--color-muted)]">{String(index + 1).padStart(2, "0")}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs" title={item.url}>
+                  {item.raw}
+                </span>
+                {item.status === "pending" ? <span className="text-[var(--color-muted)]">等待</span> : null}
+                {item.status === "importing" ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--color-primary)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    抓取中
+                  </span>
+                ) : null}
+                {item.status === "creating" ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--color-primary)]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    建草稿中
+                  </span>
+                ) : null}
+                {item.status === "imported" ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--app-success)]">
+                    <CheckCircle2 className="h-4 w-4" />
+                    已解析
+                  </span>
+                ) : null}
+                {item.status === "created" ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--app-success)]">
+                    <CheckCircle2 className="h-4 w-4" />
+                    已建草稿
+                  </span>
+                ) : null}
+                {item.status === "failed" ? (
+                  <span className="inline-flex items-center gap-1 text-[var(--app-danger)]">
+                    <XCircle className="h-4 w-4" />
+                    失败
+                  </span>
+                ) : null}
+                {item.title ? (
+                  <span className="w-full truncate text-[var(--text-soft)] sm:w-auto">
+                    {item.title}
+                    {item.questionCount !== undefined ? `（${item.questionCount} 题）` : ""}
+                  </span>
+                ) : null}
+                {item.error ? <span className="w-full text-[var(--app-danger)]">{item.error}</span> : null}
+                {item.content ? (
+                  <button className="btn btn-sm" disabled={batchRunning} onClick={() => void openInEditor(item)}>
+                    在编辑器预览
+                  </button>
+                ) : null}
+                {item.surveyId ? (
+                  <button className="btn btn-sm" onClick={() => navigate(`/surveys/${item.surveyId}/editor`)}>
+                    打开问卷 #{item.surveyId}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section className="card">
