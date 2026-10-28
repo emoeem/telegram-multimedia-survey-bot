@@ -502,7 +502,10 @@ async function play(
 // load. (That cancellation is a real property of the player: see the note in
 // the final report.)
 test.beforeAll(async () => {
-  // 25 个素材约 15MB：并发预热，落盘后重跑几乎不耗时
+  // 25 个素材约 15MB。CI runner 每次都是全新环境、没有落盘缓存，60 秒的默认
+  // hook 超时不够——这一步失败会把整条 playthrough 用例判成 beforeAll 超时，
+  // 看起来像功能坏了，其实只是下载慢。
+  test.setTimeout(180_000);
   await Promise.all(mediaPaths().map((url) => loadMedia(url)));
 });
 

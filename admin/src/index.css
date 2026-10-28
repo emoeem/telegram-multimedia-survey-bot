@@ -5329,7 +5329,7 @@ button.admin-stat:focus-visible {
   padding: 0 5px;
   border-radius: 3px;
   background: var(--survey-primary);
-  color: var(--survey-btn-text, #fff);
+  color: var(--survey-btn-text, var(--survey-primary-content, #fff));
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -5517,7 +5517,7 @@ button.admin-stat:focus-visible {
 
 .hotspot-modal-close:hover {
   background: var(--survey-primary);
-  color: var(--survey-btn-text, #fff);
+  color: var(--survey-btn-text, var(--survey-primary-content, #fff));
 }
 
 .hotspot-modal-close:focus-visible,
@@ -5594,7 +5594,7 @@ button.admin-stat:focus-visible {
   border: 0;
   border-radius: 8px;
   background: var(--survey-primary);
-  color: var(--survey-btn-text, #fff);
+  color: var(--survey-btn-text, var(--survey-primary-content, #fff));
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
