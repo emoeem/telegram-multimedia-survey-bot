@@ -40,3 +40,9 @@ delivery/*/delivery/
 
 # 本地计划/草稿产物
 .zcode/
+
+# Mimosa 的 hook 状态目录（每次会话都会变，34MB，1657 个文件，属于运行时产物）
+.mimosa/
+
+# 多代理评审的中间产物（after-A … after-final），属于临时工作目录
+_review/

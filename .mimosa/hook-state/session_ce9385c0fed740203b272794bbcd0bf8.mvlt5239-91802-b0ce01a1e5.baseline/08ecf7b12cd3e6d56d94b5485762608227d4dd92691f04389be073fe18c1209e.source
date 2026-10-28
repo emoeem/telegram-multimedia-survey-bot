@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# build.sh — 仅构建静态站点，产物在 public/ 目录。
-# 用法: ./scripts/deploy/build.sh
-set -euo pipefail
-
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
-
-build_site
-info "本地预览可执行: pnpm run server"
