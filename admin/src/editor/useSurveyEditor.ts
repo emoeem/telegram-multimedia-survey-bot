@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiSend, type EditorData, type EditorQuestion, type WriteResult } from "../api";
 import { reorderByQuestionIds } from "./questionOrder";
 import { buildOpsFromDiff, cloneSnapshot, type EditorSnapshot } from "./diffOps";
+import { canMergePendingPatch, shouldCoalesceHistory } from "./coalesce";
 
 // Phase 2.2 editing model: every mutation appends an operation to a queue with
 // a temporary negative id; 保存 flushes the queue sequentially against the
@@ -164,13 +165,28 @@ export function useSurveyEditor(data: EditorData) {
     setCanRedo(futureRef.current.length > 0);
   }, []);
 
-  const recordHistory = useCallback(() => {
+  // S5 合并打字：连续同类编辑只占一个撤销步骤（800ms 窗口，见 coalesce.ts）。
+  const lastHistoryRef = useRef<{ label: string; at: number } | null>(null);
+
+  const recordHistory = useCallback((label?: string) => {
+    const now = Date.now();
+    if (label && shouldCoalesceHistory(lastHistoryRef.current, label, now)) {
+      // 不压新快照：栈顶仍是这串编辑开始前的状态，一次 Ctrl+Z 整体回退。
+      lastHistoryRef.current = { label, at: now };
+      futureRef.current = [];
+      syncHistoryFlags();
+      return;
+    }
     const snapshot = cloneSnapshot(stateRef.current);
     const last = pastRef.current[pastRef.current.length - 1];
-    if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return;
+    if (last && JSON.stringify(last) === JSON.stringify(snapshot)) {
+      lastHistoryRef.current = { label: label ?? "", at: now };
+      return;
+    }
     pastRef.current.push(snapshot);
     if (pastRef.current.length > 100) pastRef.current.shift();
     futureRef.current = [];
+    lastHistoryRef.current = { label: label ?? "", at: now };
     syncHistoryFlags();
   }, [syncHistoryFlags]);
 
@@ -179,6 +195,7 @@ export function useSurveyEditor(data: EditorData) {
     const baseline = baselineRef.current;
     if (!previous || !baseline) return;
     futureRef.current.push(cloneSnapshot(stateRef.current));
+    lastHistoryRef.current = null; // 撤销后窗口断开：下一次编辑产生新的撤销步骤
     setQuestions(previous.questions as EditableQuestion[]);
     setSurveyMeta({
       ...previous.surveyMeta,
@@ -200,6 +217,7 @@ export function useSurveyEditor(data: EditorData) {
     const baseline = baselineRef.current;
     if (!next || !baseline) return;
     pastRef.current.push(cloneSnapshot(stateRef.current));
+    lastHistoryRef.current = null;
     setQuestions(next.questions as EditableQuestion[]);
     setSurveyMeta({
       ...next.surveyMeta,
@@ -235,7 +253,7 @@ export function useSurveyEditor(data: EditorData) {
 
   const pushOp = useCallback(
     (op: Omit<PendingOp, "key">) => {
-      recordHistory();
+      recordHistory(op.label);
       const key = opKeyRef.current++;
       setOps((current) => [...current, { ...op, key }]);
       setSaveError(null);
@@ -287,9 +305,27 @@ export function useSurveyEditor(data: EditorData) {
 
   const queueQuestionPatch = useCallback(
     (questionId: number, body: Record<string, unknown>, label: string) => {
+      const path = `/api/admin/surveys/${surveyId}/questions/${questionId}`;
+      // S5：相邻同路径 PATCH 合并为一条待保存操作（后写字段胜出）——
+      // 打字 5 次只发 1 个请求；撤销仍由快照整体回退。
+      const last = opsRef.current[opsRef.current.length - 1] ?? null;
+      if (canMergePendingPatch(last ? { method: last.method, path: last.path } : null, { method: "PATCH", path })) {
+        setOps((current) => {
+          if (!current.length) return current;
+          const lastIndex = current.length - 1;
+          const tail = current[lastIndex]!;
+          if (tail.method !== "PATCH" || tail.path !== path) return current;
+          const merged: PendingOp = { ...tail, body: { ...(tail.body ?? {}), ...body } };
+          const next = [...current];
+          next[lastIndex] = merged;
+          return next;
+        });
+        setSaveError(null);
+        return;
+      }
       pushOp({
         method: "PATCH",
-        path: `/api/admin/surveys/${surveyId}/questions/${questionId}`,
+        path,
         body,
         tempId: null,
         label,
@@ -585,6 +621,7 @@ export function useSurveyEditor(data: EditorData) {
     };
     pastRef.current = [];
     futureRef.current = [];
+    lastHistoryRef.current = null;
     syncHistoryFlags();
     return true;
   }, [ops, resolveOpReferences, saving, syncHistoryFlags]);
