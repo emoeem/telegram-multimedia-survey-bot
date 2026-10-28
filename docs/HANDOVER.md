@@ -1,8 +1,12 @@
 # 项目交接文档（给下一位开发者 / AI）
 
-> **2026-10-27 最新交接：互动场景（scene）与场景编辑器 WIP 见
-> [`docs/HOTSPOT_EDITOR_HANDOVER.md`](HOTSPOT_EDITOR_HANDOVER.md)。本节以下内容
-> 停留在 2026-08-23，迁移编号/功能清单已过时，仅作历史背景。**
+> **2026-10-29 最新交接**：编辑器 P2 收官 + P3 已切默认——三栏外壳成为编辑器默认界面，
+> 旧壳 `?ui=legacy` 只读兜底（保留两个版本周期后删除），场景编辑改为壳内全屏浮层；
+> 场景媒体结构化（URL → `{assetId}`）读侧已先行，**写侧必须先在 staging 实测后才可发布**
+> （push main 自动触发生产 deploy）。互动场景（scene）与场景编辑器细节见
+> [`docs/HOTSPOT_EDITOR_HANDOVER.md`](HOTSPOT_EDITOR_HANDOVER.md)；
+> **后续升级的唯一执行计划见 [`docs/UPGRADE_ROADMAP_2026-10-28.md`](UPGRADE_ROADMAP_2026-10-28.md)**。
+> 本节以下内容停留在 2026-08-23，迁移编号/功能清单已过时，仅作历史背景。
 >
 > 更新日期：2026-08-23。本文档说明**当前完成了什么、还缺什么、下一步做什么**，
 > 以及接手时最容易踩的坑。不含任何密钥/Token 明文——凭据一律走 Cloudflare

@@ -67,27 +67,27 @@
 | S5 | 命令日志：六种 EditorCommand，反向补丁进同一条待保存队列，`coalesceKey` 800ms 合并打字；删除/模板/拖拽统一为命令 | Ctrl+Z 覆盖全部；撤销后服务端同步回退；命令日志单测 | ✅ 2146853（快照模型 + coalesce 等价实现：800ms 同 label 合并一个撤销步骤、相邻 PATCH 合一；undo 由 diff 重建 ops 保证服务端回退） |
 | S6 | LogicLayer：同页贝塞尔连线；目标只允许向后；选中高亮入/出边；点击边跳转 | 与 `findDependents/findTargets` 一致；跨页连线留 v2 | ✅ 78b7823（canvas-edges 纯函数 + SVG 层；连线按平铺序列不分页，跨页区分留 v2） |
 | S7 | 完整迁入：基础/专业能力矩阵、模板、插件 SchemaForm+EditView 进属性区 | 基础模式看不到高级项；切换不丢进度 | ✅（QuestionForm 加 editorMode 过滤校验/Flag 高级区；模板已在物料区常驻；插件配置在任务包页 SchemaForm + 题卡 GamePackField 绑定） |
-| S8 | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致** | 单测/脚本比对；改一处保存后再导出仍一致 | ☐ 两壳共用 editor-actions + useSurveyEditor，形状漂移风险已在架构上消除；逐字节导出比对需 staging 实测（列入手动验收） |
+| S8 | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致** | 单测/脚本比对；改一处保存后再导出仍一致 | ✅ 自动化部分（e527b68）：新壳打开不编辑 → 超 autosave 防抖窗口 2.6s 零写请求（数据零漂移）；两壳共用 editor-actions + useSurveyEditor，形状漂移风险已在架构上消除；逐字节导出比对需 staging 实测（列手动验收） |
 | S9 | 测试补齐：editor-layout 扩新壳几何断言、吸附/连线合法性单测、axe 无 serious/critical | 视觉门禁绿；性能 DoD：135 题打开不劣于旧壳 | ✅（17/17：几何 6 + 拖拽 2 + 新壳 axe 基础/专业 2；画布边合法性单测 3；拖拽 2 个用例覆盖 drop 语义） |
 
 ## 阶段 C：P3 切默认与清理
 
-- [ ] S10：新壳设默认；旧壳保留两个版本周期只读兜底（编辑即跳新壳）后删除。
-- [ ] 场景编辑器改壳内全屏浮层（`/surveys/:id/scene/:qid` 保留 302 重定向），
-      严守三条禁令；这是「选中即配置、不出现页面跳转」承诺的最后一个例外。
+- [x] S10：新壳设默认（e527b68）；旧壳保留两个版本周期只读兜底，`?ui=legacy` 进入（编辑即跳新壳），两个版本周期后删除。
+- [x] 场景编辑器改壳内全屏浮层（e527b68）：SceneEditorPage 支持浮层形态，新壳「编辑场景/添加互动场景」选中即配置不跳页；严守三条禁令。`/surveys/:id/scene/:qid` 302 重定向随旧壳删除周期一并处理（留待下周期）。
 - [ ] 删除旧组件与死 CSS（`QuestionCard` 旧壳路径、`StructureTree` 旧交互、只服务旧壳的样式）；
-      删除前确认 `editor-layout.spec.ts` 已只针对新壳。
-- [ ] 更新 `docs/FEATURE-OVERVIEW.md` 与 `docs/HANDOVER.md` 过时段落。
+      删除前确认 `editor-layout.spec.ts` 已只针对新壳。——按「保留两个版本周期」承诺，随下下个周期执行。
+- [x] 更新 `docs/FEATURE-OVERVIEW.md` 与 `docs/HANDOVER.md` 过时段落（2026-10-29）。
 
 ## 阶段 D：场景媒体结构化（URL → mediaAssetId）
 
 按 `HANDOVER_EDITOR_P2_PLAN.md` §4 执行，顺序不可调换：
 
-1. [ ] 适配层 `mediaRefFromJson` / `mediaUrlFor`（字符串 or 结构化对象双读）。
-2. [ ] 读侧先改（无风险）：SurveyApp（BGM/背景/场景图）、cert、报告渲染走适配层。
+1. [x] 适配层 `mediaRefFromJson` / `mediaUrlFor`（字符串 or 结构化对象双读）。（21d83ed：`src/survey/media-ref.ts` 的 `parseMediaRef` / `resolveMediaRef`）
+2. [x] 读侧先改（无风险）：hotspot safeImage（场景图）与 theme（BGM/立绘/背景）全部接入双读——cert 与报告渲染不读 settings 媒体引用，无需改动；现有字符串数据行为零变化。（21d83ed）
 3. [ ] 写侧改存 `{assetId}` 并同步登记 `question_media`（否则 404）；
        **先在 staging 用 `scripts/galgame/`、`scripts/hotspot/` 样例跑通**——这是风险最高一步。
-4. [ ] 逐条遍历回填脚本（现有 `scripts/backfill-media-refs.mjs` 只处理第一处引用）。
+       ⚠️ 待办红线：push main 自动触发生产 deploy，staging 实测前代码不推。
+4. [x] 逐条遍历回填脚本：递归 CTE 逐处抽取，替代只处理第一处引用的雏形。（21d83ed）
 5. [ ] 引用计数 `countMediaAssetReferences` 改读结构化字段（或双读过渡）。
 6. [ ] 两个版本周期后删字符串兼容分支与正则兜底扫描。
 
