@@ -1,5 +1,6 @@
 import { registerGamePlugins } from "./registry";
 import { flipCardPlugin } from "./plugins/flip-card/engine";
+import { drawPlugin } from "./plugins/draw/engine";
 
 /**
  * 服务端插件注册表——新增玩法时**唯一需要改动的文件**（加一行）。
@@ -9,3 +10,4 @@ import { flipCardPlugin } from "./plugins/flip-card/engine";
  * 会断言「插件目录集合 === 注册集合」，漏登记直接红。
  */
 registerGamePlugins(flipCardPlugin);
+registerGamePlugins(drawPlugin);
