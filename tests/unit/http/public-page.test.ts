@@ -52,7 +52,20 @@ describe("后台裸路径补 /admin 前缀", () => {
   });
 
   it("公开页一个都不拦（否则会把前台流量劫进后台）", () => {
-    for (const path of ["/s", "/s/1", "/s/1/og.png", "/submit", "/submit/inbox", "/plaza", "/showcase", "/trial", "/cert", "/me", "/report/42", "/report/42.pdf"]) {
+    for (const path of [
+      "/s",
+      "/s/1",
+      "/s/1/og.png",
+      "/submit",
+      "/submit/inbox",
+      "/plaza",
+      "/showcase",
+      "/trial",
+      "/cert",
+      "/me",
+      "/report/42",
+      "/report/42.pdf",
+    ]) {
       expect(bareAdminRedirect(path), path).toBeNull();
     }
   });

@@ -13,7 +13,13 @@ import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
 import { handleSubmitApiRequest, isSubmitApiPath } from "./http/submit-api";
-import { bareAdminRedirect, escapeMetaAttribute, homeRedirectLocation, publicPageHead, submitPageMetaPath } from "./http/public-page";
+import {
+  bareAdminRedirect,
+  escapeMetaAttribute,
+  homeRedirectLocation,
+  publicPageHead,
+  submitPageMetaPath,
+} from "./http/public-page";
 import { handleInternalRenderRequest } from "./http/internal-render";
 import { createExportJobSender } from "./services/export-job-dispatch.service";
 import { handleLicenseApiRequest } from "./http/license-api";
