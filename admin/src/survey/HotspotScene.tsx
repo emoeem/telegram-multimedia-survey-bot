@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { parseHotspotScene, type Hotspot, type HotspotSceneConfig } from "../../../src/survey/hotspot";
+import {
+  parseHotspotScene,
+  resolveHotspotSceneRefs,
+  type Hotspot,
+  type HotspotSceneConfig,
+  type ResolvedHotspot,
+  type ResolvedHotspotSceneConfig,
+} from "../../../src/survey/hotspot";
 import type { AnswerValue, SurveyMediaDto, SurveyQuestionDto } from "./api";
 import { preloadImages, shouldSkipPreload } from "./media-preload";
 import { playSfx } from "./sfx";
@@ -22,7 +29,7 @@ interface HotspotSceneProps {
 }
 
 interface ModalState {
-  hotspot: Hotspot;
+  hotspot: ResolvedHotspot;
   sceneId: string;
   rect: DOMRect;
   trigger: HTMLButtonElement;
@@ -54,7 +61,11 @@ export function visitedCountFromAnswer(value: AnswerValue): number {
 }
 
 export function HotspotScene({ question, value, onChange, disabled }: HotspotSceneProps) {
-  const config = useMemo(() => parseHotspotScene(question.settings), [question.settings]);
+  // 阶段 D：存储可能是 {assetId} 结构化引用，渲染前统一解析成公开 URL。
+  const config = useMemo<ResolvedHotspotSceneConfig | null>(() => {
+    const parsed = parseHotspotScene(question.settings);
+    return parsed ? resolveHotspotSceneRefs(parsed) : null;
+  }, [question.settings]);
   const altByUrl = useMemo(() => {
     const map = new Map<string, string>();
     for (const media of question.media as SurveyMediaDto[]) {
@@ -99,7 +110,7 @@ export function HotspotScene({ question, value, onChange, disabled }: HotspotSce
 
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
-  const openModal = useCallback((hotspot: Hotspot, scene: string, trigger: HTMLButtonElement) => {
+  const openModal = useCallback((hotspot: ResolvedHotspot, scene: string, trigger: HTMLButtonElement) => {
     window.clearTimeout(closeTimer.current);
     playSfx("select");
     setModal({ hotspot, sceneId: scene, rect: trigger.getBoundingClientRect(), trigger });
@@ -145,7 +156,7 @@ export function HotspotScene({ question, value, onChange, disabled }: HotspotSce
   }, [modal, closeModal]);
 
   const activate = useCallback(
-    (hotspot: Hotspot, scene: string, trigger: HTMLButtonElement) => {
+    (hotspot: ResolvedHotspot, scene: string, trigger: HTMLButtonElement) => {
       if (disabled) return;
       if (!visited.includes(hotspot.id)) {
         onChange({ kind: "scene", visited: [...visited, hotspot.id] });

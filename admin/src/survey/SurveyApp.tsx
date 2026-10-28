@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { SpriteLayer } from "./SpriteLayer";
 import { closeWebApp } from "./navigation";
-import { resolveBgmUrl, resolveSprite } from "../../../src/survey/theme";
+import { resolveBgmUrl, resolveSprite, resolveSurveySfxUrls, resolveThemeMediaRef } from "../../../src/survey/theme";
 import { BottomNav } from "./BottomNav";
 import {
   isValidPresetId,
@@ -2285,7 +2285,8 @@ export function SurveyApp() {
   // 会覆盖整份主题，自定义音效随之失效；老问卷没有 sfx 字段时一律不发声。
   const sfxUrls = (() => {
     if (resolvedUserPreset) return undefined;
-    return "survey" in screen ? screen.survey.theme?.audio?.sfx : undefined;
+    // 阶段 D 双读：{assetId} 派生可播放 URL（configureSfx 只认字符串）。
+    return "survey" in screen ? resolveSurveySfxUrls(screen.survey.theme?.audio?.sfx) : undefined;
   })();
 
   useEffect(() => {
@@ -3071,7 +3072,17 @@ export function SurveyApp() {
               url={sprite.url}
               expression={sprite.expression}
               name={sprite.name}
-              expressions={theme?.sprite?.expressions}
+              // 阶段 D 双读：预热表需要可加载 URL。
+              expressions={(() => {
+                const raw = theme?.sprite?.expressions;
+                if (!raw) return undefined;
+                const resolved: Record<string, string> = {};
+                for (const [name, ref] of Object.entries(raw)) {
+                  const url = resolveThemeMediaRef(ref);
+                  if (url !== undefined) resolved[name] = url;
+                }
+                return resolved;
+              })()}
             />
           ) : null}
           <div className={`survey-card p-5 ${isNote ? "survey-card-story" : ""}`}>

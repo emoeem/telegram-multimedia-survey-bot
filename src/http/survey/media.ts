@@ -162,8 +162,18 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
        * number 绑定会被当 REAL,concat 时 8 变成 '8.0',永远匹配不上。 */
       SELECT 1 AS linked FROM surveys s
        WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL
-         AND instr(s.settings_json, '"/api/survey/media/' || ? || '"') > 0`,
-    ).bind(mediaId, mediaId, mediaId, String(mediaId)),
+         AND instr(s.settings_json, '"/api/survey/media/' || ? || '"') > 0
+      /* 第五种挂载(阶段 D):写入侧改存 {assetId} 结构化引用后,URL 字符串
+       * 匹配(第四路)看不见它们。theme 保存时引用会事务性落成 media_refs
+       * (ref_type='survey_theme', ref_key='survey:<id>:<assetId>'),这里 JOIN
+       * 已发布问卷校验公开性——发布时刻即正确,不依赖每日 cron。URL 字符串
+       * 形态的旧数据继续走第四路,两形态在过渡期并存。 */
+      UNION
+      SELECT 1 AS linked FROM surveys s
+       JOIN media_refs mr ON mr.ref_type = 'survey_theme' AND mr.asset_id = ?
+        AND mr.ref_key = 'survey:' || s.id || ':' || ?
+       WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL`,
+    ).bind(mediaId, mediaId, mediaId, String(mediaId), mediaId, String(mediaId)),
   ]);
   const asset = mapMediaAssetStatement(assetResult);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");

@@ -86,9 +86,14 @@
 
 1. [x] 适配层 `mediaRefFromJson` / `mediaUrlFor`（字符串 or 结构化对象双读）。（21d83ed：`src/survey/media-ref.ts` 的 `parseMediaRef` / `resolveMediaRef`）
 2. [x] 读侧先改（无风险）：hotspot safeImage（场景图）与 theme（BGM/立绘/背景）全部接入双读——cert 与报告渲染不读 settings 媒体引用，无需改动；现有字符串数据行为零变化。（21d83ed）
-3. [ ] 写侧改存 `{assetId}` 并同步登记 `question_media`（否则 404）；
-       **先在 staging 用 `scripts/galgame/`、`scripts/hotspot/` 样例跑通**——这是风险最高一步。
-       ⚠️ 待办红线：push main 自动触发生产 deploy，staging 实测前代码不推。
+3. [~] 写侧改存 `{assetId}`：**代码已就绪于 `feat/media-assetid-write` 分支（不推 main）**——
+   场景编辑器/BGM 存 `{assetId}` + attach 登记 `question_media`（补上「从库选图不挂表」缺口）；
+   `normalizeSurveyTheme` 放行对象（原会剥掉）；PATCH theme 事务登记 `media_refs`
+   （`survey_theme`）+ 媒体端点第五路 linkage（`{assetId}` 后第四路 URL 匹配失效的对策）；
+   样例 importer 参数化（`--config/--kv-namespace`，默认仍生产）。单测 1459（+9）。
+   **下一步：按 `docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md` 在 staging 实测**（切 staging
+   账号 → 部署 → 双形态样例 → 8 项清单），全过后才合入 main。
+   ⚠️ 红线不变：push main 自动触发生产 deploy，staging 实测通过前不合入。
 4. [x] 逐条遍历回填脚本：递归 CTE 逐处抽取，替代只处理第一处引用的雏形。（21d83ed）
 5. [x] 引用计数双读过渡：`countMediaAssetReferences` 本就读结构化关联表（`media_refs`
        即结构化投影），双读落在两个正则扫描点——`syncWeakMediaRefs` 与孤儿清扫的

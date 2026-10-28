@@ -44,6 +44,15 @@ CREATE TABLE option_media (
   question_option_id INTEGER NOT NULL,
   media_asset_id INTEGER NOT NULL
 );
+CREATE TABLE media_refs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id INTEGER NOT NULL,
+  ref_type TEXT NOT NULL,
+  ref_key TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(ref_type, ref_key)
+);
 CREATE TABLE media_assets (
   id INTEGER PRIMARY KEY,
   asset_scope TEXT NOT NULL,
@@ -104,6 +113,13 @@ function buildEnv() {
         void db
           .prepare("INSERT INTO question_media (question_id, media_asset_id) VALUES (?, ?)")
           .bind(questionId, mediaAssetId)
+          .run(),
+      themeRef: (surveyId: number, mediaAssetId: number) =>
+        void db
+          .prepare(
+            "INSERT INTO media_refs (asset_id, ref_type, ref_key, created_at, updated_at) VALUES (?, 'survey_theme', ?, ?, ?)",
+          )
+          .bind(mediaAssetId, `survey:${surveyId}:${mediaAssetId}`, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z")
           .run(),
     },
   };
@@ -178,6 +194,40 @@ describeIf("survey media visibility (real SQL)", () => {
     insert.survey(9, "published", null, null, JSON.stringify({ image: "/api/survey/media/1767" }));
     const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/10"), env, 10);
     expect(response.status).toBe(404);
+  });
+
+  /* 阶段 D 第五路：{assetId} 结构化 theme 引用在保存时落成 media_refs
+   * （ref_type='survey_theme'），发布后公开性 JOIN 这张表。 */
+  it("survey_theme media_refs row on a published survey → public", async () => {
+    const { env, insert } = buildEnv();
+    insert.survey(10, "published");
+    insert.themeRef(10, 1);
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/1"), env, 1);
+    expect(response.status).toBe(200);
+  });
+
+  it("survey_theme media_refs row on a draft or soft-deleted survey → refused", async () => {
+    const { env, insert } = buildEnv();
+    insert.survey(11, "draft");
+    insert.themeRef(11, 2);
+    insert.survey(12, "published", "2026-01-01T00:00:00Z");
+    insert.themeRef(12, 3);
+    expect((await serveSurveyMedia(new Request("https://worker.test/api/survey/media/2"), env, 2)).status).toBe(404);
+    expect((await serveSurveyMedia(new Request("https://worker.test/api/survey/media/3"), env, 3)).status).toBe(404);
+  });
+
+  it("survey_theme ref_key embeds both ids — no cross-survey or cross-asset false match", async () => {
+    const { env, insert } = buildEnv();
+    /* 问卷 13 的 theme 引用素材 4；素材 5 不能借同一问卷变公开，
+     * 问卷 14 上指向素材 5 的行也不存在——双向都钉死。 */
+    insert.survey(13, "published");
+    insert.themeRef(13, 4);
+    insert.survey(14, "published");
+    insert.themeRef(14, 5);
+    expect((await serveSurveyMedia(new Request("https://worker.test/api/survey/media/4"), env, 4)).status).toBe(200);
+    expect((await serveSurveyMedia(new Request("https://worker.test/api/survey/media/5"), env, 5)).status).toBe(200);
+    // 素材 6 没有任何登记行 → 拒绝。
+    expect((await serveSurveyMedia(new Request("https://worker.test/api/survey/media/6"), env, 6)).status).toBe(404);
   });
 
   it("cover media of a once-published survey → public", async () => {

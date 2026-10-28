@@ -25,9 +25,19 @@ const MAX_TEXT_LENGTH = 400;
 // toUrl 在这里注入（媒体端点拼写归此维护）；parseMediaRef 见 media-ref.ts。
 const toPublicMediaUrl = (assetId: number): string => ["/api/survey/media/", String(assetId)].join("");
 
+/**
+ * 场景媒体引用（阶段 D 写侧切换的目标形态）：
+ *  - 字符串：既有形态——站内 `/api/survey/media/<id>`、外链 https、data:，
+ *    以及仅导入校验期合法的 `kv://<slug>` 占位；
+ *  - `{ assetId: n }`：结构化形态（写侧从素材库选图时存这个，配合
+ *    question_media 登记保证公开性）。
+ * 渲染统一经 `resolveHotspotSceneRefs` 派生成 URL 字符串。
+ */
+export type SceneMediaRef = string | { assetId: number };
+
 export interface HotspotImageAction {
   kind: "image";
-  src: string;
+  src: SceneMediaRef;
   title: string;
   caption?: string;
   note?: string;
@@ -57,7 +67,7 @@ export interface HotspotScene {
   id: string;
   title: string;
   intro?: string;
-  image: string;
+  image: SceneMediaRef;
   width: number;
   height: number;
   alt?: string;
@@ -81,18 +91,19 @@ function safeString(value: unknown, maxLength: number): string | undefined {
 }
 
 /**
- * 与 theme.ts safeImage 同一白名单：data:image/、https://、站内相对路径。
+ * 与 theme.ts 的媒体白名单同一策略：data:image/、https://、站内相对路径。
  * allowPlaceholderRefs 只在导入校验时打开：声明 JSON 用 kv://<slug> 占位，
  * 导入脚本落库前会把它们换成 /api/survey/media/<id>；运行时（读端消毒）
  * 必须保持严格，否则一张坏图会以合法身份渲染出来。
  *
  * 阶段 D 双读：既有字符串输入走白名单原样返回（视觉逐像素一致）；
- * 结构化 {assetId} 直接派生 URL（写入侧切换后立即生效，白名单等价——
- * assetId 是正整数，派生的站内路径必然命中「/」前缀分支）。
+ * 结构化 {assetId} **原样保留**（写侧消毒时不能把它转回 URL——存储形态
+ * 就该是结构化的）；渲染时统一走 resolveHotspotSceneRefs 派生 URL。
  */
-function safeImage(value: unknown, allowPlaceholderRefs = false): string | undefined {
-  if (value !== null && typeof value === "object") {
-    return resolveMediaRef(value, toPublicMediaUrl);
+function safeMediaRef(value: unknown, allowPlaceholderRefs = false): SceneMediaRef | undefined {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const assetId = parseMediaRef(value);
+    return assetId === null ? undefined : { assetId };
   }
   const image = safeString(value, MAX_URL_LENGTH);
   if (!image) return undefined;
@@ -118,7 +129,7 @@ function safeDimension(value: unknown): number | undefined {
 function parseAction(value: unknown, sceneIds: Set<string>, allowPlaceholderRefs = false): HotspotAction | null {
   if (!isRecord(value)) return null;
   if (value.kind === "image") {
-    const src = safeImage(value.src, allowPlaceholderRefs);
+    const src = safeMediaRef(value.src, allowPlaceholderRefs);
     const title = safeString(value.title, MAX_LABEL_LENGTH);
     if (!src || !title) return null;
     const action: HotspotImageAction = { kind: "image", src, title };
@@ -165,7 +176,7 @@ function parseScene(
 ): HotspotScene | null {
   if (!isRecord(value)) return null;
   const title = safeString(value.title, 80);
-  const image = safeImage(value.image, allowPlaceholderRefs);
+  const image = safeMediaRef(value.image, allowPlaceholderRefs);
   const width = safeDimension(value.width);
   const height = safeDimension(value.height);
   if (!title || !image || width === undefined || height === undefined) return null;
@@ -232,10 +243,54 @@ export function parseHotspotSceneFromJson(settingsJson: string | null): HotspotS
   }
 }
 
+/** 渲染用形态：所有媒体引用都已解析成 URL 字符串（见 resolveHotspotSceneRefs）。 */
+export type ResolvedHotspotAction =
+  | (Omit<Extract<HotspotAction, { kind: "image" }>, "src"> & { src: string })
+  | Extract<HotspotAction, { kind: "scene" }>;
+
+export interface ResolvedHotspot extends Omit<Hotspot, "action"> {
+  action: ResolvedHotspotAction;
+}
+
+export interface ResolvedHotspotScene extends Omit<HotspotScene, "image" | "hotspots"> {
+  image: string;
+  hotspots: ResolvedHotspot[];
+}
+
+export interface ResolvedHotspotSceneConfig extends Omit<HotspotSceneConfig, "scenes"> {
+  scenes: Record<string, ResolvedHotspotScene>;
+}
+
+/**
+ * 渲染前把配置里的 {assetId} 引用解析成公开 URL；字符串（外链、kv: 占位）
+ * 原样返回。玩家端与 admin 预览都在拿到解析结果后再进渲染层——渲染组件
+ * 因此可以继续把 image/src 当字符串用。返回新对象，不改入参。
+ */
+export function resolveHotspotSceneRefs(config: HotspotSceneConfig): ResolvedHotspotSceneConfig {
+  const scenes: Record<string, ResolvedHotspotScene> = {};
+  for (const [id, scene] of Object.entries(config.scenes)) {
+    const image = resolveMediaRef(scene.image, toPublicMediaUrl);
+    // 消毒后的配置不会有解析不出 URL 的引用；万一出现（脏数据直接落库），
+    // 跳过整个场景比渲染一个坏图安全。
+    if (image === undefined) continue;
+    const hotspots: ResolvedHotspot[] = scene.hotspots.map((hotspot): ResolvedHotspot => {
+      if (hotspot.action.kind !== "image") return { ...hotspot, action: hotspot.action };
+      const src = resolveMediaRef(hotspot.action.src, toPublicMediaUrl);
+      // src 解析不出只可能来自未消毒的脏数据（正常写路径都会过 safeMediaRef）；
+      // 保守保留原值并断言通过——渲染层对这种情况给出的是 object src，只会
+      // 破坏这一张图，不会波及其它场景。
+      return src === undefined ? (hotspot as ResolvedHotspot) : { ...hotspot, action: { ...hotspot.action, src } };
+    });
+    scenes[id] = { ...scene, image, hotspots };
+  }
+  return { ...config, scenes };
+}
+
 /** 收集配置引用的全部图片 URL（场景图 + 内层图），供脚本挂 question_media。 */
 export function hotspotMediaUrls(config: HotspotSceneConfig): string[] {
+  const resolved = resolveHotspotSceneRefs(config);
   const urls = new Set<string>();
-  for (const scene of Object.values(config.scenes)) {
+  for (const scene of Object.values(resolved.scenes)) {
     urls.add(scene.image);
     for (const hotspot of scene.hotspots) {
       if (hotspot.action.kind === "image") urls.add(hotspot.action.src);

@@ -1,6 +1,6 @@
 import { getSurveyById } from "../../db/repositories/survey.repository";
 import type { MediaAsset, QuestionType, SurveyQuestion } from "../../db/schema";
-import { normalizeSurveyTheme } from "../../survey/theme";
+import { collectSurveyThemeMediaAssetIds, normalizeSurveyTheme, type SurveyTheme } from "../../survey/theme";
 import { REPORT_TEMPLATES } from "../../services/report/template";
 import {
   WriteContext,
@@ -50,6 +50,7 @@ import { isMatrixQuestionType } from "../../survey/question-rules";
 import {
   createOptionMedia,
   createQuestionMedia,
+  upsertMediaRef,
   deleteOptionMediaByAsset,
   deleteQuestionMediaByAsset,
   getMediaAssetById,
@@ -193,6 +194,7 @@ export async function handleAdminEditorWrite(
         binds.push(parsed);
       }
     }
+    let nextTheme: SurveyTheme | null = null;
     if (body.theme !== undefined) {
       const existingSurvey = await getSurveyById(db, surveyId);
       const settings = existingSurvey?.settingsJson
@@ -204,6 +206,7 @@ export async function handleAdminEditorWrite(
         const normalized = normalizeSurveyTheme(body.theme);
         if (!normalized) return fail(400, "validation_failed", "主题内容无效");
         settings.theme = normalized;
+        nextTheme = normalized;
       } else {
         return fail(400, "validation_failed", "theme 必须是对象或 null");
       }
@@ -219,6 +222,26 @@ export async function handleAdminEditorWrite(
       .prepare(`UPDATE surveys SET ${updates.join(", ")} WHERE id = ?`)
       .bind(...binds)
       .run();
+    if (body.theme !== undefined) {
+      // 阶段 D：theme 引用的素材（BGM/背景/立绘/音效）以 {assetId} 存进
+      // settings_json 后，媒体端点的第四路 linkage（URL 字符串匹配）看不见
+      // 它们——保存时把引用落成 media_refs 结构化行（ref_type='survey_theme'），
+      // 端点第五路 JOIN 这张表。每次全量重建该问卷的登记行，引用失效随保存
+      // 自动消失；发布时刻即正确，不依赖每日 cron 的弱引用同步。
+      await db
+        .prepare("DELETE FROM media_refs WHERE ref_type = 'survey_theme' AND ref_key LIKE ?")
+        .bind(`survey:${surveyId}:%`)
+        .run();
+      if (nextTheme) {
+        for (const assetId of collectSurveyThemeMediaAssetIds(nextTheme)) {
+          await upsertMediaRef(db, {
+            refType: "survey_theme",
+            refKey: `survey:${surveyId}:${assetId}`,
+            assetId,
+          });
+        }
+      }
+    }
     return json({ updatedAt: timestamp });
   }
 

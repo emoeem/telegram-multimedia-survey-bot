@@ -30,6 +30,7 @@ import {
 import { useApi } from "../hooks";
 import { ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
+import { resolveThemeMediaRef } from "../../../src/survey/theme";
 import { DeleteWithUndo } from "../components/DeleteWithUndo";
 import { formatDateTime } from "../format";
 import { PresetSwatch } from "../survey/theme-ui";
@@ -68,6 +69,9 @@ export function SurveyDetailPage() {
   const [preset, setPreset] = useState("");
   const [customJson, setCustomJson] = useState("");
   const [bgmUrl, setBgmUrl] = useState("");
+  // 阶段 D：上传得到的 BGM 记住素材 id，保存时写 {assetId} 结构化引用；
+  // 手工改过文本框（外链/换地址）后 id 失效，回退为字符串形态。
+  const [bgmAssetId, setBgmAssetId] = useState<number | null>(null);
   // theme.audio 里除 url 以外的键（如 byPage）——编辑器没有各自的输入框，
   // 保存时必须原样带回，否则一次主题保存就会清掉分线 BGM 配置。
   const [audioExtra, setAudioExtra] = useState<Record<string, unknown>>({});
@@ -103,13 +107,16 @@ export function SurveyDetailPage() {
       } else {
         setAudioExtra({});
       }
-      setBgmUrl(audio?.url ?? "");
+      const seededUrl = audio?.url;
+      setBgmUrl(typeof seededUrl === "string" ? seededUrl : (resolveThemeMediaRef(seededUrl) ?? ""));
+      setBgmAssetId(seededUrl !== null && typeof seededUrl === "object" ? seededUrl.assetId : null);
       setCompletionMessage(completion?.message ?? "");
       setCompletionRedirect(completion?.redirectUrl ?? "");
       setCompletionRestart(completion?.showRestart === true);
     } else {
       setCustomJson("");
       setBgmUrl("");
+      setBgmAssetId(null);
       setAudioExtra({});
       setCompletionMessage("");
       setCompletionRedirect("");
@@ -165,7 +172,10 @@ export function SurveyDetailPage() {
       if (!clear) {
         if (preset) theme.preset = preset;
         const audio: Record<string, unknown> = { ...audioExtra };
-        if (bgmUrl.trim()) audio.url = bgmUrl.trim();
+        if (bgmUrl.trim()) {
+          // 阶段 D 写侧：上传产物存 {assetId}；手工外链保留字符串。
+          audio.url = bgmAssetId !== null ? { assetId: bgmAssetId } : bgmUrl.trim();
+        }
         if (Object.keys(audio).length) theme.audio = audio;
         const completion: Record<string, unknown> = {};
         if (completionMessage.trim()) completion.message = completionMessage.trim();
@@ -222,8 +232,9 @@ export function SurveyDetailPage() {
         const body = (await response.json().catch(() => ({}))) as { message?: string };
         throw new Error(body.message ?? "上传失败");
       }
-      const result = (await response.json()) as { url: string };
+      const result = (await response.json()) as { mediaAssetId?: number; url: string };
       setBgmUrl(result.url);
+      setBgmAssetId(result.mediaAssetId ?? null);
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "上传失败");
     } finally {
@@ -535,11 +546,20 @@ export function SurveyDetailPage() {
               <input
                 className="input min-w-0 flex-1 text-xs"
                 value={bgmUrl}
-                onChange={(event) => setBgmUrl(event.target.value.trim())}
+                onChange={(event) => {
+                  setBgmUrl(event.target.value.trim());
+                  setBgmAssetId(null);
+                }}
                 placeholder="https://…/bgm.mp3"
               />
               {bgmUrl ? (
-                <button className="btn btn-sm text-[var(--app-danger)]" onClick={() => setBgmUrl("")}>
+                <button
+                  className="btn btn-sm text-[var(--app-danger)]"
+                  onClick={() => {
+                    setBgmUrl("");
+                    setBgmAssetId(null);
+                  }}
+                >
                   清除
                 </button>
               ) : null}

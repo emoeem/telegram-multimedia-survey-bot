@@ -2,7 +2,7 @@ import { getTelegramInitData } from "../telegram";
 import { safeGet, safeSet } from "./storage";
 import { surveyDeviceHeaders } from "./deviceInfo";
 import { sessionParticipantToken } from "./participant-token";
-import type { SurveySfxCue } from "../../../src/survey/theme";
+import type { SurveySfxCue, SurveyTheme } from "../../../src/survey/theme";
 
 export interface SurveyMediaDto {
   url: string;
@@ -39,58 +39,11 @@ export interface SurveyPageDto {
   order: number;
 }
 
-export interface SurveyThemeDto {
-  preset?: string;
-  /** 视觉小说播放模式（P2）：叙事卡文字打字机展现。 */
-  vn?: boolean;
-  background?: {
-    color?: string;
-    image?: string;
-    position?: string;
-    size?: string;
-  };
-  overlay?: {
-    color?: string;
-    opacity?: number;
-    blur?: number;
-  };
-  audio?: {
-    url?: string;
-    byPage?: Record<string, string>;
-    byQuestion?: Record<string, string>;
-    /** 界面音效：事件名 → 音频 URL（见 src/survey/theme.ts 的 SURVEY_SFX_CUES）。 */
-    sfx?: Partial<Record<SurveySfxCue, string>>;
-  };
-  /** 出场立绘（透明 PNG/WebP 多表情）——见 src/survey/theme.ts 的 resolveSprite。 */
-  sprite?: {
-    name?: string;
-    expressions?: Record<string, string>;
-    default?: string;
-    byPage?: Record<string, string>;
-    byQuestion?: Record<string, string>;
-  };
-  primaryColor?: string;
-  secondaryColor?: string;
-  card?: {
-    background?: string;
-    border?: string;
-    radius?: number;
-    glass?: boolean;
-  };
-  text?: {
-    heading?: string;
-    body?: string;
-    muted?: string;
-  };
-  button?: {
-    radius?: number;
-  };
-  completion?: {
-    message?: string;
-    redirectUrl?: string;
-    showRestart?: boolean;
-  };
-}
+/**
+ * 主题 DTO：与 src/survey/theme.ts 的 SurveyTheme 同一形状（阶段 D 起媒体
+ * 字段是 URL 字符串或 {assetId} 双读形态），不再本地重复定义。
+ */
+export type SurveyThemeDto = SurveyTheme;
 
 export interface SurveyGalleryProfileDto {
   enabled: true;

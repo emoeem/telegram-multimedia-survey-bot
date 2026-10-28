@@ -197,7 +197,7 @@ export function SceneInspector({
 
               <ImageField
                 label="底图"
-                url={scene.image || null}
+                url={displayMediaUrl(scene.image) || null}
                 readOnly={readOnly}
                 error={issueAt(issues, `scenes.${scene.id}.image`)}
                 onPick={onPickSceneImage}
@@ -330,7 +330,7 @@ function HotspotPanel({
         <>
           <ImageField
             label="展示图片"
-            url={imageAction.src || null}
+            url={displayMediaUrl(imageAction.src) || null}
             readOnly={readOnly}
             error={issueAt(issues, `${base}.src`)}
             onPick={onPickImage}

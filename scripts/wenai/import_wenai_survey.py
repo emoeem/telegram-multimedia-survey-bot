@@ -30,9 +30,53 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent.parent
 CONTENT_PATH = SCRIPT_DIR / "wenai-survey.json"
 ASSETS_DIR = SCRIPT_DIR / "assets"
+# ---- 目标环境（默认生产）------------------------------------------------
+# 样例脚本原样运行 = 写生产。灌 staging 时传：
+#   --config wrangler.staging.toml --kv-namespace <staging MEDIA_KV id> \
+#   --public-base https://telegram-multimedia-survey-bot-staging.<account>.workers.dev
+# wrangler 凭据（OAuth 账号）决定你连的是哪个 Cloudflare 账号——脚本不切换
+# 账号，切账号须先 `wrangler login`（staging 在独立账号，见 docs/web-admin-phase-1.md）。
+WRANGLER_ARGS: list[str] = []
 MEDIA_KV_ID = "1761c29892764597992c189096bc62c2"  # wrangler.toml binding MEDIA_KV
 KV_PREFIX = "media:survey-wenai"
 PUBLIC_BASE = "https://emoe.eu.cc"
+
+STAGING_PUBLIC_BASE = "https://telegram-multimedia-survey-bot-staging.3353745917.workers.dev"
+
+
+def configure_target(
+    config: str | None = None,
+    kv_namespace: str | None = None,
+    public_base: str | None = None,
+) -> None:
+    """设置脚本后续所有 wrangler 调用的目标环境（必须在任何查询前调用）。"""
+    global WRANGLER_ARGS, MEDIA_KV_ID, PUBLIC_BASE
+    if config:
+        WRANGLER_ARGS = ["-c", config]
+    if kv_namespace:
+        MEDIA_KV_ID = kv_namespace
+    if public_base:
+        PUBLIC_BASE = public_base
+
+
+def add_environment_args(parser: argparse.ArgumentParser) -> None:
+    """三个 importer（wenai/galgame/hotspot）共用的目标环境参数。"""
+    group = parser.add_argument_group("目标环境（默认生产）")
+    group.add_argument("--config", help="wrangler 配置文件（staging 用 wrangler.staging.toml）")
+    group.add_argument("--kv-namespace", help=f"MEDIA_KV namespace id（默认生产 {MEDIA_KV_ID[:8]}…）")
+    group.add_argument("--public-base", help=f"打印链接用的站点 origin（staging 默认 {STAGING_PUBLIC_BASE}）")
+
+
+def apply_environment_args(args: argparse.Namespace) -> None:
+    configure_target(
+        config=args.config,
+        kv_namespace=args.kv_namespace,
+        public_base=args.public_base or (STAGING_PUBLIC_BASE if args.config else None),
+    )
+    if WRANGLER_ARGS:
+        print(f"🎯 目标环境：config={args.config} KV={MEDIA_KV_ID[:8]}… base={PUBLIC_BASE}")
+    else:
+        print("🎯 目标环境：生产（默认）——确认这是你想要的，或加 --config wrangler.staging.toml")
 
 MIME_BY_EXT = {
     ".jpg": "image/jpeg",
@@ -52,7 +96,7 @@ MEDIA_TYPE_BY_EXT = {
 
 def run(args: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        ["npx", "wrangler", *args], cwd=ROOT, capture_output=capture, text=True, check=False
+        ["npx", "wrangler", *WRANGLER_ARGS, *args], cwd=ROOT, capture_output=capture, text=True, check=False
     )
     if result.returncode != 0:
         raise RuntimeError(f"wrangler 失败: {' '.join(args[:3])}\n{result.stderr[-1500:]}")
@@ -390,7 +434,9 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="执行 KV 上传与 D1 导入（默认 dry-run）")
     parser.add_argument("--owner-id", type=int, help="覆盖问卷归属的 user id（默认取库中最常见 owner）")
     parser.add_argument("--keep-sql", action="store_true", help="保留生成的 SQL 文件供检查")
+    add_environment_args(parser)
     args = parser.parse_args()
+    apply_environment_args(args)
 
     data = json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
     slugs = collect_media_refs(data)

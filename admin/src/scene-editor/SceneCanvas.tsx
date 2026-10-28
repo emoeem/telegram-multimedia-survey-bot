@@ -187,7 +187,7 @@ export function SceneCanvas({
       <img
         ref={imageRef}
         className="scene-canvas-image"
-        src={imageUrl ?? scene.image}
+        src={imageUrl ?? undefined}
         alt={scene.alt ?? scene.title}
         draggable={false}
       />

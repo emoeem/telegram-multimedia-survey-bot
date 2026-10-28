@@ -7,6 +7,7 @@ import {
   hotspotMediaUrls,
   parseHotspotScene,
   parseHotspotSceneFromJson,
+  resolveHotspotSceneRefs,
 } from "../../src/survey/hotspot";
 import { validateUnifiedSurvey } from "../../src/survey/validator";
 
@@ -147,6 +148,57 @@ describe("hotspot.ts 校验器", () => {
     const evil = baseConfig() as { scenes: Record<string, Record<string, unknown>> };
     evil.scenes.room!.image = "javascript:alert(1)";
     expect(parseHotspotScene(evil, { allowPlaceholderRefs: true })).toBeNull();
+  });
+
+  // 阶段 D 写侧：{assetId} 结构化引用是合法存储形态——消毒层原样保留
+  // （不能转回 URL），渲染前经 resolveHotspotSceneRefs 派生。
+  it("结构化 {assetId} 引用：消毒保留 + 解析派生 URL + 脏值拒绝（阶段 D）", () => {
+    const structured = baseConfig() as { scenes: Record<string, Record<string, unknown>> };
+    structured.scenes.room!.image = { assetId: 12 };
+    (structured.scenes.room!.hotspots as { action: Record<string, unknown> }[])[0]!.action = {
+      kind: "image",
+      src: { assetId: 15 },
+      title: "查看",
+    };
+    const parsed = parseHotspotScene(structured);
+    expect(parsed).not.toBeNull();
+    // 存储形态保持结构化（写入闸门不吞对象）。
+    expect(parsed!.scenes.room!.image).toEqual({ assetId: 12 });
+    expect(parsed!.scenes.room!.hotspots[0]!.action).toMatchObject({ src: { assetId: 15 } });
+
+    // 渲染解析：{assetId} → 公开 URL；场景跳转热点原样保留。
+    const resolved = resolveHotspotSceneRefs(parsed!);
+    expect(resolved.scenes.room!.image).toBe("/api/survey/media/12");
+    const resolvedFirst = resolved.scenes.room!.hotspots[0]!;
+    if (resolvedFirst.action.kind === "image") {
+      expect(resolvedFirst.action.src).toBe("/api/survey/media/15");
+    } else {
+      throw new Error("expected image action");
+    }
+
+    // 脏对象（非正整数 assetId）在消毒层剥掉 → 场景缺底图 → 配置整体拒绝。
+    const dirty = baseConfig() as { scenes: Record<string, Record<string, unknown>> };
+    dirty.scenes.room!.image = { assetId: -1 };
+    expect(parseHotspotScene(dirty)).toBeNull();
+
+    // 字符串形态不受影响：外链原样，存储不对象化。
+    const external = baseConfig() as { scenes: Record<string, Record<string, unknown>> };
+    external.scenes.room!.image = "https://cdn.example.test/room.webp";
+    const parsedExternal = parseHotspotScene(external);
+    expect(parsedExternal!.scenes.room!.image).toBe("https://cdn.example.test/room.webp");
+  });
+
+  it("hotspotMediaUrls 对 {assetId} 引用同样产出 URL 清单（阶段 D）", () => {
+    const structured = baseConfig() as { scenes: Record<string, Record<string, unknown>> };
+    structured.scenes.room!.image = { assetId: 12 };
+    (structured.scenes.room!.hotspots as { action: Record<string, unknown> }[])[0]!.action = {
+      kind: "image",
+      src: { assetId: 15 },
+      title: "查看",
+    };
+    const parsed = parseHotspotScene(structured)!;
+    expect(hotspotMediaUrls(parsed)).toContain("/api/survey/media/12");
+    expect(hotspotMediaUrls(parsed)).toContain("/api/survey/media/15");
   });
 
   it("热点数量护栏", () => {

@@ -1,3 +1,4 @@
+import type { SurveyThemeDto } from "./survey/api";
 import { getTelegramInitData } from "./telegram";
 import { safeGet } from "./survey/storage";
 
@@ -641,19 +642,8 @@ export interface SurveyDetailData {
   username?: string | null;
   report_template_id?: string | null;
   isAdmin?: boolean;
-  theme: {
-    preset?: string;
-    background?: { color?: string; image?: string; position?: string; size?: string };
-    overlay?: { color?: string; opacity?: number; blur?: number };
-    audio?: { url?: string };
-    primaryColor?: string;
-    secondaryColor?: string;
-    card?: { background?: string; border?: string; radius?: number; glass?: boolean };
-    text?: { heading?: string; body?: string; muted?: string };
-    button?: { radius?: number };
-    completion?: { message?: string; redirectUrl?: string; showRestart?: boolean };
-    vn?: boolean;
-  } | null;
+  /** 与 src/survey/theme.ts 的 SurveyTheme 同形状（阶段 D 媒体字段双读）。 */
+  theme: SurveyThemeDto | null;
   themePresets: Array<{ id: string; name: string }>;
 }
 

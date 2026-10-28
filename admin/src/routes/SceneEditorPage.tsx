@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router";
 import { ArrowLeft, Eye, ImagePlus, Plus, Save } from "lucide-react";
-import { ApiError, apiSend, apiUpload, type EditorData, type EditorMediaRef, type WriteResult } from "../api";
+import {
+  attachLibraryMediaToQuestion,
+  ApiError,
+  apiSend,
+  apiUpload,
+  type EditorData,
+  type EditorMediaRef,
+  type WriteResult,
+} from "../api";
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import type { SurveyQuestionDto } from "../survey/api";
-import type { Hotspot, HotspotScene, HotspotSceneConfig } from "../../../src/survey/hotspot";
+import type { Hotspot, HotspotScene, HotspotSceneConfig, SceneMediaRef } from "../../../src/survey/hotspot";
 import { parseHotspotScene } from "../../../src/survey/hotspot";
 import { prepareImageForPublish } from "../lib/image-publish";
 import { MediaPicker } from "../scene-editor/MediaPicker";
@@ -25,7 +33,6 @@ import {
   nextHotspotMeta,
   nextSceneId,
   nudgeRect,
-  publicMediaUrl,
   sceneReferences,
   transformConfigForPreview,
   validateDraft,
@@ -166,9 +173,13 @@ export function SceneEditorPage(props?: {
 
   const pickerCurrentUrl = useMemo(() => {
     if (!picker || !config) return null;
-    if (picker.kind === "scene") return config.scenes[picker.sceneId]?.image || null;
+    // 阶段 D：存储形态是 {assetId} 或 URL 字符串，统一解析成可显示/可比较的 URL。
+    if (picker.kind === "scene") {
+      const image = config.scenes[picker.sceneId]?.image;
+      return image ? displayMediaUrl(image) : null;
+    }
     const action = config.scenes[picker.sceneId]?.hotspots.find((item) => item.id === picker.hotspotId)?.action;
-    return action?.kind === "image" ? action.src || null : null;
+    return action?.kind === "image" ? displayMediaUrl(action.src) : null;
   }, [picker, config]);
 
   const patchQuestion = (patch: Partial<QuestionDraft>) => {
@@ -301,13 +312,42 @@ export function SceneEditorPage(props?: {
     );
   };
 
-  const handlePickMedia = async (mediaAssetId: number) => {
+  const handlePickMedia = async (mediaAssetId: number, options: { alreadyAttached?: boolean } = {}) => {
     if (!picker) return;
-    const url = publicMediaUrl(mediaAssetId);
+    // 阶段 D 写侧：配置存 {assetId}（结构化引用）。从素材库选图时补登记
+    // question_media（禁令 3：公开性检查与媒体端点 linkage 都扫这张表，
+    // 不登记则发布后 404）；上传分支的 multipart 端点已登记过，传
+    // alreadyAttached 跳过。服务端无唯一约束，客户端按已挂列表去重。
+    if (!options.alreadyAttached && !media.some((item) => item.mediaAssetId === mediaAssetId)) {
+      try {
+        const attached = await attachLibraryMediaToQuestion(surveyId, questionId, mediaAssetId);
+        setMedia((prev) =>
+          prev.some((item) => item.mediaAssetId === mediaAssetId)
+            ? prev
+            : [
+                ...prev,
+                {
+                  mediaAssetId: attached.mediaAssetId,
+                  mediaType: attached.mediaType,
+                  fileName: attached.fileName,
+                  mimeType: attached.mimeType,
+                },
+              ],
+        );
+        if (attached.updatedAt) setBaseUpdatedAt(attached.updatedAt);
+      } catch (err) {
+        toast({
+          message: err instanceof Error ? `素材关联失败：${err.message}` : "素材关联失败",
+          variant: "error",
+        });
+        return;
+      }
+    }
+    const ref: SceneMediaRef = { assetId: mediaAssetId };
     if (picker.kind === "scene") {
       try {
         const size = await loadImageSize(adminMediaUrl(mediaAssetId));
-        updateScene(picker.sceneId, { image: url, width: size.width, height: size.height });
+        updateScene(picker.sceneId, { image: ref, width: size.width, height: size.height });
         setPicker(null);
         toast({ message: "底图已更新，热点坐标按比例保留。", variant: "success" });
       } catch {
@@ -319,7 +359,7 @@ export function SceneEditorPage(props?: {
     const previous = source?.action.kind === "image" ? source.action : null;
     const action: Hotspot["action"] = {
       kind: "image",
-      src: url,
+      src: ref,
       title: previous?.title || source?.label || "查看",
       ...(previous?.caption ? { caption: previous.caption } : {}),
       ...(previous?.note ? { note: previous.note } : {}),
@@ -354,7 +394,7 @@ export function SceneEditorPage(props?: {
       setMedia((prev) => (prev.some((item) => item.mediaAssetId === entry.mediaAssetId) ? prev : [...prev, entry]));
       // 上传会 touch 问卷；不刷新 baseUpdatedAt 的话，下一次 PATCH 会 409。
       if (result.updatedAt) setBaseUpdatedAt(result.updatedAt);
-      await handlePickMedia(result.mediaAssetId);
+      await handlePickMedia(result.mediaAssetId, { alreadyAttached: true });
       toast({ message: "图片已上传并选中。", variant: "success" });
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : "上传失败", variant: "error" });

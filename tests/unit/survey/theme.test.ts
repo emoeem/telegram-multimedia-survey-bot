@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   SURVEY_SFX_CUES,
+  collectSurveyThemeMediaAssetIds,
   normalizeStoredSurveyTheme,
   normalizeSurveyTheme,
   resolveBgmUrl,
   resolveSprite,
+  resolveSurveySfxUrls,
+  resolveThemeMediaRef,
+  type SurveyMediaRef,
 } from "../../../src/survey/theme";
 
 describe("normalizeSurveyTheme", () => {
@@ -102,6 +106,68 @@ describe("normalizeSurveyTheme", () => {
       }),
     ).toEqual({ audio: { url: "data:audio/mpeg;base64,YWFh" } });
     expect(normalizeSurveyTheme({ audio: { url: "javascript:alert(1)" } })).toBeNull();
+  });
+
+  // 阶段 D 写侧：{assetId} 结构化引用原样保留（消毒层不转回 URL），
+  // 字符串形态行为不变；脏对象（非正整数 assetId）剥掉。
+  it("keeps structured {assetId} media refs and drops malformed ones (阶段 D)", () => {
+    expect(
+      normalizeSurveyTheme({
+        background: { image: { assetId: 12 } },
+        audio: { url: { assetId: 7 }, byPage: { "0": { assetId: 8 } }, sfx: { select: { assetId: 9 } } },
+        sprite: { name: "苏晚棠", expressions: { normal: { assetId: 10 } } },
+      }),
+    ).toEqual({
+      background: { image: { assetId: 12 } },
+      audio: { url: { assetId: 7 }, byPage: { "0": { assetId: 8 } }, sfx: { select: { assetId: 9 } } },
+      sprite: { name: "苏晚棠", expressions: { normal: { assetId: 10 } } },
+    });
+    // 字符串形态不被对象化（外链保持外链）。
+    expect(normalizeSurveyTheme({ audio: { url: "https://cdn.example.com/bgm.mp3" } })).toEqual({
+      audio: { url: "https://cdn.example.com/bgm.mp3" },
+    });
+    // 脏对象：零/负数/浮点/字符串数字以外的键 → 整个值剥掉。
+    expect(normalizeSurveyTheme({ audio: { url: { assetId: 0 } } })).toBeNull();
+    expect(normalizeSurveyTheme({ audio: { url: { assetId: -3 } } })).toBeNull();
+    expect(normalizeSurveyTheme({ audio: { url: { assetId: 1.5 } } })).toBeNull();
+    expect(normalizeSurveyTheme({ audio: { url: { other: 1 } as unknown as SurveyMediaRef } })).toBeNull();
+  });
+});
+
+describe("阶段 D：主题媒体引用的派生与登记", () => {
+  it("resolveThemeMediaRef：{assetId} 派生站内 URL，字符串原样", () => {
+    expect(resolveThemeMediaRef({ assetId: 12 })).toBe("/api/survey/media/12");
+    expect(resolveThemeMediaRef("https://cdn.example.com/bg.png")).toBe("https://cdn.example.com/bg.png");
+    expect(resolveThemeMediaRef(undefined)).toBeUndefined();
+  });
+
+  it("resolveSurveySfxUrls：整表解析，非法引用静默丢弃", () => {
+    expect(
+      resolveSurveySfxUrls({
+        select: { assetId: 9 },
+        confirm: "https://cdn.example.com/ok.mp3",
+        cancel: { other: 1 } as unknown as SurveyMediaRef,
+      }),
+    ).toEqual({ select: "/api/survey/media/9", confirm: "https://cdn.example.com/ok.mp3" });
+    expect(resolveSurveySfxUrls(undefined)).toBeUndefined();
+  });
+
+  it("collectSurveyThemeMediaAssetIds：收集全部媒体字段，URL 与 {assetId} 双读", () => {
+    const ids = collectSurveyThemeMediaAssetIds(
+      normalizeSurveyTheme({
+        background: { image: { assetId: 12 } },
+        audio: {
+          url: "/api/survey/media/7",
+          byPage: { "0": { assetId: 8 } },
+          byQuestion: { "3": { assetId: 8 } },
+          sfx: { select: { assetId: 9 } },
+        },
+        sprite: { expressions: { normal: { assetId: 10 }, smile: "https://cdn.example.com/x.png" } },
+      }),
+    );
+    // 8 出现两次只记一次；外链 https（无 media/ 尾段）不计。
+    expect([...ids].sort((a, b) => a - b)).toEqual([7, 8, 9, 10, 12]);
+    expect(collectSurveyThemeMediaAssetIds(null).size).toBe(0);
   });
 });
 

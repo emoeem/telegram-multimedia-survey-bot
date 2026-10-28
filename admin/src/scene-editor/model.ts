@@ -3,6 +3,7 @@ import {
   type Hotspot,
   type HotspotScene,
   type HotspotSceneConfig,
+  type SceneMediaRef,
 } from "../../../src/survey/hotspot";
 
 /**
@@ -85,6 +86,20 @@ export function rectToStyle(rect: Rect): { left: string; top: string; width: str
   };
 }
 
+/**
+ * 从媒体引用（阶段 D 双读：{assetId} 或 URL 字符串）取素材 id；
+ * 外链 / kv: 占位等非素材 URL 返回 null。
+ */
+export function mediaRefAssetId(ref: SceneMediaRef): number | null {
+  if (ref !== null && typeof ref === "object") return ref.assetId;
+  return mediaIdFromUrl(ref);
+}
+
+/** 引用是否有值：{assetId} 恒有；字符串按非空判断（草稿校验用）。 */
+export function mediaRefPresent(ref: SceneMediaRef): boolean {
+  return typeof ref === "string" ? ref.trim().length > 0 : true;
+}
+
 /** 媒体资产 id ↔ 两种 URL：配置里存公开 URL，编辑器里用 admin 预览 URL。 */
 export function publicMediaUrl(mediaAssetId: number): string {
   return `/api/survey/media/${mediaAssetId}`;
@@ -103,25 +118,28 @@ export function mediaIdFromUrl(url: string | null | undefined): number | null {
   return null;
 }
 
-/** 预览时把保存用的公开 URL 换成 admin 预览 URL；外部 URL 原样保留。 */
+/**
+ * 预览时把存储形态（{assetId} 或公开 URL）换成 admin 预览 URL；外部 URL 原样。
+ * 只用于编辑器内渲染，输出不再回存。
+ */
 export function transformConfigForPreview(config: HotspotSceneConfig): HotspotSceneConfig {
   const clone = JSON.parse(JSON.stringify(config)) as HotspotSceneConfig;
   for (const scene of Object.values(clone.scenes)) {
-    const sceneMediaId = mediaIdFromUrl(scene.image);
-    if (sceneMediaId !== null) scene.image = adminMediaUrl(sceneMediaId);
+    const sceneAssetId = mediaRefAssetId(scene.image);
+    if (sceneAssetId !== null) scene.image = adminMediaUrl(sceneAssetId);
     for (const hotspot of scene.hotspots) {
       if (hotspot.action.kind !== "image") continue;
-      const mediaId = mediaIdFromUrl(hotspot.action.src);
-      if (mediaId !== null) hotspot.action.src = adminMediaUrl(mediaId);
+      const assetId = mediaRefAssetId(hotspot.action.src);
+      if (assetId !== null) hotspot.action.src = adminMediaUrl(assetId);
     }
   }
   return clone;
 }
 
-/** 编辑器里显示一张图：媒体资产换 admin 预览地址，外部 URL 原样。 */
-export function displayMediaUrl(url: string): string {
-  const mediaId = mediaIdFromUrl(url);
-  return mediaId !== null ? adminMediaUrl(mediaId) : url;
+/** 编辑器里显示一张图：媒体引用换 admin 预览地址，外部 URL 原样。 */
+export function displayMediaUrl(ref: SceneMediaRef): string {
+  const assetId = mediaRefAssetId(ref);
+  return assetId !== null ? adminMediaUrl(assetId) : typeof ref === "string" ? ref : "";
 }
 
 function uniqueId(existing: Set<string>, prefix: string): string {
@@ -214,7 +232,7 @@ export function validateDraft(config: HotspotSceneConfig | null, options: { requ
     const scene = config.scenes[sceneId]!;
     const base = `scenes.${sceneId}`;
     if (!trimmed(scene.title)) issues.push({ path: `${base}.title`, message: "场景标题不能为空" });
-    if (!trimmed(scene.image)) issues.push({ path: `${base}.image`, message: "请选择场景底图" });
+    if (!mediaRefPresent(scene.image)) issues.push({ path: `${base}.image`, message: "请选择场景底图" });
     if (!(scene.width > 0) || !(scene.height > 0)) {
       issues.push({ path: `${base}.size`, message: "场景尺寸无效，请重新选择底图" });
     }
@@ -235,7 +253,7 @@ export function validateDraft(config: HotspotSceneConfig | null, options: { requ
         issues.push({ path: `${spotPath}.rect`, message: "热点超出场景边界" });
       }
       if (hotspot.action.kind === "image") {
-        if (!trimmed(hotspot.action.src)) {
+        if (!mediaRefPresent(hotspot.action.src)) {
           issues.push({ path: `${spotPath}.src`, message: "请选择要展示的图片" });
         }
         if (!trimmed(hotspot.action.title)) {

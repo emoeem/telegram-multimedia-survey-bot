@@ -17,19 +17,26 @@
  * - page        推进到下一段剧情或下一页
  * - transition  页/场景切换（含进入结局）
  */
-import { resolveMediaRef } from "./media-ref";
+import { parseMediaRef, resolveMediaRef } from "./media-ref";
 
 export const SURVEY_SFX_CUES = ["select", "confirm", "cancel", "page", "transition"] as const;
 
 export type SurveySfxCue = (typeof SURVEY_SFX_CUES)[number];
+
+/**
+ * 主题媒体引用（阶段 D 写侧切换的目标形态）：既有 URL 字符串
+ * （data: / https: 外链 / 站内 `/api/survey/media/<id>`）或结构化 `{assetId}`。
+ * 渲染统一走 resolveThemeMediaRef 派生 URL。
+ */
+export type SurveyMediaRef = string | { assetId: number };
 
 export interface SurveyTheme {
   /** Reference to a DaisyUI theme id (see SURVEY_THEME_PRESETS). */
   preset?: string;
   background?: {
     color?: string;
-    /** CSS background-image value (data:image or absolute URL only). */
-    image?: string;
+    /** CSS background-image value (data:image / https / 站内 URL / {assetId}). */
+    image?: SurveyMediaRef;
     /** CSS background-position (whitelisted). */
     position?: string;
     /** CSS background-size (whitelisted). */
@@ -42,27 +49,27 @@ export interface SurveyTheme {
     /** px blur, 0..40 */
     blur?: number;
   };
-  /** Optional background music (data:audio / https / site-relative URL). */
+  /** Optional background music (data:audio / https / site-relative URL / {assetId}). */
   audio?: {
-    url?: string;
+    url?: SurveyMediaRef;
     /**
      * Per-page BGM overrides keyed by the page's position in `pages`
      * (0-based, as stringified object keys). When the participant is on a
      * page with an override, it replaces the default `url`.
      */
-    byPage?: Record<string, string>;
+    byPage?: Record<string, SurveyMediaRef>;
     /**
      * Per-question BGM overrides keyed by the question's `order` (stringified
      * integer). Takes precedence over `byPage`. Use it for one-off cues — a
      * turn in the story, an ending — that should not depend on which page the
      * node happens to live on.
      */
-    byQuestion?: Record<string, string>;
+    byQuestion?: Record<string, SurveyMediaRef>;
     /**
      * 界面音效：事件名 → 音频 URL。缺省时前端完全不播音效（老问卷行为不变）。
      * 只播放这里显式声明的 cue，不做任何默认音效。
      */
-    sfx?: Partial<Record<SurveySfxCue, string>>;
+    sfx?: Partial<Record<SurveySfxCue, SurveyMediaRef>>;
   };
   /**
    * 视觉小说播放模式（P2）：开启后叙事卡（note 节点）的文字用打字机逐字
@@ -78,8 +85,8 @@ export interface SurveyTheme {
   sprite?: {
     /** 角色名（用于 alt / 无障碍朗读）。 */
     name?: string;
-    /** 表情名 → 图片 URL（透明 PNG/WebP）。 */
-    expressions?: Record<string, string>;
+    /** 表情名 → 图片（透明 PNG/WebP 的 URL 或 {assetId}）。 */
+    expressions?: Record<string, SurveyMediaRef>;
     /** 无节点/页覆盖时使用的表情名；缺省取 `expressions` 的第一个键。 */
     default?: string;
     /** 页级默认表情，键 = 页码（0 起，字符串）。 */
@@ -172,16 +179,22 @@ function safeString(value: unknown, maxLength: number): string | undefined {
   return trimmed && trimmed.length <= maxLength ? trimmed : undefined;
 }
 
-function safeImage(value: unknown): string | undefined {
-  const image = safeString(value, 4000);
-  if (!image) return undefined;
-  return image.startsWith("data:image/") || image.startsWith("https://") || image.startsWith("/") ? image : undefined;
-}
-
-function safeAudioUrl(value: unknown): string | undefined {
+/**
+ * 媒体引用消毒（阶段 D 双读）：字符串走既有 URL 白名单原样保留；
+ * 结构化 {assetId} 经 parseMediaRef 校验后**原样保留**——存储形态就该是
+ * 结构化的，派生 URL 是渲染层（resolveThemeMediaRef / resolveBgmUrl /
+ * resolveSprite）的事，消毒层不能把它转回字符串。
+ */
+function safeMediaRef(value: unknown, kind: "image" | "audio"): SurveyMediaRef | undefined {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const assetId = parseMediaRef(value);
+    return assetId === null ? undefined : { assetId };
+  }
   const url = safeString(value, 4000);
   if (!url) return undefined;
-  return url.startsWith("data:audio/") || url.startsWith("https://") || url.startsWith("/") ? url : undefined;
+  const prefixes =
+    kind === "image" ? (["data:image/", "https://", "/"] as const) : (["data:audio/", "https://", "/"] as const);
+  return prefixes.some((prefix) => url.startsWith(prefix)) ? url : undefined;
 }
 
 /** 表情名白名单：只允许小写字母/数字/连字符，避免把任意字符串当键写进主题。 */
@@ -214,7 +227,7 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
 
   if (isRecord(value.background)) {
     const color = safeColor(value.background.color);
-    const image = safeImage(value.background.image);
+    const image = safeMediaRef(value.background.image, "image");
     const position = safeString(value.background.position, 40);
     const size = safeString(value.background.size, 40);
     const background: NonNullable<SurveyTheme["background"]> = {};
@@ -239,7 +252,7 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
   }
 
   if (isRecord(value.audio)) {
-    const url = safeAudioUrl(value.audio.url);
+    const url = safeMediaRef(value.audio.url, "audio");
     const audio: NonNullable<SurveyTheme["audio"]> = {};
     if (url) audio.url = url;
     for (const [field, maxDigits] of [
@@ -250,19 +263,19 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     ] as const) {
       const raw = value.audio[field];
       if (!isRecord(raw)) continue;
-      const safeOverrides: Record<string, string> = {};
+      const safeOverrides: Record<string, SurveyMediaRef> = {};
       for (const [key, entry] of Object.entries(raw)) {
         if (!new RegExp(`^\\d{1,${maxDigits}}$`).test(key)) continue;
-        const safe = safeAudioUrl(entry);
+        const safe = safeMediaRef(entry, "audio");
         if (safe) safeOverrides[key] = safe;
       }
       if (Object.keys(safeOverrides).length > 0) audio[field] = safeOverrides;
     }
     // 界面音效：只接受白名单事件名，值走与 BGM 同一套 URL 白名单。
     if (isRecord(value.audio.sfx)) {
-      const cues: Partial<Record<SurveySfxCue, string>> = {};
+      const cues: Partial<Record<SurveySfxCue, SurveyMediaRef>> = {};
       for (const cue of SURVEY_SFX_CUES) {
-        const safe = safeAudioUrl(value.audio.sfx[cue]);
+        const safe = safeMediaRef(value.audio.sfx[cue], "audio");
         if (safe) cues[cue] = safe;
       }
       if (Object.keys(cues).length > 0) audio.sfx = cues;
@@ -276,10 +289,10 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     const name = safeString(value.sprite.name, 40);
     if (name) sprite.name = name;
     if (isRecord(value.sprite.expressions)) {
-      const expressions: Record<string, string> = {};
+      const expressions: Record<string, SurveyMediaRef> = {};
       for (const [key, entry] of Object.entries(value.sprite.expressions)) {
         if (!EXPRESSION_KEY.test(key)) continue;
-        const safe = safeImage(entry);
+        const safe = safeMediaRef(entry, "image");
         if (safe) expressions[key] = safe;
       }
       if (Object.keys(expressions).length > 0) sprite.expressions = expressions;
@@ -433,4 +446,51 @@ export function resolveSprite(
   const url = resolveMediaRef(expressions[expression], (assetId) => ["/api/survey/media/", String(assetId)].join(""));
   if (url === undefined) return undefined;
   return sprite.name === undefined ? { url, expression } : { url, expression, name: sprite.name };
+}
+
+const toSurveyMediaUrl = (assetId: number): string => ["/api/survey/media/", String(assetId)].join("");
+
+/**
+ * 渲染层通用的主题媒体引用解析：{assetId} 派生站内 URL，字符串
+ * （外链 / data: / 既有站内 URL）原样返回。themeBackgroundStyle 与
+ * 界面音效配置都走这里；BGM / 立绘有自己的按优先级解析器（resolveBgmUrl /
+ * resolveSprite）。
+ */
+export function resolveThemeMediaRef(ref: SurveyMediaRef | undefined): string | undefined {
+  return resolveMediaRef(ref, toSurveyMediaUrl);
+}
+
+/** 界面音效表渲染前解析：cue → 可播放 URL；非法引用静默丢弃（不发声）。 */
+export function resolveSurveySfxUrls(
+  sfx: Partial<Record<SurveySfxCue, SurveyMediaRef>> | undefined,
+): Partial<Record<SurveySfxCue, string>> | undefined {
+  if (!sfx) return undefined;
+  const resolved: Partial<Record<SurveySfxCue, string>> = {};
+  for (const cue of SURVEY_SFX_CUES) {
+    const url = resolveMediaRef(sfx[cue], toSurveyMediaUrl);
+    if (url !== undefined) resolved[cue] = url;
+  }
+  return Object.keys(resolved).length > 0 ? resolved : undefined;
+}
+
+/**
+ * 收集主题引用的全部素材 id（BGM/背景/立绘/音效，URL 字符串与 {assetId}
+ * 双读），供 PATCH theme 时事务性登记 media_refs（ref_type='survey_theme'）。
+ * 字符串经 parseMediaRef 提取末段 id——外链 URL 里偶然含 `media/<数字>` 时
+ * 会多登记一条弱引用；过登记只会让删除保护更保守，是安全方向。
+ */
+export function collectSurveyThemeMediaAssetIds(theme: SurveyTheme | null): Set<number> {
+  const ids = new Set<number>();
+  if (!theme) return ids;
+  const collect = (ref: SurveyMediaRef | undefined): void => {
+    const id = parseMediaRef(ref);
+    if (id !== null) ids.add(id);
+  };
+  collect(theme.background?.image);
+  collect(theme.audio?.url);
+  for (const ref of Object.values(theme.audio?.byPage ?? {})) collect(ref);
+  for (const ref of Object.values(theme.audio?.byQuestion ?? {})) collect(ref);
+  for (const ref of Object.values(theme.audio?.sfx ?? {})) collect(ref);
+  for (const ref of Object.values(theme.sprite?.expressions ?? {})) collect(ref);
+  return ids;
 }

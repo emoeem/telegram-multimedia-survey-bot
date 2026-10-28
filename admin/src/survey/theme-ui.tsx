@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
+import { resolveThemeMediaRef } from "../../../src/survey/theme";
 import type { SurveyThemeDto } from "./api";
 
 /** DaisyUI presets shared by the survey fill page and the plaza page.
@@ -202,9 +203,11 @@ export function themeBackgroundStyle(theme: SurveyThemeDto | null): CSSPropertie
   if (!background?.color && !background?.image) {
     return {};
   }
+  // 阶段 D 双读：{assetId} 派生站内 URL，字符串（外链/data:）原样。
+  const image = resolveThemeMediaRef(background?.image);
   return {
     backgroundColor: background?.color,
-    backgroundImage: background?.image ? `url("${background.image}")` : undefined,
+    backgroundImage: image ? `url("${image}")` : undefined,
     backgroundPosition: background?.position ?? "center",
     backgroundSize: background?.size ?? "cover",
     backgroundAttachment: "fixed",
