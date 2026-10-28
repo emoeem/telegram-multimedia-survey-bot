@@ -179,7 +179,8 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                 type="button"
                 className={`px-2.5 py-1 text-[11px] font-semibold ${
                   editorMode === value
-                    ? "bg-[var(--color-primary)] text-[var(--color-primary-contrast,#fff)]"
+                    ? // 同旧壳：primary-content 随主题保证对比度（axe color-contrast）。
+                      "bg-[var(--color-primary)] text-[var(--color-primary-content)]"
                     : "text-[var(--color-muted)]"
                 }`}
                 aria-pressed={editorMode === value}

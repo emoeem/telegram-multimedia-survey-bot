@@ -71,7 +71,11 @@ for (const viewport of VIEWPORTS) {
     });
 
     await page.goto("/trial", { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("挑战任务").first()).toBeVisible();
+    // /trial 首屏是 18+ 成人门禁（游戏区上线时加入），内容在其后。
+    await page.getByRole("button", { name: /同意进入/ }).click();
+    // BottomNav 把 /trial 页签改名为「小游戏」后，页面里不再有「挑战任务」字样；
+    // 这里断言 mock 小游戏包真正渲染出来（首页加载数据的信号）。
+    await expect(page.getByText("示例 · 楼道挑战")).toBeVisible();
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(1);

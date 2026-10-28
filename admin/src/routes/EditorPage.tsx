@@ -275,7 +275,9 @@ function EditableEditor({ data }: { data: EditorData }) {
                 type="button"
                 className={`px-2.5 py-1 text-[11px] font-semibold ${
                   editorMode === value
-                    ? "bg-[var(--color-primary)] text-[var(--color-primary-contrast,#fff)]"
+                    ? // primary-content 随主题给出保证对比度的文字色（深色主题下
+                      // --color-primary 是浅紫，白字对比不足会被 axe 拦下）。
+                      "bg-[var(--color-primary)] text-[var(--color-primary-content)]"
                     : "text-[var(--color-muted)]"
                 }`}
                 aria-pressed={editorMode === value}

@@ -901,6 +901,7 @@ export function TrialScreen() {
           <>
             <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">起始层（1–{floorCount}）</p>
             <select
+              aria-label="起始层"
               value={String(normalizedStartFloor)}
               onChange={(event) => setStartFloor(event.target.value)}
               className="select mt-2 w-full border-[var(--survey-card-border)] text-sm"
@@ -1155,6 +1156,7 @@ export function TrialScreen() {
         <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
           <p className="text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
           <select
+            aria-label="任务包"
             value={String(targetPackId ?? "")}
             disabled={packs === null || packs.length === 0}
             onChange={(event) => changeBoardPack(Number(event.target.value))}
