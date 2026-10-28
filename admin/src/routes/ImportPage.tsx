@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ApiError, api, apiSend, type ImportIssue, type ImportSummary, type ReportTemplateOption } from "../api";
-import {
-  parseImportLines,
-  summarizeBatch,
-  type ImportBatchItem,
-} from "../lib/import-lines";
+import { parseImportLines, summarizeBatch, type ImportBatchItem } from "../lib/import-lines";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -180,9 +176,7 @@ export function ImportPage() {
         );
         if (mode === "create") {
           setBatchItems((prev) =>
-            prev.map((item, itemIndex) =>
-              itemIndex === index ? { ...item, status: "creating" as const } : item,
-            ),
+            prev.map((item, itemIndex) => (itemIndex === index ? { ...item, status: "creating" as const } : item)),
           );
           const created = await apiSend<{ id: number }>("POST", "/api/admin/imports", {
             content: result.content,
@@ -190,16 +184,12 @@ export function ImportPage() {
           });
           setBatchItems((prev) =>
             prev.map((item, itemIndex) =>
-              itemIndex === index
-                ? { ...item, status: "created" as const, surveyId: created.id }
-                : item,
+              itemIndex === index ? { ...item, status: "created" as const, surveyId: created.id } : item,
             ),
           );
         } else {
           setBatchItems((prev) =>
-            prev.map((item, itemIndex) =>
-              itemIndex === index ? { ...item, status: "imported" as const } : item,
-            ),
+            prev.map((item, itemIndex) => (itemIndex === index ? { ...item, status: "imported" as const } : item)),
           );
         }
       } catch (requestError) {
@@ -257,7 +247,8 @@ export function ImportPage() {
       <section className="card">
         <h2 className="text-lg font-semibold">从 Microsoft / Zoho URL 批量导入</h2>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
-          每行一个链接，可一次导入多份问卷；空行与 <code className="rounded bg-[var(--surface-muted)] px-1 py-0.5 font-mono text-xs">#</code>{" "}
+          每行一个链接，可一次导入多份问卷；空行与{" "}
+          <code className="rounded bg-[var(--surface-muted)] px-1 py-0.5 font-mono text-xs">#</code>{" "}
           开头的行会被忽略。PDF 与 Office 文档请在本地运行
           <code className="mx-1 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 font-mono text-xs">
             uv run python scripts/import_survey_from_url.py
@@ -266,7 +257,9 @@ export function ImportPage() {
         </p>
         <textarea
           className="mt-4 min-h-32 w-full rounded-lg border border-[var(--control-border)] bg-[var(--surface)] p-3 font-mono text-sm leading-relaxed"
-          placeholder={"https://forms.office.com/r/xxxxxxxxxx\nhttps://forms.zohopublic.com/xxx/form/yyyyyyyy\n# 这一行是备注，不会导入"}
+          placeholder={
+            "https://forms.office.com/r/xxxxxxxxxx\nhttps://forms.zohopublic.com/xxx/form/yyyyyyyy\n# 这一行是备注，不会导入"
+          }
           value={urlText}
           disabled={batchRunning}
           onChange={(event) => {
@@ -338,7 +331,9 @@ export function ImportPage() {
           <ul className="mt-4 divide-y divide-[var(--color-edge)] rounded-lg border border-[var(--color-edge)]">
             {batchItems.map((item, index) => (
               <li key={`${item.url}-${index}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
-                <span className="font-mono text-xs text-[var(--color-muted)]">{String(index + 1).padStart(2, "0")}</span>
+                <span className="font-mono text-xs text-[var(--color-muted)]">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-xs" title={item.url}>
                   {item.raw}
                 </span>

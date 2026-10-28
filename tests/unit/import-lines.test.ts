@@ -107,8 +107,9 @@ describe("parseImportLines", () => {
   });
 
   it("defaults to a bounded batch size", () => {
-    const text = Array.from({ length: DEFAULT_MAX_IMPORT_LINES + 2 }, (_, index) =>
-      `https://forms.office.com/r/d${index}`,
+    const text = Array.from(
+      { length: DEFAULT_MAX_IMPORT_LINES + 2 },
+      (_, index) => `https://forms.office.com/r/d${index}`,
     ).join("\n");
 
     const result = parseImportLines(text);

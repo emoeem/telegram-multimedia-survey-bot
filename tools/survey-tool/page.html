@@ -1,366 +1,506 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>问卷批量解析 · survey-tool</title>
-<style>
-  :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-2: #1e222b;
-    --line: #2a2f3a;
-    --text: #e6e9ef;
-    --muted: #8b93a3;
-    --accent: #4f8cff;
-    --accent-2: #6ee7b7;
-    --danger: #ff6b6b;
-    --warn: #f0b429;
-    --radius: 12px;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --bg: #f5f6f8;
-      --panel: #ffffff;
-      --panel-2: #f0f2f5;
-      --line: #dfe3ea;
-      --text: #1a1d23;
-      --muted: #6b7280;
-      --accent: #2563eb;
-      --accent-2: #059669;
-      --danger: #dc2626;
-      --warn: #b45309;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    padding: 28px 20px 60px;
-  }
-  .wrap { max-width: 940px; margin: 0 auto; }
-  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
-  h1 { font-size: 20px; margin: 0; letter-spacing: -0.2px; }
-  .sub { color: var(--muted); font-size: 13px; }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 16px;
-    margin-top: 16px;
-  }
-  textarea {
-    width: 100%;
-    min-height: 180px;
-    resize: vertical;
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 12px;
-    font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    outline: none;
-  }
-  textarea:focus { border-color: var(--accent); }
-  textarea.drag { border-color: var(--accent-2); border-style: dashed; }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-  .spacer { flex: 1; }
-  button {
-    border: 1px solid var(--line);
-    background: var(--panel-2);
-    color: var(--text);
-    padding: 8px 16px;
-    border-radius: 9px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: border-color .15s, background .15s, opacity .15s;
-  }
-  button:hover:not(:disabled) { border-color: var(--accent); }
-  button:disabled { opacity: .45; cursor: default; }
-  button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-    font-weight: 600;
-  }
-  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
-  .meta { color: var(--muted); font-size: 12px; }
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    border: 1px solid var(--line); border-radius: 999px;
-    padding: 6px 12px; cursor: pointer; user-select: none;
-    background: var(--panel-2); font-size: 13px;
-  }
-  .chip input { accent-color: var(--accent); margin: 0; }
-  .chip.on { border-color: var(--accent); }
-  .list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-  .item {
-    display: flex; gap: 12px; align-items: flex-start;
-    border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px 12px; background: var(--panel-2);
-  }
-  .item .badge {
-    flex: none; width: 22px; height: 22px; border-radius: 6px;
-    display: grid; place-items: center; font-size: 12px; font-weight: 700;
-    background: var(--line); color: var(--muted); margin-top: 2px;
-  }
-  .item.ok .badge { background: color-mix(in srgb, var(--accent-2) 22%, transparent); color: var(--accent-2); }
-  .item.bad .badge { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger); }
-  .item .body { min-width: 0; flex: 1; }
-  .item .title { font-weight: 600; overflow-wrap: anywhere; }
-  .item .src { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  .item .err { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
-  .status { margin-top: 14px; font-size: 13px; min-height: 20px; }
-  .status.err { color: var(--danger); }
-  .status.ok { color: var(--accent-2); }
-  .status.busy { color: var(--warn); }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
-  code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1>问卷批量解析</h1>
-    <span class="sub">Microsoft Forms / Zoho Forms · 一行一个链接</span>
-  </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>问卷批量解析 · survey-tool</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --line: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #8b93a3;
+        --accent: #4f8cff;
+        --accent-2: #6ee7b7;
+        --danger: #ff6b6b;
+        --warn: #f0b429;
+        --radius: 12px;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f5f6f8;
+          --panel: #ffffff;
+          --panel-2: #f0f2f5;
+          --line: #dfe3ea;
+          --text: #1a1d23;
+          --muted: #6b7280;
+          --accent: #2563eb;
+          --accent-2: #059669;
+          --danger: #dc2626;
+          --warn: #b45309;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
+          sans-serif;
+        padding: 28px 20px 60px;
+      }
+      .wrap {
+        max-width: 940px;
+        margin: 0 auto;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0;
+        letter-spacing: -0.2px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-top: 16px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 180px;
+        resize: vertical;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        font:
+          13px/1.65 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+        outline: none;
+      }
+      textarea:focus {
+        border-color: var(--accent);
+      }
+      textarea.drag {
+        border-color: var(--accent-2);
+        border-style: dashed;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .spacer {
+        flex: 1;
+      }
+      button {
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--text);
+        padding: 8px 16px;
+        border-radius: 9px;
+        font-size: 13px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s,
+          opacity 0.15s;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+      button.primary:hover:not(:disabled) {
+        filter: brightness(1.08);
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        cursor: pointer;
+        user-select: none;
+        background: var(--panel-2);
+        font-size: 13px;
+      }
+      .chip input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+      .chip.on {
+        border-color: var(--accent);
+      }
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .item {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--panel-2);
+      }
+      .item .badge {
+        flex: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+        background: var(--line);
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .item.ok .badge {
+        background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+        color: var(--accent-2);
+      }
+      .item.bad .badge {
+        background: color-mix(in srgb, var(--danger) 20%, transparent);
+        color: var(--danger);
+      }
+      .item .body {
+        min-width: 0;
+        flex: 1;
+      }
+      .item .title {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .item .src {
+        color: var(--muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .item .err {
+        color: var(--danger);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      .status {
+        margin-top: 14px;
+        font-size: 13px;
+        min-height: 20px;
+      }
+      .status.err {
+        color: var(--danger);
+      }
+      .status.ok {
+        color: var(--accent-2);
+      }
+      .status.busy {
+        color: var(--warn);
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 8px;
+      }
+      code {
+        background: var(--panel-2);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>问卷批量解析</h1>
+        <span class="sub">Microsoft Forms / Zoho Forms · 一行一个链接</span>
+      </header>
 
-  <div class="card">
-    <textarea id="input" spellcheck="false"
-      placeholder="每行粘贴一个问卷链接，例如：&#10;https://forms.office.com/r/xxxxxxxxxx&#10;https://forms.zohopublic.com/xxx/form/xxxx&#10;&#10;# 以 # 开头的行会被跳过&#10;也可以直接把 .txt 文件拖进来&#10;或者粘贴一份完整的 survey.json（以 { 开头）"></textarea>
-    <div class="row">
-      <button id="parse">解析</button>
-      <button id="sample">填入示例</button>
-      <button id="clear">清空</button>
-      <span class="spacer"></span>
-      <span class="meta" id="counter">0 行</span>
-    </div>
-  </div>
-
-  <div class="card" id="resultCard" hidden>
-    <div class="row" style="margin-top:0">
-      <strong>解析结果</strong>
-      <span class="meta" id="summary"></span>
-    </div>
-    <div class="list" id="list"></div>
-
-    <div class="row" style="margin-top:16px">
-      <span class="meta">导出格式</span>
-      <div class="chips" id="formats">
-        <label class="chip on"><input type="checkbox" value="html" checked />HTML</label>
-        <label class="chip on"><input type="checkbox" value="markdown" checked />Markdown</label>
-        <label class="chip on"><input type="checkbox" value="json" checked />JSON</label>
-        <label class="chip"><input type="checkbox" value="pdf" />PDF</label>
+      <div class="card">
+        <textarea
+          id="input"
+          spellcheck="false"
+          placeholder="每行粘贴一个问卷链接，例如：&#10;https://forms.office.com/r/xxxxxxxxxx&#10;https://forms.zohopublic.com/xxx/form/xxxx&#10;&#10;# 以 # 开头的行会被跳过&#10;也可以直接把 .txt 文件拖进来&#10;或者粘贴一份完整的 survey.json（以 { 开头）"
+        ></textarea>
+        <div class="row">
+          <button id="parse">解析</button>
+          <button id="sample">填入示例</button>
+          <button id="clear">清空</button>
+          <span class="spacer"></span>
+          <span class="meta" id="counter">0 行</span>
+        </div>
       </div>
+
+      <div class="card" id="resultCard" hidden>
+        <div class="row" style="margin-top: 0">
+          <strong>解析结果</strong>
+          <span class="meta" id="summary"></span>
+        </div>
+        <div class="list" id="list"></div>
+
+        <div class="row" style="margin-top: 16px">
+          <span class="meta">导出格式</span>
+          <div class="chips" id="formats">
+            <label class="chip on"><input type="checkbox" value="html" checked />HTML</label>
+            <label class="chip on"><input type="checkbox" value="markdown" checked />Markdown</label>
+            <label class="chip on"><input type="checkbox" value="json" checked />JSON</label>
+            <label class="chip"><input type="checkbox" value="pdf" />PDF</label>
+          </div>
+        </div>
+        <div class="row">
+          <label class="chip"><input type="checkbox" id="merge" />合并成一份（PDF 打印通常想要这个）</label>
+          <span class="spacer"></span>
+          <button class="primary" id="export">导出并下载 ZIP</button>
+        </div>
+        <div class="hint" id="pdfHint" hidden>PDF 由系统 Chromium 打印生成，首次调用会慢几秒。</div>
+      </div>
+
+      <div class="status" id="status"></div>
     </div>
-    <div class="row">
-      <label class="chip"><input type="checkbox" id="merge" />合并成一份（PDF 打印通常想要这个）</label>
-      <span class="spacer"></span>
-      <button class="primary" id="export">导出并下载 ZIP</button>
-    </div>
-    <div class="hint" id="pdfHint" hidden>PDF 由系统 Chromium 打印生成，首次调用会慢几秒。</div>
-  </div>
 
-  <div class="status" id="status"></div>
-</div>
+    <script>
+      (() => {
+        const input = document.getElementById("input");
+        const counter = document.getElementById("counter");
+        const statusEl = document.getElementById("status");
+        const resultCard = document.getElementById("resultCard");
+        const listEl = document.getElementById("list");
+        const summaryEl = document.getElementById("summary");
+        const parseBtn = document.getElementById("parse");
+        const exportBtn = document.getElementById("export");
+        const clearBtn = document.getElementById("clear");
+        const sampleBtn = document.getElementById("sample");
+        const mergeBox = document.getElementById("merge");
+        const formatsBox = document.getElementById("formats");
+        const pdfHint = document.getElementById("pdfHint");
 
-<script>
-(() => {
-  const input = document.getElementById("input");
-  const counter = document.getElementById("counter");
-  const statusEl = document.getElementById("status");
-  const resultCard = document.getElementById("resultCard");
-  const listEl = document.getElementById("list");
-  const summaryEl = document.getElementById("summary");
-  const parseBtn = document.getElementById("parse");
-  const exportBtn = document.getElementById("export");
-  const clearBtn = document.getElementById("clear");
-  const sampleBtn = document.getElementById("sample");
-  const mergeBox = document.getElementById("merge");
-  const formatsBox = document.getElementById("formats");
-  const pdfHint = document.getElementById("pdfHint");
+        let parsed = null;
+        let busy = false;
 
-  let parsed = null;
-  let busy = false;
+        const countLines = () => {
+          const lines = input.value.split(/\r?\n/).filter((line) => line.trim());
+          counter.textContent = lines.length + " 行";
+        };
+        input.addEventListener("input", countLines);
+        input.addEventListener("input", () => {
+          parsed = null;
+          resultCard.hidden = true;
+        });
 
-  const countLines = () => {
-    const lines = input.value.split(/\r?\n/).filter((line) => line.trim());
-    counter.textContent = lines.length + " 行";
-  };
-  input.addEventListener("input", countLines);
-  input.addEventListener("input", () => { parsed = null; resultCard.hidden = true; });
+        const setStatus = (text, kind) => {
+          statusEl.textContent = text || "";
+          statusEl.className = "status" + (kind ? " " + kind : "");
+        };
 
-  const setStatus = (text, kind) => {
-    statusEl.textContent = text || "";
-    statusEl.className = "status" + (kind ? " " + kind : "");
-  };
+        const setBusy = (value) => {
+          busy = value;
+          parseBtn.disabled = value;
+          exportBtn.disabled = value;
+        };
 
-  const setBusy = (value) => {
-    busy = value;
-    parseBtn.disabled = value;
-    exportBtn.disabled = value;
-  };
+        const selectedFormats = () => Array.from(formatsBox.querySelectorAll("input:checked")).map((el) => el.value);
 
-  const selectedFormats = () =>
-    Array.from(formatsBox.querySelectorAll("input:checked")).map((el) => el.value);
+        formatsBox.addEventListener("change", () => {
+          for (const label of formatsBox.querySelectorAll(".chip")) {
+            const box = label.querySelector("input");
+            label.classList.toggle("on", box.checked);
+          }
+          pdfHint.hidden = !formatsBox.querySelector('input[value="pdf"]').checked;
+        });
 
-  formatsBox.addEventListener("change", () => {
-    for (const label of formatsBox.querySelectorAll(".chip")) {
-      const box = label.querySelector("input");
-      label.classList.toggle("on", box.checked);
-    }
-    pdfHint.hidden = !formatsBox.querySelector('input[value="pdf"]').checked;
-  });
+        const renderList = (results) => {
+          listEl.replaceChildren();
+          for (const result of results) {
+            const item = document.createElement("div");
+            item.className = "item " + (result.ok ? "ok" : "bad");
 
-  const renderList = (results) => {
-    listEl.replaceChildren();
-    for (const result of results) {
-      const item = document.createElement("div");
-      item.className = "item " + (result.ok ? "ok" : "bad");
+            const badge = document.createElement("div");
+            badge.className = "badge";
+            badge.textContent = result.ok ? "✓" : "✕";
 
-      const badge = document.createElement("div");
-      badge.className = "badge";
-      badge.textContent = result.ok ? "✓" : "✕";
+            const body = document.createElement("div");
+            body.className = "body";
 
-      const body = document.createElement("div");
-      body.className = "body";
+            const title = document.createElement("div");
+            title.className = "title";
+            title.textContent = result.ok ? result.title : "解析失败";
+            body.appendChild(title);
 
-      const title = document.createElement("div");
-      title.className = "title";
-      title.textContent = result.ok ? result.title : "解析失败";
-      body.appendChild(title);
+            const src = document.createElement("div");
+            src.className = "src";
+            src.textContent = result.label;
+            body.appendChild(src);
 
-      const src = document.createElement("div");
-      src.className = "src";
-      src.textContent = result.label;
-      body.appendChild(src);
+            if (result.ok) {
+              const meta = document.createElement("div");
+              meta.className = "src";
+              meta.textContent = result.questions + " 题 · " + result.pages + " 页";
+              body.appendChild(meta);
+            } else {
+              const err = document.createElement("div");
+              err.className = "err";
+              err.textContent = result.error;
+              body.appendChild(err);
+            }
 
-      if (result.ok) {
-        const meta = document.createElement("div");
-        meta.className = "src";
-        meta.textContent = result.questions + " 题 · " + result.pages + " 页";
-        body.appendChild(meta);
-      } else {
-        const err = document.createElement("div");
-        err.className = "err";
-        err.textContent = result.error;
-        body.appendChild(err);
-      }
+            item.append(badge, body);
+            listEl.appendChild(item);
+          }
+        };
 
-      item.append(badge, body);
-      listEl.appendChild(item);
-    }
-  };
+        parseBtn.addEventListener("click", async () => {
+          if (busy) return;
+          const text = input.value;
+          if (!text.trim()) {
+            setStatus("先粘贴至少一个链接", "err");
+            return;
+          }
+          setBusy(true);
+          setStatus("正在解析…", "busy");
+          try {
+            const response = await fetch("/api/parse", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ text }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "解析失败");
+            parsed = payload;
+            renderList(payload.results);
+            const okCount = payload.results.filter((r) => r.ok).length;
+            summaryEl.textContent =
+              okCount +
+              " / " +
+              payload.results.length +
+              " 份成功" +
+              (payload.overflow ? " · " + payload.overflow + " 行超出上限被忽略" : "");
+            resultCard.hidden = false;
+            setStatus(okCount ? "解析完成，可以导出" : "全部失败，检查链接后重试", okCount ? "ok" : "err");
+          } catch (error) {
+            setStatus(String(error && error.message ? error.message : error), "err");
+          } finally {
+            setBusy(false);
+          }
+        });
 
-  parseBtn.addEventListener("click", async () => {
-    if (busy) return;
-    const text = input.value;
-    if (!text.trim()) { setStatus("先粘贴至少一个链接", "err"); return; }
-    setBusy(true);
-    setStatus("正在解析…", "busy");
-    try {
-      const response = await fetch("/api/parse", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "解析失败");
-      parsed = payload;
-      renderList(payload.results);
-      const okCount = payload.results.filter((r) => r.ok).length;
-      summaryEl.textContent =
-        okCount + " / " + payload.results.length + " 份成功" +
-        (payload.overflow ? " · " + payload.overflow + " 行超出上限被忽略" : "");
-      resultCard.hidden = false;
-      setStatus(okCount ? "解析完成，可以导出" : "全部失败，检查链接后重试", okCount ? "ok" : "err");
-    } catch (error) {
-      setStatus(String(error && error.message ? error.message : error), "err");
-    } finally {
-      setBusy(false);
-    }
-  });
+        exportBtn.addEventListener("click", async () => {
+          if (busy) return;
+          const formats = selectedFormats();
+          if (!formats.length) {
+            setStatus("至少选一种导出格式", "err");
+            return;
+          }
+          setBusy(true);
+          setStatus(formats.includes("pdf") ? "正在导出（PDF 需要几秒）…" : "正在导出…", "busy");
+          try {
+            const response = await fetch("/api/export", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ text: input.value, formats, merge: mergeBox.checked }),
+            });
+            if (!response.ok) {
+              const payload = await response.json().catch(() => ({}));
+              throw new Error(payload.error || "导出失败（HTTP " + response.status + "）");
+            }
+            const blob = await response.blob();
+            const disposition = response.headers.get("content-disposition") || "";
+            const match = /filename="([^"]+)"/.exec(disposition);
+            const name = match ? match[1] : "surveys.zip";
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = name;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            setStatus("已下载 " + name + "（" + Math.round(blob.size / 1024) + " KB）", "ok");
+          } catch (error) {
+            setStatus(String(error && error.message ? error.message : error), "err");
+          } finally {
+            setBusy(false);
+          }
+        });
 
-  exportBtn.addEventListener("click", async () => {
-    if (busy) return;
-    const formats = selectedFormats();
-    if (!formats.length) { setStatus("至少选一种导出格式", "err"); return; }
-    setBusy(true);
-    setStatus(formats.includes("pdf") ? "正在导出（PDF 需要几秒）…" : "正在导出…", "busy");
-    try {
-      const response = await fetch("/api/export", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: input.value, formats, merge: mergeBox.checked }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || "导出失败（HTTP " + response.status + "）");
-      }
-      const blob = await response.blob();
-      const disposition = response.headers.get("content-disposition") || "";
-      const match = /filename="([^"]+)"/.exec(disposition);
-      const name = match ? match[1] : "surveys.zip";
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      setStatus("已下载 " + name + "（" + Math.round(blob.size / 1024) + " KB）", "ok");
-    } catch (error) {
-      setStatus(String(error && error.message ? error.message : error), "err");
-    } finally {
-      setBusy(false);
-    }
-  });
+        clearBtn.addEventListener("click", () => {
+          input.value = "";
+          parsed = null;
+          resultCard.hidden = true;
+          setStatus("");
+          countLines();
+          input.focus();
+        });
 
-  clearBtn.addEventListener("click", () => {
-    input.value = "";
-    parsed = null;
-    resultCard.hidden = true;
-    setStatus("");
-    countLines();
-    input.focus();
-  });
+        sampleBtn.addEventListener("click", () => {
+          input.value = [
+            "https://forms.office.com/r/EXAMPLE1",
+            "https://forms.zohopublic.com/example/form/EXAMPLE2",
+            "",
+            "# 以 # 开头的行会被跳过",
+          ].join("\n");
+          countLines();
+          setStatus("示例只是占位，换成你自己的链接再解析", "busy");
+        });
 
-  sampleBtn.addEventListener("click", () => {
-    input.value = [
-      "https://forms.office.com/r/EXAMPLE1",
-      "https://forms.zohopublic.com/example/form/EXAMPLE2",
-      "",
-      "# 以 # 开头的行会被跳过",
-    ].join("\n");
-    countLines();
-    setStatus("示例只是占位，换成你自己的链接再解析", "busy");
-  });
+        // 拖 .txt 进来：多行导入最常见的路径是「导出成文本再粘」，能少一步就少一步。
+        input.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          input.classList.add("drag");
+        });
+        input.addEventListener("dragleave", () => input.classList.remove("drag"));
+        input.addEventListener("drop", async (event) => {
+          event.preventDefault();
+          input.classList.remove("drag");
+          const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+          if (!file) return;
+          const text = await file.text();
+          input.value = input.value.trim() ? input.value.trimEnd() + "\n" + text : text;
+          countLines();
+          setStatus("已读入 " + file.name, "ok");
+        });
 
-  // 拖 .txt 进来：多行导入最常见的路径是「导出成文本再粘」，能少一步就少一步。
-  input.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    input.classList.add("drag");
-  });
-  input.addEventListener("dragleave", () => input.classList.remove("drag"));
-  input.addEventListener("drop", async (event) => {
-    event.preventDefault();
-    input.classList.remove("drag");
-    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-    if (!file) return;
-    const text = await file.text();
-    input.value = input.value.trim() ? input.value.trimEnd() + "\n" + text : text;
-    countLines();
-    setStatus("已读入 " + file.name, "ok");
-  });
-
-  countLines();
-  input.focus();
-})();
-</script>
-</body>
+        countLines();
+        input.focus();
+      })();
+    </script>
+  </body>
 </html>

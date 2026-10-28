@@ -270,6 +270,6 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((error) => {
-    console.error(`✗ 未处理的错误：${error instanceof Error ? error.stack ?? error.message : error}`);
+    console.error(`✗ 未处理的错误：${error instanceof Error ? (error.stack ?? error.message) : error}`);
     process.exit(1);
   });

@@ -14,7 +14,11 @@
  * 「开放代理」的区别。
  */
 
-import { buildSurveyExportHtml, buildSurveyExportJson, buildSurveyExportMarkdown } from "../../admin/src/lib/survey-export";
+import {
+  buildSurveyExportHtml,
+  buildSurveyExportJson,
+  buildSurveyExportMarkdown,
+} from "../../admin/src/lib/survey-export";
 import type { ExportSurvey } from "../../admin/src/lib/survey-export";
 import {
   collectUrlLines,
@@ -341,7 +345,6 @@ console.log(`PDF 引擎：${findChromium() ? "已找到 Chromium" : "未找到 C
 console.log("按 Ctrl+C 停止");
 
 if (options.open) {
-  const opener =
-    process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+  const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
   Bun.spawn([opener, address], { stdio: ["ignore", "ignore", "ignore"] });
 }

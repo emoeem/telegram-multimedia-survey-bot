@@ -9,10 +9,10 @@
 
 ## 两种用法，一个程序
 
-| 怎么启动 | 得到什么 |
-| --- | --- |
+| 怎么启动            | 得到什么                                        |
+| ------------------- | ----------------------------------------------- |
 | **双击 / 不带参数** | 本地 Web 界面，浏览器里粘贴、预览、一键下载 ZIP |
-| 带参数 | 命令行，行为与旧版完全一致 |
+| 带参数              | 命令行，行为与旧版完全一致                      |
 
 ```bash
 ./survey-tool                    # → Web 界面（自动监听 127.0.0.1:8799）
@@ -76,27 +76,27 @@
 
 ### 输入
 
-| 类型 | 说明 |
-| --- | --- |
-| `https://forms.office.com/…` | Microsoft Forms，实时抓取并转换 |
-| `https://forms.zohopublic.com/…` | Zoho Forms，同上 |
-| `*.json` | 标准 survey.json（需要有 `survey.questions`；也认 `questions` 在顶层） |
-| `*.txt` | 文本清单，每行一个链接；`#` 开头当注释 |
+| 类型                             | 说明                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `https://forms.office.com/…`     | Microsoft Forms，实时抓取并转换                                        |
+| `https://forms.zohopublic.com/…` | Zoho Forms，同上                                                       |
+| `*.json`                         | 标准 survey.json（需要有 `survey.questions`；也认 `questions` 在顶层） |
+| `*.txt`                          | 文本清单，每行一个链接；`#` 开头当注释                                 |
 
 `--stdin` 从标准输入读同样的内容，适合直接粘贴一批链接。
 重复链接自动合并，空行与注释忽略。
 
 ### 选项
 
-| 选项 | 作用 |
-| --- | --- |
-| `--out <目录>` | 输出目录（默认 `./survey-out`） |
+| 选项              | 作用                                               |
+| ----------------- | -------------------------------------------------- |
+| `--out <目录>`    | 输出目录（默认 `./survey-out`）                    |
 | `--format <列表>` | `html,md,json,pdf` 任意组合（默认 `html,md,json`） |
-| `--merge` | 合并成一份「问卷合集」，PDF 场景通常想要这个 |
-| `--stdin` | 从标准输入逐行读 |
-| `--json` | 把解析结果打到 stdout，不落盘 |
-| `--port <n>` | Web 模式端口（默认 8799） |
-| `--open` | Web 模式启动后打开浏览器 |
+| `--merge`         | 合并成一份「问卷合集」，PDF 场景通常想要这个       |
+| `--stdin`         | 从标准输入逐行读                                   |
+| `--json`          | 把解析结果打到 stdout，不落盘                      |
+| `--port <n>`      | Web 模式端口（默认 8799）                          |
+| `--open`          | Web 模式启动后打开浏览器                           |
 
 ## 编译
 
@@ -106,11 +106,11 @@ pnpm build:tool     # 三平台 → tools/survey-tool/dist/
 
 产物：
 
-| 平台 | 文件 | 体积 |
-| --- | --- | --- |
-| Linux x64 | `survey-tool-linux-x64` | ~87 MB |
+| 平台        | 文件                          | 体积    |
+| ----------- | ----------------------------- | ------- |
+| Linux x64   | `survey-tool-linux-x64`       | ~87 MB  |
 | Windows x64 | `survey-tool-windows-x64.exe` | ~111 MB |
-| macOS arm64 | `survey-tool-darwin-arm64` | ~86 MB |
+| macOS arm64 | `survey-tool-darwin-arm64`    | ~86 MB  |
 
 体积主要是 Bun 运行时本身。没有额外依赖：ZIP 打包是 `zip.ts` 里手写的 90 行，
 PDF 借系统 Chromium，不打包浏览器。
@@ -132,15 +132,15 @@ pnpm survey:selftest
 
 ## 文件结构
 
-| 文件 | 职责 |
-| --- | --- |
-| `main.ts` | 统一入口：判断走 Web 还是 CLI |
-| `core.ts` | 解析、PDF 渲染、命名规则——**CLI 与 Web 共用，只此一份** |
-| `index.ts` | 命令行 |
-| `server.ts` | 本地 Web 服务（`Bun.serve`） |
-| `page.html` | 单页界面，编译时内联进二进制 |
-| `zip.ts` | 极简 ZIP 打包器（deflate / store 双模） |
-| `selftest.ts` | 内核自检 |
+| 文件          | 职责                                                    |
+| ------------- | ------------------------------------------------------- |
+| `main.ts`     | 统一入口：判断走 Web 还是 CLI                           |
+| `core.ts`     | 解析、PDF 渲染、命名规则——**CLI 与 Web 共用，只此一份** |
+| `index.ts`    | 命令行                                                  |
+| `server.ts`   | 本地 Web 服务（`Bun.serve`）                            |
+| `page.html`   | 单页界面，编译时内联进二进制                            |
+| `zip.ts`      | 极简 ZIP 打包器（deflate / store 双模）                 |
+| `selftest.ts` | 内核自检                                                |
 
 `core.ts` 存在的理由见文件头：上一轮 CLI 和网页端各认一种分页字段
 （`page_id` 与 `pageId`），结果一边导出的 PDF 里题目被**静默丢弃**且没有任何报错。
@@ -148,9 +148,9 @@ pnpm survey:selftest
 
 ## 已知边界
 
-| 项 | 说明 |
-| --- | --- |
-| PDF 需要 Chromium | 找不到就跳过 PDF 并给出提示，其余格式照常。Linux 下装 `chromium` 或用 Playwright 缓存 |
+| 项                                | 说明                                                                                                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PDF 需要 Chromium                 | 找不到就跳过 PDF 并给出提示，其余格式照常。Linux 下装 `chromium` 或用 Playwright 缓存                                                                                                                       |
 | 中文文件名在旧版 `unzip` 显示乱码 | ZIP 用标准的 UTF-8 文件名 flag（`0x0800`）。7-Zip / Windows 资源管理器 / macOS 归档工具 / `python3 zipfile` 都正常；Info-ZIP `unzip` 6.0 及更早版本不认这个 flag，显示乱码但内容无损（`unzip -t` 校验通过） |
-| Windows / macOS 产物未实机验证 | 交叉编译成功；Linux 版已在本机跑通 Web、CLI、PDF 全链路 |
-| Web 只做本机 | 不提供鉴权，也没有远程访问的设计意图。要给别人用，就把 `dist/` 里的二进制发给他 |
+| Windows / macOS 产物未实机验证    | 交叉编译成功；Linux 版已在本机跑通 Web、CLI、PDF 全链路                                                                                                                                                     |
+| Web 只做本机                      | 不提供鉴权，也没有远程访问的设计意图。要给别人用，就把 `dist/` 里的二进制发给他                                                                                                                             |

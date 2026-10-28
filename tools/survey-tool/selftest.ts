@@ -12,7 +12,11 @@ import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import { buildSurveyExportHtml, buildSurveyExportJson, buildSurveyExportMarkdown } from "../../admin/src/lib/survey-export";
+import {
+  buildSurveyExportHtml,
+  buildSurveyExportJson,
+  buildSurveyExportMarkdown,
+} from "../../admin/src/lib/survey-export";
 import { collectUrlLines, findChromium, renderPdfBytes, safeName, toExportSurvey } from "./core";
 import { buildZip } from "./zip";
 
@@ -42,7 +46,10 @@ console.log("1) 分页字段兼容（page_id 字符串 / pageId 数字）");
     },
     "fallback",
   );
-  check("page_id 被收进 pageId", legacy.questions.every((question) => question.pageId === "p1"));
+  check(
+    "page_id 被收进 pageId",
+    legacy.questions.every((question) => question.pageId === "p1"),
+  );
   check("题数正确", legacy.questions.length === 2);
   check("标题取自 survey", legacy.title === "旧导入器格式");
 
@@ -71,18 +78,25 @@ console.log("2) 真实问卷渲染（仓库根 survey.json）");
   const json = buildSurveyExportJson([survey]);
   check("HTML 含题目正文", html.includes("<html") && html.length > 1000, `${html.length} 字节`);
   check("Markdown 非空", markdown.length > 200, `${markdown.length} 字节`);
-  check("JSON 可回解析", (() => {
-    try {
-      JSON.parse(json);
-      return true;
-    } catch {
-      return false;
-    }
-  })());
+  check(
+    "JSON 可回解析",
+    (() => {
+      try {
+        JSON.parse(json);
+        return true;
+      } catch {
+        return false;
+      }
+    })(),
+  );
 
   // 题目一条都不能丢——上一轮的静默丢数据就是在这里被抓住的。
   const renderedCount = (html.match(/class="q-title"/g) ?? []).length;
-  check("HTML 题目块数量与题目数一致", renderedCount === survey.questions.length, `${renderedCount} vs ${survey.questions.length}`);
+  check(
+    "HTML 题目块数量与题目数一致",
+    renderedCount === survey.questions.length,
+    `${renderedCount} vs ${survey.questions.length}`,
+  );
 
   globalThis.__fixture = { survey, html, markdown, json };
 }
@@ -90,7 +104,14 @@ console.log("2) 真实问卷渲染（仓库根 survey.json）");
 console.log("3) 输入清洗");
 {
   const parsed = collectUrlLines(
-    ["  https://forms.office.com/r/a  ", "", "# 注释", "https://forms.office.com/r/A", "不是链接", "https://x.test/b"].join("\n"),
+    [
+      "  https://forms.office.com/r/a  ",
+      "",
+      "# 注释",
+      "https://forms.office.com/r/A",
+      "不是链接",
+      "https://x.test/b",
+    ].join("\n"),
   );
   check("只留下合法链接", parsed.urls.length === 2, JSON.stringify(parsed.urls));
   check("大小写重复被去重", parsed.urls.filter((url) => url.toLowerCase().includes("/r/a")).length <= 1);
@@ -108,15 +129,26 @@ console.log("4) ZIP 归档格式合法");
     { name: "二进制.pdf", bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]) },
   ]);
   check("产物非空", archive.length > 0, `${archive.length} 字节`);
-  check("以 PK\\x03\\x04 开头", archive[0] === 0x50 && archive[1] === 0x4b && archive[2] === 0x03 && archive[3] === 0x04);
-  check("结尾有 EOCD 签名", (() => {
-    for (let index = archive.length - 22; index >= 0; index -= 1) {
-      if (archive[index] === 0x50 && archive[index + 1] === 0x4b && archive[index + 2] === 0x05 && archive[index + 3] === 0x06) {
-        return true;
+  check(
+    "以 PK\\x03\\x04 开头",
+    archive[0] === 0x50 && archive[1] === 0x4b && archive[2] === 0x03 && archive[3] === 0x04,
+  );
+  check(
+    "结尾有 EOCD 签名",
+    (() => {
+      for (let index = archive.length - 22; index >= 0; index -= 1) {
+        if (
+          archive[index] === 0x50 &&
+          archive[index + 1] === 0x4b &&
+          archive[index + 2] === 0x05 &&
+          archive[index + 3] === 0x06
+        ) {
+          return true;
+        }
       }
-    }
-    return false;
-  })());
+      return false;
+    })(),
+  );
 
   const target = join(import.meta.dir, ".selftest.zip");
   writeFileSync(target, archive);

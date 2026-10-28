@@ -145,7 +145,9 @@ function renderQuestionHtml(question: ExportSurveyQuestion, index: number): stri
       ? '<div class="answer-line"></div>'
       : "";
   const constraints = describeValidation(question.validation);
-  const constraintLine = constraints.length ? `<p class="constraints">限制：${escapeHtml(constraints.join(" · "))}</p>` : "";
+  const constraintLine = constraints.length
+    ? `<p class="constraints">限制：${escapeHtml(constraints.join(" · "))}</p>`
+    : "";
 
   return `<section class="question">
   <header class="q-head">
@@ -163,7 +165,7 @@ function renderQuestionHtml(question: ExportSurveyQuestion, index: number): stri
 
 function renderSurveyHtml(survey: ExportSurvey): string {
   const questions = sortedQuestions(survey);
-  const status = survey.status ? STATUS_LABELS[survey.status] ?? survey.status : "";
+  const status = survey.status ? (STATUS_LABELS[survey.status] ?? survey.status) : "";
   const pageCount = survey.pages?.length ?? 0;
   const meta = [`${questions.length} 题`, pageCount ? `${pageCount} 页` : "", status].filter(Boolean).join(" · ");
 
@@ -183,8 +185,8 @@ function renderSurveyHtml(survey: ExportSurvey): string {
   }
 
   const pageBlocks = pageCount
-    ? survey.pages!
-        .slice()
+    ? survey
+        .pages!.slice()
         .sort((a, b) => a.order - b.order)
         .map((page) => {
           const bucket = byPage.get(String(page.id)) ?? [];
@@ -273,9 +275,7 @@ export function buildSurveyExportHtml(
   const generatedAt = options.generatedAt ?? new Date();
   const documentTitle = options.title?.trim() || "问卷导出";
   const stamp = generatedAt.toLocaleString("zh-CN", { hour12: false });
-  const body = surveys.length
-    ? surveys.map(renderSurveyHtml).join("\n")
-    : '<p class="empty">没有选中任何问卷。</p>';
+  const body = surveys.length ? surveys.map(renderSurveyHtml).join("\n") : '<p class="empty">没有选中任何问卷。</p>';
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -303,7 +303,9 @@ export function buildSurveyExportMarkdown(surveys: ExportSurvey[], options: { ge
     const lines: string[] = [];
     lines.push(`# ${survey.title || `问卷 #${survey.id}`}`);
     lines.push("");
-    lines.push(`> 编号 #${survey.id} · ${questions.length} 题${survey.status ? ` · ${STATUS_LABELS[survey.status] ?? survey.status}` : ""}`);
+    lines.push(
+      `> 编号 #${survey.id} · ${questions.length} 题${survey.status ? ` · ${STATUS_LABELS[survey.status] ?? survey.status}` : ""}`,
+    );
     if (survey.description?.trim()) {
       lines.push("");
       lines.push(survey.description.trim());
@@ -396,7 +398,11 @@ export function buildExportFileName(
     String(generatedAt.getMonth() + 1).padStart(2, "0"),
     String(generatedAt.getDate()).padStart(2, "0"),
   ].join("");
-  const safeTitle = (value: string) => value.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const safeTitle = (value: string) =>
+    value
+      .replace(/[\\/:*?"<>|\s]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
   const base =
     surveys.length === 1
       ? safeTitle(surveys[0]?.title || `survey-${surveys[0]?.id}`) || "survey"

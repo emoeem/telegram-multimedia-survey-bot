@@ -127,7 +127,9 @@ export function ExportPage() {
       const generatedAt = new Date();
       const { content, mime, extension } = buildExportContent(format, collected, { generatedAt });
       downloadBlob(content, mime, buildExportFileName(format, collected, generatedAt));
-      setNotice(`已导出 ${collected.length} 份问卷（${extension.toUpperCase()}，${Math.round(content.length / 1024)} KB）`);
+      setNotice(
+        `已导出 ${collected.length} 份问卷（${extension.toUpperCase()}，${Math.round(content.length / 1024)} KB）`,
+      );
     } catch (requestError) {
       setProblem(requestError instanceof Error ? requestError.message : "导出失败");
     } finally {
@@ -183,8 +185,8 @@ export function ExportPage() {
       <section className="card">
         <h1 className="text-xl font-semibold">批量导出问卷</h1>
         <p className="mt-1 text-sm text-[var(--color-muted)]">
-          勾选问卷后导出为 HTML / Markdown / JSON。选 HTML 并点「打印 / 另存为 PDF」，浏览器的打印对话框即可产出分页正确的
-          PDF（每份问卷单独起页）。
+          勾选问卷后导出为 HTML / Markdown / JSON。选 HTML 并点「打印 / 另存为
+          PDF」，浏览器的打印对话框即可产出分页正确的 PDF（每份问卷单独起页）。
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -270,8 +272,8 @@ export function ExportPage() {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button className="btn" disabled={busy || !selectedCount} onClick={() => void handleDownload()}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            下载 {format === "json" ? <FileJson className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-            （{selectedCount} 份）
+            下载 {format === "json" ? <FileJson className="h-4 w-4" /> : <FileText className="h-4 w-4" />}（
+            {selectedCount} 份）
           </button>
           <button className="btn" disabled={busy || !selectedCount} onClick={() => void handlePrint()}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}

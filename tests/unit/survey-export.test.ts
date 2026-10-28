@@ -49,9 +49,7 @@ const survey: ExportSurvey = {
 
 describe("escapeHtml", () => {
   it("neutralises tags and attribute-breaking quotes", () => {
-    expect(escapeHtml('<script>alert("x")</script>')).toBe(
-      "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;",
-    );
+    expect(escapeHtml('<script>alert("x")</script>')).toBe("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
     expect(escapeHtml("a & b 'c'")).toBe("a &amp; b &#39;c&#39;");
   });
 });
@@ -93,9 +91,7 @@ describe("buildSurveyExportHtml", () => {
   });
 
   it("escapes user content instead of injecting it", () => {
-    const evil = buildSurveyExportHtml([
-      { ...survey, id: 9, title: '<img src=x onerror="alert(1)">', questions: [] },
-    ]);
+    const evil = buildSurveyExportHtml([{ ...survey, id: 9, title: '<img src=x onerror="alert(1)">', questions: [] }]);
     expect(evil).not.toContain("<img src=x onerror");
     expect(evil).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   });

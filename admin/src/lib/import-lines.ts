@@ -64,10 +64,7 @@ function normalizeHttpUrl(raw: string): string | null {
  * 不做去空的「宽容」处理之外的事：不猜域名、不补 `https://`。少一层猜测，
  * 用户看到的后端报错就能一一对应到自己写的那一行。
  */
-export function parseImportLines(
-  input: string,
-  options: { maxLines?: number } = {},
-): ParsedImportLines {
+export function parseImportLines(input: string, options: { maxLines?: number } = {}): ParsedImportLines {
   const maxLines = options.maxLines ?? DEFAULT_MAX_IMPORT_LINES;
   const lines: ParsedImportLine[] = [];
   const rejected: RejectedImportLine[] = [];
