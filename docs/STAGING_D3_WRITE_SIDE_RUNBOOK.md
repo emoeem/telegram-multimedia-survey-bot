@@ -85,6 +85,39 @@ python3 scripts/galgame/import_galgame_survey.py \
 - **assets 是 SPA fallback 且非 worker-first** → 不要直接浏览器导航 `/s/:id`（可能命中
   HANDOVER.md:100 记录的黑屏形态）；验证走 `/admin` 与显式 API 路径。
 
+## 5b. 实测记录（2026-10-29，本账号重建 staging 资源后）
+
+背景修正：文档记载 staging 在 `3353745917@gmail.com` 账号，实测发现该账号不可用——
+经用户确认改在**生产账号（pd2335346）下重建 staging 资源**，资源 ID 已更新进
+`wrangler.staging.toml`（D1 `cca68a1e`、MEDIA_KV `5b8095aa`、CACHE `d1b32d19`、
+queue 已建）。staging URL：`https://telegram-multimedia-survey-bot-staging.pd2335346.workers.dev`。
+
+自动化验证结果（全部通过）：
+
+| 项                                                    | 结果                                        |
+| ----------------------------------------------------- | ------------------------------------------- |
+| 迁移 + deploy + /health                               | ✅ `{"ok":true,"environment":"staging"}`    |
+| 旧形态灌入（hotspot id=1 / galgame id=2，49 素材）    | ✅ importer 验证器 8/8 挂载全过             |
+| 已发布素材公开（第一/三路：question_media/cover）     | ✅ 抽查 media/1,5,8,9 全 200                |
+| 未挂载素材                                            | ✅ media/99 → 404                           |
+| **缺口重现**：theme 改 `{assetId}`（无表挂载无 refs） | ✅ media/10 → **404**（证明第五路的必要性） |
+| **第五路兜住**：登记 `survey_theme` media_refs 行     | ✅ media/10 → **200**                       |
+| ref_key 绑定（假 ref 行不影响）                       | ✅                                          |
+| draft 挂载拦截 → 发布翻转                             | ✅ draft 404 / published 放行               |
+| theme 字符串形态还原后第四路恢复                      | ✅ media/10 回 200                          |
+
+实测过程中修复的两个 importer bug（都在本分支）：
+
+1. `import_hotspot_survey.py` 的 `_run_with_retry` 替换 `wenai.run` 时**丢掉
+   WRANGLER_ARGS**——所有查询静默打到生产库（dry-run 阶段抓到，生产零写入）。
+   修复后运行时读 `wenai.WRANGLER_ARGS`。
+2. `import_galgame_survey.py` 引用了未导入的 `wenai` 名。另：空库导入需先建
+   owner 用户（外键），runbook 步骤已含。
+
+待 cron 自然验证：staging cron 每 30 分钟跑 `syncWeakMediaRefs`，跑完查
+`media_refs` 应出现 `survey_settings` 行（URL 形态登记）——本地单测已覆盖
+双读提取，此项为环境侧旁证。
+
 ## 6. 通过后（另行确认再执行）
 
 1. 合入 main（触发生产 deploy）。

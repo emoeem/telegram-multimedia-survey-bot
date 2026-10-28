@@ -37,10 +37,14 @@ _SCRIPT_ROOT = wenai.ROOT
 
 
 def _run_with_retry(args: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
+    # 运行时读 wenai.WRANGLER_ARGS（--config 注入目标环境）。此函数在模块
+    # 顶部替换 wenai.run，wenai 内部所有 wrangler 调用都经这里——丢了
+    # WRANGLER_ARGS 会静默打到生产库（实际发生过，见 runbook 风险记录）。
+    wrangler_args = ["npx", "wrangler", *wenai.WRANGLER_ARGS, *args]
     last_error = ""
     for attempt in range(4):
         result = subprocess.run(
-            ["npx", "wrangler", *args],
+            wrangler_args,
             cwd=_SCRIPT_ROOT,
             capture_output=capture,
             text=True,

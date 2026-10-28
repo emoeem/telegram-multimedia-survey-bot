@@ -19,13 +19,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "wenai"))
 from import_wenai_survey import (  # noqa: E402
+  # noqa: E402
     chunk,
-    chunk_escaped_by_bytes,
-    esc,
-    execute_sql,
-    iso,
-    query_d1,
-    upload_media,
+  add_environment_args,
+  apply_environment_args,
+  chunk_escaped_by_bytes,
+  esc,
+  execute_sql,
+  iso,
+  query_d1,
+  upload_media,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -306,9 +309,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="执行 KV 上传与 D1 导入（默认 dry-run）")
     parser.add_argument("--owner-id", type=int, help="覆盖问卷归属的 user id（默认取库中最常见 owner）")
-    wenai.add_environment_args(parser)
+    add_environment_args(parser)
     args = parser.parse_args()
-    wenai.apply_environment_args(args)
+    apply_environment_args(args)
 
     data = json.loads(CONTENT_PATH.read_text(encoding="utf-8"))
     slugs = collect_media_refs(data)
