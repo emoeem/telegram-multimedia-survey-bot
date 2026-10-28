@@ -54,13 +54,21 @@ export function insertTemplate(editor: TemplateInserter, templateId: TemplateId)
   };
   if (templateId === "survey") {
     insert({ type: "text", title: "你的称呼（可选）" });
-    insert({ type: "single", title: "你最喜欢哪种放松方式？", options: [{ label: "散步" }, { label: "听歌" }, { label: "发呆" }] });
+    insert({
+      type: "single",
+      title: "你最喜欢哪种放松方式？",
+      options: [{ label: "散步" }, { label: "听歌" }, { label: "发呆" }],
+    });
     insert({ type: "long_text", title: "还有什么想补充的吗？" });
   } else if (templateId === "single-game") {
     insert({ type: "note", title: "挑战开始前", settings: {} });
     insert({ type: "game", title: "小游戏挑战" });
   } else {
-    insert({ type: "single", title: "先热个身：今天心情如何？", options: [{ label: "不错" }, { label: "一般" }, { label: "糟糕" }] });
+    insert({
+      type: "single",
+      title: "先热个身：今天心情如何？",
+      options: [{ label: "不错" }, { label: "一般" }, { label: "糟糕" }],
+    });
     insert({ type: "game", title: "来玩一局" });
     insert({ type: "long_text", title: "玩完感觉怎么样？" });
   }

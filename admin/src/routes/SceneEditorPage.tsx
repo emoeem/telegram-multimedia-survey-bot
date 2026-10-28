@@ -466,11 +466,7 @@ export function SceneEditorPage(props?: {
   if (!question || question.type !== "scene") {
     return (
       <div className="scene-editor">
-        <EmptyPanel
-          text="这道题不是互动场景，或已经被删除。"
-          actionLabel="返回问卷编辑器"
-          onAction={exitEditor}
-        />
+        <EmptyPanel text="这道题不是互动场景，或已经被删除。" actionLabel="返回问卷编辑器" onAction={exitEditor} />
       </div>
     );
   }

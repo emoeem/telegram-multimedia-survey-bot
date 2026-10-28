@@ -168,27 +168,30 @@ export function useSurveyEditor(data: EditorData) {
   // S5 合并打字：连续同类编辑只占一个撤销步骤（800ms 窗口，见 coalesce.ts）。
   const lastHistoryRef = useRef<{ label: string; at: number } | null>(null);
 
-  const recordHistory = useCallback((label?: string) => {
-    const now = Date.now();
-    if (label && shouldCoalesceHistory(lastHistoryRef.current, label, now)) {
-      // 不压新快照：栈顶仍是这串编辑开始前的状态，一次 Ctrl+Z 整体回退。
-      lastHistoryRef.current = { label, at: now };
+  const recordHistory = useCallback(
+    (label?: string) => {
+      const now = Date.now();
+      if (label && shouldCoalesceHistory(lastHistoryRef.current, label, now)) {
+        // 不压新快照：栈顶仍是这串编辑开始前的状态，一次 Ctrl+Z 整体回退。
+        lastHistoryRef.current = { label, at: now };
+        futureRef.current = [];
+        syncHistoryFlags();
+        return;
+      }
+      const snapshot = cloneSnapshot(stateRef.current);
+      const last = pastRef.current[pastRef.current.length - 1];
+      if (last && JSON.stringify(last) === JSON.stringify(snapshot)) {
+        lastHistoryRef.current = { label: label ?? "", at: now };
+        return;
+      }
+      pastRef.current.push(snapshot);
+      if (pastRef.current.length > 100) pastRef.current.shift();
       futureRef.current = [];
-      syncHistoryFlags();
-      return;
-    }
-    const snapshot = cloneSnapshot(stateRef.current);
-    const last = pastRef.current[pastRef.current.length - 1];
-    if (last && JSON.stringify(last) === JSON.stringify(snapshot)) {
       lastHistoryRef.current = { label: label ?? "", at: now };
-      return;
-    }
-    pastRef.current.push(snapshot);
-    if (pastRef.current.length > 100) pastRef.current.shift();
-    futureRef.current = [];
-    lastHistoryRef.current = { label: label ?? "", at: now };
-    syncHistoryFlags();
-  }, [syncHistoryFlags]);
+      syncHistoryFlags();
+    },
+    [syncHistoryFlags],
+  );
 
   const undo = useCallback(() => {
     const previous = pastRef.current.pop();

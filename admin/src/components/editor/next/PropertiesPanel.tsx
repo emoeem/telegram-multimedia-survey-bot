@@ -43,9 +43,7 @@ function PropertiesPanelImpl({
   const [tab, setTab] = useState<"props" | "logic">("props");
   const showLogic = editorMode === "pro" && tab === "logic";
   const selectedQuestion =
-    selection.kind === "question"
-      ? (editor.questions.find((question) => question.id === selection.id) ?? null)
-      : null;
+    selection.kind === "question" ? (editor.questions.find((question) => question.id === selection.id) ?? null) : null;
   const selectedIndex = selectedQuestion ? editor.questions.indexOf(selectedQuestion) : -1;
 
   return (

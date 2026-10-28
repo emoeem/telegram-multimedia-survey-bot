@@ -29,7 +29,19 @@ describe("defaultQuestionDraft", () => {
   });
 
   it("填写/上传/剧情类不携带选项与列", () => {
-    for (const type of ["text", "long_text", "number", "date", "time", "image", "video", "audio", "file", "note", "game"]) {
+    for (const type of [
+      "text",
+      "long_text",
+      "number",
+      "date",
+      "time",
+      "image",
+      "video",
+      "audio",
+      "file",
+      "note",
+      "game",
+    ]) {
       const draft = defaultQuestionDraft(type);
       expect(draft.options).toBeUndefined();
       expect(draft.columns).toBeUndefined();

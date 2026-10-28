@@ -5,11 +5,11 @@
 本项目的小游戏得分必须由服务端权威计算（客户端提交的分数一律丢弃），所以
 "插件"不是单一 React 组件：
 
-| 半身 | 位置 | 内容 | 编译进 |
-|---|---|---|---|
-| 清单 + 属性 Schema | `src/game-plugin/plugins/<id>/manifest.ts` | 元信息、`PropField[]`、默认值 | Worker + admin |
-| 服务端引擎 | `src/game-plugin/plugins/<id>/engine.ts` | `createRun/apply/grade/view/isAction`，纯函数 | Worker |
-| 客户端视图 | `admin/src/game-plugins/plugins/<id>/index.tsx` | `EditView` + `PlayView` | admin bundle |
+| 半身               | 位置                                            | 内容                                          | 编译进         |
+| ------------------ | ----------------------------------------------- | --------------------------------------------- | -------------- |
+| 清单 + 属性 Schema | `src/game-plugin/plugins/<id>/manifest.ts`      | 元信息、`PropField[]`、默认值                 | Worker + admin |
+| 服务端引擎         | `src/game-plugin/plugins/<id>/engine.ts`        | `createRun/apply/grade/view/isAction`，纯函数 | Worker         |
+| 客户端视图         | `admin/src/game-plugins/plugins/<id>/index.tsx` | `EditView` + `PlayView`                       | admin bundle   |
 
 两半用同一个 `id` 绑定，id 落进 `task_packs.game_type`。
 

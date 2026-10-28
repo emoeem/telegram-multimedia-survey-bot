@@ -210,9 +210,7 @@ describe("database maintenance", () => {
     // 问卷 1：22（URL）+41（结构化）；问卷 2：9（坏 JSON 走正则兜底）；
     // 问卷 3：22——裸数字 80 不收，结构化 22 正常登记。
     expect(synced).toBe(4);
-    const inserted = runBinds
-      .filter((binds) => binds.length === 5)
-      .map((binds) => [binds[0], binds[2]] as const);
+    const inserted = runBinds.filter((binds) => binds.length === 5).map((binds) => [binds[0], binds[2]] as const);
     expect(inserted).toEqual([
       [22, "survey:1:22"],
       [41, "survey:1:41"],

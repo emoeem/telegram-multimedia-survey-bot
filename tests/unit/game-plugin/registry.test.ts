@@ -25,8 +25,24 @@ function plugin(id: string, overrides: Partial<GamePluginServer["manifest"]> = {
     },
     props,
     engine: {
-      createRun: () => ({ state: {}, view: { status: "active", score: 0, maxScore: 1, step: 1, total: 1, payload: {} } }),
-      apply: <S,>({ state, view }: { state: S; view: { status: "active"; score: number; maxScore: number; step: number; total: number; payload: Record<string, unknown> } }) => ({ state, view, finished: false }),
+      createRun: () => ({
+        state: {},
+        view: { status: "active", score: 0, maxScore: 1, step: 1, total: 1, payload: {} },
+      }),
+      apply: <S>({
+        state,
+        view,
+      }: {
+        state: S;
+        view: {
+          status: "active";
+          score: number;
+          maxScore: number;
+          step: number;
+          total: number;
+          payload: Record<string, unknown>;
+        };
+      }) => ({ state, view, finished: false }),
       grade: () => ({ grade: "C", maxScore: 1 }),
       view: () => ({ status: "active", score: 0, maxScore: 1, step: 1, total: 1, payload: {} }),
       isAction: (): boolean => true,
@@ -102,7 +118,10 @@ describe("插件注册一致性", () => {
       : [];
 
   it("服务端注册集合 === 插件目录集合", () => {
-    const registered = gamePluginRegistry.list().map((manifest) => manifest.id).sort();
+    const registered = gamePluginRegistry
+      .list()
+      .map((manifest) => manifest.id)
+      .sort();
     expect(registered).toEqual(pluginDirs(serverDir));
   });
 

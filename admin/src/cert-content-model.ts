@@ -237,7 +237,9 @@ export function normalizeTheme(raw: unknown): CertTheme {
         packId,
         count: Math.min(5, Math.max(1, Number.isFinite(count) && count >= 1 ? count : 1)),
       };
-      const label = String(d.label ?? "").trim().slice(0, 20);
+      const label = String(d.label ?? "")
+        .trim()
+        .slice(0, 20);
       if (label) theme.draw.label = label;
     }
   }

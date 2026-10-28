@@ -865,9 +865,7 @@ export function TrialScreen() {
           <div className="mt-2 space-y-3">
             {packGroups.map((group) => (
               <div key={group.type}>
-                <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">
-                  {group.label}
-                </p>
+                <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">{group.label}</p>
                 <div className="mt-2 space-y-2">
                   {group.packs.map((pack) => (
                     <button

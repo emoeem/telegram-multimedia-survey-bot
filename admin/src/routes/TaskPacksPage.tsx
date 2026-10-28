@@ -208,7 +208,10 @@ export function TaskPacksPage() {
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/trial/packs")
-      .then((response) => response.json() as Promise<{ gameTypes?: Array<{ id: string; label: string; builtin: boolean }> }>)
+      .then(
+        (response) =>
+          response.json() as Promise<{ gameTypes?: Array<{ id: string; label: string; builtin: boolean }> }>,
+      )
       .then((payload) => {
         if (!cancelled) setGameTypes(payload.gameTypes ?? []);
       })
@@ -243,7 +246,10 @@ export function TaskPacksPage() {
   const pluginIssues = useMemo<ConfigIssue[]>(() => {
     if (!editing || editing.gameType === "tower" || !pluginDef) return [];
     const normalized = normalizeConfig(pluginDef.props, editing.settings);
-    return [...validateWithSchema(pluginDef.props, normalized), ...(pluginDef.validate ? pluginDef.validate(normalized) : [])];
+    return [
+      ...validateWithSchema(pluginDef.props, normalized),
+      ...(pluginDef.validate ? pluginDef.validate(normalized) : []),
+    ];
   }, [editing, pluginDef]);
 
   const packItems = useMemo(() => {
@@ -554,142 +560,142 @@ export function TaskPacksPage() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="text-sm font-bold text-[var(--color-ink)]">任务列表（{editing.items.length}）</h2>
               <button type="button" className="btn btn-sm gap-1.5" onClick={addItem}>
-              <Plus className="h-4 w-4" />
-              添加任务
-            </button>
-          </div>
-          <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
-            任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。
-          </p>
-
-          {editing.items.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-[var(--color-edge)] p-8 text-center text-sm text-[var(--color-muted-soft)] ">
-              还没有任务。先添加一个吧——每个任务需要标题与描述，保存时会按当前顺序编号。
+                <Plus className="h-4 w-4" />
+                添加任务
+              </button>
             </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {editing.items.map((item, index) => (
-                <article key={item.key} className="rounded-xl border border-[var(--color-edge)] p-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold text-[var(--color-muted-soft)]">#{index + 1}</span>
-                    <div className="flex items-center gap-1">
-                      <label className="flex items-center gap-1 pr-1 text-[11px] text-[var(--color-muted-soft)]">
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-xs"
-                          checked={item.enabled}
-                          onChange={(event) => updateItem(item.key, { enabled: event.target.checked })}
-                        />
-                        启用
-                      </label>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs"
-                        disabled={index === 0}
-                        onClick={() => moveItem(index, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs"
-                        disabled={index === editing.items.length - 1}
-                        onClick={() => moveItem(index, 1)}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="删除任务"
-                        className="btn btn-ghost btn-xs text-[var(--app-danger)]"
-                        onClick={() => removeItem(item.key)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-2 grid gap-2 lg:grid-cols-12">
-                    <input
-                      className="input lg:col-span-3"
-                      placeholder="任务标题（会展示给玩家）"
-                      value={item.title}
-                      maxLength={60}
-                      onChange={(event) => updateItem(item.key, { title: event.target.value })}
-                    />
-                    <textarea
-                      className="input min-h-12 py-2 lg:col-span-6"
-                      placeholder="任务描述——完整动作与心理描写（虚构情境）"
-                      value={item.description}
-                      maxLength={3000}
-                      onChange={(event) => updateItem(item.key, { description: event.target.value })}
-                    />
-                    <div className="grid grid-cols-2 gap-2 lg:col-span-3">
-                      <label className="text-[11px] text-[var(--color-muted-soft)]">
-                        分值
-                        <input
-                          type="number"
-                          min={1}
-                          max={20}
-                          className="input mt-0.5 w-full"
-                          value={item.score}
-                          onChange={(event) => updateItem(item.key, { score: Number(event.target.value) })}
-                        />
-                      </label>
-                      <label className="text-[11px] text-[var(--color-muted-soft)]">
-                        身份
-                        <SelectField
-                          value={item.persona}
-                          onChange={(value) => updateItem(item.key, { persona: value as AdminTaskPersona })}
-                          options={Object.entries(PERSONA_LABELS).map(([value, label]) => ({ value, label }))}
-                        />
-                      </label>
-                      <label className="text-[11px] text-[var(--color-muted-soft)]">
-                        模式
-                        <SelectField
-                          value={item.mode}
-                          onChange={(value) => updateItem(item.key, { mode: value as AdminTaskMode })}
-                          options={Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }))}
-                        />
-                      </label>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <label className="text-[11px] text-[var(--color-muted-soft)]">
-                          起始层
+            <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
+              任务按楼层区间与身份/模式过滤抽取；改动保存后玩家端实时生效。
+            </p>
+
+            {editing.items.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-[var(--color-edge)] p-8 text-center text-sm text-[var(--color-muted-soft)] ">
+                还没有任务。先添加一个吧——每个任务需要标题与描述，保存时会按当前顺序编号。
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {editing.items.map((item, index) => (
+                  <article key={item.key} className="rounded-xl border border-[var(--color-edge)] p-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-xs font-bold text-[var(--color-muted-soft)]">#{index + 1}</span>
+                      <div className="flex items-center gap-1">
+                        <label className="flex items-center gap-1 pr-1 text-[11px] text-[var(--color-muted-soft)]">
                           <input
-                            type="number"
-                            min={1}
-                            max={60}
-                            className="input mt-0.5 w-full"
-                            value={item.minFloor}
-                            onChange={(event) => updateItem(item.key, { minFloor: Number(event.target.value) })}
+                            type="checkbox"
+                            className="checkbox checkbox-xs"
+                            checked={item.enabled}
+                            onChange={(event) => updateItem(item.key, { enabled: event.target.checked })}
                           />
+                          启用
                         </label>
-                        <label className="text-[11px] text-[var(--color-muted-soft)]">
-                          结束层
-                          <input
-                            type="number"
-                            min={1}
-                            max={99}
-                            className="input mt-0.5 w-full"
-                            value={item.maxFloor}
-                            onChange={(event) => updateItem(item.key, { maxFloor: Number(event.target.value) })}
-                          />
-                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          disabled={index === 0}
+                          onClick={() => moveItem(index, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          disabled={index === editing.items.length - 1}
+                          onClick={() => moveItem(index, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="删除任务"
+                          className="btn btn-ghost btn-xs text-[var(--app-danger)]"
+                          onClick={() => removeItem(item.key)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  <label className="mt-2 block text-[11px] text-[var(--color-muted-soft)]">
-                    风险弹窗提醒（可选，留空则无弹窗；建议用于危险动作 / 公共场合 / 违法边缘内容）
-                    <textarea
-                      className="input mt-1 min-h-8 w-full py-2"
-                      value={item.warning}
-                      maxLength={300}
-                      onChange={(event) => updateItem(item.key, { warning: event.target.value })}
-                    />
-                  </label>
-                </article>
-              ))}
-            </div>
-          )}
+                    <div className="mt-2 grid gap-2 lg:grid-cols-12">
+                      <input
+                        className="input lg:col-span-3"
+                        placeholder="任务标题（会展示给玩家）"
+                        value={item.title}
+                        maxLength={60}
+                        onChange={(event) => updateItem(item.key, { title: event.target.value })}
+                      />
+                      <textarea
+                        className="input min-h-12 py-2 lg:col-span-6"
+                        placeholder="任务描述——完整动作与心理描写（虚构情境）"
+                        value={item.description}
+                        maxLength={3000}
+                        onChange={(event) => updateItem(item.key, { description: event.target.value })}
+                      />
+                      <div className="grid grid-cols-2 gap-2 lg:col-span-3">
+                        <label className="text-[11px] text-[var(--color-muted-soft)]">
+                          分值
+                          <input
+                            type="number"
+                            min={1}
+                            max={20}
+                            className="input mt-0.5 w-full"
+                            value={item.score}
+                            onChange={(event) => updateItem(item.key, { score: Number(event.target.value) })}
+                          />
+                        </label>
+                        <label className="text-[11px] text-[var(--color-muted-soft)]">
+                          身份
+                          <SelectField
+                            value={item.persona}
+                            onChange={(value) => updateItem(item.key, { persona: value as AdminTaskPersona })}
+                            options={Object.entries(PERSONA_LABELS).map(([value, label]) => ({ value, label }))}
+                          />
+                        </label>
+                        <label className="text-[11px] text-[var(--color-muted-soft)]">
+                          模式
+                          <SelectField
+                            value={item.mode}
+                            onChange={(value) => updateItem(item.key, { mode: value as AdminTaskMode })}
+                            options={Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }))}
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <label className="text-[11px] text-[var(--color-muted-soft)]">
+                            起始层
+                            <input
+                              type="number"
+                              min={1}
+                              max={60}
+                              className="input mt-0.5 w-full"
+                              value={item.minFloor}
+                              onChange={(event) => updateItem(item.key, { minFloor: Number(event.target.value) })}
+                            />
+                          </label>
+                          <label className="text-[11px] text-[var(--color-muted-soft)]">
+                            结束层
+                            <input
+                              type="number"
+                              min={1}
+                              max={99}
+                              className="input mt-0.5 w-full"
+                              value={item.maxFloor}
+                              onChange={(event) => updateItem(item.key, { maxFloor: Number(event.target.value) })}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <label className="mt-2 block text-[11px] text-[var(--color-muted-soft)]">
+                      风险弹窗提醒（可选，留空则无弹窗；建议用于危险动作 / 公共场合 / 违法边缘内容）
+                      <textarea
+                        className="input mt-1 min-h-8 w-full py-2"
+                        value={item.warning}
+                        maxLength={300}
+                        onChange={(event) => updateItem(item.key, { warning: event.target.value })}
+                      />
+                    </label>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         ) : (
           <section className="card">

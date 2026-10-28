@@ -3158,10 +3158,7 @@ export function SurveyApp() {
               <>
                 {question.title ? (
                   <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    <Trophy
-                      className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
-                      aria-hidden="true"
-                    />
+                    <Trophy className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
                     {question.title}
                   </h1>
                 ) : null}

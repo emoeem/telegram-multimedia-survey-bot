@@ -290,31 +290,31 @@ export function DashboardPage() {
               <div className="mt-3 overflow-x-auto" tabIndex={0} aria-label="最近问卷列表">
                 <table className="tbl">
                   <tbody>
-                  {(data.recentSurveys ?? []).slice(0, 6).map((item) => (
-                    <tr
-                      key={item.id}
-                      className="cursor-pointer"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/surveys/${item.id}`)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          navigate(`/surveys/${item.id}`);
-                        }
-                      }}
-                    >
-                      <td data-label="问卷">
-                        <strong>{item.title || "未命名问卷"}</strong>
-                      </td>
-                      <td className="text-right" data-label="状态">
-                        <StatusBadge status={item.status} />
-                      </td>
-                      <td className="muted text-right" data-label="更新时间">
-                        {formatDateTime(item.updatedAt)}
-                      </td>
-                    </tr>
-                  ))}
+                    {(data.recentSurveys ?? []).slice(0, 6).map((item) => (
+                      <tr
+                        key={item.id}
+                        className="cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/surveys/${item.id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            navigate(`/surveys/${item.id}`);
+                          }
+                        }}
+                      >
+                        <td data-label="问卷">
+                          <strong>{item.title || "未命名问卷"}</strong>
+                        </td>
+                        <td className="text-right" data-label="状态">
+                          <StatusBadge status={item.status} />
+                        </td>
+                        <td className="muted text-right" data-label="更新时间">
+                          {formatDateTime(item.updatedAt)}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -346,41 +346,41 @@ export function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                  {(data.recentResponses ?? []).slice(0, 6).map((item) => {
-                    const respondentText = item.respondent
-                      ? [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ") ||
-                        (item.respondent.username
-                          ? `@${item.respondent.username}`
-                          : String(item.respondent.telegramUserId))
-                      : item.participantKey
-                        ? `网页参与 · ${item.participantKey}`
-                        : "匿名";
-                    return (
-                      <tr
-                        key={item.id}
-                        className="cursor-pointer"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            navigate(`/surveys/${item.surveyId}/responses/${item.id}`);
-                          }
-                        }}
-                      >
-                        <td data-label="问卷">
-                          <strong>{item.title || `问卷 ${item.surveyId}`}</strong>
-                        </td>
-                        <td className="text-sm" data-label="填写者">
-                          {respondentText}
-                        </td>
-                        <td className="muted" data-label="时间">
-                          {formatDateTime(item.updatedAt)}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                    {(data.recentResponses ?? []).slice(0, 6).map((item) => {
+                      const respondentText = item.respondent
+                        ? [item.respondent.firstName, item.respondent.lastName].filter(Boolean).join(" ") ||
+                          (item.respondent.username
+                            ? `@${item.respondent.username}`
+                            : String(item.respondent.telegramUserId))
+                        : item.participantKey
+                          ? `网页参与 · ${item.participantKey}`
+                          : "匿名";
+                      return (
+                        <tr
+                          key={item.id}
+                          className="cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/surveys/${item.surveyId}/responses/${item.id}`)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              navigate(`/surveys/${item.surveyId}/responses/${item.id}`);
+                            }
+                          }}
+                        >
+                          <td data-label="问卷">
+                            <strong>{item.title || `问卷 ${item.surveyId}`}</strong>
+                          </td>
+                          <td className="text-sm" data-label="填写者">
+                            {respondentText}
+                          </td>
+                          <td className="muted" data-label="时间">
+                            {formatDateTime(item.updatedAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

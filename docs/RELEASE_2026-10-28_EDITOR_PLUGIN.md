@@ -16,11 +16,11 @@
 
 得分必须服务端权威计算（客户端分数一律丢弃），所以插件不是单一 React 组件：
 
-| 半身 | 位置 | 内容 | 编译进 |
-|---|---|---|---|
-| 清单 + 属性 Schema | `src/game-plugin/plugins/<id>/manifest.ts` | 元信息、`PropField[]`、默认值 | Worker + admin |
-| 服务端引擎 | `src/game-plugin/plugins/<id>/engine.ts` | `createRun / apply / grade / view / isAction`，纯函数 | 仅 Worker |
-| 客户端视图 | `admin/src/game-plugins/plugins/<id>/index.tsx` | `EditView` + `PlayView` | 仅 admin |
+| 半身               | 位置                                            | 内容                                                  | 编译进         |
+| ------------------ | ----------------------------------------------- | ----------------------------------------------------- | -------------- |
+| 清单 + 属性 Schema | `src/game-plugin/plugins/<id>/manifest.ts`      | 元信息、`PropField[]`、默认值                         | Worker + admin |
+| 服务端引擎         | `src/game-plugin/plugins/<id>/engine.ts`        | `createRun / apply / grade / view / isAction`，纯函数 | 仅 Worker      |
+| 客户端视图         | `admin/src/game-plugins/plugins/<id>/index.tsx` | `EditView` + `PlayView`                               | 仅 admin       |
 
 两半用同一个 `id` 绑定，id 落进 `task_packs.game_type`。
 
@@ -85,13 +85,13 @@ BGM / 场景图写入侧仍是 URL 字符串（已登记 `media_refs` 弱引用�
 
 ## 三、编辑器增量改造
 
-| 能力 | 行为 | 落地 |
-|---|---|---|
-| 基础 / 专业模式 | 顶栏切换，`localStorage: admin:editor-mode`；只改可见性不动文档，切换不丢进度 | `EditorPage` |
-| 依赖感知删除 | 删除前扫描全部 condition（选项跳转/答案规则/flag/旧式 skipTo），列出影响面，确认后级联清理、可撤销 | `admin/src/editor/dependencies.ts` + 单测 |
-| 逻辑关系面板 | 右栏「逻辑」页签（仅专业模式），列出去向/来源，点击跳到目标题 | `components/editor/LogicPanel.tsx` |
-| 模板 | 添加栏「从模板开始」：问卷基础 / 单题小游戏 / 混合互动，按序插入、可撤销 | `EditorPage` + `useSurveyEditor.addQuestion(settings)` |
-| 撤销 / 重做 | 沿用既有快照 + Ctrl+Z / Ctrl+Shift+Z；新增删除/模板走同一条待保存队列 | 既有 `useSurveyEditor` |
+| 能力            | 行为                                                                                               | 落地                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 基础 / 专业模式 | 顶栏切换，`localStorage: admin:editor-mode`；只改可见性不动文档，切换不丢进度                      | `EditorPage`                                           |
+| 依赖感知删除    | 删除前扫描全部 condition（选项跳转/答案规则/flag/旧式 skipTo），列出影响面，确认后级联清理、可撤销 | `admin/src/editor/dependencies.ts` + 单测              |
+| 逻辑关系面板    | 右栏「逻辑」页签（仅专业模式），列出去向/来源，点击跳到目标题                                      | `components/editor/LogicPanel.tsx`                     |
+| 模板            | 添加栏「从模板开始」：问卷基础 / 单题小游戏 / 混合互动，按序插入、可撤销                           | `EditorPage` + `useSurveyEditor.addQuestion(settings)` |
+| 撤销 / 重做     | 沿用既有快照 + Ctrl+Z / Ctrl+Shift+Z；新增删除/模板走同一条待保存队列                              | 既有 `useSurveyEditor`                                 |
 
 **未做（P2）**：三栏外壳整体重排（物料/画布/属性）、画布拖拽吸附、画布连线。原因与完整方案见交接文档。
 
@@ -113,12 +113,12 @@ BGM / 场景图写入侧仍是 URL 字符串（已登记 `media_refs` 弱引用�
 
 ## 六、验证结果
 
-| 项 | 结果 |
-|---|---|
-| 单测 `pnpm test` | **194 文件 / 1410 用例全绿**（本轮 +4 文件 / +38 用例） |
-| 类型 `pnpm typecheck` + `admin` 内 `tsc --noEmit` | 干净 |
-| 构建 `pnpm build:admin` | 通过（chunk 体积警告为既有现象） |
-| `eslint` 新代码 | 无告警 |
+| 项                                                | 结果                                                    |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| 单测 `pnpm test`                                  | **194 文件 / 1410 用例全绿**（本轮 +4 文件 / +38 用例） |
+| 类型 `pnpm typecheck` + `admin` 内 `tsc --noEmit` | 干净                                                    |
+| 构建 `pnpm build:admin`                           | 通过（chunk 体积警告为既有现象）                        |
+| `eslint` 新代码                                   | 无告警                                                  |
 
 **本轮未跑（环境限制，接手必须补）**：`pnpm test:visual:gate`、`pnpm test:visual:prod`、axe a11y。
 本轮改了编辑器顶栏/右栏/添加栏与后台任务包页，**视觉基线必然变化**，须走 CI 手动工作流

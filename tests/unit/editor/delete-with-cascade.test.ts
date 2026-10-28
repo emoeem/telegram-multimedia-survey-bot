@@ -16,10 +16,7 @@ function q(id: number, condition: Record<string, unknown> | null, title = `题 $
 
 describe("planQuestionDeletion", () => {
   it("没有引用时：影响面为空、补丁为空，直接删除即可", () => {
-    const questions = [
-      q(1, null),
-      q(2, { kind: "option_equals", rules: [{ optionId: 9, targetQuestionId: 3 }] }),
-    ];
+    const questions = [q(1, null), q(2, { kind: "option_equals", rules: [{ optionId: 9, targetQuestionId: 3 }] })];
     const plan = planQuestionDeletion(questions, 5);
     expect(plan.dependents).toEqual([]);
     expect(plan.patches).toEqual([]);

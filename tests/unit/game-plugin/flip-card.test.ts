@@ -37,7 +37,12 @@ function answerAll(cfg: Record<string, unknown>, answers: number[]): FlipCardSta
 
 describe("flip-card engine", () => {
   it("开局：卡序、进度、上限分数", () => {
-    const { state, view } = flipCardEngine.createRun({ config: config(), persona: "male", mode: "normal", random: seq([0]) });
+    const { state, view } = flipCardEngine.createRun({
+      config: config(),
+      persona: "male",
+      mode: "normal",
+      random: seq([0]),
+    });
     expect(state.order).toEqual([0, 1]);
     expect(state.score).toBe(0);
     expect(state.maxScore).toBe(10);

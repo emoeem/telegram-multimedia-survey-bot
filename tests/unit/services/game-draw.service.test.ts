@@ -55,11 +55,7 @@ describe("drawTaskItems（小游戏区通用抽取）", () => {
 
   it("停用条目不参与抽取，persona 过滤保留 any", async () => {
     vi.mocked(getTaskPackById).mockResolvedValueOnce(
-      pack([
-        item({ id: 1, enabled: false }),
-        item({ id: 2, persona: "male" }),
-        item({ id: 3, persona: "any" }),
-      ]),
+      pack([item({ id: 1, enabled: false }), item({ id: 2, persona: "male" }), item({ id: 3, persona: "any" })]),
     );
     const drawn = await drawTaskItems({} as D1Database, 1, { persona: "female", count: 5 });
     expect(drawn?.map((entry) => entry.id)).toEqual([3]);

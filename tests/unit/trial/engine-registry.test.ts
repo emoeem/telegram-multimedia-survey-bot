@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  gameTypeLabel,
-  isPluginGameType,
-  listGameTypes,
-  normalizeGameType,
-} from "../../../src/trial/engine-registry";
+import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../../../src/trial/engine-registry";
 
 /**
  * 玩法类型清单：内置爬塔 + 已注册插件。

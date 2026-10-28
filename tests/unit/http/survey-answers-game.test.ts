@@ -91,7 +91,16 @@ async function seedRun(db: D1Database, run: RunSeed): Promise<void> {
          score, completed_tasks, skipped_tasks, status, state_json, started_at, updated_at
        ) VALUES (?, ?, ?, 'male', 'normal', 1, 3, 10, ?, 2, 0, ?, ?, ?, ?)`,
     )
-    .bind(run.id, run.packId ?? PACK_ID, run.participantHash, run.score, run.status, JSON.stringify({ maxScore: 20 }), now, now)
+    .bind(
+      run.id,
+      run.packId ?? PACK_ID,
+      run.participantHash,
+      run.score,
+      run.status,
+      JSON.stringify({ maxScore: 20 }),
+      now,
+      now,
+    )
     .run();
 }
 

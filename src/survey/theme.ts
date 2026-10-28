@@ -430,9 +430,7 @@ export function resolveSprite(
         ? sprite.default
         : fallbackKey;
   // 阶段 D 双读：字符串（现状）原样；{assetId} 派生 URL。
-  const url = resolveMediaRef(expressions[expression], (assetId) =>
-    ["/api/survey/media/", String(assetId)].join(""),
-  );
+  const url = resolveMediaRef(expressions[expression], (assetId) => ["/api/survey/media/", String(assetId)].join(""));
   if (url === undefined) return undefined;
   return sprite.name === undefined ? { url, expression } : { url, expression, name: sprite.name };
 }

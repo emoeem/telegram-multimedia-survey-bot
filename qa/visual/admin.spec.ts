@@ -352,8 +352,14 @@ for (const theme of THEMES) {
           await expect(page.getByRole("button", { name: "添加题目" })).toBeVisible();
         }
         if (path === "/admin/surveys/1/editor") {
-          await expect(page.getByText("上传题面附件")).toBeVisible();
-          await expect(page.getByText("选项媒体").first()).toBeVisible();
+          if (viewport.width >= 900) {
+            await expect(page.getByText("上传题面附件")).toBeVisible();
+            await expect(page.getByText("选项媒体").first()).toBeVisible();
+          } else {
+            // P3/S10 新壳：窄屏属性栏隐藏（与 editor-layout.spec「窄屏 900px」同一契约），
+            // 旧断言「上传题面附件可见」只对旧壳成立，这里改断手机操作栏。
+            await expect(page.locator(".editor-mobile-bar")).toBeVisible();
+          }
         }
         if (path === "/admin/surveys/1/analytics") {
           await page.waitForTimeout(1200);

@@ -91,10 +91,7 @@ function ruleTargets(condition: Record<string, unknown>, questionId: number): De
 }
 
 /** 找出所有指向 questionId 的引用（用于删除前的影响面提示）。 */
-export function findDependents(
-  questions: readonly EditableConditionQuestion[],
-  questionId: number,
-): DependencyRef[] {
+export function findDependents(questions: readonly EditableConditionQuestion[], questionId: number): DependencyRef[] {
   const refs: DependencyRef[] = [];
   for (const question of questions) {
     if (question.id === questionId || !question.condition) continue;

@@ -1,9 +1,5 @@
 import { ArrowRight, GitBranch } from "lucide-react";
-import {
-  findDependents,
-  findTargets,
-  type EditableConditionQuestion,
-} from "../../editor/dependencies";
+import { findDependents, findTargets, type EditableConditionQuestion } from "../../editor/dependencies";
 
 /**
  * 逻辑关系面板：把"谁跳向谁"从隐藏的 JSON 里翻译成人能读的列表。

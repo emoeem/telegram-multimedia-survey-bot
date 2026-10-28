@@ -35,7 +35,10 @@ export function defaultConfig(fields: readonly PropField[]): Record<string, unkn
 function clampNumber(field: Extract<PropField, { kind: "number" }>, raw: unknown): number {
   const parsed = Number(raw);
   const base = Number.isFinite(parsed) ? parsed : field.default;
-  const bounded = Math.min(field.max ?? Number.POSITIVE_INFINITY, Math.max(field.min ?? Number.NEGATIVE_INFINITY, base));
+  const bounded = Math.min(
+    field.max ?? Number.POSITIVE_INFINITY,
+    Math.max(field.min ?? Number.NEGATIVE_INFINITY, base),
+  );
   return field.integer ? Math.round(bounded) : bounded;
 }
 
@@ -68,7 +71,10 @@ export function normalizeConfig(fields: readonly PropField[], raw: unknown): Rec
         // 先过滤掉非对象项再截断：反过来会让一条脏数据白占一个名额。
         const items = Array.isArray(value)
           ? value
-              .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+              .filter(
+                (item): item is Record<string, unknown> =>
+                  Boolean(item) && typeof item === "object" && !Array.isArray(item),
+              )
               .slice(0, field.maxItems)
           : [];
         out[field.key] = items.map((item) => normalizeConfig(field.itemFields, item));

@@ -31,7 +31,12 @@ function seededRandom(seed: number): () => number {
 describe("draw engine · createRun", () => {
   it("按 drawCount 抽取且不放回；结果可由同 seed 复现", () => {
     const first = drawEngine.createRun({ config: config(), persona: "male", mode: "normal", random: seededRandom(42) });
-    const second = drawEngine.createRun({ config: config(), persona: "male", mode: "normal", random: seededRandom(42) });
+    const second = drawEngine.createRun({
+      config: config(),
+      persona: "male",
+      mode: "normal",
+      random: seededRandom(42),
+    });
     expect(first.state.order).toHaveLength(3);
     expect(new Set(first.state.order).size).toBe(3);
     expect(first.state.order).toEqual(second.state.order);
@@ -54,16 +59,24 @@ describe("draw engine · createRun", () => {
 
 describe("draw engine · apply（幂等与揭示）", () => {
   it("reveal 推进指针并累加分数；视图逐张带出已揭示条目", () => {
-    const initial = drawEngine.createRun({ config: config(), persona: "male", mode: "normal", random: seededRandom(42) });
+    const initial = drawEngine.createRun({
+      config: config(),
+      persona: "male",
+      mode: "normal",
+      random: seededRandom(42),
+    });
     const items = config().items as Array<{ label: string; score: number }>;
     let state = initial.state;
     for (let step = 0; step < 3; step += 1) {
-      const result = drawEngine.apply({ state, config: config(), action: { kind: "reveal", step }, random: Math.random });
+      const result = drawEngine.apply({
+        state,
+        config: config(),
+        action: { kind: "reveal", step },
+        random: Math.random,
+      });
       state = result.state;
       expect(state.revealed).toBe(step + 1);
-      expect(state.score).toBe(
-        state.order.slice(0, step + 1).reduce((sum, index) => sum + items[index]!.score, 0),
-      );
+      expect(state.score).toBe(state.order.slice(0, step + 1).reduce((sum, index) => sum + items[index]!.score, 0));
       const revealed = result.view.payload.revealed as Array<{ label: string }>;
       expect(revealed).toHaveLength(step + 1);
       expect(revealed[step]!.label).toBe(items[state.order[step]!]!.label);
@@ -73,10 +86,30 @@ describe("draw engine · apply（幂等与揭示）", () => {
   });
 
   it("陈旧 step（网络重试）不推进指针、不重复计分", () => {
-    const initial = drawEngine.createRun({ config: config(), persona: "male", mode: "normal", random: seededRandom(42) });
-    const once = drawEngine.apply({ state: initial.state, config: config(), action: { kind: "reveal", step: 0 }, random: Math.random });
-    const replay = drawEngine.apply({ state: once.state, config: config(), action: { kind: "reveal", step: 0 }, random: Math.random });
-    const future = drawEngine.apply({ state: once.state, config: config(), action: { kind: "reveal", step: 5 }, random: Math.random });
+    const initial = drawEngine.createRun({
+      config: config(),
+      persona: "male",
+      mode: "normal",
+      random: seededRandom(42),
+    });
+    const once = drawEngine.apply({
+      state: initial.state,
+      config: config(),
+      action: { kind: "reveal", step: 0 },
+      random: Math.random,
+    });
+    const replay = drawEngine.apply({
+      state: once.state,
+      config: config(),
+      action: { kind: "reveal", step: 0 },
+      random: Math.random,
+    });
+    const future = drawEngine.apply({
+      state: once.state,
+      config: config(),
+      action: { kind: "reveal", step: 5 },
+      random: Math.random,
+    });
     expect(replay.state.revealed).toBe(1);
     expect(replay.state.score).toBe(once.state.score);
     expect(future.state.revealed).toBe(1);
@@ -98,7 +131,12 @@ describe("draw engine · 边界", () => {
     expect(run.state.order).toHaveLength(0);
     expect(run.view.total).toBe(0);
     expect(run.view.payload.remaining).toBe(0);
-    const result = drawEngine.apply({ state: run.state, config: empty, action: { kind: "reveal", step: 0 }, random: Math.random });
+    const result = drawEngine.apply({
+      state: run.state,
+      config: empty,
+      action: { kind: "reveal", step: 0 },
+      random: Math.random,
+    });
     expect(result.finished).toBe(true);
     expect(drawEngine.grade({ state: run.state, config: empty }).grade).toBe("C");
   });

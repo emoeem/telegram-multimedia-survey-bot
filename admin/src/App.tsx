@@ -45,9 +45,7 @@ const ProfileGalleryPage = lazy(() =>
   import("./routes/ProfileGalleryPage").then((m) => ({ default: m.ProfileGalleryPage })),
 );
 const TaskPacksPage = lazy(() => import("./routes/TaskPacksPage").then((m) => ({ default: m.TaskPacksPage })));
-const MediaLibraryPage = lazy(() =>
-  import("./routes/MediaLibraryPage").then((m) => ({ default: m.MediaLibraryPage })),
-);
+const MediaLibraryPage = lazy(() => import("./routes/MediaLibraryPage").then((m) => ({ default: m.MediaLibraryPage })));
 const ShowcasePage = lazy(() => import("./routes/ShowcasePage").then((m) => ({ default: m.ShowcasePage })));
 const TrashPage = lazy(() => import("./routes/TrashPage").then((m) => ({ default: m.TrashPage })));
 

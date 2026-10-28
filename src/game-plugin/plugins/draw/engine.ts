@@ -38,7 +38,7 @@ function viewOf(state: DrawState, config: DrawConfig) {
     .map((item) => ({ label: item.label, rarity: item.rarity, score: item.score }));
   const ratio = state.maxScore === 0 ? 0 : (state.score / state.maxScore) * 100;
   return {
-    status: (finished ? (ratio >= 60 ? ("won" as const) : ("lost" as const)) : ("active" as const)),
+    status: finished ? (ratio >= 60 ? ("won" as const) : ("lost" as const)) : ("active" as const),
     score: state.score,
     maxScore: state.maxScore,
     step: Math.min(state.revealed + 1, Math.max(1, state.order.length)),

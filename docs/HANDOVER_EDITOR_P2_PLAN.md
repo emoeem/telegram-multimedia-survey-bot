@@ -27,16 +27,16 @@ pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象�
 
 ## 1. 已经完成什么（不要重做）
 
-| 领域 | 已完成 | 关键文件 |
-|---|---|---|
-| 游戏插件协议 | manifest + 属性 Schema + 服务端引擎 + 客户端视图，一个 id 两半身 | `src/game-plugin/*`、`admin/src/game-plugins/*` |
-| 插件注册与发现 | 服务端一行注册；客户端 `import.meta.glob` 零注册；三方一致性测试 | `server-plugins.ts`、`loader.ts`、`tests/unit/game-plugin/registry.test.ts` |
-| 示例插件 | 答题翻牌（服务端判分、step 幂等、视图不泄露答案） | `plugins/flip-card/*` |
-| 插件局运行 | 开局/动作/断线恢复/放弃；`state_json` 插件信封 | `src/http/trial-plugin-api.ts`、`task-run.repository.ts` |
-| 后台配置 | 玩法下拉来自注册表；插件包用 SchemaForm + EditView 预览 | `TaskPacksPage.tsx`、`SchemaForm.tsx` |
-| 答题端 | `game` 题按 `gameType` 选渲染器；宿主桥不碰插件网络 | `PluginGamePlay.tsx`、`SurveyApp.tsx` |
-| 编辑器增量 | 基础/专业模式、依赖感知删除、逻辑关系面板、三套模板 | `EditorPage.tsx`、`dependencies.ts`、`LogicPanel.tsx` |
-| 素材库 | 内容寻址去重、Telegram 复用 + 回读 R2、弱引用登记、**孤儿 blob 回收**、题目/选项选库 | `media-dedup.service.ts`、`database-maintenance.service.ts` |
+| 领域           | 已完成                                                                               | 关键文件                                                                    |
+| -------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| 游戏插件协议   | manifest + 属性 Schema + 服务端引擎 + 客户端视图，一个 id 两半身                     | `src/game-plugin/*`、`admin/src/game-plugins/*`                             |
+| 插件注册与发现 | 服务端一行注册；客户端 `import.meta.glob` 零注册；三方一致性测试                     | `server-plugins.ts`、`loader.ts`、`tests/unit/game-plugin/registry.test.ts` |
+| 示例插件       | 答题翻牌（服务端判分、step 幂等、视图不泄露答案）                                    | `plugins/flip-card/*`                                                       |
+| 插件局运行     | 开局/动作/断线恢复/放弃；`state_json` 插件信封                                       | `src/http/trial-plugin-api.ts`、`task-run.repository.ts`                    |
+| 后台配置       | 玩法下拉来自注册表；插件包用 SchemaForm + EditView 预览                              | `TaskPacksPage.tsx`、`SchemaForm.tsx`                                       |
+| 答题端         | `game` 题按 `gameType` 选渲染器；宿主桥不碰插件网络                                  | `PluginGamePlay.tsx`、`SurveyApp.tsx`                                       |
+| 编辑器增量     | 基础/专业模式、依赖感知删除、逻辑关系面板、三套模板                                  | `EditorPage.tsx`、`dependencies.ts`、`LogicPanel.tsx`                       |
+| 素材库         | 内容寻址去重、Telegram 复用 + 回读 R2、弱引用登记、**孤儿 blob 回收**、题目/选项选库 | `media-dedup.service.ts`、`database-maintenance.service.ts`                 |
 
 ### 1.1 五条不可破坏的不变量
 
@@ -84,15 +84,15 @@ pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象�
 
 ### 2.3 组件切分（建议，可按实际情况微调）
 
-| 组件 | 职责 | 复用 |
-|---|---|---|
-| `EditorShell.tsx` | 三栏布局、页签、模式、命令日志接线 | `useSurveyEditor` |
-| `MaterialPanel.tsx` | 题目类型（现有 `TypePickerSheet` 的目录化）、小游戏（来自 `/api/trial/packs` 的 `gameTypes` + `listClientPluginIds()`）、模板 | 新增 |
-| `Canvas.tsx` | 画布、卡片列表、选中、插入指示线、缩放 | `QuestionSummaryRow`（已有） |
-| `PropertiesPanel.tsx` | 右栏：基础字段 / 逻辑 / 插件配置（`SchemaForm`）/ 高级 | 新增 |
-| `QuestionForm.tsx` | **从 `QuestionCard.tsx` 抽出的表单**（标题/描述/校验/选项/媒体/跳转/flag） | 重构 |
-| `QuickBar.tsx` | 选中卡片的浮层：复制/删除/上移/下移/必填 | 新增 |
-| `LogicLayer.tsx` | SVG 连线层（同页卡片之间） | 新增（`dependencies.ts` 已提供关系数据） |
+| 组件                  | 职责                                                                                                                          | 复用                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `EditorShell.tsx`     | 三栏布局、页签、模式、命令日志接线                                                                                            | `useSurveyEditor`                        |
+| `MaterialPanel.tsx`   | 题目类型（现有 `TypePickerSheet` 的目录化）、小游戏（来自 `/api/trial/packs` 的 `gameTypes` + `listClientPluginIds()`）、模板 | 新增                                     |
+| `Canvas.tsx`          | 画布、卡片列表、选中、插入指示线、缩放                                                                                        | `QuestionSummaryRow`（已有）             |
+| `PropertiesPanel.tsx` | 右栏：基础字段 / 逻辑 / 插件配置（`SchemaForm`）/ 高级                                                                        | 新增                                     |
+| `QuestionForm.tsx`    | **从 `QuestionCard.tsx` 抽出的表单**（标题/描述/校验/选项/媒体/跳转/flag）                                                    | 重构                                     |
+| `QuickBar.tsx`        | 选中卡片的浮层：复制/删除/上移/下移/必填                                                                                      | 新增                                     |
+| `LogicLayer.tsx`      | SVG 连线层（同页卡片之间）                                                                                                    | 新增（`dependencies.ts` 已提供关系数据） |
 
 ### 2.4 状态与命令模型（撤销与保存共用一个入口）
 
@@ -117,23 +117,24 @@ type EditorCommand =
 
 > 原则：新路由 `?ui=next` 并行，旧编辑器保持默认，直到第 10 步。
 
-| 步骤 | 内容 | 验收 |
-|---|---|---|
-| **S0** | 路由开关：`/admin/surveys/:id/editor?ui=next` 渲染新壳；默认仍走旧壳 | 旧编辑器行为/截图零变化；新路由空白壳可打开 |
-| **S1** | 从 `QuestionCard` 抽出 `QuestionForm`（纯重构，无样式变化），旧壳改为消费它 | 旧编辑器视觉零差异；`pnpm test` 全绿 |
-| **S2** | `EditorShell` + `MaterialPanel` + `Canvas`（只读卡片 + 选中）+ `PropertiesPanel`（挂 `QuestionForm`） | 能选中/编辑标题、描述、必填；保存后刷新仍在 |
-| **S3** | `QuickBar`：复制/删除/上移/下移/必填；删除走 `requestDeleteQuestion`（含影响面确认） | 五个动作各可用；删除有依赖时弹影响面；可撤销 |
-| **S4** | 拖拽：物料区拖入 + 画布内排序（dnd-kit，项目已在模板页用过）；拖动时计算插入位、**8px 吸附阈值**、指示线；非法目标红框回弹；**drop 才产生命令** | 手动：拖入/排序/取消都不产生多余网络请求；`moveBlock` 只发一次 |
-| **S5** | 命令日志接入 undo/redo；删除/级联/模板/拖拽统一为命令 | Ctrl+Z/Ctrl+Shift+Z 覆盖上述全部；保存队列与撤销一致 |
-| **S6** | 画布连线（`LogicLayer`）：同页卡片之间画贝塞尔边；选中高亮入/出边、其余降饱和；点击边跳到目标；目标只允许向后 | 与 `findDependents/findTargets` 结果一致；跨页先在右栏「逻辑」页签里展示（连线跨页留 v2） |
-| **S7** | 基础/专业模式 + 模板 + 插件配置迁入新壳：右栏按能力矩阵过滤；插件包显示 `SchemaForm` + `EditView` | 基础模式看不到高级项；切换不丢进度；模板插入可撤销 |
-| **S8** | 往返测试：任意旧问卷 → 新壳打开 → 不做修改 → 导出 JSON 与旧壳导出**逐字节一致**；改一处 → 保存 → 再导出仍一致 | 新增单测/脚本比对导出 JSON（这是 P2 最硬的门禁） |
-| **S9** | 测试补齐（见 §5）：扩 `qa/visual/editor-layout.spec.ts` 覆盖新壳几何；新增新壳的 a11y 用例；**CI 手动跑 Visual baseline 重生成** | 视觉门禁绿；axe serious/critical 为零 |
-| **S10** | 切默认：`?ui=next` 摘掉，旧壳保留两个版本周期只读兜底（编辑即跳新壳），然后删除 | 旧路由重定向；旧组件删除后 `pnpm test` 仍全绿 |
+| 步骤    | 内容                                                                                                                                            | 验收                                                                                      |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **S0**  | 路由开关：`/admin/surveys/:id/editor?ui=next` 渲染新壳；默认仍走旧壳                                                                            | 旧编辑器行为/截图零变化；新路由空白壳可打开                                               |
+| **S1**  | 从 `QuestionCard` 抽出 `QuestionForm`（纯重构，无样式变化），旧壳改为消费它                                                                     | 旧编辑器视觉零差异；`pnpm test` 全绿                                                      |
+| **S2**  | `EditorShell` + `MaterialPanel` + `Canvas`（只读卡片 + 选中）+ `PropertiesPanel`（挂 `QuestionForm`）                                           | 能选中/编辑标题、描述、必填；保存后刷新仍在                                               |
+| **S3**  | `QuickBar`：复制/删除/上移/下移/必填；删除走 `requestDeleteQuestion`（含影响面确认）                                                            | 五个动作各可用；删除有依赖时弹影响面；可撤销                                              |
+| **S4**  | 拖拽：物料区拖入 + 画布内排序（dnd-kit，项目已在模板页用过）；拖动时计算插入位、**8px 吸附阈值**、指示线；非法目标红框回弹；**drop 才产生命令** | 手动：拖入/排序/取消都不产生多余网络请求；`moveBlock` 只发一次                            |
+| **S5**  | 命令日志接入 undo/redo；删除/级联/模板/拖拽统一为命令                                                                                           | Ctrl+Z/Ctrl+Shift+Z 覆盖上述全部；保存队列与撤销一致                                      |
+| **S6**  | 画布连线（`LogicLayer`）：同页卡片之间画贝塞尔边；选中高亮入/出边、其余降饱和；点击边跳到目标；目标只允许向后                                   | 与 `findDependents/findTargets` 结果一致；跨页先在右栏「逻辑」页签里展示（连线跨页留 v2） |
+| **S7**  | 基础/专业模式 + 模板 + 插件配置迁入新壳：右栏按能力矩阵过滤；插件包显示 `SchemaForm` + `EditView`                                               | 基础模式看不到高级项；切换不丢进度；模板插入可撤销                                        |
+| **S8**  | 往返测试：任意旧问卷 → 新壳打开 → 不做修改 → 导出 JSON 与旧壳导出**逐字节一致**；改一处 → 保存 → 再导出仍一致                                   | 新增单测/脚本比对导出 JSON（这是 P2 最硬的门禁）                                          |
+| **S9**  | 测试补齐（见 §5）：扩 `qa/visual/editor-layout.spec.ts` 覆盖新壳几何；新增新壳的 a11y 用例；**CI 手动跑 Visual baseline 重生成**                | 视觉门禁绿；axe serious/critical 为零                                                     |
+| **S10** | 切默认：`?ui=next` 摘掉，旧壳保留两个版本周期只读兜底（编辑即跳新壳），然后删除                                                                 | 旧路由重定向；旧组件删除后 `pnpm test` 仍全绿                                             |
 
 ### 2.6 交互规格（实现时按这个对齐）
 
 **拖拽**
+
 - 手柄：物料卡片可拖；画布卡片左上角拖拽柄（避免误触标题输入）。
 - 插入指示：水平线 + 两端圆点；位置 = 最近卡片间隙。
 - 吸附：指针距卡片边缘/页边 < 8px 时吸附到该边界；吸附时显示竖线辅助。
@@ -141,12 +142,14 @@ type EditorCommand =
 - 跨页：拖到另一页的页头区域才允许跨页（v1 先只支持同页内排序 + 同页插入，跨页放 v2）。
 
 **画布连线**
+
 - 容器坐标：以画布滚动容器的 `getBoundingClientRect()` 为基准，监听 resize/滚动重算。
 - 合法性：目标必须向后（与引擎一致），非法目标变灰且不可落点。
 - 选中：入边=蓝、出边=琥珀；未关联卡片降饱和度 0.35。
 - 点击边：滚动到目标并选中。
 
 **属性区**
+
 - 选中即配置，**不出现页面跳转**（场景编辑器是例外，见 §3，它要改为壳内全屏浮层）。
 - 基础模式：只显示 标题/描述/必填/媒体/选项；专业模式追加 校验、跳转、flag、结果规则、插件高级项。
 - 字段级错误就近显示；保存按钮禁用条件只依赖"有 error 的 issue"。
@@ -207,16 +210,16 @@ type EditorCommand =
 
 ## 5. 顺手就能做的遗留项（按价值排序）
 
-| 优先级 | 项 | 说明 | 入口 |
-|---|---|---|---|
-| 高 | **抽取玩法上架** | 抽取服务 `game-draw.service.ts` 已就绪、认证卡在用；按插件协议补一个 `draw` engine（奖池配置 + 服务端抽取 + 视图只发结果），即可出现在小游戏区 | `src/game-plugin/plugins/` 新建目录 + `server-plugins.ts` 一行 |
-| 高 | **Bot 端 game 题体验** | 现在只读题面；可加"点此打开网页答题"的 web_app 按钮（带参与者 token），避免玩家卡住 | `src/bot/survey-handler.ts` |
-| 中 | Windows / macOS 二进制实机验证 | survey-tool 交叉编译通过但未实机跑 | `tools/survey-tool/` |
-| 中 | 投稿第三层内容审核适配器 | `src/services/coin/submission.service.ts:16` 的 TODO，目前人工兜底 | 同上 |
-| 中 | 媒体字节独立备份 | D1 每日备份不含 R2/KV blob；可加 R2→R2 周期复制 | `.github/workflows/d1-backup.yml` |
-| 中 | 旧 Builder / QuestionEditor 清理 | Bot 侧遗留代码（`docs/HANDOVER.md` P10） | `src/bot/builder-handler.ts` |
-| 低 | UIUX 审计 P1/P2 残项 | `docs/UIUX-AUDIT-2026-10-22.md` | — |
-| 低 | 性能专项 | 结构树/画布虚拟化、属性面板 memo、连线层 canvas 化；Lighthouse 目前 Performance 75 | P2 完成后做才有意义 |
+| 优先级 | 项                               | 说明                                                                                                                                           | 入口                                                           |
+| ------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 高     | **抽取玩法上架**                 | 抽取服务 `game-draw.service.ts` 已就绪、认证卡在用；按插件协议补一个 `draw` engine（奖池配置 + 服务端抽取 + 视图只发结果），即可出现在小游戏区 | `src/game-plugin/plugins/` 新建目录 + `server-plugins.ts` 一行 |
+| 高     | **Bot 端 game 题体验**           | 现在只读题面；可加"点此打开网页答题"的 web_app 按钮（带参与者 token），避免玩家卡住                                                            | `src/bot/survey-handler.ts`                                    |
+| 中     | Windows / macOS 二进制实机验证   | survey-tool 交叉编译通过但未实机跑                                                                                                             | `tools/survey-tool/`                                           |
+| 中     | 投稿第三层内容审核适配器         | `src/services/coin/submission.service.ts:16` 的 TODO，目前人工兜底                                                                             | 同上                                                           |
+| 中     | 媒体字节独立备份                 | D1 每日备份不含 R2/KV blob；可加 R2→R2 周期复制                                                                                                | `.github/workflows/d1-backup.yml`                              |
+| 中     | 旧 Builder / QuestionEditor 清理 | Bot 侧遗留代码（`docs/HANDOVER.md` P10）                                                                                                       | `src/bot/builder-handler.ts`                                   |
+| 低     | UIUX 审计 P1/P2 残项             | `docs/UIUX-AUDIT-2026-10-22.md`                                                                                                                | —                                                              |
+| 低     | 性能专项                         | 结构树/画布虚拟化、属性面板 memo、连线层 canvas 化；Lighthouse 目前 Performance 75                                                             | P2 完成后做才有意义                                            |
 
 ---
 
@@ -275,24 +278,24 @@ pnpm test:visual:prod
 
 ### 6.4 每个阶段的 DoD
 
-| 阶段 | DoD |
-|---|---|
-| P2 每步（S0–S7） | 该步验收项通过 + `pnpm test` 绿 + `tsc` 绿；不合并"顺手改" |
+| 阶段             | DoD                                                                 |
+| ---------------- | ------------------------------------------------------------------- |
+| P2 每步（S0–S7） | 该步验收项通过 + `pnpm test` 绿 + `tsc` 绿；不合并"顺手改"          |
 | P2 收尾（S8–S9） | 往返测试一致 + 视觉基线 CI 重生成后门禁绿 + axe 无 serious/critical |
-| P3 | 旧壳删除后全量门禁绿；`/scene/:qid` 重定向可用 |
-| 场景媒体专项 | 旧问卷视觉一致 + 导出导入往返一致 + 素材库引用数正确 |
+| P3               | 旧壳删除后全量门禁绿；`/scene/:qid` 重定向可用                      |
+| 场景媒体专项     | 旧问卷视觉一致 + 导出导入往返一致 + 素材库引用数正确                |
 
 ---
 
 ## 7. 风险与回滚
 
-| 风险 | 触发方式 | 回滚 |
-|---|---|---|
-| 新壳有阻塞性 bug | 切默认后暴露 | 路由开关改回旧壳（P3 之前别删旧壳） |
-| 视觉基线大面积变化 | 布局调整 | 基线只能 CI 重生成；变化要有心理预期并逐页确认合理 |
-| 往返不一致（导出 JSON 变了） | 数据模型被"顺手"改造 | 立即停止并回退；形状不变是硬约束 |
-| 插件配置泄露正确项 | 有人把 config 传给 PlayView | 测试已钉（`视图不含正确性信息`），不要放宽 |
-| 素材 blob 误删 | 删除逻辑跳过共享检查 | 删对象前必须查 `storage_key` 是否仍被引用 |
+| 风险                         | 触发方式                    | 回滚                                               |
+| ---------------------------- | --------------------------- | -------------------------------------------------- |
+| 新壳有阻塞性 bug             | 切默认后暴露                | 路由开关改回旧壳（P3 之前别删旧壳）                |
+| 视觉基线大面积变化           | 布局调整                    | 基线只能 CI 重生成；变化要有心理预期并逐页确认合理 |
+| 往返不一致（导出 JSON 变了） | 数据模型被"顺手"改造        | 立即停止并回退；形状不变是硬约束                   |
+| 插件配置泄露正确项           | 有人把 config 传给 PlayView | 测试已钉（`视图不含正确性信息`），不要放宽         |
+| 素材 blob 误删               | 删除逻辑跳过共享检查        | 删对象前必须查 `storage_key` 是否仍被引用          |
 
 ---
 

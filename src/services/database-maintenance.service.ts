@@ -411,7 +411,10 @@ async function deleteOrphanMediaAssets(
     if (referencedInJson.has(id)) continue;
     // 先取 storage_key：删行之后就查不到了。
     const row = store
-      ? await db.prepare("SELECT storage_key storageKey FROM media_assets WHERE id = ? LIMIT 1").bind(id).first<{ storageKey: string | null }>()
+      ? await db
+          .prepare("SELECT storage_key storageKey FROM media_assets WHERE id = ? LIMIT 1")
+          .bind(id)
+          .first<{ storageKey: string | null }>()
       : null;
     const storageKey = row?.storageKey ?? null;
     if ((await changes(db.prepare("DELETE FROM media_assets WHERE id = ?").bind(id))) === 0) continue;
@@ -462,7 +465,8 @@ export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolea
     for (const row of rows) {
       lastId = row.id;
       const assetIds = collectSurveySettingsMediaIds(row.settings_json ?? null);
-      await db.prepare("DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE ?")
+      await db
+        .prepare("DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE ?")
         .bind(`survey:${row.id}:%`)
         .run();
       for (const assetId of assetIds) {

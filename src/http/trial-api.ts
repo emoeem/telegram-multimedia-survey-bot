@@ -296,8 +296,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (record.plugin) {
       const packs = await listTaskPacks(env.DB, {});
       const pack = packs.find((item) => item.id === record.packId) ?? null;
-      const action =
-        rawAction === "abandon" ? { kind: "abandon" } : rawAction;
+      const action = rawAction === "abandon" ? { kind: "abandon" } : rawAction;
       return applyPluginAction(env, {
         record,
         pack,

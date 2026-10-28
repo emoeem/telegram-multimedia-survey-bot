@@ -12,10 +12,12 @@
 ## 一、交付内容（对照交接文档步骤）
 
 ### S0 · 路由开关
+
 - `EditorPage.tsx` 顶部读 `?ui=next`：命中才 lazy 加载新壳 chunk（`Suspense` + 动态 import），
   默认路径与既有行为、包体零变化。
 
 ### S1 · QuestionForm 抽取（纯重构）
+
 - 新文件 `admin/src/components/editor/QuestionForm.tsx`：题卡表单体整体搬出（标题/描述/说话人、
   小游戏包、必答、题面附件+素材库、分页、选项（媒体·跳转·Flag）、矩阵列、Flag 跳转、校验），
   `commitCondition` 四区段合并逻辑随迁。
@@ -25,6 +27,7 @@
   对外 props 契约不变。DOM 类名不动——旧壳视觉零差异是本步硬约束。
 
 ### S2 · 三栏新壳骨架
+
 - `admin/src/components/editor/next/EditorShell.tsx`：顶栏（返回/可编辑标题/保存状态/
   基础·专业/撤销重做/保存/预览/发布）+ 三栏；预览改为顶栏按钮弹层（复用 SurveyPreview modal）；
   自动保存、Ctrl+Z/Y、SPA 离开守卫与旧壳同一节奏。
@@ -40,6 +43,7 @@
   `templates.ts`（默认题稿 + 三套模板，纯函数）。
 
 ### S3 · QuickBar 快捷条
+
 - `next/QuickBar.tsx`：激活卡浮层，复制 / 上移 / 下移 / 必答 / 删除。
 - 删除走 `admin/src/editor/delete-with-cascade.ts`（纯函数：`planQuestionDeletion` +
   `deletionConfirmMessage`）：有跳转指向时先列影响面确认，确认后清引用 + 删除在同一批
@@ -60,14 +64,14 @@
 
 ## 三、验证结果
 
-| 项 | 结果 |
-|---|---|
-| 单测 `pnpm test` | **196 文件 / 1422 用例全绿**（基线 194/1410，+2 文件 / +12 用例） |
-| `pnpm typecheck`（Worker）+ admin `tsc --noEmit` | 干净 |
-| `pnpm lint` | 无告警 |
-| `pnpm build:admin` | 通过（chunk 体积警告为既有现象） |
-| `pnpm exec playwright test editor-layout` | **13/13 通过**（旧壳 7 + 新壳 6） |
-| 视觉门禁 `pnpm test:visual:gate` | 107 失败 = **检查点提交上逐个相同**（经 stash 对照验证），本轮零新增 |
+| 项                                               | 结果                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| 单测 `pnpm test`                                 | **196 文件 / 1422 用例全绿**（基线 194/1410，+2 文件 / +12 用例）    |
+| `pnpm typecheck`（Worker）+ admin `tsc --noEmit` | 干净                                                                 |
+| `pnpm lint`                                      | 无告警                                                               |
+| `pnpm build:admin`                               | 通过（chunk 体积警告为既有现象）                                     |
+| `pnpm exec playwright test editor-layout`        | **13/13 通过**（旧壳 7 + 新壳 6）                                    |
+| 视觉门禁 `pnpm test:visual:gate`                 | 107 失败 = **检查点提交上逐个相同**（经 stash 对照验证），本轮零新增 |
 
 ### 视觉基线欠账（接手必须补，与交接文档一致）
 

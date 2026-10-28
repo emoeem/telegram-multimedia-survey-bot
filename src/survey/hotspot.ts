@@ -23,8 +23,7 @@ const MAX_TEXT_LENGTH = 400;
 
 // 结构化媒体引用的双读解析（阶段 D 读侧先行）：字符串原样，{assetId} 派生。
 // toUrl 在这里注入（媒体端点拼写归此维护）；parseMediaRef 见 media-ref.ts。
-const toPublicMediaUrl = (assetId: number): string =>
-  ["/api/survey/media/", String(assetId)].join("");
+const toPublicMediaUrl = (assetId: number): string => ["/api/survey/media/", String(assetId)].join("");
 
 export interface HotspotImageAction {
   kind: "image";

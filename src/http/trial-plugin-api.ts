@@ -84,10 +84,7 @@ export function serializePluginRun(
   }
 }
 
-export async function startPluginRun(
-  env: Env,
-  input: Parameters<PluginRunApi["start"]>[0],
-): Promise<Response> {
+export async function startPluginRun(env: Env, input: Parameters<PluginRunApi["start"]>[0]): Promise<Response> {
   const { pack, participant, persona, mode } = input;
   // 限流与"一局未完成"由调用方（trial-api 的开局路由）统一处理，避免两处各扣一次。
   const pluginId = String(pack.gameType ?? "");
@@ -118,16 +115,22 @@ export async function startPluginRun(
     mode,
     startingFloor: 1,
     maxFloor: Math.max(1, created.view.total),
-    state: { phase: "playing", coins: 0, inventory: { skipTickets: 0, boosters: 0, shields: 0 }, boosted: false, usedTaskIds: [], maxScore: 1, currentTaskId: null, coinRerolls: 0 },
+    state: {
+      phase: "playing",
+      coins: 0,
+      inventory: { skipTickets: 0, boosters: 0, shields: 0 },
+      boosted: false,
+      usedTaskIds: [],
+      maxScore: 1,
+      currentTaskId: null,
+      coinRerolls: 0,
+    },
     plugin: envelope,
   });
   return json({ run: pluginRunSummary(record, pack.name), view: created.view }, 201);
 }
 
-export async function applyPluginAction(
-  env: Env,
-  input: Parameters<PluginRunApi["action"]>[0],
-): Promise<Response> {
+export async function applyPluginAction(env: Env, input: Parameters<PluginRunApi["action"]>[0]): Promise<Response> {
   const { record, pack, participantHash, action } = input;
   if (record.participantHash !== participantHash) return fail(404, "not_found", "挑战局不存在");
   const envelope = record.plugin;
@@ -236,10 +239,7 @@ function safeView(
 }
 
 /** 供 /runs/active 使用：插件局恢复视图（包可能已被停用但依然可读）。 */
-export async function loadActivePluginRun(
-  env: Env,
-  run: TaskRunRecord,
-): Promise<Response> {
+export async function loadActivePluginRun(env: Env, run: TaskRunRecord): Promise<Response> {
   const packs = await listTaskPacks(env.DB, { withItems: false });
   const pack = packs.find((item) => item.id === run.packId) ?? null;
   const { run: summary, view } = serializePluginRun(run, pack);

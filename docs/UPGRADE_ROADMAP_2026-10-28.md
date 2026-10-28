@@ -45,6 +45,7 @@
 ## 阶段 A：两个高优速赢
 
 ### A1 抽取玩法插件（draw）　✅ f3930e9
+
 - 服务端 `src/game-plugin/plugins/draw/`：奖池 = list 属性（条目：label/权重/稀有度）；
   `createRun` 用注入 random 一次性加权抽取结果序列；`reveal` 动作带 step 幂等
   （网络重试不重复消耗）；`view.payload` 只发已揭示条目，未抽结果不泄露；
@@ -54,6 +55,7 @@
 - registry 三方一致性测试自动守护；无视觉基线影响。
 
 ### A2 Bot 端 game 题 web_app 按钮　✅ 9b60da3
+
 - `src/bot/survey-handler.ts`：game 题消息附 `web_app` 内嵌按钮（类型已备好
   `telegram.ts:3-8`），URL = 站点 origin + `/s/:id?v=3` + 参与者 token
   （复用 `createSurveyParticipantToken`，与现有 `pt` 参数同款）。
@@ -61,14 +63,14 @@
 
 ## 阶段 B：P2 收官（S4–S9）
 
-| 步骤 | 内容 | 关键验收 | 状态 |
-|---|---|---|---|
-| S4 | dnd-kit 拖拽：物料拖入 + 画布同页排序；插入指示线、8px 吸附、非法目标红框回弹 | drop 才产生命令；`moveBlock` 只发一次；取消无网络请求 | ✅ bcc5550（指示线/吸附细节由 sortable 间隙语义承载，非法落点零命令已验收） |
-| S5 | 命令日志：六种 EditorCommand，反向补丁进同一条待保存队列，`coalesceKey` 800ms 合并打字；删除/模板/拖拽统一为命令 | Ctrl+Z 覆盖全部；撤销后服务端同步回退；命令日志单测 | ✅ 2146853（快照模型 + coalesce 等价实现：800ms 同 label 合并一个撤销步骤、相邻 PATCH 合一；undo 由 diff 重建 ops 保证服务端回退） |
-| S6 | LogicLayer：同页贝塞尔连线；目标只允许向后；选中高亮入/出边；点击边跳转 | 与 `findDependents/findTargets` 一致；跨页连线留 v2 | ✅ 78b7823（canvas-edges 纯函数 + SVG 层；连线按平铺序列不分页，跨页区分留 v2） |
-| S7 | 完整迁入：基础/专业能力矩阵、模板、插件 SchemaForm+EditView 进属性区 | 基础模式看不到高级项；切换不丢进度 | ✅（QuestionForm 加 editorMode 过滤校验/Flag 高级区；模板已在物料区常驻；插件配置在任务包页 SchemaForm + 题卡 GamePackField 绑定） |
-| S8 | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致** | 单测/脚本比对；改一处保存后再导出仍一致 | ✅ 自动化部分（e527b68）：新壳打开不编辑 → 超 autosave 防抖窗口 2.6s 零写请求（数据零漂移）；两壳共用 editor-actions + useSurveyEditor，形状漂移风险已在架构上消除；逐字节导出比对需 staging 实测（列手动验收） |
-| S9 | 测试补齐：editor-layout 扩新壳几何断言、吸附/连线合法性单测、axe 无 serious/critical | 视觉门禁绿；性能 DoD：135 题打开不劣于旧壳 | ✅（17/17：几何 6 + 拖拽 2 + 新壳 axe 基础/专业 2；画布边合法性单测 3；拖拽 2 个用例覆盖 drop 语义） |
+| 步骤 | 内容                                                                                                             | 关键验收                                              | 状态                                                                                                                                                                                                            |
+| ---- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S4   | dnd-kit 拖拽：物料拖入 + 画布同页排序；插入指示线、8px 吸附、非法目标红框回弹                                    | drop 才产生命令；`moveBlock` 只发一次；取消无网络请求 | ✅ bcc5550（指示线/吸附细节由 sortable 间隙语义承载，非法落点零命令已验收）                                                                                                                                     |
+| S5   | 命令日志：六种 EditorCommand，反向补丁进同一条待保存队列，`coalesceKey` 800ms 合并打字；删除/模板/拖拽统一为命令 | Ctrl+Z 覆盖全部；撤销后服务端同步回退；命令日志单测   | ✅ 2146853（快照模型 + coalesce 等价实现：800ms 同 label 合并一个撤销步骤、相邻 PATCH 合一；undo 由 diff 重建 ops 保证服务端回退）                                                                              |
+| S6   | LogicLayer：同页贝塞尔连线；目标只允许向后；选中高亮入/出边；点击边跳转                                          | 与 `findDependents/findTargets` 一致；跨页连线留 v2   | ✅ 78b7823（canvas-edges 纯函数 + SVG 层；连线按平铺序列不分页，跨页区分留 v2）                                                                                                                                 |
+| S7   | 完整迁入：基础/专业能力矩阵、模板、插件 SchemaForm+EditView 进属性区                                             | 基础模式看不到高级项；切换不丢进度                    | ✅（QuestionForm 加 editorMode 过滤校验/Flag 高级区；模板已在物料区常驻；插件配置在任务包页 SchemaForm + 题卡 GamePackField 绑定）                                                                              |
+| S8   | 往返测试（最硬门禁）：旧问卷 → 新壳不动 → 导出 JSON 与旧壳**逐字节一致**                                         | 单测/脚本比对；改一处保存后再导出仍一致               | ✅ 自动化部分（e527b68）：新壳打开不编辑 → 超 autosave 防抖窗口 2.6s 零写请求（数据零漂移）；两壳共用 editor-actions + useSurveyEditor，形状漂移风险已在架构上消除；逐字节导出比对需 staging 实测（列手动验收） |
+| S9   | 测试补齐：editor-layout 扩新壳几何断言、吸附/连线合法性单测、axe 无 serious/critical                             | 视觉门禁绿；性能 DoD：135 题打开不劣于旧壳            | ✅（17/17：几何 6 + 拖拽 2 + 新壳 axe 基础/专业 2；画布边合法性单测 3；拖拽 2 个用例覆盖 drop 语义）                                                                                                            |
 
 ## 阶段 C：P3 切默认与清理
 
@@ -99,6 +101,7 @@
 ## 阶段 E：低优四批（各自可独立上线）
 
 ### E1 基础设施清理　✅（2026-10-29）
+
 - ✅ 删除 `test.yml`（与 ci.yml 的 push/PR 触发完全重叠且混用 npm/pnpm）。
 - ✅ typescript-eslint 8 × ESLint 10 官方兼容矩阵**确认兼容**，无需动作：
   已装 `@typescript-eslint/parser` 8.67.0 的 peer 范围为
@@ -111,6 +114,7 @@
   Go 原生 tsc 的兼容性也未经验证；收益只有版本号一致。结论记录在案，不改代码。
 
 ### E2 echarts 按需引入　✅（2026-10-29）
+
 - ✅ 1.1MB 最大 chunk（esm-*.js）消除：EChart.tsx 改走 `echarts/core` + `lib/**/install`
   深路径（bar/pie/grid/tooltip/axisPointer/legend + 双 renderer），只注册用到的系列/组件。
   最大 chunk 降至 216K（react-vendor），admin assets 总量 2.9MB → 2.4MB。
@@ -124,9 +128,11 @@
   （admin 总览环形图、问卷统计环形图）渲染正常。CI 基线随下轮 Visual baseline 再生。
 
 ### E3 UIUX P1 残项（审计文档 B 批，6 项）　✅（2026-10-29）
+
 盘点发现 6 项中 4 项已在此前迭代落地（报告页批量操作 + 强制重试 + 已卡分钟数、
 CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-label/title），
 本轮补齐剩余缺口：
+
 - ✅ 移动端表格 `data-label`：SurveysPage（8 格）、CategoriesPage（6 格）、
   LicensesPage 首表（7 格）、RemoteDataViewer 操作列（3 格）；CSS 层早已就绪。
   SurveyPreview / SurveyApp 非 `.tbl` 表格，卡片化 CSS 不适用，正确跳过。
@@ -136,6 +142,7 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
   （字面量直接渲染给用户的真实 bug）。
 
 ### E4 性能专项（依赖 P2 完成）　✅ 低风险部分（2026-10-29）
+
 - ✅ 动作身份稳定化（memo 生效的前提）：useEditorActions 全部 handler 改
   `useCallback([])` + 依赖经 latest-ref 读取（旧实现每键击重建全部闭包）；
   返回对象 useMemo，仅 busy/publish 翻转时换身份。行为语义逐字保留。

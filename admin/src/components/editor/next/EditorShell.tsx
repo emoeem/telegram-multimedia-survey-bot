@@ -14,7 +14,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { EditorData } from "../../../api";
 import { StatusBadge } from "../../ui";
 import { SurveyPreview } from "../SurveyPreview";
-import { TypePickerSheet, } from "../TypePickerSheet";
+import { TypePickerSheet } from "../TypePickerSheet";
 import { EditableTitle } from "../EditableTitle";
 import type { BuilderSelection } from "../StructureTree";
 import { useSurveyEditor } from "../../../editor/useSurveyEditor";
@@ -228,7 +228,11 @@ export function EditorShellNext({ data }: { data: EditorData }) {
         </div>
         <div className="editor-actions">
           <span className={`editor-save-state ${saveStateClass}`}>{saveStateLabel}</span>
-          <div className="flex overflow-hidden rounded-full border border-[var(--color-edge)]" role="group" aria-label="编辑模式">
+          <div
+            className="flex overflow-hidden rounded-full border border-[var(--color-edge)]"
+            role="group"
+            aria-label="编辑模式"
+          >
             {(["basic", "pro"] as const).map((value) => (
               <button
                 key={value}
@@ -246,7 +250,12 @@ export function EditorShellNext({ data }: { data: EditorData }) {
               </button>
             ))}
           </div>
-          <button className="btn btn-sm btn-quiet" disabled={!editor.canUndo} title="撤销（Ctrl+Z）" onClick={() => editor.undo()}>
+          <button
+            className="btn btn-sm btn-quiet"
+            disabled={!editor.canUndo}
+            title="撤销（Ctrl+Z）"
+            onClick={() => editor.undo()}
+          >
             <Undo2 className="h-4 w-4" />
           </button>
           <button
@@ -257,11 +266,19 @@ export function EditorShellNext({ data }: { data: EditorData }) {
           >
             <Redo2 className="h-4 w-4" />
           </button>
-          <button className="btn btn-sm editor-desktop-action" disabled={editor.saveState === "saving"} onClick={() => editor.save()}>
+          <button
+            className="btn btn-sm editor-desktop-action"
+            disabled={editor.saveState === "saving"}
+            onClick={() => editor.save()}
+          >
             <Save className="h-4 w-4" />
             保存
           </button>
-          <button className="btn btn-sm editor-desktop-action" disabled={editor.saveState === "saving"} onClick={() => setPreviewOpen(true)}>
+          <button
+            className="btn btn-sm editor-desktop-action"
+            disabled={editor.saveState === "saving"}
+            onClick={() => setPreviewOpen(true)}
+          >
             <Eye className="h-4 w-4" />
             预览
           </button>
@@ -302,67 +319,79 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       ) : null}
 
       <div className="editor-body">
-        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setDraggingType(null)}>
-        <aside className="editor-structure editor-col" aria-label="物料区">
-          <MaterialPanel
-            disabled={editingDisabled}
-            sceneBusy={actions.sceneBusy}
-            pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
-            onAddQuestion={addDefaultQuestion}
-            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
-            onApplyTemplate={(templateId) => actions.applyTemplate(templateId)}
-            onAddPage={() => void actions.addPage()}
-            onDeletePage={(pageId) => void actions.deletePage(pageId)}
-          />
-        </aside>
+        <DndContext
+          sensors={dndSensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDraggingType(null)}
+        >
+          <aside className="editor-structure editor-col" aria-label="物料区">
+            <MaterialPanel
+              disabled={editingDisabled}
+              sceneBusy={actions.sceneBusy}
+              pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+              onAddQuestion={addDefaultQuestion}
+              onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
+              onApplyTemplate={(templateId) => actions.applyTemplate(templateId)}
+              onAddPage={() => void actions.addPage()}
+              onDeletePage={(pageId) => void actions.deletePage(pageId)}
+            />
+          </aside>
 
-        <main className="editor-canvas editor-col" aria-label="画布">
-          <Canvas
-            questions={editor.questions}
-            selection={selection}
-            editable={!editingDisabled}
-            sceneBusy={actions.sceneBusy}
-            draggingType={draggingType}
-            onOpenPicker={() => setPickerOpen(true)}
-            onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
-            onSelect={setSelection}
-            onMove={actions.moveQuestion}
-            onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
-            onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
-            onToggleRequired={toggleRequired}
-          />
-        </main>
+          <main className="editor-canvas editor-col" aria-label="画布">
+            <Canvas
+              questions={editor.questions}
+              selection={selection}
+              editable={!editingDisabled}
+              sceneBusy={actions.sceneBusy}
+              draggingType={draggingType}
+              onOpenPicker={() => setPickerOpen(true)}
+              onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
+              onSelect={setSelection}
+              onMove={actions.moveQuestion}
+              onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
+              onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
+              onToggleRequired={toggleRequired}
+            />
+          </main>
 
-        <aside className="editor-preview editor-col" aria-label="属性区">
-          <PropertiesPanel
-            data={data}
-            editor={editor}
-            actions={actions}
-            selection={selection}
-            editable={!editingDisabled}
-            editorMode={editorMode}
-            onSelect={selectQuestion}
-            onOpenScene={openSceneOverlay}
-          />
-        </aside>
+          <aside className="editor-preview editor-col" aria-label="属性区">
+            <PropertiesPanel
+              data={data}
+              editor={editor}
+              actions={actions}
+              selection={selection}
+              editable={!editingDisabled}
+              editorMode={editorMode}
+              onSelect={selectQuestion}
+              onOpenScene={openSceneOverlay}
+            />
+          </aside>
         </DndContext>
       </div>
 
       {sceneOverlayId !== null ? (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "var(--color-page)" }} role="dialog" aria-label="互动场景编辑器">
+        <div
+          className="fixed inset-0 z-50 flex flex-col"
+          style={{ background: "var(--color-page)" }}
+          role="dialog"
+          aria-label="互动场景编辑器"
+        >
           <div className="flex items-center justify-between border-b border-[var(--color-edge)] px-3 py-2">
             <span className="text-xs font-semibold text-[var(--color-muted)]">编辑互动场景（关闭返回编辑器）</span>
-            <button type="button" className="btn btn-sm" aria-label="关闭场景编辑器" onClick={() => setSceneOverlayId(null)}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              aria-label="关闭场景编辑器"
+              onClick={() => setSceneOverlayId(null)}
+            >
               <X className="h-4 w-4" />
               关闭
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            <SceneEditorPage
-              surveyId={survey.id}
-              sceneId={sceneOverlayId}
-              onExit={() => setSceneOverlayId(null)}
-            />
+            <SceneEditorPage surveyId={survey.id} sceneId={sceneOverlayId} onExit={() => setSceneOverlayId(null)} />
           </div>
         </div>
       ) : null}

@@ -104,14 +104,7 @@ export interface ListProp extends PropBase {
   itemLabel: (item: Record<string, unknown>, index: number) => string;
 }
 
-export type PropField =
-  | TextProp
-  | TextAreaProp
-  | NumberProp
-  | BooleanProp
-  | SelectProp
-  | MediaProp
-  | ListProp;
+export type PropField = TextProp | TextAreaProp | NumberProp | BooleanProp | SelectProp | MediaProp | ListProp;
 
 /** 字段 → 值类型，保证 config 端到端类型安全。 */
 export type PropValue<F extends PropField> = F extends TextProp | TextAreaProp | SelectProp
@@ -172,12 +165,11 @@ export interface GameEngine<S, A> {
     /** 注入随机源，保证同 seed 可复现（测试与断线重放）。 */
     random: () => number;
   }): { state: S; view: GameRunView };
-  apply(input: {
+  apply(input: { state: S; config: Record<string, unknown>; action: A; random: () => number }): {
     state: S;
-    config: Record<string, unknown>;
-    action: A;
-    random: () => number;
-  }): { state: S; view: GameRunView; finished: boolean };
+    view: GameRunView;
+    finished: boolean;
+  };
   grade(input: { state: S; config: Record<string, unknown> }): { grade: GameGrade; maxScore: number };
   /** 断线重连：把 state 还原成视图，不推进任何逻辑。 */
   view(input: { state: S; config: Record<string, unknown> }): GameRunView;

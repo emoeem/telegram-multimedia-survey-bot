@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { FilePlus2, GripVertical, MousePointerClick, Settings2 } from "lucide-react";
@@ -54,7 +50,10 @@ export function Canvas({
   const activeId = selection.kind === "question" ? selection.id : null;
   // 稳定身份：QuestionSummaryRow 是 memo 组件，行内闭包会让 memo 全部失效。
   // onSelect 来自壳的 setState（本身稳定），这里 useCallback 包一层即可。
-  const onSelectQuestion = useCallback((questionId: number) => onSelect({ kind: "question", id: questionId }), [onSelect]);
+  const onSelectQuestion = useCallback(
+    (questionId: number) => onSelect({ kind: "question", id: questionId }),
+    [onSelect],
+  );
   // S6 连线层：坐标基准是画布内容区（CanvasDropArea 的 relative 包裹）。
   const baseRef = useRef<HTMLDivElement>(null);
   const [edgeBase, setEdgeBase] = useState<HTMLElement | null>(null);
@@ -84,7 +83,10 @@ export function Canvas({
       <CanvasDropArea baseRef={baseRef}>
         <div className="p-3">
           {selection.kind === "settings" ? (
-            <p className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs" style={{ color: "var(--color-muted)" }}>
+            <p
+              className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs"
+              style={{ color: "var(--color-muted)" }}
+            >
               正在编辑问卷设置（右侧属性面板）。
             </p>
           ) : null}
@@ -124,15 +126,12 @@ export function Canvas({
             </div>
           </SortableContext>
           {questions.length === 0 ? (
-            <EmptyPanel text={draggingType ? "松手即把该题型加到问卷末尾" : "这份问卷还没有内容，从左侧物料区拖入或点选一个题型"} />
+            <EmptyPanel
+              text={draggingType ? "松手即把该题型加到问卷末尾" : "这份问卷还没有内容，从左侧物料区拖入或点选一个题型"}
+            />
           ) : null}
           {edgeBase ? (
-            <LogicLayer
-              questions={questions}
-              selectedId={activeId}
-              base={edgeBase}
-              onSelect={onSelectQuestion}
-            />
+            <LogicLayer questions={questions} selectedId={activeId} base={edgeBase} onSelect={onSelectQuestion} />
           ) : null}
         </div>
       </CanvasDropArea>
@@ -142,7 +141,12 @@ export function Canvas({
           <FilePlus2 className="h-4 w-4" />
           添加题目
         </button>
-        <button className="btn" disabled={!editable || sceneBusy} onClick={onAddScene} title="新建一道互动场景题，并打开场景编辑器">
+        <button
+          className="btn"
+          disabled={!editable || sceneBusy}
+          onClick={onAddScene}
+          title="新建一道互动场景题，并打开场景编辑器"
+        >
           <MousePointerClick className="h-4 w-4" />
           添加互动场景
         </button>
@@ -152,7 +156,13 @@ export function Canvas({
 }
 
 /** 画布内容区是物料拖入的落点 + 连线层坐标基准；排序落点由摘要卡行决定。 */
-function CanvasDropArea({ baseRef, children }: { baseRef: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }) {
+function CanvasDropArea({
+  baseRef,
+  children,
+}: {
+  baseRef: React.RefObject<HTMLDivElement | null>;
+  children: React.ReactNode;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" });
   return (
     <div

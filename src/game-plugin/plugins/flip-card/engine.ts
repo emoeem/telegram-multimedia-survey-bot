@@ -42,16 +42,18 @@ function viewOf(state: FlipCardState, config: FlipCardConfig) {
   const card = cardIndex === undefined ? null : (config.cards[cardIndex] ?? null);
   const ratio = state.maxScore === 0 ? 0 : (state.score / state.maxScore) * 100;
   return {
-    status: isFinished(state) ? (ratio >= config.passRatio ? ("won" as const) : ("lost" as const)) : ("active" as const),
+    status: isFinished(state)
+      ? ratio >= config.passRatio
+        ? ("won" as const)
+        : ("lost" as const)
+      : ("active" as const),
     score: state.score,
     maxScore: state.maxScore,
     step: Math.min(state.cursor + 1, Math.max(1, state.order.length)),
     total: state.order.length,
     payload: {
       // 注意：这里永不输出 options[0] 的正确性标记。
-      card: card
-        ? { front: card.front, back: card.back, options: card.options.map((option) => option.label) }
-        : null,
+      card: card ? { front: card.front, back: card.back, options: card.options.map((option) => option.label) } : null,
       cover: config.cover,
     },
   };

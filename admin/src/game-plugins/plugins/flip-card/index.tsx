@@ -46,9 +46,7 @@ function EditView({ config, mode }: GameEditViewProps<FlipCardConfig>) {
             </p>
           </div>
         ))}
-        {config.cards.length === 0 ? (
-          <p className="p-2 text-xs text-[var(--color-muted-soft)]">还没有卡牌</p>
-        ) : null}
+        {config.cards.length === 0 ? <p className="p-2 text-xs text-[var(--color-muted-soft)]">还没有卡牌</p> : null}
       </div>
       <p className="text-[11px] text-[var(--color-muted-soft)]">
         {mode === "basic"
@@ -127,7 +125,9 @@ function PlayView({ config, host, saved, disabled }: GamePlayViewProps<FlipCardC
           <span className={`mt-2 block text-sm text-[var(--survey-body)] ${flipped ? "" : "select-none blur-[3px]"}`}>
             {card.back || "（点击翻牌）"}
           </span>
-          <span className="mt-2 block text-[11px] text-[var(--survey-muted)]">{flipped ? "已揭晓" : "点击翻牌揭晓提示"}</span>
+          <span className="mt-2 block text-[11px] text-[var(--survey-muted)]">
+            {flipped ? "已揭晓" : "点击翻牌揭晓提示"}
+          </span>
         </button>
       ) : null}
       {done ? (

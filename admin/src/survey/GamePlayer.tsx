@@ -282,10 +282,7 @@ export function GamePlayer({
 
   if (phase === "shop" && run) {
     const rerollsLeft = Math.max(0, 3 - (run.coinRerolls ?? 0));
-    const total =
-      shopQty.skipTickets * 45 +
-      shopQty.boosters * 35 +
-      shopQty.shields * 60;
+    const total = shopQty.skipTickets * 45 + shopQty.boosters * 35 + shopQty.shields * 60;
     return (
       <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
         <div className="flex items-center justify-between">
@@ -305,7 +302,8 @@ export function GamePlayer({
         </div>
         <div className="mt-3 space-y-2">
           {TRIAL_SHOP_CONFIG.items.map((item) => {
-            const qtyKey = item.kind === "skipTicket" ? "skipTickets" : item.kind === "booster" ? "boosters" : "shields";
+            const qtyKey =
+              item.kind === "skipTicket" ? "skipTickets" : item.kind === "booster" ? "boosters" : "shields";
             const qty = shopQty[qtyKey];
             return (
               <div key={item.kind} className="flex items-center justify-between gap-2 text-sm">
@@ -363,7 +361,9 @@ export function GamePlayer({
       100,
       Math.max(
         0,
-        Math.round(((run.currentFloor - (run.startingFloor ?? 1)) / Math.max(1, run.maxFloor - (run.startingFloor ?? 1))) * 100),
+        Math.round(
+          ((run.currentFloor - (run.startingFloor ?? 1)) / Math.max(1, run.maxFloor - (run.startingFloor ?? 1))) * 100,
+        ),
       ),
     );
     return (
@@ -467,7 +467,9 @@ export function GamePlayer({
       <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-center">
         <span
           className={`inline-grid h-14 w-14 place-items-center rounded-full text-2xl font-black text-white ${
-            settlement.grade === "S" ? "bg-gradient-to-br from-amber-300 to-yellow-600" : "bg-gradient-to-br from-sky-300 to-indigo-600"
+            settlement.grade === "S"
+              ? "bg-gradient-to-br from-amber-300 to-yellow-600"
+              : "bg-gradient-to-br from-sky-300 to-indigo-600"
           }`}
         >
           {settlement.grade}

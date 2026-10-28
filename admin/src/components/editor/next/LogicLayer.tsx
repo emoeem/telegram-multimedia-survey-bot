@@ -26,7 +26,10 @@ const EDGE_COLORS: Record<CanvasEdge["kind"], string> = {
   skipTo: "#64748b",
 };
 
-function cardRect(base: HTMLElement, questionId: number): { top: number; left: number; width: number; height: number } | null {
+function cardRect(
+  base: HTMLElement,
+  questionId: number,
+): { top: number; left: number; width: number; height: number } | null {
   const element = base.querySelector(`[data-block-id="${questionId}"]`);
   if (!(element instanceof HTMLElement)) return null;
   const card = element.querySelector(".q-row") ?? element;
@@ -80,9 +83,7 @@ export function LogicLayer({
       cancelAnimationFrame(frameRef.current);
       frameRef.current = requestAnimationFrame(() => {
         setGeometries(
-          edges
-            .map((edge) => edgePath(base, edge))
-            .filter((geometry): geometry is EdgeGeometry => geometry !== null),
+          edges.map((edge) => edgePath(base, edge)).filter((geometry): geometry is EdgeGeometry => geometry !== null),
         );
       });
     };
@@ -105,9 +106,7 @@ export function LogicLayer({
       cancelAnimationFrame(scheduled);
       scheduled = requestAnimationFrame(() => {
         setGeometries(
-          edges
-            .map((edge) => edgePath(base, edge))
-            .filter((geometry): geometry is EdgeGeometry => geometry !== null),
+          edges.map((edge) => edgePath(base, edge)).filter((geometry): geometry is EdgeGeometry => geometry !== null),
         );
       });
     });

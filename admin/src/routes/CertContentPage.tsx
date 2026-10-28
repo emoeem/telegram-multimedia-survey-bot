@@ -640,10 +640,7 @@ export function CertContentPage() {
               </button>
             </div>
 
-            <CertDrawSection
-              theme={active}
-              onChange={(draw) => patchActive({ draw })}
-            />
+            <CertDrawSection theme={active} onChange={(draw) => patchActive({ draw })} />
           </div>
         ) : (
           <p className="text-sm text-[var(--color-muted)]">没有可选主题，点左侧「新增主题」。</p>
@@ -654,13 +651,7 @@ export function CertContentPage() {
 }
 
 /** 抽取池配置：主题的「帮我选/抽取」改为服务端从小游戏区的任务包实时抽。 */
-function CertDrawSection({
-  theme,
-  onChange,
-}: {
-  theme: CertTheme;
-  onChange: (draw: CertTheme["draw"]) => void;
-}) {
+function CertDrawSection({ theme, onChange }: { theme: CertTheme; onChange: (draw: CertTheme["draw"]) => void }) {
   const [packs, setPacks] = useState<{ id: number; name: string; enabled: boolean }[] | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -698,7 +689,8 @@ function CertDrawSection({
       </div>
       {!draw ? (
         <p className="mt-1 text-[11px] text-[var(--color-muted-soft)]">
-          配置后，生成器的「帮我选/抽取」改为服务端实时从任务包抽条目；包更新后认证卡自动跟着变。任务包内容为 18+，抽取需通过门禁。
+          配置后，生成器的「帮我选/抽取」改为服务端实时从任务包抽条目；包更新后认证卡自动跟着变。任务包内容为
+          18+，抽取需通过门禁。
         </p>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">

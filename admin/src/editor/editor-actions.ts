@@ -73,37 +73,43 @@ export function useEditorActions(data: EditorData, editor: Editor) {
   }, []);
 
   // 场景题走独立编辑器：先把 builder 里的待保存修改落库，再跳转。
-  const openSceneEditor = useCallback(async (questionId: number) => {
-    if (!(await flushDraft())) return;
-    const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
-    currentNavigate(`/surveys/${currentSurvey.id}/scene/${questionId}`);
-  }, [flushDraft]);
+  const openSceneEditor = useCallback(
+    async (questionId: number) => {
+      if (!(await flushDraft())) return;
+      const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
+      currentNavigate(`/surveys/${currentSurvey.id}/scene/${questionId}`);
+    },
+    [flushDraft],
+  );
 
   // 新建空 scene 题（settings 为空，场景配置在编辑器里写入）。
   // insertQuestionWithOptions 只为 matrix 持久化 settings，所以这里不传场景配置。
   // openInShell：P3 新壳传「打开壳内浮层」回调（创建后不跳页）；旧壳缺省导航。
-  const addSceneQuestion = useCallback(async (pageId: number | null, openInShell?: (questionId: number) => void) => {
-    const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
-    if (sceneBusyRef.current) return;
-    if (!(await flushDraft())) return;
-    setSceneBusy(true);
-    setPublishError(null);
-    try {
-      const created = await apiSend<{ id: number }>("POST", `/api/admin/surveys/${currentSurvey.id}/questions`, {
-        type: "scene",
-        title: "互动场景",
-        required: true,
-        pageId,
-      });
-      if (!created?.id) throw new Error("创建互动场景题失败");
-      if (openInShell) openInShell(created.id);
-      else currentNavigate(`/surveys/${currentSurvey.id}/scene/${created.id}`);
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
-    } finally {
-      setSceneBusy(false);
-    }
-  }, [flushDraft]);
+  const addSceneQuestion = useCallback(
+    async (pageId: number | null, openInShell?: (questionId: number) => void) => {
+      const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
+      if (sceneBusyRef.current) return;
+      if (!(await flushDraft())) return;
+      setSceneBusy(true);
+      setPublishError(null);
+      try {
+        const created = await apiSend<{ id: number }>("POST", `/api/admin/surveys/${currentSurvey.id}/questions`, {
+          type: "scene",
+          title: "互动场景",
+          required: true,
+          pageId,
+        });
+        if (!created?.id) throw new Error("创建互动场景题失败");
+        if (openInShell) openInShell(created.id);
+        else currentNavigate(`/surveys/${currentSurvey.id}/scene/${created.id}`);
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
+      } finally {
+        setSceneBusy(false);
+      }
+    },
+    [flushDraft],
+  );
 
   /**
    * 删除题目：先算影响面。有跳转指向它时，确认框逐条列出，确认后级联清掉
@@ -140,93 +146,114 @@ export function useEditorActions(data: EditorData, editor: Editor) {
   }, []);
 
   /** 按题型插入默认稿，返回临时 id（选中与弹层关闭由壳处理）。 */
-  const addQuestionOfType = useCallback((type: string) => depsRef.current.editor.addQuestion(defaultQuestionDraft(type)), []);
+  const addQuestionOfType = useCallback(
+    (type: string) => depsRef.current.editor.addQuestion(defaultQuestionDraft(type)),
+    [],
+  );
 
-  const attachQuestionMedia = useCallback(async (questionId: number, file: File): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiUpload(`/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media`, file);
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "上传题面附件失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const attachQuestionMedia = useCallback(
+    async (questionId: number, file: File): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiUpload(`/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media`, file);
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "上传题面附件失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
   /** 从素材库选择：只建关联（JSON {assetId}），不重传文件。 */
-  const attachQuestionMediaFromLibrary = useCallback(async (questionId: number, assetId: number): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media`, { assetId });
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "引用素材失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const attachQuestionMediaFromLibrary = useCallback(
+    async (questionId: number, assetId: number): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiSend("POST", `/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media`, { assetId });
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "引用素材失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
-  const removeQuestionMedia = useCallback(async (questionId: number, mediaAssetId: number): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("DELETE", `/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media/${mediaAssetId}`);
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "移除题面附件失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const removeQuestionMedia = useCallback(
+    async (questionId: number, mediaAssetId: number): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiSend("DELETE", `/api/admin/surveys/${currentSurvey.id}/questions/${questionId}/media/${mediaAssetId}`);
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "移除题面附件失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
   /** 从素材库为选项挂已有素材（与题目附件同一套 JSON {assetId} 分支）。 */
-  const attachOptionMediaFromLibrary = useCallback(async (optionId: number, assetId: number): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("POST", `/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media`, { assetId });
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "引用素材失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const attachOptionMediaFromLibrary = useCallback(
+    async (optionId: number, assetId: number): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiSend("POST", `/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media`, { assetId });
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "引用素材失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
-  const attachOptionMedia = useCallback(async (optionId: number, file: File): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiUpload(`/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media`, file);
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "上传选项媒体失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const attachOptionMedia = useCallback(
+    async (optionId: number, file: File): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiUpload(`/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media`, file);
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "上传选项媒体失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
-  const removeOptionMedia = useCallback(async (optionId: number, mediaAssetId: number): Promise<boolean> => {
-    const { survey: currentSurvey, editor: current } = depsRef.current;
-    if (!(await flushDraft())) return false;
-    try {
-      await apiSend("DELETE", `/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media/${mediaAssetId}`);
-      setPublishError(null);
-      current.discardAndReload();
-      return true;
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "移除选项媒体失败");
-      return false;
-    }
-  }, [flushDraft]);
+  const removeOptionMedia = useCallback(
+    async (optionId: number, mediaAssetId: number): Promise<boolean> => {
+      const { survey: currentSurvey, editor: current } = depsRef.current;
+      if (!(await flushDraft())) return false;
+      try {
+        await apiSend("DELETE", `/api/admin/surveys/${currentSurvey.id}/options/${optionId}/media/${mediaAssetId}`);
+        setPublishError(null);
+        current.discardAndReload();
+        return true;
+      } catch (err) {
+        setPublishError(err instanceof Error ? err.message : "移除选项媒体失败");
+        return false;
+      }
+    },
+    [flushDraft],
+  );
 
   const addPage = useCallback(async () => {
     const { data: currentData, survey: currentSurvey, editor: current } = depsRef.current;
@@ -271,7 +298,9 @@ export function useEditorActions(data: EditorData, editor: Editor) {
   const publish = useCallback(async () => {
     const { editor: current, survey: currentSurvey, confirm: currentConfirm } = depsRef.current;
     if (current.dirty || publishingRef.current) return;
-    if (!(await currentConfirm({ message: `确定发布“${current.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` })))
+    if (
+      !(await currentConfirm({ message: `确定发布“${current.surveyMeta.title}”？发布后需复制为新草稿才能继续编辑。` }))
+    )
       return;
     setPublishing(true);
     setPublishError(null);
@@ -310,9 +339,28 @@ export function useEditorActions(data: EditorData, editor: Editor) {
       publish,
     }),
     // 动作身份全部稳定；这里只让 busy/publish 状态的翻转传给消费者。
-    [publishing, publishError, sceneBusy, flushDraft, duplicateQuestion, duplicateOption, openSceneEditor,
-      addSceneQuestion, requestDeleteQuestion, applyTemplate, addQuestionOfType, attachQuestionMedia,
-      attachQuestionMediaFromLibrary, removeQuestionMedia, attachOptionMedia, attachOptionMediaFromLibrary,
-      removeOptionMedia, addPage, deletePage, moveQuestion, publish],
+    [
+      publishing,
+      publishError,
+      sceneBusy,
+      flushDraft,
+      duplicateQuestion,
+      duplicateOption,
+      openSceneEditor,
+      addSceneQuestion,
+      requestDeleteQuestion,
+      applyTemplate,
+      addQuestionOfType,
+      attachQuestionMedia,
+      attachQuestionMediaFromLibrary,
+      removeQuestionMedia,
+      attachOptionMedia,
+      attachOptionMediaFromLibrary,
+      removeOptionMedia,
+      addPage,
+      deletePage,
+      moveQuestion,
+      publish,
+    ],
   );
 }

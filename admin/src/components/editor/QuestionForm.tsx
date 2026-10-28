@@ -96,9 +96,7 @@ export function LibraryPicker({ busy, onPick }: { busy: boolean; onPick: (assetI
           ) : items === null ? (
             <p className="p-2 text-xs text-[var(--color-muted-soft)]">加载中…</p>
           ) : items.length === 0 ? (
-            <p className="p-2 text-xs text-[var(--color-muted-soft)]">
-              素材库还是空的，先去「素材库」上传。
-            </p>
+            <p className="p-2 text-xs text-[var(--color-muted-soft)]">素材库还是空的，先去「素材库」上传。</p>
           ) : (
             <div className="grid max-h-64 grid-cols-4 gap-1.5 overflow-y-auto">
               {items.map((item) => (
@@ -184,8 +182,7 @@ export function GamePackField({
       <option value="">选择小游戏包…</option>
       {packs.map((pack) => (
         <option key={pack.id} value={pack.id}>
-          {pack.name}（{pack.gameType ?? "tower"}）
-          {pack.enabled ? "" : " · 已停用"}
+          {pack.name}（{pack.gameType ?? "tower"}）{pack.enabled ? "" : " · 已停用"}
         </option>
       ))}
     </select>
@@ -497,9 +494,7 @@ export function QuestionForm({
           }}
         />
         {isNote ? (
-          <span className="q-help">
-            剧情文段不收集答案；可上传插图作配图，之后的题目选项可把答题者跳转到不同文段。
-          </span>
+          <span className="q-help">剧情文段不收集答案；可上传插图作配图，之后的题目选项可把答题者跳转到不同文段。</span>
         ) : null}
       </label>
 

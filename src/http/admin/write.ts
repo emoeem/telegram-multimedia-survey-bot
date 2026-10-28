@@ -56,7 +56,12 @@ import {
   fetchMicrosoftFormsSurveyJson,
   isFormsUrl,
 } from "../../services/microsoft-forms.service";
-import { createMediaAsset, countMediaAssetReferences, deleteMediaAssetRow, getMediaAssetById } from "../../db/repositories/media.repository";
+import {
+  createMediaAsset,
+  countMediaAssetReferences,
+  deleteMediaAssetRow,
+  getMediaAssetById,
+} from "../../db/repositories/media.repository";
 
 export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: WriteContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
@@ -755,10 +760,7 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     // blob 双后端清理（与 TieredMediaStore.delete 同语义），失败不阻断行删除——
     // 孤儿清扫会再兜底。
     if (asset.storageKey) {
-      await Promise.allSettled([
-        env.MEDIA?.delete(asset.storageKey),
-        env.MEDIA_KV?.delete(asset.storageKey),
-      ]);
+      await Promise.allSettled([env.MEDIA?.delete(asset.storageKey), env.MEDIA_KV?.delete(asset.storageKey)]);
     }
     const removed = await deleteMediaAssetRow(db, assetId);
     if (!removed) return fail(404, "not_found", "素材不存在");

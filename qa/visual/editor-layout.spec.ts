@@ -443,7 +443,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
-    await page.locator('.editor-canvas [aria-pressed]', { hasText: "问卷设置" }).click();
+    await page.locator(".editor-canvas [aria-pressed]", { hasText: "问卷设置" }).click();
     // ResultRulesPanel 也带 settings-panel 类，这里认主面板的标题。
     await expect(page.locator(".editor-preview .settings-panel-title", { hasText: "问卷设置" })).toBeVisible();
   });

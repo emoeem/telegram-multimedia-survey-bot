@@ -5,7 +5,19 @@ import { TYPE_GROUPS } from "../TypePickerSheet";
 import { TEMPLATE_OPTIONS } from "../../../editor/templates";
 
 /** 物料区题型条目：点击加到末尾，拖到画布也是加到末尾（drop 才产生命令）。 */
-function MaterialChip({ type, label, desc, disabled, onAdd }: { type: string; label: string; desc: string; disabled: boolean; onAdd: () => void }) {
+function MaterialChip({
+  type,
+  label,
+  desc,
+  disabled,
+  onAdd,
+}: {
+  type: string;
+  label: string;
+  desc: string;
+  disabled: boolean;
+  onAdd: () => void;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `material:${type}`, disabled });
   return (
     <span
@@ -143,7 +155,10 @@ export function MaterialPanel({
       </section>
 
       <section>
-        <div className="mb-2 flex items-center gap-1 text-[11px] font-semibold tracking-wide" style={{ color: "var(--color-muted)" }}>
+        <div
+          className="mb-2 flex items-center gap-1 text-[11px] font-semibold tracking-wide"
+          style={{ color: "var(--color-muted)" }}
+        >
           <Sparkles className="h-3 w-3" />
           模板
         </div>

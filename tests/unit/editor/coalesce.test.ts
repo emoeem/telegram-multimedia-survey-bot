@@ -11,11 +11,15 @@ import {
  */
 describe("shouldCoalesceHistory", () => {
   it("同 label 且在 800ms 窗口内 → 合并", () => {
-    expect(shouldCoalesceHistory({ label: "题目标题", at: 1_000 }, "题目标题", 1_000 + HISTORY_COALESCE_WINDOW_MS - 1)).toBe(true);
+    expect(
+      shouldCoalesceHistory({ label: "题目标题", at: 1_000 }, "题目标题", 1_000 + HISTORY_COALESCE_WINDOW_MS - 1),
+    ).toBe(true);
   });
 
   it("超过 800ms 窗口 → 不合并（新的撤销步骤）", () => {
-    expect(shouldCoalesceHistory({ label: "题目标题", at: 1_000 }, "题目标题", 1_000 + HISTORY_COALESCE_WINDOW_MS)).toBe(false);
+    expect(
+      shouldCoalesceHistory({ label: "题目标题", at: 1_000 }, "题目标题", 1_000 + HISTORY_COALESCE_WINDOW_MS),
+    ).toBe(false);
   });
 
   it("label 不同（切到别的字段/别的题）→ 不合并", () => {

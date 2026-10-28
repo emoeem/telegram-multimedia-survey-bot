@@ -151,11 +151,7 @@ export async function findMediaAssetByTelegramUniqueId(
 }
 
 /** 首读回写：Telegram 资产搬运进 R2 后翻转存储类型（保留 file_id 兜底）。 */
-export async function markMediaAssetPromotedToR2(
-  db: D1Database,
-  id: number,
-  storageKey: string,
-): Promise<void> {
+export async function markMediaAssetPromotedToR2(db: D1Database, id: number, storageKey: string): Promise<void> {
   await db
     .prepare(
       `UPDATE media_assets
@@ -641,7 +637,10 @@ export async function upsertMediaRef(
 ): Promise<void> {
   const now = new Date().toISOString();
   if (input.assetId === null) {
-    await db.prepare("DELETE FROM media_refs WHERE ref_type = ? AND ref_key = ?").bind(input.refType, input.refKey).run();
+    await db
+      .prepare("DELETE FROM media_refs WHERE ref_type = ? AND ref_key = ?")
+      .bind(input.refType, input.refKey)
+      .run();
     return;
   }
   await db

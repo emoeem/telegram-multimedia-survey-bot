@@ -45,7 +45,13 @@ export async function handleCertDraw(
   const count = Math.min(MAX_COUNT, Math.max(1, Number.isInteger(countRaw) ? countRaw : 1));
 
   if (env.CACHE) {
-    const limited = await checkRateLimit(env.CACHE, "cert-draw", options.clientKey || "unknown", RATE_LIMIT.limit, RATE_LIMIT.windowSeconds);
+    const limited = await checkRateLimit(
+      env.CACHE,
+      "cert-draw",
+      options.clientKey || "unknown",
+      RATE_LIMIT.limit,
+      RATE_LIMIT.windowSeconds,
+    );
     if (!limited.allowed) return rateLimitResponse(limited.retryAfterSeconds);
   }
 
@@ -56,8 +62,5 @@ export async function handleCertDraw(
   if (items === null) {
     return Response.json({ ok: false, code: "not_found", message: "小游戏包不存在" }, { status: 404 });
   }
-  return Response.json(
-    { ok: true, items },
-    { headers: { "cache-control": "no-store" } },
-  );
+  return Response.json({ ok: true, items }, { headers: { "cache-control": "no-store" } });
 }

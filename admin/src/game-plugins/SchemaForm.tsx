@@ -63,9 +63,13 @@ function FieldRow({
   issue?: ConfigIssue;
   onChange(next: unknown): void;
 }) {
-  const help = field.help ? <span className="mt-0.5 block text-[11px] text-[var(--color-muted-soft)]">{field.help}</span> : null;
+  const help = field.help ? (
+    <span className="mt-0.5 block text-[11px] text-[var(--color-muted-soft)]">{field.help}</span>
+  ) : null;
   const error = issue ? (
-    <span className={`mt-0.5 block text-[11px] ${issue.severity === "error" ? "text-[var(--app-danger)]" : "text-[var(--app-warning)]"}`}>
+    <span
+      className={`mt-0.5 block text-[11px] ${issue.severity === "error" ? "text-[var(--app-danger)]" : "text-[var(--app-warning)]"}`}
+    >
       {issue.message}
     </span>
   ) : null;
@@ -233,7 +237,12 @@ function MediaField({
               <img src={`/api/survey/media/${assetId}`} alt="" className="h-8 w-8 rounded object-cover" />
             ) : null}
             #{assetId}
-            <button type="button" className="text-[var(--app-danger)]" onClick={() => onChange(null)} disabled={disabled}>
+            <button
+              type="button"
+              className="text-[var(--app-danger)]"
+              onClick={() => onChange(null)}
+              disabled={disabled}
+            >
               清除
             </button>
           </span>
@@ -270,7 +279,12 @@ function MediaField({
               }`}
             >
               {item.mimeType?.startsWith("image/") ? (
-                <img src={`/api/survey/media/${item.id}`} alt="" className="h-full w-full object-cover" loading="lazy" />
+                <img
+                  src={`/api/survey/media/${item.id}`}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
               ) : (
                 <span className="grid h-full w-full place-items-center text-[9px] text-[var(--color-muted-soft)]">
                   {(item.mimeType ?? "").split("/").pop()}
@@ -355,10 +369,22 @@ function ListItemField({
                 >
                   {field.itemLabel(item, index)}
                 </button>
-                <button type="button" className="btn btn-ghost btn-xs" disabled={disabled || index === 0} onClick={() => move(index, -1)} aria-label="上移">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  disabled={disabled || index === 0}
+                  onClick={() => move(index, -1)}
+                  aria-label="上移"
+                >
                   <ChevronUp className="h-3 w-3" />
                 </button>
-                <button type="button" className="btn btn-ghost btn-xs" disabled={disabled || index === value.length - 1} onClick={() => move(index, 1)} aria-label="下移">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  disabled={disabled || index === value.length - 1}
+                  onClick={() => move(index, 1)}
+                  aria-label="下移"
+                >
                   <ChevronDown className="h-3 w-3" />
                 </button>
                 <button

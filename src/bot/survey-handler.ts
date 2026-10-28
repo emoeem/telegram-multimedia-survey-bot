@@ -1344,11 +1344,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         }
         await replyMessage(ctx, message.chat.id, `📝 请打开问卷开始填写：${fillUrl}`, {
           inline_keyboard: [
-            [
-              useWebApp
-                ? { text: "🎮 打开问卷作答", web_app: { url: fillUrl } }
-                : { text: "填写问卷", url: fillUrl },
-            ],
+            [useWebApp ? { text: "🎮 打开问卷作答", web_app: { url: fillUrl } } : { text: "填写问卷", url: fillUrl }],
           ],
         });
       } else {

@@ -510,9 +510,15 @@ export function SurveysPage() {
                           <span className="text-xs text-[var(--color-muted-soft)]">未分类</span>
                         )}
                       </td>
-                      <td className="text-sm" data-label="题目">{item.questionCount} 题</td>
-                      <td className="text-sm" data-label="答卷">{item.responseCount} 答卷</td>
-                      <td className="text-sm" data-label="更新时间">{formatDateTime(item.updatedAt)}</td>
+                      <td className="text-sm" data-label="题目">
+                        {item.questionCount} 题
+                      </td>
+                      <td className="text-sm" data-label="答卷">
+                        {item.responseCount} 答卷
+                      </td>
+                      <td className="text-sm" data-label="更新时间">
+                        {formatDateTime(item.updatedAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

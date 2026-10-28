@@ -400,7 +400,9 @@ export function ControlCenterPage() {
                       <div className="text-xs opacity-50">{d.installationId}</div>
                     </button>
                   </td>
-                  <td className="text-sm" data-label="授权">{d.licenseId}</td>
+                  <td className="text-sm" data-label="授权">
+                    {d.licenseId}
+                  </td>
                   <td data-label="状态">
                     <StatusBadge status={d.status} />
                   </td>

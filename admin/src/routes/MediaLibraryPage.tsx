@@ -204,8 +204,7 @@ export function MediaLibraryPage() {
                       {item.mimeType ?? item.mediaType} · {formatSize(item.fileSize)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-[var(--color-muted-soft)]">
-                      引用 {refs} 处
-                      {item.hardRefs > 0 ? `（挂载 ${item.hardRefs}）` : ""}
+                      引用 {refs} 处{item.hardRefs > 0 ? `（挂载 ${item.hardRefs}）` : ""}
                       {item.weakRefs > 0 ? `（弱引用 ${item.weakRefs}）` : ""}
                       {item.contentHash ? " · 已去重" : ""}
                     </p>

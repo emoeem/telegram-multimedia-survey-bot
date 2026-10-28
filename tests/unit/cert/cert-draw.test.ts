@@ -31,11 +31,9 @@ describe("GET /api/cert/draw", () => {
 
   it("合法请求抽取并透传 persona/count", async () => {
     drawTaskItems.mockResolvedValueOnce([{ id: 1, title: "T", description: "D", warning: "", score: 3 }]);
-    const response = await handleCertDraw(
-      new Request(makeUrl("packId=7&ack=adult18&persona=female&count=9")),
-      env,
-      { clientKey: "ip" },
-    );
+    const response = await handleCertDraw(new Request(makeUrl("packId=7&ack=adult18&persona=female&count=9")), env, {
+      clientKey: "ip",
+    });
     expect(response.status).toBe(200);
     expect(drawTaskItems).toHaveBeenCalledWith({}, 7, { persona: "female", count: 5 });
     const body = (await response.json()) as { ok: boolean; items: unknown[] };

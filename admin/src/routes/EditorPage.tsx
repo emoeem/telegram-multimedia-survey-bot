@@ -269,7 +269,11 @@ function EditableEditor({ data }: { data: EditorData }) {
         <div className="editor-actions">
           <span className={`editor-save-state ${saveStateClass}`}>{saveStateLabel}</span>
           {/* 基础 / 专业模式：只改可见性，不动文档——切换不丢进度。 */}
-          <div className="flex overflow-hidden rounded-full border border-[var(--color-edge)]" role="group" aria-label="编辑模式">
+          <div
+            className="flex overflow-hidden rounded-full border border-[var(--color-edge)]"
+            role="group"
+            aria-label="编辑模式"
+          >
             {(["basic", "pro"] as const).map((value) => (
               <button
                 key={value}
@@ -520,9 +524,7 @@ function EditableEditor({ data }: { data: EditorData }) {
                   key={tab.id}
                   type="button"
                   className={`rounded-t-lg px-3 py-1.5 text-[11px] font-semibold ${
-                    rightTab === tab.id
-                      ? "bg-[var(--surface)] text-[var(--color-ink)]"
-                      : "text-[var(--color-muted)]"
+                    rightTab === tab.id ? "bg-[var(--surface)] text-[var(--color-ink)]" : "text-[var(--color-muted)]"
                   }`}
                   aria-pressed={rightTab === tab.id}
                   onClick={() => setRightTab(tab.id)}

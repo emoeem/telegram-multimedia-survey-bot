@@ -34,7 +34,11 @@ import type { SurveyBuilderNamespace } from "../../../src/services/survey-builde
 function makeCtx(overrides: Partial<BotContext> = {}): BotContext {
   return {
     botToken: "token",
-    db: { prepare: () => { throw new Error("unexpected raw db access"); } } as unknown as D1Database,
+    db: {
+      prepare: () => {
+        throw new Error("unexpected raw db access");
+      },
+    } as unknown as D1Database,
     session: {} as SurveySessionNamespace,
     builder: {} as SurveyBuilderNamespace,
     adminIds: [],
@@ -80,7 +84,10 @@ describe("survey deep-link button", () => {
     mocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 99 });
     mocks.markBotStarted.mockResolvedValue(undefined);
     mocks.hasActiveCreatorTrial.mockResolvedValue(false);
-    mocks.listQuestionsBySurvey.mockResolvedValue([{ id: 1, type: "game" }, { id: 2, type: "single" }]);
+    mocks.listQuestionsBySurvey.mockResolvedValue([
+      { id: 1, type: "game" },
+      { id: 2, type: "single" },
+    ]);
 
     const bodies = await captureReply(makeCtx());
     const markup = bodies.flatMap((body) => keyboardOf(body)).flat();
@@ -95,7 +102,10 @@ describe("survey deep-link button", () => {
     mocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 99 });
     mocks.markBotStarted.mockResolvedValue(undefined);
     mocks.hasActiveCreatorTrial.mockResolvedValue(false);
-    mocks.listQuestionsBySurvey.mockResolvedValue([{ id: 1, type: "single" }, { id: 2, type: "note" }]);
+    mocks.listQuestionsBySurvey.mockResolvedValue([
+      { id: 1, type: "single" },
+      { id: 2, type: "note" },
+    ]);
 
     const bodies = await captureReply(makeCtx());
     const markup = bodies.flatMap((body) => keyboardOf(body)).flat();
