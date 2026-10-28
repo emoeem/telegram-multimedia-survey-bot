@@ -9,6 +9,8 @@
  * 坐标一律是相对场景图原始尺寸的 0..1 归一化值，与屏幕像素解耦。
  */
 
+import { parseMediaRef, resolveMediaRef } from "./media-ref";
+
 export const HOTSPOT_SCENE_VERSION = 1;
 
 /** 数量上限：导入/编辑时的防失控护栏（不是产品限制，调大即可）。 */
@@ -18,6 +20,11 @@ const HOTSPOT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const MAX_URL_LENGTH = 4000;
 const MAX_LABEL_LENGTH = 40;
 const MAX_TEXT_LENGTH = 400;
+
+// 结构化媒体引用的双读解析（阶段 D 读侧先行）：字符串原样，{assetId} 派生。
+// toUrl 在这里注入（媒体端点拼写归此维护）；parseMediaRef 见 media-ref.ts。
+const toPublicMediaUrl = (assetId: number): string =>
+  ["/api/survey/media/", String(assetId)].join("");
 
 export interface HotspotImageAction {
   kind: "image";
@@ -79,8 +86,15 @@ function safeString(value: unknown, maxLength: number): string | undefined {
  * allowPlaceholderRefs 只在导入校验时打开：声明 JSON 用 kv://<slug> 占位，
  * 导入脚本落库前会把它们换成 /api/survey/media/<id>；运行时（读端消毒）
  * 必须保持严格，否则一张坏图会以合法身份渲染出来。
+ *
+ * 阶段 D 双读：既有字符串输入走白名单原样返回（视觉逐像素一致）；
+ * 结构化 {assetId} 直接派生 URL（写入侧切换后立即生效，白名单等价——
+ * assetId 是正整数，派生的站内路径必然命中「/」前缀分支）。
  */
 function safeImage(value: unknown, allowPlaceholderRefs = false): string | undefined {
+  if (value !== null && typeof value === "object") {
+    return resolveMediaRef(value, toPublicMediaUrl);
+  }
   const image = safeString(value, MAX_URL_LENGTH);
   if (!image) return undefined;
   if (image.startsWith("data:image/") || image.startsWith("https://") || image.startsWith("/")) {

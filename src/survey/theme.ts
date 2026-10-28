@@ -17,6 +17,8 @@
  * - page        推进到下一段剧情或下一页
  * - transition  页/场景切换（含进入结局）
  */
+import { resolveMediaRef } from "./media-ref";
+
 export const SURVEY_SFX_CUES = ["select", "confirm", "cancel", "page", "transition"] as const;
 
 export type SurveySfxCue = (typeof SURVEY_SFX_CUES)[number];
@@ -386,7 +388,10 @@ export function resolveBgmUrl(
   if (!audio) return undefined;
   const cue =
     questionOrder === null || questionOrder === undefined ? undefined : audio.byQuestion?.[String(questionOrder)];
-  return cue ?? audio.byPage?.[String(pageIndex)] ?? audio.url;
+  const raw = cue ?? audio.byPage?.[String(pageIndex)] ?? audio.url;
+  // 阶段 D 双读：字符串（现状）原样返回；{assetId} 结构化派生 URL。
+  if (raw === undefined) return undefined;
+  return resolveMediaRef(raw, (assetId) => ["/api/survey/media/", String(assetId)].join(""));
 }
 
 /**
@@ -424,7 +429,10 @@ export function resolveSprite(
       : usable(sprite.default)
         ? sprite.default
         : fallbackKey;
-  const url = expressions[expression];
+  // 阶段 D 双读：字符串（现状）原样；{assetId} 派生 URL。
+  const url = resolveMediaRef(expressions[expression], (assetId) =>
+    ["/api/survey/media/", String(assetId)].join(""),
+  );
   if (url === undefined) return undefined;
   return sprite.name === undefined ? { url, expression } : { url, expression, name: sprite.name };
 }

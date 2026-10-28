@@ -5,9 +5,9 @@
  *
  * 为什么要单独一个脚本：日常的同步挂在每日维护任务里（services/
  * database-maintenance.service.ts 的 syncWeakMediaRefs），但存量数据第一次
- * 落库要么等下一次 cron，要么手动跑一遍。这个脚本把同一段 SQL 拆出来，
- * 生成一份 `wrangler d1 execute` 能直接执行的 SQL 文件——不新增 D1 调用
- * 凭据，也不依赖运维临时写脚本。
+ * 落库要么等下一次 cron，要么手动跑一遍。这个脚本把解析拆出来，生成一份
+ * `wrangler d1 execute` 能直接执行的 SQL 文件——不新增 D1 调用凭据，也不
+ * 依赖运维临时写脚本。
  *
  * 用法（本地 SQLite 或远程 D1 都行）：
  *   node scripts/backfill-media-refs.mjs                   # 输出 SQL 到 stdout
@@ -29,31 +29,40 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /**
  * 生成回填 SQL 的语句列表。抽成函数是为了让单元测试能断言输出形状
  * （脚本自身不需要连数据库）。
+ *
+ * v2（逐条遍历）：SQLite 没有正则，用递归 CTE 沿 settings_json 逐处推进
+ * INSTR 游标，抽出一行里的**全部** media/<id> 引用（v1 的单次 SUBSTR 只处理
+ * 第一处，多引用问卷要反复跑）。游标每步吃掉「上一个 media/ 之后」的文本，
+ * 直到找不到下一个 media/ 为止；每处引用产出一条登记行，EXISTS 守卫过滤脏值。
  */
 export function buildBackfillStatements() {
   return [
     // 清掉本脚本负责的旧登记行，保证重跑结果收敛（其它 ref_type 不动）。
     "DELETE FROM media_refs WHERE ref_type = 'survey_settings';",
-    // 从 settings_json 里抽出所有 media/<id> 引用。SQLite 没有正则，用 UNION
-    // 拼出三种已知拼写：绝对 /api/survey/media/<id>、相对 media/<id>、
-    // 以及带引号的 JSON 值（"url":"...media/12"）。抽取不到的脏串直接忽略。
     `INSERT OR IGNORE INTO media_refs (asset_id, ref_type, ref_key, created_at, updated_at)
+WITH RECURSIVE scan(survey_id, settings_json, cursor, asset_id) AS (
+  SELECT id, settings_json, 1, NULL
+  FROM surveys
+  WHERE settings_json LIKE '%media/%'
+  UNION ALL
+  SELECT
+    survey_id,
+    settings_json,
+    cursor + INSTR(SUBSTR(settings_json, cursor), 'media/') + 5,
+    CAST(SUBSTR(settings_json, cursor + INSTR(SUBSTR(settings_json, cursor), 'media/') + 5) AS INTEGER)
+  FROM scan
+  WHERE INSTR(SUBSTR(settings_json, cursor), 'media/') > 0
+)
 SELECT DISTINCT
-  CAST(SUBSTR(settings_json, INSTR(settings_json, 'media/') + 6) AS INTEGER) AS asset_id,
+  asset_id,
   'survey_settings' AS ref_type,
-  'survey:' || id || ':' || CAST(SUBSTR(settings_json, INSTR(settings_json, 'media/') + 6) AS INTEGER) AS ref_key,
+  'survey:' || survey_id || ':' || asset_id AS ref_key,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS created_at,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS updated_at
-FROM surveys
-WHERE settings_json LIKE '%media/%'
-  AND CAST(SUBSTR(settings_json, INSTR(settings_json, 'media/') + 6) AS INTEGER) > 0
-  AND EXISTS (
-    SELECT 1 FROM media_assets m
-     WHERE m.id = CAST(SUBSTR(surveys.settings_json, INSTR(surveys.settings_json, 'media/') + 6) AS INTEGER)
-  );`,
-    "-- 说明：上面的单次 SUBSTR 只处理 settings_json 里第一处 media/<id>。",
-    "-- 一份 settings 通常只挂一首 BGM 或一张背景；多引用的问卷请再跑一次，",
-    "-- 或者依赖每日维护任务（它会逐条抽出全部引用并全量重建）。",
+FROM scan
+WHERE asset_id IS NOT NULL AND asset_id > 0
+  AND EXISTS (SELECT 1 FROM media_assets m WHERE m.id = asset_id)
+  AND EXISTS (SELECT 1 FROM surveys s WHERE s.id = survey_id AND s.settings_json LIKE '%media/%');`,
   ];
 }
 
