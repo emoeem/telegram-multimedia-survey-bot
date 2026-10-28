@@ -22,6 +22,10 @@ export const SURVEY_QUESTION_TYPES: readonly QuestionType[] = [
   "file",
   "note",
   "scene",
+  // 小游戏题：settings.game.packId 指向小游戏区的一个玩法包（0090）。
+  // 这份白名单与 src/db/schema.ts 的 QuestionType 联合类型必须同步扩——
+  // 漏掉这里，后台创建题目会被 "题型必须是以下之一" 直接 400。
+  "game",
 ];
 
 // 叙述节点：只展示内容、不收集答案，可被其他选项的跳题规则作为目标。

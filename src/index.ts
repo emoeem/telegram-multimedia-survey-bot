@@ -12,6 +12,7 @@ import { parseTelegramUpdate } from "./bot/update-parser";
 import { isWebhookSecretValid } from "./core/security";
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./http/cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./http/cert-share";
+import { CERT_DRAW_PATH, handleCertDraw } from "./http/cert-draw";
 import { handleSubmitApiRequest, isSubmitApiPath } from "./http/submit-api";
 import {
   bareAdminRedirect,
@@ -682,6 +683,13 @@ export default {
         });
       }
 
+      // 认证卡抽取池：主题内容包指向小游戏区的任务包，前端带 18+ ack 实时抽。
+      if (url.pathname === CERT_DRAW_PATH) {
+        return handleCertDraw(request, env, {
+          clientKey: resolveClientIdentity(request, env).ip,
+        });
+      }
+
       if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {
         return servePublicPageWithMeta(env, request, "/series");
       }
@@ -1025,7 +1033,12 @@ export default {
     let maintenanceSummary: Awaited<ReturnType<typeof runDatabaseMaintenance>> | null = null;
     let mediaRetentionSummary: Awaited<ReturnType<typeof retainFinishedResponseMedia>> | null = null;
     try {
-      maintenanceSummary = await runDatabaseMaintenance(env.DB);
+      // 传入媒体存储：孤儿清扫要在删行后回收无 TTL 的内容寻址 blob（0091）。
+      maintenanceSummary = await runDatabaseMaintenance(
+        env.DB,
+        Date.now(),
+        createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV }),
+      );
       if (maintenanceSummary.truncated) {
         await notifyMaintenanceBudgetExhausted(env, maintenanceSummary.rowsRead);
       }

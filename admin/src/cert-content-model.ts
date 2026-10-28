@@ -62,6 +62,8 @@ export interface CertTheme {
   adult?: boolean;
   titles?: { f: string[]; m: string[] };
   sectionTypes?: Record<string, { f: string; adj: string; say: string; m: string }>;
+  /** 抽取池（动态引用小游戏区的任务包，实时抽取不复制内容）。 */
+  draw?: { packId: number; count: number; label?: string };
 }
 
 export interface CertContentPack {
@@ -226,6 +228,19 @@ export function normalizeTheme(raw: unknown): CertTheme {
     }
     if (Object.keys(out).length) theme.sectionTypes = out;
   }
+  if (r.draw && typeof r.draw === "object" && !Array.isArray(r.draw)) {
+    const d = r.draw as Record<string, unknown>;
+    const packId = Number(d.packId);
+    if (Number.isInteger(packId) && packId > 0) {
+      const count = Math.round(Number(d.count ?? 1));
+      theme.draw = {
+        packId,
+        count: Math.min(5, Math.max(1, Number.isFinite(count) && count >= 1 ? count : 1)),
+      };
+      const label = String(d.label ?? "").trim().slice(0, 20);
+      if (label) theme.draw.label = label;
+    }
+  }
 
   return theme;
 }
@@ -264,6 +279,7 @@ export function themePayload(theme: CertTheme): Record<string, unknown> {
   if (theme.adult) payload.adult = true;
   if (theme.titles) payload.titles = { f: [...theme.titles.f], m: [...theme.titles.m] };
   if (theme.sectionTypes) payload.sectionTypes = theme.sectionTypes;
+  if (theme.draw) payload.draw = { ...theme.draw };
   return payload;
 }
 

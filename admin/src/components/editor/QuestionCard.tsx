@@ -1,5 +1,17 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Copy, GitBranch, MousePointerClick, Paperclip, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
+import {
+  Copy,
+  GitBranch,
+  Images,
+  MousePointerClick,
+  Paperclip,
+  Plus,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import { fetchAdminTaskPacks, fetchAdminMediaLibrary, type AdminMediaLibraryItem, type AdminTaskPack } from "../../api";
 import { QUESTION_TYPE_LABELS } from "../../format";
 import type { EditableQuestion } from "../../editor/useSurveyEditor";
 
@@ -19,6 +31,10 @@ const EDITABLE_TYPES = new Set([
   "audio",
   "file",
   "note",
+  // 小游戏题：settings.game.packId 已建模为 gamePackId 字段（快照可回滚），
+  // 提交模式与矩阵列/说话人一致（整包替换 settings）。scene 不在此列是另一
+  // 回事——它的 settings_json 由场景编辑器维护、未建模进快照。
+  "game",
 ]);
 
 const CHOICE_TYPES = new Set(["single", "multiple", "yes_no", "rating"]);
@@ -51,8 +67,12 @@ interface QuestionCardProps {
   allQuestions: EditableQuestion[];
   pages?: Array<{ id: number; title: string | null; order: number }>;
   onAttachQuestionMedia: (questionId: number, file: File) => Promise<boolean>;
+  /** 从素材库选择已有素材挂到题目（不重传文件）。 */
+  onAttachQuestionMediaFromLibrary?: (questionId: number, assetId: number) => Promise<boolean>;
   onRemoveQuestionMedia: (questionId: number, mediaAssetId: number) => Promise<boolean>;
   onAttachOptionMedia: (optionId: number, file: File) => Promise<boolean>;
+  /** 从素材库为选项挂已有素材（不重传文件）。 */
+  onAttachOptionMediaFromLibrary?: (optionId: number, assetId: number) => Promise<boolean>;
   onRemoveOptionMedia: (optionId: number, mediaAssetId: number) => Promise<boolean>;
   /** scene 题：打开独立的场景热点编辑器（标题/描述也在这里改）。 */
   onOpenSceneEditor?: (questionId: number) => void;
@@ -77,8 +97,139 @@ const MEDIA_LABELS: Record<string, string> = {
 
 const MEDIA_FILE_ACCEPT = "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rtf,.txt,.csv";
 
+/** 素材库选择器：列出最近 24 个素材，点图即挂到题目（不重传文件）。 */
+function LibraryPicker({ busy, onPick }: { busy: boolean; onPick: (assetId: number) => Promise<unknown> }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<AdminMediaLibraryItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || items !== null) return;
+    let cancelled = false;
+    void fetchAdminMediaLibrary({ limit: 24, offset: 0 })
+      .then((response) => {
+        if (!cancelled) setItems(response.items);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "素材库加载失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, items]);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 text-sm font-medium"
+        style={{ color: "var(--color-primary)" }}
+        disabled={busy}
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <Images className="h-4 w-4" />
+        从素材库选择
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-20 mt-1 w-80 rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-2 shadow-lg">
+          {error ? (
+            <p className="p-2 text-xs text-[var(--app-danger)]">{error}</p>
+          ) : items === null ? (
+            <p className="p-2 text-xs text-[var(--color-muted-soft)]">加载中…</p>
+          ) : items.length === 0 ? (
+            <p className="p-2 text-xs text-[var(--color-muted-soft)]">
+              素材库还是空的，先去「素材库」上传。
+            </p>
+          ) : (
+            <div className="grid max-h-64 grid-cols-4 gap-1.5 overflow-y-auto">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.fileName ?? `素材 #${item.id}`}
+                  disabled={busy}
+                  className="aspect-square overflow-hidden rounded-md border border-[var(--color-edge)] transition hover:border-[var(--color-primary)]"
+                  onClick={() => {
+                    setOpen(false);
+                    void onPick(item.id);
+                  }}
+                >
+                  {item.mimeType?.startsWith("image/") ? (
+                    <img
+                      src={mediaUrl(item.id)}
+                      alt={item.fileName ?? `素材 ${item.id}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="grid h-full w-full place-items-center bg-[var(--surface-muted)] text-[10px] text-[var(--color-muted-soft)]">
+                      {(item.mimeType ?? item.mediaType).split("/").pop()}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
 function mediaUrl(mediaAssetId: number): string {
   return `/api/survey/media/${mediaAssetId}`;
+}
+
+/** 小游戏题的挑战包下拉：拉取小游戏管理里的全部包（含停用，便于回显）。
+ *  选中时连同玩法类型一起写进 settings，答题端据此决定用哪个渲染器。 */
+function GamePackField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number | null;
+  disabled: boolean;
+  onChange: (packId: number | null, gameType: string | null) => void;
+}) {
+  const [packs, setPacks] = useState<AdminTaskPack[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAdminTaskPacks()
+      .then((response) => {
+        if (!cancelled) setPacks(response.packs);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "小游戏包加载失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (error) return <p className="q-help">{error}</p>;
+  if (packs === null) return <p className="q-help">小游戏包加载中…</p>;
+  if (packs.length === 0) {
+    return <p className="q-help">还没有可用的小游戏包——先去「小游戏管理」创建一个。</p>;
+  }
+  return (
+    <select
+      className="settings-input"
+      value={value ?? ""}
+      disabled={disabled}
+      onChange={(event) => {
+        const packId = event.target.value ? Number(event.target.value) : null;
+        const pack = packs.find((item) => item.id === packId) ?? null;
+        onChange(packId, pack?.gameType ?? null);
+      }}
+    >
+      <option value="">选择小游戏包…</option>
+      {packs.map((pack) => (
+        <option key={pack.id} value={pack.id}>
+          {pack.name}（{pack.gameType ?? "tower"}）
+          {pack.enabled ? "" : " · 已停用"}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 function mediaLabel(media: AttachmentMedia): string {
@@ -173,8 +324,10 @@ export function QuestionCard({
   allQuestions,
   pages,
   onAttachQuestionMedia,
+  onAttachQuestionMediaFromLibrary,
   onRemoveQuestionMedia,
   onAttachOptionMedia,
+  onAttachOptionMediaFromLibrary,
   onRemoveOptionMedia,
   onOpenSceneEditor,
 }: QuestionCardProps) {
@@ -352,7 +505,12 @@ export function QuestionCard({
                   {
                     type: next,
                     options: patch.options,
-                    settings: next === "matrix" ? { columns: question.columns } : null,
+                    settings:
+                      next === "matrix"
+                        ? { columns: question.columns }
+                        : next === "game" && question.gamePackId
+                          ? { game: { packId: question.gamePackId } }
+                          : null,
                   },
                   "题型修改",
                 );
@@ -505,6 +663,30 @@ export function QuestionCard({
           ) : null}
         </label>
 
+        {question.type === "game" ? (
+          <div className="q-field">
+            <span className="q-label">小游戏包</span>
+            <GamePackField
+              value={question.gamePackId}
+              disabled={!editableNow}
+              onChange={(packId, gameType) => {
+                onLocalChange(question.id, { gamePackId: packId });
+                // gameType 一并落库：答题端靠它选渲染器（tower 走内置组件，
+                // 其余走插件），服务端仍以 task_packs.game_type 为准。
+                onFieldCommit(
+                  question.id,
+                  { settings: packId ? { game: { packId, ...(gameType ? { gameType } : {}) } } : null },
+                  "小游戏包",
+                );
+              }}
+            />
+            <span className="q-help">
+              答题者在网页端完成该包的小游戏挑战，成绩记入答卷；配合剧情规则的 flagJumps（flag =
+              game_passed_题目ID）即可实现"通关才能继续"。
+            </span>
+          </div>
+        ) : null}
+
         {!isNote ? (
           <div className="q-switch-row">
             <div>
@@ -549,27 +731,39 @@ export function QuestionCard({
             </div>
           ) : null}
           {editableNow && question.id >= 0 ? (
-            <label
-              className="inline-flex cursor-pointer items-center gap-2"
-              style={{ color: mediaBusy ? "var(--color-muted-soft)" : "var(--color-primary)" }}
-            >
-              <input
-                type="file"
-                className="hidden"
-                accept={MEDIA_FILE_ACCEPT}
-                disabled={mediaBusy !== null}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  event.target.value = "";
-                  void runMediaAction("question-upload", () => onAttachQuestionMedia(question.id, file));
-                }}
-              />
-              <Upload className="h-4 w-4" />
-              <span className="text-sm font-medium">
-                {mediaBusy === "question-upload" ? "上传中…" : "上传题面附件"}
-              </span>
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                className="inline-flex cursor-pointer items-center gap-2"
+                style={{ color: mediaBusy ? "var(--color-muted-soft)" : "var(--color-primary)" }}
+              >
+                <input
+                  type="file"
+                  className="hidden"
+                  accept={MEDIA_FILE_ACCEPT}
+                  disabled={mediaBusy !== null}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    event.target.value = "";
+                    void runMediaAction("question-upload", () => onAttachQuestionMedia(question.id, file));
+                  }}
+                />
+                <Upload className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  {mediaBusy === "question-upload" ? "上传中…" : "上传题面附件"}
+                </span>
+              </label>
+              {onAttachQuestionMediaFromLibrary ? (
+                <LibraryPicker
+                  busy={mediaBusy !== null}
+                  onPick={(assetId) =>
+                    runMediaAction(`question-library-${assetId}`, () =>
+                      onAttachQuestionMediaFromLibrary(question.id, assetId),
+                    )
+                  }
+                />
+              ) : null}
+            </div>
           ) : editableNow ? (
             <p className="q-help">新题目保存到服务器后即可添加附件（标题修改后约 2 秒自动保存）。</p>
           ) : null}
@@ -661,28 +855,40 @@ export function QuestionCard({
                       />
                     ))}
                     {editableNow && question.id >= 0 && option.id >= 0 ? (
-                      <label
-                        className="inline-flex cursor-pointer items-center gap-1 text-xs"
-                        style={{ color: mediaBusy ? "var(--color-muted-soft)" : "var(--color-primary)" }}
-                        title="为这个选项上传图片 / 视频 / 音频 / 文件"
-                      >
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept={MEDIA_FILE_ACCEPT}
-                          disabled={mediaBusy !== null}
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            event.target.value = "";
-                            void runMediaAction(`option-upload-${option.id}`, () =>
-                              onAttachOptionMedia(option.id, file),
-                            );
-                          }}
-                        />
-                        <Upload className="h-3.5 w-3.5" />
-                        <span>{mediaBusy === `option-upload-${option.id}` ? "上传中…" : "选项媒体"}</span>
-                      </label>
+                      <span className="inline-flex items-center gap-2">
+                        <label
+                          className="inline-flex cursor-pointer items-center gap-1 text-xs"
+                          style={{ color: mediaBusy ? "var(--color-muted-soft)" : "var(--color-primary)" }}
+                          title="为这个选项上传图片 / 视频 / 音频 / 文件"
+                        >
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={MEDIA_FILE_ACCEPT}
+                            disabled={mediaBusy !== null}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) return;
+                              event.target.value = "";
+                              void runMediaAction(`option-upload-${option.id}`, () =>
+                                onAttachOptionMedia(option.id, file),
+                              );
+                            }}
+                          />
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>{mediaBusy === `option-upload-${option.id}` ? "上传中…" : "选项媒体"}</span>
+                        </label>
+                        {onAttachOptionMediaFromLibrary ? (
+                          <LibraryPicker
+                            busy={mediaBusy !== null}
+                            onPick={(assetId) =>
+                              runMediaAction(`option-library-${option.id}-${assetId}`, () =>
+                                onAttachOptionMediaFromLibrary(option.id, assetId),
+                              )
+                            }
+                          />
+                        ) : null}
+                      </span>
                     ) : null}
                   </div>
                 ) : null}

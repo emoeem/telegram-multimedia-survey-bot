@@ -1,6 +1,7 @@
 import type { Env } from "../../index";
 import type { Answer, QuestionType, SurveyQuestion } from "../../db/schema";
 import { getMediaAssetById } from "../../db/repositories/media.repository";
+import { getTaskRunById, toTrialRun } from "../../db/repositories/task-run.repository";
 import {
   clearAnswerStatements,
   mediaAnswerStatements,
@@ -11,6 +12,8 @@ import type { getSurveyFlow } from "../../services/question.service";
 import { getFirstQuestion, getNextQuestionAfterAnswers } from "../../survey/engine";
 import { getMatrixColumns } from "../../survey/question-presentation";
 import { parseHotspotSceneFromJson } from "../../survey/hotspot";
+import { isGameAnswerValue, numericAnswerValue, parseGameQuestionSettings } from "../../survey/game";
+import { trialGrade } from "../../trial/engine";
 import { fail } from "../api-response";
 
 type FlowQuestion = Awaited<ReturnType<typeof getSurveyFlow>>["questions"][number];
@@ -64,12 +67,19 @@ function textLengthWindow(question: FlowQuestion): { min: number; max: number } 
  */
 export type AnswerWritePlan = { statements: D1PreparedStatement[] } | { error: Response };
 
-/** Plans the writes for one web answer, using the same upserts as the bot. */
+/**
+ * Plans the writes for one web answer, using the same upserts as the bot.
+ *
+ * `participantHash` only matters for game questions: the answer is a reference
+ * to a task_runs row, so the run must belong to the same participant as the
+ * response (and to the configured pack) before its score is accepted.
+ */
 export async function planWebAnswer(
   env: Env,
   responseId: number,
   question: FlowQuestion,
   value: unknown,
+  participantHash?: string,
 ): Promise<AnswerWritePlan> {
   const type = question.type as QuestionType;
   // 剧情文段不收集答案；正常流程客户端不会为它发请求，这里兜底为成功，
@@ -268,6 +278,50 @@ export async function planWebAnswer(
     };
   }
 
+  if (type === "game") {
+    // 小游戏答案 = 一条已结算的挑战局引用。客户端只交 runId；分数/评级/
+    // 是否通关一律从 task_runs 记录推导，伪造的分数在这里被丢弃。
+    const settings = parseGameQuestionSettings(question.settingsJson);
+    if (!settings) return { error: fail(400, "invalid_answer", "小游戏题配置无效") };
+    const runId =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Number((value as { runId?: unknown }).runId)
+        : Number(value);
+    if (!Number.isInteger(runId) || runId <= 0) {
+      return { error: fail(400, "invalid_answer", "挑战记录无效") };
+    }
+    const run = await getTaskRunById(env.DB, runId);
+    if (!run || run.packId !== settings.packId) {
+      return { error: fail(400, "invalid_answer", "挑战记录无效") };
+    }
+    if (participantHash && run.participantHash !== participantHash) {
+      return { error: fail(403, "forbidden", "挑战记录不属于当前答卷") };
+    }
+    if (run.status === "active") {
+      return { error: fail(409, "run_not_finished", "这一局还没结束，先完成或放弃") };
+    }
+    const completed = run.status === "completed";
+    // 插件局的评级由插件引擎在结算时写进信封；爬塔局实时算。
+    const grade = completed ? (run.plugin?.grade ?? trialGrade(toTrialRun(run))) : null;
+    return {
+      statements: [
+        upsertAnswerValueStatement(env.DB, {
+          responseId,
+          questionId: question.id,
+          values: {
+            jsonValue: JSON.stringify({
+              kind: "game",
+              runId,
+              score: run.score,
+              grade,
+              completed,
+            }),
+          },
+        }),
+      ],
+    };
+  }
+
   return { error: fail(400, "unsupported_type", `不支持的题型：${type}`) };
 }
 
@@ -292,7 +346,17 @@ export function findMissingRequiredQuestion(
   const flowById = new Map(flowQuestions.map((question) => [question.id, question]));
   for (const [questionId, answer] of answersByQuestion) {
     const question = flowById.get(questionId);
-    if (question) valueById.set(questionId, selectedWebOptionId(question, answer));
+    if (!question) continue;
+    if (question.type === "game" && answer.jsonValue !== null) {
+      // game 答案以数值投影进 flags/answerRules（通关得分 / 未通关 0）。
+      try {
+        valueById.set(questionId, JSON.parse(answer.jsonValue));
+      } catch {
+        // 脏数据视同未答。
+      }
+      continue;
+    }
+    valueById.set(questionId, selectedWebOptionId(question, answer));
   }
   let current = getFirstQuestion({ questions: flowQuestions });
   while (current && !visited.has(current.id)) {
@@ -322,6 +386,10 @@ export function isWebAnswerPresent(answer: Answer | undefined): boolean {
         if (kind === "scene") {
           const visited = (parsed as { visited?: unknown }).visited;
           return Array.isArray(visited) && visited.length > 0;
+        }
+        if (kind === "game") {
+          // 必答的小游戏题以"通关"为作答门槛：弃坑/中断的局不算完成。
+          return isGameAnswerValue(parsed) && parsed.completed === true;
         }
       }
     } catch {

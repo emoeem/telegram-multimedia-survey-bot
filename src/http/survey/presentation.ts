@@ -73,6 +73,10 @@ export function answerValue(answer: Answer): unknown {
       ) {
         return { mediaAssetId: (parsed as { mediaAssetId: number }).mediaAssetId };
       }
+      if (parsed && typeof parsed === "object" && (parsed as { kind?: unknown }).kind === "game") {
+        // 小游戏答案原样回放：客户端续答时要能显示成绩并重放 flags。
+        return parsed;
+      }
     } catch {
       // fall through to typed columns
     }

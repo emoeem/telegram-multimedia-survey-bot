@@ -2000,8 +2000,76 @@
       render();
     });
 
-    /* 帮我选：随机勾选一批 */
+    /* 帮我选：主题配置了抽取池时改为服务端实时抽任务条目（小游戏区联动，
+     * 包更新后自动跟着变）；否则本地随机勾选一批。 */
     $("randomBtn").addEventListener("click", function () {
+      var cfg = drawConfig();
+      if (cfg && cfg.packId) {
+        runDraw(cfg);
+        return;
+      }
+      legacyRandomPick();
+    });
+
+    function drawConfig() {
+      var t = theme();
+      if (!t || !t.draw || !(t.draw.packId > 0) || !adultOk()) return null;
+      return t.draw;
+    }
+
+    function renderDraw(items) {
+      var box = $("drawResult");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items || !items.length) {
+        box.hidden = true;
+        return;
+      }
+      items.forEach(function (item) {
+        var card = document.createElement("div");
+        card.className = "draw-item";
+        var title = document.createElement("b");
+        title.textContent = item.title || "（无标题）";
+        var desc = document.createElement("p");
+        desc.textContent = item.description || "";
+        card.appendChild(title);
+        if (item.warning) {
+          var warn = document.createElement("p");
+          warn.textContent = "⚠ " + item.warning;
+          card.appendChild(warn);
+        }
+        card.appendChild(desc);
+        box.appendChild(card);
+      });
+      box.hidden = false;
+    }
+
+    function runDraw(cfg) {
+      var params = new URLSearchParams();
+      params.set("ack", "adult18");
+      params.set("packId", String(cfg.packId));
+      params.set("count", String(clamp(Math.round(num(cfg.count, 1)), 1, 5)));
+      if (state.gender === "f" || state.gender === "m") params.set("persona", state.gender);
+      fetch("/api/cert/draw?" + params.toString())
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (body) {
+          if (body && body.ok && body.items && body.items.length) {
+            renderDraw(body.items);
+            toast("已从小游戏包实时抽取 " + body.items.length + " 条");
+          } else {
+            toast((body && body.message) || "抽取失败，已改为本地随机");
+            legacyRandomPick();
+          }
+        })
+        .catch(function () {
+          toast("抽取失败，已改为本地随机");
+          legacyRandomPick();
+        });
+    }
+
+    function legacyRandomPick() {
       var tags = themeData().tags.filter(tagVisible);
       if (!tags.length) {
         toast("先在分组里添加一些标签");
@@ -2052,7 +2120,7 @@
       }
       renderGroups();
       refreshAfterTagChange();
-    });
+    }
 
     /* 清空勾选 */
     $("clearTagsBtn").addEventListener("click", function () {

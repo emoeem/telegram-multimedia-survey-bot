@@ -144,6 +144,14 @@ export type AnswerValue =
   | Record<string, number>
   | { mediaAssetId: number }
   | { kind: "scene"; visited: string[] }
+  | {
+      /** 小游戏挑战结果：服务端会按 runId 从 task_runs 重算分数/评级。 */
+      kind: "game";
+      runId: number;
+      score: number;
+      grade: string | null;
+      completed: boolean;
+    }
   | null;
 
 let participantKey: string | null = null;

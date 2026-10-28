@@ -67,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/reports", icon: Package, label: "报告" },
       { to: "/templates", icon: Palette, label: "模板" },
       { to: "/cert-content", icon: BadgeCheck, label: "认证卡内容" },
+      { to: "/media-library", icon: Images, label: "素材库" },
     ],
   },
   {
@@ -76,9 +77,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
       { to: "/showcase", icon: Images, label: "展示区" },
       // Renamed from 挑战任务: the footer's /trial link carries the same label,
-      // and the two point at different pages (this one is the 任务包 admin, the
-      // footer one is the public 挑战 page). The page title here is 挑战任务包.
-      { to: "/task-packs", icon: Target, label: "任务包" },
+      // and the two point at different pages (this one is the 小游戏 admin, the
+      // footer one is the public 小游戏 page). The page title here is 小游戏管理.
+      { to: "/task-packs", icon: Target, label: "小游戏管理" },
     ],
   },
   {
@@ -361,7 +362,8 @@ export function Layout() {
     if (path.startsWith("/plaza")) return "树洞";
     if (path.startsWith("/profile-gallery")) return "个人画廊";
     if (path.startsWith("/showcase")) return "展示区";
-    if (path.startsWith("/task-packs")) return "挑战任务包";
+    if (path.startsWith("/task-packs")) return "小游戏管理";
+    if (path.startsWith("/media-library")) return "素材库";
     if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/trash")) return "回收站";
     if (path.startsWith("/licenses")) return "授权管理";

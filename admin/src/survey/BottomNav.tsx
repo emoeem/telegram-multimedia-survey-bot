@@ -9,7 +9,7 @@ type NavItem = {
 
 const ITEMS: NavItem[] = [
   { href: "/s", label: "问卷", icon: ClipboardList, pathStartsWith: ["/s"] },
-  { href: "/trial", label: "挑战", icon: Sparkles, pathStartsWith: ["/trial"] },
+  { href: "/trial", label: "小游戏", icon: Sparkles, pathStartsWith: ["/trial"] },
   { href: "/plaza", label: "广场", icon: Sprout, pathStartsWith: ["/plaza"] },
   { href: "/showcase", label: "展示", icon: Images, pathStartsWith: ["/showcase"] },
   /* 认证卡生成器（/cert）：它一直是能用的独立页，却没有出现在任何导航里 ——

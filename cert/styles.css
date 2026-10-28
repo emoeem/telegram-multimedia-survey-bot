@@ -514,6 +514,36 @@ input:disabled {
   gap: 16px;
 }
 
+/* 抽取池结果（主题配置 draw 时，「帮我选」改为服务端实时抽任务条目） */
+.draw-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.draw-item {
+  border: 1px solid var(--edge, #e2e8f0);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--soft, #f7f9fc);
+}
+
+.draw-item b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.draw-item p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted, #64748b);
+}
+
 .group-head {
   display: flex;
   align-items: center;

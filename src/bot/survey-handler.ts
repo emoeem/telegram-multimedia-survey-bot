@@ -227,8 +227,8 @@ function buildWelcomeText(
 🪪 我的资料 —— 设置头像、简介、隐私
 🌳 树洞 —— 匿名倾诉心事，温柔接住情绪
 🏛 广场 —— 分享故事、点赞互动，遇见同频的人
-🎯 挑战任务 —— 趣味打卡，解锁成就
-👤 我的 —— 答卷、资料卡、挑战记录与已点亮的徽章${creatorExtra}
+🎮 小游戏 —— 爬塔挑战等趣味玩法，解锁成就
+👤 我的 —— 答卷、资料卡、小游戏记录与已点亮的徽章${creatorExtra}
 
 💬 欢迎加入社群一起交流：
 ${communityGroupUrl || DEFAULT_COMMUNITY_GROUP_URL}
@@ -261,7 +261,7 @@ async function buildHomeKeyboard(
       ? [{ text: "🌳 树洞", url: `${origin}/plaza?tab=treehole` }]
       : [{ text: "🌳 树洞", callback_data: "plaza:treehole:0" }],
     origin ? [{ text: "🏛 广场", url: `${origin}/plaza` }] : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
-    ...(trialUrl ? [[{ text: "🎯 挑战任务", url: trialUrl }]] : []),
+    ...(trialUrl ? [[{ text: "🎮 小游戏", url: trialUrl }]] : []),
     // 「我的」需要身份才聚合得准：带上和 /trial 同一个参与者 token。
     ...(origin
       ? [[{ text: "👤 我的 · 成就", url: `${origin}/me${participantParam ? `?${participantParam.slice(1)}` : ""}` }]]

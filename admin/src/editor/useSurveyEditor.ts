@@ -15,6 +15,14 @@ export interface EditableOption {
   media: EditorQuestion["media"];
 }
 
+/** 从 settings 里读出小游戏题绑定的任务包 id（脏数据 → null）。 */
+function gamePackIdOf(settings: Record<string, unknown> | null | undefined): number | null {
+  const game = settings?.game;
+  if (!game || typeof game !== "object" || Array.isArray(game)) return null;
+  const packId = Number((game as Record<string, unknown>).packId);
+  return Number.isInteger(packId) && packId > 0 ? packId : null;
+}
+
 export interface EditableQuestion {
   id: number;
   type: string;
@@ -26,6 +34,8 @@ export interface EditableQuestion {
   columns: string[];
   /** 剧情说话人（VN 名牌，仅 note 题）。 */
   speaker?: string | null;
+  /** 小游戏题绑定的任务包 id（settings.game.packId，仅 game 题）。 */
+  gamePackId: number | null;
   validation: Record<string, number | boolean> | null;
   condition: Record<string, unknown> | null;
   media: EditorQuestion["media"];
@@ -78,6 +88,7 @@ export function useSurveyEditor(data: EditorData) {
         ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
         : [],
       speaker: typeof question.settings?.speaker === "string" ? question.settings.speaker : null,
+      gamePackId: gamePackIdOf(question.settings),
       validation: (question.validation as Record<string, number | boolean> | null) ?? null,
       condition: question.condition,
       media: question.media,
@@ -121,6 +132,7 @@ export function useSurveyEditor(data: EditorData) {
           ? (question.settings!.columns as unknown[]).filter((c): c is string => typeof c === "string")
           : [],
         speaker: typeof question.settings?.speaker === "string" ? question.settings.speaker : null,
+        gamePackId: gamePackIdOf(question.settings),
         validation: (question.validation as Record<string, number | boolean> | null) ?? null,
         condition: question.condition,
         media: question.media,
@@ -287,7 +299,15 @@ export function useSurveyEditor(data: EditorData) {
   );
 
   const addQuestion = useCallback(
-    (draft: { type: string; title: string; options?: { label: string }[]; columns?: string[] }) => {
+    (draft: {
+      type: string;
+      title: string;
+      options?: { label: string }[];
+      columns?: string[];
+      gamePackId?: number | null;
+      /** 其它 settings（按题型/插件自定义）；与 gamePackId 二选一使用。 */
+      settings?: Record<string, unknown>;
+    }) => {
       const tempId = tempIdRef.current--;
       setQuestions((current) => [
         ...current,
@@ -300,6 +320,7 @@ export function useSurveyEditor(data: EditorData) {
           order: current.length,
           pageId: null,
           columns: draft.columns ?? [],
+          gamePackId: draft.gamePackId ?? null,
           validation: null,
           condition: null,
           media: [],
@@ -319,7 +340,13 @@ export function useSurveyEditor(data: EditorData) {
           title: draft.title,
           required: true,
           ...(draft.options?.length ? { options: draft.options } : {}),
-          ...(draft.type === "matrix" && draft.columns?.length ? { settings: { columns: draft.columns } } : {}),
+          ...(draft.settings
+            ? { settings: draft.settings }
+            : draft.type === "matrix" && draft.columns?.length
+              ? { settings: { columns: draft.columns } }
+              : draft.type === "game" && draft.gamePackId
+                ? { settings: { game: { packId: draft.gamePackId } } }
+                : {}),
         },
         tempId,
         label: "新增题目",

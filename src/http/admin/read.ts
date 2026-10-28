@@ -6,6 +6,7 @@ import { getSurveyById } from "../../db/repositories/survey.repository";
 import { listReportDeliveries } from "../../db/repositories/report-delivery.repository";
 import { listPlazaComments } from "../../db/repositories/plaza-comment.repository";
 import { listTaskPacks } from "../../db/repositories/task-pack.repository";
+import { listMediaLibraryPage } from "../../db/repositories/media.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
 import { listPlazaPosts } from "../../db/repositories/plaza-post.repository";
 import { buildCsv, getExportRows, serializeExport } from "../../services/export.service";
@@ -485,6 +486,37 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
     const packs = await listTaskPacks(env.DB, { withItems: true });
     return json({ packs });
+  }
+
+  // 素材库（0091）：分页列出全部素材 + 引用计数；mime 前缀筛选（image/ audio/ …）。
+  if (url.pathname === "/api/admin/media-library") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可查看素材库");
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 30)));
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
+    const mimeParam = (url.searchParams.get("mime") ?? "").trim();
+    const mimePrefix = /^(image|video|audio|application|text)$/.test(mimeParam) ? mimeParam : undefined;
+    const { items, total } = await listMediaLibraryPage(env.DB, {
+      ...(mimePrefix ? { mimePrefix } : {}),
+      limit,
+      offset,
+    });
+    return json({
+      items: items.map((row) => ({
+        id: row.asset.id,
+        scope: row.asset.scope,
+        mediaType: row.asset.mediaType,
+        mimeType: row.asset.mimeType,
+        fileName: row.asset.fileName,
+        fileSize: row.asset.fileSize,
+        createdAt: row.asset.createdAt,
+        contentHash: row.asset.contentHash,
+        weakRefs: row.weakRefs,
+        hardRefs: row.hardRefs,
+      })),
+      total,
+      limit,
+      offset,
+    });
   }
 
   const profileGalleryMediaMatch = url.pathname.match(/^\/api\/admin\/profile-gallery\/(\d+)\/media\/(\d+)$/);

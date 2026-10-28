@@ -52,6 +52,7 @@ import {
   createQuestionMedia,
   deleteOptionMediaByAsset,
   deleteQuestionMediaByAsset,
+  getMediaAssetById,
   getOptionMediaByOptionId,
   getQuestionMediaByQuestionId,
 } from "../../db/repositories/media.repository";
@@ -648,16 +649,27 @@ export async function handleAdminEditorWrite(
     const questionId = Number(questionMediaUploadMatch[1]);
     const question = await getQuestionById(db, questionId);
     if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "题目不存在");
-    const fileOrError = await readUploadedFile();
-    if (fileOrError instanceof Response) return fileOrError;
     let asset: MediaAsset;
-    try {
-      asset = await storeSurveyAdminMedia(db, env, fileOrError);
-    } catch (error) {
-      return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      // 从素材库选择（0091）：JSON {assetId} 分支——只建关联，不写新 blob。
+      const body = (await request.json().catch(() => null)) as { assetId?: unknown } | null;
+      const assetId = Number(body?.assetId);
+      if (!Number.isInteger(assetId) || assetId <= 0) return fail(400, "invalid_upload", "素材 ID 无效");
+      const existing = await getMediaAssetById(db, assetId);
+      if (!existing || existing.scope !== "survey") return fail(404, "media_not_found", "素材不存在");
+      asset = existing;
+    } else {
+      const fileOrError = await readUploadedFile();
+      if (fileOrError instanceof Response) return fileOrError;
+      try {
+        asset = await storeSurveyAdminMedia(db, env, fileOrError);
+      } catch (error) {
+        return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+      }
     }
-    const existing = await getQuestionMediaByQuestionId(db, questionId);
-    await createQuestionMedia(db, { questionId, mediaAssetId: asset.id, sortOrder: existing.length });
+    const existingBindings = await getQuestionMediaByQuestionId(db, questionId);
+    await createQuestionMedia(db, { questionId, mediaAssetId: asset.id, sortOrder: existingBindings.length });
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json(
       {
@@ -690,16 +702,31 @@ export async function handleAdminEditorWrite(
     if (!option) return fail(404, "not_found", "选项不存在");
     const question = await getQuestionById(db, option.questionId);
     if (!question || question.surveyId !== surveyId) return fail(404, "not_found", "选项不存在");
-    const fileOrError = await readUploadedFile();
-    if (fileOrError instanceof Response) return fileOrError;
     let asset: MediaAsset;
-    try {
-      asset = await storeSurveyAdminMedia(db, env, fileOrError);
-    } catch (error) {
-      return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      // 从素材库选择（0091）：与题目附件同一套 JSON {assetId} 分支。
+      const body = (await request.json().catch(() => null)) as { assetId?: unknown } | null;
+      const assetId = Number(body?.assetId);
+      if (!Number.isInteger(assetId) || assetId <= 0) return fail(400, "invalid_upload", "素材 ID 无效");
+      const existingAsset = await getMediaAssetById(db, assetId);
+      if (!existingAsset || existingAsset.scope !== "survey") return fail(404, "media_not_found", "素材不存在");
+      asset = existingAsset;
+    } else {
+      const fileOrError = await readUploadedFile();
+      if (fileOrError instanceof Response) return fileOrError;
+      try {
+        asset = await storeSurveyAdminMedia(db, env, fileOrError);
+      } catch (error) {
+        return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+      }
     }
-    const existing = await getOptionMediaByOptionId(db, optionId);
-    await createOptionMedia(db, { questionOptionId: optionId, mediaAssetId: asset.id, sortOrder: existing.length });
+    const existingOptionMedia = await getOptionMediaByOptionId(db, optionId);
+    await createOptionMedia(db, {
+      questionOptionId: optionId,
+      mediaAssetId: asset.id,
+      sortOrder: existingOptionMedia.length,
+    });
     const updatedAt = await touchSurvey(db, surveyId);
     return Response.json(
       {

@@ -48,6 +48,7 @@ import {
   startTrialRun,
   TRIAL_SHOP_CONFIG,
   type TrialGrade,
+  type TrialGameType,
   type TrialGradeCopy,
   type TrialHistoryItem,
   type TrialLeaderboardEntry,
@@ -127,6 +128,7 @@ export function TrialScreen() {
   const [screen, setScreen] = useState<Screen>(() => (safeGet(AGREEMENT_KEY) === "1" ? "home" : "gate"));
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [packs, setPacks] = useState<TrialPack[] | null>(null);
+  const [gameTypes, setGameTypes] = useState<TrialGameType[]>([]);
   const [submissionBotUrl, setSubmissionBotUrl] = useState<string | null>(null);
   const [shopEconomy, setShopEconomy] = useState<TrialShopEconomy | null>(null);
   const [packsError, setPacksError] = useState<string | null>(null);
@@ -231,13 +233,14 @@ export function TrialScreen() {
         const response = await fetchTrialPacks();
         if (cancelled) return;
         setPacks(response.packs);
+        setGameTypes(response.gameTypes ?? []);
         setSubmissionBotUrl(response.submissionBotUrl);
         setShopEconomy(response.shop ?? null);
         if (response.packs.length > 0) {
           setPackId((current) => current ?? response.packs[0]?.id ?? null);
         }
       } catch (error) {
-        if (!cancelled) setPacksError(error instanceof Error ? error.message : "任务包加载失败");
+        if (!cancelled) setPacksError(error instanceof Error ? error.message : "小游戏加载失败");
       }
     })();
     void refreshHome();
@@ -247,6 +250,22 @@ export function TrialScreen() {
   }, [refreshHome]);
 
   const selectedPack = packs?.find((pack) => pack.id === packId) ?? null;
+  // 小游戏区按玩法分组：组顺序跟 packs 顺序（服务端已按 sort_order 排好），
+  // 组标题取注册表的玩法名，未来新增玩法自动多一组。
+  const packGroups = useMemo(() => {
+    if (!packs) return [];
+    const groups: { type: string; label: string; packs: TrialPack[] }[] = [];
+    for (const pack of packs) {
+      const label = pack.gameLabel || gameTypes.find((gt) => gt.id === pack.gameType)?.label || pack.gameType;
+      let group = groups.find((g) => g.type === pack.gameType);
+      if (!group) {
+        group = { type: pack.gameType, label, packs: [] };
+        groups.push(group);
+      }
+      group.packs.push(pack);
+    }
+    return groups;
+  }, [packs, gameTypes]);
   const floorCount = selectedPack ? (mode === "hell" ? selectedPack.hellFloors : selectedPack.normalFloors) : 0;
   const floorOptions = Array.from({ length: floorCount }, (_, index) => index + 1);
   const normalizedStartFloor = Math.min(Math.max(Number(startFloor) || 1, 1), Math.max(floorCount, 1));
@@ -270,7 +289,7 @@ export function TrialScreen() {
       startFloor: normalizedStartFloor,
     };
     if (!effective.packId) {
-      setNotice("请先选择一个任务包");
+      setNotice("请先选择一个小游戏包");
       return;
     }
     if (!persona && !config) {
@@ -550,12 +569,12 @@ export function TrialScreen() {
     if (!settlement) return;
     const { grade, copy, run: finishedRun } = settlement;
     const text = [
-      `【挑战任务 · ${finishedRun.packName}】`,
+      `【小游戏 · ${finishedRun.packName}】`,
       `结局评级：${grade} · ${copy.title}`,
       copy.text,
       `完成 ${finishedRun.completedTasks} 层 · 积分 ${finishedRun.score} · ${modeLabel(finishedRun.mode)} · ${personaLabel(finishedRun.persona)}`,
       "",
-      "网页挑战任务 · 虚构角色扮演",
+      "网页小游戏 · 虚构角色扮演",
     ].join("\n");
     try {
       const ok = await safeCopy(text);
@@ -661,9 +680,9 @@ export function TrialScreen() {
             <Trophy className="h-8 w-8 text-[var(--survey-primary)]" aria-hidden="true" />
           </div>
           <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:tracking-[0.04em]">
-            挑战任务
+            小游戏
           </h1>
-          <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">文字扮演 · 逐层上行 · 每层一个任务</p>
+          <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">爬塔挑战 · 文字扮演 · 逐层上行</p>
         </div>
         <div className="p-6">
           <div className="rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
@@ -705,14 +724,14 @@ export function TrialScreen() {
                 管理员快捷入口
               </p>
               <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
-                在这里手动编写任务包与任务文案，保存后玩家端实时生效
+                在这里手动编写小游戏包与任务文案，保存后玩家端实时生效
               </p>
             </div>
             <a
               href="/admin/task-packs"
               className="shrink-0 rounded-full bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-[var(--survey-primary-content)]"
             >
-              打开任务编辑器
+              打开小游戏管理
             </a>
           </div>
         </section>
@@ -826,7 +845,7 @@ export function TrialScreen() {
           ))}
         </div>
 
-        <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
+        <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">小游戏包</p>
         {packsError ? <p className="mt-2 text-xs text-red-500">{packsError}</p> : null}
         {packs === null ? (
           <div className="mt-2 space-y-2">
@@ -841,30 +860,39 @@ export function TrialScreen() {
             ))}
           </div>
         ) : packs.length === 0 ? (
-          <p className="mt-2 text-sm text-[var(--survey-muted)]">暂无可用任务包，请联系管理员。</p>
+          <p className="mt-2 text-sm text-[var(--survey-muted)]">暂无可用小游戏，请联系管理员。</p>
         ) : (
-          <div className="mt-2 space-y-2">
-            {packs.map((pack) => (
-              <button
-                key={pack.id}
-                type="button"
-                onClick={() => choosePack(pack.id)}
-                className={`block w-full rounded-xl border p-3 text-left transition-[transform,box-shadow,border-color] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)] ${
-                  packId === pack.id
-                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] shadow-sm"
-                    : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
-                  <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
-                    {pack.normalFloors}/{pack.hellFloors} 层
-                  </span>
+          <div className="mt-2 space-y-3">
+            {packGroups.map((group) => (
+              <div key={group.type}>
+                <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">
+                  {group.label}
+                </p>
+                <div className="mt-2 space-y-2">
+                  {group.packs.map((pack) => (
+                    <button
+                      key={pack.id}
+                      type="button"
+                      onClick={() => choosePack(pack.id)}
+                      className={`block w-full rounded-xl border p-3 text-left transition-[transform,box-shadow,border-color] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)] ${
+                        packId === pack.id
+                          ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] shadow-sm"
+                          : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
+                        <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
+                          {pack.normalFloors}/{pack.hellFloors} 层
+                        </span>
+                      </div>
+                      <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
+                        {pack.description ?? "（暂无描述）"}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
-                  {pack.description ?? "（暂无描述）"}
-                </span>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -1606,7 +1634,7 @@ export function TrialScreen() {
       data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
-      {renderHeader("挑战任务", "选一个任务包和起始层，一路向上挑战", false)}
+      {renderHeader("小游戏", "选一个玩法和包，开始你的挑战", false)}
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
       {renderThemePicker()}

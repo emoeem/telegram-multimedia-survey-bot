@@ -1,4 +1,10 @@
 import type { QuestionOption, SurveyQuestion } from "../db/schema";
+import { numericAnswerValue } from "./game";
+
+/** 小游戏题通关后自动获得的 flag 名（flagJumps 可用它做"必须通关"门槛）。 */
+export function gamePassedFlag(questionId: number): string {
+  return `game_passed_${questionId}`;
+}
 
 export interface SurveyQuestionView extends SurveyQuestion {
   options: QuestionOption[];
@@ -65,6 +71,11 @@ export type SurveyFlags = Map<string, number>;
 export function computeFlags(flow: SurveyFlow, answers: Map<number, unknown>): SurveyFlags {
   const flags: SurveyFlags = new Map();
   for (const question of flow.questions) {
+    // 小游戏题：通关自动置 flag game_passed_<题id>，创作者在 flagJumps 里
+    // 引用即可实现"完成挑战才能继续"；未通关/未答不置 flag。
+    if (question.type === "game" && numericAnswerValue(answers.get(question.id)) > 0) {
+      flags.set(gamePassedFlag(question.id), 1);
+    }
     if (!question.conditionJson) continue;
     try {
       const condition = JSON.parse(question.conditionJson) as { flagRules?: unknown };
@@ -74,7 +85,7 @@ export function computeFlags(flow: SurveyFlow, answers: Map<number, unknown>): S
         if (!flag) continue;
         const value = answers.get(Number(rule.questionId));
         if (value === undefined || value === null) continue;
-        if (Number(rule.equals) !== Number(value)) continue;
+        if (Number(rule.equals) !== numericAnswerValue(value)) continue;
         const score = Number(rule.score);
         flags.set(flag, (flags.get(flag) ?? 0) + (Number.isFinite(score) ? score : 1));
       }
@@ -158,7 +169,7 @@ export function getNextQuestionAfterAnswers(
         for (const rule of condition.answerRules) {
           const value = answers.get(Number(rule.questionId));
           if (value === undefined || value === null) continue;
-          if (Number(rule.equals) !== Number(value)) continue;
+          if (Number(rule.equals) !== numericAnswerValue(value)) continue;
           const target = forwardTarget(flow, currentIndex, rule.targetQuestionId);
           if (target) {
             return target;

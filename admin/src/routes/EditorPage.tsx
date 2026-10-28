@@ -15,6 +15,7 @@ import {
   Redo2,
   Rocket,
   Save,
+  Sparkles,
   Undo2,
 } from "lucide-react";
 import { useApi } from "../hooks";
@@ -38,6 +39,8 @@ import { buildEditorPreviewFlow } from "../editor/previewModel";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime, matrixColumns, QUESTION_TYPE_LABELS } from "../format";
 import { ResultRulesPanel } from "../components/editor/ResultRulesPanel";
+import { LogicPanel } from "../components/editor/LogicPanel";
+import { findDependents, stripReferences } from "../editor/dependencies";
 
 // 添加题目面板按用途分组；剧情文段放最前面，因为"多文段剧情"是这份编辑器的主场景。
 const TYPE_GROUPS: Array<{ title: string; hint: string; types: Array<{ type: string; desc: string }> }> = [
@@ -78,6 +81,11 @@ const TYPE_GROUPS: Array<{ title: string; hint: string; types: Array<{ type: str
       { type: "file", desc: "上传任意文件" },
     ],
   },
+  {
+    title: "互动",
+    hint: "答题者在网页端完成一次互动挑战，成绩驱动后续分支",
+    types: [{ type: "game", desc: "完成一个小游戏挑战（当前为爬塔），通关与否可控制跳转" }],
+  },
 ];
 
 function branchCountOf(question: EditableQuestion): number {
@@ -110,6 +118,29 @@ function EditableEditor({ data }: { data: EditorData }) {
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [sceneBusy, setSceneBusy] = useState(false);
+  /**
+   * 基础 / 专业模式。基础模式隐藏高级配置（结果规则、逻辑面板）并给引导，
+   * 专业模式开放全量。只影响可见性，不重建文档，所以切换天然不丢进度。
+   */
+  const [editorMode, setEditorMode] = useState<"basic" | "pro">(() => {
+    try {
+      return window.localStorage.getItem("admin:editor-mode") === "pro" ? "pro" : "basic";
+    } catch {
+      return "basic";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("admin:editor-mode", editorMode);
+    } catch {
+      // 隐私模式写不进去不影响本次编辑
+    }
+  }, [editorMode]);
+  /** 右栏页签：预览 / 逻辑（逻辑仅专业模式可见）。 */
+  const [rightTab, setRightTab] = useState<"preview" | "logic">("preview");
+  useEffect(() => {
+    if (editorMode === "basic" && rightTab === "logic") setRightTab("preview");
+  }, [editorMode, rightTab]);
   const { survey } = data;
   const { confirm } = useDialogs();
 
@@ -204,6 +235,7 @@ function EditableEditor({ data }: { data: EditorData }) {
       audio: { title: "上传音频题" },
       file: { title: "上传文件题" },
       note: { title: "剧情" },
+      game: { title: "小游戏挑战" },
     };
     const draft = defaults[type] ?? { title: "新题目" };
     const tempId = editor.addQuestion({ type, ...draft });
@@ -267,6 +299,69 @@ function EditableEditor({ data }: { data: EditorData }) {
     }
   };
 
+  /**
+   * 删除题目：先算影响面。有跳转指向它时，确认框逐条列出，确认后级联清掉
+   * 这些引用（作为同一批待保存操作入队，撤销可整体回退）。
+   */
+  const requestDeleteQuestion = async (questionId: number) => {
+    const target = editor.questions.find((question) => question.id === questionId);
+    const snapshot = editor.questions.map((question) => ({
+      id: question.id,
+      title: question.title,
+      condition: question.condition,
+    }));
+    const dependents = findDependents(snapshot, questionId);
+    if (dependents.length > 0) {
+      const lines = dependents
+        .slice(0, 6)
+        .map((ref) => `· ${ref.fromTitle}：${ref.detail}`)
+        .join("\n");
+      const ok = await confirm({
+        title: "删除会影响跳转",
+        message: `有 ${dependents.length} 条跳转指向「${target?.title || `第 ${questionId} 题`}」：\n${lines}${
+          dependents.length > 6 ? "\n…" : ""
+        }\n\n删除后会一并清除这些跳转（可用撤销恢复）。`,
+        confirmLabel: "删除并清除跳转",
+        variant: "danger",
+      });
+      if (!ok) return;
+      for (const patch of stripReferences(snapshot, questionId)) {
+        editor.patchQuestionLocal(patch.id, { condition: patch.condition });
+        editor.queueQuestionPatch(patch.id, { condition: patch.condition }, "清除指向已删除题目的跳转");
+      }
+    }
+    editor.deleteQuestion(questionId);
+  };
+
+  /** 模板选择弹层。 */
+  const [templateOpen, setTemplateOpen] = useState(false);
+
+  /** 模板：按顺序插入一组组件（含小游戏配置）。整批走同一条待保存队列。 */
+  const applyTemplate = (templateId: "survey" | "single-game" | "mixed") => {
+    const insert = (draft: { type: string; title: string; options?: { label: string }[]; settings?: Record<string, unknown> }) => {
+      const tempId = editor.addQuestion({
+        type: draft.type,
+        title: draft.title,
+        ...(draft.options ? { options: draft.options } : {}),
+        ...(draft.settings ? { settings: draft.settings } : {}),
+      });
+      return tempId;
+    };
+    if (templateId === "survey") {
+      insert({ type: "text", title: "你的称呼（可选）" });
+      insert({ type: "single", title: "你最喜欢哪种放松方式？", options: [{ label: "散步" }, { label: "听歌" }, { label: "发呆" }] });
+      insert({ type: "long_text", title: "还有什么想补充的吗？" });
+    } else if (templateId === "single-game") {
+      insert({ type: "note", title: "挑战开始前", settings: {} });
+      insert({ type: "game", title: "小游戏挑战" });
+    } else {
+      insert({ type: "single", title: "先热个身：今天心情如何？", options: [{ label: "不错" }, { label: "一般" }, { label: "糟糕" }] });
+      insert({ type: "game", title: "来玩一局" });
+      insert({ type: "long_text", title: "玩完感觉怎么样？" });
+    }
+    setTemplateOpen(false);
+  };
+
   const attachQuestionMedia = async (questionId: number, file: File): Promise<boolean> => {
     if (!(await flushDraft())) return false;
     try {
@@ -280,6 +375,20 @@ function EditableEditor({ data }: { data: EditorData }) {
     }
   };
 
+  /** 从素材库选择：只建关联（JSON {assetId}），不重传文件。 */
+  const attachQuestionMediaFromLibrary = async (questionId: number, assetId: number): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiSend("POST", `/api/admin/surveys/${survey.id}/questions/${questionId}/media`, { assetId });
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "引用素材失败");
+      return false;
+    }
+  };
+
   const removeQuestionMedia = async (questionId: number, mediaAssetId: number): Promise<boolean> => {
     if (!(await flushDraft())) return false;
     try {
@@ -289,6 +398,20 @@ function EditableEditor({ data }: { data: EditorData }) {
       return true;
     } catch (err) {
       setPublishError(err instanceof Error ? err.message : "移除题面附件失败");
+      return false;
+    }
+  };
+
+  /** 从素材库为选项挂已有素材（与题目附件同一套 JSON {assetId} 分支）。 */
+  const attachOptionMediaFromLibrary = async (optionId: number, assetId: number): Promise<boolean> => {
+    if (!(await flushDraft())) return false;
+    try {
+      await apiSend("POST", `/api/admin/surveys/${survey.id}/options/${optionId}/media`, { assetId });
+      setPublishError(null);
+      editor.discardAndReload();
+      return true;
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "引用素材失败");
       return false;
     }
   };
@@ -433,6 +556,24 @@ function EditableEditor({ data }: { data: EditorData }) {
         </div>
         <div className="editor-actions">
           <span className={`editor-save-state ${saveStateClass}`}>{saveStateLabel}</span>
+          {/* 基础 / 专业模式：只改可见性，不动文档——切换不丢进度。 */}
+          <div className="flex overflow-hidden rounded-full border border-[var(--color-edge)]" role="group" aria-label="编辑模式">
+            {(["basic", "pro"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={`px-2.5 py-1 text-[11px] font-semibold ${
+                  editorMode === value
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-contrast,#fff)]"
+                    : "text-[var(--color-muted)]"
+                }`}
+                aria-pressed={editorMode === value}
+                onClick={() => setEditorMode(value)}
+              >
+                {value === "basic" ? "基础" : "专业"}
+              </button>
+            ))}
+          </div>
           <button
             className="btn btn-sm btn-quiet"
             disabled={!editor.canUndo}
@@ -580,14 +721,20 @@ function EditableEditor({ data }: { data: EditorData }) {
                       onOptionRename={handleOptionRename}
                       onAddOption={editor.addOption}
                       onDeleteOption={editor.deleteOption}
-                      onDelete={(questionId) => editor.deleteQuestion(questionId)}
+                      onDelete={(questionId) => void requestDeleteQuestion(questionId)}
                       onDuplicateQuestion={(questionId) => void duplicateQuestion(questionId)}
                       onDuplicateOption={(questionId, optionId) => void duplicateOption(questionId, optionId)}
                       onAttachQuestionMedia={(questionId, file) => attachQuestionMedia(questionId, file)}
+                      onAttachQuestionMediaFromLibrary={(questionId, assetId) =>
+                        attachQuestionMediaFromLibrary(questionId, assetId)
+                      }
                       onRemoveQuestionMedia={(questionId, mediaAssetId) =>
                         removeQuestionMedia(questionId, mediaAssetId)
                       }
                       onAttachOptionMedia={(optionId, file) => attachOptionMedia(optionId, file)}
+                      onAttachOptionMediaFromLibrary={(optionId, assetId) =>
+                        attachOptionMediaFromLibrary(optionId, assetId)
+                      }
                       onRemoveOptionMedia={(optionId, mediaAssetId) => removeOptionMedia(optionId, mediaAssetId)}
                       onOpenSceneEditor={(questionId) => void openSceneEditor(questionId)}
                       allQuestions={editor.questions}
@@ -634,11 +781,54 @@ function EditableEditor({ data }: { data: EditorData }) {
               <MousePointerClick className="h-4 w-4" />
               添加互动场景
             </button>
+            <button
+              className="btn"
+              disabled={editingDisabled}
+              onClick={() => setTemplateOpen(true)}
+              title="用模板快速搭出结构（可撤销）"
+            >
+              <Sparkles className="h-4 w-4" />
+              从模板开始
+            </button>
           </div>
         </main>
 
         <aside className="editor-preview editor-col">
-          {trialFrom !== null ? (
+          {editorMode === "pro" ? (
+            <div className="flex gap-1 border-b border-[var(--color-edge)] px-2 pt-2">
+              {(
+                [
+                  { id: "preview", label: "预览" },
+                  { id: "logic", label: "逻辑" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`rounded-t-lg px-3 py-1.5 text-[11px] font-semibold ${
+                    rightTab === tab.id
+                      ? "bg-[var(--surface)] text-[var(--color-ink)]"
+                      : "text-[var(--color-muted)]"
+                  }`}
+                  aria-pressed={rightTab === tab.id}
+                  onClick={() => setRightTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {editorMode === "pro" && rightTab === "logic" ? (
+            <LogicPanel
+              questions={editor.questions.map((question) => ({
+                id: question.id,
+                title: question.title,
+                condition: question.condition,
+              }))}
+              selectedId={selection.kind === "question" ? selection.id : null}
+              onSelect={(questionId) => selectQuestion(questionId)}
+            />
+          ) : trialFrom !== null ? (
             <TrialPlay
               title={editor.surveyMeta.title}
               questions={previewQuestions}
@@ -683,6 +873,31 @@ function EditableEditor({ data }: { data: EditorData }) {
             void addSceneQuestion();
           }}
         />
+      ) : null}
+
+      {templateOpen ? (
+        <Modal open title="从模板开始" onClose={() => setTemplateOpen(false)}>
+          <p className="text-xs text-[var(--color-muted)]">
+            模板会按顺序插入组件（可撤销、可再改）。插在当前问卷末尾。
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            {[
+              { id: "survey" as const, title: "问卷基础", desc: "称呼 + 单选 + 长文本，适合普通问卷" },
+              { id: "single-game" as const, title: "单题小游戏", desc: "开场文段 + 一道小游戏题" },
+              { id: "mixed" as const, title: "混合互动", desc: "热身单选 + 小游戏 + 感受长文本" },
+            ].map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className="rounded-xl border border-[var(--color-edge)] p-3 text-left hover:border-[var(--color-primary)]"
+                onClick={() => applyTemplate(template.id)}
+              >
+                <span className="block text-sm font-semibold text-[var(--color-ink)]">{template.title}</span>
+                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">{template.desc}</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
       ) : null}
 
       {/* 手机端底部操作栏：桌面端按钮在窄屏下藏进这里 */}

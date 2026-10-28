@@ -1212,6 +1212,10 @@ export interface AdminTaskPack {
   id: number;
   name: string;
   description: string | null;
+  /** 玩法类型（服务端引擎注册表校验）：tower 为内置，其余为插件。 */
+  gameType: string;
+  /** 插件玩法的配置（settings_json，已由服务端按 Schema 归一化）。 */
+  settings: Record<string, unknown>;
   normalFloors: number;
   hellFloors: number;
   prepItems: string[];
@@ -1239,6 +1243,7 @@ export interface AdminTaskItemInput {
 export interface AdminTaskPackInput {
   name: string;
   description: string | null;
+  gameType?: string;
   normalFloors: number;
   hellFloors: number;
   prepItems: string[];
@@ -1379,4 +1384,56 @@ export function restoreReportTemplate(id: string): Promise<{ ok: boolean }> {
 
 export function uploadShowcaseMedia(file: File): Promise<{ mediaAssetId: number; url: string }> {
   return apiUpload("/api/admin/showcase/media", file);
+}
+
+/** 素材库条目（0091）：引用计数由服务端算好，前端只读。 */
+export interface AdminMediaLibraryItem {
+  id: number;
+  scope: string;
+  mediaType: string;
+  mimeType: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  createdAt: string;
+  contentHash: string | null;
+  /** 结构化弱引用数（BGM / 场景图等 JSON 内引用）。 */
+  weakRefs: number;
+  /** 强关联数（题目/选项/答卷挂载）。 */
+  hardRefs: number;
+}
+
+export function fetchAdminMediaLibrary(params: {
+  mime?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: AdminMediaLibraryItem[]; total: number; limit: number; offset: number }> {
+  const query = new URLSearchParams();
+  if (params.mime) query.set("mime", params.mime);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  const suffix = query.toString();
+  return api(`/api/admin/media-library${suffix ? `?${suffix}` : ""}`);
+}
+
+export function uploadAdminMediaLibrary(file: File): Promise<{ assetId: number; deduplicated: boolean }> {
+  return apiUpload("/api/admin/media-library", file);
+}
+
+export function deleteAdminMediaLibrary(assetId: number): Promise<{ ok: boolean; id: number }> {
+  return apiSend("DELETE", `/api/admin/media-library/${assetId}`);
+}
+
+/** 把素材库里已有的素材直接挂到题目上（不重传文件）。 */
+export function attachLibraryMediaToQuestion(
+  surveyId: number,
+  questionId: number,
+  assetId: number,
+): Promise<{
+  mediaAssetId: number;
+  mediaType: string;
+  fileName: string | null;
+  mimeType: string | null;
+  updatedAt: string;
+}> {
+  return apiSend("POST", `/api/admin/surveys/${surveyId}/questions/${questionId}/media`, { assetId });
 }

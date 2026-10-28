@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBlocker } from "react-router";
 import { Plus, Trash2, Upload, Download, Save, RotateCcw } from "lucide-react";
-import { api, apiSend, ApiError } from "../api";
+import { api, apiSend, ApiError, fetchAdminTaskPacks } from "../api";
 import { useDialogs } from "../components/Dialogs";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
 import {
@@ -639,11 +639,111 @@ export function CertContentPage() {
                 <Plus size={14} /> 增加一档
               </button>
             </div>
+
+            <CertDrawSection
+              theme={active}
+              onChange={(draw) => patchActive({ draw })}
+            />
           </div>
         ) : (
           <p className="text-sm text-[var(--color-muted)]">没有可选主题，点左侧「新增主题」。</p>
         )}
       </div>
     </section>
+  );
+}
+
+/** 抽取池配置：主题的「帮我选/抽取」改为服务端从小游戏区的任务包实时抽。 */
+function CertDrawSection({
+  theme,
+  onChange,
+}: {
+  theme: CertTheme;
+  onChange: (draw: CertTheme["draw"]) => void;
+}) {
+  const [packs, setPacks] = useState<{ id: number; name: string; enabled: boolean }[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAdminTaskPacks()
+      .then((response) => {
+        if (!cancelled) setPacks(response.packs.map((p) => ({ id: p.id, name: p.name, enabled: p.enabled })));
+      })
+      .catch(() => {
+        if (!cancelled) setPacks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const draw = theme.draw ?? null;
+
+  return (
+    <div className="rounded-surface border border-[var(--color-edge)] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-[var(--color-muted)]">抽取池（可选，动态引用小游戏区的任务包）</p>
+        {draw ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(undefined)}>
+            <Trash2 size={14} /> 移除抽取池
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => onChange({ packId: packs?.[0]?.id ?? 0, count: 1 })}
+            disabled={!packs?.length}
+          >
+            <Plus size={14} /> 启用抽取池
+          </button>
+        )}
+      </div>
+      {!draw ? (
+        <p className="mt-1 text-[11px] text-[var(--color-muted-soft)]">
+          配置后，生成器的「帮我选/抽取」改为服务端实时从任务包抽条目；包更新后认证卡自动跟着变。任务包内容为 18+，抽取需通过门禁。
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            className="select select-sm"
+            aria-label="抽取池任务包"
+            value={draw.packId || ""}
+            onChange={(e) => onChange({ ...draw, packId: Number(e.target.value) })}
+          >
+            <option value="" disabled>
+              选择任务包…
+            </option>
+            {(packs ?? []).map((pack) => (
+              <option key={pack.id} value={pack.id}>
+                {pack.name}
+                {pack.enabled ? "" : "（已停用）"}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
+            每次抽取
+            <input
+              type="number"
+              min={1}
+              max={5}
+              className="input input-sm w-16"
+              value={draw.count}
+              onChange={(e) =>
+                onChange({ ...draw, count: Math.max(1, Math.min(5, Math.round(Number(e.target.value) || 1))) })
+              }
+            />
+            条
+          </label>
+          <label className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
+            按钮文案
+            <input
+              className="input input-sm w-36"
+              maxLength={20}
+              placeholder={draw.label || "帮我选"}
+              value={draw.label ?? ""}
+              onChange={(e) => onChange({ ...draw, label: e.target.value.trim() || undefined })}
+            />
+          </label>
+        </div>
+      )}
+    </div>
   );
 }

@@ -6,6 +6,8 @@ import {
   listTaskPacks,
   updateTaskPack,
 } from "../../db/repositories/task-pack.repository";
+import { normalizeGameType, isPluginGameType } from "../../trial/engine-registry";
+import { gamePluginRegistry } from "../../game-plugin/registry";
 import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repository";
 import { fetchZohoFormsSurveyJson, isZohoUrl, ZohoImportError } from "../../services/zoho-forms.service";
 import { createImportMediaResolver } from "../../services/import-media.service";
@@ -42,6 +44,7 @@ import {
   insertQuestionWithOptions,
   isRecord,
   readJsonBody,
+  storeSurveyAdminMedia,
   readString,
   touchSurvey,
   validateQuestionPayload,
@@ -53,7 +56,7 @@ import {
   fetchMicrosoftFormsSurveyJson,
   isFormsUrl,
 } from "../../services/microsoft-forms.service";
-import { createMediaAsset } from "../../db/repositories/media.repository";
+import { createMediaAsset, countMediaAssetReferences, deleteMediaAssetRow, getMediaAssetById } from "../../db/repositories/media.repository";
 
 export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx: WriteContext): Promise<Response> {
   const { user, isAdmin, fail, json } = ctx;
@@ -585,9 +588,23 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 60) : "";
     if (!name) return fail(400, "validation_failed", "任务包名称不能为空");
+    const gameType = normalizeGameType(body.gameType ?? "tower");
+    if (!gameType) return fail(400, "validation_failed", "未知的玩法类型");
+    // 插件玩法的配置走 Schema 归一化（白名单 + 夹取），落库前就是干净数据。
+    let settings: Record<string, unknown> | undefined;
+    if (isPluginGameType(gameType)) {
+      const validated = gamePluginRegistry.validateConfig(gameType, body.settings ?? {});
+      const blocking = validated.issues.filter((issue) => issue.severity === "error");
+      if (blocking.length > 0) {
+        return fail(400, "validation_failed", blocking.map((issue) => issue.message).join("；"));
+      }
+      settings = validated.config;
+    }
     const createInput: {
       name: string;
       description?: string | null;
+      gameType?: string;
+      settings?: Record<string, unknown>;
       normalFloors?: number;
       hellFloors?: number;
       prepItems?: string[];
@@ -596,6 +613,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     } = {
       name,
       description: typeof body.description === "string" ? body.description.slice(0, 300) : null,
+      gameType,
+      ...(settings ? { settings } : {}),
       items: Array.isArray(body.items) ? body.items : [],
     };
     if (typeof body.normalFloors === "number") createInput.normalFloors = body.normalFloors;
@@ -629,6 +648,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     const updateInput: {
       name?: string;
       description?: string | null;
+      gameType?: string;
+      settings?: Record<string, unknown>;
       normalFloors?: number;
       hellFloors?: number;
       prepItems?: string[];
@@ -640,6 +661,23 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     if (typeof body.name === "string") updateInput.name = body.name;
     if (typeof body.description === "string") updateInput.description = body.description;
     if (body.description === null) updateInput.description = null;
+    if (body.gameType !== undefined) {
+      // 玩法类型创建后仍可改，但必须是注册表内的合法值（爬塔或已注册插件）。
+      const gameType = normalizeGameType(body.gameType);
+      if (!gameType) return fail(400, "validation_failed", "未知的玩法类型");
+      updateInput.gameType = gameType;
+    }
+    // 插件配置：与创建同一闸门（Schema 归一化 + 结构校验）。
+    // 玩法类型可能在本请求里一并修改，因此以"生效后的类型"为准。
+    const effectiveGameType = updateInput.gameType ?? existing.gameType;
+    if (isPluginGameType(effectiveGameType) && body.settings !== undefined) {
+      const validated = gamePluginRegistry.validateConfig(effectiveGameType, body.settings);
+      const blocking = validated.issues.filter((issue) => issue.severity === "error");
+      if (blocking.length > 0) {
+        return fail(400, "validation_failed", blocking.map((issue) => issue.message).join("；"));
+      }
+      updateInput.settings = validated.config;
+    }
     if (typeof body.normalFloors === "number") updateInput.normalFloors = body.normalFloors;
     if (typeof body.hellFloors === "number") updateInput.hellFloors = body.hellFloors;
     if (Array.isArray(body.prepItems)) {
@@ -682,6 +720,56 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       entityId: String(packId),
     });
     return json({ ok: true, id: packId });
+  }
+
+  // ---- 素材库（0091）：独立上传 / 零引用删除 ----
+  if (request.method === "POST" && url.pathname === "/api/admin/media-library") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理素材库");
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    if (!(file instanceof File)) return fail(400, "invalid_upload", "请选择要上传的文件");
+    let asset;
+    try {
+      asset = await storeSurveyAdminMedia(db, env, file);
+    } catch (error) {
+      return fail(400, "invalid_upload", error instanceof Error ? error.message : "上传失败，请重试");
+    }
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "media_library.upload",
+      entityType: "media_asset",
+      entityId: String(asset.id),
+      after: { fileName: asset.fileName, mimeType: asset.mimeType, fileSize: asset.fileSize },
+    });
+    return json({ assetId: asset.id, deduplicated: Boolean(asset.contentHash) });
+  }
+
+  const mediaLibraryMatch = url.pathname.match(/^\/api\/admin\/media-library\/(\d+)$/);
+  if (request.method === "DELETE" && mediaLibraryMatch) {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理素材库");
+    const assetId = Number(mediaLibraryMatch[1]);
+    const asset = await getMediaAssetById(db, assetId);
+    if (!asset) return fail(404, "not_found", "素材不存在");
+    const refs = await countMediaAssetReferences(db, assetId);
+    if (refs > 0) return fail(409, "still_referenced", `该素材仍被 ${refs} 处引用，先解除引用再删除`);
+    // blob 双后端清理（与 TieredMediaStore.delete 同语义），失败不阻断行删除——
+    // 孤儿清扫会再兜底。
+    if (asset.storageKey) {
+      await Promise.allSettled([
+        env.MEDIA?.delete(asset.storageKey),
+        env.MEDIA_KV?.delete(asset.storageKey),
+      ]);
+    }
+    const removed = await deleteMediaAssetRow(db, assetId);
+    if (!removed) return fail(404, "not_found", "素材不存在");
+    await writeAudit(db, {
+      actorUserId: user.id,
+      action: "media_library.delete",
+      entityType: "media_asset",
+      entityId: String(assetId),
+      before: { fileName: asset.fileName, mimeType: asset.mimeType, storageKey: asset.storageKey },
+    });
+    return json({ ok: true, id: assetId });
   }
 
   const seriesAdminResponse = await handleAdminSeriesWrite(request, url, env, ctx, body);

@@ -31,6 +31,8 @@ import {
   TRIAL_SHOP,
   validateShopSelection,
 } from "../trial/engine";
+import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../trial/engine-registry";
+import { applyPluginAction, loadActivePluginRun, pluginHistoryFields, startPluginRun } from "./trial-plugin-api";
 
 /**
  * Public trial API for the web task system (/trial): pack discovery, the
@@ -58,11 +60,15 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
         id: pack.id,
         name: pack.name,
         description: pack.description,
+        gameType: normalizeGameType(pack.gameType) ?? "tower",
+        gameLabel: gameTypeLabel(pack.gameType),
         normalFloors: pack.normalFloors,
         hellFloors: pack.hellFloors,
         prepItems: pack.prepItems,
         prepText: pack.prepText,
       })),
+      // 玩法注册表：客户端按 gameType 分组展示"小游戏区"的各玩法版块。
+      gameTypes: listGameTypes(),
     });
   }
 
@@ -98,6 +104,8 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (participant instanceof Response) return participant;
     const run = await getActiveTaskRunByParticipant(env.DB, participant.participantHash);
     if (!run) return json({ run: null });
+    // 插件局：视图由插件引擎从信封还原，包被停用也允许读完这一局。
+    if (run.plugin) return loadActivePluginRun(env, run);
     // A disabled pack must not hide an active run: the participant would be
     // locked out by run_active on /runs while having no way to even abandon.
     const packs = await listTaskPacks(env.DB, { withItems: true });
@@ -125,12 +133,17 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     const packs = await listTaskPacks(env.DB, {});
     const packNames = new Map(packs.map((pack) => [pack.id, pack.name]));
     return json({
-      runs: runs.map((run) => ({
-        ...serializeRun(run, packNames.get(run.packId) ?? `#${run.packId}`),
-        startedAt: run.startedAt,
-        finishedAt: run.finishedAt,
-        grade: run.status === "completed" ? trialGrade(toTrialRun(run)) : null,
-      })),
+      runs: runs.map((run) => {
+        // 插件局的评级在结算时由插件引擎写进信封；爬塔局实时计算。
+        const pluginFields = pluginHistoryFields(run);
+        return {
+          ...serializeRun(run, packNames.get(run.packId) ?? `#${run.packId}`),
+          startedAt: run.startedAt,
+          finishedAt: run.finishedAt,
+          ...(pluginFields.plugin ? { plugin: pluginFields.plugin } : {}),
+          grade: run.status === "completed" ? (pluginFields.grade ?? trialGrade(toTrialRun(run))) : null,
+        };
+      }),
     });
   }
 
@@ -165,6 +178,12 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     const packs = await listTaskPacks(env.DB, { enabledOnly: true, withItems: true });
     const pack = packs.find((item) => item.id === packId);
     if (!pack) return fail(404, "not_found", "任务包不存在或已停用");
+    // 开局入口按玩法分发：内置爬塔走历史路径，插件玩法交给插件引擎。
+    const gameType = normalizeGameType(pack.gameType);
+    if (!gameType) return fail(400, "unsupported_game", "该玩法暂未开放，敬请期待");
+    if (isPluginGameType(gameType)) {
+      return startPluginRun(env, { pack, participant, persona, mode });
+    }
     const items = pack.items ?? [];
     if (items.length === 0) return fail(409, "empty_pack", "该任务包还没有可用任务，请联系管理员");
     // The run's floor window must stay inside the content actually reachable by
@@ -273,6 +292,19 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     }
     const body = (await request.json().catch(() => null)) as { action?: unknown } | null;
     const rawAction = body?.action;
+    // 插件局：动作白名单由插件引擎决定（isAction），放弃也在这里处理。
+    if (record.plugin) {
+      const packs = await listTaskPacks(env.DB, {});
+      const pack = packs.find((item) => item.id === record.packId) ?? null;
+      const action =
+        rawAction === "abandon" ? { kind: "abandon" } : rawAction;
+      return applyPluginAction(env, {
+        record,
+        pack,
+        participantHash: participant.participantHash,
+        action,
+      });
+    }
     if (
       rawAction !== "complete" &&
       rawAction !== "skip" &&

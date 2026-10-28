@@ -75,7 +75,11 @@ export type QuestionType =
   // 互动场景：场景图上的可点区域，点开内层图片或切换子场景；
   // 探索过的热点 id 记入答案（json_value = {kind:"scene",visited}）。
   // 配置存 settings_json（src/survey/hotspot.ts 校验），媒体挂 question_media。
-  | "scene";
+  | "scene"
+  // 小游戏挑战：答题者完成一个任务包的小游戏（当前为爬塔），
+  // 成绩记入答案（json_value = {kind:"game",runId,score,grade,completed}）。
+  // 配置存 settings_json.game.packId（src/survey/game.ts 校验），网页端交互。
+  | "game";
 
 export interface SurveyQuestion {
   id: number;
@@ -222,6 +226,23 @@ export interface MediaAsset {
   height: number | null;
   duration: number | null;
   r2Key: string | null;
+  /** 上传字节 SHA-256（0091）：同哈希素材复用同一 blob，跨问卷只存一份。 */
+  contentHash?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 弱引用登记（0091）：BGM / 场景图这类以 URL 字符串藏在 JSON 里的引用。
+ * 由每日维护任务从 settings_json 同步；素材库引用计数与删除保护读它。
+ */
+export interface MediaRef {
+  id: number;
+  assetId: number;
+  /** 引用来源类型，如 "bgm" | "scene_image"。 */
+  refType: string;
+  /** 引用方唯一键，如 "survey:123"。 */
+  refKey: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -36,10 +36,19 @@ export interface TrialShopEconomy {
   caps: { skipTicket: number; booster: number; shield: number };
 }
 
+export interface TrialGameType {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface TrialPack {
   id: number;
   name: string;
   description: string | null;
+  /** 玩法类型（engine-registry 注册表），客户端按它分组展示。 */
+  gameType: string;
+  gameLabel: string;
   normalFloors: number;
   hellFloors: number;
   /** Preparation checklist the player should gather before floor 1. */
@@ -137,6 +146,7 @@ async function trialRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchTrialPacks(): Promise<{
   packs: TrialPack[];
+  gameTypes?: TrialGameType[];
   submissionBotUrl: string | null;
   shop?: TrialShopEconomy;
 }> {

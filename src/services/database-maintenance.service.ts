@@ -1,4 +1,5 @@
 import { telegramUpdateDedupCutoff } from "./update-dedup.service";
+import { upsertMediaRef } from "../db/repositories/media.repository";
 
 export interface DatabaseMaintenanceSummary {
   expiredResponses: number;
@@ -15,6 +16,8 @@ export interface DatabaseMaintenanceSummary {
   expiredPreviewAssets: number;
   expiredGeneratedAssets: number;
   orphanAssets: number;
+  /** 0091：本次同步进 media_refs 的弱引用登记行数。 */
+  mediaRefsSynced: number;
   expiredRenderJobs: number;
   expiredGeneratorJobs: number;
   expiredReportResults: number;
@@ -334,6 +337,7 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
                               OR sp.avatar_media_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM showcase_items si
                            WHERE si.cover_media_id = m.id OR si.media_asset_id = m.id)
+          AND NOT EXISTS (SELECT 1 FROM media_refs mr WHERE mr.asset_id = m.id)
         ORDER BY m.created_at ASC, m.id ASC
         LIMIT ?`,
     )
@@ -342,7 +346,20 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
   return (result.results ?? []).map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
 }
 
-async function deleteOrphanMediaAssets(db: D1Database, before: string, shouldStop: () => boolean): Promise<number> {
+/**
+ * 孤儿素材回收（0091 起同时回收 blob）。
+ *
+ * 之前只删 media_assets 行：历史行都带 KV TTL 兜底，blob 会自己过期。内容
+ * 寻址 blob（media:blob:<sha256>，无 TTL）打破了这个前提——行删了 blob 会
+ * 永久留在 R2。所以删行前先记下 storage_key，删完后若已无任何 asset 行指向
+ * 同一个 key（去重后的共享 blob 可能仍被别的行引用），才删对象本身。
+ */
+async function deleteOrphanMediaAssets(
+  db: D1Database,
+  before: string,
+  shouldStop: () => boolean,
+  store: OrphanBlobStore | null,
+): Promise<number> {
   const candidates = await findOrphanMediaCandidates(db, before);
   if (candidates.length === 0) return 0;
   const referencedInJson = new Set<number>([
@@ -352,16 +369,82 @@ async function deleteOrphanMediaAssets(db: D1Database, before: string, shouldSto
   let deleted = 0;
   for (const id of candidates) {
     if (referencedInJson.has(id)) continue;
-    deleted += await changes(db.prepare("DELETE FROM media_assets WHERE id = ?").bind(id));
+    // 先取 storage_key：删行之后就查不到了。
+    const row = store
+      ? await db.prepare("SELECT storage_key storageKey FROM media_assets WHERE id = ? LIMIT 1").bind(id).first<{ storageKey: string | null }>()
+      : null;
+    const storageKey = row?.storageKey ?? null;
+    if ((await changes(db.prepare("DELETE FROM media_assets WHERE id = ?").bind(id))) === 0) continue;
+    deleted += 1;
+    if (!store || !storageKey) continue;
+    const stillUsed = await db
+      .prepare("SELECT 1 FROM media_assets WHERE storage_key = ? LIMIT 1")
+      .bind(storageKey)
+      .first();
+    if (!stillUsed) await store.delete(storageKey).catch(() => undefined);
   }
   return deleted;
+}
+
+/** 孤儿清扫需要的 blob 删除能力（与 TieredMediaStore.delete 同语义）。 */
+export interface OrphanBlobStore {
+  delete(storageKey: string): Promise<void>;
+}
+
+/**
+ * 弱引用登记同步（0091）：把 surveys.settings_json 里以 URL 字符串出现的
+ * 媒体引用（BGM / 场景图 / 主题背景……）写进 media_refs。
+ *
+ * JSON 兜底正则扫描只服务于"清扫前最后一刻的保护"，素材库的引用计数与
+ * 删除保护读不了它——这一步把它们落成结构化行（ref_type='survey_settings'，
+ * ref_key='survey:{id}:{assetId}'），素材库页面因此能看到真实引用。
+ * 每次全量重建该问卷的登记行：问卷编辑后失效的引用随重建自动消失。
+ */
+export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolean): Promise<number> {
+  let synced = 0;
+  let lastId = 0;
+  while (!shouldStop()) {
+    const result = await db
+      .prepare(
+        `SELECT id, settings_json FROM surveys
+          WHERE id > ?
+            AND settings_json IS NOT NULL
+            AND settings_json LIKE '%media/%'
+          ORDER BY id ASC
+          LIMIT ?`,
+      )
+      .bind(lastId, JSON_SCAN_PAGE_SIZE)
+      .all<{ id: number; settings_json: string | null }>();
+    const rows = result.results ?? [];
+    for (const row of rows) {
+      lastId = row.id;
+      const assetIds = collectIds(row.settings_json?.matchAll(/media\/(\d+)/g) ?? []);
+      await db.prepare("DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE ?")
+        .bind(`survey:${row.id}:%`)
+        .run();
+      for (const assetId of assetIds) {
+        await upsertMediaRef(db, {
+          refType: "survey_settings",
+          refKey: `survey:${row.id}:${assetId}`,
+          assetId,
+        });
+        synced += 1;
+      }
+    }
+    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
+  }
+  return synced;
 }
 
 /**
  * Deletes only operational residue. Published surveys, all completed answers,
  * templates and identity cards are deliberately outside this retention policy.
  */
-export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): Promise<DatabaseMaintenanceSummary> {
+export async function runDatabaseMaintenance(
+  db: D1Database,
+  now = Date.now(),
+  store: OrphanBlobStore | null = null,
+): Promise<DatabaseMaintenanceSummary> {
   const staleResponseBefore = cutoff(30, now);
   const softDeleteBefore = cutoff(30, now);
   const draftBefore = cutoff(90, now);
@@ -387,6 +470,7 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
     expiredPreviewAssets: 0,
     expiredGeneratedAssets: 0,
     orphanAssets: 0,
+    mediaRefsSynced: 0,
     expiredRenderJobs: 0,
     expiredGeneratorJobs: 0,
     expiredReportResults: 0,
@@ -610,7 +694,8 @@ export async function runDatabaseMaintenance(db: D1Database, now = Date.now()): 
     },
     async () => {
       if (await ensureOrphanSweepIndexes(scoped)) {
-        summary.orphanAssets = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded);
+        summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded);
+        summary.orphanAssets = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store);
       }
     },
   ];

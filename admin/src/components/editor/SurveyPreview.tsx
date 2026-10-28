@@ -45,6 +45,16 @@ export function PreviewChoice({
 }
 
 export function PreviewAnswer({ question }: { question: EditorPreviewQuestion }) {
+  if (question.type === "game") {
+    return (
+      <div
+        className="rounded-lg border border-dashed px-3 py-4 text-center text-sm"
+        style={{ borderColor: "var(--survey-card-border)", color: "var(--survey-muted)" }}
+      >
+        🎮 小游戏挑战 · 正式答卷时内嵌运行
+      </div>
+    );
+  }
   if (isSingleChoiceQuestion(question) || question.type === "multiple") {
     return (
       <div className="grid gap-2">

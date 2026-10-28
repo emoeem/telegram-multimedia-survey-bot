@@ -17,7 +17,13 @@ export type SurveyQuestionType =
   | "video"
   | "audio"
   | "note"
-  | "scene";
+  | "scene"
+  | "game";
+
+/** 小游戏题配置（settings.game）：指向小游戏区的一个任务包。 */
+export interface SurveyGameSettings {
+  packId: number;
+}
 
 export type MediaType = "photo" | "video" | "audio" | "voice" | "animation" | "gif" | "sticker" | "document";
 

@@ -20,6 +20,10 @@ export interface TaskPackRecord {
   id: number;
   name: string;
   description: string | null;
+  /** 玩法类型（见 src/trial/engine-registry.ts），存量包为 tower。 */
+  gameType: string;
+  /** 玩法级配置（自由 JSON，由对应引擎校验语义）。 */
+  settings: Record<string, unknown>;
   normalFloors: number;
   hellFloors: number;
   /** Preparation checklist shown to the player before floor 1. */
@@ -45,12 +49,24 @@ export interface TaskItemInput {
   sortOrder?: number;
 }
 
-const PACK_COLUMNS = `id, name, description, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at`;
+const PACK_COLUMNS = `id, name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at`;
 const ITEM_COLUMNS = `id, pack_id, title, description, warning, score, persona, mode, min_floor, max_floor, enabled, sort_order, created_at, updated_at`;
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const num = Number(value);
   return Number.isInteger(num) && num >= min && num <= max ? num : fallback;
+}
+
+function parsePackSettings(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(String(raw ?? "{}"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function parsePrepItems(raw: unknown): string[] {
@@ -72,6 +88,8 @@ function mapPack(row: Record<string, unknown>): TaskPackRecord {
     id: Number(row.id),
     name: String(row.name),
     description: typeof row.description === "string" ? row.description : null,
+    gameType: typeof row.game_type === "string" && row.game_type ? row.game_type : "tower",
+    settings: parsePackSettings(row.settings_json),
     normalFloors: clampInt(row.normal_floors, 1, 60, 10),
     hellFloors: clampInt(row.hell_floors, 1, 60, 12),
     prepItems: parsePrepItems(row.prep_items),
@@ -178,6 +196,9 @@ export async function createTaskPack(
   input: {
     name: string;
     description?: string | null;
+    /** 调用方需先用引擎注册表校验；这里只负责落库。 */
+    gameType?: string;
+    settings?: Record<string, unknown>;
     normalFloors?: number;
     hellFloors?: number;
     prepItems?: string[];
@@ -188,12 +209,14 @@ export async function createTaskPack(
   const now = new Date().toISOString();
   const result = await db
     .prepare(
-      `INSERT INTO task_packs (name, description, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM task_packs), ?, ?)`,
+      `INSERT INTO task_packs (name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM task_packs), ?, ?)`,
     )
     .bind(
       input.name.slice(0, 60),
       input.description?.slice(0, 300) ?? null,
+      input.gameType ?? "tower",
+      JSON.stringify(input.settings ?? {}),
       clampInt(input.normalFloors, 1, 60, 10),
       clampInt(input.hellFloors, 1, 60, 12),
       JSON.stringify(parsePrepItems(input.prepItems ?? [])),
@@ -243,6 +266,8 @@ export async function updateTaskPack(
   input: {
     name?: string;
     description?: string | null;
+    gameType?: string;
+    settings?: Record<string, unknown>;
     normalFloors?: number;
     hellFloors?: number;
     prepItems?: string[];
@@ -256,12 +281,14 @@ export async function updateTaskPack(
   if (!existing) return null;
   await db
     .prepare(
-      `UPDATE task_packs SET name = ?, description = ?, normal_floors = ?, hell_floors = ?, prep_items = ?, prep_text = ?, enabled = ?, sort_order = ?, updated_at = ?
+      `UPDATE task_packs SET name = ?, description = ?, game_type = ?, settings_json = ?, normal_floors = ?, hell_floors = ?, prep_items = ?, prep_text = ?, enabled = ?, sort_order = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
       (input.name ?? existing.name).slice(0, 60),
       (input.description !== undefined ? input.description : existing.description)?.slice(0, 300) ?? null,
+      input.gameType ?? existing.gameType,
+      JSON.stringify(input.settings ?? existing.settings),
       clampInt(input.normalFloors ?? existing.normalFloors, 1, 60, 10),
       clampInt(input.hellFloors ?? existing.hellFloors, 1, 60, 12),
       JSON.stringify(parsePrepItems(input.prepItems ?? existing.prepItems)),

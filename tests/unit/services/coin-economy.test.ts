@@ -89,6 +89,7 @@ function createSqliteD1(): D1Database & { sqlite: DatabaseSync } {
     ALTER TABLE media_assets ADD COLUMN asset_scope TEXT NOT NULL DEFAULT 'survey';
     ALTER TABLE media_assets ADD COLUMN storage_kind TEXT;
     ALTER TABLE media_assets ADD COLUMN storage_key TEXT;
+    ALTER TABLE media_assets ADD COLUMN content_hash TEXT;
     ALTER TABLE media_assets ADD COLUMN url TEXT;
     ALTER TABLE media_assets ADD COLUMN expires_at TEXT;
     ALTER TABLE media_assets ADD COLUMN alt_text TEXT;

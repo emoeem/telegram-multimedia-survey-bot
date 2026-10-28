@@ -1,6 +1,7 @@
 import { SURVEY_SCHEMA_VERSION, type UnifiedSurveyImport } from "./schema";
 import { MATRIX_COLUMN_MIN, SURVEY_QUESTION_TYPES, isSurveyQuestionType, minOptionCount } from "./question-rules";
 import { parseHotspotScene } from "./hotspot";
+import { parseGameQuestionSettings } from "./game";
 
 export interface ValidationIssue {
   path: string;
@@ -104,6 +105,12 @@ export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
         issues.push({
           path: `${path}.settings.scene`,
           message: "scene questions require a valid settings.scene config (see docs/HOTSPOT_SCENES.md)",
+        });
+      }
+      if (question.type === "game" && !parseGameQuestionSettings(question.settings)) {
+        issues.push({
+          path: `${path}.settings.game`,
+          message: "game questions require settings.game.packId pointing at a task pack",
         });
       }
     }

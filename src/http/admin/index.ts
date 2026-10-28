@@ -4,6 +4,7 @@ import { describeDatabaseError, isDatabaseCapacityError } from "../../db/errors"
 import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repository";
 import type { Env } from "../../index";
 import { createMediaStore } from "../../services/media/temporary-media-store";
+import { storeDeduplicatedMedia } from "../../services/media/media-dedup.service";
 import { handleAdminRead } from "./read";
 import { handleAdminWrite } from "./write";
 import { handleCertContentAdmin } from "./cert-content";
@@ -369,17 +370,12 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
-    const storageKey = `media:survey-audio:${crypto.randomUUID()}`;
-    await store.put({ storageKey, bytes, contentType: file.type });
-    const asset = await createMediaAsset(env.DB, {
-      scope: "survey",
-      mediaType: "audio",
-      storageKind: store.kind,
-      storageKey,
+    // BGM 走同一份去重管线：同一首曲子多个问卷复用一份 blob。
+    const { asset } = await storeDeduplicatedMedia(env.DB, store, {
+      bytes,
       mimeType: file.type,
+      mediaType: "audio",
       fileName: file.name,
-      fileSize: bytes.byteLength,
-      expiresAt: null,
     });
     return json({ mediaAssetId: asset.id, url: `/api/survey/media/${asset.id}` });
   }

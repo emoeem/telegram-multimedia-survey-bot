@@ -29,6 +29,7 @@ import {
   ShieldAlert,
   Sparkles,
   Star,
+  Trophy,
   Users,
   Volume2,
   VolumeX,
@@ -213,6 +214,11 @@ import {
   subscribeSfxEnabled,
 } from "./sfx";
 import { HotspotScene } from "./HotspotScene";
+import { GamePlayer, type GameAnswerValue } from "./GamePlayer";
+import { PluginGamePlay } from "./PluginGamePlay";
+import { hasClientPlugin } from "../game-plugins/loader";
+import { numericAnswerValue, parseGameQuestionSettings } from "../../../src/survey/game";
+import { gamePassedFlag } from "../../../src/survey/engine";
 
 declare global {
   interface Window {
@@ -1143,6 +1149,10 @@ function selectedOptionId(question: SurveyQuestionDto, value: AnswerValue | unde
 function computeFlags(questions: SurveyQuestionDto[], answers: Record<number, AnswerValue>): Map<string, number> {
   const flags = new Map<string, number>();
   for (const question of questions) {
+    // 小游戏题：通关自动置 flag game_passed_<题id>（与服务端同一语义）。
+    if (question.type === "game" && numericAnswerValue(answers[question.id]) > 0) {
+      flags.set(gamePassedFlag(question.id), 1);
+    }
     const condition = question.condition as { flagRules?: unknown } | null;
     if (!condition || !Array.isArray(condition.flagRules)) continue;
     for (const rule of condition.flagRules as Array<{
@@ -1155,7 +1165,7 @@ function computeFlags(questions: SurveyQuestionDto[], answers: Record<number, An
       if (!flag) continue;
       const value = answers[Number(rule.questionId)];
       if (value === undefined || value === null) continue;
-      if (Number(rule.equals) !== Number(value)) continue;
+      if (Number(rule.equals) !== numericAnswerValue(value)) continue;
       const score = Number(rule.score);
       flags.set(flag, (flags.get(flag) ?? 0) + (Number.isFinite(score) ? score : 1));
     }
@@ -1195,7 +1205,7 @@ function nextIndex(questions: SurveyQuestionDto[], currentIndex: number, answers
         }>) {
           const value = answers[Number(rule.questionId)];
           if (value === undefined || value === null) continue;
-          if (Number(rule.equals) !== Number(value)) continue;
+          if (Number(rule.equals) !== numericAnswerValue(value)) continue;
           const targetId = Number(rule.targetQuestionId);
           if (Number.isInteger(targetId) && targetId > 0) {
             const targetIndex = questions.findIndex((question) => question.id === targetId);
@@ -1263,6 +1273,14 @@ function validateQuestion(question: SurveyQuestionDto, value: AnswerValue | unde
     const visited = (value as { kind?: unknown; visited?: unknown }).visited;
     if (question.required && (!Array.isArray(visited) || visited.length === 0)) {
       return "至少探索一处高亮区域";
+    }
+  }
+  if (question.type === "game" && value && typeof value === "object" && !Array.isArray(value)) {
+    // 必答的小游戏题以通关为作答门槛（与服务端 isWebAnswerPresent 同口径）：
+    // 弃坑/中断的局不算完成，答题者可以重新挑战。
+    const completed = (value as { kind?: unknown; completed?: unknown }).completed === true;
+    if (question.required && !completed) {
+      return "先完成小游戏挑战（通关或使用护盾结算）";
     }
   }
   return null;
@@ -2928,6 +2946,7 @@ export function SurveyApp() {
   const value = answers[question.id];
   const isNote = question.type === "note";
   const isScene = question.type === "scene";
+  const isGame = question.type === "game";
   const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
   const isLast = index === survey.questions.length - 1;
   // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
@@ -3133,6 +3152,60 @@ export function SurveyApp() {
                     disabled={busy}
                   />
                 </div>
+              </>
+            ) : isGame ? (
+              /* 小游戏挑战：叙事头 + 内嵌玩法；成绩在结算时写回答卷。 */
+              <>
+                {question.title ? (
+                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                    <Trophy
+                      className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
+                      aria-hidden="true"
+                    />
+                    {question.title}
+                  </h1>
+                ) : null}
+                {question.description ? (
+                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                    {question.description}
+                  </p>
+                ) : null}
+                {(() => {
+                  const gameSettings = parseGameQuestionSettings(question.settings);
+                  const pluginId = gameSettings?.gameType;
+                  // 渲染器选择：tower 走内置爬塔组件；已注册插件走插件宿主。
+                  // 插件宿主不会拿到任务包配置（含正确项），只吃服务端视图。
+                  if (gameSettings && pluginId && pluginId !== "tower" && hasClientPlugin(pluginId)) {
+                    return (
+                      <PluginGamePlay
+                        packId={gameSettings.packId}
+                        pluginId={pluginId}
+                        value={value}
+                        disabled={busy}
+                        onResult={(next: GameAnswerValue) => {
+                          updateAnswer(question.id, next);
+                          if (screen.responseId > 0) {
+                            saveQueue.enqueue({ questionId: question.id, value: next });
+                          }
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <GamePlayer
+                      packId={gameSettings?.packId ?? null}
+                      value={value}
+                      disabled={busy}
+                      onResult={(next: GameAnswerValue) => {
+                        updateAnswer(question.id, next);
+                        // 结算即落库（与 scene 同理）：成绩是要被记录的数据。
+                        if (screen.responseId > 0) {
+                          saveQueue.enqueue({ questionId: question.id, value: next });
+                        }
+                      }}
+                    />
+                  );
+                })()}
               </>
             ) : (
               <>

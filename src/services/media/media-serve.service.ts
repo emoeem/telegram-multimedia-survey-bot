@@ -4,7 +4,7 @@ import { readTemporaryMedia } from "./temporary-media.service";
 import { createMediaStore } from "./temporary-media-store";
 import { decodeDataUrl } from "../import.service";
 import { isActiveContentMime } from "./upload-validation.service";
-import { expireMediaAsset } from "../../db/repositories/media.repository";
+import { expireMediaAsset, markMediaAssetPromotedToR2 } from "../../db/repositories/media.repository";
 import { getStreamVideoStatus, type StreamEnv } from "./stream.service";
 
 interface StreamEnvSlice extends MediaServeEnv, StreamEnv {
@@ -15,6 +15,8 @@ export interface MediaServeEnv {
   BOT_TOKEN: string;
   MEDIA?: R2Bucket;
   MEDIA_KV: KVNamespace;
+  /** 首读回写（Telegram → R2 搬移）需要；未绑定的调用方可以不带。 */
+  DB?: D1Database;
 }
 
 /**
@@ -146,6 +148,18 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
   if (asset.telegramFileId) {
     try {
       const downloaded = await downloadTelegramFile(env.BOT_TOKEN, asset.telegramFileId);
+      // 首读回写（0091）：Telegram 资产只在第一次 cache miss 时走两趟 Bot
+      // API；下载成功且本部署绑了 R2 时把字节搬进来并翻转存储类型，此后
+      // 与 R2 资产同速。file_id 保留作兜底，搬移失败不影响本次返回。
+      if (env.MEDIA && env.DB) {
+        try {
+          const promotedKey = `media:telegram:${asset.id}`;
+          await env.MEDIA.put(promotedKey, downloaded.data);
+          await markMediaAssetPromotedToR2(env.DB, asset.id, promotedKey);
+        } catch (error) {
+          console.warn("Telegram media promotion failed", error instanceof Error ? error.message : error);
+        }
+      }
       const telegramMime = asset.mimeType ?? downloaded.contentType;
       const telegramHeaders = new Headers({
         "Content-Type": servedContentType(telegramMime),

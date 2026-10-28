@@ -1,5 +1,5 @@
 import type { MediaAssetScope, MediaType } from "../db/schema";
-import { createMediaAsset } from "../db/repositories/media.repository";
+import { createMediaAsset, findMediaAssetByTelegramUniqueId } from "../db/repositories/media.repository";
 import type { BotContext, TelegramMediaFile, TelegramMessage } from "../bot/types";
 
 function pickMedia(message: TelegramMessage): {
@@ -46,6 +46,13 @@ export async function registerMediaAsset(
   const picked = pickMedia(message);
   if (!picked) {
     return null;
+  }
+
+  // Telegram 复用（0091）：同一份文件（file_unique_id 相同）只登记一个 asset，
+  // 重复发送/多处绑定不再各建一行。首个命中行即返回。
+  const existing = await findMediaAssetByTelegramUniqueId(ctx.db, picked.file.file_unique_id, picked.type);
+  if (existing) {
+    return existing.id;
   }
 
   const asset = await createMediaAsset(ctx.db, {

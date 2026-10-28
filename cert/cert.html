@@ -526,6 +526,36 @@ input:disabled {
   gap: 16px;
 }
 
+/* 抽取池结果（主题配置 draw 时，「帮我选」改为服务端实时抽任务条目） */
+.draw-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.draw-item {
+  border: 1px solid var(--edge, #e2e8f0);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--soft, #f7f9fc);
+}
+
+.draw-item b {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.draw-item p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted, #64748b);
+}
+
 .group-head {
   display: flex;
   align-items: center;
@@ -1468,6 +1498,7 @@ input:disabled {
             <div class="seg" id="genderSeg" role="tablist" aria-label="选择性别"></div>
             <span class="echo" id="genderNote"></span>
           </div>
+          <div id="drawResult" class="draw-result" hidden></div>
           <div id="groupList" class="group-list"></div>
         </div>
 
@@ -10991,8 +11022,76 @@ window.CERT_SHARE_BASE = "https://emoemok.top/cert/";
       render();
     });
 
-    /* 帮我选：随机勾选一批 */
+    /* 帮我选：主题配置了抽取池时改为服务端实时抽任务条目（小游戏区联动，
+     * 包更新后自动跟着变）；否则本地随机勾选一批。 */
     $("randomBtn").addEventListener("click", function () {
+      var cfg = drawConfig();
+      if (cfg && cfg.packId) {
+        runDraw(cfg);
+        return;
+      }
+      legacyRandomPick();
+    });
+
+    function drawConfig() {
+      var t = theme();
+      if (!t || !t.draw || !(t.draw.packId > 0) || !adultOk()) return null;
+      return t.draw;
+    }
+
+    function renderDraw(items) {
+      var box = $("drawResult");
+      if (!box) return;
+      box.innerHTML = "";
+      if (!items || !items.length) {
+        box.hidden = true;
+        return;
+      }
+      items.forEach(function (item) {
+        var card = document.createElement("div");
+        card.className = "draw-item";
+        var title = document.createElement("b");
+        title.textContent = item.title || "（无标题）";
+        var desc = document.createElement("p");
+        desc.textContent = item.description || "";
+        card.appendChild(title);
+        if (item.warning) {
+          var warn = document.createElement("p");
+          warn.textContent = "⚠ " + item.warning;
+          card.appendChild(warn);
+        }
+        card.appendChild(desc);
+        box.appendChild(card);
+      });
+      box.hidden = false;
+    }
+
+    function runDraw(cfg) {
+      var params = new URLSearchParams();
+      params.set("ack", "adult18");
+      params.set("packId", String(cfg.packId));
+      params.set("count", String(clamp(Math.round(num(cfg.count, 1)), 1, 5)));
+      if (state.gender === "f" || state.gender === "m") params.set("persona", state.gender);
+      fetch("/api/cert/draw?" + params.toString())
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (body) {
+          if (body && body.ok && body.items && body.items.length) {
+            renderDraw(body.items);
+            toast("已从小游戏包实时抽取 " + body.items.length + " 条");
+          } else {
+            toast((body && body.message) || "抽取失败，已改为本地随机");
+            legacyRandomPick();
+          }
+        })
+        .catch(function () {
+          toast("抽取失败，已改为本地随机");
+          legacyRandomPick();
+        });
+    }
+
+    function legacyRandomPick() {
       var tags = themeData().tags.filter(tagVisible);
       if (!tags.length) {
         toast("先在分组里添加一些标签");
@@ -11043,7 +11142,7 @@ window.CERT_SHARE_BASE = "https://emoemok.top/cert/";
       }
       renderGroups();
       refreshAfterTagChange();
-    });
+    }
 
     /* 清空勾选 */
     $("clearTagsBtn").addEventListener("click", function () {

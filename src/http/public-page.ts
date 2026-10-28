@@ -89,8 +89,8 @@ export function escapeMetaAttribute(value: string): string {
 export const PUBLIC_PAGE_META: Record<string, { title: string; description: string }> = {
   "/plaza": { title: "广场 · 问卷平台", description: "发现公开个人资料、树洞内容与社区问卷。" },
   "/showcase": { title: "展示区 · 问卷平台", description: "沉浸式浏览创作者的公开个人展览与作品。" },
-  "/trial": { title: "挑战任务 · 问卷平台", description: "参与文字扮演挑战任务，查看成绩与排行榜。" },
-  "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与挑战记录。" },
+  "/trial": { title: "小游戏 · 问卷平台", description: "爬塔挑战等小游戏，查看成绩与排行榜。" },
+  "/me": { title: "我的 · 问卷平台", description: "查看你的答卷、资料卡与小游戏记录。" },
   "/coins": { title: "我的金币 · 问卷平台", description: "每日签到、挑战任务与金币收支明细。" },
   "/gacha": { title: "抽奖中心 · 问卷平台", description: "抽缘分纸条开聊，或用金币抽取其他用户公开授权的报告与内容。" },
   "/series": { title: "系列书架 · 问卷平台", description: "追更连载作品：新章节发布即通知。" },

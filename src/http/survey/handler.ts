@@ -674,7 +674,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const responseIndex = statements.length;
     statements.push(
       env.DB.prepare(
-        `SELECT id, status FROM survey_responses
+        `SELECT id, status, participant_hash participantHash FROM survey_responses
            WHERE id = ? AND survey_id = ? AND participant_hash ${HASH_SET_SQL} AND status = 'in_progress'
            LIMIT 1`,
       ).bind(responseId, surveyId, participant.participantHash, participant.participantHash),
@@ -731,7 +731,7 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     const question = flow.questions.find((item) => item.id === Number(body.questionId));
     if (!question) return fail(404, "question_not_found", "题目不存在");
 
-    const plan = await planWebAnswer(env, responseId, question, body.value);
+    const plan = await planWebAnswer(env, responseId, question, body.value, participant.participantHash);
     if ("error" in plan) return plan.error;
     // The answer and the resume pointer are one batch, so a respondent who
     // closes the tab mid-save never resumes on a question whose answer was

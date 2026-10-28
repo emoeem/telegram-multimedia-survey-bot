@@ -24,6 +24,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
   file: "文件",
   note: "剧情文段",
   scene: "互动场景",
+  game: "小游戏",
 };
 
 export function formatDateTime(value?: string | null): string {

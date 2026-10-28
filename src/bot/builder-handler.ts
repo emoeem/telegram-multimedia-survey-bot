@@ -155,6 +155,8 @@ const questionTypeLabels: Record<QuestionType, string> = {
   note: "剧情文段",
   // 互动场景：配置经导入脚本维护（docs/HOTSPOT_SCENES.md），不在 bot 向导提供。
   scene: "互动场景",
+  // 小游戏题：网页端交互（内嵌小游戏），bot 端仅展示题面。
+  game: "小游戏挑战",
 };
 
 function buildQuestionTypeKeyboard(appendMode = false): InlineKeyboardMarkup {

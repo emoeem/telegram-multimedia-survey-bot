@@ -20,10 +20,27 @@ export interface TaskRunRecord {
   completedTasks: number;
   skippedTasks: number;
   status: "active" | "completed" | "abandoned";
+  /** 爬塔局的状态（插件局这里是空占位，真实状态在 plugin.state）。 */
   state: TrialRunState;
+  /** 插件局信封；爬塔局为 null。 */
+  plugin: PluginRunEnvelope | null;
   startedAt: string;
   finishedAt: string | null;
   updatedAt: string;
+}
+
+/**
+ * 插件局在 task_runs.state_json 里的信封。
+ *
+ * 复用既有列：step/total 映射到 current_floor/max_floor，score 直接写 score
+ * ——这样排行榜、历史列表、进度条都不必知道"这局是什么玩法"。
+ * grade 在结算时写入，答卷写入路径据此取评级（爬塔局的评级是实时算的）。
+ */
+export interface PluginRunEnvelope {
+  kind: "plugin";
+  plugin: string;
+  state: unknown;
+  grade?: string;
 }
 
 export interface TaskRunInput {
@@ -35,6 +52,14 @@ export interface TaskRunInput {
   startingFloor: number;
   maxFloor: number;
   state: TrialRunState;
+  /** 插件局必须带信封；带了你就不需要 state。 */
+  plugin?: PluginRunEnvelope;
+}
+
+export function isPluginEnvelope(value: unknown): value is PluginRunEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return raw.kind === "plugin" && typeof raw.plugin === "string" && raw.plugin.length > 0;
 }
 
 function mapRow(row: Record<string, unknown>): TaskRunRecord {
@@ -44,6 +69,7 @@ function mapRow(row: Record<string, unknown>): TaskRunRecord {
   } catch {
     parsed = {};
   }
+  const plugin = isPluginEnvelope(parsed) ? parsed : null;
   return {
     id: Number(row.id),
     packId: Number(row.pack_id),
@@ -58,7 +84,9 @@ function mapRow(row: Record<string, unknown>): TaskRunRecord {
     completedTasks: Number(row.completed_tasks ?? 0),
     skippedTasks: Number(row.skipped_tasks ?? 0),
     status: row.status === "completed" ? "completed" : row.status === "abandoned" ? "abandoned" : "active",
-    state: normalizeState(parsed),
+    // 插件局不做爬塔归一化（normalizeState 会把插件状态整个丢掉）。
+    state: plugin ? normalizeState({}) : normalizeState(parsed),
+    plugin,
     startedAt: String(row.started_at),
     finishedAt: typeof row.finished_at === "string" ? row.finished_at : null,
     updatedAt: String(row.updated_at),
@@ -105,7 +133,7 @@ export async function createTaskRun(db: D1Database, input: TaskRunInput): Promis
       input.startingFloor,
       input.startingFloor,
       input.maxFloor,
-      JSON.stringify(input.state),
+      JSON.stringify(input.plugin ?? input.state),
       now,
       now,
     )
@@ -147,7 +175,8 @@ export async function saveTaskRun(db: D1Database, record: TaskRunRecord): Promis
       record.completedTasks,
       record.skippedTasks,
       record.status,
-      JSON.stringify(record.state),
+      // 插件局按信封整份写回（含引擎状态与结算评级），爬塔局写回状态机。
+      JSON.stringify(record.plugin ?? record.state),
       record.status === "active" ? null : (record.finishedAt ?? new Date().toISOString()),
       new Date().toISOString(),
       record.id,

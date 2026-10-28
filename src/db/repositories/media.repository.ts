@@ -21,6 +21,7 @@ interface MediaAssetRow {
   height: number | null;
   duration: number | null;
   r2_key: string | null;
+  content_hash: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +44,7 @@ function mapMediaAsset(row: MediaAssetRow): MediaAsset {
     height: row.height,
     duration: row.duration,
     r2Key: row.r2_key,
+    contentHash: row.content_hash ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -66,6 +68,7 @@ export async function createMediaAsset(
     height?: number | null;
     duration?: number | null;
     r2Key?: string | null;
+    contentHash?: string | null;
   },
 ): Promise<MediaAsset> {
   const timestamp = new Date().toISOString();
@@ -75,8 +78,8 @@ export async function createMediaAsset(
         asset_scope, media_type, telegram_file_id, telegram_file_unique_id,
         url, storage_kind, storage_key, expires_at,
         mime_type, file_name, file_size, width, height, duration,
-        r2_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        r2_key, content_hash, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       input.scope ?? "survey",
@@ -94,6 +97,7 @@ export async function createMediaAsset(
       input.height ?? null,
       input.duration ?? null,
       input.r2Key ?? null,
+      input.contentHash ?? null,
       timestamp,
       timestamp,
     )
@@ -110,6 +114,56 @@ export async function createMediaAsset(
   }
 
   return asset;
+}
+
+/**
+ * 内容寻址去重：按上传字节的 SHA-256 找已有的同内容素材。
+ * 优先返回 survey 范围、blob 仍存在的行（跨问卷复用的目标场景）。
+ */
+export async function findMediaAssetByContentHash(db: D1Database, contentHash: string): Promise<MediaAsset | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM media_assets
+       WHERE content_hash = ? AND storage_key IS NOT NULL
+       ORDER BY (asset_scope = 'survey') DESC, id ASC
+       LIMIT 1`,
+    )
+    .bind(contentHash)
+    .first<MediaAssetRow>();
+  return row ? mapMediaAsset(row) : null;
+}
+
+/** Telegram 链路复用：同一 file_unique_id + 类型只登记一个 asset。 */
+export async function findMediaAssetByTelegramUniqueId(
+  db: D1Database,
+  telegramFileUniqueId: string,
+  mediaType: MediaType,
+): Promise<MediaAsset | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM media_assets
+       WHERE telegram_file_unique_id = ? AND media_type = ?
+       ORDER BY id ASC LIMIT 1`,
+    )
+    .bind(telegramFileUniqueId, mediaType)
+    .first<MediaAssetRow>();
+  return row ? mapMediaAsset(row) : null;
+}
+
+/** 首读回写：Telegram 资产搬运进 R2 后翻转存储类型（保留 file_id 兜底）。 */
+export async function markMediaAssetPromotedToR2(
+  db: D1Database,
+  id: number,
+  storageKey: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE media_assets
+       SET storage_kind = 'r2', storage_key = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(storageKey, new Date().toISOString(), id)
+    .run();
 }
 
 export async function getMediaAssetById(db: D1Database, id: number): Promise<MediaAsset | null> {
@@ -574,4 +628,98 @@ export async function deleteOptionMediaByAsset(
     .bind(questionOptionId, mediaAssetId)
     .run();
   return result.meta?.changes ?? 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * 素材库（0091）：弱引用登记 / 列表 / 引用计数
+ * ------------------------------------------------------------------ */
+
+/** upsert 一条弱引用：ref_key 唯一，重指向即更新 asset_id。 */
+export async function upsertMediaRef(
+  db: D1Database,
+  input: { refType: string; refKey: string; assetId: number | null },
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (input.assetId === null) {
+    await db.prepare("DELETE FROM media_refs WHERE ref_type = ? AND ref_key = ?").bind(input.refType, input.refKey).run();
+    return;
+  }
+  await db
+    .prepare(
+      `INSERT INTO media_refs (asset_id, ref_type, ref_key, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(ref_type, ref_key) DO UPDATE SET asset_id = excluded.asset_id, updated_at = excluded.updated_at`,
+    )
+    .bind(input.assetId, input.refType, input.refKey, now, now)
+    .run();
+}
+
+export interface MediaLibraryRow {
+  asset: MediaAsset;
+  /** 结构化弱引用数（media_refs）。 */
+  weakRefs: number;
+  /** 强关联数（question_media / option_media / answer_media）。 */
+  hardRefs: number;
+}
+
+/** 素材库分页列表：survey 范围优先，带引用计数。 */
+export async function listMediaLibraryPage(
+  db: D1Database,
+  options: { mimePrefix?: string; limit: number; offset: number },
+): Promise<{ items: MediaLibraryRow[]; total: number }> {
+  const where = options.mimePrefix ? "WHERE m.mime_type LIKE ?" : "";
+  const binds = options.mimePrefix ? [`${options.mimePrefix}%`] : [];
+  const totalRow = await db
+    .prepare(`SELECT COUNT(*) AS n FROM media_assets m ${where}`)
+    .bind(...binds)
+    .first<{ n: number }>();
+  const result = await db
+    .prepare(
+      `SELECT m.*,
+              (SELECT COUNT(*) FROM media_refs mr WHERE mr.asset_id = m.id) AS weakRefs,
+              (
+                (SELECT COUNT(*) FROM question_media qm WHERE qm.media_asset_id = m.id)
+                + (SELECT COUNT(*) FROM option_media om WHERE om.media_asset_id = m.id)
+                + (SELECT COUNT(*) FROM answer_media am WHERE am.media_asset_id = m.id)
+              ) AS hardRefs
+       FROM media_assets m ${where}
+       ORDER BY m.id DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .bind(...binds, options.limit, options.offset)
+    .all<MediaAssetRow & { weakRefs: number; hardRefs: number }>();
+  return {
+    items: (result.results ?? []).map((row) => ({
+      asset: mapMediaAsset(row),
+      weakRefs: Number(row.weakRefs ?? 0),
+      hardRefs: Number(row.hardRefs ?? 0),
+    })),
+    total: Number(totalRow?.n ?? 0),
+  };
+}
+
+/**
+ * 单个素材的引用计数：强关联（题目/选项/答卷挂载）+ 弱引用（media_refs）+
+ * 封面。素材库删除保护用它；每日孤儿清扫仍是最终兜底。
+ */
+export async function countMediaAssetReferences(db: D1Database, id: number): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM question_media WHERE media_asset_id = ?)
+         + (SELECT COUNT(*) FROM option_media WHERE media_asset_id = ?)
+         + (SELECT COUNT(*) FROM answer_media WHERE media_asset_id = ?)
+         + (SELECT COUNT(*) FROM media_refs WHERE asset_id = ?)
+         + (SELECT COUNT(*) FROM surveys WHERE cover_media_id = ?)
+         AS n`,
+    )
+    .bind(id, id, id, id, id)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+/** 删除素材行（引用计数为 0 时才允许调用；blob 由调用方先删）。 */
+export async function deleteMediaAssetRow(db: D1Database, id: number): Promise<boolean> {
+  const result = await db.prepare("DELETE FROM media_assets WHERE id = ?").bind(id).run();
+  return Boolean(result.meta?.changes);
 }

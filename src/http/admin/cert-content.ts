@@ -71,6 +71,11 @@ export interface CertTheme {
   titles?: { f: string[]; m: string[] };
   /** 每个板块的倾向名词（{f,m,adj,say}），生成器据此拼「反差感天花板」式的称号。 */
   sectionTypes?: Record<string, { f: string; m: string; adj: string; say: string }>;
+  /**
+   * 抽取池：指向小游戏区的一个任务包（动态引用，实时抽取不复制内容）。
+   * 生成器「帮我选/抽取」时调 GET /api/cert/draw 按权重抽条目。
+   */
+  draw?: { packId: number; count: number; label?: string };
 }
 
 export interface CertContentPack {
@@ -245,6 +250,21 @@ function asTheme(raw: unknown): CertTheme | null {
       out[key.slice(0, 12)] = { f: f || m, m: m || f, adj, say };
     }
     if (Object.keys(out).length) theme.sectionTypes = out;
+  }
+  if (t.draw && typeof t.draw === "object" && !Array.isArray(t.draw)) {
+    const d = t.draw as Record<string, unknown>;
+    const packId = Number(d.packId);
+    if (Number.isInteger(packId) && packId > 0) {
+      const count = Math.round(Number(d.count ?? 1));
+      theme.draw = {
+        packId,
+        count: Math.min(5, Math.max(1, Number.isFinite(count) && count >= 1 ? count : 1)),
+      };
+      const label = String(d.label ?? "")
+        .trim()
+        .slice(0, 20);
+      if (label) theme.draw.label = label;
+    }
   }
   return theme;
 }

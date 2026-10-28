@@ -145,8 +145,8 @@ async function showAdminHome(ctx: BotContext, chatId: number, userId: number, me
       ctx.origin
         ? [{ text: "🏛 广场", url: `${ctx.origin}/plaza` }]
         : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
-      ...(ctx.origin ? [[{ text: "🎯 挑战任务", url: `${ctx.origin}/trial` }]] : []),
-      ...(ctx.origin ? [[{ text: "⚙️ 任务包管理", url: `${ctx.origin}/admin/task-packs` }]] : []),
+      ...(ctx.origin ? [[{ text: "🎮 小游戏", url: `${ctx.origin}/trial` }]] : []),
+      ...(ctx.origin ? [[{ text: "⚙️ 小游戏管理", url: `${ctx.origin}/admin/task-packs` }]] : []),
     ],
   };
   if (messageId !== undefined) {

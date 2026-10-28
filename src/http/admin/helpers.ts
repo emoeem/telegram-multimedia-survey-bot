@@ -5,6 +5,7 @@ import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repos
 import type { MediaAsset, MediaType, QuestionType, Survey, SurveyQuestion } from "../../db/schema";
 import type { Env } from "../../index";
 import { createMediaStore } from "../../services/media/temporary-media-store";
+import { storeDeduplicatedMedia } from "../../services/media/media-dedup.service";
 import { REPORT_TEMPLATES } from "../../services/report/template";
 import type { ImportedSurvey } from "../../services/import.service";
 import { createMediaAsset } from "../../db/repositories/media.repository";
@@ -105,6 +106,9 @@ export function surveyMediaTypeForMime(mimeType: string): MediaType {
  * Stores an admin-uploaded survey attachment (question/option media) into
  * MEDIA_KV and records the asset row. Throws with a user-facing message when
  * the file is rejected so callers can translate it into a 400 response.
+ *
+ * 0091 起走内容寻址去重：同一份素材（跨问卷/跨题目）只存一份 blob，
+ * 命中已有素材时直接复用 asset 行。
  */
 export async function storeSurveyAdminMedia(
   db: D1Database,
@@ -122,19 +126,14 @@ export async function storeSurveyAdminMedia(
     throw new Error(`单个附件不能超过 ${SURVEY_MEDIA_UPLOAD_MAX_BYTES / 1024 / 1024}MB`);
   }
   const store = createMediaStore(storeEnv);
-  const storageKey = `${SURVEY_MEDIA_STORAGE_PREFIX}${crypto.randomUUID()}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
-  await store.put({ storageKey, bytes, contentType: mimeType });
-  return createMediaAsset(db, {
-    scope: "survey",
-    mediaType: surveyMediaTypeForMime(mimeType),
-    storageKind: store.kind,
-    storageKey,
-    expiresAt: null,
+  const { asset } = await storeDeduplicatedMedia(db, store, {
+    bytes,
     mimeType,
+    mediaType: surveyMediaTypeForMime(mimeType),
     fileName: file.name || null,
-    fileSize: bytes.byteLength,
   });
+  return asset;
 }
 
 export function parseSettingsJson(value: string): Record<string, unknown> | null {

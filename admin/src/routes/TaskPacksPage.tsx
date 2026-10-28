@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import {
   createAdminTaskPack,
@@ -13,6 +13,11 @@ import {
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
+import { SchemaForm } from "../game-plugins/SchemaForm";
+import { loadClientPlugin } from "../game-plugins/loader";
+import { normalizeConfig, validateWithSchema } from "../../../src/game-plugin/props";
+import type { ConfigIssue, PropField } from "../../../src/game-plugin/types";
+import type { GamePluginClient } from "../game-plugins/types";
 
 const PERSONA_LABELS: Record<AdminTaskPersona, string> = {
   any: "通用",
@@ -25,6 +30,15 @@ const MODE_LABELS: Record<AdminTaskMode, string> = {
   normal: "普通",
   hell: "地狱",
 };
+
+/** 玩法类型展示名（与服务端 src/trial/engine-registry.ts 对齐；新玩法在此补一行）。 */
+const GAME_TYPE_LABELS: Record<string, string> = {
+  tower: "爬塔挑战",
+};
+
+function gameTypeLabel(value: string): string {
+  return GAME_TYPE_LABELS[value] ?? value;
+}
 
 interface EditableItem {
   key: number;
@@ -43,12 +57,15 @@ interface EditablePack {
   id: number | null;
   name: string;
   description: string;
+  gameType: string;
   normalFloors: number;
   hellFloors: number;
   /** 一行一个的准备清单条目。 */
   prepItemsText: string;
   prepText: string;
   enabled: boolean;
+  /** 插件玩法的配置（settings_json）；爬塔不用。 */
+  settings: Record<string, unknown>;
   items: EditableItem[];
 }
 
@@ -61,11 +78,13 @@ function packToEditable(pack: AdminTaskPack): EditablePack {
     id: pack.id,
     name: pack.name,
     description: pack.description ?? "",
+    gameType: pack.gameType ?? "tower",
     normalFloors: pack.normalFloors,
     hellFloors: pack.hellFloors,
     prepItemsText: (pack.prepItems ?? []).join("\n"),
     prepText: pack.prepText ?? "",
     enabled: pack.enabled,
+    settings: pack.settings ?? {},
     items: pack.items.map((item, index) => ({
       key: index,
       title: item.title,
@@ -86,11 +105,13 @@ function blankPack(): EditablePack {
     id: null,
     name: "",
     description: "",
+    gameType: "tower",
     normalFloors: 10,
     hellFloors: 12,
     prepItemsText: "",
     prepText: "",
     enabled: true,
+    settings: {},
     items: [],
   };
 }
@@ -130,6 +151,23 @@ function SelectField({
   );
 }
 
+/** 编辑态预览：直接用插件自己的 EditView 渲染当前配置（所见即所得）。 */
+function PluginEditPreview({
+  plugin,
+  config,
+}: {
+  plugin: GamePluginClient<readonly PropField[], unknown>;
+  config: Record<string, unknown>;
+}) {
+  const EditView = plugin.EditView;
+  return (
+    <div className="rounded-xl border border-[var(--color-edge)] p-3">
+      <p className="mb-2 text-[11px] font-semibold text-[var(--color-muted)]">玩法预览</p>
+      <EditView config={config} mode="pro" onChange={() => {}} />
+    </div>
+  );
+}
+
 export function TaskPacksPage() {
   const { data, error, retry } = useApi<{ packs: AdminTaskPack[] }>("/api/admin/task-packs");
   const { confirm, toast } = useDialogs();
@@ -157,10 +195,56 @@ export function TaskPacksPage() {
     setEditing(null);
   };
   const [saving, setSaving] = useState(false);
+  /** 玩法清单（服务端注册表），插件注册后自动出现在下拉里。 */
+  const [gameTypes, setGameTypes] = useState<{ id: string; label: string; builtin: boolean }[]>([]);
+  /** 当前正在编辑的插件客户端定义（取 props 生成属性面板）。 */
+  const [pluginDef, setPluginDef] = useState<GamePluginClient<readonly PropField[], unknown> | null>(null);
   /** 正在切换「玩家端可见」的包 id：开关是整包全量更新，连点会互相覆盖。 */
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const nextItemKey = useRef(1000);
+
+  // 玩法清单：/api/trial/packs 的 gameTypes 直接来自服务端注册表。
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/trial/packs")
+      .then((response) => response.json() as Promise<{ gameTypes?: Array<{ id: string; label: string; builtin: boolean }> }>)
+      .then((payload) => {
+        if (!cancelled) setGameTypes(payload.gameTypes ?? []);
+      })
+      .catch(() => {
+        // 拉不到就退回内置标签表，不影响编辑爬塔包。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const editingGameType = editing?.gameType ?? "tower";
+  useEffect(() => {
+    if (editingGameType === "tower") {
+      setPluginDef(null);
+      return;
+    }
+    let cancelled = false;
+    void loadClientPlugin(editingGameType)
+      .then((plugin) => {
+        if (!cancelled) setPluginDef(plugin as unknown as GamePluginClient<readonly PropField[], unknown>);
+      })
+      .catch(() => {
+        if (!cancelled) setPluginDef(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingGameType]);
+
+  /** 插件配置的实时问题（Schema 结构 + 插件自定义），保存前用它拦。 */
+  const pluginIssues = useMemo<ConfigIssue[]>(() => {
+    if (!editing || editing.gameType === "tower" || !pluginDef) return [];
+    const normalized = normalizeConfig(pluginDef.props, editing.settings);
+    return [...validateWithSchema(pluginDef.props, normalized), ...(pluginDef.validate ? pluginDef.validate(normalized) : [])];
+  }, [editing, pluginDef]);
 
   const packItems = useMemo(() => {
     if (!data) return [];
@@ -247,16 +331,23 @@ export function TaskPacksPage() {
       setSaveError("任务包名称不能为空");
       return;
     }
+    const isPlugin = editing.gameType !== "tower";
     const items = editing.items
       .map((item, index) => itemToInput(item, index))
-      .filter((item) => item.title && item.description);
-    if (editing.items.length > 0 && items.length !== editing.items.length) {
+      .filter((item) => (isPlugin ? true : item.title && item.description));
+    // 爬塔包必须有完整的任务行；插件包的必填项由 Schema 校验（pluginIssues）。
+    if (!isPlugin && editing.items.length > 0 && items.length !== editing.items.length) {
       setSaveError("部分任务缺少标题或描述，请补全后再保存（空行会被丢弃）");
+      return;
+    }
+    if (isPlugin && pluginIssues.some((issue) => issue.severity === "error")) {
+      setSaveError(pluginIssues.map((issue) => issue.message).join("；"));
       return;
     }
     const body = {
       name,
       description: editing.description.trim() || null,
+      gameType: editing.gameType,
       normalFloors: clampInt(editing.normalFloors, 1, 60),
       hellFloors: clampInt(editing.hellFloors, 1, 60),
       prepItems: editing.prepItemsText
@@ -265,6 +356,7 @@ export function TaskPacksPage() {
         .filter(Boolean),
       prepText: editing.prepText.trim() || null,
       enabled: editing.enabled,
+      ...(isPlugin ? { settings: editing.settings } : {}),
       items,
     };
     setSaving(true);
@@ -285,7 +377,7 @@ export function TaskPacksPage() {
   };
 
   const remove = async (pack: AdminTaskPack) => {
-    if (!(await confirm({ message: `确定删除任务包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })))
+    if (!(await confirm({ message: `确定删除小游戏包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })))
       return;
     try {
       await deleteAdminTaskPack(pack.id);
@@ -356,6 +448,27 @@ export function TaskPacksPage() {
           </h2>
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
             <label className="block text-xs font-medium text-[var(--color-muted)]">
+              玩法类型
+              <select
+                className="select mt-1 h-9 w-full text-xs"
+                value={editing.gameType}
+                onChange={(event) => updateMeta({ gameType: event.target.value, settings: {} })}
+              >
+                {(gameTypes.length
+                  ? gameTypes
+                  : Object.entries(GAME_TYPE_LABELS).map(([id, label]) => ({ id, label, builtin: id === "tower" }))
+                ).map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.label}
+                    {type.builtin ? "（内置）" : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-[var(--color-muted-soft)]">
+                玩法清单来自服务端注册表：新插件注册后自动出现在这里，无需改编辑器。
+              </span>
+            </label>
+            <label className="block text-xs font-medium text-[var(--color-muted)]">
               名称
               <input
                 className="input mt-1 w-full"
@@ -374,48 +487,56 @@ export function TaskPacksPage() {
                 onChange={(event) => updateMeta({ description: event.target.value })}
               />
             </label>
-            <label className="block text-xs font-medium text-[var(--color-muted)]">
-              普通模式层数
-              <input
-                type="number"
-                min={1}
-                max={60}
-                className="input mt-1 w-full"
-                value={editing.normalFloors}
-                onChange={(event) => updateMeta({ normalFloors: Number(event.target.value) })}
-              />
-            </label>
-            <label className="block text-xs font-medium text-[var(--color-muted)]">
-              地狱模式层数
-              <input
-                type="number"
-                min={1}
-                max={60}
-                className="input mt-1 w-full"
-                value={editing.hellFloors}
-                onChange={(event) => updateMeta({ hellFloors: Number(event.target.value) })}
-              />
-            </label>
-            <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
-              开始前准备清单（每行一条，玩家开局前展示）
-              <textarea
-                className="input mt-1 min-h-20 w-full py-2"
-                value={editing.prepItemsText}
-                maxLength={600}
-                placeholder={"手机（计时用）\n一杯水\n便签纸和笔"}
-                onChange={(event) => updateMeta({ prepItemsText: event.target.value })}
-              />
-            </label>
-            <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
-              准备提示（一句话，随清单一起展示）
-              <input
-                className="input mt-1 w-full"
-                value={editing.prepText}
-                maxLength={300}
-                placeholder="例如：出发前把清单上的物品摆在门口，按顺序确认。"
-                onChange={(event) => updateMeta({ prepText: event.target.value })}
-              />
-            </label>
+            {editing.gameType === "tower" ? (
+              <>
+                <label className="block text-xs font-medium text-[var(--color-muted)]">
+                  普通模式层数
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className="input mt-1 w-full"
+                    value={editing.normalFloors}
+                    onChange={(event) => updateMeta({ normalFloors: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[var(--color-muted)]">
+                  地狱模式层数
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className="input mt-1 w-full"
+                    value={editing.hellFloors}
+                    onChange={(event) => updateMeta({ hellFloors: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
+                  开始前准备清单（每行一条，玩家开局前展示）
+                  <textarea
+                    className="input mt-1 min-h-20 w-full py-2"
+                    value={editing.prepItemsText}
+                    maxLength={600}
+                    placeholder={"手机（计时用）\n一杯水\n便签纸和笔"}
+                    onChange={(event) => updateMeta({ prepItemsText: event.target.value })}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[var(--color-muted)] lg:col-span-2">
+                  准备提示（一句话，随清单一起展示）
+                  <input
+                    className="input mt-1 w-full"
+                    value={editing.prepText}
+                    maxLength={300}
+                    placeholder="例如：出发前把清单上的物品摆在门口，按顺序确认。"
+                    onChange={(event) => updateMeta({ prepText: event.target.value })}
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="text-xs text-[var(--color-muted-soft)] lg:col-span-2">
+                插件玩法不需要楼层与准备清单；内容在下方「玩法配置」里维护。
+              </p>
+            )}
             <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-[var(--color-muted)]">
               <input
                 type="checkbox"
@@ -428,10 +549,11 @@ export function TaskPacksPage() {
           </div>
         </section>
 
-        <section className="card">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-sm font-bold text-[var(--color-ink)]">任务列表（{editing.items.length}）</h2>
-            <button type="button" className="btn btn-sm gap-1.5" onClick={addItem}>
+        {editing.gameType === "tower" ? (
+          <section className="card">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-sm font-bold text-[var(--color-ink)]">任务列表（{editing.items.length}）</h2>
+              <button type="button" className="btn btn-sm gap-1.5" onClick={addItem}>
               <Plus className="h-4 w-4" />
               添加任务
             </button>
@@ -568,7 +690,32 @@ export function TaskPacksPage() {
               ))}
             </div>
           )}
-        </section>
+          </section>
+        ) : (
+          <section className="card">
+            <h2 className="text-sm font-bold text-[var(--color-ink)]">玩法配置</h2>
+            <p className="mt-1 text-xs text-[var(--color-muted-soft)]">
+              面板由插件声明的属性 Schema 自动生成；保存时服务端会再按同一套规则归一化。
+            </p>
+            {pluginDef ? (
+              <div className="mt-4 space-y-4">
+                <SchemaForm
+                  fields={pluginDef.props}
+                  value={normalizeConfig(pluginDef.props, editing.settings)}
+                  mode="pro"
+                  issues={pluginIssues}
+                  disabled={saving}
+                  onChange={(next) => updateMeta({ settings: next })}
+                />
+                <PluginEditPreview plugin={pluginDef} config={normalizeConfig(pluginDef.props, editing.settings)} />
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[var(--color-muted-soft)]">
+                {editing.gameType === "tower" ? "" : "该玩法还没有客户端实现，无法在此配置。"}
+              </p>
+            )}
+          </section>
+        )}
       </div>
     );
   }
@@ -577,14 +724,14 @@ export function TaskPacksPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-[var(--color-ink)]">任务包</h2>
+          <h2 className="text-base font-bold text-[var(--color-ink)]">小游戏管理</h2>
           <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-            内容与机制分离：任务文案存库，改动立即对玩家端生效。
+            内容与机制分离：任务文案存库，改动立即对玩家端生效；玩法类型由引擎注册表管理。
           </p>
         </div>
         <button type="button" className="btn btn-sm gap-1.5 btn-primary" onClick={openNew}>
           <Plus className="h-4 w-4" />
-          新建任务包
+          新建小游戏包
         </button>
       </div>
 
@@ -593,7 +740,7 @@ export function TaskPacksPage() {
       ) : data === null ? (
         <SkeletonPanel lines={5} />
       ) : packItems.length === 0 ? (
-        <EmptyPanel text="还没有任务包，先新建一个吧" />
+        <EmptyPanel text="还没有小游戏包，先新建一个吧" />
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {packItems.map((pack) => (
@@ -610,6 +757,9 @@ export function TaskPacksPage() {
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-[var(--color-ink)] dark:text-[var(--color-muted-soft)]">
+                <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
+                  {gameTypeLabel(pack.gameType ?? "tower")}
+                </span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">普通 {pack.normalFloors} 层</span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">地狱 {pack.hellFloors} 层</span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
