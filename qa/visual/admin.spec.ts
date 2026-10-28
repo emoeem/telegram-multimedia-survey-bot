@@ -20,14 +20,14 @@ const VIEWPORTS = [
 
 const THEMES = ["light", "dark"] as const;
 
-/** 挂 EChart 的页面（含 /admin/analytics——它兜底渲染 DashboardPage）：截图前等真图。 */
-const CHART_PAGES = new Set([
-  "/admin/",
-  "/admin/analytics",
-  "/admin/reports",
-  "/admin/surveys/1",
-  "/admin/surveys/1/analytics",
-]);
+/**
+ * DashboardPage 渲染的两条路径（/admin/ 与兜底的 /admin/analytics）：其环形图
+ * 走懒 chunk + Suspense 骨架，固定等待下骨架/成图两态都可能被截到（间歇失败的
+ * 根源）——等真正的图表组件挂载（.echarts-for-react 类只在真组件上，骨架没有）。
+ * 同页的「更新于 HH:MM」是活时钟，截图时一并屏蔽（时:分笔画随运行时刻变化，
+ * 恰好贴着 0.002 阈值，时而通过时而超）。
+ */
+const DASHBOARD_PATHS = new Set(["/admin/", "/admin/analytics"]);
 
 const PAGES = [
   "/admin/",
@@ -356,10 +356,8 @@ for (const theme of THEMES) {
 
         await page.goto(path, { waitUntil: "domcontentloaded" });
         await expect(page.locator("h1, main").first()).toBeVisible();
-        // 图表懒加载 chunk 与下面的固定 250ms 等待是竞态：骨架屏或成图两种状态
-        // 都可能被截到（/admin/analytics 历史间歇失败的根源）。图表页等真图出现。
-        if (CHART_PAGES.has(path)) {
-          await page.waitForSelector(".echarts-for-react svg path", { timeout: 10_000 });
+        if (DASHBOARD_PATHS.has(path)) {
+          await page.waitForSelector(".echarts-for-react", { state: "attached", timeout: 15_000 });
         }
         await page.waitForTimeout(250);
         if (path === "/admin/surveys/3/editor") {
@@ -385,9 +383,10 @@ for (const theme of THEMES) {
 
         await scanA11y(page, test.info().title);
 
+        const dashboardClock = DASHBOARD_PATHS.has(path) ? [page.getByText(/更新于/)] : undefined;
         await expect(page).toHaveScreenshot(
           `admin-${path.replaceAll("/", "_")}${theme === "dark" ? "-dark" : ""}-${viewport.width}x${viewport.height}.png`,
-          { maxDiffPixelRatio: 0.002 },
+          { maxDiffPixelRatio: 0.002, ...(dashboardClock ? { mask: dashboardClock } : {}) },
         );
       });
     }
