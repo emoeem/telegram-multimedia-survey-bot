@@ -110,22 +110,42 @@
   TS peer 上限 `<6.1.0`（TS 7 直接越界，lint 工具链断裂）；wrangler 4 / workers-types 与
   Go 原生 tsc 的兼容性也未经验证；收益只有版本号一致。结论记录在案，不改代码。
 
-### E2 echarts 按需引入　☐
-- 1.1MB 最大 chunk（esm-*.js，占 assets 约 40%）只注册用到的 renderer/chart 系列，
-  目标减半；跑视觉门禁防图表回归（报告页/统计页截图逐张核对）。
+### E2 echarts 按需引入　✅（2026-10-29）
+- ✅ 1.1MB 最大 chunk（esm-*.js）消除：EChart.tsx 改走 `echarts/core` + `lib/**/install`
+  深路径（bar/pie/grid/tooltip/axisPointer/legend + 双 renderer），只注册用到的系列/组件。
+  最大 chunk 降至 216K（react-vendor），admin assets 总量 2.9MB → 2.4MB。
+- 踩坑记录（三条都是实测得出）：① `echarts/charts` / `echarts/components` barrel 因
+  sideEffects 把全家族连 parseGeoJson（240K）一起打进包，必须走深路径 install 模块；
+  ② `echarts-for-react/lib/core` 是 CJS+__esModule，rolldown 动态 import 互操作下
+  `ns.default` 可能是整个 exports 对象，挂载即 React #130 崩溃——改用真 ESM 入口
+  `esm/core`；③ `/esm/core` 不自带 echarts，需以 `echarts` prop 传入 `echarts/core`
+  命名空间（注册完成后）。
+- ✅ 视觉门禁：本地失败集与基线完全一致（107/107，新增 0 消失 0）；图表页截图目检
+  （admin 总览环形图、问卷统计环形图）渲染正常。CI 基线随下轮 Visual baseline 再生。
 
-### E3 UIUX P1 残项（审计文档 B 批，6 项）　☐
-- 报告页批量操作 + `delivering` 卡死手动出口（`ReportsPage.tsx`）。
-- `CertContentPage.tsx` 的 `window.confirm` 换 `useDialogs()`。
-- 移动端表格卡片 `data-label`（全站 `<td>` + `index.css`）。
-- 平板图标轨 19 个链接补 `aria-label`/`title`（`Layout.tsx`）。
-- `@media (pointer: coarse)` 触摸目标提到 44px。
-- 空状态兜底：总览页整块消失、报告页筛选空话术误导。
+### E3 UIUX P1 残项（审计文档 B 批，6 项）　✅（2026-10-29）
+盘点发现 6 项中 4 项已在此前迭代落地（报告页批量操作 + 强制重试 + 已卡分钟数、
+CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-label/title），
+本轮补齐剩余缺口：
+- ✅ 移动端表格 `data-label`：SurveysPage（8 格）、CategoriesPage（6 格）、
+  LicensesPage 首表（7 格）、RemoteDataViewer 操作列（3 格）；CSS 层早已就绪。
+  SurveyPreview / SurveyApp 非 `.tbl` 表格，卡片化 CSS 不适用，正确跳过。
+- ✅ 空状态兜底：总览「最近问卷 / 最近答卷」由整块消失改为常驻 EmptyPanel；
+  recentSurveys 截断至 6 条与 recentResponses 对齐（左右卡片等高）。
+- ✅ 顺带修复 ControlCenterPage 5 处 `data-label` 被写进单元格文本的坏补丁
+  （字面量直接渲染给用户的真实 bug）。
 
-### E4 性能专项（依赖 P2 完成）　☐
-- 画布/结构树虚拟化、属性面板 memo、连线层 canvas 化。
-- CSS 按主题拆分（可选，有闪烁风险）。
-- Lighthouse 复测（当前 Performance 75）。
+### E4 性能专项（依赖 P2 完成）　✅ 低风险部分（2026-10-29）
+- ✅ 动作身份稳定化（memo 生效的前提）：useEditorActions 全部 handler 改
+  `useCallback([])` + 依赖经 latest-ref 读取（旧实现每键击重建全部闭包）；
+  返回对象 useMemo，仅 busy/publish 翻转时换身份。行为语义逐字保留。
+- ✅ QuestionSummaryRow `memo`：回调改按 id 派发（onOpen/onMove 接 questionId），
+  Canvas/旧壳调用点传稳定函数——135 题打字热路径上未受影响的行跳过重渲染。
+- ✅ PropertiesPanel `memo`：壳侧 selectQuestion / openSceneOverlay useCallback。
+- ☐ 画布/结构树虚拟化、连线层 canvas 化：与 LogicLayer/S4 拖拽几何强耦合，
+  现有 135 题用例无性能回归——标注后续周期。
+- ☐ CSS 按主题拆分（可选，有闪烁风险）。
+- ☐ Lighthouse 复测（当前 Performance 75）：留待标准环境。
 
 ---
 
