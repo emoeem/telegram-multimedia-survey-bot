@@ -1,5 +1,6 @@
 import { telegramUpdateDedupCutoff } from "./update-dedup.service";
 import { upsertMediaRef } from "../db/repositories/media.repository";
+import { parseMediaRef } from "../survey/media-ref";
 
 export interface DatabaseMaintenanceSummary {
   expiredResponses: number;
@@ -231,6 +232,43 @@ function collectIds(matches: Iterable<RegExpMatchArray | null>): Set<number> {
   return ids;
 }
 
+function tryParseJson(raw: string | null | undefined): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 结构化媒体引用（`{"assetId": n}`）提取——媒体结构化的双读过渡（阶段 D）：
+ * URL 字符串仍由 `/media\/(\d+)/` 正则兜底，这里只补对象形态。裸数字不收
+ * （settings 里的普通数值字段歧义太大，宁可少收——过收会挡住合法删除，
+ * 漏收的兜底是孤儿清扫前的正则与 media_refs 重建）。
+ */
+function collectStructuredAssetIds(value: unknown, ids: Set<number>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectStructuredAssetIds(item, ids);
+    return;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ("assetId" in record) {
+      const id = parseMediaRef(record);
+      if (id !== null) ids.add(id);
+    }
+    for (const child of Object.values(record)) collectStructuredAssetIds(child, ids);
+  }
+}
+
+/** settings_json 的媒体引用提取（双读）：URL 字符串 + 结构化 `{assetId}`。 */
+function collectSurveySettingsMediaIds(raw: string | null): Set<number> {
+  const ids = collectIds(raw?.matchAll(/media\/(\d+)/g) ?? []);
+  collectStructuredAssetIds(tryParseJson(raw), ids);
+  return ids;
+}
+
 /**
  * Media ids that answers still reference inside their JSON payload.
  * `answers.json_value` has always been written as `{"mediaAssetId": N}`; the
@@ -269,7 +307,7 @@ async function loadAnswerJsonMediaIds(db: D1Database, shouldStop: () => boolean)
   return ids;
 }
 
-/** Media ids embedded in survey settings (`{"url":"/api/survey/media/12"}`). */
+/** Media ids embedded in survey settings (URL strings and structured `{"assetId":n}`). */
 async function loadSurveySettingsMediaIds(db: D1Database, shouldStop: () => boolean): Promise<Set<number>> {
   const ids = new Set<number>();
   let lastId = 0;
@@ -279,7 +317,7 @@ async function loadSurveySettingsMediaIds(db: D1Database, shouldStop: () => bool
         `SELECT id, settings_json FROM surveys
           WHERE id > ?
             AND settings_json IS NOT NULL
-            AND settings_json LIKE '%media/%'
+            AND (settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')
           ORDER BY id ASC
           LIMIT ?`,
       )
@@ -288,9 +326,11 @@ async function loadSurveySettingsMediaIds(db: D1Database, shouldStop: () => bool
     const rows = result.results ?? [];
     for (const row of rows) {
       lastId = row.id;
-      // Matches both `/api/survey/media/12` and relative `media/12` spellings.
-      // Over-matching only keeps a row alive, which is the safe direction.
-      for (const id of collectIds(row.settings_json?.matchAll(/media\/(\d+)/g) ?? [])) {
+      // Dual-read transition (阶段 D): the regex matches both `/api/survey/media/12`
+      // and relative `media/12` spellings; collectSurveySettingsMediaIds adds the
+      // structured `{"assetId":n}` objects. Over-matching only keeps a row alive,
+      // which is the safe direction.
+      for (const id of collectSurveySettingsMediaIds(row.settings_json ?? null)) {
         ids.add(id);
       }
     }
@@ -392,10 +432,13 @@ export interface OrphanBlobStore {
 }
 
 /**
- * 弱引用登记同步（0091）：把 surveys.settings_json 里以 URL 字符串出现的
- * 媒体引用（BGM / 场景图 / 主题背景……）写进 media_refs。
+ * 弱引用登记同步（0091）：把 surveys.settings_json 里出现的媒体引用
+ * （BGM / 场景图 / 主题背景……）写进 media_refs。
  *
- * JSON 兜底正则扫描只服务于"清扫前最后一刻的保护"，素材库的引用计数与
+ * 双读过渡（阶段 D）：既有 URL 字符串由 `/media\/(\d+)/` 兜底正则扫描，
+ * 写入侧切换后的结构化 `{"assetId":n}` 由 JSON 解析提取（裸数字不收）。
+ *
+ * 兜底扫描只服务于"清扫前最后一刻的保护"，素材库的引用计数与
  * 删除保护读不了它——这一步把它们落成结构化行（ref_type='survey_settings'，
  * ref_key='survey:{id}:{assetId}'），素材库页面因此能看到真实引用。
  * 每次全量重建该问卷的登记行：问卷编辑后失效的引用随重建自动消失。
@@ -409,7 +452,7 @@ export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolea
         `SELECT id, settings_json FROM surveys
           WHERE id > ?
             AND settings_json IS NOT NULL
-            AND settings_json LIKE '%media/%'
+            AND (settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')
           ORDER BY id ASC
           LIMIT ?`,
       )
@@ -418,7 +461,7 @@ export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolea
     const rows = result.results ?? [];
     for (const row of rows) {
       lastId = row.id;
-      const assetIds = collectIds(row.settings_json?.matchAll(/media\/(\d+)/g) ?? []);
+      const assetIds = collectSurveySettingsMediaIds(row.settings_json ?? null);
       await db.prepare("DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE ?")
         .bind(`survey:${row.id}:%`)
         .run();

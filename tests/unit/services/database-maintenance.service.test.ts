@@ -4,6 +4,7 @@ import {
   MAINTENANCE_ROWS_READ_BUDGET,
   ORPHAN_SWEEP_INDEXES,
   runDatabaseMaintenance,
+  syncWeakMediaRefs,
 } from "../../../src/services/database-maintenance.service";
 
 interface FakeDbOptions {
@@ -42,7 +43,13 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
             return { results: (options.answerJson ?? []).map((json_value) => ({ json_value })), meta };
           }
           if (sql.includes("FROM surveys")) {
-            return { results: (options.surveySettings ?? []).map((settings_json) => ({ settings_json })), meta };
+            return {
+              results: (options.surveySettings ?? []).map((settings_json, index) => ({
+                id: index + 1,
+                settings_json,
+              })),
+              meta,
+            };
           }
           return { results: [], meta };
         }),
@@ -138,6 +145,21 @@ describe("database maintenance", () => {
     expect(summary.orphanAssets).toBe(1);
   });
 
+  // 阶段 D 双读：写入侧切换后 settings 里出现 {"assetId":n} 结构化引用，
+  // 孤儿清扫必须同样认得——否则结构化引用的素材会被当孤儿删掉。
+  it("keeps media that survey settings reference via structured {assetId} (dual-read)", async () => {
+    const { db, deleted, statements } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [41],
+      surveySettings: ['{"scene":{"image":{"assetId":41}}}'],
+    });
+    const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
+    expect(deleted).toEqual([]);
+    expect(summary.orphanAssets).toBe(0);
+    // 扫描过滤必须覆盖结构化形态，否则纯 {assetId} 问卷根本不会被读到。
+    expect(statements.some((sql) => sql.includes("FROM surveys") && sql.includes('"assetId"'))).toBe(true);
+  });
+
   // Migration 0051 carries the same indexes, but a deploy can land first. The
   // job creates what is missing instead of depending on run order.
   it("creates the missing read-path indexes before sweeping", async () => {
@@ -172,5 +194,31 @@ describe("database maintenance", () => {
     expect(summary.truncated).toBe(true);
     expect(summary.rowsRead).toBeGreaterThan(MAINTENANCE_ROWS_READ_BUDGET);
     expect(statements.some((sql) => sql.includes("FROM media_assets m"))).toBe(false);
+  });
+
+  // 阶段 D 双读：syncWeakMediaRefs 必须同时登记 URL 字符串引用（既有数据）
+  // 与结构化 {"assetId":n} 引用（写入侧切换后）；裸数字与坏 JSON 不产生假引用。
+  it("syncWeakMediaRefs registers both URL-string and structured {assetId} references", async () => {
+    const { db, runBinds, statements } = createMaintenanceDb({
+      surveySettings: [
+        '{"scene":{"image":{"assetId":41}},"customFields":[{"url":"/api/survey/media/22"}]}',
+        "not-json media/9",
+        '{"volume":80,"bgm":{"assetId":22}}',
+      ],
+    });
+    const synced = await syncWeakMediaRefs(db, () => false);
+    // 问卷 1：22（URL）+41（结构化）；问卷 2：9（坏 JSON 走正则兜底）；
+    // 问卷 3：22——裸数字 80 不收，结构化 22 正常登记。
+    expect(synced).toBe(4);
+    const inserted = runBinds
+      .filter((binds) => binds.length === 5)
+      .map((binds) => [binds[0], binds[2]] as const);
+    expect(inserted).toEqual([
+      [22, "survey:1:22"],
+      [41, "survey:1:41"],
+      [9, "survey:2:9"],
+      [22, "survey:3:22"],
+    ]);
+    expect(statements.some((sql) => sql.includes("FROM surveys") && sql.includes('"assetId"'))).toBe(true);
   });
 });

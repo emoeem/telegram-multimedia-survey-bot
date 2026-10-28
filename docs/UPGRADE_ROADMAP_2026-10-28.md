@@ -88,7 +88,10 @@
        **先在 staging 用 `scripts/galgame/`、`scripts/hotspot/` 样例跑通**——这是风险最高一步。
        ⚠️ 待办红线：push main 自动触发生产 deploy，staging 实测前代码不推。
 4. [x] 逐条遍历回填脚本：递归 CTE 逐处抽取，替代只处理第一处引用的雏形。（21d83ed）
-5. [ ] 引用计数 `countMediaAssetReferences` 改读结构化字段（或双读过渡）。
+5. [x] 引用计数双读过渡：`countMediaAssetReferences` 本就读结构化关联表（`media_refs`
+       即结构化投影），双读落在两个正则扫描点——`syncWeakMediaRefs` 与孤儿清扫的
+       `loadSurveySettingsMediaIds` 均已补 `{"assetId":n}` JSON 提取 + SQL 过滤扩展
+       （裸数字不收，settings 数值字段歧义太大）。
 6. [ ] 两个版本周期后删字符串兼容分支与正则兜底扫描。
 
 验收：旧问卷视觉逐像素一致、导出导入往返一致、素材库引用数正确、删除被引用素材被拦。
