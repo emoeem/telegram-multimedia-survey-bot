@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { BadgeCheck, ClipboardList, Images, Sparkles, Sprout, UserRound } from "lucide-react";
 
 type NavItem = {
@@ -33,9 +34,45 @@ function isActive(item: NavItem, path: string): boolean {
  */
 export function BottomNav() {
   const path = window.location.pathname;
+  // 移动端滚动方向感知隐匿：向下滚收起、向上滚或近底部浮出；桌面顶栏不受影响。
+  // 隐匿与 inert 都必须按视口门控（lg=62.5rem 与 Tailwind 断点一致），否则
+  // 桌面上滚动会把可见的顶栏一起禁用。
+  const [mobile, setMobile] = useState(
+    () => typeof window === "undefined" || !window.matchMedia("(min-width: 1000px)").matches,
+  );
+  const [scrolledAway, setScrolledAway] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1000px)");
+    const sync = () => setMobile(!mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const doc = document.scrollingElement;
+      if (!doc) return;
+      const y = window.scrollY;
+      const delta = y - lastY;
+      lastY = y;
+      const nearBottom = doc.scrollHeight - y - window.innerHeight < 120;
+      if (nearBottom) {
+        setScrolledAway(false);
+        return;
+      }
+      if (delta > 4 && y > 80) setScrolledAway(true);
+      else if (delta < -4) setScrolledAway(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const hidden = scrolledAway && mobile;
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_85%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl lg:inset-x-auto lg:bottom-auto lg:top-0 lg:h-14 lg:w-full lg:border-b lg:border-t-0 lg:py-0"
+      data-hidden={hidden || undefined}
+      inert={hidden || undefined}
+      className={`fixed inset-x-0 bottom-0 z-40 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_85%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl transition-transform duration-200 ease-[var(--fx-ease)] lg:inset-x-auto lg:bottom-auto lg:top-0 lg:h-14 lg:w-full lg:border-b lg:border-t-0 lg:py-0 ${hidden ? "translate-y-full" : ""}`}
       style={{ WebkitBackdropFilter: "blur(12px)" }}
       aria-label="主导航"
     >

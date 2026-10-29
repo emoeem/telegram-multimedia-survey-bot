@@ -316,7 +316,12 @@ export function HotspotScene({ question, value, onChange, disabled, display, fil
           </button>
         ) : null}
       </p>
-      {scene.intro && !compactLandscape && !fill ? <p className="hotspot-intro">{scene.intro}</p> : null}
+      {/* 阅读版式下题面 description 已经在卡头渲染过一次（SurveyApp），intro
+          与它相同就不再重复；与它不同（作者特意写的场景引导）才保留。
+          舞台（fill）版式没有这段：intro 由 StageLayout 的 heading 区承载。 */}
+      {scene.intro && !compactLandscape && !fill && scene.intro !== question.description ? (
+        <p className="hotspot-intro">{scene.intro}</p>
+      ) : null}
 
       {fill ? (
         <StageFrame ratio={scene.width / scene.height} label={scene.title}>

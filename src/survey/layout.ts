@@ -27,6 +27,13 @@ const STAGE_TYPE_SET = new Set<string>(STAGE_QUESTION_TYPES);
 /** 沉浸模式在窄屏（手机竖屏）退回阅读版式：窄屏放大画面没有意义。 */
 export const IMMERSIVE_MIN_WIDTH = 768;
 
+/**
+ * auto 模式下场景题在桌面视口也上舞台的宽度阈值：1440/1920 下场景图两侧
+ * 各留 ≈336/600px 空白是明确的使用反馈（2026-10-29），场景是画布优先题型，
+ * 桌面宽度足够时铺满比窄卡更合理；平板以下（<1024）维持窄卡阅读。
+ */
+export const AUTO_SCENE_MIN_WIDTH = 1024;
+
 /** 矮横屏阈值：手机横过来后的常见高度，与 CSS 的 `(max-height: 560px)` 对齐。 */
 export const SHORT_LANDSCAPE_MAX_HEIGHT = 560;
 
@@ -50,7 +57,9 @@ export function isShortLandscape(viewport: ViewportSize): boolean {
 /**
  * 布局裁决（唯一入口）。
  *
- * - auto：永远 reading（存量行为，任何视口都不变）
+ * - auto：文字题永远 reading；场景题在桌面宽度（≥1024）走 stage——
+ *   窄卡居中留下的两侧空白在宽屏上是纯损耗（2026-10-29 使用反馈），
+ *   平板/手机维持 reading 不变
  * - immersive：画布优先题型 + 宽度 ≥768 才 stage；手机竖屏仍 reading
  * - landscape：画布优先题型，且**只**在矮横屏 stage——竖屏由提示条引导转屏，
  *   转过来之后才铺满；桌面借此模式与 immersive 行为一致（宽屏 stage）
@@ -60,7 +69,9 @@ export function resolveSurveyLayout(input: {
   questionType: string | null | undefined;
   viewport: ViewportSize;
 }): SurveyLayout {
-  if (input.display === "auto") return "reading";
+  if (input.display === "auto") {
+    return input.questionType === "scene" && input.viewport.width >= AUTO_SCENE_MIN_WIDTH ? "stage" : "reading";
+  }
   if (!isStageQuestionType(input.questionType)) return "reading";
   if (input.display === "landscape") {
     // 矮横屏必然是走 stage；宽屏桌面（immersive 等价）也 stage，

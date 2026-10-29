@@ -172,13 +172,24 @@ test.describe("显示模式 · 沉浸", () => {
     await expect(page).toHaveScreenshot("survey-display-immersive-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
 
-  test("auto：同一视口保持阅读版式（回归护栏）", async ({ page }) => {
+  test("auto：场景题桌面（≥1024）上舞台（2026-10-29 重设计）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
+    await installRoutes(page, "auto");
+    await page.goto(`/s/${SURVEY_ID}`);
+    // 场景是画布优先题型：宽屏不再窄卡居中（两侧空白是明确的使用反馈）。
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
+    await expect(page.locator(".hotspot-stage")).toBeVisible();
+    // 场景引导语进 heading 区（HotspotScene 内不再重复渲染）。
+    await expect(page.locator(".survey-stage-intro")).toContainText("点击画面里发亮的区域。");
+    await expect(page).toHaveScreenshot("survey-display-auto-1600x900.png", { maxDiffPixelRatio: 0.002 });
+  });
+
+  test("auto：场景题窄屏（<1024）维持阅读窄卡（回归护栏）", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 900 });
     await installRoutes(page, "auto");
     await page.goto(`/s/${SURVEY_ID}`);
     await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "reading");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
-    await expect(page).toHaveScreenshot("survey-display-auto-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
 });
 

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialogs } from "../components/Dialogs";
-import type { FocusEvent } from "react";
+import type { CSSProperties, FocusEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1558,7 +1558,7 @@ function BgmPlayer({ url }: { url: string }) {
       aria-label={playing ? "关闭声音" : "开启声音"}
       title={playing ? "关闭声音（背景音乐与界面音效）" : "开启声音（背景音乐与界面音效）"}
       onClick={toggle}
-      className="fixed bottom-28 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
+      className="survey-sound-btn fixed bottom-28 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
     >
       {soundOn && playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
     </button>
@@ -2329,6 +2329,58 @@ export function SurveyApp() {
 
   const navHidden = inputFocused || viewportShrunk;
 
+  /**
+   * 底部操作条自动隐匿（2026-10-29 重设计）：向下滚动收起、向上滚动或接近
+   * 底部浮出；VN 对话页再叠加「4 秒无操作收起」。软键盘让位（navHidden）
+   * 语义不变，三者取并集。
+   *
+   * 裁决所需的 layout/vnMode 等值在本组件后半段才可计算（早退分支在前），
+   * 所以这里经 ref 镜像读取——effect 每次渲染重建监听，成本是 4 个
+   * add/removeEventListener，换来打字机逐字动画期间视为「有操作」（idle
+   * 计时器随渲染重置），不需要额外的心跳。
+   */
+  const bottomBarModeRef = useRef<"plain" | "vn" | "off">("off");
+  const lastScrollYRef = useRef(0);
+  const [scrollNavHidden, setScrollNavHidden] = useState(false);
+  const [idleNavHidden, setIdleNavHidden] = useState(false);
+  useEffect(() => {
+    const onScroll = () => {
+      if (bottomBarModeRef.current === "off") return;
+      const doc = document.scrollingElement;
+      if (!doc) return;
+      const y = window.scrollY;
+      const delta = y - lastScrollYRef.current;
+      lastScrollYRef.current = y;
+      const nearBottom = doc.scrollHeight - y - window.innerHeight < 120;
+      if (nearBottom) {
+        setScrollNavHidden(false);
+        return;
+      }
+      if (delta > 4 && y > 80) setScrollNavHidden(true);
+      else if (delta < -4) setScrollNavHidden(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    if (bottomBarModeRef.current !== "vn") {
+      setIdleNavHidden(false);
+      return undefined;
+    }
+    let timer = window.setTimeout(() => setIdleNavHidden(true), 4000);
+    const wake = () => {
+      setIdleNavHidden(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIdleNavHidden(true), 4000);
+    };
+    const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    for (const event of events) window.addEventListener(event, wake, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      for (const event of events) window.removeEventListener(event, wake);
+    };
+  });
+
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
     try {
@@ -3072,13 +3124,29 @@ export function SurveyApp() {
   const isNote = question.type === "note";
   const isScene = question.type === "scene";
   const isGame = question.type === "game";
-  const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
+  // 2026-10-29 重设计：用户自选主题预设只覆盖配色 token，不再整体关闭
+  // VN 对话框布局——「主题」与「版式」是两件事（此前 `!resolvedUserPreset`
+  // 会让选了预设的用户失去 galgame 体验）。
+  const vnMode = survey.theme?.vn === true;
   const displayMode = survey.display ?? "auto";
   // 布局裁决（唯一入口，见 src/survey/layout.ts）：决定走阅读版式还是舞台版式。
   // reading = 现状滚动卡片；stage = 视口高度 flex 列，舞台吃掉剩余空间。
   const layout = resolveSurveyLayout({ display: displayMode, questionType: question.type, viewport: viewportSize });
   // 本轮只有场景题实现了 fill 渲染；小游戏/视频接入后逐个放开（契约先立住）。
   const stageLayout = layout === "stage" && isScene;
+  // VN 叙事节点：正文沉到 galgame 底部对话框，流内不再渲染叙事卡。
+  const vnDialogActive = vnMode && isNote && !stageLayout;
+  // VN 节点自带场景图时，它就是本节点的全屏背景（galgame 的「画面」），
+  // 覆盖问卷级背景图；没有则回落主题背景。
+  const vnNodeImage = vnDialogActive ? question.media.find((media) => media.url) : undefined;
+  const vnBackgroundStyle: CSSProperties | undefined = vnNodeImage
+    ? { backgroundImage: `url("${vnNodeImage.url}")`, backgroundSize: "cover", backgroundPosition: "center" }
+    : undefined;
+  // 底部操作条隐匿裁决的镜像（见 navHidden 上方的自动隐匿 effect）。
+  // VN 对话页整条隐藏（对话框 CTA 是唯一推进入口，idle 隐匿作用于对话框本身），
+  // 避免两个「继续」同屏；其余阅读页按滚动方向/软键盘收起。
+  bottomBarModeRef.current = stageLayout ? "off" : vnDialogActive ? "vn" : "plain";
+  const navGone = stageLayout ? false : vnDialogActive ? true : navHidden || scrollNavHidden;
   // 宽版式但非舞台（如桌面上的文字题）：卡片放宽到易读上限。
   const wideReading = displayMode !== "auto" && !stageLayout;
   const isLast = index === survey.questions.length - 1;
@@ -3237,11 +3305,17 @@ export function SurveyApp() {
       data-theme={theme?.preset}
       data-display={displayMode}
       data-layout={layout}
+      data-vn={vnMode ? "1" : undefined}
       style={{ ...vars, ...(vnMode ? {} : backgroundStyle) }}
     >
       {vnMode ? (
         // VN 皮肤：场景图固定铺满视口，不随内容滚动（视觉小说的画面感）。
-        <div aria-hidden className="fixed inset-0 z-0" style={{ ...backgroundStyle, backgroundAttachment: "fixed" }} />
+        // 当前叙事节点自带图时用它当本节背景（galgame 的「画面」），否则主题背景。
+        <div
+          aria-hidden
+          className="fixed inset-0 z-0"
+          style={{ ...(vnBackgroundStyle ?? backgroundStyle), backgroundAttachment: "fixed" }}
+        />
       ) : null}
       {overlay ? (
         <div
@@ -3269,7 +3343,7 @@ export function SurveyApp() {
               <div className="min-w-0">
                 <p className="truncate text-[13px] font-semibold text-[var(--survey-heading)]">{survey.title}</p>
                 {pageIndex >= 0 ? (
-                  <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
+                  <p className="survey-page-count mt-0.5 text-[11px] text-[var(--survey-muted)]">
                     第 {pageIndex + 1} / {survey.pages.length} 页
                   </p>
                 ) : null}
@@ -3309,7 +3383,7 @@ export function SurveyApp() {
                 href={survey.communityGroupUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--survey-primary)] hover:underline"
+                className="survey-header-cta mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--survey-primary)] hover:underline"
               >
                 加入 Telegram 群聊
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -3317,7 +3391,8 @@ export function SurveyApp() {
             ) : null}
             <div className="survey-header-progress flex items-center gap-3 pb-3 pt-2.5">
               <div className="survey-progress-track flex-1">
-                <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
+                {/* 合成器友好的进度动画：scaleX 而不是 width（width 触发逐帧重排）。 */}
+                <div className="survey-progress-bar" style={{ transform: `scaleX(${percent / 100})` }} />
               </div>
               <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--survey-muted)]">
                 {isNote ? (
@@ -3365,15 +3440,18 @@ export function SurveyApp() {
           {stageLayout ? (
             <StageLayout
               heading={
-                question.title ? (
-                  <h1 className="text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    <MousePointerClick
-                      className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
-                      aria-hidden="true"
-                    />
-                    {question.title}
-                  </h1>
-                ) : null
+                <>
+                  {question.title ? (
+                    <h1 className="text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                      <MousePointerClick
+                        className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
+                        aria-hidden="true"
+                      />
+                      {question.title}
+                    </h1>
+                  ) : null}
+                  {question.description ? <p className="survey-stage-intro">{question.description}</p> : null}
+                </>
               }
               stage={
                 <HotspotScene
@@ -3392,6 +3470,55 @@ export function SurveyApp() {
               }
               trailing={publishOptions}
             />
+          ) : vnDialogActive ? (
+            /* VN 叙事节点：不再渲染流内叙事卡（节点图已并入固定背景层，见上），
+             * 正文沉入 galgame 底部对话框——名牌 + 打字机 + 唯一推进 CTA。
+             * 底部操作条在本页隐藏（idle 自动收起），「上一题」移进对话框，
+             * 保证回退入口不因隐藏底栏而消失。 */
+            <section
+              className={`vn-dialog-layer${idleNavHidden || navHidden ? " vn-dialog-hidden" : ""}`}
+              inert={idleNavHidden || navHidden || undefined}
+              aria-label="剧情对话"
+            >
+              <div className="vn-dialog">
+                {question.settings?.speaker ? (
+                  <span className="vn-dialog-speaker">{String(question.settings.speaker)}</span>
+                ) : currentPage?.title ? (
+                  <span className="vn-dialog-chapter">{currentPage.title}</span>
+                ) : null}
+                <div className="vn-dialog-text">
+                  <Typewriter text={question.description || question.title || ""} enabled />
+                </div>
+                <div className="vn-dialog-actions">
+                  {index > 0 ? (
+                    <button type="button" className="vn-dialog-back" onClick={goBack} disabled={busy}>
+                      <ArrowLeft className="h-4 w-4" />
+                      上一题
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="vn-dialog-continue"
+                    onClick={() => void (isLast ? submit() : goNext())}
+                    disabled={busy || (isLast && survey.preview === true)}
+                  >
+                    {busy ? (
+                      "提交中…"
+                    ) : isLast ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        提交问卷
+                      </>
+                    ) : (
+                      <>
+                        继续
+                        <ChevronRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </section>
           ) : (
             <div
               className={`survey-card p-5 ${isNote ? "survey-card-story" : ""} ${
@@ -3403,31 +3530,7 @@ export function SurveyApp() {
                   {currentPage.title}
                 </p>
               ) : null}
-              {isNote && vnMode ? (
-                <>
-                  <MediaBlock urls={question.media} type="image" />
-                  {/* VN 对话框：名牌 + 打字机正文 + 继续，替代表单式叙事卡。 */}
-                  <div className="fixed bottom-0 left-0 right-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
-                    <div className="relative mx-auto max-w-xl rounded-2xl border border-white/25 bg-black/70 px-5 py-4 text-white shadow-2xl backdrop-blur-md">
-                      {question.settings?.speaker ? (
-                        <span className="absolute -top-3.5 left-4 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-xs font-bold shadow-lg">
-                          {String(question.settings.speaker)}
-                        </span>
-                      ) : null}
-                      <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[15px] leading-7">
-                        <Typewriter text={question.description || question.title || ""} enabled />
-                      </p>
-                      <button
-                        type="button"
-                        className="mt-2 flex w-full items-center justify-end gap-1 text-sm font-semibold text-amber-300"
-                        onClick={() => void goNext()}
-                      >
-                        继续 <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : isNote ? (
+              {isNote ? (
                 <>
                   {question.title ? (
                     <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
@@ -3600,8 +3703,9 @@ export function SurveyApp() {
           className={`survey-bottom-nav ${
             stageLayout
               ? "survey-stage-nav"
-              : `fixed inset-x-0 bottom-0 z-10 transition-transform duration-200 ${navHidden ? "translate-y-full" : ""}`
+              : `fixed inset-x-0 bottom-0 z-10 ${navGone ? "survey-bottom-nav-hidden" : ""}`
           }`}
+          inert={stageLayout || !navGone ? undefined : true}
         >
           <div
             className={`mx-auto px-4 pt-1 ${wideReading ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}

@@ -35,8 +35,27 @@ describe("问卷布局契约", () => {
     }
   });
 
-  it("auto：任何题型任何视口都是阅读版式（存量零变化）", () => {
-    for (const questionType of ["scene", "game", "single", "note"]) {
+  it("auto：场景题在桌面宽度（≥1024）上舞台，其余组合维持阅读（2026-10-29）", () => {
+    // 场景题：桌面铺满、平板竖屏与手机维持阅读窄卡。
+    expect(resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: VIEWPORTS.desktop })).toBe("stage");
+    expect(
+      resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: { width: 1024, height: 768 } }),
+    ).toBe("stage");
+    expect(
+      resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: { width: 1023, height: 768 } }),
+    ).toBe("reading");
+    expect(resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: VIEWPORTS.tabletPortrait })).toBe(
+      "reading",
+    );
+    expect(resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: VIEWPORTS.phonePortrait })).toBe(
+      "reading",
+    );
+    expect(resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: VIEWPORTS.phoneLandscape })).toBe(
+      "reading",
+    );
+    // 非场景题型（含其他画布优先类型）：auto 行为不变（game/image 由
+    // SurveyApp 的 isScene 门控，layout 层维持 reading）。
+    for (const questionType of ["game", "single", "note"]) {
       for (const viewport of Object.values(VIEWPORTS)) {
         expect(resolveSurveyLayout({ display: "auto", questionType, viewport })).toBe("reading");
       }

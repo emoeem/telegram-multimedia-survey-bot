@@ -851,14 +851,17 @@ input[type="radio"] {
     overflow: hidden;
   }
   .survey-progress-bar {
+    width: 100%;
     height: 100%;
     border-radius: inherit;
+    transform-origin: left center;
     background: linear-gradient(
       90deg,
       var(--survey-primary, #4f46e5),
       color-mix(in srgb, var(--survey-primary, #4f46e5) 55%, #22d3ee)
     );
-    transition: width 0.3s ease;
+    /* 合成器友好：宽度动画逐帧重排，scaleX 只动合成层。 */
+    transition: transform 0.3s var(--fx-ease, ease);
   }
 
   /* ---- 问卷构建器（Form Builder） ------------------------------------ */
@@ -6653,4 +6656,219 @@ body.hotspot-lock {
   .scene-canvas-spot {
     transition: none;
   }
+}
+
+/* ---- 2026-10-29 重设计：VN 对话框 + 底栏自动隐匿 -------------------- */
+
+/* 底部操作条（阅读版式）：自动隐匿由 SurveyApp 的滚动方向 / VN idle 裁决驱动，
+ * 纯 transform 过渡（合成器友好），隐匿期间整条 inert 不可聚焦。 */
+.survey-bottom-nav {
+  transition: transform var(--fx-dur, 0.25s) var(--fx-ease, ease);
+}
+.survey-bottom-nav-hidden {
+  transform: translateY(112%);
+}
+
+/* VN galgame 对话框：底部锚定、玻璃质感、名牌、唯一推进 CTA。
+   「上一题」入口内联在对话框里（底栏隐藏后回退不消失）。 */
+.vn-dialog-layer {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 0 12px calc(env(safe-area-inset-bottom) + 12px);
+  transition: transform var(--fx-dur, 0.25s) var(--fx-ease, ease);
+}
+.vn-dialog-layer.vn-dialog-hidden {
+  transform: translateY(112%);
+}
+.vn-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 720px;
+  max-height: min(46dvh, 360px);
+  padding: 18px 20px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 10, 16, 0.78);
+  color: #eef2fa;
+  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.vn-dialog-text {
+  min-height: 3rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 15px;
+  line-height: 27px;
+  white-space: pre-wrap;
+}
+.vn-dialog-speaker,
+.vn-dialog-chapter {
+  position: absolute;
+  top: -13px;
+  left: 16px;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(252, 211, 77, 0.6);
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #17141f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: 0 6px 18px -6px rgba(245, 158, 11, 0.55);
+}
+.vn-dialog-chapter {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(8, 10, 16, 0.92);
+  color: #cdd6ea;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.6);
+}
+.vn-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  flex: none;
+}
+.vn-dialog-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #aab6cf;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.05s ease;
+}
+.vn-dialog-back:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef2fa;
+}
+.vn-dialog-back:active {
+  transform: scale(0.97);
+}
+.vn-dialog-back:focus-visible {
+  outline: 2px solid #fcd34d;
+  outline-offset: 2px;
+}
+.vn-dialog-back:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.vn-dialog-continue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #17141f;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.05s ease;
+}
+.vn-dialog-continue:hover {
+  filter: brightness(1.07);
+}
+.vn-dialog-continue:active {
+  transform: scale(0.97);
+}
+.vn-dialog-continue:focus-visible {
+  outline: 2px solid #fcd34d;
+  outline-offset: 2px;
+}
+.vn-dialog-continue:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 639px) {
+  .vn-dialog {
+    padding: 16px 16px 12px;
+  }
+  .vn-dialog-continue {
+    padding: 0 22px;
+  }
+}
+
+/* VN 模式立绘（≤999px）：绝对定位右上、不占文档流——正文不再被立绘推走，
+   对话框独占底部。桌面维持组件自带的 lg:fixed 右下排版。 */
+@media (max-width: 999px) {
+  [data-vn="1"] [data-survey-sprite] {
+    position: absolute;
+    top: 64px;
+    right: 4px;
+    z-index: 1;
+    width: auto;
+    margin: 0;
+    justify-content: flex-end;
+  }
+  [data-vn="1"] [data-survey-sprite] img {
+    height: min(26dvh, 220px);
+  }
+}
+
+/* 舞台版式 heading 区的场景引导语（intro 只在这一处渲染，见 HotspotScene）。 */
+.survey-stage-intro {
+  margin: 2px 0 0;
+  max-width: 68ch;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--survey-muted, #64748b);
+}
+
+/* 矮横屏（手机横过来，高 ≤560px）：头部压紧、页码行让位，给画面腾高度。
+   未分层的规则优先级高于 Tailwind @layer utilities 的同属性声明。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  .survey-glow header > div {
+    padding-top: 6px;
+  }
+  .survey-glow header .survey-page-count,
+  .survey-glow header .survey-header-cta {
+    display: none;
+  }
+  .survey-glow header .survey-header-progress {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+}
+
+/* VN 模式移动端：静音钮让出对话框区域，改挂左上（立绘在右上，互不遮挡）；
+   桌面维持 bottom-28 右下。 */
+@media (max-width: 999px) {
+  [data-vn="1"] .survey-sound-btn {
+    top: 64px;
+    right: auto;
+    bottom: auto;
+    left: 12px;
+  }
+}
+
+/* quest 剧情扩展包面板：复用 VN 对话框皮肤，但不限制高度（选项列表在内部）。 */
+.quest-dialog {
+  max-height: none;
 }

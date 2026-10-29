@@ -73,6 +73,15 @@ CREATE TABLE media_assets (
   created_at TEXT,
   updated_at TEXT
 );
+CREATE TABLE task_packs (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  game_type TEXT NOT NULL DEFAULT 'tower',
+  settings_json TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT,
+  updated_at TEXT
+);
 `;
 
 function buildEnv() {
@@ -120,6 +129,13 @@ function buildEnv() {
             "INSERT INTO media_refs (asset_id, ref_type, ref_key, created_at, updated_at) VALUES (?, 'survey_theme', ?, ?, ?)",
           )
           .bind(mediaAssetId, `survey:${surveyId}:${mediaAssetId}`, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z")
+          .run(),
+      taskPack: (id: number, enabled: boolean, settingsJson: string) =>
+        void db
+          .prepare(
+            "INSERT INTO task_packs (id, name, game_type, settings_json, enabled, created_at, updated_at) VALUES (?, ?, 'quest', ?, ?, ?, ?)",
+          )
+          .bind(id, `pack-${id}`, settingsJson, enabled ? 1 : 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z")
           .run(),
     },
   };
@@ -185,6 +201,28 @@ describeIf("survey media visibility (real SQL)", () => {
     const { env, insert } = buildEnv();
     insert.survey(8, "draft", null, null, JSON.stringify({ audio: { url: "/api/survey/media/9" } }));
     const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/9"), env, 9);
+    expect(response.status).toBe(404);
+  });
+
+  it("quest 扩展包（启用中的 task_packs）settings_json URL 引用 → 公开", async () => {
+    const { env, insert } = buildEnv();
+    insert.taskPack(
+      1,
+      true,
+      JSON.stringify({ content: JSON.stringify({ nodes: [{ image: "/api/survey/media/10" }] }) }),
+    );
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/10"), env, 10);
+    expect(response.status).toBe(200);
+  });
+
+  it("停用中的扩展包不再公开其素材", async () => {
+    const { env, insert } = buildEnv();
+    insert.taskPack(
+      2,
+      false,
+      JSON.stringify({ content: JSON.stringify({ nodes: [{ image: "/api/survey/media/10" }] }) }),
+    );
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/10"), env, 10);
     expect(response.status).toBe(404);
   });
 
