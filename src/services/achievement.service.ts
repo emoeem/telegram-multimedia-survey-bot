@@ -314,18 +314,33 @@ export async function evaluateAchievements(db: D1Database, ctx: AchievementConte
  */
 export const ACHIEVEMENT_TIME_ZONE = "Asia/Shanghai";
 
-export function participantHour(now: Date): number {
+/**
+ * 格式化器只构造一次（惰性 + 记忆化）：原先每次调用 `participantHour` 都
+ * `new Intl.DateTimeFormat`，而「深夜/早起」判定在一次提交里最多调它 3 次。
+ * 构造失败（环境缺该时区数据）时返回 null，调用侧退回 UTC。
+ */
+let participantHourFormatter: Intl.DateTimeFormat | null | undefined;
+function getParticipantHourFormatter(): Intl.DateTimeFormat | null {
+  if (participantHourFormatter !== undefined) return participantHourFormatter;
   try {
-    const formatted = new Intl.DateTimeFormat("en-US", {
+    participantHourFormatter = new Intl.DateTimeFormat("en-US", {
       timeZone: ACHIEVEMENT_TIME_ZONE,
       hour: "numeric",
       hour12: false,
-    }).format(now);
-    const hour = Number(formatted);
-    if (Number.isInteger(hour)) return hour % 24;
+    });
   } catch {
-    // 环境不支持该时区时退回 UTC，彩蛋宁可偏一小时也不能抛错。
+    participantHourFormatter = null;
   }
+  return participantHourFormatter;
+}
+
+export function participantHour(now: Date): number {
+  const formatter = getParticipantHourFormatter();
+  if (formatter) {
+    const hour = Number(formatter.format(now));
+    if (Number.isInteger(hour)) return hour % 24;
+  }
+  // 环境不支持该时区时退回 UTC，彩蛋宁可偏一小时也不能抛错。
   return now.getUTCHours();
 }
 

@@ -201,6 +201,57 @@ export async function listChapters(
   }));
 }
 
+/**
+ * 多个系列的章节一次查回（按 seriesId 分组），列与排序语义同 {@link listChapters}。
+ *
+ * 管理端系列列表原先对每个系列单独 `listChapters`（N+1）；作者系列数会一直涨，
+ * 这里一条 IN 查询取全量后在内存里分组（组内仍按 series_order, id 排序）。
+ */
+export async function listChaptersForSeries(
+  db: D1Database,
+  seriesIds: number[],
+  options: { includeDrafts?: boolean } = {},
+): Promise<Map<number, SeriesChapter[]>> {
+  const grouped = new Map<number, SeriesChapter[]>();
+  if (!seriesIds.length) return grouped;
+  const statusCondition = options.includeDrafts ? "" : " AND s.status = 'published'";
+  const result = await db
+    .prepare(
+      `SELECT s.id AS surveyId, s.series_id AS ownerSeriesId, s.title, s.series_order AS "order", s.status, s.content_rating contentRating,
+              s.access_code accessCode, s.cover_media_id coverMediaId, s.published_at publishedAt
+       FROM surveys s
+       WHERE s.series_id IN (${seriesIds.map(() => "?").join(",")}) AND s.deleted_at IS NULL${statusCondition}
+       ORDER BY COALESCE(s.series_order, 999), s.id`,
+    )
+    .bind(...seriesIds)
+    .all<{
+      surveyId: number;
+      ownerSeriesId: number;
+      title: string;
+      order: number | null;
+      status: string;
+      contentRating: string | null;
+      accessCode: string | null;
+      coverMediaId: number | null;
+      publishedAt: string | null;
+    }>();
+  for (const row of result.results ?? []) {
+    const list = grouped.get(row.ownerSeriesId) ?? [];
+    list.push({
+      surveyId: row.surveyId,
+      title: row.title,
+      order: row.order ?? 0,
+      status: row.status,
+      contentRating: row.contentRating === "r18" ? "r18" : "all",
+      accessCodeRequired: Boolean(row.accessCode),
+      coverMediaId: row.coverMediaId,
+      publishedAt: row.publishedAt,
+    });
+    grouped.set(row.ownerSeriesId, list);
+  }
+  return grouped;
+}
+
 /** 章节计数（公开列表徽章用）：只数 published。 */
 export async function countPublishedChapters(db: D1Database, seriesIds: number[]): Promise<Map<number, number>> {
   if (!seriesIds.length) return new Map();

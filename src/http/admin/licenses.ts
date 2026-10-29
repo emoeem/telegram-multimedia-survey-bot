@@ -2,7 +2,7 @@ import { createLicense } from "../../services/license.service";
 import { WriteContext, readString, writeAudit } from "./helpers";
 import { Env } from "../../index";
 import {
-  listLicenseActivations,
+  listLicenseActivationsForLicenses,
   listSoftwareLicenses,
   listSoftwareReleases,
 } from "../../db/repositories/license.repository";
@@ -46,34 +46,36 @@ export async function handleAdminLicensesWrite(
   if (url.pathname === "/api/admin/licenses" && request.method === "GET") {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理授权");
     const licenses = await listSoftwareLicenses(db, 100);
-    const items = await Promise.all(
-      licenses.map(async (license) => {
-        const activations = await listLicenseActivations(db, license.id);
-        return {
-          publicId: license.publicId,
-          customerName: license.customerName,
-          customerContact: license.customerContact,
-          licenseType: license.licenseType,
-          status: license.status,
-          startsAt: license.startsAt,
-          expiresAt: license.expiresAt,
-          updatesUntil: license.updatesUntil,
-          maxActivations: license.maxActivations,
-          notes: license.notes,
-          createdAt: license.createdAt,
-          revokedAt: license.revokedAt,
-          activationCount: activations.filter((item) => !item.deactivatedAt).length,
-          activations: activations.slice(0, 20).map((item) => ({
-            installationId: item.installationId,
-            installationName: item.installationName,
-            appVersion: item.appVersion,
-            firstSeenAt: item.firstSeenAt,
-            lastSeenAt: item.lastSeenAt,
-            deactivatedAt: item.deactivatedAt,
-          })),
-        };
-      }),
+    const activationsByLicense = await listLicenseActivationsForLicenses(
+      db,
+      licenses.map((license) => license.id),
     );
+    const items = licenses.map((license) => {
+      const activations = activationsByLicense.get(license.id) ?? [];
+      return {
+        publicId: license.publicId,
+        customerName: license.customerName,
+        customerContact: license.customerContact,
+        licenseType: license.licenseType,
+        status: license.status,
+        startsAt: license.startsAt,
+        expiresAt: license.expiresAt,
+        updatesUntil: license.updatesUntil,
+        maxActivations: license.maxActivations,
+        notes: license.notes,
+        createdAt: license.createdAt,
+        revokedAt: license.revokedAt,
+        activationCount: activations.filter((item) => !item.deactivatedAt).length,
+        activations: activations.slice(0, 20).map((item) => ({
+          installationId: item.installationId,
+          installationName: item.installationName,
+          appVersion: item.appVersion,
+          firstSeenAt: item.firstSeenAt,
+          lastSeenAt: item.lastSeenAt,
+          deactivatedAt: item.deactivatedAt,
+        })),
+      };
+    });
     return json({ items });
   }
 

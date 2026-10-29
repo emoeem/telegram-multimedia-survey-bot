@@ -327,17 +327,18 @@ export async function handleCoinAdminApi(
            FROM gacha_pools ORDER BY id DESC`,
         )
         .all();
-      const withCounts = await Promise.all(
-        (pools.results ?? []).map(async (pool: Record<string, unknown>) => {
-          const count = await db
-            .prepare(
-              `SELECT COUNT(*) AS n, COALESCE(SUM(weight), 0) AS w FROM gacha_pool_items WHERE pool_id = ? AND active = 1`,
-            )
-            .bind(Number(pool.id))
-            .first<{ n: number; w: number }>();
-          return { ...pool, itemCount: Number(count?.n ?? 0), totalWeight: Number(count?.w ?? 0) };
-        }),
-      );
+      // 一条 GROUP BY 取回全部池的计数（原实现对每个池单独 COUNT/SUM，N+1）。
+      const counts = await db
+        .prepare(
+          `SELECT pool_id, COUNT(*) AS n, COALESCE(SUM(weight), 0) AS w
+             FROM gacha_pool_items WHERE active = 1 GROUP BY pool_id`,
+        )
+        .all<{ pool_id: number; n: number; w: number }>();
+      const byPool = new Map((counts.results ?? []).map((row) => [Number(row.pool_id), row] as const));
+      const withCounts = (pools.results ?? []).map((pool: Record<string, unknown>) => {
+        const count = byPool.get(Number(pool.id));
+        return { ...pool, itemCount: Number(count?.n ?? 0), totalWeight: Number(count?.w ?? 0) };
+      });
       return { pools: withCounts };
     });
   }

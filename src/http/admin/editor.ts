@@ -327,26 +327,28 @@ export async function handleAdminEditorWrite(
       .run();
     const poolId = Number(poolResult.meta?.last_row_id);
     const weight = Math.max(1, Math.floor(100 / usable.length));
-    for (const item of usable) {
-      const label = String(item.label ?? item.id);
-      await db
-        .prepare(
-          `INSERT INTO gacha_pool_items (pool_id, owner_participant_hash, title, description, content_type,
-              rarity, weight, stock, remaining, preview_media_id, active, content_rating, created_at)
-           VALUES (?, ?, ?, ?, 'ending', 'R', ?, NULL, NULL, ?, 1, ?, ?)`,
-        )
-        .bind(
-          poolId,
-          `user_${user.id}`,
-          String(item.title ?? label).slice(0, 120),
-          String(item.subtitle ?? item.description ?? "").slice(0, 300),
-          weight,
-          survey.coverMediaId,
-          survey.contentRating,
-          now,
-        )
-        .run();
-    }
+    // 一批插完全部奖池项（原先逐条串行；结局数就是串行往返数）。
+    await db.batch(
+      usable.map((item) => {
+        const label = String(item.label ?? item.id);
+        return db
+          .prepare(
+            `INSERT INTO gacha_pool_items (pool_id, owner_participant_hash, title, description, content_type,
+                rarity, weight, stock, remaining, preview_media_id, active, content_rating, created_at)
+             VALUES (?, ?, ?, ?, 'ending', 'R', ?, NULL, NULL, ?, 1, ?, ?)`,
+          )
+          .bind(
+            poolId,
+            `user_${user.id}`,
+            String(item.title ?? label).slice(0, 120),
+            String(item.subtitle ?? item.description ?? "").slice(0, 300),
+            weight,
+            survey.coverMediaId,
+            survey.contentRating,
+            now,
+          );
+      }),
+    );
     await writeAudit(db, {
       actorUserId: user.id,
       action: "gacha.pool.generate_from_results",

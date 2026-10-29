@@ -8,12 +8,19 @@ import {
   updateSurveyStatus,
 } from "../db/repositories/survey.repository";
 import { createSurveyVersionSnapshot } from "./survey-version.service";
-import {
-  createQuestion,
-  createQuestionOption,
-  listOptionsForQuestions,
-  listQuestionsBySurvey,
-} from "../db/repositories/question.repository";
+import { listOptionsForQuestions, listQuestionsBySurvey } from "../db/repositories/question.repository";
+
+/**
+ * D1 的 `db.batch` 对单批语句数有平台上限；按 50 条一切分。结果数组的顺序与
+ * 语句顺序一致，跨批拼接后仍然对得上调用方的下标映射。
+ */
+async function batchChunked(db: D1Database, statements: D1PreparedStatement[]): Promise<D1Result<unknown>[]> {
+  const results: D1Result<unknown>[] = [];
+  for (let index = 0; index < statements.length; index += 50) {
+    results.push(...(await db.batch(statements.slice(index, index + 50))));
+  }
+  return results;
+}
 
 export async function getPublishedSurveys(db: D1Database): Promise<Survey[]> {
   const result = await db
@@ -175,22 +182,30 @@ export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId:
     )
     .bind(surveyId)
     .all<{ id: number; title: string | null; description: string | null; order: number }>();
+  const pageRowsToInsert = pageRows.results ?? [];
   const pageIdMap = new Map<number, number>();
   const timestamp = new Date().toISOString();
-  for (const page of pageRows.results ?? []) {
-    const result = await db
-      .prepare(
-        `INSERT INTO survey_pages (
-          survey_id, title, description, "order", created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(duplicate.id, page.title, page.description, page.order, timestamp, timestamp)
-      .run();
-    const newPageId = result.meta?.last_row_id;
-    if (typeof newPageId !== "number") {
-      throw new Error("Failed to duplicate survey page");
-    }
-    pageIdMap.set(page.id, newPageId);
+  if (pageRowsToInsert.length > 0) {
+    // 一批插完所有页：原先每页一次串行往返，P 页就是 P 次 D1 往返。
+    const pageResults = await batchChunked(
+      db,
+      pageRowsToInsert.map((page) =>
+        db
+          .prepare(
+            `INSERT INTO survey_pages (
+              survey_id, title, description, "order", created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(duplicate.id, page.title, page.description, page.order, timestamp, timestamp),
+      ),
+    );
+    pageRowsToInsert.forEach((page, index) => {
+      const newPageId = pageResults[index]?.meta?.last_row_id;
+      if (typeof newPageId !== "number") {
+        throw new Error("Failed to duplicate survey page");
+      }
+      pageIdMap.set(page.id, newPageId);
+    });
   }
 
   const questions = await listQuestionsBySurvey(db, surveyId);
@@ -208,60 +223,109 @@ export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId:
     optionsByQuestion.set(option.questionId, list);
   }
 
-  for (let index = 0; index < questions.length; index += 1) {
-    const question = questions[index];
-    if (!question) continue;
-
-    const questionId = await createQuestion(db, {
-      surveyId: duplicate.id,
-      type: question.type,
-      title: question.title,
-      description: question.description,
-      required: question.required,
-      order: index,
-      pageId: question.pageId !== null ? (pageIdMap.get(question.pageId) ?? null) : null,
-      settingsJson: question.settingsJson,
-      validationJson: question.validationJson,
-    });
-    questionIdMap.set(question.id, questionId);
-
-    await db
-      .prepare(
-        `INSERT INTO question_media (
-          question_id, media_asset_id, sort_order, created_at
-        )
-        SELECT ?, media_asset_id, sort_order, ?
-        FROM question_media
-        WHERE question_id = ?`,
-      )
-      .bind(questionId, new Date().toISOString(), question.id)
-      .run();
-
-    const questionOptions = optionsByQuestion.get(question.id) ?? [];
-    for (let optionIndex = 0; optionIndex < questionOptions.length; optionIndex += 1) {
-      const option = questionOptions[optionIndex];
-      if (!option) continue;
-      const optionId = await createQuestionOption(db, {
-        questionId,
-        label: option.label,
-        value: option.value,
-        order: optionIndex,
-      });
-      optionIdMap.set(option.id, optionId);
-      await db
-        .prepare(
-          `INSERT INTO option_media (
-            question_option_id, media_asset_id, sort_order, created_at
+  // 复制的写入侧压成 4 类批量往返（页 → 题 → 题目媒体 → 选项+选项媒体）。原实现
+  // 每题 1 次建题 + 1 次题目媒体 + 每选项 2 次，一次复制最多打几百个串行 D1
+  // 往返，是全库最重的单请求路径（bot 与 admin 的「复制问卷」都走这里）。
+  // 列与 createQuestion / createQuestionOption 完全一致；condition_json 与
+  // skip_to_question_id 与原实现一样留给下面的重映射循环补写。
+  if (questions.length > 0) {
+    const questionResults = await batchChunked(
+      db,
+      questions.map((question, index) =>
+        db
+          .prepare(
+            `INSERT INTO survey_questions (
+              survey_id, type, title, description, required,
+              "order", page_id, settings_json, validation_json, condition_json, skip_to_question_id,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          SELECT ?, media_asset_id, sort_order, ?
-          FROM option_media
-          WHERE question_option_id = ?`,
-        )
-        .bind(optionId, new Date().toISOString(), option.id)
-        .run();
+          .bind(
+            duplicate.id,
+            question.type,
+            question.title,
+            question.description ?? null,
+            question.required ? 1 : 0,
+            index,
+            question.pageId !== null ? (pageIdMap.get(question.pageId) ?? null) : null,
+            question.settingsJson ?? null,
+            question.validationJson ?? null,
+            null,
+            null,
+            timestamp,
+            timestamp,
+          ),
+      ),
+    );
+    questions.forEach((question, index) => {
+      const newQuestionId = questionResults[index]?.meta?.last_row_id;
+      if (typeof newQuestionId !== "number") {
+        throw new Error("Failed to duplicate survey question");
+      }
+      questionIdMap.set(question.id, newQuestionId);
+    });
+
+    const mediaStatements: D1PreparedStatement[] = [];
+    const optionSourceIds: number[] = [];
+    const optionStatements: D1PreparedStatement[] = [];
+    for (const question of questions) {
+      const newQuestionId = questionIdMap.get(question.id);
+      if (newQuestionId === undefined) continue;
+      mediaStatements.push(
+        db
+          .prepare(
+            `INSERT INTO question_media (
+              question_id, media_asset_id, sort_order, created_at
+            )
+            SELECT ?, media_asset_id, sort_order, ?
+            FROM question_media
+            WHERE question_id = ?`,
+          )
+          .bind(newQuestionId, timestamp, question.id),
+      );
+      const questionOptions = optionsByQuestion.get(question.id) ?? [];
+      questionOptions.forEach((option, optionIndex) => {
+        optionStatements.push(
+          db
+            .prepare(
+              `INSERT INTO question_options (
+                question_id, label, value, "order", created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(newQuestionId, option.label, option.value, optionIndex, timestamp, timestamp),
+        );
+        optionSourceIds.push(option.id);
+      });
+    }
+    if (mediaStatements.length > 0) await batchChunked(db, mediaStatements);
+    if (optionStatements.length > 0) {
+      const optionResults = await batchChunked(db, optionStatements);
+      const optionMediaStatements: D1PreparedStatement[] = [];
+      optionResults.forEach((result, index) => {
+        const newOptionId = result.meta?.last_row_id;
+        const sourceId = optionSourceIds[index];
+        if (typeof newOptionId !== "number" || sourceId === undefined) {
+          throw new Error("Failed to duplicate survey option");
+        }
+        optionIdMap.set(sourceId, newOptionId);
+        optionMediaStatements.push(
+          db
+            .prepare(
+              `INSERT INTO option_media (
+                question_option_id, media_asset_id, sort_order, created_at
+              )
+              SELECT ?, media_asset_id, sort_order, ?
+              FROM option_media
+              WHERE question_option_id = ?`,
+            )
+            .bind(newOptionId, timestamp, sourceId),
+        );
+      });
+      if (optionMediaStatements.length > 0) await batchChunked(db, optionMediaStatements);
     }
   }
 
+  const referenceUpdates: D1PreparedStatement[] = [];
   for (const question of questions) {
     const questionId = questionIdMap.get(question.id);
     if (!questionId) continue;
@@ -291,16 +355,18 @@ export async function duplicateSurvey(db: D1Database, surveyId: number, ownerId:
       ? (questionIdMap.get(question.parentQuestionId) ?? null)
       : null;
     if (conditionJson || mappedSkipToQuestionId || mappedParentQuestionId) {
-      await db
-        .prepare(
-          `UPDATE survey_questions
-           SET condition_json = ?, skip_to_question_id = ?, parent_question_id = ?, updated_at = ?
-           WHERE id = ?`,
-        )
-        .bind(conditionJson, mappedSkipToQuestionId, mappedParentQuestionId, new Date().toISOString(), questionId)
-        .run();
+      referenceUpdates.push(
+        db
+          .prepare(
+            `UPDATE survey_questions
+             SET condition_json = ?, skip_to_question_id = ?, parent_question_id = ?, updated_at = ?
+             WHERE id = ?`,
+          )
+          .bind(conditionJson, mappedSkipToQuestionId, mappedParentQuestionId, timestamp, questionId),
+      );
     }
   }
+  if (referenceUpdates.length > 0) await batchChunked(db, referenceUpdates);
 
   return duplicate;
 }

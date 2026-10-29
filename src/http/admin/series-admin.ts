@@ -6,6 +6,7 @@ import {
   getSeriesById,
   getSurveySeriesRef,
   listChapters,
+  listChaptersForSeries,
   listSeriesByOwner,
   slugExists,
   updateSeries,
@@ -36,12 +37,16 @@ export async function handleAdminSeriesWrite(
 
   if (request.method === "GET" && url.pathname === "/api/admin/series") {
     const seriesList = await listSeriesByOwner(db, user.id);
-    const withChapters = await Promise.all(
-      seriesList.map(async (series) => ({
-        ...series,
-        chapters: await listChapters(db, series.id, { includeDrafts: true }),
-      })),
+    // 一条 IN 查询取回全部章节再分组，替代每系列一次的 N+1。
+    const chaptersBySeries = await listChaptersForSeries(
+      db,
+      seriesList.map((series) => series.id),
+      { includeDrafts: true },
     );
+    const withChapters = seriesList.map((series) => ({
+      ...series,
+      chapters: chaptersBySeries.get(series.id) ?? [],
+    }));
     return json({ series: withChapters });
   }
 

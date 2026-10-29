@@ -418,6 +418,36 @@ export async function listLicenseActivations(db: D1Database, licenseId: number):
   return (result.results ?? []).map(mapActivation);
 }
 
+/**
+ * 一次查回多份授权的激活记录（按 licenseId 分组）。
+ *
+ * 管理端授权列表原先对每份授权单独发一次查询（N+1，上限 100 份 → 101 次往返）；
+ * 这里一条 IN 查询取全量后在内存里分组，排序语义与 {@link listLicenseActivations}
+ * 一致（first_seen_at ASC, id ASC）。
+ */
+export async function listLicenseActivationsForLicenses(
+  db: D1Database,
+  licenseIds: number[],
+): Promise<Map<number, SoftwareLicenseActivation[]>> {
+  const grouped = new Map<number, SoftwareLicenseActivation[]>();
+  if (!licenseIds.length) return grouped;
+  const result = await db
+    .prepare(
+      `SELECT * FROM software_license_activations
+       WHERE license_id IN (${licenseIds.map(() => "?").join(",")})
+       ORDER BY first_seen_at ASC, id ASC`,
+    )
+    .bind(...licenseIds)
+    .all<ActivationRow>();
+  for (const row of result.results ?? []) {
+    const activation = mapActivation(row);
+    const list = grouped.get(activation.licenseId) ?? [];
+    list.push(activation);
+    grouped.set(activation.licenseId, list);
+  }
+  return grouped;
+}
+
 export async function createSoftwareRelease(
   db: D1Database,
   input: {

@@ -200,6 +200,10 @@ function safeMediaRef(value: unknown, kind: "image" | "audio"): SurveyMediaRef |
 /** 表情名白名单：只允许小写字母/数字/连字符，避免把任意字符串当键写进主题。 */
 const EXPRESSION_KEY = /^[a-z0-9][a-z0-9_-]{0,23}$/;
 
+/** 页/题覆盖键的位数固定（页位置 0 起最多 3 位、题 order 1 起最多 4 位），正则预编译——原先在键循环里逐次 `new RegExp`。 */
+const PAGE_OVERRIDE_KEY = /^\d{1,3}$/;
+const QUESTION_OVERRIDE_KEY = /^\d{1,4}$/;
+
 function safePercent(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   return Math.min(1, Math.max(0, value));
@@ -255,17 +259,18 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     const url = safeMediaRef(value.audio.url, "audio");
     const audio: NonNullable<SurveyTheme["audio"]> = {};
     if (url) audio.url = url;
-    for (const [field, maxDigits] of [
+    for (const field of [
       // Keys are page positions (0-based) in the survey's pages array.
-      ["byPage", 3],
+      "byPage",
       // Keys are question `order` values (1-based, as stored).
-      ["byQuestion", 4],
+      "byQuestion",
     ] as const) {
+      const keyPattern = field === "byPage" ? PAGE_OVERRIDE_KEY : QUESTION_OVERRIDE_KEY;
       const raw = value.audio[field];
       if (!isRecord(raw)) continue;
       const safeOverrides: Record<string, SurveyMediaRef> = {};
       for (const [key, entry] of Object.entries(raw)) {
-        if (!new RegExp(`^\\d{1,${maxDigits}}$`).test(key)) continue;
+        if (!keyPattern.test(key)) continue;
         const safe = safeMediaRef(entry, "audio");
         if (safe) safeOverrides[key] = safe;
       }
@@ -299,17 +304,18 @@ export function normalizeSurveyTheme(value: unknown): SurveyTheme | null {
     }
     const fallback = safeString(value.sprite.default, 24);
     if (fallback && EXPRESSION_KEY.test(fallback)) sprite.default = fallback;
-    for (const [field, maxDigits] of [
+    for (const field of [
       // Keys are page positions (0-based) in the survey's pages array.
-      ["byPage", 3],
+      "byPage",
       // Keys are question `order` values (1-based, as stored).
-      ["byQuestion", 4],
+      "byQuestion",
     ] as const) {
+      const keyPattern = field === "byPage" ? PAGE_OVERRIDE_KEY : QUESTION_OVERRIDE_KEY;
       const raw = value.sprite[field];
       if (!isRecord(raw)) continue;
       const safeOverrides: Record<string, string> = {};
       for (const [key, entry] of Object.entries(raw)) {
-        if (!new RegExp(`^\\d{1,${maxDigits}}$`).test(key)) continue;
+        if (!keyPattern.test(key)) continue;
         const expression = safeString(entry, 24);
         if (expression && EXPRESSION_KEY.test(expression)) safeOverrides[key] = expression;
       }

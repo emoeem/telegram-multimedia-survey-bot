@@ -5,8 +5,6 @@ const repositoryMocks = vi.hoisted(() => ({
   getSurveyById: vi.fn(),
   listSurveysByOwner: vi.fn(),
   updateSurveyStatus: vi.fn(),
-  createQuestion: vi.fn(),
-  createQuestionOption: vi.fn(),
   listOptionsForQuestions: vi.fn(),
   listQuestionsBySurvey: vi.fn(),
   createSurveyVersionSnapshot: vi.fn(),
@@ -24,8 +22,6 @@ vi.mock("../../../src/services/survey-version.service", () => ({
 }));
 
 vi.mock("../../../src/db/repositories/question.repository", () => ({
-  createQuestion: repositoryMocks.createQuestion,
-  createQuestionOption: repositoryMocks.createQuestionOption,
   listOptionsForQuestions: repositoryMocks.listOptionsForQuestions,
   listQuestionsBySurvey: repositoryMocks.listQuestionsBySurvey,
 }));
@@ -117,30 +113,64 @@ describe("survey service", () => {
     repositoryMocks.listOptionsForQuestions.mockResolvedValue([
       { id: 501, questionId: 10, label: "跳转", value: "跳转" },
     ]);
-    repositoryMocks.createQuestion.mockResolvedValueOnce(110).mockResolvedValueOnce(120);
-    repositoryMocks.createQuestionOption.mockResolvedValueOnce(1501);
-    const bindCalls: unknown[][] = [];
-    const statement = {
-      bind: vi.fn((...values: unknown[]) => {
-        bindCalls.push(values);
+
+    // 复制的写入走批量 INSERT（batchChunked）：fake db 按语句顺序分配 last_row_id，
+    // 并把分配结果挂回语句对象，供断言还原「新题目/新选项 id」。
+    interface FakeStatement {
+      sql: string;
+      bindCalls: unknown[][];
+      assignedId?: number;
+    }
+    const batchCalls: FakeStatement[][] = [];
+    let nextRowId = 110;
+    const db = {
+      prepare: (sql: string) => {
+        const statement = {
+          sql,
+          bindCalls: [] as unknown[][],
+          assignedId: undefined as number | undefined,
+          bind: (...values: unknown[]) => {
+            statement.bindCalls.push(values);
+            return statement;
+          },
+          run: async () => ({ success: true, meta: { changes: 1, last_row_id: 0 } }),
+          all: async () => ({ results: [] }),
+        };
         return statement;
-      }),
-      run: vi.fn(async () => ({ success: true })),
-      all: vi.fn(async () => ({ results: [] })),
-    };
-    const db = { prepare: vi.fn(() => statement) } as unknown as D1Database;
+      },
+      batch: async (stmts: FakeStatement[]) => {
+        batchCalls.push(stmts);
+        return stmts.map((st) => {
+          st.assignedId = nextRowId++;
+          return { results: [], meta: { changes: 1, last_row_id: st.assignedId } };
+        });
+      },
+    } as unknown as D1Database;
 
     await duplicateSurvey(db, 1, 7);
 
-    expect(repositoryMocks.createQuestion).toHaveBeenNthCalledWith(
-      1,
-      db,
-      expect.objectContaining({ validationJson: JSON.stringify({ min_selections: 1 }) }),
-    );
-    const remappedCondition = bindCalls.find((values) => values[4] === 110)?.[0];
-    expect(JSON.parse(String(remappedCondition))).toMatchObject({
-      rules: [{ optionId: 1501, targetQuestionId: 120 }],
+    const allBatched = batchCalls.flat();
+    const questionInserts = allBatched.filter((st) => st.sql.includes("INSERT INTO survey_questions"));
+    expect(questionInserts).toHaveLength(2);
+    // validationJson 原样进新题（title 在 bind 的第 3 位）。
+    const choice = questionInserts.find((st) => st.bindCalls[0]?.[2] === "选择");
+    expect(choice?.bindCalls[0]).toContain(JSON.stringify({ min_selections: 1 }));
+
+    const optionInserts = allBatched.filter((st) => st.sql.includes("INSERT INTO question_options"));
+    expect(optionInserts).toHaveLength(1);
+    // 选项挂在新「选择」题下；新题目 id 由批量插入的结果链回。
+    expect(optionInserts[0]?.bindCalls[0]?.[0]).toBe(choice?.assignedId);
+    expect(optionInserts[0]?.bindCalls[0]?.[1]).toBe("跳转");
+
+    const referenceUpdates = allBatched.filter((st) => st.sql.includes("UPDATE survey_questions"));
+    expect(referenceUpdates).toHaveLength(1);
+    const target = questionInserts.find((st) => st.bindCalls[0]?.[2] === "目标");
+    const updateBinds = referenceUpdates[0]!.bindCalls[0]!;
+    expect(updateBinds[4]).toBe(choice?.assignedId);
+    expect(JSON.parse(String(updateBinds[0]))).toMatchObject({
+      rules: [{ optionId: optionInserts[0]!.assignedId, targetQuestionId: target?.assignedId }],
     });
+    expect(updateBinds[1]).toBe(target?.assignedId);
   });
 
   it("publishes the survey and writes a versioned snapshot", async () => {
