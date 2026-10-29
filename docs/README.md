@@ -3,6 +3,9 @@
 > 这个目录 70+ 份文档，按「现在还要不要看」分成三层：
 > **① 根目录 = 还活着的权威文档**（会更新，先看这里）；**② 子目录 = 分类手册与记录**；
 > **③ `archive/` = 历史留档**（只读，结论可能已被后续迭代推翻，不要照着做）。
+>
+> **写文档之前先读 [`DOC-STANDARD.md`](DOC-STANDARD.md)**：命名、骨架、必备章节、
+> 提交前检查清单（含链接检查脚本）都在那份里。
 
 ## 一、从这里开始（3 份）
 
@@ -92,12 +95,14 @@
 
 ## 三、约定
 
+完整标准见 [`DOC-STANDARD.md`](DOC-STANDARD.md)（含各类文档的必备章节与模板）。要点：
+
 1. **新增文档放哪**：还活着的（会被更新、要经常查）→ 对应子目录；一次性的（审计、
    报告、已完成计划）→ `audits/`、`reports/`、`archive/`。
 2. **更新记录**：`docs/releases/RELEASE_YYYY-MM-DD[_主题].md`，同一天多批就用主题后缀。
 3. **路径写法**：代码注释与跨文档引用一律写**完整相对仓库根的路径**
-   （`docs/guides/QUESTION_TYPES.md`），避免移动目录后大面积断链。改目录后跑一遍
-   链接检查（见下）。
+   （`docs/guides/QUESTION_TYPES.md`），避免移动目录后大面积断链。改目录后跑
+   `pnpm docs:check`。
 4. **`archive/` 不加新内容**，也不在里面续写；要复活某份计划，先移到对应子目录再改。
 5. 被代码注释引用的 5 份文档（`CN_ACCESS_VERCEL_RELAY`、`CLOUDFLARE_PLAN_TIERS`、
    `HOTSPOT_SCENES`、`COST-GUARDRAILS`、`WEB_VIEW_ARCHIVE_MVP`）已分别归入 `ops/`、

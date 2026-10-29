@@ -12,6 +12,7 @@
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "docs:check": "node scripts/check-docs-links.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:visual": "pnpm build:admin && pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test",

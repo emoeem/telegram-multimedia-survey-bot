@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * 设计：docs/WEB_VIEW_ARCHIVE_MVP.md；功能清单与验收口径：tg-archive/web/FEATURES.md
+ * 设计：docs/guides/WEB_VIEW_ARCHIVE_MVP.md；功能清单与验收口径：tg-archive/web/FEATURES.md
  *
  * 核心流程（流式，一次只持有 1 张截图）：
  *   源聊天 截图1 → 切到归档频道 发送1 → 切回源聊天 截图2 → ……
