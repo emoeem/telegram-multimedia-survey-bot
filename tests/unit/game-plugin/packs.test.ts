@@ -50,23 +50,40 @@ function contentOf(dir: string): QuestContent {
   return content!;
 }
 
+/** 引擎 view 的结构化投影（引擎以 GameEngine<unknown, unknown> 注册，测试里收口一次）。 */
+interface QuestViewLike {
+  status: string;
+  score: number;
+  payload: {
+    choices: Array<{ locked: boolean; lockHint: string | null }>;
+    inventory: Array<{ id: string }>;
+    endingTitle: string | null;
+    endingNote: string | null;
+    cluesFound: number;
+    collectiblesFound: number;
+    totalItems: number;
+  };
+}
+
 /** 引擎剧本：按 (节点 id, 选项下标) 序列推进，返回最终 view 与 state。 */
 function playthrough(content: QuestContent, script: Array<[string, number]>) {
   const config = { content: JSON.stringify(content), packId: "packs-test", adult: false, cover: null };
+  const random = () => 0.5;
   let state: QuestState | null = null;
-  let view: ReturnType<typeof questEngine.view> | null = null;
-  const created = questEngine.createRun({ config: config as unknown as Record<string, unknown> });
+  let view: QuestViewLike | null = null;
+  const created = questEngine.createRun({ config: config as unknown as Record<string, unknown>, persona: "female", mode: "normal", random });
   state = created.state as QuestState;
-  view = created.view;
+  view = created.view as unknown as QuestViewLike;
   for (const [nodeId, choiceIndex] of script) {
     expect(state!.nodeId, `在节点 ${nodeId} 选择第 ${choiceIndex} 项，实际停在 ${state!.nodeId}`).toBe(nodeId);
     const applied = questEngine.apply({
       state,
       config: config as unknown as Record<string, unknown>,
       action: { kind: "choose", choiceIndex, step: state!.steps },
+      random,
     });
     state = applied.state as QuestState;
-    view = applied.view;
+    view = applied.view as unknown as QuestViewLike;
   }
   return { state: state!, view: view! };
 }
@@ -122,8 +139,8 @@ describe("示例扩展包 · 规范假设（引擎剧本）", () => {
       ["bench", 0], // gate（拿了硬币）
     ]);
     const lockedChoice = early.view.payload.choices[1];
-    expect(lockedChoice.locked).toBe(true);
-    expect(lockedChoice.lockHint).toBe("检票员名牌");
+    expect(lockedChoice?.locked).toBe(true);
+    expect(lockedChoice?.lockHint).toBe("检票员名牌");
 
     // 拿齐 clue/key/collectible 后走完整分支，抵达真结局。
     const finished = playthrough(content, [
@@ -171,9 +188,9 @@ describe("示例扩展包 · 规范假设（引擎剧本）", () => {
 
     // 没有钥匙：玄关的阁楼门锁定。
     const atStart = playthrough(content, []);
-    const atticChoice = atStart.view.payload.choices.findIndex((choice) => choice.lockHint === "阁楼钥匙");
-    expect(atticChoice).toBeGreaterThan(-1);
-    expect(atStart.view.payload.choices[atticChoice].locked).toBe(true);
+    const atticIndex = atStart.view.payload.choices.findIndex((choice) => choice.lockHint === "阁楼钥匙");
+    expect(atticIndex).toBeGreaterThan(-1);
+    expect(atStart.view.payload.choices[atticIndex]?.locked).toBe(true);
 
     // 剧本：客厅拿项圈(clue) → 回玄关 → 后院 → 井房拿钥匙(key) → 原路回玄关
     // → 厨房拿小鱼干(collectible) → 回玄关 → 开阁楼 → 用小鱼干引猫。
@@ -206,8 +223,9 @@ describe("示例扩展包 · 规范假设（引擎剧本）", () => {
       ["well-note", 0], // genkan
       ["genkan", 3], // attic
     ]);
-    expect(noFish.view.payload.choices[0].locked).toBe(true);
-    expect(noFish.view.payload.choices[0].lockHint).toBe("小鱼干");
-    expect(noFish.view.payload.choices[1].locked).toBe(false);
+    const atticChoices = noFish.view.payload.choices;
+    expect(atticChoices[0]?.locked).toBe(true);
+    expect(atticChoices[0]?.lockHint).toBe("小鱼干");
+    expect(atticChoices[1]?.locked).toBe(false);
   });
 });
