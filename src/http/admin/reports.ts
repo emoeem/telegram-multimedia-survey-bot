@@ -2,6 +2,7 @@ import { getSurveyById } from "../../db/repositories/survey.repository";
 import { getReportDeliveryById } from "../../db/repositories/report-delivery.repository";
 import { getResponseById } from "../../db/repositories/response.repository";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
+import { PUBLICATION_CLAIM_STALE_MS } from "../../services/public-report.service";
 import { WriteContext, writeAudit } from "./helpers";
 import { Env } from "../../index";
 import { createExportJobSender } from "../../services/export-job-dispatch.service";
@@ -76,15 +77,27 @@ export async function handleAdminReportsWrite(
     }
 
     const now = new Date().toISOString();
-    // 清掉上一轮的锁（失败时它已经被清过；这里再清一次是为了处理"抢锁后进程被杀"
-    // 留下的过期锁），并把状态推回 pending，让队列重新捡起这份答卷。
+    // 清掉上一轮的锁并把状态推回 pending，让队列重新捡起这份答卷。
+    // 清锁必须是**条件的**：只清「无锁或已过期」的锁。无条件清（原实现）会在
+    // 一个消费者正常发布的中途把它的锁抹掉——第二个发布进程随即抢锁并发发送，
+    // 同一份相册进频道两次。锁活跃时明确回 409，让管理员稍后再来。
     try {
-      await db
+      const staleBefore = new Date(Date.now() - PUBLICATION_CLAIM_STALE_MS).toISOString();
+      const cleared = await db
         .prepare(
-          "UPDATE survey_responses SET report_publication_status='pending', report_publication_claim_at=NULL, updated_at=? WHERE id=?",
+          `UPDATE survey_responses
+              SET report_publication_status='pending', report_publication_claim_at=NULL, updated_at=?
+            WHERE id=? AND (report_publication_claim_at IS NULL OR report_publication_claim_at < ?)`,
         )
-        .bind(now, responseId)
+        .bind(now, responseId, staleBefore)
         .run();
+      if (Number(cleared.meta?.changes ?? 0) === 0) {
+        return fail(
+          409,
+          "publishing_in_progress",
+          "正在发布中：另一个发布进程持有锁（最长 5 分钟自动过期），请稍后再试",
+        );
+      }
     } catch (error) {
       // 老库没有 0093 的锁列：只重置状态，续发退化为整份重发（与发布链路一致）。
       if (!/no such column/i.test(error instanceof Error ? error.message : String(error))) throw error;

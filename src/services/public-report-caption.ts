@@ -75,19 +75,25 @@ export function buildPublicReportCaption(input: PublicReportCaptionInput): strin
   return clampPublicReportCaption(lines.join("\n"));
 }
 
+/** 按码点截断。`String.slice` 按 UTF-16 切，会把 emoji 切成半个字符——Telegram 对含孤立代理项的消息直接回 400，整批发布随之失败。 */
+function truncateByCodePoints(input: string, max: number): string {
+  const points = Array.from(input);
+  return points.length > max ? points.slice(0, max).join("") : input;
+}
+
 /** 「问卷 / 填写时间 / 填写者」三行，两处分批文案共用。 */
 function heading(input: PublicReportCaptionInput): string[] {
   const title = (input.surveyTitle ?? "").trim() || "问卷";
   const lines = [
     "📋 问卷报告",
     "",
-    `问卷：${title.slice(0, 180)}`,
+    `问卷：${truncateByCodePoints(title, 180)}`,
     `填写时间：${formatFilledAt(input.startedAt, input.completedAt)}`,
   ];
   // 匿名分支不读 respondent：这样"忘记遮盖"在结构上就不成立。
   if (!input.anonymous) {
     const respondent = (input.respondent ?? "").trim();
-    if (respondent) lines.push(`填写者：${respondent.slice(0, 120)}`);
+    if (respondent) lines.push(`填写者：${truncateByCodePoints(respondent, 120)}`);
   } else {
     lines.push("填写者：匿名");
   }

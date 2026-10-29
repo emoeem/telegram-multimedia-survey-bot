@@ -14,7 +14,12 @@ import {
 import type { BrowserWorker } from "@cloudflare/puppeteer";
 import { isReportDeliveryMessage, type ReportDeliveryMessage } from "./report-delivery.service";
 import { processReportDeliveryMessage, type ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
-import { publishPublicResponseReport, type PublicReportEnvironment } from "./public-report.service";
+import {
+  PUBLICATION_CLAIM_STALE_MS,
+  publishPublicResponseReport,
+  type PublicReportEnvironment,
+  type PublicReportOutcome,
+} from "./public-report.service";
 import { createExportJobSender } from "./export-job-dispatch.service";
 
 export interface ExportWorkerEnvironment {
@@ -55,7 +60,7 @@ interface PublicReportMessage {
 export async function publishPublicReportViaRequestContext(
   env: ExportWorkerEnvironment & PublicReportEnvironment,
   responseId: number,
-): Promise<{ chatId: number; messageIds: number[]; pages: number }> {
+): Promise<PublicReportOutcome> {
   if (!env.SELF) {
     return publishPublicResponseReport(env, responseId);
   }
@@ -65,13 +70,12 @@ export async function publishPublicReportViaRequestContext(
     method: "POST",
     headers: { "x-internal-token": env.WEBHOOK_SECRET ?? "" },
   });
-  const payload = (await response.json().catch(() => null)) as {
-    ok?: boolean;
-    error?: string;
-    chatId?: number;
-    messageIds?: number[];
-    pages?: number;
-  } | null;
+  const payload = (await response.json().catch(() => null)) as
+    | ({
+        ok?: boolean;
+        error?: string;
+      } & Partial<PublicReportOutcome>)
+    | null;
   if (!response.ok || !payload?.ok) {
     throw new Error(`Internal public-report render failed: ${response.status} ${payload?.error ?? ""}`);
   }
@@ -79,6 +83,10 @@ export async function publishPublicReportViaRequestContext(
     chatId: Number(payload.chatId),
     messageIds: payload.messageIds ?? [],
     pages: payload.pages ?? 0,
+    targets: payload.targets ?? [],
+    // skipped 经 SELF 内部路由透传：锁被别的消费者持有时，队列侧靠它决定
+    // 延迟重投而不是 ack（见 handleExportQueue 的 skipped 分支）。
+    ...(payload.skipped ? { skipped: true as const } : {}),
   };
 }
 
@@ -197,8 +205,28 @@ export async function handleExportQueue(
     if (isPublicReportMessage(message.body)) {
       try {
         const result = await publishPublicReportViaRequestContext(env, message.body.responseId);
-        console.info("Public Telegram report published", { responseId: message.body.responseId, ...result });
-        message.ack();
+        if (result.skipped) {
+          // 锁被别的消费者持有。原实现这里落进 ack：一旦那个持有者随后被杀，
+          // 这份答卷就永久停在 pending——没有队列消息、没有 cron 扫描、UI 上
+          // 连重投按钮都没有。改为延迟重投：下一条消息落在 5 分钟锁过期之后，
+          // 要么自己抢到锁，要么那份「还活着」的持有者已完成发布。
+          if (message.attempts < 3) {
+            console.warn("Public report publication lock held elsewhere; retrying later", {
+              responseId: message.body.responseId,
+              attempts: message.attempts,
+            });
+            message.retry({ delaySeconds: 150 });
+          } else {
+            console.error("Public report publication lock still held elsewhere; giving up this delivery", {
+              responseId: message.body.responseId,
+              attempts: message.attempts,
+            });
+            message.ack();
+          }
+        } else {
+          console.info("Public Telegram report published", { responseId: message.body.responseId, ...result });
+          message.ack();
+        }
       } catch (error) {
         const terminal = message.attempts >= 3;
         console.error("Public Telegram report job failed", {
@@ -208,11 +236,34 @@ export async function handleExportQueue(
           error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
         if (terminal) {
-          await env.DB.prepare(
-            "UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?",
-          )
-            .bind(new Date().toISOString(), message.body.responseId)
-            .run();
+          // 终态失败同时放锁，但只放「已过期或空」的锁：锁还新鲜时可能是别的
+          // 活跃消费者持有（锁易主一路抛上来的那种），不能替它清。自己崩溃留下
+          // 的新鲜锁会在 5 分钟后自然过期，管理端重投随后就能接管。
+          const now = new Date().toISOString();
+          const staleBefore = new Date(Date.now() - PUBLICATION_CLAIM_STALE_MS).toISOString();
+          try {
+            await env.DB.prepare(
+              `UPDATE survey_responses
+                  SET report_publication_status='failed',
+                      report_publication_claim_at = CASE
+                        WHEN report_publication_claim_at IS NULL OR report_publication_claim_at < ? THEN NULL
+                        ELSE report_publication_claim_at END,
+                      updated_at=?
+                WHERE id=?`,
+            )
+              .bind(staleBefore, now, message.body.responseId)
+              .run();
+          } catch (lockError) {
+            // 老库没有 0093 的锁列：只标终态。
+            if (!/no such column/i.test(lockError instanceof Error ? lockError.message : String(lockError))) {
+              throw lockError;
+            }
+            await env.DB.prepare(
+              "UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?",
+            )
+              .bind(now, message.body.responseId)
+              .run();
+          }
           message.ack();
         } else {
           // New browser acquisitions are account-wide rate limited; retrying

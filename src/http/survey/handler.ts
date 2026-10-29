@@ -862,42 +862,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     if (publishToGallery) {
       submitReads.push(env.DB.prepare("SELECT key, value FROM system_settings ORDER BY key ASC"));
     }
-    if (publishToTelegram) {
-      // 「公开发布到 Telegram」是唯一能把内容推进公开频道的出口（画廊有 Telegram
-      // 身份门槛，这里此前没有任何门槛）：匿名脚本可以刷垃圾报告进频道。按身份
-      // （若可见）与按地址各记一道日计数。
-      submitReads.push(
-        buildAtomicRateLimitStatement(
-          env.DB,
-          "publish_telegram_identity_daily",
-          participant.participantHash,
-          PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
-          submitLimiterNow,
-        ),
-      );
-      const publishIpSubject = rateLimitIpSubject(resolveClientIdentity(request, env));
-      if (!publishIpSubject) {
-        console.warn("公开频道按地址日限已跳过：无法确定调用方地址", { responseId });
-      }
-      submitReads.push(
-        publishIpSubject
-          ? buildAtomicRateLimitStatement(
-              env.DB,
-              "publish_telegram_ip_daily",
-              publishIpSubject,
-              PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
-              submitLimiterNow,
-            )
-          : skipAtomicRateLimitStatement(env.DB),
-      );
-    }
     const batchResults = await env.DB.batch(submitReads);
     const responseResult = batchResults[0];
     const answersResult = batchResults[1];
     const fingerprintResult = batchResults[2];
     const settingsResult = publishToGallery ? batchResults[3] : undefined;
-    const publishIdentityResult = publishToTelegram ? batchResults[publishToGallery ? 4 : 3] : undefined;
-    const publishIpResult = publishToTelegram ? batchResults[publishToGallery ? 5 : 4] : undefined;
     const response = ((responseResult?.results ?? [])[0] ?? null) as {
       id: number;
       status: string;
@@ -934,17 +903,6 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       console.warn("submit device daily cap reached", { responseId, surveyId, fingerprintCompletions });
       return fail(429, "device_daily_cap", "该设备今日提交次数过多，请明天再试");
     }
-    // 3) 公开发布限额：频道污染的闸门。
-    if (publishToTelegram) {
-      if (readAtomicRateLimitCountFromBatch(publishIdentityResult) > PUBLISH_TELEGRAM_IDENTITY_DAILY_MAX) {
-        console.warn("publish to telegram identity cap reached", { responseId });
-        return fail(429, "publish_limit_reached", "今日公开发布次数已达上限，报告仍可保存与查看");
-      }
-      if (readAtomicRateLimitCountFromBatch(publishIpResult) > PUBLISH_TELEGRAM_IP_DAILY_MAX) {
-        console.warn("publish to telegram ip cap reached", { responseId });
-        return fail(429, "publish_limit_reached", "今日公开发布次数已达上限，报告仍可保存与查看");
-      }
-    }
     if (publishToGallery) {
       const system = settingsFromRows((settingsResult?.results ?? []) as Array<{ key: string; value: string }>);
       if (Number(system.profileGallerySurveyId) !== surveyId) {
@@ -966,6 +924,42 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       } catch (error) {
         console.error("Profile gallery publish failed", { responseId, error });
         return fail(400, "profile_publish_failed", "发布到个人画廊失败，请稍后重试。");
+      }
+    }
+    // 公开发布限额：频道污染的闸门（画廊有 Telegram 身份门槛，这里此前没有）。
+    // 计数放在**全部能打回提交的校验之后**——原先混在第一批读里，漏了必答题、
+    // 提交过快、设备超限这些被打回的提交也会烧掉「每日 2 次」额度：真实用户连吃
+    // 两次校验失败，第三次真正提交就被 429 拦下，而他当天一条都没发布过。
+    if (publishToTelegram) {
+      const publishIpSubject = rateLimitIpSubject(resolveClientIdentity(request, env));
+      if (!publishIpSubject) {
+        console.warn("公开频道按地址日限已跳过：无法确定调用方地址", { responseId });
+      }
+      const [identityCounter, ipCounter] = await env.DB.batch([
+        buildAtomicRateLimitStatement(
+          env.DB,
+          "publish_telegram_identity_daily",
+          participant.participantHash,
+          PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
+          submitLimiterNow,
+        ),
+        publishIpSubject
+          ? buildAtomicRateLimitStatement(
+              env.DB,
+              "publish_telegram_ip_daily",
+              publishIpSubject,
+              PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
+              submitLimiterNow,
+            )
+          : skipAtomicRateLimitStatement(env.DB),
+      ]);
+      if (readAtomicRateLimitCountFromBatch(identityCounter) > PUBLISH_TELEGRAM_IDENTITY_DAILY_MAX) {
+        console.warn("publish to telegram identity cap reached", { responseId });
+        return fail(429, "publish_limit_reached", "今日公开发布次数已达上限，报告仍可保存与查看");
+      }
+      if (readAtomicRateLimitCountFromBatch(ipCounter) > PUBLISH_TELEGRAM_IP_DAILY_MAX) {
+        console.warn("publish to telegram ip cap reached", { responseId });
+        return fail(429, "publish_limit_reached", "今日公开发布次数已达上限，报告仍可保存与查看");
       }
     }
     const publicationTarget = publishToTelegram ? await resolvePublicationTarget(env) : null;

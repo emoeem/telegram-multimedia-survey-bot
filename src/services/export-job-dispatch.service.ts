@@ -1,5 +1,6 @@
 import { isReportDeliveryMessage } from "./report-delivery.service";
 import type { ReportDeliveryWorkerEnvironment } from "./report-delivery-worker.service";
+import { PUBLICATION_CLAIM_STALE_MS } from "./public-report.service";
 import type { ExportWorkerEnvironment } from "./export-worker.service";
 import type { ExportJobSender } from "./export-job-sender";
 
@@ -123,12 +124,44 @@ export async function runExportJobInline(
     if (isPublicReportKind(body)) {
       try {
         const result = await publishPublicReportViaRequestContext(env, body.responseId);
+        if (result.skipped) {
+          // 锁被占用：这条消息没有队列重试可用，直接返回、**不改任何状态**——
+          // 持锁者（无论死活）的 claim_at 会在 5 分钟后过期，管理端重投届时可接管。
+          // 这里若标 failed，会把一个正在正常发布的进程误报成失败。
+          console.warn("Public report publication lock held elsewhere (inline); leaving state untouched", {
+            responseId: body.responseId,
+          });
+          return;
+        }
         console.info("Public Telegram report published", { responseId: body.responseId, ...result });
       } catch (error) {
         // 无重试：标记失败，让提交端看到明确的终态而不是永远的 pending。
-        await env.DB.prepare("UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?")
-          .bind(new Date().toISOString(), body.responseId)
-          .run();
+        // 锁只放「已过期或空」的（见 export-worker.service 终态分支的同款条件）。
+        const now = new Date().toISOString();
+        const staleBefore = new Date(Date.now() - PUBLICATION_CLAIM_STALE_MS).toISOString();
+        try {
+          await env.DB.prepare(
+            `UPDATE survey_responses
+                SET report_publication_status='failed',
+                    report_publication_claim_at = CASE
+                      WHEN report_publication_claim_at IS NULL OR report_publication_claim_at < ? THEN NULL
+                      ELSE report_publication_claim_at END,
+                    updated_at=?
+              WHERE id=?`,
+          )
+            .bind(staleBefore, now, body.responseId)
+            .run();
+        } catch (lockError) {
+          // 老库没有 0093 的锁列：只标终态。
+          if (!/no such column/i.test(lockError instanceof Error ? lockError.message : String(lockError))) {
+            throw lockError;
+          }
+          await env.DB.prepare(
+            "UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?",
+          )
+            .bind(now, body.responseId)
+            .run();
+        }
         throw error;
       }
       return;

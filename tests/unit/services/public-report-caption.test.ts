@@ -163,4 +163,20 @@ describe("分批 caption", () => {
     );
     expect(Array.from(caption).length).toBeLessThanOrEqual(PUBLIC_REPORT_CAPTION_MAX);
   });
+
+  it("标题/填写者截断按码点切：emoji 恰好压在边界上也不会被切成孤立代理项", () => {
+    // 问卷名 180 个 ASCII 之后紧跟一个 emoji（占 2 个 UTF-16 单元）：旧实现
+    // `slice(0, 180)` 会把 emoji 切成半个，Telegram 对含孤立代理项的消息回 400，
+    // 整批发布随之失败。
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const emojiTitle = `${"a".repeat(179)}😀${"b".repeat(30)}`;
+    const caption = buildPublicReportCaption({ ...base, surveyTitle: emojiTitle });
+    expect(caption).not.toMatch(loneSurrogate);
+    expect(caption).toContain("😀");
+
+    const emojiRespondent = `${"n".repeat(119)}😀${"m".repeat(10)}`;
+    const named = buildPublicReportCaption({ ...base, anonymous: false, respondent: emojiRespondent });
+    expect(named).not.toMatch(loneSurrogate);
+    expect(named).toContain("😀");
+  });
 });

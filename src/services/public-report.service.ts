@@ -126,6 +126,12 @@ async function renderPublicReportArtifact(
   surveyId: number,
   /** 答卷级匿名（迁移 0092）：报告图片上的「填写者」同样要剥掉身份。 */
   anonymous: boolean,
+  /**
+   * 公开面「填写者」标签（loadPublicReportRespondentLabel 的结果）。必须显式传：
+   * 报告图片的页眉只允许姓名/@username——数字 Telegram ID 只进管理员的私有面
+   * 报告，绝不进公开频道（匿名时传 null，bundle 会渲染成「匿名」）。
+   */
+  respondentLabel: string | null,
 ): Promise<{
   artifact: Awaited<ReturnType<typeof renderResponseReport>>;
   report: Awaited<ReturnType<typeof buildResponseReportBundle>>["report"];
@@ -135,7 +141,10 @@ async function renderPublicReportArtifact(
     await waitUntilBrowserAcquisitionAllowed(env, responseId);
     const strategy = RENDER_STRATEGIES[Math.min(attempt, RENDER_STRATEGIES.length - 1)] as PngViewportStrategy;
     try {
-      const bundle = await buildResponseReportBundle(ctx, surveyId, responseId, responseId, { anonymous });
+      const bundle = await buildResponseReportBundle(ctx, surveyId, responseId, responseId, {
+        anonymous,
+        respondentLabel,
+      });
       const report = await addReportImages(ctx, bundle);
       const artifact = await renderResponseReport(env.BROWSER!, report, "png", strategy);
       if (attempt > 0)
@@ -406,6 +415,18 @@ export async function resolvePublicReportTargets(
  */
 export const PUBLICATION_CLAIM_STALE_MS = 5 * 60 * 1000;
 
+/**
+ * 断点/终态写入时发现锁已易主（admin 重投清了旧锁，或锁过期后被别的消费者
+ * 抢走）。必须抛出而不是吞掉：本消费者已不拥有发布权，继续发送会同新持锁者
+ * **并发发出同一批相册**——这正是抢锁要防的事，写入侧不 CAS 等于白抢。
+ */
+export class PublicationLockLostError extends Error {
+  constructor(responseId: number) {
+    super(`公开发布锁已被其他消费者接管（responseId=${responseId}）`);
+    this.name = "PublicationLockLostError";
+  }
+}
+
 /** 单个目标（群组 / 话题）的发布断点。 */
 export interface PublicReportTargetProgress {
   /** 已成功发出的 message id（重试时不会重发这些批次）。 */
@@ -489,21 +510,23 @@ export interface PublicReportOutcome {
  * 窗口：没有抢占时，队列一重试就把整份相册再发一遍。这里把「谁在发」写成库里的
  * 一行：条件 UPDATE 只有在没有锁（或锁已过期）时才会命中，命中数就是抢没抢到。
  *
- * 没抢到不是错误——另一个消费者正在发同一份，本次直接跳过即可。
- * 老库缺列时退化为不抢占（并把状态标成 pending），这时唯一的防护是队列本身。
+ * 返回值是本次抢到的锁凭据（claim_at 的旧值），后续所有断点/终态写入都要带它做
+ * CAS——不带 CAS 的写入会让「锁被接管」形同虚设。没抢到返回 null（不是错误）：
+ * 另一个消费者正在发同一份，本次直接跳过即可。
+ * 老库缺列时返回空串占位（发布照常，但没有锁与断点可依）。
  */
 async function claimPublication(
   env: PublicReportEnvironment,
   responseId: number,
   resumable: boolean,
   now: number,
-): Promise<boolean> {
+): Promise<string | null> {
   const claimedAt = new Date(now).toISOString();
   if (!resumable) {
     await env.DB.prepare("UPDATE survey_responses SET report_publication_status='pending', updated_at=? WHERE id=?")
       .bind(claimedAt, responseId)
       .run();
-    return true;
+    return "";
   }
   const staleBefore = new Date(now - PUBLICATION_CLAIM_STALE_MS).toISOString();
   const result = await env.DB.prepare(
@@ -515,29 +538,47 @@ async function claimPublication(
   )
     .bind(claimedAt, claimedAt, responseId, staleBefore)
     .run();
-  return Number(result.meta?.changes ?? 0) > 0;
+  return Number(result.meta?.changes ?? 0) > 0 ? claimedAt : null;
 }
 
-/** 每批之后落一次断点（顺带刷新锁，避免长报告被别的消费者当成过期锁接管）。 */
+/**
+ * 每批之后落一次断点，同时把锁续到 now——所以只要发送还在推进，锁就不会在
+ * 5 分钟后被当成过期锁接管（渲染阶段的续期见 publishPublicResponseReport）。
+ *
+ * 写入带 CAS（WHERE claim_at = 本次凭据）：changes=0 说明锁已被接管，抛
+ * {@link PublicationLockLostError} 让本次消费者立刻停手——继续发会同新持锁者
+ * 并发发出同一批相册，而且我们的 nextOffset 还会把它的断点覆盖回退。
+ *
+ * 返回续锁后的新凭据（claim_at 被改写成 now）：凭据随每次续锁滚动，调用方
+ * 必须接住并用于后续 CAS，不能用抢锁时的旧值。
+ */
 async function persistPublicationProgress(
   env: PublicReportEnvironment,
   responseId: number,
   resumable: boolean,
+  claimToken: string,
   progress: PublicReportProgress,
-): Promise<void> {
-  if (!resumable) return;
+): Promise<string> {
+  if (!resumable) return claimToken;
   const now = new Date().toISOString();
-  await env.DB.prepare(
-    "UPDATE survey_responses SET report_publication_progress=?, report_publication_claim_at=?, updated_at=? WHERE id=?",
+  const result = await env.DB.prepare(
+    `UPDATE survey_responses
+        SET report_publication_progress=?, report_publication_claim_at=?, updated_at=?
+      WHERE id=? AND report_publication_claim_at=?`,
   )
-    .bind(JSON.stringify(progress), now, now, responseId)
+    .bind(JSON.stringify(progress), now, now, responseId, claimToken)
     .run();
+  if (Number(result.meta?.changes ?? 0) === 0) throw new PublicationLockLostError(responseId);
+  // 续锁把 claim_at 改写成了 now：凭据随之滚动，调用方必须用返回值更新自己
+  // 手里的 token，否则下一次 CAS 会拿旧凭据比对新锁、误判成「锁已易主」。
+  return now;
 }
 
 async function markPublicationPublished(
   env: PublicReportEnvironment,
   responseId: number,
   resumable: boolean,
+  claimToken: string,
 ): Promise<void> {
   const now = new Date().toISOString();
   if (!resumable) {
@@ -549,14 +590,16 @@ async function markPublicationPublished(
     return;
   }
   // 断点保留：已发出的 message id 是"这份相册在频道里的位置"的唯一记录。
-  await env.DB.prepare(
+  // 终态也带 CAS：锁易主后抢写 published，会把新持锁者的进行中状态直接翻掉。
+  const result = await env.DB.prepare(
     `UPDATE survey_responses
         SET report_publication_status='published', report_published_at=?,
             report_publication_claim_at=NULL, updated_at=?
-      WHERE id=?`,
+      WHERE id=? AND report_publication_claim_at=?`,
   )
-    .bind(now, now, responseId)
+    .bind(now, now, responseId, claimToken)
     .run();
+  if (Number(result.meta?.changes ?? 0) === 0) throw new PublicationLockLostError(responseId);
 }
 
 /**
@@ -564,11 +607,15 @@ async function markPublicationPublished(
  *
  * 这一步之后**必须**让异常继续往上抛：只有抛出去，队列才会重试（并从断点续发）。
  * 原实现的病症正是"部分成功 → messageIds 非空 → 不抛 → 写 published"。
+ *
+ * 同样带 CAS：锁已易主时**不写**——新持锁者正在发，会写下它自己的终态；我们
+ * 抢写 failed 只会把它的 published 翻回去、或把它的活跃锁清掉。
  */
 async function markPublicationFailed(
   env: PublicReportEnvironment,
   responseId: number,
   resumable: boolean,
+  claimToken: string,
   progress: PublicReportProgress,
 ): Promise<void> {
   const now = new Date().toISOString();
@@ -578,14 +625,17 @@ async function markPublicationFailed(
       .run();
     return;
   }
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `UPDATE survey_responses
         SET report_publication_status='failed', report_publication_claim_at=NULL,
             report_publication_progress=?, updated_at=?
-      WHERE id=?`,
+      WHERE id=? AND report_publication_claim_at=?`,
   )
-    .bind(JSON.stringify(progress), now, responseId)
+    .bind(JSON.stringify(progress), now, responseId, claimToken)
     .run();
+  if (Number(result.meta?.changes ?? 0) === 0) {
+    console.warn("公开发布锁已易主，跳过失败标记（终态由新持锁者写）", { responseId });
+  }
 }
 
 /**
@@ -657,7 +707,8 @@ export async function publishPublicResponseReport(
     };
   }
 
-  if (!(await claimPublication(env, responseId, resumable, Date.now()))) {
+  let claimToken = await claimPublication(env, responseId, resumable, Date.now());
+  if (claimToken === null) {
     console.warn("公开报告发布已在别处进行，跳过本次", { responseId });
     return {
       chatId: sendable[0]!.chatId,
@@ -711,7 +762,16 @@ export async function publishPublicResponseReport(
 
   let rendered: Uint8Array[] | null = null;
   try {
-    const { artifact } = await renderPublicReportArtifact(env, ctx, responseId, response.survey_id, anonymous);
+    const { artifact } = await renderPublicReportArtifact(
+      env,
+      ctx,
+      responseId,
+      response.survey_id,
+      anonymous,
+      // caption 与报告图片共用同一个公开面标签：匿名 → null（渲染成「匿名」），
+      // 实名 → 只有姓名/@username，数字 Telegram ID 到不了公开频道。
+      quote.respondent ?? null,
+    );
     if (artifact.format !== "png" || artifact.pages.length === 0) throw new Error("公开报告没有生成图片页面");
     rendered = artifact.pages.map((page) => page.bytes);
     if (pages > 0 && pages !== rendered.length) {
@@ -728,6 +788,10 @@ export async function publishPublicResponseReport(
     pages = rendered.length;
     progress.pages = pages;
     progress.mode = "album";
+    // 渲染可能耗时数分钟（等兄弟任务 + 浏览器闸门 + 重试间隔），远超 5 分钟锁
+    // TTL。发送第一批之前先落一次断点，既把「页数」记账，也把锁续期——否则
+    // 长渲染刚结束锁就过期了，第一个并发窗口恰恰开在发送开始的地方。
+    claimToken = await persistPublicationProgress(env, responseId, resumable, claimToken, progress);
   } catch (error) {
     // The album needs a fresh browser session and the account's browser
     // acquisition budget is often exhausted (429/503/TargetClose). The archive
@@ -740,7 +804,7 @@ export async function publishPublicResponseReport(
       progress.mode === "album" &&
       Object.values(progress.targets).some((entry) => entry.nextOffset > 0 || entry.messageIds.length > 0);
     if (!isTransientRenderError(error) || alreadySendingAlbum) {
-      await markPublicationFailed(env, responseId, resumable, progress);
+      await markPublicationFailed(env, responseId, resumable, claimToken, progress);
       throw error;
     }
     console.warn("Public report album unavailable; falling back to the archived PDF", {
@@ -759,7 +823,7 @@ export async function publishPublicResponseReport(
       });
     }
     if (!pdf) {
-      await markPublicationFailed(env, responseId, resumable, progress);
+      await markPublicationFailed(env, responseId, resumable, claimToken, progress);
       throw error;
     }
     // 降级也必须带上同样的「问卷名 + 填写时间 + 留言」：这条消息在频道里的
@@ -791,12 +855,14 @@ export async function publishPublicResponseReport(
         entry.nextOffset = 1;
         entry.done = true;
         delete entry.error;
-        await persistPublicationProgress(env, responseId, resumable, progress);
+        claimToken = await persistPublicationProgress(env, responseId, resumable, claimToken, progress);
       } catch (sendError) {
+        // 锁已易主：停手并把控制权交给新持锁者，不标记失败、不换下一个目标。
+        if (sendError instanceof PublicationLockLostError) throw sendError;
         const failure = sendError instanceof Error ? sendError : new Error(String(sendError));
         entry.error = failure.message;
         failures.push({ chatId: delivery.chatId, error: failure });
-        await persistPublicationProgress(env, responseId, resumable, progress);
+        claimToken = await persistPublicationProgress(env, responseId, resumable, claimToken, progress);
       }
     }
   }
@@ -818,8 +884,11 @@ export async function publishPublicResponseReport(
           delete entry.error;
           // 每批立刻落盘：这一行是「下次从哪续」的唯一真相。进程在下一批中途
           // 消失时，已发出的批次不会重发。
-          await persistPublicationProgress(env, responseId, resumable, progress);
+          claimToken = await persistPublicationProgress(env, responseId, resumable, claimToken, progress);
         } catch (sendError) {
+          // 锁已易主：立刻停手。继续发下去会同新持锁者并发发出同一批相册，
+          // 而且把它的断点覆盖回退；失败标记也留给它写。
+          if (sendError instanceof PublicationLockLostError) throw sendError;
           const failure = sendError instanceof Error ? sendError : new Error(String(sendError));
           console.warn("公开报告批次发送失败", {
             responseId,
@@ -832,7 +901,7 @@ export async function publishPublicResponseReport(
           });
           entry.error = failure.message;
           failures.push({ chatId: delivery.chatId, error: failure });
-          await persistPublicationProgress(env, responseId, resumable, progress);
+          claimToken = await persistPublicationProgress(env, responseId, resumable, claimToken, progress);
           // 只停这个目标：其它群组不该因为一个群发不出去而一起挨饿。
           break;
         }
@@ -850,13 +919,13 @@ export async function publishPublicResponseReport(
       failures: failures.map(({ chatId, error }) => ({ chatId, error: error.message })),
       progress: progress.targets,
     });
-    await markPublicationFailed(env, responseId, resumable, progress);
+    await markPublicationFailed(env, responseId, resumable, claimToken, progress);
     // 抛出才会让队列重试；重试从断点续发，已成功的批次不会重发。
     // 静默吞掉正是「频道只有前 10 页、后台却显示已发布」的成因。
     throw failures[0]?.error ?? new Error("公开发布未完成：仍有批次未发出");
   }
 
-  await markPublicationPublished(env, responseId, resumable);
+  await markPublicationPublished(env, responseId, resumable, claimToken);
 
   return {
     chatId: sendable[0]!.chatId,

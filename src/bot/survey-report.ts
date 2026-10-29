@@ -228,13 +228,19 @@ interface ResponseReportBundle {
  * `getResponseDetail(..., anonymous)` 匿名时不查 users 行，`respondent` 直接是
  * null，所以下游的 caption 与报告图片都拿不到姓名/`@username`/Telegram ID。
  * 也就是说匿名不是"渲染时遮盖"，而是**身份根本没进内存**。
+ *
+ * `options.respondentLabel` 是**公开面**的填写者标签：公开发布链路必须显式传入
+ * （取 `loadPublicReportRespondentLabel` 的结果，只含姓名/@username）。缺省时走
+ * `formatRespondent` 的完整格式（含数字 Telegram ID）——那是管理员私有面的报告；
+ * 公开路径一旦漏传，数字 ID 就会印进频道，所以公开链路把传参放在类型强制路径上
+ * （public-report.service 的渲染入口是必传参数）。
  */
 export async function buildResponseReportBundle(
   ctx: BotContext,
   surveyId: number,
   responseId: number,
   responseNumber: number,
-  options: { anonymous?: boolean } = {},
+  options: { anonymous?: boolean; respondentLabel?: string | null } = {},
 ): Promise<ResponseReportBundle> {
   const survey = await getSurveyById(ctx.db, surveyId);
   if (!survey) throw new Error("问卷不存在");
@@ -380,7 +386,13 @@ export async function buildResponseReportBundle(
       surveyTitle: survey.title,
       responseNumber,
       status: responseStatusLabels[detail.response.status] ?? detail.response.status,
-      respondent: formatRespondent(detail.respondent, anonymous),
+      // 公开面标签显式传入时优先：匿名 → 「匿名」；实名但没有任何可显示身份
+      // （无姓名也无 @username）→ 「未知填写者」——两条路都不退回数字 Telegram
+      // ID，它是内部标识，可被用来精确检索一个人，用户从未同意公开它。
+      respondent:
+        options.respondentLabel !== undefined
+          ? (options.respondentLabel ?? (anonymous ? "匿名" : "未知填写者"))
+          : formatRespondent(detail.respondent, anonymous),
       startedAt: formatChinaDateTime(detail.response.startedAt),
       completedAt: formatChinaDateTime(detail.response.completedAt),
       items,

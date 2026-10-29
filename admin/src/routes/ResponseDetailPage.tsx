@@ -390,7 +390,7 @@ export function ResponseDetailPage() {
                 发布时刻：{formatDateTime(data.response.reportPublishedAt)}
               </p>
             ) : null}
-            {status === "failed" ? (
+            {status === "failed" || status === "pending" ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -404,6 +404,7 @@ export function ResponseDetailPage() {
                 <span className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   只补发没发出去的批次，已进频道的不重复发送
+                  {status === "pending" ? "；正在发布时后端会拒绝（409），稍后再试即可" : ""}
                 </span>
               </div>
             ) : null}

@@ -40,6 +40,16 @@ const rateLimitMaxRetries = 2;
 const rateLimitMaxWaitMs = 10_000;
 const telegramMediaRequestTimeoutMs = 20_000;
 
+/**
+ * 相册（sendMediaGroup）的上传超时按张数放粗：一次 multipart 要传最多 10 张
+ * PNG，固定 20s 在弱网下经常不够——而 abort 发生在请求已送达 Telegram 之后时，
+ * 那批相册其实已经进频道了，断点却按「未发出」记账，重试必然重复这一批。放粗
+ * 不能消灭这种至少一次语义（Telegram 没有幂等键），但能把触发概率压到弱网之外。
+ */
+function albumUploadTimeoutMs(photoCount: number): number {
+  return Math.max(telegramMediaRequestTimeoutMs, Math.min(40_000, 10_000 + photoCount * 3_000));
+}
+
 /*
  * The numbered-choice renderer can send a burst of messages and trip the
  * per-chat flood limit, so hot-path JSON calls honor 429 retry_after.
@@ -630,9 +640,8 @@ export async function sendPhoto(
 
     return await assertTelegramResponse(response, "sendPhoto");
   } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error("Telegram 图片发送超时，请稍后重试");
-    }
+    // 二进制上传同样可能「已送达但响应丢失」；文案提示先核对再重试。
+    if (controller.signal.aborted) throw new Error("Telegram 图片发送超时；请求可能已送达，重试前请先核对");
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -647,7 +656,7 @@ export async function sendPhotoAlbum(
 ): Promise<Response> {
   if (photos.length < 2 || photos.length > 10) throw new Error("Telegram 相册必须包含 2–10 张图片");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), telegramMediaRequestTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), albumUploadTimeoutMs(photos.length));
   try {
     const form = new FormData();
     form.append("chat_id", String(chatId));
@@ -665,7 +674,10 @@ export async function sendPhotoAlbum(
     });
     return await assertTelegramResponse(response, "sendMediaGroup");
   } catch (error) {
-    if (controller.signal.aborted) throw new Error("Telegram 相册发送超时，请稍后重试");
+    // 超时 ≠ 未送达：abort 时请求体可能已经上传完，那批相册多半已进频道。
+    // 错误文案带上这一点，让断点重试的操作者先核对频道再续发，避免重复页。
+    if (controller.signal.aborted)
+      throw new Error("Telegram 相册发送超时；请求可能已送达，续发前请先人工核对频道，避免重复页");
     throw error;
   } finally {
     clearTimeout(timeout);
