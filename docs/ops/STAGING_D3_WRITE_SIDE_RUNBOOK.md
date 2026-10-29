@@ -41,7 +41,7 @@ curl -s https://telegram-multimedia-survey-bot-staging.3353745917.workers.dev/he
 ```
 
 staging admin 登录走 Telegram `/admin_login` magic link（测试旁路需 `ENVIRONMENT=development`
-而 staging toml 是 `staging`，不生效——按 `docs/web-admin-phase-1.md` 首次部署手册确认 secrets 齐全）。
+而 staging toml 是 `staging`，不生效——按 `docs/archive/web-admin-phase-1.md` 首次部署手册确认 secrets 齐全）。
 
 ## 3. 灌样例问卷（两形态各一份）
 

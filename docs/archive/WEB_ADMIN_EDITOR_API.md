@@ -1,6 +1,6 @@
 # Web Admin Editor API 设计（Phase 2.0 提案）
 
-> 状态：**提案，未实现**。基于 `docs/WEB_ADMIN_EDITOR_RESEARCH.md` 的结论设计。挂载在现有 `handleAdminApi`（`src/http/admin-api.ts`）之下，与 Phase 1 只读端点共存（需解除全局 GET-only 405，改为逐端点校验方法）。
+> 状态：**提案，未实现**。基于 `docs/archive/WEB_ADMIN_EDITOR_RESEARCH.md` 的结论设计。挂载在现有 `handleAdminApi`（`src/http/admin-api.ts`）之下，与 Phase 1 只读端点共存（需解除全局 GET-only 405，改为逐端点校验方法）。
 
 ## 0. 通用约定
 

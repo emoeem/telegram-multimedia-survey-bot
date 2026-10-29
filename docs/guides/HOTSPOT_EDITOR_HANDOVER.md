@@ -1,7 +1,7 @@
 # 互动场景（scene）功能 · 交接文档
 
 > 更新：2026-10-27 晚 · **场景编辑器已完成、门禁全绿并部署生产**（Version `b6c8283b`）；生产手动验收待做。
-> 接手先看本文，再看 `docs/HOTSPOT_SCENES.md`（配置/管线/媒体约束）。
+> 接手先看本文，再看 `docs/guides/HOTSPOT_SCENES.md`（配置/管线/媒体约束）。
 > **不要 git commit**（沿用用户硬约束）；改动全部留在工作区。
 
 ---
@@ -127,7 +127,7 @@ scripts/hotspot/
 
 1. ✅ **编辑器 CSS** — `admin/src/index.css` 末尾新增 `.scene-editor-*`、`.scene-canvas-*`、`.scene-editor-media-*`、`.scene-editor-preview`、`.hotspot-intro`：三栏（220 / 1fr / 360，≤999px 堆叠）、画布 `pointer-events` 分层、8 向手柄与光标、预览 z-index 70 / 内部弹层 80 + `--survey-*` 映射、390px 无横向溢出、只读 banner / 错误 / dirty 标记。
 2. ✅ **Playwright** — 新增 `qa/visual/scene-editor.spec.ts`（7 用例）；`editor-layout.spec.ts` 加「添加互动场景 → POST → 跳转」。覆盖：拖拽新建→选图→保存 payload、移动/缩放/方向键、加场景/设起始/scene 动作、上传刷新 `baseUpdatedAt`、只读（published / responseCount>0）、409 重新加载、axe、1440/390 无溢出。
-3. ✅ **文档** — `docs/HOTSPOT_SCENES.md` §6 改为独立场景编辑器；`docs/QUESTION_TYPES.md` scene 行改为「独立场景编辑器」。
+3. ✅ **文档** — `docs/guides/HOTSPOT_SCENES.md` §6 改为独立场景编辑器；`docs/guides/QUESTION_TYPES.md` scene 行改为「独立场景编辑器」。
 4. ✅ **门禁（本次全绿）** — admin tsc 0；`pnpm typecheck` / `pnpm lint` / `pnpm format:check` 通过；`pnpm test` 181 文件 / 1297 用例；`pnpm build:admin` 通过；`pnpm exec playwright test hotspot-scene scene-editor editor-layout` **17/17**。
 5. ⏳ **手动验收（待做，需要生产管理员会话）** — 后台把 9136 复制为草稿 → 打开场景编辑器 → 拖一个热点/改图/保存 → 预览 → 确认原 9136 未被修改。
 6. ✅ **部署（2026-10-27）** — `pnpm deploy` 已上线，Version `b6c8283b-c713-439b-8130-91b8eb0c93c0`；包含 notes + scene + 场景编辑器。部署后 `/health`、`/admin/`、编辑器路由与新 chunk 均 200。
@@ -181,7 +181,7 @@ curl -s https://emoe.eu.cc/api/survey/9136 | python3 -m json.tool | head
 
 `git status` 里除了本次 scene/编辑器，还包含**上一个会话完成的「纸条聊天 /notes」**：
 
-- 新增：`admin/src/survey/NoteScreen.tsx`、`note-api.ts`、`src/http/note-api.ts`、`src/services/note-chat.service.ts`、`db/migrations/0089_note_chat.sql`、`tests/unit/note-chat.test.ts`、`docs/EDITOR_GUIDE.md`、`docs/RELEASE_2026-10-24.md`
+- 新增：`admin/src/survey/NoteScreen.tsx`、`note-api.ts`、`src/http/note-api.ts`、`src/services/note-chat.service.ts`、`db/migrations/0089_note_chat.sql`、`tests/unit/note-chat.test.ts`、`docs/guides/EDITOR_GUIDE.md`、`docs/releases/RELEASE_2026-10-24.md`
 - 修改：`admin/src/survey/CoinCenter.tsx`、`MyScreen.tsx`、`src/http/public-page.ts`、`src/index.ts`、`src/services/coin/ledger.service.ts`、`src/services/database-maintenance.service.ts`、`cert/*`、`admin/public/sw.js` 等
 - `0089_note_chat.sql`：`wrangler d1 migrations apply` 显示 **No migrations to apply**（远程已应用）；不要重复/回滚。
 - 最近一次 `pnpm deploy` 已把 notes + scene 带上生产；编辑器是之后才写的，**未部署**。
@@ -192,7 +192,7 @@ curl -s https://emoe.eu.cc/api/survey/9136 | python3 -m json.tool | head
 
 ## 8. 下一步（编辑器已上线）
 
-1. 读本文 + `docs/HOTSPOT_SCENES.md`；门禁与测试现状见 §4.4。
+1. 读本文 + `docs/guides/HOTSPOT_SCENES.md`；门禁与测试现状见 §4.4。
 2. 生产手动验收：后台把 9136 复制为草稿 → 场景编辑器 → 拖热点/改图/保存 → 预览 → 确认原 9136 未变。
 3. 后续改动部署同前：`pnpm deploy`（会把整个工作区 notes + scene + 编辑器一起上传）。
 4. 部署后按 §2 的方式复跑生产冒烟；不要本地重拍 visual 基线（§3.4）。

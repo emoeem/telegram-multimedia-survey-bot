@@ -25,7 +25,7 @@
    每阶段至多重生成一次。
 3. **数据形状不改**：`condition_json` / `settings_json` 形状是兼容前提；结构调整必须带
    「旧文档 → 新模型 → 旧文档」往返测试。
-4. **场景三条禁令**（动编辑器/场景前必读 `docs/HOTSPOT_EDITOR_HANDOVER.md`）：
+4. **场景三条禁令**（动编辑器/场景前必读 `docs/guides/HOTSPOT_EDITOR_HANDOVER.md`）：
    `scene` 不进 `EDITABLE_TYPES`；不改热点 id；场景媒体必须挂 `question_media`。
 5. **插件三方一致**：`src/game-plugin/plugins/*` === `server-plugins.ts` ===
    `admin/src/game-plugins/plugins/*`，`registry.test.ts` 自动守护。
@@ -91,7 +91,7 @@
    `normalizeSurveyTheme` 放行对象（原会剥掉）；PATCH theme 事务登记 `media_refs`
    （`survey_theme`）+ 媒体端点第五路 linkage（`{assetId}` 后第四路 URL 匹配失效的对策）；
    样例 importer 参数化（`--config/--kv-namespace`，默认仍生产）。单测 1459（+9）。
-   **下一步：按 `docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md` 在 staging 实测**（切 staging
+   **下一步：按 `docs/ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md` 在 staging 实测**（切 staging
    账号 → 部署 → 双形态样例 → 8 项清单），全过后才合入 main。
    ⚠️ 红线不变：push main 自动触发生产 deploy，staging 实测通过前不合入。
 4. [x] 逐条遍历回填脚本：递归 CTE 逐处抽取，替代只处理第一处引用的雏形。（21d83ed）

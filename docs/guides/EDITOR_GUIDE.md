@@ -241,4 +241,4 @@
 
 ---
 
-_相关文档：题型与数据模型的技术盘点见 [`QUESTION_TYPES.md`](QUESTION_TYPES.md)，结果引擎设计见 [`RESULT_ENGINE_2_0.md`](RESULT_ENGINE_2_0.md)，编辑器 API 见 [`WEB_ADMIN_EDITOR_API.md`](WEB_ADMIN_EDITOR_API.md)。_
+_相关文档：题型与数据模型的技术盘点见 [`QUESTION_TYPES.md`](QUESTION_TYPES.md)，结果引擎设计见 [`RESULT_ENGINE_2_0.md`](RESULT_ENGINE_2_0.md)，编辑器 API 见 [`WEB_ADMIN_EDITOR_API.md`](../archive/WEB_ADMIN_EDITOR_API.md)。_

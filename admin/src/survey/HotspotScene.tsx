@@ -233,7 +233,7 @@ export function HotspotScene({ question, value, onChange, disabled, display, fil
   if (!config) {
     return (
       <p className="rounded-lg border border-dashed border-[var(--survey-card-border)] px-4 py-3 text-xs text-[var(--survey-muted)]">
-        场景配置缺失或无效。请在导入 JSON 中修正 settings.scene（见 docs/HOTSPOT_SCENES.md）。
+        场景配置缺失或无效。请在导入 JSON 中修正 settings.scene（见 docs/guides/HOTSPOT_SCENES.md）。
       </p>
     );
   }

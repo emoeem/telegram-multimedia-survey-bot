@@ -281,7 +281,7 @@ CSV / XLSX / JSON / ZIP / PDF；队列异步执行，完成通知。
 | 角色隔离     | `DEPLOYMENT_ROLE = vendor \| customer`，客户实例即使拿到 admin token 也被拒绝厂商侧接口                                             |
 | 许可证体系   | `/api/v1/licenses/{create,activate,validate,deactivate}` + `/api/v1/releases` 分发，带 24h 宽限期，可一键开关 `LICENSE_ENFORCEMENT` |
 | 控制面       | 部署列表、provision、客户心跳、发布目标（多租户发布）                                                                               |
-| 加盟方案     | `docs/FRANCHISE_PROPOSAL.md` 已是可直接对外发的合作说明书                                                                           |
+| 加盟方案     | `docs/archive/FRANCHISE_PROPOSAL.md` 已是可直接对外发的合作说明书                                                                   |
 
 ---
 
@@ -396,21 +396,21 @@ pnpm e2e
 
 ### 12.4 相关文档索引
 
-| 文档                              | 内容           |
-| --------------------------------- | -------------- |
-| `docs/HANDOVER.md`                | 交接总览       |
-| `docs/QUESTION_TYPES.md`          | 题型与校验规则 |
-| `docs/RESULT_ENGINE_2_0.md`       | 结果引擎       |
-| `docs/REPORT_TEMPLATE_SYSTEM.md`  | 模板系统       |
-| `docs/REPORT_ARCHIVE.md`          | 归档结构       |
-| `docs/COIN_ECONOMY.md`            | 金币经济       |
-| `docs/CERT_CARDS.md`              | 认证卡生成器   |
-| `docs/SHOWCASE.md`                | 展示区         |
-| `docs/CUSTOMER_DEPLOY.md`         | 客户部署       |
-| `docs/FRANCHISE_PROPOSAL.md`      | 加盟方案       |
-| `docs/CN_ACCESS_VERCEL_RELAY.md`  | 国内可达方案   |
-| `docs/FREE_TIER_BUDGET.md`        | 免费额度与护栏 |
-| `docs/THREE_TIER_ARCHITECTURE.md` | 三层架构说明   |
+| 文档                                      | 内容           |
+| ----------------------------------------- | -------------- |
+| `docs/HANDOVER.md`                        | 交接总览       |
+| `docs/guides/QUESTION_TYPES.md`           | 题型与校验规则 |
+| `docs/guides/RESULT_ENGINE_2_0.md`        | 结果引擎       |
+| `docs/guides/REPORT_TEMPLATE_SYSTEM.md`   | 模板系统       |
+| `docs/guides/REPORT_ARCHIVE.md`           | 归档结构       |
+| `docs/guides/COIN_ECONOMY.md`             | 金币经济       |
+| `docs/guides/CERT_CARDS.md`               | 认证卡生成器   |
+| `docs/guides/SHOWCASE.md`                 | 展示区         |
+| `docs/ops/CUSTOMER_DEPLOY.md`             | 客户部署       |
+| `docs/archive/FRANCHISE_PROPOSAL.md`      | 加盟方案       |
+| `docs/ops/CN_ACCESS_VERCEL_RELAY.md`      | 国内可达方案   |
+| `docs/ops/FREE_TIER_BUDGET.md`            | 免费额度与护栏 |
+| `docs/archive/THREE_TIER_ARCHITECTURE.md` | 三层架构说明   |
 
 ### 12.5 可直接转发的简介
 

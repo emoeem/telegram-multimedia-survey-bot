@@ -1,7 +1,7 @@
 # TG Web 归档（用户脚本）功能清单与实现计划
 
 > 本文说明本目录下 `tg-web-archive.user.js` 的**已经实现哪些功能、还应该实现哪些功能**，
-> 以及每一步的验收口径。使用说明见 `README.md`，方案背景见 `../docs/WEB_VIEW_ARCHIVE_MVP.md`
+> 以及每一步的验收口径。使用说明见 `README.md`，方案背景见 `../docs/guides/WEB_VIEW_ARCHIVE_MVP.md`
 >（Telegram 原生转发/复制/媒体路线的对比与风险边界）。
 
 ## 0. 实现状态总览（对应脚本 v0.6.0：仅支持 Web K，运行锁 + 分桶去重 + 频道签名强校验）

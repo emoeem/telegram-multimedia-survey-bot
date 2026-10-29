@@ -104,7 +104,7 @@ export function validateUnifiedSurvey(input: unknown): ValidationIssue[] {
       if (question.type === "scene" && !parseHotspotScene(question.settings, { allowPlaceholderRefs: true })) {
         issues.push({
           path: `${path}.settings.scene`,
-          message: "scene questions require a valid settings.scene config (see docs/HOTSPOT_SCENES.md)",
+          message: "scene questions require a valid settings.scene config (see docs/guides/HOTSPOT_SCENES.md)",
         });
       }
       if (question.type === "game" && !parseGameQuestionSettings(question.settings)) {

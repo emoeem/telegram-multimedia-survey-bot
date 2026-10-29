@@ -59,7 +59,7 @@ Free limits reset daily at 00:00 UTC."
   任务也会吃额度）。
 
 成功的静态资源请求不输出指标行；4xx/5xx 仍然输出。日志只含计数，不含请求体、
-密钥或问卷答案。详见 [BOT_2_0_IMPLEMENTATION.md](./BOT_2_0_IMPLEMENTATION.md)。
+密钥或问卷答案。详见 [BOT_2_0_IMPLEMENTATION.md](../archive/BOT_2_0_IMPLEMENTATION.md)。
 
 ## 改动新查询时
 

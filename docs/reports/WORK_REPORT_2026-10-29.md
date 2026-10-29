@@ -1,11 +1,11 @@
 # 工作报告 · 2026-10-29（发布链路审计与加固）
 
-| 项           | 值                                                                                                |
-| ------------ | ------------------------------------------------------------------------------------------------- |
-| 报告日期     | 2026-10-29                                                                                        |
-| 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                            |
-| 生产版本     | Worker `86fa5644-a3f6-4f49-a9db-ac37dfe72dc9`（13:44 CST）· git `f9f8e5d` / `b1496ad` / `9576ba6` |
-| 对应更新记录 | [`RELEASE_2026-10-29_PUBLICATION_HARDENING.md`](RELEASE_2026-10-29_PUBLICATION_HARDENING.md)      |
+| 项           | 值                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------- |
+| 报告日期     | 2026-10-29                                                                                               |
+| 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                                   |
+| 生产版本     | Worker `86fa5644-a3f6-4f49-a9db-ac37dfe72dc9`（13:44 CST）· git `f9f8e5d` / `b1496ad` / `9576ba6`        |
+| 对应更新记录 | [`RELEASE_2026-10-29_PUBLICATION_HARDENING.md`](../releases/RELEASE_2026-10-29_PUBLICATION_HARDENING.md) |
 
 ## 1. 本轮范围
 
@@ -13,7 +13,7 @@
 三路审计（新代码逐文件审计 / 已知问题清单盘点 / 代码健康度扫描），确认问题后
 修复、部署，并按项目惯例留下文档。上午那批功能本身（发布三选一、频道发布
 可靠性、限流修复、Bot 主菜单、震动反馈）的交付记录见
-[`RELEASE_2026-10-29.md`](RELEASE_2026-10-29.md)。
+[`RELEASE_2026-10-29.md`](../releases/RELEASE_2026-10-29.md)。
 
 ## 2. 审计结论与交付
 

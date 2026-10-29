@@ -5,7 +5,7 @@ import { isSharedSecretValid } from "../core/security";
  *
  * The Worker is normally the outermost hop, so Cloudflare's `CF-Connecting-IP`
  * *is* the caller. A mainland-China deployment adds a second, China-reachable
- * hop in front of it (see `cn-relay/` and docs/CN_ACCESS_VERCEL_RELAY.md)
+ * hop in front of it (see `cn-relay/` and docs/ops/CN_ACCESS_VERCEL_RELAY.md)
  * because Cloudflare's own POPs are reached from China over long, lossy
  * routes. From Cloudflare's point of view every visitor behind that relay
  * becomes the relay's single address, which collapses the per-IP rate limits

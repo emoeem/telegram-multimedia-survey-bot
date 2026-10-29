@@ -14,7 +14,7 @@
 
 ## 2. 技术选型：零依赖
 
-调查结论见 [SHOWCASE_FRONTEND_RESEARCH_2026-10.md](./SHOWCASE_FRONTEND_RESEARCH_2026-10.md)。核心判断：
+调查结论见 [SHOWCASE_FRONTEND_RESEARCH_2026-10.md](../archive/SHOWCASE_FRONTEND_RESEARCH_2026-10.md)。核心判断：
 
 | 需求         | 方案                                                                              | 增量体积 |
 | ------------ | --------------------------------------------------------------------------------- | -------- |

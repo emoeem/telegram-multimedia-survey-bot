@@ -1,9 +1,9 @@
 # 交接与下一步完整计划（编辑器外壳 P2 · 场景媒体结构化 · 遗留项）
 
 > 面向接手的人。读完这份文档，你应该知道：**已经有什么、还缺什么、每一件怎么做、做完怎么验。**
-> 配套阅读：`docs/EDITOR_PLUGIN_ARCHITECTURE.md`（插件协议与接入）、
-> `docs/RELEASE_2026-10-28_EDITOR_PLUGIN.md`（本轮更新日志）、
-> `docs/HOTSPOT_EDITOR_HANDOVER.md`（场景编辑器的三条禁令，动编辑器前必读）。
+> 配套阅读：`docs/guides/EDITOR_PLUGIN_ARCHITECTURE.md`（插件协议与接入）、
+> `docs/releases/RELEASE_2026-10-28_EDITOR_PLUGIN.md`（本轮更新日志）、
+> `docs/guides/HOTSPOT_EDITOR_HANDOVER.md`（场景编辑器的三条禁令，动编辑器前必读）。
 > **后续执行的唯一计划表是 `docs/UPGRADE_ROADMAP_2026-10-28.md`**——本文档保留背景与方案细节，
 > 执行进度以路线图的勾选为准。
 
@@ -20,7 +20,7 @@ cd admin && pnpm exec tsc --noEmit && cd ..   # admin
 pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象）
 ```
 
-基线数字写在 `docs/RELEASE_2026-10-28_EDITOR_PLUGIN.md`。**任何后续改动都应让这两个数字只增不减**
+基线数字写在 `docs/releases/RELEASE_2026-10-28_EDITOR_PLUGIN.md`。**任何后续改动都应让这两个数字只增不减**
 （新增测试文件会改第一个数字，属正常）。
 
 ---
@@ -59,7 +59,7 @@ pnpm build:admin   # 期望：构建成功（chunk 体积警告是既有现象�
 ## 2. P2：三栏画布外壳（优先做，工作量最大）
 
 > **进度（2026-10-28 晚）**：S0–S3 已完成（`?ui=next` 路由开关、QuestionForm 抽取、三栏新壳、
-> QuickBar），单测 196 文件 / 1422 用例全绿，详见 `docs/RELEASE_2026-10-28_EDITOR_P2_SHELL.md`。
+> QuickBar），单测 196 文件 / 1422 用例全绿，详见 `docs/releases/RELEASE_2026-10-28_EDITOR_P2_SHELL.md`。
 > 两壳的动作已收拢到 `admin/src/editor/editor-actions.ts`（共用一份实现）。
 > 基线数字已更新：**196 文件 / 1422 用例**。下一步从 S4（拖拽）继续。
 
@@ -218,7 +218,7 @@ type EditorCommand =
 | 中     | 投稿第三层内容审核适配器         | `src/services/coin/submission.service.ts:16` 的 TODO，目前人工兜底                                                                             | 同上                                                           |
 | 中     | 媒体字节独立备份                 | D1 每日备份不含 R2/KV blob；可加 R2→R2 周期复制                                                                                                | `.github/workflows/d1-backup.yml`                              |
 | 中     | 旧 Builder / QuestionEditor 清理 | Bot 侧遗留代码（`docs/HANDOVER.md` P10）                                                                                                       | `src/bot/builder-handler.ts`                                   |
-| 低     | UIUX 审计 P1/P2 残项             | `docs/UIUX-AUDIT-2026-10-22.md`                                                                                                                | —                                                              |
+| 低     | UIUX 审计 P1/P2 残项             | `docs/audits/UIUX-AUDIT-2026-10-22.md`                                                                                                         | —                                                              |
 | 低     | 性能专项                         | 结构树/画布虚拟化、属性面板 memo、连线层 canvas 化；Lighthouse 目前 Performance 75                                                             | P2 完成后做才有意义                                            |
 
 ---

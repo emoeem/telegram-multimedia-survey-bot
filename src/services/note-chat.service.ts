@@ -10,7 +10,7 @@ import { CoinLedgerError, getCoinAccount, runSpendBatch } from "./coin/ledger.se
  *   幂等键由客户端生成，双击不会双扣；
  * - 抽取顺序是「先挑纸条，再决定收费」：池子为空时免费额与金币都不消耗。
  *
- * 成本纪律（docs/COST-GUARDRAILS.md 的落法）：所有列表/轮询查询都走前缀索引；
+ * 成本纪律（docs/ops/COST-GUARDRAILS.md 的落法）：所有列表/轮询查询都走前缀索引；
  * 消息游标增量；未读数搭车在会话列表里算，不单独轮询；过期下架进每日维护。
  */
 

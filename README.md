@@ -77,7 +77,7 @@
 - 邮箱 + 密码身份系统；
 - Telegram WebApp/身份接入；
 - Open Graph 分享预览卡；
-- 趣味认证卡生成器（`/cert`，纯前端 Canvas，含 18+ 门禁的成人词库，见 [`docs/CERT_CARDS.md`](docs/CERT_CARDS.md)）。
+- 趣味认证卡生成器（`/cert`，纯前端 Canvas，含 18+ 门禁的成人词库，见 [`docs/guides/CERT_CARDS.md`](docs/guides/CERT_CARDS.md)）。
 
 ### 创建者工具
 
@@ -227,7 +227,7 @@ Q3 = B ──→ 社交性 +5
 
 预览会即时显示每个维度得分、总分、命中结果、结果区间、标题/标签以及匹配原因。没有结果命中时，会直接提示覆盖范围不足。
 
-详细设计见 [`docs/RESULT_ENGINE_2_0.md`](docs/RESULT_ENGINE_2_0.md)。
+详细设计见 [`docs/guides/RESULT_ENGINE_2_0.md`](docs/guides/RESULT_ENGINE_2_0.md)。
 
 ## Participant Report 2.0
 
@@ -289,7 +289,7 @@ ReportTemplateSpec
 
 管理端模板页已经加入可视化 schematic preview；实际 HTML/PDF 预览仍由报告渲染管线负责。
 
-详细说明见 [`docs/REPORT_TEMPLATE_SYSTEM.md`](docs/REPORT_TEMPLATE_SYSTEM.md)。
+详细说明见 [`docs/guides/REPORT_TEMPLATE_SYSTEM.md`](docs/guides/REPORT_TEMPLATE_SYSTEM.md)。
 
 ## Telegram 归档
 
@@ -317,7 +317,7 @@ report-42.zip
 
 报告投递使用 `report_deliveries.delivery_id` 幂等键，并支持失败重试与管理员通知。
 
-详细说明见 [`docs/REPORT_ARCHIVE.md`](docs/REPORT_ARCHIVE.md)。
+详细说明见 [`docs/guides/REPORT_ARCHIVE.md`](docs/guides/REPORT_ARCHIVE.md)。
 
 ## 编辑器与导入器
 
@@ -436,7 +436,7 @@ Telegram webhook 的失败路径也明确采用“返回 200、释放幂等 clai
 
 最近生产 1d insights 中，最高的单条查询累计读取约 72k 行，远低于此前百万级异常查询。
 
-详细规则见 [`docs/FREE_TIER_BUDGET.md`](docs/FREE_TIER_BUDGET.md)。
+详细规则见 [`docs/ops/FREE_TIER_BUDGET.md`](docs/ops/FREE_TIER_BUDGET.md)。
 
 ## 可靠性与幂等
 
@@ -709,34 +709,14 @@ LICENSE_ENFORCEMENT = "disabled"
 
 ## 文档索引
 
-### 核心架构
+全部文档的入口、分类与「什么时候看哪份」见 **[`docs/README.md`](docs/README.md)**。
+最常查的三份：
 
-- [`docs/PLATFORM_2_0_AUDIT.md`](docs/PLATFORM_2_0_AUDIT.md) — 平台 2.0 产品审计与优化记录
-- [`docs/MODULARIZATION.md`](docs/MODULARIZATION.md) — HTTP / Bot 模块化拆分
-- [`docs/BOT_2_0_IMPLEMENTATION.md`](docs/BOT_2_0_IMPLEMENTATION.md) — 可观测性、幂等、批量查询、前端拆分
-
-### Result / Report
-
-- [`docs/RESULT_ENGINE_2_0.md`](docs/RESULT_ENGINE_2_0.md) — Result Rules 与实时结果设计器
-- [`docs/REPORT_TEMPLATE_SYSTEM.md`](docs/REPORT_TEMPLATE_SYSTEM.md) — 报告模板与 Renderer 架构
-- [`docs/REPORT_ARCHIVE.md`](docs/REPORT_ARCHIVE.md) — Telegram 报告归档管线与 ZIP v2
-
-### 前端小工具
-
-- [`docs/CERT_CARDS.md`](docs/CERT_CARDS.md) — 趣味认证卡生成器：版式、评分模型、18+ 门禁、词库导入
-
-### 数据库 / 运维
-
-- [`docs/FREE_TIER_BUDGET.md`](docs/FREE_TIER_BUDGET.md) — D1 免费额度纪律与线上事故复盘
-- [`docs/HANDOVER.md`](docs/HANDOVER.md) — 项目交接信息
-- [`docs/PROJECT_REPORT.md`](docs/PROJECT_REPORT.md) — 项目状态与生产资源
-
-### 导入 / 部署
-
-- [`docs/WINDOWS_CUSTOMER_DEPLOYMENT.md`](docs/WINDOWS_CUSTOMER_DEPLOYMENT.md) — Windows 客户部署与交付
-- [`docs/TELEGRAM_ARCHIVE_RESEARCH.md`](docs/TELEGRAM_ARCHIVE_RESEARCH.md) — Telegram 归档研究
-- [`docs/WEB_ADMIN_EDITOR_API.md`](docs/WEB_ADMIN_EDITOR_API.md) — Admin Editor API
-- [`docs/WEB_ADMIN_MIGRATION_PLAN.md`](docs/WEB_ADMIN_MIGRATION_PLAN.md) — Admin 迁移规划
+| 文档                                                                       | 用途                                       |
+| -------------------------------------------------------------------------- | ------------------------------------------ |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md)                                     | 交接总纲：现状、坑、接手第一步             |
+| [`docs/UPGRADE_ROADMAP_2026-10-28.md`](docs/UPGRADE_ROADMAP_2026-10-28.md) | 后续还要做什么（唯一执行计划，带勾选状态） |
+| [`docs/FEATURE-OVERVIEW.md`](docs/FEATURE-OVERVIEW.md)                     | 产品功能总览                               |
 
 ## 版本与发布原则
 

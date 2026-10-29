@@ -35,7 +35,7 @@ ASSETS_DIR = SCRIPT_DIR / "assets"
 #   --config wrangler.staging.toml --kv-namespace <staging MEDIA_KV id> \
 #   --public-base https://telegram-multimedia-survey-bot-staging.<account>.workers.dev
 # wrangler 凭据（OAuth 账号）决定你连的是哪个 Cloudflare 账号——脚本不切换
-# 账号，切账号须先 `wrangler login`（staging 在独立账号，见 docs/web-admin-phase-1.md）。
+# 账号，切账号须先 `wrangler login`（staging 在独立账号，见 docs/archive/web-admin-phase-1.md）。
 WRANGLER_ARGS: list[str] = []
 MEDIA_KV_ID = "1761c29892764597992c189096bc62c2"  # wrangler.toml binding MEDIA_KV
 KV_PREFIX = "media:survey-wenai"

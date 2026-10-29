@@ -1,5 +1,5 @@
 /**
- * 部署能力探测（docs/CLOUDFLARE_PLAN_TIERS.md 原则一：「能力必须可探测，
+ * 部署能力探测（docs/ops/CLOUDFLARE_PLAN_TIERS.md 原则一：「能力必须可探测，
  * 不能靠"我记得我是 Pro"」）。
  *
  * 每一项按量付费资源都有对应的可选绑定/配置；这里把它们归纳成一张能力表和

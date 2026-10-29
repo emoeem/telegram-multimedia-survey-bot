@@ -9,7 +9,7 @@ export type { ExportJobSender };
 /**
  * 无队列部署（Workers Free）的导出任务分发。
  *
- * docs/CLOUDFLARE_PLAN_TIERS.md 原则二：「降级是换实现，不是关功能」。
+ * docs/ops/CLOUDFLARE_PLAN_TIERS.md 原则二：「降级是换实现，不是关功能」。
  * Queues 是 Workers Paid 硬门槛，而导出/归档/可视化等五类任务都走队列；
  * 这里给同一批消息体提供一条功能等价的同步路径：
  *

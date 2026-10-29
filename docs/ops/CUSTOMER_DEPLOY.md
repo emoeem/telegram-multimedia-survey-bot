@@ -96,7 +96,7 @@ pnpm customer:deploy
    账号带该绑定根本无法部署。free 部署的导出/归档任务经 SELF service binding
    回到本 Worker 的请求上下文同步执行（`src/services/export-job-dispatch.service.ts`），
    功能等价、只是慢；PDF/分享图退化为 HTML/SVG。详见
-   `docs/CLOUDFLARE_PLAN_TIERS.md`。
+   `docs/ops/CLOUDFLARE_PLAN_TIERS.md`。
 2. 生成独立 `wrangler.toml`（含 `ADMIN_IDS`、`INSTALLATION_ID`、授权中心地址、控制台源）；
 3. 把 `BOT_TOKEN`、`WEBHOOK_SECRET`、`LICENSE_KEY` 写入 Cloudflare Secret（不进代码）；
 4. 执行数据库迁移并部署 Worker；

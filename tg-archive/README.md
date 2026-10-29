@@ -1,6 +1,6 @@
 # tg-archive —— 把 Telegram 聊天镜像到你自己的频道（MVP）
 
-> 对应 `docs/TELEGRAM_ARCHIVE_RESEARCH.md` 附录 A 的 MVP：
+> 对应 `docs/archive/TELEGRAM_ARCHIVE_RESEARCH.md` 附录 A 的 MVP：
 > **采集（MTProto 用户会话）→ 本地 SQLite 索引/断点 → Channel Writer 写入你自己拥有的私有频道**。
 > 本地数据库是索引 + 断点 + 防重层，不是最终存储；浏览/检索发生在 Telegram 客户端内。
 >

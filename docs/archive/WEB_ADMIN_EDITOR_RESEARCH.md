@@ -1,7 +1,7 @@
 # Web Admin 问卷编辑器研究（Phase 2.0）
 
 > 纯调研产物，2026-08-22。本阶段**未修改任何生产代码、未新增迁移**。Phase 1（Web Admin Shell + 只读 API）为稳定基线。
-> 配套文档：`docs/QUESTION_TYPES.md`（题型清单）、`docs/WEB_ADMIN_EDITOR_API.md`（API 设计）、`docs/WEB_ADMIN_EDITOR_MIGRATION.md`（迁移结论：第一版零迁移）。
+> 配套文档：`docs/guides/QUESTION_TYPES.md`（题型清单）、`docs/archive/WEB_ADMIN_EDITOR_API.md`（API 设计）、`docs/archive/WEB_ADMIN_EDITOR_MIGRATION.md`（迁移结论：第一版零迁移）。
 
 ## 1. 当前架构总览
 

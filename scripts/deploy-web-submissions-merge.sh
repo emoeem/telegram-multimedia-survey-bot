@@ -2,7 +2,7 @@
 #
 # 免登录投稿并轨 —— 一键部署脚本(方案 B 上线)。
 #
-# 把 docs/WEB_SUBMISSIONS_MERGE.md 的六步固化成可重跑的分段脚本:
+# 把 docs/ops/WEB_SUBMISSIONS_MERGE.md 的六步固化成可重跑的分段脚本:
 #   1. 预检(命令、目录、依赖)
 #   2. D1 migration 0088(无破坏性,CREATE IF NOT EXISTS)
 #   3. 旧库导出 + 转换 + 导入(可选,--skip-data 跳过)
@@ -124,7 +124,7 @@ else
     | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)[0].results[0].n)}catch{console.log('-1')}})")
   if [[ "$already" != "-1" && "$already" != "0" ]]; then
     warn "web_submissions 已有 $already 行 —— 不重复导入(避免主键冲突覆盖新状态)。"
-    info "确要重导:先手动清表(见 docs/WEB_SUBMISSIONS_MERGE.md 回滚节)。"
+    info "确要重导:先手动清表(见 docs/ops/WEB_SUBMISSIONS_MERGE.md 回滚节)。"
   else
     if [[ -n "${WEBMERGE_OLD_CF_TOKEN:-}" ]]; then
       info "用环境变量提供的旧账号 token 导出旧库…"
@@ -212,7 +212,7 @@ probe "中继 " "$RELAY_ORIGIN/api/submit/form"
 
 cat <<'CHECKLIST'
 
-✅ 自动验证完成。剩余人工清单(docs/WEB_SUBMISSIONS_MERGE.md 第 5 步):
+✅ 自动验证完成。剩余人工清单(docs/ops/WEB_SUBMISSIONS_MERGE.md 第 5 步):
   [ ] 投稿中心 →「⚡ 免登录直投」:表单加载、验证题、提交拿到编号
   [ ] 「我的投稿」:新投稿 + 迁移来的旧投稿都在
   [ ] 管理后台 →「网页投稿」:列表/详情/通过/驳回(收件箱能看到结果)

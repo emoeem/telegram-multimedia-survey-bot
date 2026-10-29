@@ -153,7 +153,7 @@ const questionTypeLabels: Record<QuestionType, string> = {
   file: "上传文件",
   // 剧情文段暂只在管理端编辑器提供；bot 向导仍可展示/编辑既有题目。
   note: "剧情文段",
-  // 互动场景：配置经导入脚本维护（docs/HOTSPOT_SCENES.md），不在 bot 向导提供。
+  // 互动场景：配置经导入脚本维护（docs/guides/HOTSPOT_SCENES.md），不在 bot 向导提供。
   scene: "互动场景",
   // 小游戏题：网页端交互（内嵌小游戏），bot 端仅展示题面。
   game: "小游戏挑战",

@@ -21,7 +21,7 @@ const certDir = join(root, "cert");
  *
  * 必须用**国内可达**的那个域名：emoe.eu.cc 是 Cloudflare 共享段，国内多数网络直接
  * SNI 阻断，拿它当 share base 等于把收到文件的人再送回打不开的站点。emoemok.top 是
- * 同一 Worker 的 Vercel 中继（见 docs/CN_ACCESS_VERCEL_RELAY.md），国内可直连。
+ * 同一 Worker 的 Vercel 中继（见 docs/ops/CN_ACCESS_VERCEL_RELAY.md），国内可直连。
  * 换域名时可以用 CERT_SHARE_BASE 覆盖，不必改脚本。 */
 const SHARE_BASE = process.env.CERT_SHARE_BASE || "https://emoemok.top/cert/";
 const OUT = join(certDir, "cert.html");

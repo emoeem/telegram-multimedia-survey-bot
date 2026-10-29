@@ -311,7 +311,7 @@ export interface Env {
   PUBLICATION_TARGET_THREAD_ID?: string;
   /**
    * Shared secret the mainland-China relay presents in `x-relay-token` (see
-   * `cn-relay/` and docs/CN_ACCESS_VERCEL_RELAY.md, `wrangler secret put
+   * `cn-relay/` and docs/ops/CN_ACCESS_VERCEL_RELAY.md, `wrangler secret put
    * RELAY_SECRET`). While it matches, the visitor identity headers that relay
    * forwards are trusted for rate limits and geo, so domestic visitors do not
    * share one rate-limit bucket. Unset = every request keeps being judged by
@@ -354,7 +354,7 @@ export interface Env {
   /** Pepper used only for new salted survey access-code hashes. */
   SURVEY_CODE_PEPPER?: string;
   /**
-   * 部署档位显式声明（docs/CLOUDFLARE_PLAN_TIERS.md 原则一）。与绑定探测结果
+   * 部署档位显式声明（docs/ops/CLOUDFLARE_PLAN_TIERS.md 原则一）。与绑定探测结果
    * 取更保守的一档；不声明则完全由绑定推导（见 services/plan.service.ts）。
    */
   PLAN_TIER?: string;

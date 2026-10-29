@@ -80,7 +80,7 @@ npx wrangler tail --format json | grep -E "capacity|kv_capacity|exceeded"
 **它不是「额度变大」，是「故障模式从 500 变成账单」。**
 
 Free 档最狠的地方不是数字小，是**超限即全站失败**：
-`docs/FREE_TIER_BUDGET.md` 记录过 2026-09-14 那次——一次维护清扫读了约 530 万行，
+`docs/ops/FREE_TIER_BUDGET.md` 记录过 2026-09-14 那次——一次维护清扫读了约 530 万行，
 超过 D1 免费的 500 万行/天，**当天该账号下所有 D1 查询全部失败**，站点直接躺下。
 
 Paid 档把这条悬崖填平了。现在的代价是「超了要付钱」，而不是「超了用户看到 500」。

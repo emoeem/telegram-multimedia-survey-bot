@@ -1,7 +1,7 @@
 # tg-web-archive（Web 视图层归档 MVP）
 
 在官方 web.telegram.org 页面内运行的用户脚本，把当前聊天归档到你自己的私有频道，
-**不需要 api_id/api_hash**。设计见 `docs/WEB_VIEW_ARCHIVE_MVP.md`。
+**不需要 api_id/api_hash**。设计见 `docs/guides/WEB_VIEW_ARCHIVE_MVP.md`。
 
 ## 快速开始
 

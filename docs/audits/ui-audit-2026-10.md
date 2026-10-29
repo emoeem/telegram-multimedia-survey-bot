@@ -97,7 +97,7 @@
 
 ## 5. 截图索引
 
-审计截图目录：`docs/ui-audit-2026-10-assets/`
+审计截图目录：`docs/audits/ui-audit-2026-10-assets/`
 
 ### 移动端重点人工审查
 
@@ -169,4 +169,4 @@ Vite 构建提示公共 `esm-*.js` chunk >500KB；ECharts 已动态 import，暂
 
 ## P1 功能增强归档
 
-本轮产品功能增强、Soft Delete/Undo、Showcase cursor、axe CI 门禁、Admin 拆包和 Lighthouse 基线详见 [`docs/round-p1.md`](./round-p1.md)。最终视觉回归为 173/173，通过后未执行生产部署或 push。
+本轮产品功能增强、Soft Delete/Undo、Showcase cursor、axe CI 门禁、Admin 拆包和 Lighthouse 基线详见 [`docs/reports/round-p1.md`](../reports/round-p1.md)。最终视觉回归为 173/173，通过后未执行生产部署或 push。

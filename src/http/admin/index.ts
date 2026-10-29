@@ -428,7 +428,7 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
         // Actionable text when the console is unavailable for a fixable reason
         // (e.g. a center that forgot LICENSE_ADMIN_TOKEN).
         hint: describeDeploymentRoleIssue(env),
-        // 部署能力面板（docs/CLOUDFLARE_PLAN_TIERS.md）：档位与每项付费能力的
+        // 部署能力面板（docs/ops/CLOUDFLARE_PLAN_TIERS.md）：档位与每项付费能力的
         // 探测结果 + Free 部署上的等价降级文案。
         plan: resolvePlanCapabilities(env),
         planFallbacks: PLAN_FALLBACK_NOTES,

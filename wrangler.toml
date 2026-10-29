@@ -79,13 +79,13 @@ SUBMISSION_BOT_URL = "https://emoemok.top/submissions?tab=anon"
 # workers.dev hostname, so without this pin the bot would keep handing users
 # the SNI-blocked hostname instead of the custom domain. Points at the
 # mainland relay domain so those links resolve for domestic users too; see
-# docs/CN_ACCESS_VERCEL_RELAY.md.
+# docs/ops/CN_ACCESS_VERCEL_RELAY.md.
 PUBLIC_ORIGIN = "https://emoemok.top"
 # RELAY_SECRET is a Cloudflare Secret (`wrangler secret put RELAY_SECRET`), not
 # a [vars] entry: it is the shared secret the China relay proves itself with,
 # and anyone holding it can forge the visitor address. Unset = requests are
 # judged by their peer address, i.e. the pre-relay behaviour.
-# See docs/CN_ACCESS_VERCEL_RELAY.md.
+# See docs/ops/CN_ACCESS_VERCEL_RELAY.md.
 
 # Browser renders for queue jobs run in a request context via the SELF
 # service binding (queue-context sessions die on constrained accounts).
@@ -100,7 +100,7 @@ database_name = "telegram-survey-db"
 database_id = "159e8169-a233-4bd7-b3e9-723586f850c2"
 migrations_dir = "db/migrations"
 
-# R2 媒体桶（Pro 能力，docs/CLOUDFLARE_PLAN_TIERS.md）：答卷附件/题目媒体大文件
+# R2 媒体桶（Pro 能力，docs/ops/CLOUDFLARE_PLAN_TIERS.md）：答卷附件/题目媒体大文件
 # 存 R2（survey-media 桶），TieredMediaStore 读取回落 KV（旧数据仍可读）。
 [[r2_buckets]]
 binding = "MEDIA"

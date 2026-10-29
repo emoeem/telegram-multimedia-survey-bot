@@ -424,7 +424,7 @@ export function validateQuestionPayload(
     // 校验器会剥掉一切未登记字段，所以这里不存在注入面。
     if (questionType === "scene") {
       const config = parseHotspotScene(body.settings);
-      if (!config) return { error: "场景配置无效（settings.scene，见 docs/HOTSPOT_SCENES.md）" };
+      if (!config) return { error: "场景配置无效（settings.scene，见 docs/guides/HOTSPOT_SCENES.md）" };
       next.scene = config;
     }
     settingsJson = Object.keys(next).length ? JSON.stringify(next) : null;

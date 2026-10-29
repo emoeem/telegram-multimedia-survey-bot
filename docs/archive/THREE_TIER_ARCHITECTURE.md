@@ -3,7 +3,7 @@
 > 2026-08-22。定位：**目标架构与实施路线，关键产品决策已确认**。
 > 目标架构（用户定义）：
 > **Telegram = 用户端 + 快捷管理；Web Admin = 完整后台；Telegraph = 对外问卷目录。**
-> 与既有文档的关系：本文档是 `docs/WEB_ADMIN_MIGRATION_PLAN.md`（阶段路线）+ `docs/WEB_ADMIN_EDITOR_RESEARCH.md`（Phase 2.0 编辑器方案）的**上层架构整合**，不推翻已批的 Phase 2 计划。
+> 与既有文档的关系：本文档是 `docs/archive/WEB_ADMIN_MIGRATION_PLAN.md`（阶段路线）+ `docs/archive/WEB_ADMIN_EDITOR_RESEARCH.md`（Phase 2.0 编辑器方案）的**上层架构整合**，不推翻已批的 Phase 2 计划。
 
 ## 1. 三端职责边界（目标态）
 

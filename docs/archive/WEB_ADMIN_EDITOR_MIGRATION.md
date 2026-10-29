@@ -1,7 +1,7 @@
 # Web Admin Editor 迁移方案（Phase 2.0 提案）
 
 > 结论先行：**Phase 2 v1（编辑器完整能力：创建/编辑/排序/保存/预览/发布）在现有 D1 schema 上零迁移即可实现**。本文档论证该结论，并列出未来可选项（默认不做）。
-> 依据：`docs/WEB_ADMIN_EDITOR_RESEARCH.md` 的现状分析。
+> 依据：`docs/archive/WEB_ADMIN_EDITOR_RESEARCH.md` 的现状分析。
 
 ## 1. 为什么零迁移可行（逐项对照）
 

@@ -1,6 +1,6 @@
 # 更新日志 · 2026-10-28 晚（编辑器 P2 三栏外壳 S0–S3）
 
-> 承接同日《RELEASE_2026-10-28_EDITOR_PLUGIN.md》，执行 `docs/HANDOVER_EDITOR_P2_PLAN.md` 的
+> 承接同日《RELEASE_2026-10-28_EDITOR_PLUGIN.md》，执行 `docs/guides/HANDOVER_EDITOR_P2_PLAN.md` 的
 > P2 第 S0–S3 步。旧编辑器仍是默认；新壳在 `/admin/surveys/:id/editor?ui=next` 并行验证。
 
 ## 一句话总结
@@ -100,7 +100,7 @@ GitHub → Actions → **Visual baseline**（workflow_dispatch）重生成，**�
 
 **新增 · 测试 / 文档**
 `tests/unit/editor/templates.test.ts`、`tests/unit/editor/delete-with-cascade.test.ts`、
-`docs/RELEASE_2026-10-28_EDITOR_P2_SHELL.md`（本文）
+`docs/releases/RELEASE_2026-10-28_EDITOR_P2_SHELL.md`（本文）
 
 **修改**
 `admin/src/routes/EditorPage.tsx`（消费共享模块 + ?ui=next 分支）、

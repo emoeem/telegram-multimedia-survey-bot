@@ -1,5 +1,5 @@
 /**
- * Cloudflare Images 图片管线（Pro 能力，docs/CLOUDFLARE_PLAN_TIERS.md）。
+ * Cloudflare Images 图片管线（Pro 能力，docs/ops/CLOUDFLARE_PLAN_TIERS.md）。
  *
  * 账号订阅 `Images Stream Basic` 后即可用：渲染产物（认证卡成品图等）上传到
  * Images 存储，经 `imagedelivery.net` 的边缘网络分发，并可用 `/cdn-cgi/image/`

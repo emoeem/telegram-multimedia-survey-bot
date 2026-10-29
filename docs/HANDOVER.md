@@ -4,10 +4,13 @@
 > 旧壳 `?ui=legacy` 只读兜底（保留两个版本周期后删除），场景编辑改为壳内全屏浮层；
 > 场景媒体结构化（URL → `{assetId}`）读侧与写侧**均已上线**（写侧已在 staging 实测
 > 8 项清单全过后合入生产，见
-> [`docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b；
+> [`docs/ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b；
 > push main 自动触发生产 deploy）。互动场景（scene）与场景编辑器细节见
-> [`docs/HOTSPOT_EDITOR_HANDOVER.md`](HOTSPOT_EDITOR_HANDOVER.md)；
+> [`docs/guides/HOTSPOT_EDITOR_HANDOVER.md`](guides/HOTSPOT_EDITOR_HANDOVER.md)；
 > **后续升级的唯一执行计划见 [`docs/UPGRADE_ROADMAP_2026-10-28.md`](UPGRADE_ROADMAP_2026-10-28.md)**。
+> 全部文档的分类与「什么时候看哪份」见 [`docs/README.md`](README.md)（2026-10-29 重整：
+> 运维在 `ops/`、功能手册在 `guides/`、更新记录在 `releases/`、报告在 `reports/`、
+> 审计在 `audits/`、历史计划留档在 `archive/`）。
 > 本节以下内容停留在 2026-08-23，迁移编号/功能清单已过时，仅作历史背景。
 >
 > 更新日期：2026-08-23。本文档说明**当前完成了什么、还缺什么、下一步做什么**，
@@ -19,7 +22,7 @@
 **Web-first 问卷平台 + Telegram 作为入口/通知/归档渠道**：
 
 > **正式方向（2026-08-23 确认）**：Telegram 不再负责问卷 UI，也不限制问卷、
-> 编辑器、报告展示能力。完整第二阶段计划见 `docs/PHASE2_PLAN.md`。
+> 编辑器、报告展示能力。完整第二阶段计划见 `docs/archive/PHASE2_PLAN.md`。
 
 - 普通用户：Web 问卷列表（`/s`）→ Web Survey（`/s/:id`）→ 提交 → Web Report（`/report/:id`，手机浏览器阅读）
 - 后台：Admin Web（`/admin`，Telegram WebApp）是核心控制台
@@ -92,7 +95,7 @@
 
 - 账号：**与生产同账号 `pd2335346`**（原 `3353745917@gmail.com` 不可用，2026-10-29 在
   生产账号下重建了 staging 资源，见
-  [`docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b）
+  [`docs/ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b）
 - Worker：`telegram-multimedia-survey-bot-staging`
   （`https://telegram-multimedia-survey-bot-staging.pd2335346.workers.dev`）
 - 注：**本机 wrangler OAuth 指生产账号，也就是现在 staging 所在的账号**；部署 staging
@@ -119,28 +122,28 @@
 - [~] **挑战任务体验补强 + 内容扩充（2026-09-09 已开发、待上线部署）**：玩家端 `/trial` 补齐主题切换（与广场共用 DaisyUI 预设与 `plazaTheme` 记忆）与可靠退出（Telegram WebView 直接关闭，普通浏览器回退到问卷首页）；管理员在挑战页首页可见「打开任务编辑器」直达卡（`GET /api/trial/me` 下发 `isAdmin`），Bot 管理员中心新增「⚙️ 任务包管理」直达 `/admin/task-packs`；内容迁移 0047 新增「示例 · 浴室晨课」「示例 · 宅邸夜巡」两个任务包，并为前两个包补充任务（共 4 包 / 62 条任务文案，全部可在后台改）。
 - [x] **K9 原典 200 题导入 + 任务风险弹窗（2026-09-09 已上线）**：`task_items` 新增 `warning` 列（迁移 0048），管理端每条任务可填「风险弹窗提醒」；玩家抽到带 warning 的任务时先弹出确认遮罩，知晓后才能继续。K9 原典全部 200 题完整保留，导入为新任务包「K9 犬训 · 原典 200 题」（普通 20 层 / 地狱 25 层），其中 35 题按原典自动附加危险动作/公共场合提醒（编号见 `scripts/data/k9-task200.json`）。导入管线：`pdftotext → scripts/parse_k9_pdf.mjs → scripts/import_k9_tasks.mjs → 0048 迁移`，便于以后换源重导。
 - [x] **广场（树洞 + 资料卡）（2026-08-29）**：机器人主菜单「🏛 广场」按钮直接打开网页版（`${origin}/plaza`，与问卷同一 SPA，复用 DaisyUI 主题/主题切换/身份头；无 origin 时回退 bot 内浏览）= 🖼 资料卡流（显示作者 @用户）+ 🌳 树洞流；网页投稿弹层（匿名/署名，KV 限流 5 条/小时，Telegram 身份校验），bot 内旧流程保留为回退，表 `plaza_posts`（迁移 0037）；后台新增「树洞」页（`/admin/plaza`）下架/恢复内容（审计日志）。资料卡接入 web 报告管线：4 种卡片版式（内置报告模板 + 卡片区块调优，900×1200 PNG），生成时选「发布到画廊」，成品存 MEDIA_KV（迁移 0036 `gallery_published`/`card_asset_id`）；后台「资料卡」页全量查看/上架下架。旧 `gallery:` 回调兼容路由到新广场。
-- [x] **提升批 1-7 + GitHub CI（2026-08-23）**：系统设置生效、问卷列表搜索/封面、审计日志页、编辑器撤销重做+自动保存、PWA、模板编辑器拖拽+字体配色可视化、批量导出进度；GitHub Actions CI（typecheck/单测/lint/构建/PDF 回归/视觉回归）。详见 `docs/PHASE2_PLAN.md` §14
-- [x] **答卷批量导出/内嵌预览/分享链接（2026-08-23）**：答卷列表勾选批量导出到私人频道、桌面双栏内嵌报告预览（可切模板）、一键复制分享链接（30 天 token）。详见 `docs/PHASE2_PLAN.md` §14
-- [x] **报告打包直发频道 + 后台响应式（2026-08-23）**：有用户图片的答卷归档改为 PDF+图片打包单个 zip 发私人频道（>45MB 降级分开发）；答卷详情「导出到私人频道」；草稿编辑器桌面分栏 + 粘性实时预览。详见 `docs/PHASE2_PLAN.md` §14
-- [x] **BGM 图形化配置 + 用户自选主题（2026-08-23）**：后台问卷详情可直接上传 BGM 或填直链（带预览/清除）；填写页头部 🎨 弹层让用户选主题（默认 + 8 套 DaisyUI 预设，按问卷记忆），覆盖问卷默认主题；视觉回归 48 用例。详见 `docs/PHASE2_PLAN.md` §14
-- [x] **体验修复批（2026-08-23）**：管理员可重复填写已发布问卷（每次新答卷）；已发布问卷可直接改主题/报告模板等元数据（去掉 draft-only 锁）；答卷详情支持任选模板预览 Web 报告；修复 PDF 下载 404（前端误用 GET）；新增 BGM（主题 `audio` 字段 + 问卷页浮动播放器）；浏览器登录（Telegram `/admin_login` 发一次性链接 → HMAC 会话 cookie 7 天 + `/admin/login` 页 + 浏览器模式横幅）。详见 `docs/PHASE2_PLAN.md` §14
-- [x] **Phase 6：Template Editor（2026-08-23）**：迁移 0032 自定义模板表 + 解析服务全链路接入（Web/PDF/下载）+ `/admin/templates` 编辑器（块编排/主题/实时预览/手机桌面切换）+ 问卷绑定自定义模板。详见 `docs/PHASE2_PLAN.md` §9
-- [x] **Phase 5：Responsive Report（2026-08-23）**：桌面 12 栏分栏网格、平板双列、PDF 打印强制单栏独立布局；报告视觉回归 21 用例 + 打印 7 用例（总计 47）。详见 `docs/PHASE2_PLAN.md` §8
-- [x] **Phase 4 第一块：Report Engine 2.0（2026-08-23）**：报告主题复用 DaisyUI 8 套、新增环形分/清单/档案头/分隔线块、模板库扩至 7 套（数据分析/身份档案/杂志/极简/影集等）、报告视觉回归 14 用例。详见 `docs/PHASE2_PLAN.md` §7/§8
-- [x] **Phase 3 完成（2026-08-23）**：SurveyTheme 渲染 + DaisyUI 预设库/后台选择 + 题号进度/分页指示/长文本折叠 + Option 卡片化 + 键盘适配；视觉回归 19 用例覆盖。详见 `docs/PHASE2_PLAN.md` §5/§6
-- [x] **Phase 3 第三块：Option Media 卡片化（2026-08-23）**：带媒体选项整题切换 2 列卡片（4:3 封面 object-cover + 选中徽标 + 底部指示器），无媒体选项纯标签卡片；视觉基线已随布局更新。详见 `docs/PHASE2_PLAN.md` §5
-- [x] **Phase 7 第一块：Playwright 视觉回归（2026-08-23）**：`qa/visual/survey.spec.ts` 18 用例（6 fixture × 3 视口），离线自包含，硬断言溢出/报错/主题 + 截图基线对比；`pnpm test:visual` / `test:visual:update`。详见 `docs/PHASE2_PLAN.md` §10
-- [x] **Phase 3 第二块：主题预设库 + 后台选择界面（2026-08-23）**：预设直接复用 DaisyUI 主题库（8 套，纯 CSS 变量，无组件冲突）；问卷页 `data-theme` 激活；后台详情页预设选择器（实时色板）+ 自定义 JSON 叠加 + 清除。详见 `docs/PHASE2_PLAN.md` §6
-- [x] **Phase 3 第一块：SurveyTheme 渲染 + 移动端增强（2026-08-23）**：主题令牌规范化/下发/渲染（背景图+遮罩+主色+卡片+文字+按钮）、题号进度加完成百分比与分页指示、长文本折叠；修复 `.btn` 白底白字旧隐患。详见 `docs/PHASE2_PLAN.md` §5/§6
-- [x] **Phase 2 完成（2026-08-23）**：Web JSON 导入页 + 高保真预览（题型/媒体/低置信度）、分页保真、置信度透传、Media Resolver（data URL → MEDIA_KV）、导入错误逐字段定位、导入时绑定报告模板/主题（迁移 0031 `surveys.settings_json`）。详见 `docs/PHASE2_PLAN.md` §3
-- [x] **Phase 2 第三块：导入错误逐字段定位（2026-08-23）**：`ImportValidationError` + 结构化 issues（题号/标题/字段/路径），导入页逐条展示；Bot 导入路径兼容。详见 `docs/PHASE2_PLAN.md` §3
-- [x] **Phase 2 第二块：Media Resolver（2026-08-23）**：PDF 内嵌 data URL 媒体导入时解码存入 MEDIA_KV（D1 只存引用）、导入上限提至 40MB、媒体代理支持 data URL 直出；实测堕落游戏.pdf 58 个媒体无损入库。详见 `docs/PHASE2_PLAN.md` §3/§4
-- [x] **Phase 2 第一块：Web JSON 导入 + 高保真预览（2026-08-23）**：`/admin/imports` 导入页（粘贴/上传 → 预览 → 创建草稿）、预览含题型分布/媒体/低置信度清单、分页保真、置信度透传；PDF 转换器（`scripts/forms_pdf_to_survey.py`）对非 Forms 版式自动关联 PDF 分页。详见 `docs/PHASE2_PLAN.md` §3
-- [x] **Phase 1 答卷查看核心（第一块，2026-08-23）**：答卷详情补问卷版本号 + 版本页链接、每题原始数据查看、PDF 下载（同步 Browser 渲染）、重新发送 Telegram（force 重入队）；详见 `docs/PHASE2_PLAN.md`
-- [ ] **按 `docs/PHASE2_PLAN.md` 继续第二阶段**：Phase 2 JSON 高保真导入 → Phase 3 Web Survey UI 2.0 → Phase 4 Report Engine 2.0 → Phase 5 Responsive Report → Phase 6 Template Editor → Phase 7 Playwright Visual QA
+- [x] **提升批 1-7 + GitHub CI（2026-08-23）**：系统设置生效、问卷列表搜索/封面、审计日志页、编辑器撤销重做+自动保存、PWA、模板编辑器拖拽+字体配色可视化、批量导出进度；GitHub Actions CI（typecheck/单测/lint/构建/PDF 回归/视觉回归）。详见 `docs/archive/PHASE2_PLAN.md` §14
+- [x] **答卷批量导出/内嵌预览/分享链接（2026-08-23）**：答卷列表勾选批量导出到私人频道、桌面双栏内嵌报告预览（可切模板）、一键复制分享链接（30 天 token）。详见 `docs/archive/PHASE2_PLAN.md` §14
+- [x] **报告打包直发频道 + 后台响应式（2026-08-23）**：有用户图片的答卷归档改为 PDF+图片打包单个 zip 发私人频道（>45MB 降级分开发）；答卷详情「导出到私人频道」；草稿编辑器桌面分栏 + 粘性实时预览。详见 `docs/archive/PHASE2_PLAN.md` §14
+- [x] **BGM 图形化配置 + 用户自选主题（2026-08-23）**：后台问卷详情可直接上传 BGM 或填直链（带预览/清除）；填写页头部 🎨 弹层让用户选主题（默认 + 8 套 DaisyUI 预设，按问卷记忆），覆盖问卷默认主题；视觉回归 48 用例。详见 `docs/archive/PHASE2_PLAN.md` §14
+- [x] **体验修复批（2026-08-23）**：管理员可重复填写已发布问卷（每次新答卷）；已发布问卷可直接改主题/报告模板等元数据（去掉 draft-only 锁）；答卷详情支持任选模板预览 Web 报告；修复 PDF 下载 404（前端误用 GET）；新增 BGM（主题 `audio` 字段 + 问卷页浮动播放器）；浏览器登录（Telegram `/admin_login` 发一次性链接 → HMAC 会话 cookie 7 天 + `/admin/login` 页 + 浏览器模式横幅）。详见 `docs/archive/PHASE2_PLAN.md` §14
+- [x] **Phase 6：Template Editor（2026-08-23）**：迁移 0032 自定义模板表 + 解析服务全链路接入（Web/PDF/下载）+ `/admin/templates` 编辑器（块编排/主题/实时预览/手机桌面切换）+ 问卷绑定自定义模板。详见 `docs/archive/PHASE2_PLAN.md` §9
+- [x] **Phase 5：Responsive Report（2026-08-23）**：桌面 12 栏分栏网格、平板双列、PDF 打印强制单栏独立布局；报告视觉回归 21 用例 + 打印 7 用例（总计 47）。详见 `docs/archive/PHASE2_PLAN.md` §8
+- [x] **Phase 4 第一块：Report Engine 2.0（2026-08-23）**：报告主题复用 DaisyUI 8 套、新增环形分/清单/档案头/分隔线块、模板库扩至 7 套（数据分析/身份档案/杂志/极简/影集等）、报告视觉回归 14 用例。详见 `docs/archive/PHASE2_PLAN.md` §7/§8
+- [x] **Phase 3 完成（2026-08-23）**：SurveyTheme 渲染 + DaisyUI 预设库/后台选择 + 题号进度/分页指示/长文本折叠 + Option 卡片化 + 键盘适配；视觉回归 19 用例覆盖。详见 `docs/archive/PHASE2_PLAN.md` §5/§6
+- [x] **Phase 3 第三块：Option Media 卡片化（2026-08-23）**：带媒体选项整题切换 2 列卡片（4:3 封面 object-cover + 选中徽标 + 底部指示器），无媒体选项纯标签卡片；视觉基线已随布局更新。详见 `docs/archive/PHASE2_PLAN.md` §5
+- [x] **Phase 7 第一块：Playwright 视觉回归（2026-08-23）**：`qa/visual/survey.spec.ts` 18 用例（6 fixture × 3 视口），离线自包含，硬断言溢出/报错/主题 + 截图基线对比；`pnpm test:visual` / `test:visual:update`。详见 `docs/archive/PHASE2_PLAN.md` §10
+- [x] **Phase 3 第二块：主题预设库 + 后台选择界面（2026-08-23）**：预设直接复用 DaisyUI 主题库（8 套，纯 CSS 变量，无组件冲突）；问卷页 `data-theme` 激活；后台详情页预设选择器（实时色板）+ 自定义 JSON 叠加 + 清除。详见 `docs/archive/PHASE2_PLAN.md` §6
+- [x] **Phase 3 第一块：SurveyTheme 渲染 + 移动端增强（2026-08-23）**：主题令牌规范化/下发/渲染（背景图+遮罩+主色+卡片+文字+按钮）、题号进度加完成百分比与分页指示、长文本折叠；修复 `.btn` 白底白字旧隐患。详见 `docs/archive/PHASE2_PLAN.md` §5/§6
+- [x] **Phase 2 完成（2026-08-23）**：Web JSON 导入页 + 高保真预览（题型/媒体/低置信度）、分页保真、置信度透传、Media Resolver（data URL → MEDIA_KV）、导入错误逐字段定位、导入时绑定报告模板/主题（迁移 0031 `surveys.settings_json`）。详见 `docs/archive/PHASE2_PLAN.md` §3
+- [x] **Phase 2 第三块：导入错误逐字段定位（2026-08-23）**：`ImportValidationError` + 结构化 issues（题号/标题/字段/路径），导入页逐条展示；Bot 导入路径兼容。详见 `docs/archive/PHASE2_PLAN.md` §3
+- [x] **Phase 2 第二块：Media Resolver（2026-08-23）**：PDF 内嵌 data URL 媒体导入时解码存入 MEDIA_KV（D1 只存引用）、导入上限提至 40MB、媒体代理支持 data URL 直出；实测堕落游戏.pdf 58 个媒体无损入库。详见 `docs/archive/PHASE2_PLAN.md` §3/§4
+- [x] **Phase 2 第一块：Web JSON 导入 + 高保真预览（2026-08-23）**：`/admin/imports` 导入页（粘贴/上传 → 预览 → 创建草稿）、预览含题型分布/媒体/低置信度清单、分页保真、置信度透传；PDF 转换器（`scripts/forms_pdf_to_survey.py`）对非 Forms 版式自动关联 PDF 分页。详见 `docs/archive/PHASE2_PLAN.md` §3
+- [x] **Phase 1 答卷查看核心（第一块，2026-08-23）**：答卷详情补问卷版本号 + 版本页链接、每题原始数据查看、PDF 下载（同步 Browser 渲染）、重新发送 Telegram（force 重入队）；详见 `docs/archive/PHASE2_PLAN.md`
+- [ ] **按 `docs/archive/PHASE2_PLAN.md` 继续第二阶段**：Phase 2 JSON 高保真导入 → Phase 3 Web Survey UI 2.0 → Phase 4 Report Engine 2.0 → Phase 5 Responsive Report → Phase 6 Template Editor → Phase 7 Playwright Visual QA
 - [x] **WebView 黑屏根因修复并上线（2026-08-23）**：`run_worker_first=true` + 显式静态兜底 + 入口 HTML `Cache-Control: no-store` + 非阻塞 telegram.org bridge + data-URI favicon；生产 Version `7a041cbc`，Chromium 实测 `/s`、`/s/18`、`/admin`、`/admin/surveys` 全部 200 且控制台无 404/加载失败。**人工验证时先发 `/start` 拿新按钮**（旧消息里的旧按钮可能仍带旧行为）
 - [x] **生产冒烟验证（大部分完成）**：2026-08-23 通过公开 API 提交答卷 167/168（问卷 18）→ `report_deliveries` 均 `delivered`（1 次尝试）、Web 报告页 200 且单选显示选项标签、临时媒体上传 → KV+D1 正常。**仍需人工确认**：Telegram 频道收到 PDF+hashtag（`#答卷167` 等）；带图片题的真实答卷（发布问卷中暂无图片题）验证"归档后删临时媒体"
-- [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归；配合 Telegram 职责收缩（见 `docs/PHASE2_PLAN.md` §0）
+- [ ] **P10：旧 Bot UI 下线**（答题渲染/Builder/QuestionEditor/导入 UI 入口）——验证稳定后逐块删，每块先单测+回归；配合 Telegram 职责收缩（见 `docs/archive/PHASE2_PLAN.md` §0）
   - [x] 答题渲染（内联答题/消息路由/q:* 回调/renderer 模块）已删并部署（`0e577f7b`）
   - [x] 问卷入口改为 Telegram WebView（`web_app` 按钮打开 `/s` 与 `/s/:id`，`54005b63`）
   - [ ] Builder / owner:* 管理流程（待 Bot 回归确认后继续）

@@ -91,7 +91,7 @@ SQLite + 全量 migration 建库，跑真实处理器）：完成答卷 + 提交
 回退 HTML；下载按钮只注入网页报告（含打印隐藏样式）。
 
 > 相关结构重构（admin API 与 bot survey handler 拆分）见
-> [`docs/MODULARIZATION.md`](./MODULARIZATION.md)。
+> [`docs/archive/MODULARIZATION.md`](../archive/MODULARIZATION.md)。
 
 Staging 手工验证：上传图片 → 提交 → 检查频道收到 PDF + 附件 → KV 中
 `media:temp:*` 键消失 → 重复触发不重发 → 断网模拟失败后 cron 重试。

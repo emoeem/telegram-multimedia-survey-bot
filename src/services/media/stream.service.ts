@@ -1,5 +1,5 @@
 /**
- * Cloudflare Stream 视频托管（Pro 能力，docs/CLOUDFLARE_PLAN_TIERS.md）。
+ * Cloudflare Stream 视频托管（Pro 能力，docs/ops/CLOUDFLARE_PLAN_TIERS.md）。
  *
  * 参与者的视频答卷走 **直传（direct upload）**：Worker 只铸造一张带元数据的
  * 上传凭证，浏览器把视频直传给 Cloudflare——视频不经过 Worker，因此不受

@@ -34,7 +34,7 @@ pnpm exec wrangler d1 execute DB --remote --file web-submissions-import.sql
 ### 3. 部署新 Worker + 中继
 
 - 本站:`pnpm deploy`(push 到 main 自动走)。部署后 `/api/submit/*` 由本站服务,`SUBMISSION_BOT_API_ORIGIN` / `WEB_REVIEW_SECRET` 不再被读取。
-- 中继:`cn-relay` 的两条 `/api/submit*` 直达路由已从 vercel.json 删除,按 `docs/CN_ACCESS_VERCEL_RELAY.md` 的流程重新部署 cn-relay(Vercel 上的项目)。**这步必须在 Worker 部署之后**:顺序反了的话,中继把 /api/submit 转发到已退役的旧 Worker。
+- 中继:`cn-relay` 的两条 `/api/submit*` 直达路由已从 vercel.json 删除,按 `docs/ops/CN_ACCESS_VERCEL_RELAY.md` 的流程重新部署 cn-relay(Vercel 上的项目)。**这步必须在 Worker 部署之后**:顺序反了的话,中继把 /api/submit 转发到已退役的旧 Worker。
 
 ### 4. 配置旧附件的只读 token(可选,建议配)
 

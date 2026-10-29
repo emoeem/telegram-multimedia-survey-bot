@@ -2,7 +2,7 @@
 
 > 承接同日《RELEASE_2026-10-28_GAME_ZONE_MEDIA.md》（小游戏区 + 双联动 + 素材库首版）。
 > 本轮主题是**把"新增一个游戏"从改代码变成装插件**，并补齐上一轮留下的两个缺口。
-> 下一步要做的事见 `docs/HANDOVER_EDITOR_P2_PLAN.md`。
+> 下一步要做的事见 `docs/guides/HANDOVER_EDITOR_P2_PLAN.md`。
 
 ## 一句话总结
 
@@ -150,8 +150,8 @@ BGM / 场景图写入侧仍是 URL 字符串（已登记 `media_refs` 弱引用�
 `tests/unit/game-plugin/{props,registry,flip-card}.test.ts`、`tests/unit/editor/dependencies.test.ts`
 
 **新增 · 文档**
-`docs/EDITOR_PLUGIN_ARCHITECTURE.md`、`docs/RELEASE_2026-10-28_EDITOR_PLUGIN.md`（本文）、
-`docs/HANDOVER_EDITOR_P2_PLAN.md`
+`docs/guides/EDITOR_PLUGIN_ARCHITECTURE.md`、`docs/releases/RELEASE_2026-10-28_EDITOR_PLUGIN.md`（本文）、
+`docs/guides/HANDOVER_EDITOR_P2_PLAN.md`
 
 **主要修改**
 `src/survey/question-rules.ts`、`validator.ts`、`game.ts`、`src/http/trial-api.ts`、`admin/write.ts`、
