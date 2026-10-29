@@ -190,6 +190,14 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
   `emoe.eu.cc` 同一 Worker。
   上线过程中修了一处 e2e：`scene-editor.spec.ts` 的保存断言仍期待 URL 字符串，
   已同步为 `{assetId}`（种子数据保留旧形态做双读回归）。
+- **布局契约 + Stage 壳（2026-10-29，ab0ca64）**：修「沉浸模式场景被底部操作条裁切」。
+  根因是 `max-height: calc(100dvh - 260px)` 用固定数值估算；改为：
+  `src/survey/layout.ts` 裁决（reading | stage，纯函数 + 6 用例矩阵）、
+  `StageFrame`（容器查询单位 fit，保持比例不裁切）、`StageLayout`（视口高度 flex 列，
+  整条链含内部 wrapper 全带 min-height:0；底栏改静态 flex 子项 → 结构上不可能遮挡；
+  可选项收成折叠条）。删除两处旧 hack（魔法数、矮横屏 fixed）。
+  生产实测：1920×1080 舞台 1334×834、底边 996 ≤ 底栏 1006；1440×700 底边 616 ≤ 626；
+  两者页面滚动量均为 0。
 - 待办：① 作者在「问卷设置 → 显示模式」里给具体问卷选版式（默认 auto 不变）；
   ② 真机竖/横屏目检 + 编辑器设备预览四档；③ 清理 `SurveyPreview`（仅剩
   `PreviewAnswer` 被右栏复用），随旧壳一并整理。
