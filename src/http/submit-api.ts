@@ -337,7 +337,7 @@ async function handleInboxAction(request: Request, url: URL, env: Env, config: W
   const store = new WebSubmitStore(env.DB);
   /* 旧实现按 IP 限流;主站的 resolveClientIdentity 已归一代理头,直接用它。 */
   const client = resolveClientIdentity(request, env);
-  if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.ip) {
+  if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.addressKnown) {
     const window = rateLimitWindow(config.rateLimitWindowSeconds);
     const key = `inbox:${client.ip}:${window}`;
     const used = await store.getRateLimit(key);
@@ -470,7 +470,7 @@ async function handleSubmit(
   Object.assign(errors, files.errors);
   if (Object.keys(errors).length > 0) return jsonNoStore({ ok: false, errors }, 422);
 
-  if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.ip) {
+  if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.addressKnown) {
     const window = rateLimitWindow(config.rateLimitWindowSeconds);
     const key = `web:${client.ip}:${window}`;
     const used = await store.getRateLimit(key);
@@ -496,14 +496,15 @@ async function handleSubmit(
       viewerToken: viewer,
       email,
       nickname: nickname || "网页访客",
-      ip: client.ip,
+      // 地址未知时存 null：不把 "unknown" 当成一个真实地址写进库。
+      ip: client.addressKnown ? client.ip : null,
       templateId: "default",
       data: payload,
       flags: screening.flags,
       contentHash: screening.hash,
     });
 
-    if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.ip) {
+    if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.addressKnown) {
       const window = rateLimitWindow(config.rateLimitWindowSeconds);
       await store.bumpRateLimit(`web:${client.ip}:${window}`, window);
       if (Math.random() < 0.02) void store.pruneRateLimits();

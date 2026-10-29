@@ -44,11 +44,14 @@ export async function handleCertDraw(
   const countRaw = Number(url.searchParams.get("count") ?? 1);
   const count = Math.min(MAX_COUNT, Math.max(1, Number.isInteger(countRaw) ? countRaw : 1));
 
-  if (env.CACHE) {
+  if (env.CACHE && !options.clientKey) {
+    // 地址未知：跳过限流而非并桶（同 cert-share，见 rateLimitIpSubject）。
+    console.warn("cert-draw 限流已跳过：无法确定调用方地址");
+  } else if (env.CACHE) {
     const limited = await checkRateLimit(
       env.CACHE,
       "cert-draw",
-      options.clientKey || "unknown",
+      options.clientKey,
       RATE_LIMIT.limit,
       RATE_LIMIT.windowSeconds,
     );

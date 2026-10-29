@@ -4,6 +4,7 @@ import {
   RELAY_SECRET_HEADER,
   UNKNOWN_CLIENT_IP,
   isIpLiteral,
+  rateLimitIpSubject,
   resolveClientIdentity,
 } from "../../../src/services/client-identity.service";
 
@@ -19,11 +20,31 @@ const RELAY_PEER = { "cf-connecting-ip": "64.29.17.1" };
 describe("client identity", () => {
   it("uses the peer address when no relay secret is configured", () => {
     const identity = resolveClientIdentity(request({ ...RELAY_PEER, [RELAY_SECRET_HEADER]: SECRET }), {});
-    expect(identity).toEqual({ ip: "64.29.17.1", relayed: false });
+    expect(identity).toEqual({ ip: "64.29.17.1", addressKnown: true, relayed: false });
   });
 
   it("reports an unknown address when Cloudflare sends no peer header", () => {
-    expect(resolveClientIdentity(request({}), {}).ip).toBe(UNKNOWN_CLIENT_IP);
+    const identity = resolveClientIdentity(request({}), {});
+    expect(identity.ip).toBe(UNKNOWN_CLIENT_IP);
+    // 关键：地址未知必须是一个**独立信号**。把它当成普通的 "unknown" 字符串去
+    // 做限流 key，所有人就共用一个桶（20 次邮件登录/小时后全站 429）。
+    expect(identity.addressKnown).toBe(false);
+    expect(rateLimitIpSubject(identity)).toBeNull();
+  });
+
+  it("address-known identities pass their real address to the limiter", () => {
+    const identity = resolveClientIdentity(request(RELAY_PEER), {});
+    expect(identity.addressKnown).toBe(true);
+    expect(rateLimitIpSubject(identity)).toBe("64.29.17.1");
+  });
+
+  it("a relay that forwards a real visitor address counts as known", () => {
+    const identity = resolveClientIdentity(
+      request({ [RELAY_SECRET_HEADER]: SECRET, "x-relay-client-ip": "203.0.113.9" }),
+      { RELAY_SECRET: SECRET },
+    );
+    expect(identity.addressKnown).toBe(true);
+    expect(rateLimitIpSubject(identity)).toBe("203.0.113.9");
   });
 
   it("ignores forwarded identity headers that arrive without the secret", () => {
@@ -51,7 +72,7 @@ describe("client identity", () => {
       request({ ...RELAY_PEER, [RELAY_SECRET_HEADER]: SECRET, "x-relay-client-ip": "203.0.113.9" }),
       { RELAY_SECRET: SECRET },
     );
-    expect(identity).toEqual({ ip: "203.0.113.9", relayed: true });
+    expect(identity).toEqual({ ip: "203.0.113.9", addressKnown: true, relayed: true });
   });
 
   it("reads the header Vercel forwards for a proxied visitor", () => {
@@ -59,7 +80,7 @@ describe("client identity", () => {
       request({ ...RELAY_PEER, [RELAY_SECRET_HEADER]: SECRET, "x-vercel-proxied-for": "203.0.113.9" }),
       { RELAY_SECRET: SECRET },
     );
-    expect(identity).toEqual({ ip: "203.0.113.9", relayed: true });
+    expect(identity).toEqual({ ip: "203.0.113.9", addressKnown: true, relayed: true });
   });
 
   it("prefers our own header over Vercel's spelling", () => {

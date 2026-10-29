@@ -258,6 +258,21 @@ export function buildAtomicRateLimitStatement(
     .bind(key, windowStart);
 }
 
+/**
+ * Stand-in for {@link buildAtomicRateLimitStatement} when there is no usable
+ * subject (no caller address, no identity).
+ *
+ * Why not key the limiter on a constant like `"unknown"`: that pools every such
+ * caller into ONE counter, so a per-address budget silently becomes a global
+ * one — twenty anonymous visitors exhaust the whole site's allowance. Skipping
+ * the limiter is the lesser failure, and the caller logs it (fail-open +
+ * observable). The statement keeps its slot in a `db.batch()` so callers do not
+ * have to renumber their result indexes; it yields count 0, i.e. "never over".
+ */
+export function skipAtomicRateLimitStatement(db: D1Database): D1PreparedStatement {
+  return db.prepare("SELECT 0 AS count");
+}
+
 /** The count produced by {@link buildAtomicRateLimitStatement}, however it was executed. */
 export function atomicRateLimitCount(result: { count?: unknown } | null | undefined): number {
   const count = Number(result?.count ?? 1);

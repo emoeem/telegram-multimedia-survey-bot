@@ -345,11 +345,15 @@ export async function handleCertShare(
     return Response.json({ ok: false, code: "missing_origin", message: "请求未标明来自认证卡生成器" }, { status: 403 });
   }
 
-  if (env.CACHE) {
+  if (env.CACHE && !options.clientKey) {
+    // 调用方地址未知：跳过这一道并留日志。用 "unknown" 当 key 会让所有解析不出
+    // 地址的请求共用一个计数桶（见 client-identity.service 的 rateLimitIpSubject）。
+    console.warn("cert-share 限流已跳过：无法确定调用方地址");
+  } else if (env.CACHE) {
     const limited = await checkRateLimit(
       env.CACHE,
       "cert-share",
-      options.clientKey || "unknown",
+      options.clientKey,
       RATE_LIMIT.limit,
       RATE_LIMIT.windowSeconds,
     );

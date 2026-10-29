@@ -58,6 +58,18 @@ export interface ClientIdentityEnv {
 export interface ClientIdentity {
   /** Best-known public address of the caller, or `UNKNOWN_CLIENT_IP`. */
   ip: string;
+  /**
+   * False when no address could be determined at all (`ip` is then the
+   * `UNKNOWN_CLIENT_IP` sentinel, not a real value).
+   *
+   * Callers that key a rate limiter by address MUST check this. Using the
+   * sentinel as a plain string collapses every such caller into ONE bucket:
+   * with `cf-connecting-ip` missing — a non-Cloudflare deployment, a local dev
+   * run, a relay that strips the header — all visitors share the `unknown`
+   * subject, so the per-address limit (e.g. 20 email logins/hour) is really a
+   * global limit, and 20 people can lock the whole site out.
+   */
+  addressKnown: boolean;
   /** True only when the request carried a valid relay secret. */
   relayed: boolean;
   /** Set only when the trusted relay reported a country. */
@@ -106,13 +118,31 @@ function relayCountry(request: Request): string | undefined {
 }
 
 export function resolveClientIdentity(request: Request, env: ClientIdentityEnv): ClientIdentity {
-  const peerIp = headerValue(request, "cf-connecting-ip") || UNKNOWN_CLIENT_IP;
+  const peer = headerValue(request, "cf-connecting-ip");
+  const peerIp = peer || UNKNOWN_CLIENT_IP;
   const relayed = isSharedSecretValid(env.RELAY_SECRET, request.headers.get(RELAY_SECRET_HEADER));
   if (!relayed) {
-    return { ip: peerIp, relayed: false };
+    return { ip: peerIp, addressKnown: peer.length > 0, relayed: false };
   }
 
-  const ip = relayedClientIp(request) || peerIp;
+  const forwarded = relayedClientIp(request);
+  const ip = forwarded || peerIp;
+  const addressKnown = forwarded.length > 0 || peer.length > 0;
   const country = relayCountry(request);
-  return country ? { ip, relayed: true, country } : { ip, relayed: true };
+  return country ? { ip, addressKnown, relayed: true, country } : { ip, addressKnown, relayed: true };
+}
+
+/**
+ * The subject to hand to an address-keyed rate limiter, or `null` when there is
+ * no real address to key on.
+ *
+ * Chosen policy: **skip the limiter and log, do not pool**. The alternative —
+ * keeping the `unknown` bucket — turns per-address limits into a site-wide one,
+ * which is a far worse failure than a missing limit on a deployment that cannot
+ * even see caller addresses (see `UNKNOWN_CLIENT_IP`). Callers pass `null`
+ * through and warn once per request; a limit that silently blocks everyone is
+ * not a limit.
+ */
+export function rateLimitIpSubject(identity: Pick<ClientIdentity, "ip" | "addressKnown">): string | null {
+  return identity.addressKnown ? identity.ip : null;
 }

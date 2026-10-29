@@ -25,6 +25,14 @@ interface WindowCounter {
   count: number;
   /** Epoch ms at which the current fixed window started. */
   windowStart: number;
+  /**
+   * Epoch ms at which this counter is definitively dead (`windowStart` + window
+   * length). Stored rather than derived because the sweeper does not know which
+   * window a given key belongs to — and "still live" is what decides whether the
+   * alarm is worth re-arming. Older entries written before this field existed
+   * fall back to the 24h retention cutoff.
+   */
+  expiresAt?: number;
 }
 
 export interface RateLimitRequest {
@@ -50,6 +58,13 @@ export interface RateLimitDecision {
 const COUNTER_PREFIX = "rl:";
 /** How long a stale counter is kept before the alarm sweeps it. */
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+/** Legacy fallback: comfortably longer than any window we use (1h max). */
+const LEGACY_COUNTER_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+function counterExpiresAt(value: WindowCounter): number {
+  if (typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)) return value.expiresAt;
+  return value.windowStart + LEGACY_COUNTER_RETENTION_MS;
+}
 
 export class RateLimitDO extends DurableObject {
   async fetch(request: Request): Promise<Response> {
@@ -102,7 +117,11 @@ export class RateLimitDO extends DurableObject {
 
     // Even a rejected request persists its counter, so a caller hammering past
     // the limit cannot reset their own window by being refused.
-    await this.ctx.storage.put(storageKey, { count, windowStart } satisfies WindowCounter);
+    await this.ctx.storage.put(storageKey, {
+      count,
+      windowStart,
+      expiresAt: windowStart + windowMs,
+    } satisfies WindowCounter);
     await this.ensureSweep();
 
     return { allowed, count, retryAfterSeconds };
@@ -117,31 +136,48 @@ export class RateLimitDO extends DurableObject {
   }
 
   /**
-   * Drop counters whose window has long passed. Without this the instance's
-   * storage would grow with one entry per distinct subject forever.
+   * Drop counters whose window has passed. Without this the instance's storage
+   * would grow with one entry per distinct subject forever.
+   *
+   * Re-arming is decided by "is there a counter whose window has NOT expired",
+   * not by "is there any counter at all". The difference is the difference
+   * between one wake-up and a permanent metronome: a counter that has already
+   * expired is deleted in the same pass, so keying the re-arm on mere presence
+   * meant every empty-after-sweep instance kept waking up every 10 minutes
+   * forever — thousands of idle Durable Objects spinning for nothing.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
     const stale: string[] = [];
-    // 24h is comfortably longer than any window we use (1h max), so anything
-    // older is definitively dead.
-    const cutoff = now - 24 * 60 * 60 * 1000;
+    let hasLiveCounter = false;
 
     for (const [key, value] of await this.ctx.storage.list<WindowCounter>({ prefix: COUNTER_PREFIX })) {
-      if (!value || typeof value.windowStart !== "number" || value.windowStart < cutoff) {
+      if (!value || typeof value.windowStart !== "number") {
         stale.push(key);
+        continue;
       }
+      if (counterExpiresAt(value) <= now) {
+        stale.push(key);
+        continue;
+      }
+      hasLiveCounter = true;
     }
 
     if (stale.length > 0) {
       await this.ctx.storage.delete(stale);
     }
 
-    // Re-arm only while there is still something to sweep; an idle instance
-    // should not keep waking up forever.
-    const remaining = await this.ctx.storage.list({ prefix: COUNTER_PREFIX, limit: 1 });
-    if (remaining.size > 0) {
+    // Only keep waking up while some counter is still inside its window; once
+    // the last one expires the instance goes quiet until the next request arms
+    // a fresh sweep (see ensureSweep).
+    if (hasLiveCounter) {
       await this.ctx.storage.setAlarm(now + SWEEP_INTERVAL_MS);
+    } else {
+      // Nothing left to sweep: make sure no alarm stays armed. The runtime
+      // clears it before invoking `alarm()`, so this is normally a no-op — it
+      // is here so the "go quiet" branch is explicit and testable rather than
+      // implied by a runtime detail.
+      await this.ctx.storage.deleteAlarm();
     }
   }
 }

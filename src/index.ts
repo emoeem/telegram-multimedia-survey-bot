@@ -54,7 +54,7 @@ import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { loadSurveyShareMeta, getSurveyOgImage } from "./services/survey-og-image.service";
 import { resolveSubmissionBotUrl } from "./services/contact-links.service";
 import { resolvePublicOrigin } from "./services/public-origin.service";
-import { resolveClientIdentity } from "./services/client-identity.service";
+import { rateLimitIpSubject, resolveClientIdentity } from "./services/client-identity.service";
 import { recoverStaleResultVisualJobs } from "./services/result-visual-job-recovery.service";
 import { recoverStaleImageGeneratorJobs } from "./services/image-generator-job-recovery.service";
 import { retryPendingReportDeliveries } from "./services/report-delivery.service";
@@ -414,7 +414,11 @@ async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Pro
  */
 async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Promise<Response | null> {
   const limiter = createPreferredRateLimiter(env);
-  const clientIp = resolveClientIdentity(request, env).ip;
+  // 地址未知时**不**把所有人塞进 "unknown" 桶（见 rateLimitIpSubject）：那会把
+  // 「每个地址 20 次/小时」变成「全站 20 次/小时」，20 个人就能把登录打停。
+  // 这一维度直接跳过并留日志；按邮箱的那一道限制照常生效。
+  const identity = resolveClientIdentity(request, env);
+  const clientIp = rateLimitIpSubject(identity);
 
   if (request.method === "POST" && url.pathname.startsWith("/api/auth/email/")) {
     const body = (await request
@@ -428,8 +432,11 @@ async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Pr
       if (scope === "register" || scope === "login" || scope === "reset") {
         const [perEmail, perIp] = await Promise.all([
           limiter.allow(`${scope}|${email}`, 5, 3600),
-          limiter.allow(`email-auth-ip|${clientIp}`, 20, 3600),
+          clientIp ? limiter.allow(`email-auth-ip|${clientIp}`, 20, 3600) : Promise.resolve(true),
         ]);
+        if (!clientIp) {
+          console.warn("邮件登录按地址限流已跳过：无法确定调用方地址", { scope, path: url.pathname });
+        }
         if (!perEmail || !perIp) {
           return Response.json(
             { ok: false, code: "rate_limited", message: "请求过于频繁，请稍后再试" },
@@ -679,14 +686,15 @@ export default {
       // 未带来源标头的跨站表单一律 403。
       if (url.pathname === CERT_SHARE_PATH) {
         return handleCertShare(request, env, {
-          clientKey: resolveClientIdentity(request, env).ip,
+          // 空串 = 地址未知：处理方会跳过按地址限流（而不是共用一个 "unknown" 桶）。
+          clientKey: rateLimitIpSubject(resolveClientIdentity(request, env)) ?? "",
         });
       }
 
       // 认证卡抽取池：主题内容包指向小游戏区的任务包，前端带 18+ ack 实时抽。
       if (url.pathname === CERT_DRAW_PATH) {
         return handleCertDraw(request, env, {
-          clientKey: resolveClientIdentity(request, env).ip,
+          clientKey: rateLimitIpSubject(resolveClientIdentity(request, env)) ?? "",
         });
       }
 

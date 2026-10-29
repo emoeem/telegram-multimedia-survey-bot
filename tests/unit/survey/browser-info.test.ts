@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { enrichBrowserInfo } from "../../../src/http/survey/participant";
 import type { ClientIdentity } from "../../../src/services/client-identity.service";
 
-const DIRECT: ClientIdentity = { ip: "203.0.113.9", relayed: false };
-const RELAYED: ClientIdentity = { ip: "203.0.113.9", relayed: true };
-const RELAYED_WITH_COUNTRY: ClientIdentity = { ip: "203.0.113.9", relayed: true, country: "CN" };
+const DIRECT: ClientIdentity = { ip: "203.0.113.9", addressKnown: true, relayed: false };
+const RELAYED: ClientIdentity = { ip: "203.0.113.9", addressKnown: true, relayed: true };
+const RELAYED_WITH_COUNTRY: ClientIdentity = { ip: "203.0.113.9", addressKnown: true, relayed: true, country: "CN" };
 
 /** Cloudflare's view of a request that arrived through the relay. */
 const RELAY_POP_GEO = { country: "HK", city: "Singapore", timezone: "Asia/Singapore", asn: 16509, colo: "sin1" };

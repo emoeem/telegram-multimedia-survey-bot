@@ -36,6 +36,9 @@ function fakeStorage() {
       setAlarm: async (at: number) => {
         alarm = at;
       },
+      deleteAlarm: async () => {
+        alarm = null;
+      },
     },
     /** Direct read for assertions, bypassing the public storage surface. */
     peek: (key: string) => data.get(key),
@@ -148,6 +151,37 @@ describe("RateLimitDO", () => {
 
     expect(fake.peek("rl:test:stale")).toBeUndefined();
     expect(fake.peek("rl:test:abc")).toBeDefined();
+  });
+
+  it("re-arms only while a counter is still inside its window (no idle metronome)", async () => {
+    const { instance, fake } = makeDO();
+
+    // 一个「已经过期」的计数器：它的窗口早就结束了，扫完就没有任何活着的桶。
+    await fake.storage.put("rl:test:expired", {
+      count: 3,
+      windowStart: Date.now() - 2 * 60 * 60 * 1000,
+      expiresAt: Date.now() - 60 * 60 * 1000,
+    });
+    await fake.storage.setAlarm(Date.now() - 1);
+
+    await instance.alarm();
+
+    expect(fake.peek("rl:test:expired")).toBeUndefined();
+    // 判据是「还有未过期的计数」，不是「还有任何计数」——否则空实例每 10 分钟
+    // 白醒一次，永远不停。
+    expect(await fake.storage.getAlarm()).toBeNull();
+  });
+
+  it("keeps the sweeper armed while a live counter remains", async () => {
+    const { instance, fake } = makeDO();
+
+    await instance.fetch(post({ scope: "test", subject: "live", limit: 5, windowSeconds: 3600 }));
+    await fake.storage.setAlarm(Date.now() - 1);
+
+    await instance.alarm();
+
+    expect(fake.peek("rl:test:live")).toBeDefined();
+    expect(await fake.storage.getAlarm()).not.toBeNull();
   });
 });
 
