@@ -2,8 +2,10 @@
 
 > **2026-10-29 最新交接**：编辑器 P2 收官 + P3 已切默认——三栏外壳成为编辑器默认界面，
 > 旧壳 `?ui=legacy` 只读兜底（保留两个版本周期后删除），场景编辑改为壳内全屏浮层；
-> 场景媒体结构化（URL → `{assetId}`）读侧已先行，**写侧必须先在 staging 实测后才可发布**
-> （push main 自动触发生产 deploy）。互动场景（scene）与场景编辑器细节见
+> 场景媒体结构化（URL → `{assetId}`）读侧与写侧**均已上线**（写侧已在 staging 实测
+> 8 项清单全过后合入生产，见
+> [`docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b；
+> push main 自动触发生产 deploy）。互动场景（scene）与场景编辑器细节见
 > [`docs/HOTSPOT_EDITOR_HANDOVER.md`](HOTSPOT_EDITOR_HANDOVER.md)；
 > **后续升级的唯一执行计划见 [`docs/UPGRADE_ROADMAP_2026-10-28.md`](UPGRADE_ROADMAP_2026-10-28.md)**。
 > 本节以下内容停留在 2026-08-23，迁移编号/功能清单已过时，仅作历史背景。
@@ -88,9 +90,13 @@
 
 ### Staging（备用）
 
-- 账号：`3353745917@gmail.com`（Account ID `fb8f4c599afffea6f419532f2d95ab54`）
+- 账号：**与生产同账号 `pd2335346`**（原 `3353745917@gmail.com` 不可用，2026-10-29 在
+  生产账号下重建了 staging 资源，见
+  [`docs/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b）
 - Worker：`telegram-multimedia-survey-bot-staging`
-- 注：**本机 wrangler OAuth 目前是生产账号**；部署 staging 前需 `wrangler login` 切回 staging 账号
+  （`https://telegram-multimedia-survey-bot-staging.pd2335346.workers.dev`）
+- 注：**本机 wrangler OAuth 指生产账号，也就是现在 staging 所在的账号**；部署 staging
+  用 `pnpm deploy:staging`，无需再切账号
 
 ## 4. 已知限制与决策（接手前必读）
 
@@ -194,7 +200,7 @@ pnpm exec wrangler deploy                 # 生产部署（当前 OAuth 指向�
 
 ## 8. 接手第一步
 
-1. `pnpm exec wrangler whoami` 确认当前账号（生产 pd2335346 / staging 3353745917）
+1. `pnpm exec wrangler whoami` 确认当前账号（生产与 staging 同在 pd2335346，见上节）
 2. `pnpm install && pnpm test` 确认基线
 3. 打开生产 `/admin`（Telegram 内）核对 Dashboard/报告/设置
 4. 在频道发一条消息看 Bot 是否正常回（新代码应回复"✅ 已自动识别报告归档频道"只触发一次；已配置则无回复）
