@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
+  AlertTriangle,
   Archive,
   ArrowLeft,
   ArrowRight,
@@ -10,9 +11,10 @@ import {
   Package,
   Palette,
   RefreshCw,
+  Send,
   Trash2,
 } from "lucide-react";
-import { apiPostBlob, apiSend, type ReportTemplateOption } from "../api";
+import { apiPostBlob, apiSend, retryReportPublication, type ReportTemplateOption } from "../api";
 import { useApi } from "../hooks";
 import type { ResponseDetailData } from "../api";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
@@ -30,6 +32,36 @@ function respondentName(data: ResponseDetailData): string {
     .filter(Boolean)
     .join(" · ");
 }
+
+/**
+ * 公开发布的状态文案。
+ *
+ * 「已发布但从没进过频道」是这条链路最容易骗人的状态：提交端只把状态写成
+ * pending，真正的发送在队列里，失败时写成 failed。界面上不区分这四态，用户
+ * 看到的就永远是"我勾了发布"。
+ */
+const PUBLICATION_LABELS: Record<string, { label: string; className: string; hint: string }> = {
+  private: {
+    label: "未公开",
+    className: "badge badge-gray",
+    hint: "答卷者没有勾选公开发布，这份答卷不会进频道。",
+  },
+  pending: {
+    label: "排队发布中",
+    className: "badge badge-warning",
+    hint: "已入队，正在渲染并发送到 Telegram。超过十几分钟仍是这个状态，多半是队列卡住了。",
+  },
+  published: {
+    label: "已发布",
+    className: "badge badge-success",
+    hint: "报告已经发到公开频道/群组。",
+  },
+  failed: {
+    label: "发布失败",
+    className: "badge badge-danger",
+    hint: "发送没有成功（入队失败、渲染失败或 Telegram 报错）。Channel 里可能只有一部分页，可以重投续发。",
+  },
+};
 
 interface EnvRow {
   label: string;
@@ -217,6 +249,27 @@ export function ResponseDetailPage() {
     }
   };
 
+  const [publicationBusy, setPublicationBusy] = useState(false);
+  const [publicationNotice, setPublicationNotice] = useState<string | null>(null);
+
+  /** 手动重投：失败状态下的唯一补救入口（服务端会从断点续发）。 */
+  const retryPublication = async () => {
+    if (!id || !responseId) return;
+    setPublicationBusy(true);
+    setPublicationNotice(null);
+    try {
+      const result = await retryReportPublication(Number(id), Number(responseId));
+      setPublicationNotice(
+        result.alreadyPublished ? "这份答卷已经发布过了，没有重复发送。" : "已重新入队，稍后刷新可看状态。",
+      );
+      retry();
+    } catch (err) {
+      setPublicationNotice(err instanceof Error ? err.message : "重投失败，请稍后再试");
+    } finally {
+      setPublicationBusy(false);
+    }
+  };
+
   const previewWithTemplate = async () => {
     if (!id || !responseId) return;
     setBusy(true);
@@ -318,6 +371,46 @@ export function ResponseDetailPage() {
           </div>
         </div>
       </section>
+
+      {(() => {
+        const status = data.response.reportPublicationStatus ?? "private";
+        // 没勾过发布的答卷不显示这一块：绝大多数答卷都是这种情况，多一个空面板
+        // 只会把真正的信息埋掉（也让视觉基线保持原样）。
+        if (status === "private" && !data.response.reportPublicationRequested) return null;
+        const meta = PUBLICATION_LABELS[status] ?? PUBLICATION_LABELS.private!;
+        return (
+          <section className="card mt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">公开发布到 Telegram</h3>
+              <span className={meta.className}>{meta.label}</span>
+            </div>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">{meta.hint}</p>
+            {data.response.reportPublishedAt ? (
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                发布时刻：{formatDateTime(data.response.reportPublishedAt)}
+              </p>
+            ) : null}
+            {status === "failed" ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={publicationBusy}
+                  onClick={() => void retryPublication()}
+                >
+                  <Send className="h-4 w-4" />
+                  {publicationBusy ? "重投中…" : "重新发布"}
+                </button>
+                <span className="flex items-center gap-1 text-xs text-[var(--color-muted)]">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  只补发没发出去的批次，已进频道的不重复发送
+                </span>
+              </div>
+            ) : null}
+            {publicationNotice ? <p className="mt-2 text-xs text-[var(--color-ink)]">{publicationNotice}</p> : null}
+          </section>
+        );
+      })()}
 
       <section className="card mt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

@@ -15,6 +15,7 @@ import {
   listAnswersByResponseId,
   listAnswersForInProgressResponseStatement,
   mapAnswerRows,
+  setResponsePublishChoice,
   setResponseReportPublication,
 } from "../../db/repositories/response.repository";
 import { getFirstQuestion } from "../../survey/engine";
@@ -28,6 +29,7 @@ import {
   checkRateLimit,
   rateLimitResponse,
   readAtomicRateLimitCountFromBatch,
+  skipAtomicRateLimitStatement,
 } from "../../services/rate-limit.service";
 import { enqueueReportDelivery } from "../../services/report-delivery.service";
 import { settingsFromRows } from "../../services/system-settings.service";
@@ -73,8 +75,9 @@ import { recordEndingUnlock } from "../../services/ending-unlock.service";
 import { endingTotal, listUnlockedEndings } from "../../services/ending-unlock.service";
 import { handleStreamTicketRequest, handleSurveyMediaUpload, serveSurveyMedia, temporaryStore } from "./media";
 import { answerValue } from "./presentation";
-import { UNKNOWN_CLIENT_IP, resolveClientIdentity } from "../../services/client-identity.service";
+import { UNKNOWN_CLIENT_IP, rateLimitIpSubject, resolveClientIdentity } from "../../services/client-identity.service";
 import { createExportJobSender } from "../../services/export-job-dispatch.service";
+import { normalizePublishMessage } from "../../services/public-report-caption";
 
 interface ResolvedPublicationTarget {
   id: number | null;
@@ -159,6 +162,23 @@ async function resolvePublicationTarget(env: Env): Promise<ResolvedPublicationTa
   return target ? { id: target.id, chatId: target.chatId, threadId: target.threadId } : null;
 }
 
+/**
+ * 答卷媒体上传的按地址限流（20 次/分钟）。
+ *
+ * 地址未知时**跳过并留日志**，而不是拿 "unknown" 当 subject：那样所有无法
+ * 解析出地址的请求共用一个计数桶，一个人刷满就把所有人的上传闸门关掉。
+ * 返回 null 表示放行。
+ */
+async function checkUploadLimit(request: Request, env: Env): Promise<Response | null> {
+  const subject = rateLimitIpSubject(resolveClientIdentity(request, env));
+  if (!subject) {
+    console.warn("上传限流已跳过：无法确定调用方地址");
+    return null;
+  }
+  const limiter = await checkRateLimit(env.CACHE, "upload", subject, 20, 60);
+  return limiter.allowed ? null : rateLimitResponse(limiter.retryAfterSeconds);
+}
+
 export async function handleSurveyApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/surveys") {
     // Cap the query: the search path runs a correlated COUNT(*) per row and is
@@ -202,14 +222,13 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     }
     // Abuse damping on the expensive search branch (per IP fixed window). The
     // default list stays uncapped because it is KV-cached and cheap.
-    const searchLimiter = await checkRateLimit(
-      env.CACHE,
-      "survey-search",
-      resolveClientIdentity(request, env).ip,
-      30,
-      60,
-    );
-    if (!searchLimiter.allowed) return rateLimitResponse(searchLimiter.retryAfterSeconds);
+    const searchSubject = rateLimitIpSubject(resolveClientIdentity(request, env));
+    if (!searchSubject) {
+      console.warn("survey-search 限流已跳过：无法确定调用方地址");
+    } else {
+      const searchLimiter = await checkRateLimit(env.CACHE, "survey-search", searchSubject, 30, 60);
+      if (!searchLimiter.allowed) return rateLimitResponse(searchLimiter.retryAfterSeconds);
+    }
     return shape(await loadPublishedSurveyListPayload(env, q));
   }
 
@@ -338,9 +357,21 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // Abuse damping on the code check: per IP + per survey, so a 4-digit code
     // cannot be walked in one burst. KV fixed window (same trade-offs as the
     // other public endpoints).
-    const clientIp = resolveClientIdentity(request, env).ip;
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "survey-access", `${clientIp}:${surveyId}`, 20, 300);
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const clientIp = rateLimitIpSubject(resolveClientIdentity(request, env));
+    if (!clientIp) {
+      // 地址未知：跳过这一道，别把所有人并进同一个桶（见 rateLimitIpSubject）。
+      console.warn("survey-access 限流已跳过：无法确定调用方地址", { surveyId });
+    } else {
+      const limiter = await checkAtomicRateLimit(
+        env.DB,
+        env.CACHE,
+        "survey-access",
+        `${clientIp}:${surveyId}`,
+        20,
+        300,
+      );
+      if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    }
     const body = (await request.json().catch(() => null)) as { code?: unknown } | null;
     const code = typeof body?.code === "string" ? body.code : "";
     const valid = await verifySurveyAccessCode(loaded.survey.accessCode, code, env.SURVEY_CODE_PEPPER ?? "");
@@ -358,29 +389,29 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     // batch no longer drags every question and option row along.
     const limiterNow = Date.now();
     const identity = resolveClientIdentity(request, env);
+    const ipSubject = rateLimitIpSubject(identity);
+    if (!ipSubject) {
+      // 地址未知时三道按地址的限流都退化成「不计数」占位语句（见
+      // skipAtomicRateLimitStatement）。此前它们共用 "unknown" 这一个桶，
+      // 结果是一个出口被刷就全站 429。
+      console.warn("start_response 按地址限流已跳过：无法确定调用方地址", { surveyId });
+    }
+    /** 有真实地址才真的计数；否则在 batch 里占位，结果索引不变。 */
+    const ipLimit = (bucket: string, subject: string, windowSeconds: number) =>
+      ipSubject
+        ? buildAtomicRateLimitStatement(env.DB, bucket, subject, windowSeconds, limiterNow)
+        : skipAtomicRateLimitStatement(env.DB);
     const flowRead = beginPublishedFlowRead(env, surveyId);
     // The coin-unlock switch rides in this batch too: it used to be its own
     // round trip before the participant was even resolved, and it is a plain
     // per-survey flag (free surveys are the overwhelming majority). 两道日上限
     //（每问卷 / 每地址）同样搭车，不增加任何往返。
     const [startLimitResult, surveyResult, coinResult, surveyDailyResult, ipDailyResult] = await env.DB.batch([
-      buildAtomicRateLimitStatement(env.DB, "start_response", identity.ip, START_RESPONSE_WINDOW_SECONDS, limiterNow),
+      ipLimit("start_response", identity.ip, START_RESPONSE_WINDOW_SECONDS),
       getSurveyByIdStatement(env.DB, surveyId),
       env.DB.prepare(`SELECT enabled FROM survey_coin_access WHERE survey_id = ?`).bind(surveyId),
-      buildAtomicRateLimitStatement(
-        env.DB,
-        "start_response_survey_daily",
-        `${identity.ip}:${surveyId}`,
-        START_RESPONSE_DAILY_WINDOW_SECONDS,
-        limiterNow,
-      ),
-      buildAtomicRateLimitStatement(
-        env.DB,
-        "start_response_ip_daily",
-        identity.ip,
-        START_RESPONSE_DAILY_WINDOW_SECONDS,
-        limiterNow,
-      ),
+      ipLimit("start_response_survey_daily", `${identity.ip}:${surveyId}`, START_RESPONSE_DAILY_WINDOW_SECONDS),
+      ipLimit("start_response_ip_daily", identity.ip, START_RESPONSE_DAILY_WINDOW_SECONDS),
     ]);
     if (readAtomicRateLimitCountFromBatch(startLimitResult) > START_RESPONSE_MAX_PER_WINDOW) {
       return rateLimitResponse(
@@ -574,14 +605,14 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
 
   // Pro 部署的视频/音频答卷：铸造 Stream 直传凭证（浏览器直传，不经 Worker）。
   if (request.method === "POST" && rest === "/media/stream-ticket") {
-    const ticketLimiter = await checkRateLimit(env.CACHE, "upload", resolveClientIdentity(request, env).ip, 20, 60);
-    if (!ticketLimiter.allowed) return rateLimitResponse(ticketLimiter.retryAfterSeconds);
+    const uploadLimiter = await checkUploadLimit(request, env);
+    if (uploadLimiter) return uploadLimiter;
     return handleStreamTicketRequest(request, env, surveyId);
   }
 
   if (request.method === "POST" && rest === "/media") {
-    const limiter = await checkRateLimit(env.CACHE, "upload", resolveClientIdentity(request, env).ip, 20, 60);
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const uploadLimiter = await checkUploadLimit(request, env);
+    if (uploadLimiter) return uploadLimiter;
     return handleSurveyMediaUpload(request, env, surveyId);
   }
 
@@ -783,9 +814,19 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       galleryVisibleQuestionIds?: unknown;
       galleryShowUsername?: unknown;
       publishToTelegram?: unknown;
+      publishAnonymous?: unknown;
+      publishMessage?: unknown;
     } | null;
     const publishToGallery = Boolean(body?.publishToGallery);
     const publishToTelegram = Boolean(body?.publishToTelegram);
+    // 三项发布选择（迁移 0092）。是否公开 = publishToTelegram；是否匿名与
+    // 「想说的话」在此归一化后**立刻落库**——发布是异步的（export job → 渲染 →
+    // Telegram），到那一刻已经问不了答卷者，只能从答卷行读回来。
+    //
+    // 缺省匿名：字段缺席（老前端 / 直接构造请求的脚本）时按匿名处理，与服务端
+    // 迁移默认值一致；泄漏进公开频道的身份收不回来，缺省必须收紧。
+    const publishAnonymous = typeof body?.publishAnonymous === "boolean" ? body.publishAnonymous : true;
+    const publishMessage = normalizePublishMessage(body?.publishMessage);
     const galleryCoverMediaId =
       typeof body?.galleryCoverMediaId === "number" && Number.isInteger(body.galleryCoverMediaId)
         ? body.galleryCoverMediaId
@@ -834,14 +875,20 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
           submitLimiterNow,
         ),
       );
+      const publishIpSubject = rateLimitIpSubject(resolveClientIdentity(request, env));
+      if (!publishIpSubject) {
+        console.warn("公开频道按地址日限已跳过：无法确定调用方地址", { responseId });
+      }
       submitReads.push(
-        buildAtomicRateLimitStatement(
-          env.DB,
-          "publish_telegram_ip_daily",
-          resolveClientIdentity(request, env).ip,
-          PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
-          submitLimiterNow,
-        ),
+        publishIpSubject
+          ? buildAtomicRateLimitStatement(
+              env.DB,
+              "publish_telegram_ip_daily",
+              publishIpSubject,
+              PUBLISH_TELEGRAM_DAILY_WINDOW_SECONDS,
+              submitLimiterNow,
+            )
+          : skipAtomicRateLimitStatement(env.DB),
       );
     }
     const batchResults = await env.DB.batch(submitReads);
@@ -967,6 +1014,23 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
     } catch (error) {
       console.error("Ending unlock recording failed", { responseId, error });
     }
+    // 三项选择先落库（无论是否公开）：答卷者勾了「仅自己可见」也记下他的匿名
+    // 选择与留言，后台能看到他想说什么；发布链路只在 requested=1 时读它。
+    // 写失败必须自己吞掉——答卷已经 completed，这里再抛就等于"提交失败"，
+    // 而实际后果只是发布时退回默认值（匿名 + 无留言）。
+    //
+    // 但"吞掉"不等于"装作没发生"：写失败时答案里会带一个 warning，前端据此提示。
+    // 日志只记 responseId 与异常摘要——留言原文是答卷内容，不该进日志。
+    let warning: string | undefined;
+    try {
+      await setResponsePublishChoice(env.DB, responseId, { anonymous: publishAnonymous, message: publishMessage });
+    } catch (error) {
+      console.warn("Publish choice write failed", {
+        responseId,
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      });
+      warning = "发布选项没能保存，本次发布将按「匿名、无留言」处理";
+    }
     if (publishToTelegram) {
       try {
         if (!publicationTarget) throw new Error("Web 管理后台尚未配置公开报告发布目标");
@@ -991,6 +1055,10 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
           publicationTarget?.threadId ?? null,
         );
         console.error("Public Telegram report enqueue failed", { responseId, error });
+        // 答案已经落库，提交本身是成功的——但"勾了发布、频道里没有消息、界面
+        // 什么都不说"是这条链路此前的实际表现（生产库里 32 条 failed 无人知）。
+        // 失败必须回传给前端，让答卷者知道可以稍后重试。
+        warning = "答卷已保存，公开发布未成功（可稍后重试）";
       }
     }
     // 成就：答卷已经落库，徽章只是装饰——统计失败绝不能反过来让提交失败。
@@ -1017,6 +1085,8 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       reportPdfUrl: `/report/${responseId}.pdf?t=${token}`,
       galleryPublished: publishToGallery,
       newAchievements,
+      // 可选告警：提交本身成功（答卷已落库），但某个附带动作没完成。
+      ...(warning ? { warning } : {}),
     });
   }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { AlertTriangle, Inbox, RotateCw, X } from "lucide-react";
 import { ApiError } from "../api";
 import { STATUS_LABELS } from "../format";
@@ -108,6 +108,8 @@ export function Modal({
   children,
   footer,
   size = "md",
+  overlayStyle,
+  panelStyle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -115,6 +117,10 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  /** 覆盖遮罩层盒子：软键盘弹起时把它收缩到 visualViewport（见 survey/modal-viewport.ts）。 */
+  overlayStyle?: CSSProperties;
+  /** 覆盖面板盒子：键盘弹起时用 `max-height: 100%` 跟着遮罩层让位。 */
+  panelStyle?: CSSProperties;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -143,11 +149,12 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="ui-modal" role="presentation">
+    <div className="ui-modal" role="presentation" style={overlayStyle}>
       <button type="button" className="ui-modal-backdrop" aria-label="关闭弹窗" onClick={onClose} />
       <div
         ref={panelRef}
         className={`ui-modal-panel ui-modal-${size}`}
+        style={panelStyle}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}

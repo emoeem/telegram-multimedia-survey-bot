@@ -19,12 +19,13 @@ import {
   buildAtomicRateLimitStatement,
   checkRateLimit,
   readAtomicRateLimitCountFromBatch,
+  skipAtomicRateLimitStatement,
 } from "../services/rate-limit.service";
 import { verifyTelegramWebAppProfile } from "./admin-api";
 import { verifySurveyParticipantToken } from "../services/participant-session.service";
 import { verifyEmailSessionToken } from "../services/email-auth.service";
 import { participantHashForKey } from "../db/repositories/participant-link.repository";
-import { resolveClientIdentity } from "../services/client-identity.service";
+import { rateLimitIpSubject, resolveClientIdentity } from "../services/client-identity.service";
 import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
 import { buildMediaResponse } from "../services/media/media-serve.service";
 import { loadSystemSettings } from "../services/system-settings.service";
@@ -125,7 +126,7 @@ const REPORT_PDF_LIMIT_WINDOW_SECONDS = 24 * 60 * 60;
  * 限流主体：优先用请求自带的身份（纯 CPU 校验，**不查库**——报告端点不做参与者解析，
  * 不能把刚省下来的往返又加回去），没有身份才回落到 IP。
  */
-async function resolveDownloadSubject(request: Request, env: Env): Promise<string> {
+async function resolveDownloadSubject(request: Request, env: Env): Promise<string | null> {
   const initData = request.headers.get("x-telegram-init-data");
   if (initData) {
     const profile = await verifyTelegramWebAppProfile(request, env.BOT_TOKEN).catch(() => null);
@@ -145,7 +146,9 @@ async function resolveDownloadSubject(request: Request, env: Env): Promise<strin
   if (participantKey && ANONYMOUS_KEY_PATTERN.test(participantKey)) {
     return participantHashForKey(participantKey);
   }
-  return resolveClientIdentity(request, env).ip;
+  // 地址未知时返回 null：限流主体不存在就不计数，绝不回落到 "unknown" 这个
+  // 共享常量（那样所有人的下载次数共用一个桶）。
+  return rateLimitIpSubject(resolveClientIdentity(request, env));
 }
 
 /** 超限时的落地页：说明限额并给出「在线查看」的去处（这是浏览器导航，不是 API）。 */
@@ -203,33 +206,52 @@ async function serveReportPdf(request: Request, env: Env, url: URL, responseId: 
   // （与其它公开端点同一套降级策略），KV 也失败就放行——限流器坏了不该拦住用户
   // 下载自己的报告。
   const subject = await resolveDownloadSubject(request, env);
-  const ip = resolveClientIdentity(request, env).ip;
+  const ip = rateLimitIpSubject(resolveClientIdentity(request, env));
+  if (!subject || !ip) {
+    // 没有身份也没有真实地址：不计数（fail-open + 日志），而不是让所有人共用
+    // 一个 "unknown" 桶——那会把"每人每天 N 次"变成"全站每天 N 次"。
+    console.warn("报告下载限流已跳过：没有可用的限流主体", { responseId, hasSubject: Boolean(subject) });
+  }
   const limitNow = Date.now();
   let allowed = true;
   let retryAfterSeconds = REPORT_PDF_LIMIT_WINDOW_SECONDS;
   try {
     const [subjectResult, ipResult] = await env.DB.batch([
-      buildAtomicRateLimitStatement(env.DB, "report-pdf-download", subject, REPORT_PDF_LIMIT_WINDOW_SECONDS, limitNow),
-      buildAtomicRateLimitStatement(env.DB, "report-pdf-download-ip", ip, REPORT_PDF_LIMIT_WINDOW_SECONDS, limitNow),
+      subject
+        ? buildAtomicRateLimitStatement(
+            env.DB,
+            "report-pdf-download",
+            subject,
+            REPORT_PDF_LIMIT_WINDOW_SECONDS,
+            limitNow,
+          )
+        : skipAtomicRateLimitStatement(env.DB),
+      ip
+        ? buildAtomicRateLimitStatement(env.DB, "report-pdf-download-ip", ip, REPORT_PDF_LIMIT_WINDOW_SECONDS, limitNow)
+        : skipAtomicRateLimitStatement(env.DB),
     ]);
     allowed =
       readAtomicRateLimitCountFromBatch(subjectResult) <= REPORT_PDF_DAILY_LIMIT &&
       readAtomicRateLimitCountFromBatch(ipResult) <= REPORT_PDF_DAILY_IP_LIMIT;
-    retryAfterSeconds = atomicRateLimitWindow(
-      "report-pdf-download",
-      subject,
-      REPORT_PDF_LIMIT_WINDOW_SECONDS,
-      limitNow,
-    ).retryAfterSeconds;
+    if (subject) {
+      retryAfterSeconds = atomicRateLimitWindow(
+        "report-pdf-download",
+        subject,
+        REPORT_PDF_LIMIT_WINDOW_SECONDS,
+        limitNow,
+      ).retryAfterSeconds;
+    }
   } catch (error) {
     console.warn("Report PDF rate limit unavailable; falling back to KV", { responseId, error });
-    const fallback = await checkRateLimit(
-      env.CACHE,
-      "report-pdf-download",
-      subject,
-      REPORT_PDF_DAILY_LIMIT,
-      REPORT_PDF_LIMIT_WINDOW_SECONDS,
-    ).catch(() => ({ allowed: true, retryAfterSeconds: REPORT_PDF_LIMIT_WINDOW_SECONDS }));
+    const fallback = subject
+      ? await checkRateLimit(
+          env.CACHE,
+          "report-pdf-download",
+          subject,
+          REPORT_PDF_DAILY_LIMIT,
+          REPORT_PDF_LIMIT_WINDOW_SECONDS,
+        ).catch(() => ({ allowed: true, retryAfterSeconds: REPORT_PDF_LIMIT_WINDOW_SECONDS }))
+      : { allowed: true, retryAfterSeconds: REPORT_PDF_LIMIT_WINDOW_SECONDS };
     allowed = fallback.allowed;
     retryAfterSeconds = fallback.retryAfterSeconds;
   }

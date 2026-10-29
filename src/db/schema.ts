@@ -166,6 +166,10 @@ export interface SurveyResponse {
   reportPublicationRequested: boolean;
   reportPublicationStatus: "private" | "pending" | "published" | "failed";
   reportPublishedAt: string | null;
+  /** 公开发布时是否剥离 Telegram 身份（用户名 / 姓名 / user id / 头像）。 */
+  publishAnonymous: boolean;
+  /** 答卷者附在公开发布消息里的「想说的话」，空为 null。 */
+  publishMessage: string | null;
   publicationTargetId: number | null;
   publicationTargetChatId: string | null;
   publicationTargetThreadId: number | null;

@@ -714,6 +714,9 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const response = await env.DB.prepare(
       `SELECT r.id,r.survey_id,r.user_id,r.status,r.version,r.started_at,r.completed_at,r.submitted_at,r.updated_at,r.participant_hash,
               r.device_fingerprint deviceFingerprint, r.browser_info browserInfo, r.ip_address ipAddress,
+              r.report_publication_requested reportPublicationRequested,
+              r.report_publication_status reportPublicationStatus,
+              r.report_published_at reportPublishedAt,
               u.telegram_user_id,u.username,u.first_name,u.last_name
        FROM survey_responses r
        LEFT JOIN users u ON u.id=r.user_id
@@ -810,6 +813,11 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         deviceFingerprint: response.deviceFingerprint === null ? null : String(response.deviceFingerprint),
         browserInfo: response.browserInfo === null ? null : String(response.browserInfo),
         ipAddress: response.ipAddress === null ? null : String(response.ipAddress),
+        // 公开发布的三态（0059）。此前详情页根本不返回它，于是"勾了发布、频道
+        // 里没有消息、界面零提示"——生产库里 32 条 failed 无人知。
+        reportPublicationRequested: Number(response.reportPublicationRequested ?? 0) === 1,
+        reportPublicationStatus: String(response.reportPublicationStatus ?? "private"),
+        reportPublishedAt: response.reportPublishedAt === null ? null : String(response.reportPublishedAt),
         previousResponseId: adjacent?.previousResponseId == null ? null : Number(adjacent.previousResponseId),
         nextResponseId: adjacent?.nextResponseId == null ? null : Number(adjacent.nextResponseId),
       },

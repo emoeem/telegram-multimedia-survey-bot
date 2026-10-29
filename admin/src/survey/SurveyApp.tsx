@@ -39,6 +39,14 @@ import { SpriteLayer } from "./SpriteLayer";
 import { closeWebApp } from "./navigation";
 import { resolveBgmUrl, resolveSprite, resolveSurveySfxUrls, resolveThemeMediaRef } from "../../../src/survey/theme";
 import { BottomNav } from "./BottomNav";
+import { PublishOptionsDialog } from "./PublishOptionsDialog";
+import { vibrateFail, vibrateSuccess } from "./haptics";
+import {
+  DEFAULT_PUBLISH_CHOICE,
+  describePublishChoice,
+  publishChoiceRequestFields,
+  type PublishChoice,
+} from "./publish-choice";
 import {
   isValidPresetId,
   loadGlobalPreset,
@@ -257,6 +265,12 @@ type Screen =
       profileUrl?: string;
       /** 提交那一刻新解锁的徽章（服务端判定），用于在完成页做一次庆祝。 */
       newAchievements?: UnlockedAchievement[];
+      /**
+       * 答卷已保存、但附带动作没完成（公开发布入队失败 / 发布选项没写进去）。
+       * 完成页必须显示它：勾了发布却在频道里看不到消息，是这条链路此前最
+       * 典型的"静默失败"。
+       */
+      warning?: string;
     };
 
 /**
@@ -2199,7 +2213,18 @@ export function SurveyApp() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [publishToGallery, setPublishToGallery] = useState(false);
-  const [publishToTelegram, setPublishToTelegram] = useState(false);
+  // 公开发布的三项选择（是否公开 / 是否匿名 / 想说的话）。只有弹窗能把它置为
+  // 「公开」——也就是说"要发布"这件事必然经过一次明确的三选一，而不是复选框
+  // 一点就直接发出去（见 PublishOptionsDialog）。
+  const [publishChoice, setPublishChoice] = useState<PublishChoice>(DEFAULT_PUBLISH_CHOICE);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  // 弹窗的起点：从勾选框进来时预选「公开」（用户刚表达了发布意图），从「修改」
+  // 进来时回填当前选择。两者分开存，是为了让"取消"不动已生效的选择。
+  const [publishDialogInitial, setPublishDialogInitial] = useState<PublishChoice>(DEFAULT_PUBLISH_CHOICE);
+  // 是否已经选过一次：选了「仅自己可见」也要回显状态，否则确认完弹窗一关，
+  // 界面回到什么都没发生的样子（和"静默失败"是同一种体验）。
+  const [publishChoiceMade, setPublishChoiceMade] = useState(false);
+  const publishToTelegram = publishChoice.publishToTelegram;
   const [galleryCoverMediaId, setGalleryCoverMediaId] = useState<number | null>(null);
   const [galleryShowUsername, setGalleryShowUsername] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -2257,8 +2282,33 @@ export function SurveyApp() {
     return () => window.removeEventListener("pagehide", flushOnHide);
   }, [saveQueue]);
 
-  const isEditableTarget = (target: EventTarget | null): boolean =>
-    target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+  /**
+   * "会弹起软键盘的控件"——底部操作条要不要让位，只取决于这件事。
+   *
+   * 曾经这里写成 `target instanceof HTMLInputElement`，于是**复选框**也算"正在
+   * 输入"：点了最后一题的「公开发布」复选框，操作条就滑走（`translate-y-full`），
+   * 而复选框不会自己失焦，所以「提交问卷」再也回不来——用户填完了却找不到提交
+   * 按钮。发布弹窗把焦点还给复选框，使这条路径每次必现。
+   *
+   * 因此按 input 的 `type` 排除非输入型控件；textarea / select / contenteditable
+   * 仍然算"输入中"。
+   */
+  const NON_TYPING_INPUT_TYPES = new Set([
+    "checkbox",
+    "radio",
+    "button",
+    "submit",
+    "reset",
+    "file",
+    "range",
+    "color",
+    "image",
+  ]);
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+    if (target instanceof HTMLInputElement) return !NON_TYPING_INPUT_TYPES.has(target.type);
+    return target instanceof HTMLElement && target.isContentEditable;
+  };
 
   const handleInputFocus = useCallback((event: FocusEvent) => {
     if (!isEditableTarget(event.target)) return;
@@ -2271,8 +2321,9 @@ export function SurveyApp() {
     }, 250);
   }, []);
 
-  const handleInputBlur = useCallback((event: FocusEvent) => {
-    if (!isEditableTarget(event.target)) return;
+  // 任何一次失焦都解除"输入中"：焦点只有一个，走开就说明键盘也该收了。
+  // 早先这里也按可输入控件过滤，导致焦点落到非输入控件上时状态卡住。
+  const handleInputBlur = useCallback(() => {
     setInputFocused(false);
   }, []);
 
@@ -2387,6 +2438,10 @@ export function SurveyApp() {
         setPublishToGallery(false);
         setGalleryCoverMediaId(null);
         setGalleryShowUsername(false);
+        // 重新填一份 = 重新选择发布方式：上一份的匿名/留言不能漏到这一份。
+        setPublishChoice(DEFAULT_PUBLISH_CHOICE);
+        setPublishChoiceMade(false);
+        setPublishDialogOpen(false);
         // Restored single-type answers arrive as `[optionId]` arrays (server
         // compact shape). Normalize to the in-memory shape the fill flow uses:
         // a bare option id. Without this, resumed selections don't render and
@@ -2548,10 +2603,32 @@ export function SurveyApp() {
     setError(null);
   }, [answers, backStack, index, saveQueue, screen]);
 
+  /**
+   * 提交失败的唯一出口：震动 + 横幅 + toast + 把横幅滚进可见区。
+   *
+   * 为什么要收成一个函数：提交有 5 条失败路径（校验没过、答案没落库、服务端
+   * 拒绝完成、网络/HTTP 错误、发布被限额……），此前每条都各自 `setError`，
+   * 而横幅在**卡片内部**——最后一题一长（或舞台版式下压根不渲染横幅），用户
+   * 点完"提交问卷"看到的就是"没反应"，然后再点一次。这里保证任何一条路径都
+   * 有震动、有文案、且文案在屏幕上。
+   */
+  const reportSubmitFailure = useCallback(
+    (message: string) => {
+      setError(message);
+      vibrateFail();
+      toast({ message, variant: "error" });
+    },
+    [toast],
+  );
+
   const submit = useCallback(async () => {
     if (screen.kind !== "filling") return;
     const staged = await stageCurrent(screen.survey, screen.responseId);
-    if (!staged) return;
+    if (!staged) {
+      // stageCurrent 已经写明原因（校验没过 / 保存失败）：只差让它被看见。
+      vibrateFail();
+      return;
+    }
     setBusy(true);
     try {
       // 提交前必须等队列完全落库：服务端 submit 从数据库重读全部答案做必答
@@ -2560,19 +2637,20 @@ export function SurveyApp() {
       if (screen.responseId > 0) {
         const flushed = await saveQueue.flushSaves();
         if (!flushed) {
-          setError("有答案没能保存成功，请点击「重试保存」后再提交");
+          reportSubmitFailure("有答案没能保存成功，请点击「重试保存」后再提交");
           return;
         }
       }
       try {
         const result = await submitResponse(screen.survey.id, screen.responseId, {
           publishToGallery,
-          publishToTelegram,
+          ...publishChoiceRequestFields(publishChoice),
           galleryCoverMediaId,
           galleryShowUsername,
         });
         if (result.completed) {
           playSfx("confirm");
+          vibrateSuccess();
           // 本地"已填过"标记：列表页下次挂载时读取（跨页面导航会重新初始化）。
           markSurveyCompleted(screen.survey.id);
           setScreen({
@@ -2583,17 +2661,19 @@ export function SurveyApp() {
             // 已发布画廊时带上资料卡深链，落点从 feed 顶部改为"我的卡片"。
             profileUrl: publishToGallery ? `/plaza/profile/${screen.responseId}` : undefined,
             newAchievements: result.newAchievements?.length ? result.newAchievements : undefined,
+            warning: result.warning,
           });
+          if (result.warning) toast({ message: result.warning, variant: "error" });
         } else {
           // Server accepted the request but refused completion (e.g. a
           // required question is still missing); without feedback the
           // responder is stuck on a re-enabled button.
-          setError("问卷尚未完成：还有必答题目未填写");
+          reportSubmitFailure("问卷尚未完成：还有必答题目未填写");
         }
       } catch (err) {
         const errorCode = (err as Error & { code?: string }).code;
-        const message = err instanceof Error ? err.message : "提交失败";
-        setError(message);
+        const message = err instanceof Error && err.message ? err.message : "提交失败，请检查网络后重试";
+        reportSubmitFailure(message);
         if (errorCode === "required_missing") {
           const missingIndex = screen.survey.questions.findIndex((question) => message.includes(question.title));
           if (missingIndex >= 0) setIndex(missingIndex);
@@ -2602,12 +2682,39 @@ export function SurveyApp() {
     } finally {
       setBusy(false);
     }
-  }, [galleryCoverMediaId, galleryShowUsername, publishToGallery, publishToTelegram, saveQueue, screen, stageCurrent]);
+  }, [
+    galleryCoverMediaId,
+    galleryShowUsername,
+    publishChoice,
+    publishToGallery,
+    reportSubmitFailure,
+    saveQueue,
+    screen,
+    stageCurrent,
+  ]);
 
   /** 保存失败横幅上的手动重试：重发全部失败条目，成功即撤下横幅。 */
   const retryFailedSaves = useCallback(() => {
     void saveQueue.flushSaves();
   }, [saveQueue]);
+
+  /**
+   * 错误横幅必须真的出现在屏幕上。
+   *
+   * 横幅本身早就有，问题在位置：它原来挂在题目卡片内部，而提交按钮固定在底部
+   * ——最后一题一长（或舞台版式，那里卡片分支根本不渲染），点"提交问卷"后
+   * 页面看起来毫无变化。滚动到可见位置是和震动、toast 并列的第三条保险。
+   */
+  const errorRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (!error) return undefined;
+    const node = errorRef.current;
+    if (!node) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [error]);
 
   // 下一题媒体预热：答题者阅读当前题的空档里，把下一题（按跳题规则算出的
   // 真实后继）的公开题面/选项图拉进浏览器缓存，翻题时图片零等待。弱网与
@@ -2783,6 +2890,14 @@ export function SurveyApp() {
         <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--survey-muted)]">
           {completion?.message ?? "感谢你的参与，你的回答已记录。"}
         </p>
+        {screen.warning ? (
+          <p
+            role="status"
+            className="mt-4 w-full max-w-sm rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-2.5 text-left text-xs leading-5 text-[var(--survey-muted)]"
+          >
+            {screen.warning}
+          </p>
+        ) : null}
         <div className="mt-4 w-full max-w-sm">
           <ParticipantIdentityNotice done />
         </div>
@@ -2992,24 +3107,62 @@ export function SurveyApp() {
    */
   const publishOptions = isLast ? (
     <>
-      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+      <div className="mt-3 flex items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
         <input
+          id="publish-to-telegram"
           type="checkbox"
           className="checkbox checkbox-primary mt-0.5 shrink-0"
+          // 勾选态 = **用户确认过公开**。弹窗开着时不再假装已勾选：
+          // 上一版写成 `publishToTelegram || publishDialogOpen`，于是弹窗一开
+          // 复选框就显示为已勾，取消后却又弹回未选——同一个控件在两次操作里
+          // 说两种话。现在只有 onConfirm 会置勾，取消保持原状（未勾）。
           checked={publishToTelegram}
           disabled={busy}
-          onChange={(event) => setPublishToTelegram(event.target.checked)}
+          aria-describedby="publish-to-telegram-hint"
+          onChange={(event) => {
+            // 勾选不直接开闸：先弹窗把「是否公布 / 是否匿名 / 想说的话」一次问清
+            // （见 PublishOptionsDialog）。取消勾选是"取消发布"，无需再问。
+            if (event.target.checked) {
+              setPublishDialogInitial({ ...publishChoice, publishToTelegram: true });
+              setPublishDialogOpen(true);
+            } else {
+              setPublishChoice(DEFAULT_PUBLISH_CHOICE);
+              setPublishChoiceMade(false);
+            }
+          }}
         />
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[var(--survey-heading)]">
+        <div className="min-w-0 flex-1">
+          <label
+            htmlFor="publish-to-telegram"
+            className="block cursor-pointer text-sm font-semibold text-[var(--survey-heading)]"
+          >
             <Megaphone className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
             公开发布到 Telegram
-          </span>
-          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-            发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。
-          </span>
-        </span>
-      </label>
+          </label>
+          <p id="publish-to-telegram-hint" className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+            发布到与投稿机器人相同的目标群组。勾选后会先确认公开范围（公开 / 仅自己可见）与是否匿名，
+            还能写一句想说的话。
+          </p>
+          {publishToTelegram || publishChoiceMade ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="text-xs font-medium text-[var(--survey-primary)]">
+                {describePublishChoice(publishChoice)}
+              </span>
+              <button
+                type="button"
+                className="text-xs font-semibold text-[var(--survey-muted)] underline underline-offset-4"
+                disabled={busy}
+                onClick={() => {
+                  setPublishDialogInitial(publishChoice);
+                  setPublishDialogOpen(true);
+                }}
+              >
+                修改
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
       {survey.galleryProfile?.enabled && survey.galleryProfile.canPublish ? (
         <>
           <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
@@ -3404,24 +3557,42 @@ export function SurveyApp() {
                   </div>
                 </>
               )}
-              {error ? <p className="mt-4 text-sm font-medium text-[var(--app-danger)]">{error}</p> : null}
-              {failedSaveQuestion !== null ? (
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3.5 py-2.5">
-                  <span className="text-xs leading-5 text-[var(--survey-body)]">
-                    第 {failedSaveQuestion} 题的答案没能保存上，提交前需要重试；重新作答该题也可以。
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-xs shrink-0"
-                    style={{ backgroundColor: "var(--survey-card-bg)", borderColor: "var(--survey-card-border)" }}
-                    onClick={retryFailedSaves}
-                  >
-                    重试保存
-                  </button>
-                </div>
-              ) : null}
             </div>
           )}
+          {/*
+           * 失败提示放在**两种版式共用**的位置（卡片之外、操作条之上）：
+           * 原来它写在阅读版式的卡片里，舞台版式下这一段根本不渲染——场景题
+           * 提交失败时用户看不到任何文字。`role="alert"` 让读屏也读出来。
+           */}
+          {error ? (
+            <div className={`mt-3 ${stageLayout ? "px-5" : "mx-auto w-full max-w-xl lg:max-w-3xl"}`}>
+              <p
+                ref={errorRef}
+                role="alert"
+                aria-live="assertive"
+                className="rounded-xl border border-[var(--app-danger)]/40 bg-[var(--app-danger)]/10 px-3.5 py-2.5 text-sm font-medium text-[var(--app-danger)]"
+              >
+                {error}
+              </p>
+            </div>
+          ) : null}
+          {failedSaveQuestion !== null ? (
+            <div className={`mt-3 ${stageLayout ? "px-5" : "mx-auto w-full max-w-xl lg:max-w-3xl"}`}>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3.5 py-2.5">
+                <span className="text-xs leading-5 text-[var(--survey-body)]">
+                  第 {failedSaveQuestion} 题的答案没能保存上，提交前需要重试；重新作答该题也可以。
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-xs shrink-0"
+                  style={{ backgroundColor: "var(--survey-card-bg)", borderColor: "var(--survey-card-border)" }}
+                  onClick={retryFailedSaves}
+                >
+                  重试保存
+                </button>
+              </div>
+            </div>
+          ) : null}
           {stageLayout ? null : publishOptions}
         </main>
 
@@ -3497,6 +3668,19 @@ export function SurveyApp() {
           onClose={() => setThemePickerOpen(false)}
           selected={userThemePreset}
           onSelect={selectTheme}
+        />
+        {/* 最后一道保险：若调用方在提交时才发现没收集过选择（例如外部直接
+            置 publishToTelegram），弹窗仍然是唯一入口——它不依赖任何顺序。 */}
+        <PublishOptionsDialog
+          open={publishDialogOpen}
+          initial={publishDialogInitial}
+          busy={busy}
+          onCancel={() => setPublishDialogOpen(false)}
+          onConfirm={(choice) => {
+            setPublishChoice(choice);
+            setPublishChoiceMade(true);
+            setPublishDialogOpen(false);
+          }}
         />
       </div>
     </div>

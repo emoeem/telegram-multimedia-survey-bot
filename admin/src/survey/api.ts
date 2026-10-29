@@ -554,6 +554,10 @@ export function submitResponse(
     galleryVisibleQuestionIds?: number[];
     galleryShowUsername?: boolean;
     publishToTelegram?: boolean;
+    /** 迁移 0092：公开发布时是否剥离 Telegram 身份（缺省由服务端按匿名处理）。 */
+    publishAnonymous?: boolean;
+    /** 迁移 0092：附在发布消息里的「想说的话」，服务端仍会截断。 */
+    publishMessage?: string;
   } = {},
 ): Promise<{
   ok: boolean;
@@ -564,6 +568,11 @@ export function submitResponse(
   galleryPublished?: boolean;
   telegramPublicationQueued?: boolean;
   newAchievements?: UnlockedAchievement[];
+  /**
+   * 提交本身的附带动作没完成时的告警（答卷已落库，只是发布入队失败或发布选项
+   * 没写进去）。服务端只在真出问题时才带这个字段。
+   */
+  warning?: string;
 }> {
   // One retry, network failures included: submission is guarded server-side
   // (an already-completed response answers with the same success shape), and a
@@ -576,6 +585,7 @@ export function submitResponse(
     reportPdfUrl?: string;
     galleryPublished?: boolean;
     newAchievements?: UnlockedAchievement[];
+    warning?: string;
   }>(
     `/api/survey/${surveyId}/responses/${responseId}/submit`,
     { method: "POST", body: JSON.stringify(options) },

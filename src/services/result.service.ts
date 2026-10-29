@@ -126,6 +126,10 @@ export async function getResponseDetail(
         response["report_publication_status"] ?? "private",
       ) as SurveyResponse["reportPublicationStatus"],
       reportPublishedAt: response["report_published_at"] === null ? null : String(response["report_published_at"]),
+      // 迁移 0092：列缺席时按「匿名」读取（与 response.repository 同一口径：
+      // 发布时宁可少写一个名字，也不能泄露没做过选择的答卷者身份）。
+      publishAnonymous: Number(response["publish_anonymous"] ?? 1) === 1,
+      publishMessage: response["publish_message"] === null ? null : String(response["publish_message"]),
       publicationTargetId:
         response["publication_target_id"] === null ? null : Number(response["publication_target_id"]),
       publicationTargetChatId:

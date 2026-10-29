@@ -98,6 +98,18 @@ export async function apiSend<T>(
   return (await parseResponse(response)) as T;
 }
 
+/**
+ * 手动重投公开报告（`failed` 状态的唯一出口）。
+ *
+ * 服务端按断点续发（0093）：已经进频道的批次不会重发，只补没发出去的。
+ */
+export function retryReportPublication(
+  surveyId: number,
+  responseId: number,
+): Promise<{ ok: boolean; status: string; alreadyPublished?: boolean }> {
+  return apiSend("POST", `/api/admin/surveys/${surveyId}/responses/${responseId}/report-publication/retry`, {});
+}
+
 /** 内容分级（0080）：单卷设置（管理员可双向，创作者只能 all→r18）。 */
 export function setSurveyRating(surveyId: number, rating: "all" | "r18"): Promise<{ updatedAt: string }> {
   return apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { contentRating: rating });
@@ -715,6 +727,9 @@ export interface ResponseListItem {
   ipAddress?: string | null;
 }
 
+/** 公开发布的三态（0059）。private = 没勾发布。 */
+export type ReportPublicationStatus = "private" | "pending" | "published" | "failed";
+
 export interface ResponseListData {
   survey: { id: number; title: string; anonymous: boolean };
   items: ResponseListItem[];
@@ -770,6 +785,10 @@ export interface ResponseDetailData {
     submittedAt: string | null;
     previousResponseId: number | null;
     nextResponseId: number | null;
+    /** 公开发布：是否请求过、当前状态、发布成功时刻。 */
+    reportPublicationRequested: boolean;
+    reportPublicationStatus: ReportPublicationStatus;
+    reportPublishedAt: string | null;
   };
   answers: ResponseAnswerView[];
 }

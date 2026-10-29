@@ -1,0 +1,27 @@
+-- 公开发布是**分批**的（Telegram sendMediaGroup 一次最多 10 张），而一份报告
+-- 可能二十几页。原先的实现有三个后果：
+--   1. caption 只挂在第 1 批（条件写成 offset=0），第 11 页之后的消息在频道里
+--      没有任何「哪份问卷 / 什么时候填的 / 这批是第几页」；
+--   2. 第 2 批失败时已发出的 message id 非空，于是不抛错、照样写 published——
+--      频道里只有前 10 页，后台显示已发布，永远不会补发；
+--   3. 发送与「写 published」之间没有抢占，发送成功但 UPDATE 失败（或子请求超时）
+--      会让队列整份重发一遍。
+--
+-- 1) report_publication_claim_at：发布抢锁。发送**前**用一条条件 UPDATE 抢占
+--    （status IN ('pending','failed') AND 无锁或锁已超时）。没抢到说明另一个
+--    队列消费者正在发，本次直接跳过——同一份相册不会并发发两遍。
+--    之所以不复用 report_publication_status 增加一个 'publishing' 值：0059 给该列
+--    建了 CHECK 约束，SQLite 改不了 CHECK，只能重建表，代价与风险都不值得。
+-- 2) report_publication_progress：断点。JSON：每批发完写一次
+--    {pages, mode: 'album'|'pdf', targets: {'<chatId>:<threadId>': {messageIds, nextOffset, done, error}}}。
+--    重试从 nextOffset 续发，已发出的批次不会重发。
+--
+-- 未 apply 的旧库不会崩：读取列集合走 PRAGMA table_info 探测，缺列时退化成
+-- 「不可断点、不抢占」的老路径（见 src/services/public-report.service.ts 的
+-- loadPublicationResponseRow / claimPublication）。
+--
+-- 落地方式（与既有迁移一致）：
+--   本地：pnpm migrate:local
+--   远端：pnpm migrate:remote
+ALTER TABLE survey_responses ADD COLUMN report_publication_claim_at TEXT;
+ALTER TABLE survey_responses ADD COLUMN report_publication_progress TEXT;

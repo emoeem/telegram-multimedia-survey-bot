@@ -126,6 +126,24 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     };
   }, [formEpoch]);
 
+  /**
+   * 错误横幅必须被看见。
+   *
+   * 提交按钮固定在视口底部，而横幅在表单最上方：校验没过时用户看到的是"点了
+   * 没反应"（横幅在屏幕外几百像素处）。这里在错误出现后把它滚到可见位置，并
+   * 用 `role="alert"` 让读屏立刻播报。
+   */
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!error.length) return undefined;
+    const node = errorRef.current;
+    if (!node) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [error]);
+
   const retryFormLoad = useCallback(() => {
     resetSubmitFormPreload();
     setError([]);
@@ -285,7 +303,12 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
         {form === null ? (
           /* 表单没到：失败给重试，其余给表单形状的骨架（而不是一行字 + 空白）。 */
           error.length > 0 ? (
-            <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-3 text-[13px] text-red-500">
+            <div
+              ref={errorRef}
+              role="alert"
+              aria-live="assertive"
+              className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-3 text-[13px] text-red-500"
+            >
               {error.map((line) => (
                 <p key={line}>{line}</p>
               ))}
@@ -305,7 +328,12 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
             <p className="mb-3 whitespace-pre-wrap text-[13px] leading-6 text-[var(--survey-muted)]">{form.intro}</p>
 
             {error.length > 0 ? (
-              <div className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500">
+              <div
+                ref={errorRef}
+                role="alert"
+                aria-live="assertive"
+                className="mb-3 rounded-[var(--survey-radius)] border border-red-400/60 px-3 py-2 text-[13px] text-red-500"
+              >
                 {error.map((line) => (
                   <p key={line}>{line}</p>
                 ))}

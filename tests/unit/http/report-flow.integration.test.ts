@@ -246,20 +246,43 @@ describe.skipIf(!sqliteD1Available)("participant report access (real schema)", (
     const token = await createReportAccessToken(env.WEBHOOK_SECRET, 42);
     const url = new URL(`https://worker.test/report/42.pdf?t=${token}`);
 
+    // Cloudflare 的真实请求一定带 cf-connecting-ip：没有它就没有"按地址"这一维
+    // （见 client-identity.service 的 rateLimitIpSubject，避免所有人共用一个桶）。
+    const withAddress = (key: string) =>
+      new Request(url, { headers: { "x-participant-key": key, "cf-connecting-ip": "203.0.113.7" } });
+
     // 12 次以内（每 3 次换一个 key 轮换凭据）放行，第 13 次被 IP 闸门拦下。
     for (let attempt = 1; attempt <= 12; attempt += 1) {
+      const response = await handleReportRequest(withAddress(`rotating-key-${Math.ceil(attempt / 3)}`), env, url);
+      expect(response?.status, `attempt ${attempt}`).toBe(200);
+    }
+    const blocked = await handleReportRequest(withAddress("rotating-key-99"), env, url);
+    expect(blocked?.status).toBe(429);
+  });
+
+  it("没有地址时按地址的闸门被跳过，而不是把所有访客并进同一个桶", async () => {
+    const db = createSqliteD1(fullMigrationSchema());
+    seed(db);
+    const env = makeEnv(db);
+    env.MEDIA_KV = {
+      put: async () => undefined,
+      get: async () => new Uint8Array([0x25, 0x50, 0x44, 0x46]).buffer as ArrayBuffer,
+    } as unknown as KVNamespace;
+    const token = await createReportAccessToken(env.WEBHOOK_SECRET, 42);
+    const url = new URL(`https://worker.test/report/42.pdf?t=${token}`);
+
+    // 40 次、每次换一个身份、不带任何地址头：按身份限额（20）照样生效，
+    // 但"按地址"的那一维不该因为 key 全是 "unknown" 就把后来者一起判死。
+    let blocked = 0;
+    for (let attempt = 1; attempt <= 40; attempt += 1) {
       const response = await handleReportRequest(
-        new Request(url, { headers: { "x-participant-key": `rotating-key-${Math.ceil(attempt / 3)}` } }),
+        new Request(url, { headers: { "x-participant-key": `no-address-${attempt}` } }),
         env,
         url,
       );
-      expect(response?.status, `attempt ${attempt}`).toBe(200);
+      if (response?.status === 429) blocked += 1;
     }
-    const blocked = await handleReportRequest(
-      new Request(url, { headers: { "x-participant-key": "rotating-key-99" } }),
-      env,
-      url,
-    );
-    expect(blocked?.status).toBe(429);
+    // 每个身份各 1 次，都不该被同一个"地址桶"连坐。
+    expect(blocked).toBe(0);
   });
 });

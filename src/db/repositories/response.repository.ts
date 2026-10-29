@@ -17,6 +17,8 @@ interface SurveyResponseRow {
   report_publication_requested?: number;
   report_publication_status?: string | null;
   report_published_at?: string | null;
+  publish_anonymous?: number | null;
+  publish_message?: string | null;
   publication_target_id?: number | null;
   publication_target_chat_id?: string | null;
   publication_target_thread_id?: number | null;
@@ -56,6 +58,10 @@ function mapResponse(row: SurveyResponseRow): SurveyResponse {
     reportPublicationRequested: Number(row.report_publication_requested ?? 0) === 1,
     reportPublicationStatus: (row.report_publication_status as SurveyResponse["reportPublicationStatus"]) ?? "private",
     reportPublishedAt: row.report_published_at ?? null,
+    // 迁移 0092：列缺席（老库还没 apply）时按「匿名」读取——发布时宁可少写一个
+    // 名字，也不能把一个没做选择的答卷者的身份泄进公开频道。
+    publishAnonymous: Number(row.publish_anonymous ?? 1) === 1,
+    publishMessage: row.publish_message ?? null,
     publicationTargetId: row.publication_target_id ?? null,
     publicationTargetChatId: row.publication_target_chat_id ?? null,
     publicationTargetThreadId: row.publication_target_thread_id ?? null,
@@ -88,6 +94,27 @@ export async function setResponseReportPublication(
       timestamp,
       id,
     )
+    .run();
+}
+
+/**
+ * 公开发布的两项「答卷者选择」（迁移 0092）：是否匿名、想说的话。
+ *
+ * 为什么单独一条写：发布是异步的，等 export job 跑到浏览器渲染时已经问不了
+ * 答卷者，所以选择必须在提交那一刻就落到答卷行上——任务载荷只带 responseId，
+ * 发布时按 id 读回这三项（是否公开仍由 report_publication_requested 表达）。
+ *
+ * 即使答卷者选了「仅自己可见」（requested = 0）也照写：这三项是他的选择记录，
+ * 后台能看到他想说什么，而发布链路只在 requested = 1 时才读它。
+ */
+export async function setResponsePublishChoice(
+  db: D1Database,
+  id: number,
+  choice: { anonymous: boolean; message: string | null },
+): Promise<void> {
+  await db
+    .prepare("UPDATE survey_responses SET publish_anonymous = ?, publish_message = ?, updated_at = ? WHERE id = ?")
+    .bind(choice.anonymous ? 1 : 0, choice.message, nowIso(), id)
     .run();
 }
 

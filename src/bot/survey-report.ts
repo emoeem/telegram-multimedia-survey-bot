@@ -61,7 +61,7 @@ const chinaDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour12: false,
 });
 
-function formatChinaDateTime(value: string | null): string {
+export function formatChinaDateTime(value: string | null): string {
   if (!value) return "未完成";
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? chinaDateTimeFormatter.format(date) : value;
@@ -222,15 +222,24 @@ interface ResponseReportBundle {
   }>;
 }
 
+/**
+ * `options.anonymous` 是**答卷级**的匿名开关（迁移 0092）：问卷本身不匿名，
+ * 但答卷者可以选择"这次发布匿名"。它在这里一次性决定身份是否被读取——
+ * `getResponseDetail(..., anonymous)` 匿名时不查 users 行，`respondent` 直接是
+ * null，所以下游的 caption 与报告图片都拿不到姓名/`@username`/Telegram ID。
+ * 也就是说匿名不是"渲染时遮盖"，而是**身份根本没进内存**。
+ */
 export async function buildResponseReportBundle(
   ctx: BotContext,
   surveyId: number,
   responseId: number,
   responseNumber: number,
+  options: { anonymous?: boolean } = {},
 ): Promise<ResponseReportBundle> {
   const survey = await getSurveyById(ctx.db, surveyId);
   if (!survey) throw new Error("问卷不存在");
-  const detail = await getResponseDetail(ctx.db, responseId, survey.anonymous);
+  const anonymous = survey.anonymous || options.anonymous === true;
+  const detail = await getResponseDetail(ctx.db, responseId, anonymous);
   if (!detail || detail.response.surveyId !== surveyId) {
     throw new Error("答卷不存在或不属于该问卷");
   }
@@ -371,7 +380,7 @@ export async function buildResponseReportBundle(
       surveyTitle: survey.title,
       responseNumber,
       status: responseStatusLabels[detail.response.status] ?? detail.response.status,
-      respondent: formatRespondent(detail.respondent, survey.anonymous),
+      respondent: formatRespondent(detail.respondent, anonymous),
       startedAt: formatChinaDateTime(detail.response.startedAt),
       completedAt: formatChinaDateTime(detail.response.completedAt),
       items,

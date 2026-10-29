@@ -1,32 +1,26 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
 import type { BotContext } from "../bot/types";
-import { addReportImages, buildResponseReportBundle } from "../bot/survey-report";
+import { addReportImages, buildResponseReportBundle, formatChinaDateTime } from "../bot/survey-report";
 import { renderResponseReport, type PngViewportStrategy } from "./response-report.service";
 import { sendDocument, sendMessage, sendPhoto, sendPhotoAlbum } from "../bot/telegram";
 import {
   getDefaultPublicationTarget,
   listEnabledPublicationTargets,
 } from "../db/repositories/publication-target.repository";
+import {
+  PUBLIC_REPORT_ALBUM_BATCH_SIZE,
+  buildPublicReportBatchCaption,
+  buildPublicReportCaption,
+  clampPublicReportCaption,
+  normalizePublishMessage,
+  type PublicReportCaptionInput,
+} from "./public-report-caption";
 
 export interface PublicReportEnvironment {
   DB: D1Database;
   BOT_TOKEN: string;
   BROWSER?: BrowserWorker;
   MEDIA_KV?: KVNamespace;
-}
-
-function caption(report: Awaited<ReturnType<typeof buildResponseReportBundle>>["report"]): string {
-  const title = report.surveyTitle?.trim() || "问卷";
-  const respondent = report.respondent?.trim() || "匿名填写者";
-  return [
-    "📋 问卷报告",
-    "",
-    `问卷：${title.slice(0, 180)}`,
-    `填写者：${respondent.slice(0, 120)}`,
-    report.completedAt ? `完成时间：${report.completedAt}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
 
 /**
@@ -130,6 +124,8 @@ async function renderPublicReportArtifact(
   ctx: BotContext,
   responseId: number,
   surveyId: number,
+  /** 答卷级匿名（迁移 0092）：报告图片上的「填写者」同样要剥掉身份。 */
+  anonymous: boolean,
 ): Promise<{
   artifact: Awaited<ReturnType<typeof renderResponseReport>>;
   report: Awaited<ReturnType<typeof buildResponseReportBundle>>["report"];
@@ -139,7 +135,7 @@ async function renderPublicReportArtifact(
     await waitUntilBrowserAcquisitionAllowed(env, responseId);
     const strategy = RENDER_STRATEGIES[Math.min(attempt, RENDER_STRATEGIES.length - 1)] as PngViewportStrategy;
     try {
-      const bundle = await buildResponseReportBundle(ctx, surveyId, responseId, responseId);
+      const bundle = await buildResponseReportBundle(ctx, surveyId, responseId, responseId, { anonymous });
       const report = await addReportImages(ctx, bundle);
       const artifact = await renderResponseReport(env.BROWSER!, report, "png", strategy);
       if (attempt > 0)
@@ -213,6 +209,149 @@ interface PublicReportResponseRow {
   publication_target_id: number | null;
   publication_target_chat_id: string | null;
   publication_target_thread_id: number | null;
+  /** 迁移 0092：答卷者自己的两项发布选择（是否匿名为 1 表示剥离身份）。 */
+  publish_anonymous?: number | null;
+  publish_message?: string | null;
+  /** 迁移 0093：发布抢锁与断点（老库缺列时为 null，走不可续发的老路径）。 */
+  report_publication_claim_at?: string | null;
+  report_publication_progress?: string | null;
+  /** 发布时刻并不需要渲染就能拿到的问卷名与时间——caption 的真相来源。 */
+  survey_title?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+/** 迁移 0092 的选择列：缺列时按「匿名 + 无留言」读取。 */
+const PUBLICATION_CHOICE_COLUMNS = ["publish_anonymous", "publish_message"] as const;
+/** 迁移 0093 的断点列：缺列时退化成不可续发（老库也能发布，只是不能断点）。 */
+const PUBLICATION_PROGRESS_COLUMNS = ["report_publication_claim_at", "report_publication_progress"] as const;
+
+/**
+ * 按库里**实际存在**的列拼发布用的 SELECT。
+ *
+ * 这里以前是写死的 `r.publish_anonymous, r.publish_message`，而旁边的注释却
+ * 声称「未 apply 迁移的老库也能跑」——两者互相矛盾：真跑起来 D1 直接
+ * `no such column: r.publish_anonymous`，发布在客户机（customer 角色往往不
+ * 跟着升级迁移）上永久失败。现在改成先 `PRAGMA table_info` 探测，缺列就退化成
+ * `1 AS publish_anonymous, NULL AS publish_message`（与读取侧 `?? 1` 同一口径：
+ * 缺数据时收紧成匿名），语义与注释一致。
+ */
+export function buildPublicationResponseSelect(columns: ReadonlySet<string>): string {
+  const hasChoice = PUBLICATION_CHOICE_COLUMNS.every((column) => columns.has(column));
+  const hasProgress = PUBLICATION_PROGRESS_COLUMNS.every((column) => columns.has(column));
+  return `SELECT r.id, r.survey_id, r.status, r.report_publication_status,
+         r.publication_target_id, r.publication_target_chat_id, r.publication_target_thread_id,
+         ${hasChoice ? "r.publish_anonymous, r.publish_message" : "1 AS publish_anonymous, NULL AS publish_message"},
+         ${
+           hasProgress
+             ? "r.report_publication_claim_at, r.report_publication_progress"
+             : "NULL AS report_publication_claim_at, NULL AS report_publication_progress"
+         },
+         r.started_at, r.completed_at,
+         s.title AS survey_title
+    FROM survey_responses r
+    LEFT JOIN surveys s ON s.id = r.survey_id
+   WHERE r.id = ? LIMIT 1`;
+}
+
+/**
+ * 迁移齐全时的 SELECT。导出是为了让测试在真实 SQLite 上跑这条 SQL：发布是异步
+ * 链路，这条 SELECT 里少一列（或 JOIN 写错）只会在真正发布那一刻炸。
+ *
+ * 运行时**不直接用它**——老库可能缺列，见 {@link loadPublicationResponseRow}。
+ */
+export const PUBLICATION_RESPONSE_SELECT = buildPublicationResponseSelect(
+  new Set<string>([...PUBLICATION_CHOICE_COLUMNS, ...PUBLICATION_PROGRESS_COLUMNS]),
+);
+
+/**
+ * 每个 DB 句柄探测一次列集合（WeakMap 而不是模块级变量：测试里每个用例都会
+ * 新建一个内存库，缓存跨库复用就会把上一个库的列集合套到下一个库上）。
+ */
+const publicationColumnCache = new WeakMap<D1Database, Promise<Set<string>>>();
+
+async function detectResponseColumns(db: D1Database): Promise<Set<string>> {
+  const cached = publicationColumnCache.get(db);
+  if (cached) return cached;
+  const probe = (async () => {
+    try {
+      const info = await db.prepare("PRAGMA table_info(survey_responses)").all<{ name?: string }>();
+      return new Set((info.results ?? []).map((row) => String(row.name ?? "")));
+    } catch (error) {
+      // 探测失败不该让发布直接失败：当作「迁移齐全」处理，真缺列时下面的
+      // SELECT 会带着明确的 no such column 报错（比在这里静默退化更好查）。
+      console.warn("survey_responses 列探测失败，按迁移齐全处理", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Set<string>([...PUBLICATION_CHOICE_COLUMNS, ...PUBLICATION_PROGRESS_COLUMNS]);
+    }
+  })();
+  publicationColumnCache.set(db, probe);
+  return probe;
+}
+
+/** 发布链路读到的那行答卷 + 这次到底有没有断点列可用。 */
+export async function loadPublicationResponseRow(
+  db: D1Database,
+  responseId: number,
+): Promise<{ row: PublicReportResponseRow | null; resumable: boolean }> {
+  let columns = await detectResponseColumns(db);
+  for (let attempt = 0; ; attempt += 1) {
+    const resumable = PUBLICATION_PROGRESS_COLUMNS.every((column) => columns.has(column));
+    try {
+      const row = await db
+        .prepare(buildPublicationResponseSelect(columns))
+        .bind(responseId)
+        .first<PublicReportResponseRow>();
+      return { row: row ?? null, resumable };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 缓存过期（部署后才 apply 迁移、或探测那次刚好失败）时重探一次。
+      if (attempt > 0 || !/no such column/i.test(message)) throw error;
+      publicationColumnCache.delete(db);
+      columns = await detectResponseColumns(db);
+    }
+  }
+}
+
+/** 迁移 0092 之前的老库没有该列时按「匿名」处理：泄漏不可逆，缺省必须收紧。 */
+export function isResponsePublishAnonymous(row: { publish_anonymous?: number | null }): boolean {
+  return Number(row.publish_anonymous ?? 1) === 1;
+}
+
+/**
+ * 发布消息里「填写者」那一栏的文字。
+ *
+ * 两条规则，都写在数据层而不是"+文案时遮盖"：
+ *   1. **匿名：立刻返回 null 且不执行任何查询**——身份不是"查出来再遮盖"，而是
+ *      这条链路上根本没有读它，所以任何下游（caption、日志、报告图片）都不可能
+ *      把它印出去；
+ *   2. **即使不匿名，也不写数字 Telegram ID**：答卷者同意公开的是名字/用户名，
+ *      不是那个只有内部系统才需要的 user id（它可被用来精确检索一个人）。管理
+ *      员侧的报告仍用完整格式（formatRespondent），那是私有面。
+ */
+export async function loadPublicReportRespondentLabel(
+  env: PublicReportEnvironment,
+  responseId: number,
+  anonymous: boolean,
+): Promise<string | null> {
+  if (anonymous) return null;
+  const row = await env.DB.prepare(
+    `SELECT u.username, u.first_name, u.last_name
+       FROM survey_responses r
+       LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.id = ? LIMIT 1`,
+  )
+    .bind(responseId)
+    .first<{ username: string | null; first_name: string | null; last_name: string | null }>();
+  if (!row) return null;
+  const name = [row.first_name, row.last_name]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  if (name) return name;
+  // 只有用户名时用 @username；连用户名都没有就不显示填写者——不拿数字 ID 顶替。
+  return row.username ? `@${row.username}` : null;
 }
 
 /**
@@ -258,27 +397,246 @@ export async function resolvePublicReportTargets(
     : [];
 }
 
-export async function publishPublicResponseReport(
-  env: PublicReportEnvironment,
-  responseId: number,
-): Promise<{
+/**
+ * 发布抢锁的有效期：超过这段时间没被刷新，视为上一个消费者已死，可被接管。
+ *
+ * 5 分钟而不是 15：每发完一批都会刷新锁，而一次发布的实际耗时远小于 5 分钟
+ * （Worker 的子请求/CPU 上限都比它短）。窗口越长，"消费者被杀 → 锁挂着 →
+ * 队列重试被跳过并 ack"这条路径的停滞就越久。
+ */
+export const PUBLICATION_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+/** 单个目标（群组 / 话题）的发布断点。 */
+export interface PublicReportTargetProgress {
+  /** 已成功发出的 message id（重试时不会重发这些批次）。 */
+  messageIds: number[];
+  /** 下一个待发送批次的起始下标（单位是页，不是批）。 */
+  nextOffset: number;
+  /** 该目标的全部批次都已发完。 */
+  done: boolean;
+  /** 最近一次失败原因，供后台/日志定位（不含任何答卷内容）。 */
+  error?: string;
+}
+
+/**
+ * 发布断点（迁移 0093 的 report_publication_progress 列）。
+ *
+ * 为什么要落库而不是只放在这次调用的内存里：发布跑在队列/Durable 内部路由上，
+ * 一次调用随时可能在中途被切断（子请求超时、Worker 被回收）。断点不在库里，
+ * 重试就只能整份重发——这份相册会被同一个群收到两遍。
+ */
+export interface PublicReportProgress {
+  /** 本次渲染出的页数（0 表示还没渲染/未知）。 */
+  pages: number;
+  /** 发送形态：相册，或渲染受限时降级成的一份 PDF。 */
+  mode: "album" | "pdf";
+  /** `${chatId}:${threadId ?? ""}` → 进度。 */
+  targets: Record<string, PublicReportTargetProgress>;
+}
+
+export function publicationProgressKey(chatId: number, threadId: number | null): string {
+  return `${chatId}:${threadId ?? ""}`;
+}
+
+/** 宽容解析：库里那串 JSON 是"上一版代码写的"，坏掉也不能让发布整个失败。 */
+export function parsePublicReportProgress(raw: string | null | undefined): PublicReportProgress | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const value = parsed as Partial<PublicReportProgress>;
+    const pages = Number(value.pages ?? 0);
+    const targets: Record<string, PublicReportTargetProgress> = {};
+    const rawTargets = value.targets;
+    if (rawTargets && typeof rawTargets === "object") {
+      for (const [key, entry] of Object.entries(rawTargets as Record<string, Partial<PublicReportTargetProgress>>)) {
+        if (!entry || typeof entry !== "object") continue;
+        const messageIds = Array.isArray(entry.messageIds)
+          ? entry.messageIds.filter((id): id is number => Number.isInteger(id) && id > 0)
+          : [];
+        const nextOffset = Number(entry.nextOffset ?? 0);
+        targets[key] = {
+          messageIds,
+          nextOffset: Number.isInteger(nextOffset) && nextOffset >= 0 ? nextOffset : 0,
+          done: entry.done === true,
+          ...(typeof entry.error === "string" ? { error: entry.error } : {}),
+        };
+      }
+    }
+    return {
+      pages: Number.isInteger(pages) && pages >= 0 ? pages : 0,
+      mode: value.mode === "pdf" ? "pdf" : "album",
+      targets,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface PublicReportOutcome {
   chatId: number;
   messageIds: number[];
   pages: number;
   targets: Array<{ chatId: number; messageIds: number[]; error?: string }>;
-}> {
+  /** 另一个消费者持有发布锁，本次什么都没做（不是失败）。 */
+  skipped?: boolean;
+}
+
+/**
+ * 发送**前**抢占发布权。
+ *
+ * 抢占是为了堵住「已经发出去了，但写 published 那一行失败 / 子请求超时」这个
+ * 窗口：没有抢占时，队列一重试就把整份相册再发一遍。这里把「谁在发」写成库里的
+ * 一行：条件 UPDATE 只有在没有锁（或锁已过期）时才会命中，命中数就是抢没抢到。
+ *
+ * 没抢到不是错误——另一个消费者正在发同一份，本次直接跳过即可。
+ * 老库缺列时退化为不抢占（并把状态标成 pending），这时唯一的防护是队列本身。
+ */
+async function claimPublication(
+  env: PublicReportEnvironment,
+  responseId: number,
+  resumable: boolean,
+  now: number,
+): Promise<boolean> {
+  const claimedAt = new Date(now).toISOString();
+  if (!resumable) {
+    await env.DB.prepare("UPDATE survey_responses SET report_publication_status='pending', updated_at=? WHERE id=?")
+      .bind(claimedAt, responseId)
+      .run();
+    return true;
+  }
+  const staleBefore = new Date(now - PUBLICATION_CLAIM_STALE_MS).toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE survey_responses
+        SET report_publication_claim_at = ?, report_publication_status = 'pending', updated_at = ?
+      WHERE id = ?
+        AND report_publication_status IN ('pending','failed')
+        AND (report_publication_claim_at IS NULL OR report_publication_claim_at < ?)`,
+  )
+    .bind(claimedAt, claimedAt, responseId, staleBefore)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+/** 每批之后落一次断点（顺带刷新锁，避免长报告被别的消费者当成过期锁接管）。 */
+async function persistPublicationProgress(
+  env: PublicReportEnvironment,
+  responseId: number,
+  resumable: boolean,
+  progress: PublicReportProgress,
+): Promise<void> {
+  if (!resumable) return;
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "UPDATE survey_responses SET report_publication_progress=?, report_publication_claim_at=?, updated_at=? WHERE id=?",
+  )
+    .bind(JSON.stringify(progress), now, now, responseId)
+    .run();
+}
+
+async function markPublicationPublished(
+  env: PublicReportEnvironment,
+  responseId: number,
+  resumable: boolean,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (!resumable) {
+    await env.DB.prepare(
+      "UPDATE survey_responses SET report_publication_status='published', report_published_at=?, updated_at=? WHERE id=?",
+    )
+      .bind(now, now, responseId)
+      .run();
+    return;
+  }
+  // 断点保留：已发出的 message id 是"这份相册在频道里的位置"的唯一记录。
+  await env.DB.prepare(
+    `UPDATE survey_responses
+        SET report_publication_status='published', report_published_at=?,
+            report_publication_claim_at=NULL, updated_at=?
+      WHERE id=?`,
+  )
+    .bind(now, now, responseId)
+    .run();
+}
+
+/**
+ * 失败也要把状态写成 failed 并放掉锁。
+ *
+ * 这一步之后**必须**让异常继续往上抛：只有抛出去，队列才会重试（并从断点续发）。
+ * 原实现的病症正是"部分成功 → messageIds 非空 → 不抛 → 写 published"。
+ */
+async function markPublicationFailed(
+  env: PublicReportEnvironment,
+  responseId: number,
+  resumable: boolean,
+  progress: PublicReportProgress,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (!resumable) {
+    await env.DB.prepare("UPDATE survey_responses SET report_publication_status='failed', updated_at=? WHERE id=?")
+      .bind(now, responseId)
+      .run();
+    return;
+  }
+  await env.DB.prepare(
+    `UPDATE survey_responses
+        SET report_publication_status='failed', report_publication_claim_at=NULL,
+            report_publication_progress=?, updated_at=?
+      WHERE id=?`,
+  )
+    .bind(JSON.stringify(progress), now, responseId)
+    .run();
+}
+
+/**
+ * 发一批（1–10 张）。
+ *
+ * Telegram 只显示 media group 里**第一张**的 caption，所以整批共用一条，挂在
+ * 首图上；剩余图片不带 caption（带了也没人看得见，白占字符）。
+ */
+async function sendAlbumBatch(
+  env: PublicReportEnvironment,
+  delivery: { chatId: number; target: PublicReportTarget },
+  pages: Uint8Array[],
+  offset: number,
+  caption: string,
+): Promise<number[]> {
+  const batch = pages.slice(offset, offset + PUBLIC_REPORT_ALBUM_BATCH_SIZE);
+  const threadId = delivery.target.threadId ?? undefined;
+  if (batch.length === 1) {
+    // 单张走 sendPhoto：sendMediaGroup 要求 2–10 张，最后一页常常只剩 1 张。
+    const result = await sendPhoto(env.BOT_TOKEN, delivery.chatId, batch[0]!, caption, undefined, threadId);
+    const messageId = Number(((await result.json()) as { result?: { message_id?: number } }).result?.message_id);
+    return Number.isInteger(messageId) ? [messageId] : [];
+  }
+  const result = await sendPhotoAlbum(
+    env.BOT_TOKEN,
+    delivery.chatId,
+    batch.map((bytes, index) => ({ bytes, ...(index === 0 ? { caption } : {}) })),
+    threadId,
+  );
+  const payload = (await result.json()) as { result?: Array<{ message_id?: number }> };
+  return (payload.result ?? [])
+    .map((item) => item.message_id)
+    .filter((id): id is number => typeof id === "number" && Number.isInteger(id));
+}
+
+export async function publishPublicResponseReport(
+  env: PublicReportEnvironment,
+  responseId: number,
+): Promise<PublicReportOutcome> {
   if (!env.BROWSER) throw new Error("BROWSER 未配置，无法生成公开报告图片");
 
-  const response = await env.DB.prepare(
-    "SELECT id, survey_id, status, report_publication_status, publication_target_id, publication_target_chat_id, publication_target_thread_id FROM survey_responses WHERE id=? LIMIT 1",
-  )
-    .bind(responseId)
-    .first<PublicReportResponseRow>();
+  const { row: response, resumable } = await loadPublicationResponseRow(env.DB, responseId);
   if (!response || response.status !== "completed") throw new Error("答卷不存在或尚未完成");
 
   const targets = await resolvePublicReportTargets(env, response);
   if (!targets.length) throw new Error("Web 管理后台尚未配置公开报告发布目标");
-  const deliveries = targets.map((target) => ({ target, chatId: Number(target.chatId), messageIds: [] as number[] }));
+  const deliveries = targets.map((target) => ({
+    target,
+    chatId: Number(target.chatId),
+    messageIds: [] as number[],
+  }));
   const invalid = deliveries.filter((delivery) => !Number.isInteger(delivery.chatId) || delivery.chatId === 0);
   if (invalid.length === deliveries.length) throw new Error("公开报告发布目标群组 ID 无效");
   for (const delivery of invalid) {
@@ -289,12 +647,24 @@ export async function publishPublicResponseReport(
     });
   }
   const sendable = deliveries.filter((delivery) => !invalid.includes(delivery));
+
   if (response.report_publication_status === "published") {
     return {
       chatId: sendable[0]!.chatId,
       messageIds: [],
       pages: 0,
       targets: sendable.map((delivery) => ({ chatId: delivery.chatId, messageIds: [] })),
+    };
+  }
+
+  if (!(await claimPublication(env, responseId, resumable, Date.now()))) {
+    console.warn("公开报告发布已在别处进行，跳过本次", { responseId });
+    return {
+      chatId: sendable[0]!.chatId,
+      messageIds: [],
+      pages: 0,
+      targets: sendable.map((delivery) => ({ chatId: delivery.chatId, messageIds: [] })),
+      skipped: true,
     };
   }
 
@@ -306,75 +676,102 @@ export async function publishPublicResponseReport(
   } as unknown as BotContext;
 
   await waitForSiblingReportDelivery(env.DB, responseId);
-  const messageIds: number[] = [];
-  let pages = 0;
-  let textCaption = "";
-  const failures: Array<{ delivery: (typeof sendable)[number]; error: Error }> = [];
 
-  const sendToTarget = async (delivery: (typeof sendable)[number], bytes: Uint8Array[], captionText: string) => {
-    const threadId = delivery.target.threadId ?? undefined;
-    for (let offset = 0; offset < bytes.length; offset += 10) {
-      const pageBytes = bytes.slice(offset, offset + 10);
-      if (pageBytes.length === 1) {
-        const result = await sendPhoto(env.BOT_TOKEN, delivery.chatId, pageBytes[0]!, captionText, undefined, threadId);
-        const messageId = Number(((await result.json()) as { result?: { message_id?: number } }).result?.message_id);
-        if (Number.isInteger(messageId)) {
-          delivery.messageIds.push(messageId);
-          messageIds.push(messageId);
-        }
-      } else {
-        const result = await sendPhotoAlbum(
-          env.BOT_TOKEN,
-          delivery.chatId,
-          pageBytes.map((page, index) => ({
-            bytes: page,
-            ...(index === 0 && offset === 0 ? { caption: captionText } : {}),
-          })),
-          threadId,
-        );
-        const payload = (await result.json()) as { result?: Array<{ message_id?: number }> };
-        for (const item of payload.result ?? []) {
-          if (Number.isInteger(item.message_id)) {
-            delivery.messageIds.push(item.message_id!);
-            messageIds.push(item.message_id!);
-          }
-        }
-      }
-    }
+  // 答卷级匿名：决定身份能不能被读取（报告图片与 caption 共用同一个判断）。
+  const anonymous = isResponsePublishAnonymous(response);
+  const quote: PublicReportCaptionInput = {
+    surveyTitle: response.survey_title,
+    anonymous,
+    startedAt: response.started_at ? formatChinaDateTime(response.started_at) : null,
+    completedAt: response.completed_at ? formatChinaDateTime(response.completed_at) : null,
+    // 匿名时这里返回 null，且没有查过 users 表；buildPublicReportCaption 在
+    // 匿名分支里也根本不读这个字段（双保险，见 public-report-caption.ts）。
+    respondent: await loadPublicReportRespondentLabel(env, responseId, anonymous),
+    message: normalizePublishMessage(response.publish_message),
+  };
+  const fullCaption = buildPublicReportCaption(quote);
+
+  const progress: PublicReportProgress = parsePublicReportProgress(response.report_publication_progress) ?? {
+    pages: 0,
+    mode: "album",
+    targets: {},
+  };
+  const messageIds: number[] = [];
+  const failures: Array<{ chatId: number; error: Error }> = [];
+  let pages = progress.pages;
+
+  /** 取（或建立）某目标的断点，并把已发出的 id 汇总进返回值。 */
+  const entryFor = (chatId: number, threadId: number | null): PublicReportTargetProgress => {
+    const key = publicationProgressKey(chatId, threadId);
+    const entry = progress.targets[key] ?? { messageIds: [], nextOffset: 0, done: false };
+    progress.targets[key] = entry;
+    for (const id of entry.messageIds) if (!messageIds.includes(id)) messageIds.push(id);
+    return entry;
   };
 
+  let rendered: Uint8Array[] | null = null;
   try {
-    const { artifact, report } = await renderPublicReportArtifact(env, ctx, responseId, response.survey_id);
+    const { artifact } = await renderPublicReportArtifact(env, ctx, responseId, response.survey_id, anonymous);
     if (artifact.format !== "png" || artifact.pages.length === 0) throw new Error("公开报告没有生成图片页面");
-    textCaption = caption(report);
-    pages = artifact.pages.length;
-
-    for (const delivery of sendable) {
-      try {
-        await sendToTarget(
-          delivery,
-          artifact.pages.map((page) => page.bytes),
-          textCaption,
-        );
-      } catch (error) {
-        failures.push({ delivery, error: error instanceof Error ? error : new Error(String(error)) });
-      }
+    rendered = artifact.pages.map((page) => page.bytes);
+    if (pages > 0 && pages !== rendered.length) {
+      // 同一份答卷两次渲染页数不同（模板/图片加载抖动）。断点按页号记账，页数一变
+      // 旧 offset 就指向了别的页——只能整份重发并留痕，不能猜。
+      console.warn("公开报告页数与上次不一致，断点作废并重发", {
+        responseId,
+        previousPages: pages,
+        pages: rendered.length,
+      });
+      progress.targets = {};
+      messageIds.length = 0;
     }
+    pages = rendered.length;
+    progress.pages = pages;
+    progress.mode = "album";
   } catch (error) {
     // The album needs a fresh browser session and the account's browser
     // acquisition budget is often exhausted (429/503/TargetClose). The archive
     // delivery has already rendered the PDF for this response — send that
     // instead so the publication still reaches the group.
-    if (!isTransientRenderError(error)) throw error;
+    //
+    // 但只在**还没发过任何相册批次**时允许降级：已经发出去半份相册再补一份 PDF，
+    // 频道里就是"前 10 页 + 一份完整 PDF"，比留个断点等重试更糟。
+    const alreadySendingAlbum =
+      progress.mode === "album" &&
+      Object.values(progress.targets).some((entry) => entry.nextOffset > 0 || entry.messageIds.length > 0);
+    if (!isTransientRenderError(error) || alreadySendingAlbum) {
+      await markPublicationFailed(env, responseId, resumable, progress);
+      throw error;
+    }
     console.warn("Public report album unavailable; falling back to the archived PDF", {
       responseId,
       error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
     });
-    const pdf = await env.MEDIA_KV?.get(`public-report-pdf:${responseId}`, { type: "arrayBuffer" });
-    if (!pdf) throw error;
-    textCaption = "📋 问卷报告（浏览器渲染额度受限，本次以 PDF 文件发布）";
+    // KV 读本身也可能失败（配额/绑定）；那样也走"标记失败并抛"，不能留下
+    // 一个挂着锁、状态停在 pending 的僵尸行。
+    let pdf: ArrayBuffer | null = null;
+    try {
+      pdf = (await env.MEDIA_KV?.get(`public-report-pdf:${responseId}`, { type: "arrayBuffer" })) ?? null;
+    } catch (kvError) {
+      console.warn("公开报告 PDF 回退读取失败", {
+        responseId,
+        error: kvError instanceof Error ? kvError.message : String(kvError),
+      });
+    }
+    if (!pdf) {
+      await markPublicationFailed(env, responseId, resumable, progress);
+      throw error;
+    }
+    // 降级也必须带上同样的「问卷名 + 填写时间 + 留言」：这条消息在频道里的
+    // 用途正是区分"哪份问卷的哪一次填写"，降级不该把它丢掉。
+    // 再兜一次上限：caption 本体已按 1024 截断，追加这句后仍可能越界。
+    const pdfCaption = clampPublicReportCaption(`${fullCaption}\n\n（浏览器渲染额度受限，本次以 PDF 文件发布）`);
     pages = 1;
+    progress.pages = 1;
+    progress.mode = "pdf";
     for (const delivery of sendable) {
+      const entry = entryFor(delivery.chatId, delivery.target.threadId);
+      if (entry.done) continue;
       try {
         const response = await sendDocument(
           env.BOT_TOKEN,
@@ -382,44 +779,92 @@ export async function publishPublicResponseReport(
           `report-${responseId}.pdf`,
           new Uint8Array(pdf),
           "application/pdf",
-          textCaption,
+          pdfCaption,
           undefined,
           delivery.target.threadId ?? undefined,
         );
         const messageId = Number(((await response.json()) as { result?: { message_id?: number } }).result?.message_id);
         if (Number.isInteger(messageId)) {
-          delivery.messageIds.push(messageId);
+          entry.messageIds.push(messageId);
           messageIds.push(messageId);
         }
-      } catch (error) {
-        failures.push({ delivery, error: error instanceof Error ? error : new Error(String(error)) });
+        entry.nextOffset = 1;
+        entry.done = true;
+        delete entry.error;
+        await persistPublicationProgress(env, responseId, resumable, progress);
+      } catch (sendError) {
+        const failure = sendError instanceof Error ? sendError : new Error(String(sendError));
+        entry.error = failure.message;
+        failures.push({ chatId: delivery.chatId, error: failure });
+        await persistPublicationProgress(env, responseId, resumable, progress);
       }
     }
   }
 
-  if (failures.length) {
-    console.warn("公开报告部分目标发送失败", {
-      responseId,
-      failures: failures.map(({ delivery, error }) => ({
-        chatId: delivery.target.chatId,
-        threadId: delivery.target.threadId,
-        error: error.message,
-      })),
-    });
-    // 一个都没发出去才让队列重试；部分成功时不重试，否则已经收到的群会再收一遍同一份相册。
-    if (!messageIds.length) throw failures[0]!.error;
+  if (rendered) {
+    for (const delivery of sendable) {
+      const entry = entryFor(delivery.chatId, delivery.target.threadId);
+      if (entry.done) continue;
+      for (let offset = entry.nextOffset; offset < pages; offset += PUBLIC_REPORT_ALBUM_BATCH_SIZE) {
+        const pageStart = offset + 1;
+        const pageEnd = Math.min(offset + PUBLIC_REPORT_ALBUM_BATCH_SIZE, pages);
+        const caption = buildPublicReportBatchCaption(quote, { pageStart, pageEnd, totalPages: pages });
+        try {
+          const ids = await sendAlbumBatch(env, delivery, rendered, offset, caption);
+          entry.messageIds.push(...ids);
+          messageIds.push(...ids);
+          entry.nextOffset = pageEnd;
+          entry.done = pageEnd >= pages;
+          delete entry.error;
+          // 每批立刻落盘：这一行是「下次从哪续」的唯一真相。进程在下一批中途
+          // 消失时，已发出的批次不会重发。
+          await persistPublicationProgress(env, responseId, resumable, progress);
+        } catch (sendError) {
+          const failure = sendError instanceof Error ? sendError : new Error(String(sendError));
+          console.warn("公开报告批次发送失败", {
+            responseId,
+            chatId: delivery.chatId,
+            threadId: delivery.target.threadId,
+            pageStart,
+            pageEnd,
+            pages,
+            error: failure.message,
+          });
+          entry.error = failure.message;
+          failures.push({ chatId: delivery.chatId, error: failure });
+          await persistPublicationProgress(env, responseId, resumable, progress);
+          // 只停这个目标：其它群组不该因为一个群发不出去而一起挨饿。
+          break;
+        }
+      }
+    }
   }
 
-  await env.DB.prepare(
-    "UPDATE survey_responses SET report_publication_status='published', report_published_at=?, updated_at=? WHERE id=?",
-  )
-    .bind(new Date().toISOString(), new Date().toISOString(), responseId)
-    .run();
+  const complete = sendable.every(
+    (delivery) => progress.targets[publicationProgressKey(delivery.chatId, delivery.target.threadId)]?.done === true,
+  );
+
+  if (failures.length || !complete) {
+    console.warn("公开报告部分目标发送失败", {
+      responseId,
+      failures: failures.map(({ chatId, error }) => ({ chatId, error: error.message })),
+      progress: progress.targets,
+    });
+    await markPublicationFailed(env, responseId, resumable, progress);
+    // 抛出才会让队列重试；重试从断点续发，已成功的批次不会重发。
+    // 静默吞掉正是「频道只有前 10 页、后台却显示已发布」的成因。
+    throw failures[0]?.error ?? new Error("公开发布未完成：仍有批次未发出");
+  }
+
+  await markPublicationPublished(env, responseId, resumable);
 
   return {
     chatId: sendable[0]!.chatId,
     messageIds,
     pages,
-    targets: sendable.map((delivery) => ({ chatId: delivery.chatId, messageIds: delivery.messageIds })),
+    targets: sendable.map((delivery) => ({
+      chatId: delivery.chatId,
+      messageIds: progress.targets[publicationProgressKey(delivery.chatId, delivery.target.threadId)]?.messageIds ?? [],
+    })),
   };
 }

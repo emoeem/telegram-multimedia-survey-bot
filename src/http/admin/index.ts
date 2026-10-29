@@ -28,7 +28,7 @@ import {
 import { consumeAdminMagicLink } from "../../services/admin-magic-link.service";
 import { getBotUsername } from "../../bot/telegram";
 import { checkAtomicRateLimit, checkRateLimit, rateLimitResponse } from "../../services/rate-limit.service";
-import { resolveClientIdentity } from "../../services/client-identity.service";
+import { rateLimitIpSubject, resolveClientIdentity } from "../../services/client-identity.service";
 import { ADMIN_LOGIN_RATE_LIMIT, ADMIN_LOGIN_RATE_WINDOW_SECONDS } from "../../services/admin-login.service";
 import { ADMIN_PASSWORD_SETTING_KEY, verifyAdminPassword } from "../../services/admin-password.service";
 import {
@@ -70,6 +70,28 @@ export async function handleAdminApi(request: Request, env: Env): Promise<Respon
   }
 }
 
+/**
+ * 管理端登录类端点的按地址限流。
+ *
+ * 地址未知时跳过并留日志，**不**退化成常量 subject：把所有人塞进 "unknown"
+ * 桶等于给全站一把共享的锁，一个人刷满就没人能登录后台。返回非 null 即超限。
+ */
+async function adminAddressRateLimit(
+  request: Request,
+  env: Env,
+  scope: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<Response | null> {
+  const subject = rateLimitIpSubject(resolveClientIdentity(request, env));
+  if (!subject) {
+    console.warn(`${scope} 限流已跳过：无法确定调用方地址`);
+    return null;
+  }
+  const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, scope, subject.slice(0, 100), limit, windowSeconds);
+  return limiter.allowed ? null : rateLimitResponse(limiter.retryAfterSeconds);
+}
+
 async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const requestId = crypto.randomUUID();
@@ -79,16 +101,14 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
     Response.json({ code, message, requestId }, { status, headers: { "Cache-Control": "no-store" } });
 
   if (request.method === "POST" && url.pathname === "/api/admin/auth/password") {
-    const clientIp = resolveClientIdentity(request, env).ip;
-    const limiter = await checkAtomicRateLimit(
-      env.DB,
-      env.CACHE,
+    const limited = await adminAddressRateLimit(
+      request,
+      env,
       "admin-password-login",
-      clientIp.slice(0, 100),
       ADMIN_LOGIN_RATE_LIMIT,
       ADMIN_LOGIN_RATE_WINDOW_SECONDS,
     );
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    if (limited) return limited;
     const body = (await request.json().catch(() => null)) as { password?: unknown } | null;
     const password = typeof body?.password === "string" ? body.password : "";
     const configuredHash = await getSystemSettingValue(env.DB, ADMIN_PASSWORD_SETTING_KEY);
@@ -131,16 +151,14 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // Simple Telegram deep-link login. The browser creates a short-lived request;
   // Telegram confirms it through the bot, so no BotFather OAuth configuration is needed.
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/telegram/start") {
-    const clientIp = resolveClientIdentity(request, env).ip;
-    const limiter = await checkAtomicRateLimit(
-      env.DB,
-      env.CACHE,
+    const limited = await adminAddressRateLimit(
+      request,
+      env,
       "admin-login-start",
-      clientIp.slice(0, 100),
       ADMIN_LOGIN_RATE_LIMIT,
       ADMIN_LOGIN_RATE_WINDOW_SECONDS,
     );
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    if (limited) return limited;
     const login = await createAdminLoginRequest(env.CACHE, env.WEBHOOK_SECRET);
     const username = await getBotUsername(env.BOT_TOKEN);
     return Response.json(
@@ -198,9 +216,8 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // 纯 GET + 302，不需要前端参与，所以 Telegram 内置浏览器 / 微信 / 任何
   // WebView 都能用；兑换失败时回登录页并带上原因，让页面给出人话提示。
   if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/admin/auth/link") {
-    const clientIp = resolveClientIdentity(request, env).ip;
-    const limiter = await checkAtomicRateLimit(env.DB, env.CACHE, "admin-magic-link", clientIp.slice(0, 100), 20, 300);
-    if (!limiter.allowed) return rateLimitResponse(limiter.retryAfterSeconds);
+    const limited = await adminAddressRateLimit(request, env, "admin-magic-link", 20, 300);
+    if (limited) return limited;
     const bounce = (reason: string) =>
       new Response(null, {
         status: 302,
