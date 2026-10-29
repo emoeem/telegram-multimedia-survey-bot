@@ -1,0 +1,333 @@
+{
+  "version": 1,
+  "title": "迷失书房",
+  "intro": "你在别人的书房里醒来，台灯还亮着。找到出去的路——书架之间藏着这个房间的记忆。",
+  "start": "wake",
+  "grades": {
+    "s": 85,
+    "a": 65,
+    "b": 45
+  },
+  "items": [
+    {
+      "id": "clue-photo",
+      "name": "烧掉一角的照片",
+      "icon": "🖼️",
+      "kind": "clue",
+      "desc": "照片上的人被剪掉了，只剩一只搭在琴键上的手。"
+    },
+    {
+      "id": "clue-diary",
+      "name": "日记的最后一页",
+      "icon": "📓",
+      "kind": "clue",
+      "desc": "「如果有人读到这一页，请替我把灯关掉。」"
+    },
+    {
+      "id": "token-star",
+      "name": "黄铜星星",
+      "icon": "⭐",
+      "kind": "collectible",
+      "desc": "镇纸下压着的小星星，摸上去还是温的。"
+    },
+    {
+      "id": "token-disc",
+      "name": "黑胶唱片",
+      "icon": "💿",
+      "kind": "collectible",
+      "desc": "标签手写着：给 L，第 214 夜。"
+    },
+    {
+      "id": "key-study",
+      "name": "书房钥匙",
+      "icon": "🗝️",
+      "kind": "key",
+      "desc": "抽屉里摸到的冷钥匙，齿痕磨得很圆——它开过很多次门。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "wake",
+      "chapter": "序章",
+      "speaker": "旁白",
+      "text": "台灯的光圈外全是黑。你坐在一张陌生的书桌前，手边有一张字条：「别开大灯。——L」",
+      "choices": [
+        {
+          "text": "借着台灯检查书桌",
+          "goto": "desk",
+          "score": 2
+        },
+        {
+          "text": "站起来走向黑暗中的书架",
+          "goto": "shelf",
+          "score": 2
+        },
+        {
+          "text": "原路离开书房",
+          "goto": "ending-window"
+        }
+      ]
+    },
+    {
+      "id": "desk",
+      "chapter": "书桌",
+      "speaker": "旁白",
+      "text": "桌面很干净，只有一台老式收音机，指针停在第 214 频率。抽屉锁着，缝隙里透出一点金属的反光。",
+      "choices": [
+        {
+          "text": "拧收音机的旋钮",
+          "goto": "radio",
+          "score": 2
+        },
+        {
+          "text": "用力气拉开抽屉",
+          "goto": "drawer-forced",
+          "score": 1
+        },
+        {
+          "text": "回到门口",
+          "goto": "wake"
+        }
+      ]
+    },
+    {
+      "id": "radio",
+      "speaker": "收音机",
+      "text": "沙沙声里浮出一个女声：「……欢迎回到午夜信箱。今晚的第一封信，来自一个不想回家的人。」——是你刚才在心里想的那句话。",
+      "choices": [
+        {
+          "text": "听完这一段",
+          "goto": "radio-2",
+          "give": ["clue-diary"],
+          "score": 4
+        },
+        {
+          "text": "关掉收音机",
+          "goto": "wake"
+        }
+      ]
+    },
+    {
+      "id": "radio-2",
+      "speaker": "收音机",
+      "text": "「书房的灯，替我关掉就好。」声音停了。收音机的背板缝隙里露出半页纸——是日记的最后一页。",
+      "choices": [
+        {
+          "text": "取出日记页",
+          "goto": "shelf",
+          "score": 2
+        },
+        {
+          "text": "把纸推回去，假装没听见",
+          "goto": "wake",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "id": "drawer-forced",
+      "speaker": "旁白",
+      "text": "抽屉纹丝不动。但你的手在桌背摸到了一件东西——一颗黄铜星星，被人压在镇纸底下很久了。",
+      "choices": [
+        {
+          "text": "收起星星",
+          "goto": "desk",
+          "give": ["token-star"],
+          "score": 2
+        }
+      ]
+    },
+    {
+      "id": "shelf",
+      "chapter": "书架",
+      "speaker": "旁白",
+      "text": "书架比看上去更深。第三层的书脊排成一道细缝，风从里面吹出来，带着旧纸和琴弦的味道。",
+      "choices": [
+        {
+          "text": "把手指伸进细缝探一探",
+          "goto": "gap",
+          "score": 2
+        },
+        {
+          "text": "翻看摊开在扶手椅上的相册",
+          "goto": "album",
+          "score": 2
+        },
+        {
+          "text": "去门边试门把手",
+          "goto": "door"
+        }
+      ]
+    },
+    {
+      "id": "album",
+      "speaker": "旁白",
+      "text": "相册里全是同一个人弹琴的侧影。只有一张被烧掉了一角——留下的那半张，是一只搭在琴键上的手。",
+      "choices": [
+        {
+          "text": "把照片对着台灯看",
+          "goto": "album-2",
+          "give": ["clue-photo"],
+          "score": 3
+        },
+        {
+          "text": "合上相册放回原处",
+          "goto": "shelf",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "id": "album-2",
+      "speaker": "旁白",
+      "text": "灯光穿过烧痕，相册夹层里滑出一枚黑胶唱片。标签上写着：给 L，第 214 夜。",
+      "choices": [
+        {
+          "text": "收起唱片，回到书架",
+          "goto": "shelf",
+          "give": ["token-disc"],
+          "score": 2
+        },
+        {
+          "text": "当场把唱片放上唱机",
+          "goto": "ending-lamp",
+          "requireItem": "token-disc",
+          "score": 4
+        },
+        {
+          "text": "把唱片放回去",
+          "goto": "shelf"
+        }
+      ]
+    },
+    {
+      "id": "gap",
+      "speaker": "旁白",
+      "text": "细缝深处有一道薄薄的暗门。门上没有把手，只有钥匙孔——齿痕磨得很圆的那种。",
+      "choices": [
+        {
+          "text": "推暗门（需要钥匙）",
+          "goto": "gap-unlock",
+          "requireItem": "key-study",
+          "score": 3
+        },
+        {
+          "text": "推暗门",
+          "goto": "gap-locked",
+          "score": 1
+        },
+        {
+          "text": "退回书架，再找找",
+          "goto": "shelf"
+        }
+      ]
+    },
+    {
+      "id": "gap-locked",
+      "speaker": "旁白",
+      "text": "暗门推不开。钥匙孔里传出一声很轻的、像叹息的金属声——它认识某把钥匙，但不是现在。",
+      "choices": [
+        {
+          "text": "去书桌那边看看",
+          "goto": "desk",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "id": "door",
+      "speaker": "旁白",
+      "text": "门把手冰凉。轻轻一拧——锁着。门缝下的光停了一下，又移开了。外面有人。",
+      "choices": [
+        {
+          "text": "敲三下门",
+          "goto": "knock"
+        },
+        {
+          "text": "守在门边不出声",
+          "goto": "door-wait",
+          "score": 1
+        },
+        {
+          "text": "回书桌前坐下，等天亮",
+          "goto": "ending-leave",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "id": "knock",
+      "speaker": "门外",
+      "text": "「书房钥匙在抽屉里。」那个声音说，「她总是忘。」说完，脚步声走远了。",
+      "choices": [
+        {
+          "text": "回书桌拉开抽屉",
+          "goto": "drawer-open",
+          "score": 2
+        },
+        {
+          "text": "回到书架之间",
+          "goto": "shelf"
+        }
+      ]
+    },
+    {
+      "id": "door-wait",
+      "speaker": "旁白",
+      "text": "你贴着门站了很久。光斑又一次停在门缝下，这次，是一封信从门缝里滑了进来。",
+      "choices": [
+        {
+          "text": "捡起信",
+          "goto": "wake",
+          "give": ["clue-diary"],
+          "score": 3
+        }
+      ]
+    },
+    {
+      "id": "drawer-open",
+      "speaker": "旁白",
+      "text": "抽屉应声而开。里面只有一把磨圆了齿痕的钥匙，和一句压在钥匙下面的字：「替我关灯。」",
+      "choices": [
+        {
+          "text": "拿走钥匙",
+          "goto": "shelf",
+          "give": ["key-study"],
+          "score": 3
+        }
+      ]
+    },
+    {
+      "id": "ending-lamp",
+      "chapter": "终章",
+      "speaker": "旁白",
+      "text": "你把唱片放上转盘，把星星摆在唱机旁。沙沙声里，那个女声说：「欢迎回来。」——书房的门在你身后轻轻合上了。",
+      "endingTitle": "第 214 夜·安可",
+      "endingNote": "收集齐全的人会留下来，成为故事的一部分。（结局节点不设入口跳转，作为展示格式的完整版式）"
+    },
+    {
+      "id": "ending-window",
+      "chapter": "终章",
+      "speaker": "旁白",
+      "text": "你把相册、唱片和星星摆回原位，在椅子上坐下，把台灯拧亮了一格。门外的脚步声停了，然后是钥匙插入锁孔的声音——她回来了。你没有回头。",
+      "endingTitle": "第 215 夜",
+      "endingNote": "选择留下的人，会替留在原地里的人继续守夜。"
+    },
+    {
+      "id": "ending-leave",
+      "chapter": "终章",
+      "speaker": "旁白",
+      "text": "你退回台灯的光圈，闭上眼睛。等你再睁开眼，闹钟响着，一切如常。只有掌心还留着一颗星星的棱角。",
+      "endingTitle": "像一场午睡",
+      "endingNote": "书房还在原来的地方。你随时可以回去——它一直为某人亮着灯。"
+    },
+    {
+      "id": "gap-unlock",
+      "chapter": "终章",
+      "speaker": "旁白",
+      "text": "钥匙转动，声音很轻，像一句应答。暗门开了——门外不是走廊，是另一间一模一样的书房，只是台灯是灭的。你走进去，替她把灯关掉了。",
+      "endingTitle": "关灯的人",
+      "endingNote": "你读完了两条线索。第 215 夜，午夜信箱有了新的主播。"
+    }
+  ]
+}

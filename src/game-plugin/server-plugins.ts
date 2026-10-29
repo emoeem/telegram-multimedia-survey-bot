@@ -1,6 +1,7 @@
 import { registerGamePlugins } from "./registry";
 import { flipCardPlugin } from "./plugins/flip-card/engine";
 import { drawPlugin } from "./plugins/draw/engine";
+import { questPlugin } from "./plugins/quest/engine";
 
 /**
  * 服务端插件注册表——新增玩法时**唯一需要改动的文件**（加一行）。
@@ -11,3 +12,4 @@ import { drawPlugin } from "./plugins/draw/engine";
  */
 registerGamePlugins(flipCardPlugin);
 registerGamePlugins(drawPlugin);
+registerGamePlugins(questPlugin);

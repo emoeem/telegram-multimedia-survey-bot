@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, FileArchive, Plus, Save, Trash2 } from "lucide-react";
 import {
   createAdminTaskPack,
   deleteAdminTaskPack,
@@ -9,6 +9,7 @@ import {
   type AdminTaskMode,
   type AdminTaskPack,
   type AdminTaskPersona,
+  importQuestPack,
 } from "../api";
 import { useApi } from "../hooks";
 import { useDialogs } from "../components/Dialogs";
@@ -171,6 +172,24 @@ function PluginEditPreview({
 export function TaskPacksPage() {
   const { data, error, retry } = useApi<{ packs: AdminTaskPack[] }>("/api/admin/task-packs");
   const { confirm, toast } = useDialogs();
+  // 扩展包导入（quest ZIP）：上传即生成新的剧情小游戏，无需改代码。
+  const packImportInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const handleImportPack = async (file: File) => {
+    setImporting(true);
+    try {
+      const result = await importQuestPack(file);
+      toast({
+        message: `已导入「${result.pack.name}」：${result.stats.nodes} 节点 · ${result.stats.items} 道具 · ${result.stats.assets} 图片`,
+        variant: "success",
+      });
+      retry();
+    } catch (err: unknown) {
+      toast({ message: err instanceof Error ? err.message : "扩展包导入失败", variant: "error" });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const [editing, setEditing] = useState<EditablePack | null>(null);
   // 打开编辑器那一刻的快照：与当前 editing 的差异即「未保存修改」。
@@ -735,10 +754,32 @@ export function TaskPacksPage() {
             内容与机制分离：任务文案存库，改动立即对玩家端生效；玩法类型由引擎注册表管理。
           </p>
         </div>
-        <button type="button" className="btn btn-sm gap-1.5 btn-primary" onClick={openNew}>
-          <Plus className="h-4 w-4" />
-          新建小游戏包
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={packImportInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleImportPack(file);
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-sm gap-1.5"
+            disabled={importing}
+            onClick={() => packImportInputRef.current?.click()}
+          >
+            <FileArchive className="h-4 w-4" />
+            {importing ? "导入中…" : "导入扩展包"}
+          </button>
+          <button type="button" className="btn btn-sm gap-1.5 btn-primary" onClick={openNew}>
+            <Plus className="h-4 w-4" />
+            新建小游戏包
+          </button>
+        </div>
       </div>
 
       {error ? (

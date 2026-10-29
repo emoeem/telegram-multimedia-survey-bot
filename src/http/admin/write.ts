@@ -37,6 +37,7 @@ import { handleAdminShowcaseWrite } from "./showcase";
 import { handleAdminTemplatesWrite } from "./templates";
 import { handleAdminUsersWrite } from "./users";
 import { handleAdminLicensesWrite } from "./licenses";
+import { handleQuestPackImport } from "./pack-import";
 import {
   IMPORT_MAX_BYTES,
   QuestionPayload,
@@ -77,6 +78,10 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     body = await readJsonBody(request);
     if (body === null) return fail(400, "invalid_body", "请求体必须是 JSON 对象");
   }
+
+  // 小游戏扩展包导入（multipart ZIP）：自带鉴权与解析，直接短路返回。
+  const questPackResponse = await handleQuestPackImport(request, url, env, ctx);
+  if (questPackResponse) return questPackResponse;
 
   const categoriesResponse = await handleAdminCategoriesWrite(request, url, env, ctx, body);
   if (categoriesResponse) return categoriesResponse;

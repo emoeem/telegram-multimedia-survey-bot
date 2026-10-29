@@ -1275,6 +1275,27 @@ export function createAdminTaskPack(input: AdminTaskPackInput): Promise<{ pack: 
   return apiSend("POST", "/api/admin/task-packs", input as unknown as Record<string, unknown>);
 }
 
+/**
+ * 导入小游戏扩展包（quest ZIP）。multipart 上传，服务端解压校验后直接生成
+ * 一个 game_type="quest" 的任务包——之后改内容就是重新导入一次。
+ */
+export async function importQuestPack(
+  file: File,
+): Promise<{ pack: AdminTaskPack; stats: { nodes: number; items: number; assets: number } }> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/admin/task-packs/import", {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await parseResponse(response)) as {
+    pack: AdminTaskPack;
+    stats: { nodes: number; items: number; assets: number };
+  };
+}
+
 export function updateAdminTaskPack(id: number, input: AdminTaskPackInput): Promise<{ pack: AdminTaskPack }> {
   return apiSend("PUT", `/api/admin/task-packs/${id}`, input as unknown as Record<string, unknown>);
 }

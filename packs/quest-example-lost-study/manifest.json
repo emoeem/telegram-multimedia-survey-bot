@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "id": "example-lost-study",
+  "title": "示例 · 迷失书房",
+  "author": "survey-platform",
+  "description": "扩展包规范的手写示例：分支选择 + 线索 / 收集 / 钥匙三类道具 + 三结局。可直接上传到管理端「任务包 → 导入扩展包」。",
+  "adult": false
+}
