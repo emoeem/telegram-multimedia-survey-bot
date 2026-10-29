@@ -198,6 +198,11 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
   可选项收成折叠条）。删除两处旧 hack（魔法数、矮横屏 fixed）。
   生产实测：1920×1080 舞台 1334×834、底边 996 ≤ 底栏 1006；1440×700 底边 616 ≤ 626；
   两者页面滚动量均为 0。
+- **真实使用反馈修复（2026-10-29，7cce877）**：① fill 模式曾隐藏整行 `.hotspot-meta`，
+  连带丢了「← 返回上一场景」——进入子场景后无法返回（已恢复该行，只隐藏 intro/底注）；
+  ② 舞台壳原为 `height:100dvh` 普通块，页面仍可被浏览器/WebView 滚动，一滚头部
+  （返回/退出/主题）就出画——改为 `position: fixed; inset: 0`，滚动从根上不可能发生。
+  线上产物核对：`survey-stage{position:fixed;inset:0}` 已生效。
 - 待办：① 作者在「问卷设置 → 显示模式」里给具体问卷选版式（默认 auto 不变）；
   ② 真机竖/横屏目检 + 编辑器设备预览四档；③ 清理 `SurveyPreview`（仅剩
   `PreviewAnswer` 被右栏复用），随旧壳一并整理。
