@@ -8,6 +8,7 @@ import {
   type ResolvedHotspotSceneConfig,
 } from "../../../src/survey/hotspot";
 import type { AnswerValue, SurveyMediaDto, SurveyQuestionDto } from "./api";
+import type { SurveyDisplayMode } from "../../../src/survey/display";
 import { preloadImages, shouldSkipPreload } from "./media-preload";
 import { playSfx } from "./sfx";
 import { trapFocusWithin } from "../components/focus-trap";
@@ -26,6 +27,8 @@ interface HotspotSceneProps {
   value: AnswerValue | undefined;
   onChange: (value: AnswerValue) => void;
   disabled?: boolean;
+  /** 问卷显示模式：landscape + 短横屏时场景脱离文档流铺满（见 compactLandscape）。 */
+  display?: SurveyDisplayMode;
 }
 
 interface ModalState {
@@ -60,7 +63,7 @@ export function visitedCountFromAnswer(value: AnswerValue): number {
   return readVisited(value).length;
 }
 
-export function HotspotScene({ question, value, onChange, disabled }: HotspotSceneProps) {
+export function HotspotScene({ question, value, onChange, disabled, display }: HotspotSceneProps) {
   // 阶段 D：存储可能是 {assetId} 结构化引用，渲染前统一解析成公开 URL。
   const config = useMemo<ResolvedHotspotSceneConfig | null>(() => {
     const parsed = parseHotspotScene(question.settings);
@@ -81,6 +84,25 @@ export function HotspotScene({ question, value, onChange, disabled }: HotspotSce
   const cardRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const closeTimer = useRef<number | undefined>(undefined);
+
+  /**
+   * 短横屏沉浸：landscape 模式 + 横屏 + 高度 ≤560px 时，场景层 position:fixed
+   * 铺满视口（按高度反推宽度、保持比例 → 热点坐标不用换算，也不裁切画面）。
+   * 头部与底栏靠 z 层浮在上面——退出/翻页仍可达。卡片内的进度与 intro 隐藏，
+   * 否则它们会把场景挤出首屏（这正是横屏「不够沉浸」的根源）。
+   */
+  const [compactLandscape, setCompactLandscape] = useState(false);
+  useEffect(() => {
+    if (display !== "landscape" || typeof window === "undefined" || !window.matchMedia) {
+      setCompactLandscape(false);
+      return undefined;
+    }
+    const query = window.matchMedia("(orientation: landscape) and (max-height: 560px)");
+    const sync = () => setCompactLandscape(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, [display]);
 
   const visited = readVisited(value);
   const totalHotspots = config
@@ -214,8 +236,8 @@ export function HotspotScene({ question, value, onChange, disabled }: HotspotSce
   const progressLabel = complete ? "全部探索完成" : `已探索 ${visited.length} / ${totalHotspots}`;
 
   return (
-    <div className="hotspot" data-complete={complete ? "true" : undefined}>
-      <p className="hotspot-meta" aria-live="polite">
+    <div className={`hotspot${compactLandscape ? " is-immersive" : ""}`} data-complete={complete ? "true" : undefined}>
+      <p className="hotspot-meta" aria-live="polite" hidden={compactLandscape}>
         <span>{progressLabel}</span>
         {sceneStack.length > 0 ? (
           <button type="button" className="hotspot-back" onClick={goBackScene} disabled={disabled}>
@@ -223,7 +245,7 @@ export function HotspotScene({ question, value, onChange, disabled }: HotspotSce
           </button>
         ) : null}
       </p>
-      {scene.intro ? <p className="hotspot-intro">{scene.intro}</p> : null}
+      {scene.intro && !compactLandscape ? <p className="hotspot-intro">{scene.intro}</p> : null}
 
       <div className="hotspot-stage-wrap">
         <div className="hotspot-stage" style={{ aspectRatio: `${scene.width} / ${scene.height}` }}>

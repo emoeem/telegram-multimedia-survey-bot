@@ -3,6 +3,7 @@ import type { QuestionType } from "../../db/schema";
 import { getMediaAssetByIdStatement, mapMediaAssetStatement } from "../../db/repositories/media.repository";
 import { getQuestionById } from "../../db/repositories/question.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
+import { hasValidAdminSession } from "../admin-session";
 import {
   countTemporaryMediaBytesForResponse,
   MAX_RESPONSE_MEDIA_BYTES,
@@ -21,12 +22,7 @@ import {
 import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
 import { checkRateLimit } from "../../services/rate-limit.service";
 import { r18ParticipantGate } from "../../services/content-rating.service";
-import {
-  ADMIN_SESSION_COOKIE,
-  resolveSessionSecret,
-  verifyAdminSessionValue,
-} from "../../services/admin-session.service";
-import { loadAdminSessionEpoch, loadSystemSettings } from "../../services/system-settings.service";
+import { loadSystemSettings } from "../../services/system-settings.service";
 import { fail, json } from "../api-response";
 import { getSurveyByIdStatement, mapSurveyStatementResult } from "../../db/repositories/survey.repository";
 import { mediaPublicUrl } from "./presentation";
@@ -76,31 +72,6 @@ function edgeCache(): Cache | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Whether the request carries a valid admin session cookie.
- *
- * Only consulted for survey-scope assets that are NOT linked to any
- * once-published survey (draft uploads, detached media): the admin editor
- * previews those through this same public URL, and the browser sends the
- * `admin_session` cookie automatically on same-origin <img>/<audio> requests.
- * Everything else keeps its zero-extra-cost path.
- */
-async function hasValidAdminSession(request: Request, env: Env): Promise<boolean> {
-  const cookie = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
-  if (!cookie) return false;
-  const epoch = await loadAdminSessionEpoch(env.DB);
-  const userId = await verifyAdminSessionValue(
-    resolveSessionSecret(env),
-    cookie.slice(ADMIN_SESSION_COOKIE.length + 1),
-    epoch,
-  );
-  return userId !== null;
 }
 
 /**

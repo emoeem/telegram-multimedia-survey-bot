@@ -214,6 +214,7 @@ import {
   subscribeSfxEnabled,
 } from "./sfx";
 import { HotspotScene } from "./HotspotScene";
+import { LandscapeHint } from "./LandscapeHint";
 import { GamePlayer, type GameAnswerValue } from "./GamePlayer";
 import { PluginGamePlay } from "./PluginGamePlay";
 import { hasClientPlugin } from "../game-plugins/loader";
@@ -2949,6 +2950,12 @@ export function SurveyApp() {
   const isScene = question.type === "scene";
   const isGame = question.type === "game";
   const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
+  // 显示模式（settings_json.display）：auto 现状；immersive/landscape 放宽
+  // 场景与图片类题的容器（文字题仍限宽，见下）。data-display 驱动 CSS。
+  const displayMode = survey.display ?? "auto";
+  const wideDisplay = displayMode !== "auto";
+  // 宽版式下仍限宽的题型：纯文字/选择类。场景与媒体题铺满。
+  const fullBleedQuestion = isScene || isGame || ["image", "video", "audio", "file"].includes(question.type);
   const isLast = index === survey.questions.length - 1;
   // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
   // 无任何跳转条件的问卷，重放结果与线性顺序完全一致（行为兼容）。
@@ -2973,6 +2980,7 @@ export function SurveyApp() {
     <div
       className={`survey-glow min-h-dvh ${navHidden ? "pb-10" : "pb-32"}`}
       data-theme={theme?.preset}
+      data-display={displayMode}
       style={{ ...vars, ...(vnMode ? {} : backgroundStyle) }}
     >
       {vnMode ? (
@@ -2991,6 +2999,14 @@ export function SurveyApp() {
         />
       ) : null}
       <div className="relative z-10">
+        {survey.preview ? (
+          <div
+            className="border-b border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-1.5 text-center text-[11px] font-semibold text-[var(--survey-primary)]"
+            role="status"
+          >
+            预览模式 · 已保存版本 · 提交已禁用
+          </div>
+        ) : null}
         <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
           <div className="mx-auto max-w-xl px-5 pt-3 lg:max-w-3xl">
             <div className="flex items-center justify-between gap-2">
@@ -3062,10 +3078,11 @@ export function SurveyApp() {
         </header>
 
         <main
-          className="mx-auto w-full max-w-xl px-5 pb-2 pt-5 lg:max-w-3xl"
+          className={`mx-auto w-full px-5 pb-2 pt-5 ${wideDisplay ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
+          {displayMode === "landscape" ? <LandscapeHint surveyId={survey.id} /> : null}
           <ParticipantIdentityNotice />
           {sprite ? (
             <SpriteLayer
@@ -3085,7 +3102,11 @@ export function SurveyApp() {
               })()}
             />
           ) : null}
-          <div className={`survey-card p-5 ${isNote ? "survey-card-story" : ""}`}>
+          <div
+            className={`survey-card p-5 ${isNote ? "survey-card-story" : ""} ${
+              wideDisplay && !fullBleedQuestion ? "mx-auto max-w-3xl" : ""
+            }`}
+          >
             {currentPage?.title ? (
               <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
                 {currentPage.title}
@@ -3148,8 +3169,9 @@ export function SurveyApp() {
                     {question.description}
                   </p>
                 ) : null}
-                <div className="mt-4">
+                <div className="mt-4 scene-immersive-host">
                   <HotspotScene
+                    display={displayMode}
                     question={question}
                     value={value}
                     onChange={(next) => {
@@ -3361,7 +3383,7 @@ export function SurveyApp() {
           }`}
         >
           <div
-            className="mx-auto max-w-xl px-4 pt-1 lg:max-w-3xl"
+            className={`mx-auto px-4 pt-1 ${wideDisplay ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
           >
             <div className="flex items-center gap-2 rounded-[20px] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]/90 p-2 shadow-[0_-6px_34px_-14px_rgba(15,23,42,.28)] backdrop-blur">
@@ -3382,8 +3404,12 @@ export function SurveyApp() {
               ) : null}
               <button
                 type="button"
-                onClick={() => void (isLast ? submit() : goNext())}
-                disabled={busy}
+                onClick={() => {
+                  // 预览模式不产生答卷（DevicePreview 的 iframe 是真实页面）。
+                  if (isLast && survey.preview) return;
+                  void (isLast ? submit() : goNext());
+                }}
+                disabled={busy || (isLast && survey.preview === true)}
                 className="btn btn-primary flex-1 font-semibold disabled:opacity-50"
                 style={{ borderRadius: "var(--survey-button-radius, 12px)" }}
               >

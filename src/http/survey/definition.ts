@@ -5,6 +5,7 @@ import type { SystemSettings } from "../../services/system-settings.service";
 import { loadSystemSettings, settingsFromRows } from "../../services/system-settings.service";
 import { resolveSubmissionBotUrl } from "../../services/contact-links.service";
 import { normalizeStoredSurveyTheme } from "../../survey/theme";
+import { readSurveyDisplayMode } from "../../survey/display";
 import {
   listOptionsForSurveyStatement,
   listQuestionsBySurveyStatement,
@@ -36,6 +37,7 @@ export async function loadSurveyDefinition(
   survey: Survey,
   accessGranted: boolean,
   system?: SystemSettings,
+  options: { skipCache?: boolean } = {},
 ): Promise<Record<string, unknown>> {
   const settings = system ?? (await loadSystemSettings(env.DB));
   const gallerySurveyId = Number(settings.profileGallerySurveyId);
@@ -55,6 +57,7 @@ export async function loadSurveyDefinition(
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
       theme: normalizeStoredSurveyTheme(parseSettings(survey.settingsJson)),
+      display: readSurveyDisplayMode(parseSettings(survey.settingsJson)),
       communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       pages: [],
       questions: [],
@@ -70,7 +73,10 @@ export async function loadSurveyDefinition(
   }
 
   const cacheKey = `survey-definition:${SURVEY_DEFINITION_CACHE_VERSION}:${survey.id}:${survey.version}:${survey.updatedAt}`;
-  let definition = await readCachedJson<Record<string, unknown>>(env.CACHE, cacheKey);
+  // 草稿预览（管理员会话）绕过共享缓存：否则未发布内容会写进与已发布
+  // 问卷同键的缓存条目。skipCache 只影响预览请求，其余路径零成本。
+  const skipCache = options.skipCache === true;
+  let definition = skipCache ? null : await readCachedJson<Record<string, unknown>>(env.CACHE, cacheKey);
   if (!definition) {
     // Cold path: questions, options, pages and the two media joins are all
     // independent reads — one batch instead of four sequential round trips.
@@ -152,6 +158,7 @@ export async function loadSurveyDefinition(
       allowMultiple: survey.allowMultipleResponses,
       maxResponses: survey.maxResponsesPerUser,
       theme: normalizeStoredSurveyTheme(parseSettings(survey.settingsJson)),
+      display: readSurveyDisplayMode(parseSettings(survey.settingsJson)),
       communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
       pages: (pages.results ?? []).map((page) => ({
         id: page.id,
@@ -161,7 +168,9 @@ export async function loadSurveyDefinition(
       })),
       questions,
     };
-    await writeCachedJson(env.CACHE, cacheKey, definition, SURVEY_DEFINITION_CACHE_TTL_SECONDS);
+    if (!skipCache) {
+      await writeCachedJson(env.CACHE, cacheKey, definition, SURVEY_DEFINITION_CACHE_TTL_SECONDS);
+    }
   }
 
   return {

@@ -26,7 +26,7 @@ import { SurveySettingsPanel } from "../components/editor/SurveySettingsPanel";
 import { EditableTitle } from "../components/editor/EditableTitle";
 import { LivePreview } from "../components/editor/LivePreview";
 import { TrialPlay } from "../components/editor/TrialPlay";
-import { SurveyPreview } from "../components/editor/SurveyPreview";
+import { DevicePreview } from "../components/editor/DevicePreview";
 import { useSurveyEditor } from "../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../editor/previewModel";
 import { useEditorActions } from "../editor/editor-actions";
@@ -393,6 +393,7 @@ function EditableEditor({ data }: { data: EditorData }) {
                 meta={editor.surveyMeta}
                 disabled={editingDisabled}
                 coinAccess={data.coinAccess ?? { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null }}
+                display={data.survey.display ?? "auto"}
                 onUpdate={(patch) => editor.updateSurveyMeta(patch)}
               />
             </div>
@@ -569,13 +570,11 @@ function EditableEditor({ data }: { data: EditorData }) {
       </div>
 
       {previewOpen ? (
-        <SurveyPreview
+        <DevicePreview
+          surveyId={survey.id}
           title={editor.surveyMeta.title}
-          description={editor.surveyMeta.description}
-          questions={previewQuestions}
-          dirty={editor.dirty}
+          display={data.survey.display ?? "auto"}
           onClose={() => setPreviewOpen(false)}
-          preset={data.survey.theme?.preset ?? null}
         />
       ) : null}
 
@@ -736,13 +735,11 @@ function ReadOnlyEditor({ data }: { data: EditorData }) {
       </div>
 
       {previewOpen ? (
-        <SurveyPreview
+        <DevicePreview
+          surveyId={survey.id}
           title={survey.title}
-          description={survey.description ?? ""}
-          questions={previewQuestions}
-          dirty={false}
+          display={data.survey.display ?? "auto"}
           onClose={() => setPreviewOpen(false)}
-          preset={data.survey.theme?.preset ?? null}
         />
       ) : null}
     </div>

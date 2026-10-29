@@ -3,6 +3,11 @@ import { ApiError, apiSend, generateResultPool } from "../../api";
 import { useApi } from "../../hooks";
 import type { SurveyMetaState } from "../../editor/useSurveyEditor";
 import { ResultRulesPanel } from "./ResultRulesPanel";
+import {
+  SURVEY_DISPLAY_MODES,
+  SURVEY_DISPLAY_MODE_LABELS,
+  type SurveyDisplayMode,
+} from "../../../../src/survey/display";
 
 /**
  * 问卷设置面板（S2 从 EditorPage 抽出，两套壳共用）：
@@ -14,6 +19,7 @@ export function SurveySettingsPanel({
   meta,
   disabled,
   coinAccess,
+  display,
   onUpdate,
 }: {
   surveyId: number;
@@ -21,6 +27,8 @@ export function SurveySettingsPanel({
   meta: SurveyMetaState;
   disabled: boolean;
   coinAccess: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
+  /** 当前显示模式（settings_json.display）；设置面板里独立保存，不走 meta 队列。 */
+  display: SurveyDisplayMode;
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
 }) {
   return (
@@ -69,6 +77,8 @@ export function SurveySettingsPanel({
       <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
 
       <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
+
+      <DisplayModeSetting surveyId={surveyId} initial={display} disabled={disabled} />
 
       <div className="settings-check">
         <div>
@@ -335,5 +345,84 @@ function ReportTemplateSetting({
       </select>
       <span className="q-help">发布后，填写者看到的个人结果报告会使用这里指定的模板。</span>
     </label>
+  );
+}
+
+/**
+ * 显示模式（settings_json.display）：auto / immersive / landscape。
+ *
+ * 独立立即保存（与金币解锁同一模式），不进 meta 的待保存队列——显示模式
+ * 是版式取向，改完立刻想看到效果，跟着标题打字一起排队反而绕。
+ * 文案与答题端行为一一对应，见 src/survey/display.ts。
+ */
+function DisplayModeSetting({
+  surveyId,
+  initial,
+  disabled,
+}: {
+  surveyId: number;
+  initial: SurveyDisplayMode;
+  disabled: boolean;
+}) {
+  const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValue(initial);
+  }, [initial]);
+
+  const save = async (next: SurveyDisplayMode) => {
+    if (next === value || busy) return;
+    const previous = value;
+    setValue(next); // 乐观更新：失败回滚
+    setBusy(true);
+    setError(null);
+    try {
+      await apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { display: next });
+    } catch (err) {
+      setValue(previous);
+      setError(err instanceof ApiError ? err.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-check-block">
+      <div>
+        <div className="q-label">显示模式</div>
+        <div className="q-help">决定答题页在电脑与手机上的版式；随时可改，立即生效。</div>
+      </div>
+      <div className="mt-2 grid gap-2" role="radiogroup" aria-label="显示模式">
+        {SURVEY_DISPLAY_MODES.map((mode) => {
+          const { title, hint } = SURVEY_DISPLAY_MODE_LABELS[mode];
+          const active = value === mode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={disabled || busy}
+              onClick={() => void save(mode)}
+              className={`rounded-control border px-3 py-2 text-left text-xs transition ${
+                active
+                  ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--surface))]"
+                  : "border-[var(--color-edge)] hover:bg-[var(--surface-hover)]"
+              }`}
+            >
+              <div className="font-semibold">{title}</div>
+              <div className="mt-0.5 text-[var(--color-muted)]">{hint}</div>
+            </button>
+          );
+        })}
+      </div>
+      {error ? (
+        <div className="mt-1 text-xs text-[var(--app-danger)]" role="alert">
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }

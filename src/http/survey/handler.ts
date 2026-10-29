@@ -1,6 +1,7 @@
 import type { Env } from "../../index";
 import { verifySurveyAccessCode } from "../../core/security";
 import { getSurveyByIdStatement, mapSurveyStatementResult } from "../../db/repositories/survey.repository";
+import { hasValidAdminSession } from "../admin-session";
 import { getUserById } from "../../db/repositories/user.repository";
 import { getParticipantLink, participantHashForKey } from "../../db/repositories/participant-link.repository";
 import {
@@ -264,7 +265,15 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
       env.DB.prepare(`SELECT key, value FROM system_settings ORDER BY key ASC`),
     ]);
     const survey = mapSurveyStatementResult(surveyResult);
-    if (!survey || survey.status !== "published") {
+    // 设备预览旁路（editor DevicePreview 的 iframe 加载真实 /s/:id）：仅当
+    // 显式带 ?preview=1 **且** 请求携带有效管理员会话时，非发布问卷也可读。
+    // 语义：预览 =「同一请求者在该问卷当前状态下的真实所见 + 允许非发布状态」——
+    // r18/密码/金币门全部照常生效（作者能顺便验证这些交付门怎么拦人），
+    // 只多一条：草稿内容可读。另两个约束：不写共享缓存（definition.ts
+    // skipCache，防草稿内容污染已发布缓存）、只在 GET 定义端点生效。
+    const previewParam = url.searchParams.get("preview") === "1";
+    const adminPreview = previewParam && (await hasValidAdminSession(request, env));
+    if (!survey || (survey.status !== "published" && !adminPreview)) {
       return fail(404, "survey_unavailable", "问卷不存在或未发布");
     }
     // r18 门（0080）：先于访问密码/金币解锁——未确认年龄的访问者连锁定
@@ -302,7 +311,11 @@ export async function handleSurveyApiRequest(request: Request, env: Env, url: UR
         });
       }
     }
-    return json({ ...(await loadSurveyDefinition(env, request, survey, accessGranted, system)), streamVideo });
+    return json({
+      ...(await loadSurveyDefinition(env, request, survey, accessGranted, system, { skipCache: adminPreview })),
+      streamVideo,
+      ...(adminPreview ? { preview: true } : {}),
+    });
   }
 
   // 单卷结局图鉴（0086）：当前参与者在某卷上的解锁进度。需要身份（个人数据）。

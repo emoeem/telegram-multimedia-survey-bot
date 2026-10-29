@@ -13,7 +13,7 @@ import {
 import { arrayMove } from "@dnd-kit/sortable";
 import type { EditorData } from "../../../api";
 import { StatusBadge } from "../../ui";
-import { SurveyPreview } from "../SurveyPreview";
+import { DevicePreview } from "../DevicePreview";
 import { TypePickerSheet } from "../TypePickerSheet";
 import { EditableTitle } from "../EditableTitle";
 import type { BuilderSelection } from "../StructureTree";
@@ -397,13 +397,13 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       ) : null}
 
       {previewOpen ? (
-        <SurveyPreview
+        // 全屏预览 = 真实页面的设备预览（含场景题、跟随显示模式）。
+        // 未保存修改的近似预览在右栏 LivePreview，两者分工见 DevicePreview 注释。
+        <DevicePreview
+          surveyId={survey.id}
           title={editor.surveyMeta.title}
-          description={editor.surveyMeta.description}
-          questions={previewQuestions}
-          dirty={editor.dirty}
+          display={data.survey.display ?? "auto"}
           onClose={() => setPreviewOpen(false)}
-          preset={survey.theme?.preset ?? null}
         />
       ) : null}
 
