@@ -58,7 +58,11 @@ const MEDIA_REFS = [
   { mediaAssetId: 904, mediaType: "photo", fileName: "detail-book.webp", mimeType: "image/webp" },
 ];
 
-/** 配置里存的是公开 URL（/api/survey/media/<id>），编辑器显示走 admin URL。 */
+/**
+ * 种子配置故意用**旧形态**（公开 URL `/api/survey/media/<id>`）——读侧双读必须
+ * 兼容存量数据。写侧（阶段 D）保存时一律改成 `{assetId}`，因此下面的保存断言
+ * 期待结构化形态；编辑器里的显示仍映射为 admin URL（/api/admin/media/<id>/image）。
+ */
 const SCENE = {
   version: 1,
   start: "room",
@@ -373,7 +377,7 @@ test("拖拽新建热点 → 选图 → 保存写回完整场景配置", async (
   expect(lamp, "新热点必须写进 settings.scene").toMatchObject({
     id: "h4",
     meta: "03",
-    action: { kind: "image", src: "/api/survey/media/903", title: "台灯" },
+    action: { kind: "image", src: { assetId: 903 }, title: "台灯" },
   });
 
   // 保存成功后基线更新：未保存标记消失，按钮回到禁用。
@@ -481,7 +485,8 @@ test("新增场景、设起始、场景跳转动作一起保存", async ({ page 
     hotspots: JsonRecord[];
   };
   expect(added.title).toBe("书房角落");
-  expect(added.image).toBe("/api/survey/media/901");
+  // 阶段 D 写侧：从素材库选图存 {assetId}（并登记 question_media）。
+  expect(added.image).toEqual({ assetId: 901 });
   expect(added.width).toBe(1600);
   expect(added.height).toBe(1000);
   expect(added.hotspots[0]).toMatchObject({
@@ -517,7 +522,7 @@ test("上传图片会刷新 baseUpdatedAt，随后保存不再 409", async ({ pa
     baseUpdatedAt: "2026-10-27T11:30:00Z",
   });
   const windowSpot = savedHotspots(state.patches[0]!).find((hotspot) => hotspot.id === "h1")!;
-  expect(windowSpot.action).toMatchObject({ kind: "image", src: "/api/survey/media/905" });
+  expect(windowSpot.action).toMatchObject({ kind: "image", src: { assetId: 905 } });
 });
 
 test("只读：已发布或有答卷时禁用保存与拖拽并说明原因", async ({ page }) => {
