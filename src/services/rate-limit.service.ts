@@ -267,15 +267,25 @@ export function buildAtomicRateLimitStatement(
  * one — twenty anonymous visitors exhaust the whole site's allowance. Skipping
  * the limiter is the lesser failure, and the caller logs it (fail-open +
  * observable). The statement keeps its slot in a `db.batch()` so callers do not
- * have to renumber their result indexes; it yields count 0, i.e. "never over".
+ * have to renumber their result indexes.
+ *
+ * The sentinel is **-1**, not 0: {@link atomicRateLimitCount} clamps a missing
+ * result to 1, and the old `SELECT 0` was read back through that same clamp —
+ * the comment said "count 0" while every caller actually saw 1. Harmless while
+ * every gate was `> limit`, but any future `count >= 1` gate would have turned
+ * "skipped" into "fired on first use site-wide". -1 is handled explicitly and
+ * reads back as 0 ("never counted").
  */
 export function skipAtomicRateLimitStatement(db: D1Database): D1PreparedStatement {
-  return db.prepare("SELECT 0 AS count");
+  return db.prepare("SELECT -1 AS count");
 }
 
 /** The count produced by {@link buildAtomicRateLimitStatement}, however it was executed. */
 export function atomicRateLimitCount(result: { count?: unknown } | null | undefined): number {
-  const count = Number(result?.count ?? 1);
+  const raw = result?.count;
+  // skipAtomicRateLimitStatement 的哨兵：显式的「这一道没计数」，读回 0。
+  if (raw === -1) return 0;
+  const count = Number(raw ?? 1);
   return Number.isFinite(count) && count > 0 ? count : 1;
 }
 
