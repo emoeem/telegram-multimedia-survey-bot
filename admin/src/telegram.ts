@@ -3,6 +3,11 @@ interface TelegramWebApp {
   ready?: () => void;
   expand?: () => void;
   setHeaderColor?: (color: string) => void;
+  /** Mini App 内的震动通路：iOS 上 navigator.vibrate 不存在，只有这条会真的震。 */
+  HapticFeedback?: {
+    notificationOccurred?: (type: "error" | "success" | "warning") => void;
+    impactOccurred?: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
+  };
 }
 
 const TELEGRAM_BRIDGE_URL = "https://telegram.org/js/telegram-web-app.js";
