@@ -215,6 +215,9 @@ import {
 } from "./sfx";
 import { HotspotScene } from "./HotspotScene";
 import { LandscapeHint } from "./LandscapeHint";
+import { StageLayout } from "./StageLayout";
+import { useViewportSize } from "./useViewportSize";
+import { resolveSurveyLayout } from "../../../src/survey/layout";
 import { GamePlayer, type GameAnswerValue } from "./GamePlayer";
 import { PluginGamePlay } from "./PluginGamePlay";
 import { hasClientPlugin } from "../game-plugins/loader";
@@ -2091,6 +2094,11 @@ function AccessScreen({
 }
 
 export function SurveyApp() {
+  // 视口尺寸供布局契约裁决（src/survey/layout.ts）。必须放在组件**最顶部**：
+  // 下面有十几个按 pathname / screen.kind 的提前 return，把 hook 放在它们之后
+  // 会让「加载中」与「已加载」两次渲染的 hook 数量不同，React 直接抛 #310
+  // （Rendered more hooks than during the previous render），整页白屏。
+  const viewportSize = useViewportSize();
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
   if (window.location.pathname === "/series" || window.location.pathname.startsWith("/series/")) {
     return (
@@ -2950,12 +2958,14 @@ export function SurveyApp() {
   const isScene = question.type === "scene";
   const isGame = question.type === "game";
   const vnMode = survey.theme?.vn === true && !resolvedUserPreset;
-  // 显示模式（settings_json.display）：auto 现状；immersive/landscape 放宽
-  // 场景与图片类题的容器（文字题仍限宽，见下）。data-display 驱动 CSS。
   const displayMode = survey.display ?? "auto";
-  const wideDisplay = displayMode !== "auto";
-  // 宽版式下仍限宽的题型：纯文字/选择类。场景与媒体题铺满。
-  const fullBleedQuestion = isScene || isGame || ["image", "video", "audio", "file"].includes(question.type);
+  // 布局裁决（唯一入口，见 src/survey/layout.ts）：决定走阅读版式还是舞台版式。
+  // reading = 现状滚动卡片；stage = 视口高度 flex 列，舞台吃掉剩余空间。
+  const layout = resolveSurveyLayout({ display: displayMode, questionType: question.type, viewport: viewportSize });
+  // 本轮只有场景题实现了 fill 渲染；小游戏/视频接入后逐个放开（契约先立住）。
+  const stageLayout = layout === "stage" && isScene;
+  // 宽版式但非舞台（如桌面上的文字题）：卡片放宽到易读上限。
+  const wideReading = displayMode !== "auto" && !stageLayout;
   const isLast = index === survey.questions.length - 1;
   // 进度按「当前路线」计数（routeProgress）：剧情文段不占步数，分支下不再跳变。
   // 无任何跳转条件的问卷，重放结果与线性顺序完全一致（行为兼容）。
@@ -2976,11 +2986,104 @@ export function SurveyApp() {
   // 覆盖整份主题，因此 `theme` 里没有 sprite 时立绘层整块不渲染。
   const sprite = resolveSprite(theme, question.order, pageIndex);
 
+  /**
+   * 最后一题的「公开发布」选项：两套版式共用同一份（阅读版式跟在卡片后，
+   * 舞台版式作为 StageLayout 的 trailing 区），避免两处各写一遍。
+   */
+  const publishOptions = isLast ? (
+    <>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+        <input
+          type="checkbox"
+          className="checkbox checkbox-primary mt-0.5 shrink-0"
+          checked={publishToTelegram}
+          disabled={busy}
+          onChange={(event) => setPublishToTelegram(event.target.checked)}
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-[var(--survey-heading)]">
+            <Megaphone className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+            公开发布到 Telegram
+          </span>
+          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+            发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。
+          </span>
+        </span>
+      </label>
+      {survey.galleryProfile?.enabled && survey.galleryProfile.canPublish ? (
+        <>
+          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-primary mt-0.5 shrink-0"
+              checked={publishToGallery}
+              disabled={busy}
+              onChange={(event) => setPublishToGallery(event.target.checked)}
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-[var(--survey-heading)]">
+                <Globe className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                发布到个人画廊
+              </span>
+              <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                默认不展示 Telegram 个人信息，你还可以选择画廊封面
+              </span>
+            </span>
+          </label>
+          {publishToGallery ? (
+            <div className="mt-2 space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-primary mt-0.5 shrink-0"
+                  checked={galleryShowUsername}
+                  disabled={busy}
+                  onChange={(event) => setGalleryShowUsername(event.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
+                    勾选后，资料卡会显示你的 Telegram 用户名和姓名
+                  </span>
+                </span>
+              </label>
+              <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
+                <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
+                <select
+                  className="select mt-2 w-full"
+                  value={galleryCoverMediaId ?? ""}
+                  onChange={(event) => setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)}
+                >
+                  <option value="">默认第一张图片</option>
+                  {survey.questions
+                    .filter((item) => ["image", "video", "audio", "file"].includes(item.type))
+                    .map((item) => {
+                      const answer = answers[item.id];
+                      const media =
+                        answer && typeof answer === "object" && !Array.isArray(answer) && "mediaAssetId" in answer
+                          ? answer.mediaAssetId
+                          : null;
+                      return typeof media === "number" ? (
+                        <option key={item.id} value={media}>
+                          {item.title}
+                        </option>
+                      ) : null;
+                    })}
+                </select>
+              </label>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  ) : null;
+
   return (
     <div
-      className={`survey-glow min-h-dvh ${navHidden ? "pb-10" : "pb-32"}`}
+      className={`survey-glow ${stageLayout ? "survey-stage" : `min-h-dvh ${navHidden ? "pb-10" : "pb-32"}`}`}
       data-theme={theme?.preset}
       data-display={displayMode}
+      data-layout={layout}
       style={{ ...vars, ...(vnMode ? {} : backgroundStyle) }}
     >
       {vnMode ? (
@@ -2998,7 +3101,7 @@ export function SurveyApp() {
           }}
         />
       ) : null}
-      <div className="relative z-10">
+      <div className={stageLayout ? "survey-stage-inner" : "relative z-10"}>
         {survey.preview ? (
           <div
             className="border-b border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-1.5 text-center text-[11px] font-semibold text-[var(--survey-primary)]"
@@ -3059,7 +3162,7 @@ export function SurveyApp() {
                 <ArrowRight className="h-3.5 w-3.5" />
               </a>
             ) : null}
-            <div className="flex items-center gap-3 pb-3 pt-2.5">
+            <div className="survey-header-progress flex items-center gap-3 pb-3 pt-2.5">
               <div className="survey-progress-track flex-1">
                 <div className="survey-progress-bar" style={{ width: `${percent}%` }} />
               </div>
@@ -3078,7 +3181,11 @@ export function SurveyApp() {
         </header>
 
         <main
-          className={`mx-auto w-full px-5 pb-2 pt-5 ${wideDisplay ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}
+          className={
+            stageLayout
+              ? "survey-stage-main"
+              : `mx-auto w-full px-5 pb-2 pt-5 ${wideReading ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`
+          }
           onFocusCapture={handleInputFocus}
           onBlurCapture={handleInputBlur}
         >
@@ -3102,288 +3209,231 @@ export function SurveyApp() {
               })()}
             />
           ) : null}
-          <div
-            className={`survey-card p-5 ${isNote ? "survey-card-story" : ""} ${
-              wideDisplay && !fullBleedQuestion ? "mx-auto max-w-3xl" : ""
-            }`}
-          >
-            {currentPage?.title ? (
-              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
-                {currentPage.title}
-              </p>
-            ) : null}
-            {isNote && vnMode ? (
-              <>
-                <MediaBlock urls={question.media} type="image" />
-                {/* VN 对话框：名牌 + 打字机正文 + 继续，替代表单式叙事卡。 */}
-                <div className="fixed bottom-0 left-0 right-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
-                  <div className="relative mx-auto max-w-xl rounded-2xl border border-white/25 bg-black/70 px-5 py-4 text-white shadow-2xl backdrop-blur-md">
-                    {question.settings?.speaker ? (
-                      <span className="absolute -top-3.5 left-4 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-xs font-bold shadow-lg">
-                        {String(question.settings.speaker)}
-                      </span>
-                    ) : null}
-                    <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[15px] leading-7">
-                      <Typewriter text={question.description || question.title || ""} enabled />
-                    </p>
-                    <button
-                      type="button"
-                      className="mt-2 flex w-full items-center justify-end gap-1 text-sm font-semibold text-amber-300"
-                      onClick={() => void goNext()}
-                    >
-                      继续 <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : isNote ? (
-              <>
-                {question.title ? (
-                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    <BookOpen className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-                    <Typewriter text={question.title} enabled={vnMode} className="whitespace-pre-wrap" />
-                  </h1>
-                ) : null}
-                {question.description ? (
-                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
-                    <Typewriter text={question.description} enabled={vnMode} />
-                  </p>
-                ) : null}
-                <MediaBlock urls={question.media} type="image" />
-              </>
-            ) : isScene ? (
-              /* 互动场景：叙事头 + 热点查看器；question.media 是场景图的
-               * 素材池（含内层图），由 HotspotScene 按 URL 取用，不再整列渲染。 */
-              <>
-                {question.title ? (
-                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+          {stageLayout ? (
+            <StageLayout
+              heading={
+                question.title ? (
+                  <h1 className="text-base font-bold tracking-tight text-[var(--survey-heading)]">
                     <MousePointerClick
                       className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
                       aria-hidden="true"
                     />
                     {question.title}
                   </h1>
-                ) : null}
-                {question.description ? (
-                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
-                    {question.description}
-                  </p>
-                ) : null}
-                <div className="mt-4 scene-immersive-host">
-                  <HotspotScene
-                    display={displayMode}
-                    question={question}
-                    value={value}
-                    onChange={(next) => {
-                      updateAnswer(question.id, next);
-                      // 探索即落库：与文本输入「翻题才存」不同，点击热点本身就是
-                      // 要被记录的数据，关页/断网不该丢掉已看过的内容。
-                      if (screen.responseId > 0) {
-                        saveQueue.enqueue({ questionId: question.id, value: next });
-                      }
-                    }}
-                    disabled={busy}
-                  />
-                </div>
-              </>
-            ) : isGame ? (
-              /* 小游戏挑战：叙事头 + 内嵌玩法；成绩在结算时写回答卷。 */
-              <>
-                {question.title ? (
-                  <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                    <Trophy className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-                    {question.title}
-                  </h1>
-                ) : null}
-                {question.description ? (
-                  <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
-                    {question.description}
-                  </p>
-                ) : null}
-                {(() => {
-                  const gameSettings = parseGameQuestionSettings(question.settings);
-                  const pluginId = gameSettings?.gameType;
-                  // 渲染器选择：tower 走内置爬塔组件；已注册插件走插件宿主。
-                  // 插件宿主不会拿到任务包配置（含正确项），只吃服务端视图。
-                  if (gameSettings && pluginId && pluginId !== "tower" && hasClientPlugin(pluginId)) {
+                ) : null
+              }
+              stage={
+                <HotspotScene
+                  fill
+                  display={displayMode}
+                  question={question}
+                  value={value}
+                  onChange={(next) => {
+                    updateAnswer(question.id, next);
+                    if (screen.responseId > 0) {
+                      saveQueue.enqueue({ questionId: question.id, value: next });
+                    }
+                  }}
+                  disabled={busy}
+                />
+              }
+              trailing={publishOptions}
+            />
+          ) : (
+            <div
+              className={`survey-card p-5 ${isNote ? "survey-card-story" : ""} ${
+                wideReading ? "mx-auto max-w-3xl" : ""
+              }`}
+            >
+              {currentPage?.title ? (
+                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--survey-primary)]">
+                  {currentPage.title}
+                </p>
+              ) : null}
+              {isNote && vnMode ? (
+                <>
+                  <MediaBlock urls={question.media} type="image" />
+                  {/* VN 对话框：名牌 + 打字机正文 + 继续，替代表单式叙事卡。 */}
+                  <div className="fixed bottom-0 left-0 right-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)]">
+                    <div className="relative mx-auto max-w-xl rounded-2xl border border-white/25 bg-black/70 px-5 py-4 text-white shadow-2xl backdrop-blur-md">
+                      {question.settings?.speaker ? (
+                        <span className="absolute -top-3.5 left-4 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1 text-xs font-bold shadow-lg">
+                          {String(question.settings.speaker)}
+                        </span>
+                      ) : null}
+                      <p className="mt-1 min-h-[3rem] whitespace-pre-wrap text-[15px] leading-7">
+                        <Typewriter text={question.description || question.title || ""} enabled />
+                      </p>
+                      <button
+                        type="button"
+                        className="mt-2 flex w-full items-center justify-end gap-1 text-sm font-semibold text-amber-300"
+                        onClick={() => void goNext()}
+                      >
+                        继续 <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : isNote ? (
+                <>
+                  {question.title ? (
+                    <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                      <BookOpen className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                      <Typewriter text={question.title} enabled={vnMode} className="whitespace-pre-wrap" />
+                    </h1>
+                  ) : null}
+                  {question.description ? (
+                    <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                      <Typewriter text={question.description} enabled={vnMode} />
+                    </p>
+                  ) : null}
+                  <MediaBlock urls={question.media} type="image" />
+                </>
+              ) : isScene ? (
+                /* 互动场景：叙事头 + 热点查看器；question.media 是场景图的
+                 * 素材池（含内层图），由 HotspotScene 按 URL 取用，不再整列渲染。 */
+                <>
+                  {question.title ? (
+                    <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                      <MousePointerClick
+                        className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
+                        aria-hidden="true"
+                      />
+                      {question.title}
+                    </h1>
+                  ) : null}
+                  {question.description ? (
+                    <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                      {question.description}
+                    </p>
+                  ) : null}
+                  <div className="mt-4 scene-immersive-host">
+                    <HotspotScene
+                      display={displayMode}
+                      question={question}
+                      value={value}
+                      onChange={(next) => {
+                        updateAnswer(question.id, next);
+                        // 探索即落库：与文本输入「翻题才存」不同，点击热点本身就是
+                        // 要被记录的数据，关页/断网不该丢掉已看过的内容。
+                        if (screen.responseId > 0) {
+                          saveQueue.enqueue({ questionId: question.id, value: next });
+                        }
+                      }}
+                      disabled={busy}
+                    />
+                  </div>
+                </>
+              ) : isGame ? (
+                /* 小游戏挑战：叙事头 + 内嵌玩法；成绩在结算时写回答卷。 */
+                <>
+                  {question.title ? (
+                    <h1 className="mt-1 text-base font-bold tracking-tight text-[var(--survey-heading)]">
+                      <Trophy className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                      {question.title}
+                    </h1>
+                  ) : null}
+                  {question.description ? (
+                    <p className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[var(--survey-body)]">
+                      {question.description}
+                    </p>
+                  ) : null}
+                  {(() => {
+                    const gameSettings = parseGameQuestionSettings(question.settings);
+                    const pluginId = gameSettings?.gameType;
+                    // 渲染器选择：tower 走内置爬塔组件；已注册插件走插件宿主。
+                    // 插件宿主不会拿到任务包配置（含正确项），只吃服务端视图。
+                    if (gameSettings && pluginId && pluginId !== "tower" && hasClientPlugin(pluginId)) {
+                      return (
+                        <PluginGamePlay
+                          packId={gameSettings.packId}
+                          pluginId={pluginId}
+                          value={value}
+                          disabled={busy}
+                          onResult={(next: GameAnswerValue) => {
+                            updateAnswer(question.id, next);
+                            if (screen.responseId > 0) {
+                              saveQueue.enqueue({ questionId: question.id, value: next });
+                            }
+                          }}
+                        />
+                      );
+                    }
                     return (
-                      <PluginGamePlay
-                        packId={gameSettings.packId}
-                        pluginId={pluginId}
+                      <GamePlayer
+                        packId={gameSettings?.packId ?? null}
                         value={value}
                         disabled={busy}
                         onResult={(next: GameAnswerValue) => {
                           updateAnswer(question.id, next);
+                          // 结算即落库（与 scene 同理）：成绩是要被记录的数据。
                           if (screen.responseId > 0) {
                             saveQueue.enqueue({ questionId: question.id, value: next });
                           }
                         }}
                       />
                     );
-                  }
-                  return (
-                    <GamePlayer
-                      packId={gameSettings?.packId ?? null}
-                      value={value}
-                      disabled={busy}
-                      onResult={(next: GameAnswerValue) => {
-                        updateAnswer(question.id, next);
-                        // 结算即落库（与 scene 同理）：成绩是要被记录的数据。
-                        if (screen.responseId > 0) {
-                          saveQueue.enqueue({ questionId: question.id, value: next });
-                        }
-                      }}
-                    />
-                  );
-                })()}
-              </>
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
-                    {question.title}
-                  </h1>
-                  {question.required ? <span className="badge badge-red mt-1 shrink-0">必答</span> : null}
-                </div>
-                {question.description ? (
-                  <ExpandableText
-                    className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--survey-muted)]"
-                    text={question.description}
-                  />
-                ) : null}
-                <MediaBlock
-                  urls={question.media}
-                  type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"}
-                />
-                <div className="mt-5">
-                  <QuestionAnswer
-                    question={question}
-                    value={value}
-                    onChange={(next) => updateAnswer(question.id, next)}
-                    disabled={busy}
-                    streamVideo={survey?.streamVideo}
-                  />
-                </div>
-              </>
-            )}
-            {error ? <p className="mt-4 text-sm font-medium text-[var(--app-danger)]">{error}</p> : null}
-            {failedSaveQuestion !== null ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3.5 py-2.5">
-                <span className="text-xs leading-5 text-[var(--survey-body)]">
-                  第 {failedSaveQuestion} 题的答案没能保存上，提交前需要重试；重新作答该题也可以。
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-xs shrink-0"
-                  style={{ backgroundColor: "var(--survey-card-bg)", borderColor: "var(--survey-card-border)" }}
-                  onClick={retryFailedSaves}
-                >
-                  重试保存
-                </button>
-              </div>
-            ) : null}
-          </div>
-          {isLast ? (
-            <>
-              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-primary mt-0.5 shrink-0"
-                  checked={publishToTelegram}
-                  disabled={busy}
-                  onChange={(event) => setPublishToTelegram(event.target.checked)}
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-[var(--survey-heading)]">
-                    <Megaphone className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-                    公开发布到 Telegram
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-                    发布到与投稿机器人相同的目标群组；报告会按分页生成图片并以 Telegram 相册发送。
-                  </span>
-                </span>
-              </label>
-              {survey.galleryProfile?.enabled && survey.galleryProfile.canPublish ? (
-                <>
-                  <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3.5">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-primary mt-0.5 shrink-0"
-                      checked={publishToGallery}
-                      disabled={busy}
-                      onChange={(event) => setPublishToGallery(event.target.checked)}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-[var(--survey-heading)]">
-                        <Globe className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-                        发布到个人画廊
-                      </span>
-                      <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-                        默认不展示 Telegram 个人信息，你还可以选择画廊封面
-                      </span>
-                    </span>
-                  </label>
-                  {publishToGallery ? (
-                    <div className="mt-2 space-y-2">
-                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-primary mt-0.5 shrink-0"
-                          checked={galleryShowUsername}
-                          disabled={busy}
-                          onChange={(event) => setGalleryShowUsername(event.target.checked)}
-                        />
-                        <span className="min-w-0">
-                          <span className="block font-semibold text-[var(--survey-heading)]">展示 Telegram 用户名</span>
-                          <span className="mt-0.5 block text-xs leading-5 text-[var(--survey-muted)]">
-                            勾选后，资料卡会显示你的 Telegram 用户名和姓名
-                          </span>
-                        </span>
-                      </label>
-                      <label className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 text-sm">
-                        <span className="block font-semibold text-[var(--survey-heading)]">画廊封面</span>
-                        <select
-                          className="select mt-2 w-full"
-                          value={galleryCoverMediaId ?? ""}
-                          onChange={(event) =>
-                            setGalleryCoverMediaId(event.target.value ? Number(event.target.value) : null)
-                          }
-                        >
-                          <option value="">默认第一张图片</option>
-                          {survey.questions
-                            .filter((item) => ["image", "video", "audio", "file"].includes(item.type))
-                            .map((item) => {
-                              const answer = answers[item.id];
-                              const media =
-                                answer &&
-                                typeof answer === "object" &&
-                                !Array.isArray(answer) &&
-                                "mediaAssetId" in answer
-                                  ? answer.mediaAssetId
-                                  : null;
-                              return typeof media === "number" ? (
-                                <option key={item.id} value={media}>
-                                  {item.title}
-                                </option>
-                              ) : null;
-                            })}
-                        </select>
-                      </label>
-                    </div>
-                  ) : null}
+                  })()}
                 </>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <h1 className="min-w-0 text-[22px] font-bold leading-snug tracking-tight text-[var(--survey-heading)]">
+                      {question.title}
+                    </h1>
+                    {question.required ? <span className="badge badge-red mt-1 shrink-0">必答</span> : null}
+                  </div>
+                  {question.description ? (
+                    <ExpandableText
+                      className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--survey-muted)]"
+                      text={question.description}
+                    />
+                  ) : null}
+                  <MediaBlock
+                    urls={question.media}
+                    type={question.type === "video" ? "video" : question.type === "audio" ? "audio" : "image"}
+                  />
+                  <div className="mt-5">
+                    <QuestionAnswer
+                      question={question}
+                      value={value}
+                      onChange={(next) => updateAnswer(question.id, next)}
+                      disabled={busy}
+                      streamVideo={survey?.streamVideo}
+                    />
+                  </div>
+                </>
+              )}
+              {error ? <p className="mt-4 text-sm font-medium text-[var(--app-danger)]">{error}</p> : null}
+              {failedSaveQuestion !== null ? (
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3.5 py-2.5">
+                  <span className="text-xs leading-5 text-[var(--survey-body)]">
+                    第 {failedSaveQuestion} 题的答案没能保存上，提交前需要重试；重新作答该题也可以。
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-xs shrink-0"
+                    style={{ backgroundColor: "var(--survey-card-bg)", borderColor: "var(--survey-card-border)" }}
+                    onClick={retryFailedSaves}
+                  >
+                    重试保存
+                  </button>
+                </div>
               ) : null}
-            </>
-          ) : null}
+            </div>
+          )}
+          {stageLayout ? null : publishOptions}
         </main>
 
         <nav
-          className={`fixed inset-x-0 bottom-0 z-10 transition-transform duration-200 ${
-            navHidden ? "translate-y-full" : ""
+          className={`survey-bottom-nav ${
+            stageLayout
+              ? "survey-stage-nav"
+              : `fixed inset-x-0 bottom-0 z-10 transition-transform duration-200 ${navHidden ? "translate-y-full" : ""}`
           }`}
         >
           <div
-            className={`mx-auto px-4 pt-1 ${wideDisplay ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}
+            className={`mx-auto px-4 pt-1 ${wideReading ? "max-w-[1600px]" : "max-w-xl lg:max-w-3xl"}`}
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
           >
             <div className="flex items-center gap-2 rounded-[20px] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]/90 p-2 shadow-[0_-6px_34px_-14px_rgba(15,23,42,.28)] backdrop-blur">

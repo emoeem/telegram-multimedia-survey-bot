@@ -12,6 +12,7 @@ import type { SurveyDisplayMode } from "../../../src/survey/display";
 import { preloadImages, shouldSkipPreload } from "./media-preload";
 import { playSfx } from "./sfx";
 import { trapFocusWithin } from "../components/focus-trap";
+import { StageFrame } from "./StageFrame";
 
 /**
  * 互动场景题（scene）的查看器：场景图上的可点区域，点开内层图片或切换子场景。
@@ -29,6 +30,12 @@ interface HotspotSceneProps {
   disabled?: boolean;
   /** 问卷显示模式：landscape + 短横屏时场景脱离文档流铺满（见 compactLandscape）。 */
   display?: SurveyDisplayMode;
+  /**
+   * 舞台版式（layout 契约为 "stage" 时由 SurveyApp 传入）：场景交给 StageFrame
+   * 按比例铺满剩余空间；intro / 进度 / 底注交给 StageLayout 的 heading 区承载，
+   * 不在舞台里抢高度。
+   */
+  fill?: boolean;
 }
 
 interface ModalState {
@@ -63,7 +70,7 @@ export function visitedCountFromAnswer(value: AnswerValue): number {
   return readVisited(value).length;
 }
 
-export function HotspotScene({ question, value, onChange, disabled, display }: HotspotSceneProps) {
+export function HotspotScene({ question, value, onChange, disabled, display, fill }: HotspotSceneProps) {
   // 阶段 D：存储可能是 {assetId} 结构化引用，渲染前统一解析成公开 URL。
   const config = useMemo<ResolvedHotspotSceneConfig | null>(() => {
     const parsed = parseHotspotScene(question.settings);
@@ -235,9 +242,71 @@ export function HotspotScene({ question, value, onChange, disabled, display }: H
   if (!scene) return null;
   const progressLabel = complete ? "全部探索完成" : `已探索 ${visited.length} / ${totalHotspots}`;
 
+  /** 舞台内容（场景图 + 热点）：阅读外壳与舞台外壳共用这一份，避免两套标记漂移。 */
+  const stageLayerInner = (
+    <>
+      <img
+        className="hotspot-image"
+        src={scene.image}
+        alt={altByUrl.get(scene.image) ?? scene.alt ?? scene.title}
+        decoding="async"
+      />
+      <div className="hotspot-layer">
+        {scene.hotspots.map((hotspot, index) => {
+          const isVisited = visited.includes(hotspot.id);
+          const targetTitle =
+            hotspot.action.kind === "scene" ? config.scenes[hotspot.action.sceneId]?.title : undefined;
+          return (
+            <button
+              key={hotspot.id}
+              type="button"
+              className={`hotspot-spot${isVisited ? " is-visited" : ""}`}
+              style={{
+                left: pct(hotspot.x),
+                top: pct(hotspot.y),
+                width: pct(hotspot.w),
+                height: pct(hotspot.h),
+                ["--hotspot-i" as string]: String(index),
+              }}
+              data-label-below={hotspot.y < 0.14 ? "true" : undefined}
+              data-label-left={hotspot.x + hotspot.w > 0.86 ? "true" : undefined}
+              disabled={disabled}
+              aria-label={`${hotspot.label}，${hotspot.action.kind === "scene" ? `进入${targetTitle ?? "子场景"}` : "查看细节"}`}
+              onClick={(event) => activate(hotspot, scene.id, event.currentTarget)}
+              onPointerEnter={(event) => {
+                if (hotspot.action.kind === "image") preloadImages([hotspot.action.src]);
+                else preloadImages([config.scenes[hotspot.action.sceneId]?.image ?? ""]);
+              }}
+            >
+              <span className="hotspot-box" aria-hidden="true">
+                <i className="hotspot-handle tl" />
+                <i className="hotspot-handle tr" />
+                <i className="hotspot-handle bl" />
+                <i className="hotspot-handle br" />
+              </span>
+              <span className="hotspot-index" aria-hidden="true">
+                {hotspot.meta ?? String(index + 1).padStart(2, "0")}
+                {isVisited ? <em>✓</em> : null}
+              </span>
+              <span className="hotspot-label">
+                <b>{hotspot.label}</b>
+                <small>{hotspot.action.kind === "scene" ? "进入" : "查看"}</small>
+              </span>
+              <span className="hotspot-dot" aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+      <div className="hotspot-vignette" aria-hidden="true" />
+    </>
+  );
+
   return (
-    <div className={`hotspot${compactLandscape ? " is-immersive" : ""}`} data-complete={complete ? "true" : undefined}>
-      <p className="hotspot-meta" aria-live="polite" hidden={compactLandscape}>
+    <div
+      className={`hotspot${compactLandscape ? " is-immersive" : ""}${fill ? " is-fill" : ""}`}
+      data-complete={complete ? "true" : undefined}
+    >
+      <p className="hotspot-meta" aria-live="polite" hidden={compactLandscape || fill}>
         <span>{progressLabel}</span>
         {sceneStack.length > 0 ? (
           <button type="button" className="hotspot-back" onClick={goBackScene} disabled={disabled}>
@@ -245,69 +314,23 @@ export function HotspotScene({ question, value, onChange, disabled, display }: H
           </button>
         ) : null}
       </p>
-      {scene.intro && !compactLandscape ? <p className="hotspot-intro">{scene.intro}</p> : null}
+      {scene.intro && !compactLandscape && !fill ? <p className="hotspot-intro">{scene.intro}</p> : null}
 
-      <div className="hotspot-stage-wrap">
-        <div className="hotspot-stage" style={{ aspectRatio: `${scene.width} / ${scene.height}` }}>
-          <img
-            className="hotspot-image"
-            src={scene.image}
-            alt={altByUrl.get(scene.image) ?? scene.alt ?? scene.title}
-            decoding="async"
-          />
-          <div className="hotspot-layer">
-            {scene.hotspots.map((hotspot, index) => {
-              const isVisited = visited.includes(hotspot.id);
-              const targetTitle =
-                hotspot.action.kind === "scene" ? config.scenes[hotspot.action.sceneId]?.title : undefined;
-              return (
-                <button
-                  key={hotspot.id}
-                  type="button"
-                  className={`hotspot-spot${isVisited ? " is-visited" : ""}`}
-                  style={{
-                    left: pct(hotspot.x),
-                    top: pct(hotspot.y),
-                    width: pct(hotspot.w),
-                    height: pct(hotspot.h),
-                    ["--hotspot-i" as string]: String(index),
-                  }}
-                  data-label-below={hotspot.y < 0.14 ? "true" : undefined}
-                  data-label-left={hotspot.x + hotspot.w > 0.86 ? "true" : undefined}
-                  disabled={disabled}
-                  aria-label={`${hotspot.label}，${hotspot.action.kind === "scene" ? `进入${targetTitle ?? "子场景"}` : "查看细节"}`}
-                  onClick={(event) => activate(hotspot, scene.id, event.currentTarget)}
-                  onPointerEnter={(event) => {
-                    if (hotspot.action.kind === "image") preloadImages([hotspot.action.src]);
-                    else preloadImages([config.scenes[hotspot.action.sceneId]?.image ?? ""]);
-                  }}
-                >
-                  <span className="hotspot-box" aria-hidden="true">
-                    <i className="hotspot-handle tl" />
-                    <i className="hotspot-handle tr" />
-                    <i className="hotspot-handle bl" />
-                    <i className="hotspot-handle br" />
-                  </span>
-                  <span className="hotspot-index" aria-hidden="true">
-                    {hotspot.meta ?? String(index + 1).padStart(2, "0")}
-                    {isVisited ? <em>✓</em> : null}
-                  </span>
-                  <span className="hotspot-label">
-                    <b>{hotspot.label}</b>
-                    <small>{hotspot.action.kind === "scene" ? "进入" : "查看"}</small>
-                  </span>
-                  <span className="hotspot-dot" aria-hidden="true" />
-                </button>
-              );
-            })}
+      {fill ? (
+        <StageFrame ratio={scene.width / scene.height} label={scene.title}>
+          <div className="hotspot-stage is-fill">{stageLayerInner}</div>
+        </StageFrame>
+      ) : (
+        <div className="hotspot-stage-wrap">
+          <div className="hotspot-stage" style={{ aspectRatio: `${scene.width} / ${scene.height}` }}>
+            {stageLayerInner}
           </div>
-          <div className="hotspot-vignette" aria-hidden="true" />
+          <p className="hotspot-plate">
+            <span>{scene.title}</span>
+            <span>{TOUCH ? "点按高亮区域" : "点击高亮区域 · 悬停预览"}</span>
+          </p>
         </div>
-        <p className="hotspot-plate">
-          <span>{scene.title}</span>
-          <span>{TOUCH ? "点按高亮区域" : "点击高亮区域 · 悬停预览"}</span>
-        </p>
-      </div>
+      )}
 
       {modal ? (
         <div

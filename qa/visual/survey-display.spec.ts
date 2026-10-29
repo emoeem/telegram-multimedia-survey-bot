@@ -104,6 +104,7 @@ function sceneSurvey(display: "auto" | "immersive" | "landscape") {
 
 async function installRoutes(page: Page, display: "auto" | "immersive" | "landscape") {
   await page.addInitScript(TELEGRAM_STUB);
+
   const survey = sceneSurvey(display);
   await page.route("**/api/survey/media/**", (route) =>
     route.fulfill({ contentType: "image/gif", body: Buffer.from(GIF_1PX, "base64") }),
@@ -122,40 +123,60 @@ async function installRoutes(page: Page, display: "auto" | "immersive" | "landsc
   );
 }
 
+/**
+ * 取元素几何。用 evaluate 而不是 locator.boundingBox()：后者会等元素「稳定」
+ * （连续两帧位置不变），答卷页有进度/音效等状态更新时容易直接等到超时。
+ */
+async function rectOf(page: Page, selector: string) {
+  const rect = await page
+    .locator(selector)
+    .first()
+    .evaluate((element) => {
+      const r = element.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+  return rect;
+}
+
 async function stageBox(page: Page) {
-  const box = await page.locator(".hotspot-stage").boundingBox();
-  if (!box) throw new Error(".hotspot-stage 未渲染");
-  return box;
+  await expect(page.locator(".hotspot-stage")).toHaveCount(1);
+  return rectOf(page, ".hotspot-stage");
 }
 
 test.describe("显示模式 · 沉浸", () => {
-  test("immersive：桌面宽屏下场景舞台明显宽于默认版式", async ({ page }) => {
+  test("immersive：舞台铺满且完整落在底栏之上（不裁切、不滚动）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
-
-    await installRoutes(page, "auto");
-    await page.goto(`/s/${SURVEY_ID}`);
-    await expect(page.locator(".hotspot-stage")).toBeVisible();
-    const narrow = await stageBox(page);
-
     await installRoutes(page, "immersive");
     await page.goto(`/s/${SURVEY_ID}`);
-    await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-display", "immersive");
-    const wide = await stageBox(page);
 
-    // 默认版式受 max-w-3xl（768px）限制。沉浸版式的宽由「视口高度 - 头部/底栏」
-    // 反推（场景必须一屏放得下、不滚动），1600×900 下约 1000px——比默认宽 1.35 倍。
-    expect(narrow.width).toBeLessThan(800);
-    expect(wide.width).toBeGreaterThan(narrow.width * 1.35);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow).toBeLessThanOrEqual(1);
+    // 布局契约：场景题 + 宽屏 → stage 版式。
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
+    await expect(page.locator(".stage-frame-box")).toBeVisible();
+    await expect(page.locator(".hotspot-stage")).toBeVisible();
+
+    const stage = await stageBox(page);
+    const navBox = await rectOf(page, ".survey-bottom-nav");
+
+    // 曾经的事故：固定 max-height 估算 → 舞台底部被「继续」条遮住。
+    expect(stage.y + stage.height).toBeLessThanOrEqual(navBox.y + 1);
+    // 舞台宽度应明显大于阅读版式的上限（768px），证明真的铺开了。
+    expect(stage.width).toBeGreaterThan(800);
+    // 整页不滚动（100dvh flex 列）；横向也不能溢出。
+    const metrics = await page.evaluate(() => ({
+      scrollY: document.documentElement.scrollHeight - window.innerHeight,
+      scrollX: document.documentElement.scrollWidth - window.innerWidth,
+    }));
+    expect(metrics.scrollY).toBeLessThanOrEqual(1);
+    expect(metrics.scrollX).toBeLessThanOrEqual(1);
 
     await expect(page).toHaveScreenshot("survey-display-immersive-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
 
-  test("auto：同一视口保持窄版式（回归护栏）", async ({ page }) => {
+  test("auto：同一视口保持阅读版式（回归护栏）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await installRoutes(page, "auto");
     await page.goto(`/s/${SURVEY_ID}`);
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "reading");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
     await expect(page).toHaveScreenshot("survey-display-auto-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
@@ -171,6 +192,7 @@ test.describe("显示模式 · 手机横屏优先", () => {
     await expect(hint).toBeVisible();
     await expect(page.getByRole("button", { name: "全屏横屏" })).toBeVisible();
     // 提示是条状而非遮罩：场景舞台仍然可见可点。
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "reading");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
     await expect(page.getByText("雨夜书房").first()).toBeVisible();
 
@@ -193,13 +215,15 @@ test.describe("显示模式 · 手机横屏优先", () => {
     await installRoutes(page, "landscape");
     await page.goto(`/s/${SURVEY_ID}`);
 
-    await expect(page.locator(".min-h-dvh")).toHaveAttribute("data-display", "landscape");
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
     // 竖屏提示在横屏下不出现。
     await expect(page.getByText("横过来看，场景会铺满整块屏幕。")).toHaveCount(0);
 
     const box = await stageBox(page);
-    // 短横屏下场景高度应吃掉视口的大部分（留头部与底部操作条）。
+    const navBox = await rectOf(page, ".survey-bottom-nav");
+    // 短横屏下场景吃掉头部与底栏之外的全部高度，且底边不越过底栏。
     expect(box.height).toBeGreaterThan(390 * 0.45);
+    expect(box.y + box.height).toBeLessThanOrEqual(navBox.y + 1);
     const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflowX).toBeLessThanOrEqual(1);
 
