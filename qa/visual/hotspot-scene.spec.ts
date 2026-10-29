@@ -196,6 +196,11 @@ test.beforeAll(() => {
   mkdirSync(ARTIFACTS, { recursive: true });
 });
 
+// 2026-10-29 改版后场景题在桌面宽度（≥1024）走 stage 版式（无 .hotspot-plate，
+// 场景标题由 StageFrame 承载）。本文件的全部用例针对阅读版式的语义
+// （plate/meta/热点弹层），统一钉在平板宽度下运行。
+test.use({ viewport: { width: 900, height: 800 } });
+
 test("热点点击展开内层图片，答案以 {kind:scene,visited} 落库", async ({ page }, testInfo) => {
   const captured = await installRoutes(page);
   await page.goto(`/s/${SURVEY_ID}`);

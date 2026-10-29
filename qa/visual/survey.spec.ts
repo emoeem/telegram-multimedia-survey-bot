@@ -324,10 +324,12 @@ test("hides the bottom nav while an input is focused", async ({ page }) => {
   await expect(input).toBeVisible();
 
   await input.click();
-  await expect(page.locator("nav")).toHaveClass(/translate-y-full/);
+  // 2026-10-29 底栏自动隐匿改版：隐匿态改用 survey-bottom-nav-hidden
+  // （纯 transform 过渡），不再用 tailwind 的 translate-y-full。
+  await expect(page.locator("nav")).toHaveClass(/survey-bottom-nav-hidden/);
 
   await page.locator("main h1").click();
-  await expect(page.locator("nav")).not.toHaveClass(/translate-y-full/);
+  await expect(page.locator("nav")).not.toHaveClass(/survey-bottom-nav-hidden/);
 });
 
 test("lets the participant switch the survey theme", async ({ page }) => {

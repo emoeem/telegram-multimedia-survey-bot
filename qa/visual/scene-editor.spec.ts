@@ -70,7 +70,7 @@ const SCENE = {
     room: {
       id: "room",
       title: "雨夜书房",
-      intro: "点击发亮的区域。",
+      intro: "点击发亮的区域，查看画面细节。",
       image: "/api/survey/media/900",
       width: 1600,
       height: 1000,
@@ -325,7 +325,7 @@ test("拖拽新建热点 → 选图 → 保存写回完整场景配置", async (
     "src",
     /\/api\/admin\/media\/900\/image$/,
   );
-  await expect(page.locator(".scene-editor-preview .hotspot-intro")).toHaveText("点击发亮的区域。");
+  await expect(page.locator(".scene-editor-preview .hotspot-intro")).toHaveText("点击发亮的区域，查看画面细节。");
   // 等淡入结束再截图（reducedMotion 下这是 0.001ms，普通环境是 0.4s）。
   await expect
     .poll(() =>
