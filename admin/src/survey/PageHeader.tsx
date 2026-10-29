@@ -19,6 +19,8 @@ export function PageHeader({
   tabs,
   backHref = "/",
   backLabel = "首页",
+  topNav = true,
+  wide = true,
 }: {
   title: string;
   subtitle?: string;
@@ -26,11 +28,29 @@ export function PageHeader({
   tabs?: ReactNode;
   backHref?: string;
   backLabel?: string;
+  /**
+   * 桌面端是否给主导航（BottomNav 在 ≥lg 是 fixed top-0 高 56px）让位。
+   * 广场/展示区/纸条这些带主导航的页面用默认 true；**投稿中心这类不渲染
+   * BottomNav 的页面必须传 false**——否则顶栏悬在 56px 之下，上面露出一条
+   * 没有任何遮挡的缝，表单内容从缝里穿过（线上反馈的「顶栏悬浮、中间缺
+   * 一块」就是它）。
+   */
+  topNav?: boolean;
+  /** 内容列宽：wide = 站点级 1200px 居中列；false = 与 max-w-3xl 的表单列对齐。 */
+  wide?: boolean;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md lg:top-14">
-      {/* 容器：移动 max-w-xl（拇指热区），桌面与 foxsir 同款 1200px 居中列。 */}
-      <div className="mx-auto max-w-xl px-4 pb-2.5 pt-[calc(env(safe-area-inset-top,0px)+10px)] lg:max-w-[1200px]">
+    <header
+      className={`sticky top-0 z-30 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md ${
+        topNav ? "lg:top-14" : "lg:top-0"
+      }`}
+    >
+      {/* 容器：移动 max-w-xl（拇指热区），桌面默认与 foxsir 同款 1200px 居中列。 */}
+      <div
+        className={`mx-auto max-w-xl px-4 pb-2.5 pt-[calc(env(safe-area-inset-top,0px)+10px)] ${
+          wide ? "lg:max-w-[1200px]" : "lg:max-w-3xl"
+        }`}
+      >
         <div className="flex items-center gap-2.5">
           <a href={backHref} className="survey-home-link" aria-label={`返回${backLabel}`} title={`返回${backLabel}`}>
             <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} />

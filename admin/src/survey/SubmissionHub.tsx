@@ -107,6 +107,11 @@ export function SubmissionHub() {
       <PageHeader
         title="投稿中心"
         subtitle={subtitle}
+        /* 本页不渲染 BottomNav：桌面顶栏必须贴住视口顶（topNav=false），
+         * 内容列与下方表单同宽（wide=false），否则标题悬在空列的左端、
+         * 表单却居中，两边对不上。 */
+        topNav={false}
+        wide={false}
         tabs={
           <>
             {(["submit", "inbox"] as const).map((entry) => {

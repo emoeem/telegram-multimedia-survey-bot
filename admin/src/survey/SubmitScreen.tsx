@@ -285,6 +285,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
         <PageHeader
           title={form?.title ?? "投稿"}
           subtitle="不用注册 · 审核通过后发布"
+          topNav={false}
           actions={
             <>
               <a className="survey-header-pill" href="/cert/" aria-label="认证卡生成器" title="认证卡生成器">
@@ -299,7 +300,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
           }
         />
       )}
-      <main className={`${SURVEY_PAGE} ${embedded ? "pb-28 pt-1" : "pb-32 pt-3"}`}>
+      <main className={`${SURVEY_PAGE} ${embedded ? "pb-4 pt-1" : "pb-4 pt-3"}`}>
         {form === null ? (
           /* 表单没到：失败给重试，其余给表单形状的骨架（而不是一行字 + 空白）。 */
           error.length > 0 ? (
@@ -505,6 +506,8 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
                   </label>
                   <p className="mt-2 text-[13px] text-[var(--survey-muted)]">请算一下：{captchaQuestion || "…"}</p>
                   <input
+                    aria-label="验证答案"
+                    autoComplete="off"
                     className={`${INPUT} mt-2`}
                     inputMode="numeric"
                     onChange={(event) => setCaptchaAnswer(event.target.value)}
@@ -514,9 +517,14 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
               ) : null}
             </section>
 
-            {/* 固定在视口底部：不用负外边距（那会在窄屏撑出 2px 横向滚动），
-              下方留白由 main 的 pb-32 让出来，最后一个字段不会被挡住。 */}
-            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-3 backdrop-blur-md">
+            {/* 提交条：sticky 而不是 fixed。fixed 悬在视口底部、游离于文档流之外，
+              只能靠给 main 预留固定 padding 让位——而条子的真实高度（字体缩放、
+              safe-area、两行提示换行）永远算不准，手机上滚到底时「验证」的输入框
+              正好被压在条子后面：看不见、点不到（elementFromPoint 命中的是提交
+              按钮，生产实测复现）。sticky 保持在文档流里：滚动中途它贴在视口底
+              （观感与 fixed 一致），滚到底它落在表单末尾的自然位置——验证码
+              天然露出来，提交按钮就贴在最后一个字段下面。 */}
+            <div className="sticky bottom-0 z-30 -mx-4 mt-3 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-3 backdrop-blur-md">
               <div className="mx-auto max-w-xl">
                 <button className={BTN} disabled={busy} onClick={() => void submit()} type="button">
                   {busy ? "正在上传…" : "提交投稿"}
@@ -583,6 +591,7 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
         <PageHeader
           title="我的投稿"
           subtitle="进度 · 评论 · 管理员留言"
+          topNav={false}
           actions={
             <a className="survey-header-pill" href="/submissions?tab=anon">
               <PencilLine className="h-3.5 w-3.5" aria-hidden="true" />
