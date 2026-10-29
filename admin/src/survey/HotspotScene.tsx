@@ -306,7 +306,9 @@ export function HotspotScene({ question, value, onChange, disabled, display, fil
       className={`hotspot${compactLandscape ? " is-immersive" : ""}${fill ? " is-fill" : ""}`}
       data-complete={complete ? "true" : undefined}
     >
-      <p className="hotspot-meta" aria-live="polite" hidden={compactLandscape || fill}>
+      {/* 这一行承载「已探索 x/y」与「← 返回上一场景」——fill 模式下也保留：
+          舞台版式没有别处能返回子场景（曾因此丢掉唯一的返回入口）。 */}
+      <p className="hotspot-meta" aria-live="polite" hidden={compactLandscape}>
         <span>{progressLabel}</span>
         {sceneStack.length > 0 ? (
           <button type="button" className="hotspot-back" onClick={goBackScene} disabled={disabled}>

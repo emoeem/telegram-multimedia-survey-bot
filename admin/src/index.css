@@ -5111,7 +5111,12 @@ button.admin-stat:focus-visible {
  * 4. 整条链收在 StageLayout 组件内，外层再包一层 wrapper 也不会静默失效。
  */
 .survey-stage {
-  height: 100dvh;
+  /* 固定到视口而不是 height: 100dvh 的普通块：舞台版式是整屏体验，
+   * 但页面本身仍可能被浏览器/WebView 滚动（地址栏收放、聚焦滚动），
+   * 一滚头部（退出/返回按钮）就出画——固定在视口上从根上排除这种可能。 */
+  position: fixed;
+  inset: 0;
+  height: auto;
   overflow: hidden;
   display: flex;
   flex-direction: column;
