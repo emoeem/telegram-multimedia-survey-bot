@@ -13,6 +13,7 @@ import { buildCsv, getExportRows, serializeExport } from "../../services/export.
 import { exportUnifiedSurveyJson } from "../../services/survey-json.service";
 import type { Env } from "../../index";
 import { normalizeStoredSurveyTheme, SURVEY_THEME_PRESETS } from "../../survey/theme";
+import { readSurveyDisplayMode } from "../../survey/display";
 import {
   diffSurveyVersions,
   getSurveyVersionSnapshot,
@@ -979,6 +980,8 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         responseCount,
         questionCount: questions.length,
         editable: survey.status === "draft" && responseCount === 0,
+        // 显示模式（settings_json.display）：只投影这一个键，settings_json 本身不下发。
+        display: readSurveyDisplayMode(parseJson(survey.settingsJson)),
       },
       coinAccess: coinAccess
         ? {
@@ -1078,10 +1081,17 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     } catch {
       theme = null;
     }
+    let display: ReturnType<typeof readSurveyDisplayMode> = "auto";
+    try {
+      display = readSurveyDisplayMode(parseSettingsJson(String(survey.settings_json ?? "")));
+    } catch {
+      display = "auto";
+    }
     return json({
       ...survey,
       settings_json: undefined,
       theme,
+      display,
       themePresets: SURVEY_THEME_PRESETS,
       isAdmin,
     });

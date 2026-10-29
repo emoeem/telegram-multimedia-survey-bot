@@ -154,6 +154,29 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
 - ☐ CSS 按主题拆分（可选，有闪烁风险）。
 - ☐ Lighthouse 复测（当前 Performance 75）：留待标准环境。
 
+## 阶段 F：问卷显示模式 + 设备预览 ✅（2026-10-29）
+
+需求来自真实反馈：PC 上场景问卷被压在 680px 窄卡里、两侧大片空白；手机横屏也
+没法把场景放大。
+
+- 数据：`settings_json.display` = `auto`（默认，存量零变化）/ `immersive` / `landscape`。
+  不放 theme 内——答题者自选预设会整体替换 theme，显示模式会丢。
+- 服务端：PATCH 接受 `display`（与 theme 共用一次 settings 读写，防两键互相覆盖）、
+  创建问卷可带 `display`、公开定义下发 `display`；草稿预览旁路（`?preview=1` +
+  管理员会话可读非发布问卷，不写共享缓存）。`hasValidAdminSession` 从 media/note-api
+  两处重复实现抽成 `src/http/admin-session.ts`。
+- 答题端：`data-display` 驱动版式；沉浸/横屏下场景舞台按视口高度反推宽度
+  （保持比例 → 热点坐标不换算、不裁切）；短横屏时场景脱离文档流铺满，头部与
+  操作条作浮层；竖屏提示可关闭 + 全屏按钮（`screen.orientation.lock` 尽力而为，
+  iOS 不支持则静默降级）。
+- 编辑器：设置面板新增「显示模式」单选卡（立即保存）；新建问卷下拉；全屏预览
+  改为**真实页面 iframe** 的设备预览（手机 390 / 平板 768 / 桌面 1440 / 宽屏 1920，
+  超出可用空间等比缩放、标注「已保存版本」）。右栏 LivePreview 继续负责未保存
+  修改的近似预览——两者分工写在组件注释里，避免再造一套布局。
+- 测试：203 文件 / 1459 用例（+9：display 契约 4、真实 SQL 集成 5 覆盖 PATCH 合并
+  / 脏值 / 下发 / 草稿旁路 / 预览不写缓存）；新增 `qa/visual/survey-display.spec.ts`
+  （沉浸几何 / auto 回归 / 竖屏提示 / 横屏铺满，基线由 CI 工作流生成）。
+
 ## CI 全绿恢复（2026-10-29，随 E 批收尾）
 
 本轮盘点发现 main 的 CI 自 P2 S4 起持续红（三条独立欠账叠加），已全部清偿：

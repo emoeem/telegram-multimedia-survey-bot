@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SURVEY_DISPLAY_MODES, SURVEY_DISPLAY_MODE_LABELS, type SurveyDisplayMode } from "../../../src/survey/display";
 import { EChart } from "../components/EChart";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Download, Loader2, Plus, Printer, Search } from "lucide-react";
@@ -70,6 +71,8 @@ export function SurveysPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  // 新建时的显示模式（默认 auto）：场景类问卷建议直接选「PC 沉浸」。
+  const [createDisplay, setCreateDisplay] = useState<SurveyDisplayMode>("auto");
   const [createError, setCreateError] = useState<string | null>(null);
   // 导出就在这里做：它是「管理问卷」的一个动作，不是独立的一项工作台功能。
   const [exportOpen, setExportOpen] = useState(false);
@@ -202,7 +205,10 @@ export function SurveysPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const result = await apiSend<WriteResult>("POST", "/api/admin/surveys", { title: "未命名问卷" });
+      const result = await apiSend<WriteResult>("POST", "/api/admin/surveys", {
+        title: "未命名问卷",
+        display: createDisplay,
+      });
       if (typeof result.id === "number") {
         navigate(`/surveys/${result.id}/editor`);
         return;
@@ -347,6 +353,19 @@ export function SurveysPage() {
             {categories.map((option) => (
               <option key={option.id} value={String(option.id)}>
                 {option.name}（{option.count}）
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="新建问卷的显示模式"
+            title="新问卷的答题页版式；创建后也能在「问卷设置」里改"
+            className="select"
+            value={createDisplay}
+            onChange={(event) => setCreateDisplay(event.target.value as SurveyDisplayMode)}
+          >
+            {SURVEY_DISPLAY_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {SURVEY_DISPLAY_MODE_LABELS[mode].title}
               </option>
             ))}
           </select>

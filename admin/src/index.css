@@ -5220,6 +5220,79 @@ button.admin-stat:focus-visible {
   isolation: isolate;
 }
 
+/* 宽版式（display=immersive / landscape，见 src/survey/display.ts）：
+ * 场景舞台按视口高度收（aspect-ratio 让宽度自动跟随、居中）。桌面宽屏下
+ * 1600×1000 的场景铺满宽度会高过一屏，收高度才不会把「继续」按钮挤出屏幕。
+ * URL 与存储形状都没变，只是容器约束——auto 模式完全不受影响。 */
+[data-display="immersive"] .hotspot-stage,
+[data-display="landscape"] .hotspot-stage {
+  /* 高度上限 = 视口 - 头部(约100) - 题面区(约110) - 底部操作条(约90) - 余量。
+     取 260 是实测值：再大就会把「继续」按钮挤出首屏（那样反而要滚动）。 */
+  width: auto;
+  max-width: 100%;
+  max-height: calc(100dvh - 260px);
+  margin-inline: auto;
+}
+
+/* 手机横屏（高度 ≤560px 的短横屏）+ landscape 模式：场景脱离文档流铺满视口。
+ *
+ * 为什么必须 fixed：横屏只有 ~390px 高，头部+题面+底栏吃掉一半以上，留在文档流
+ * 里的场景最多 380px 宽——「横过来看更沉浸」就成了一句空话。fixed 后场景按
+ * **视口高度**反推宽度（aspect-ratio 保持比例 → 热点坐标仍是 % of stage，不用
+ * 换算，也不会像 object-fit:cover 那样裁掉画面边缘的热点）。
+ * 头部与底部操作条靠 z-index 浮在上面，退出/翻页始终可达。
+ * `is-immersive` 由 HotspotScene 在同样的媒体条件下挂上（组件侧还会隐藏
+ * 「已探索 x/y」与 intro，避免它们在 fixed 层后面留出空白块）。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  [data-display="landscape"] .hotspot.is-immersive .hotspot-stage-wrap {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  [data-display="landscape"] .hotspot.is-immersive .hotspot-stage {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 100dvh;
+    width: auto;
+    max-width: 100%;
+    max-height: none;
+    border-radius: 0;
+    z-index: 0;
+  }
+  /* 浮层 chrome：头部压成一条，底栏保持可点。 */
+  [data-display="landscape"] > header,
+  [data-display="landscape"] > .survey-header {
+    z-index: 20;
+  }
+  /* 沉浸时卡片只剩场景：题面/说明/公开卡在 fixed 场景两侧会露出碎块，
+   * 全部收掉。`:has()` 让规则只在「本卡确实处于沉浸态」时生效。 */
+  [data-display="landscape"] .survey-card:has(.hotspot.is-immersive) {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  [data-display="landscape"] .survey-card:has(.hotspot.is-immersive) > :not(.scene-immersive-host) {
+    display: none;
+  }
+  [data-display="landscape"] .scene-immersive-host {
+    margin: 0;
+  }
+  /* 场景自带的底注（场景名 / 操作提示）与卡片外的公开卡、页脚块在沉浸态下
+   * 都会从 fixed 场景两侧露出来——全部收掉，画面上只留场景本身。 */
+  [data-display="landscape"] .hotspot.is-immersive .hotspot-plate {
+    display: none;
+  }
+  [data-display="landscape"] .survey-card:has(.hotspot.is-immersive) ~ * {
+    display: none;
+  }
+}
+
 .hotspot-image {
   position: absolute;
   inset: 0;

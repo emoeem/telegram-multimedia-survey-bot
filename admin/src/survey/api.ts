@@ -3,6 +3,7 @@ import { safeGet, safeSet } from "./storage";
 import { surveyDeviceHeaders } from "./deviceInfo";
 import { sessionParticipantToken } from "./participant-token";
 import type { SurveySfxCue } from "../../../src/survey/theme";
+import type { SurveyDisplayMode } from "../../../src/survey/display";
 
 export interface SurveyMediaDto {
   url: string;
@@ -106,6 +107,10 @@ export interface SurveyDto {
   allowMultiple: boolean;
   maxResponses: number;
   theme: SurveyThemeDto | null;
+  /** 显示模式（settings_json.display）：缺省 auto。见 src/survey/display.ts。 */
+  display?: SurveyDisplayMode;
+  /** 管理员设备预览（?preview=1 + admin 会话）时为 true：显示预览条、禁用提交。 */
+  preview?: boolean;
   galleryProfile?: SurveyGalleryProfileDto;
   pages: SurveyPageDto[];
   questions: SurveyQuestionDto[];

@@ -1,4 +1,5 @@
 import { getTelegramInitData } from "./telegram";
+import type { SurveyDisplayMode } from "../../src/survey/display";
 import { safeGet } from "./survey/storage";
 
 export class ApiError extends Error {
@@ -858,6 +859,8 @@ export interface EditorData {
     reportTemplateId: string | null;
     contentRating: "all" | "r18";
     theme?: { preset?: string } | null;
+    /** 显示模式（settings_json.display）：缺省 auto。 */
+    display?: SurveyDisplayMode;
   };
   questions: EditorQuestion[];
   pages: Array<{ id: number; title: string | null; description: string | null; order: number }>;

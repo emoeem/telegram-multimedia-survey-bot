@@ -21,8 +21,7 @@ import { createMediaAsset, getMediaAssetById } from "../db/repositories/media.re
 import { createMediaStore } from "../services/media/temporary-media-store";
 import { verifyUploadContent } from "../services/media/upload-validation.service";
 import { buildMediaResponse } from "../services/media/media-serve.service";
-import { loadAdminSessionEpoch } from "../services/system-settings.service";
-import { ADMIN_SESSION_COOKIE, resolveSessionSecret, verifyAdminSessionValue } from "../services/admin-session.service";
+import { hasValidAdminSession } from "./admin-session";
 
 /**
  * 纸条聊天 · 用户侧 API（/api/note/*）。
@@ -51,22 +50,6 @@ function adminIdsOf(env: Env): number[] {
     .split(",")
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isInteger(value) && value > 0);
-}
-
-async function hasValidAdminSession(request: Request, env: Env): Promise<boolean> {
-  const cookie = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`));
-  if (!cookie) return false;
-  const epoch = await loadAdminSessionEpoch(env.DB);
-  const userId = await verifyAdminSessionValue(
-    resolveSessionSecret(env),
-    cookie.slice(ADMIN_SESSION_COOKIE.length + 1),
-    epoch,
-  );
-  return userId !== null && adminIdsOf(env).includes(userId);
 }
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {

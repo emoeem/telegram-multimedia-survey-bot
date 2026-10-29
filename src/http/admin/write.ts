@@ -1,4 +1,5 @@
 import { createSurvey, getSurveyById } from "../../db/repositories/survey.repository";
+import { normalizeSurveyDisplayMode } from "../../survey/display";
 import { normalizeContentRating } from "../../services/content-rating.service";
 import {
   createTaskPack,
@@ -319,6 +320,10 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     }
     const contentRating = body.contentRating === undefined ? "all" : normalizeContentRating(body.contentRating);
     if (!contentRating) return fail(400, "validation_failed", "内容分级必须是 all 或 r18");
+    // 显示模式（创建时可选，默认 auto 不写键）：auto / immersive / landscape。
+    const displayMode =
+      body.display === undefined || body.display === "auto" ? "auto" : normalizeSurveyDisplayMode(body.display);
+    if (!displayMode) return fail(400, "validation_failed", "display 必须是 auto、immersive 或 landscape");
     const questions: QuestionPayload[] = [];
     if (body.questions !== undefined) {
       if (!Array.isArray(body.questions)) return fail(400, "validation_failed", "questions 必须是数组");
@@ -337,6 +342,7 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       allowMultipleResponses,
       maxResponsesPerUser,
       contentRating,
+      ...(displayMode === "auto" ? {} : { settingsJson: JSON.stringify({ display: displayMode }) }),
     });
     for (let index = 0; index < questions.length; index += 1) {
       await insertQuestionWithOptions(db, survey.id, questions[index]!, index);

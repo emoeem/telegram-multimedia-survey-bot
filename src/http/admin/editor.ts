@@ -1,6 +1,7 @@
 import { getSurveyById } from "../../db/repositories/survey.repository";
 import type { MediaAsset, QuestionType, SurveyQuestion } from "../../db/schema";
 import { normalizeSurveyTheme } from "../../survey/theme";
+import { normalizeSurveyDisplayMode } from "../../survey/display";
 import { REPORT_TEMPLATES } from "../../services/report/template";
 import {
   WriteContext,
@@ -193,11 +194,19 @@ export async function handleAdminEditorWrite(
         binds.push(parsed);
       }
     }
+    // theme 与 display 都落在 settings_json：共用一次读取、最后写一次。
+    // 若各写各的，同一请求里第二个字段会覆盖第一个（两次读都发生在 UPDATE 之前）。
+    let pendingSettings: Record<string, unknown> | null = null;
+    let settingsTouched = false;
+    const loadSettings = async (): Promise<Record<string, unknown>> => {
+      if (pendingSettings) return pendingSettings;
+      const existing = await getSurveyById(db, surveyId);
+      pendingSettings = existing?.settingsJson ? (parseSettingsJson(existing.settingsJson) ?? {}) : {};
+      return pendingSettings;
+    };
+
     if (body.theme !== undefined) {
-      const existingSurvey = await getSurveyById(db, surveyId);
-      const settings = existingSurvey?.settingsJson
-        ? (parseSettingsJson(existingSurvey.settingsJson) ?? {})
-        : ({} as Record<string, unknown>);
+      const settings = await loadSettings();
       if (body.theme === null) {
         delete settings.theme;
       } else if (body.theme && typeof body.theme === "object" && !Array.isArray(body.theme)) {
@@ -207,7 +216,20 @@ export async function handleAdminEditorWrite(
       } else {
         return fail(400, "validation_failed", "theme 必须是对象或 null");
       }
-      const nextSettings = Object.keys(settings).length ? JSON.stringify(settings) : null;
+      settingsTouched = true;
+    }
+    // 显示模式：auto / immersive / landscape；null 或 auto 删键（回落默认）。
+    if (body.display !== undefined) {
+      const settings = await loadSettings();
+      const mode = body.display === null || body.display === "auto" ? "auto" : normalizeSurveyDisplayMode(body.display);
+      if (!mode) return fail(400, "validation_failed", "display 必须是 auto、immersive 或 landscape");
+      if (mode === "auto") delete settings.display;
+      else settings.display = mode;
+      settingsTouched = true;
+    }
+    if (settingsTouched) {
+      const nextSettings =
+        pendingSettings && Object.keys(pendingSettings).length ? JSON.stringify(pendingSettings) : null;
       updates.push("settings_json = ?");
       binds.push(nextSettings);
     }

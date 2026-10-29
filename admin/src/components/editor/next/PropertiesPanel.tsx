@@ -94,6 +94,7 @@ function PropertiesPanelImpl({
             meta={editor.surveyMeta}
             disabled={!editable}
             coinAccess={data.coinAccess ?? { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null }}
+            display={data.survey.display ?? "auto"}
             onUpdate={(patch) => editor.updateSurveyMeta(patch)}
           />
         ) : (
