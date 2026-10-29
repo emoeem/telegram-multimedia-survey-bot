@@ -1558,9 +1558,9 @@ function BgmPlayer({ url }: { url: string }) {
       aria-label={playing ? "关闭声音" : "开启声音"}
       title={playing ? "关闭声音（背景音乐与界面音效）" : "开启声音（背景音乐与界面音效）"}
       onClick={toggle}
-      className="survey-sound-btn fixed bottom-28 right-4 z-20 grid h-11 w-11 place-items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-lg shadow-lg"
+      className="survey-icon-btn"
     >
-      {soundOn && playing ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+      {soundOn && playing ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
     </button>
   );
 }
@@ -3367,6 +3367,9 @@ export function SurveyApp() {
                 >
                   <Palette className="h-4 w-4" />
                 </button>
+                {/* 声音开关收进顶栏图标组：悬浮按钮（bottom-28 right-4）会压住
+                 * VN 对话框正文与滚动中的内容，顶栏全局可见且互不遮挡。 */}
+                {bgmUrl ? <BgmPlayer url={bgmUrl} /> : null}
                 <button
                   type="button"
                   aria-label="退出问卷"
@@ -3766,7 +3769,6 @@ export function SurveyApp() {
             ) : null}
           </div>
         </nav>
-        {bgmUrl ? <BgmPlayer url={bgmUrl} /> : null}
         <ThemePickerSheet
           open={themePickerOpen}
           onClose={() => setThemePickerOpen(false)}

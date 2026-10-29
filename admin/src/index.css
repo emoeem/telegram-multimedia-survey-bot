@@ -6857,17 +6857,6 @@ body.hotspot-lock {
   }
 }
 
-/* VN 模式移动端：静音钮让出对话框区域，改挂左上（立绘在右上，互不遮挡）；
-   桌面维持 bottom-28 右下。 */
-@media (max-width: 999px) {
-  [data-vn="1"] .survey-sound-btn {
-    top: 64px;
-    right: auto;
-    bottom: auto;
-    left: 12px;
-  }
-}
-
 /* quest 剧情扩展包面板：复用 VN 对话框皮肤，但不限制高度（选项列表在内部）。 */
 .quest-dialog {
   max-height: none;
