@@ -51,7 +51,14 @@ import {
   getAdminLoginRequest,
 } from "../services/admin-login.service";
 
-import { answerCallbackQuery, editMessageText, getBotUsername, getChat, type InlineKeyboardMarkup } from "./telegram";
+import {
+  answerCallbackQuery,
+  editMessageText,
+  getBotUsername,
+  getChat,
+  type InlineKeyboardButton,
+  type InlineKeyboardMarkup,
+} from "./telegram";
 import { renderUiScreen } from "./ui";
 import { renderScreen } from "./ui-message-controller";
 import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "./types";
@@ -225,10 +232,13 @@ function buildWelcomeText(
 
 📝 浏览问卷 —— 参与社区问卷，分享你的想法
 🪪 我的资料 —— 设置头像、简介、隐私
+👤 个人中心 —— 答卷、资料卡、金币、抽卡记录与已点亮的徽章
+🎴 抽卡 —— 用金币抽取封面与成就卡
+🪙 金币中心 —— 签到、做挑战、看余额
+💌 纸条聊天 —— 放一张纸条，等一个回音
 🌳 树洞 —— 匿名倾诉心事，温柔接住情绪
 🏛 广场 —— 分享故事、点赞互动，遇见同频的人
-🎮 小游戏 —— 爬塔挑战等趣味玩法，解锁成就
-👤 我的 —— 答卷、资料卡、小游戏记录与已点亮的徽章${creatorExtra}
+🎮 小游戏 —— 爬塔挑战等趣味玩法，解锁成就${creatorExtra}
 
 💬 欢迎加入社群一起交流：
 ${communityGroupUrl || DEFAULT_COMMUNITY_GROUP_URL}
@@ -236,6 +246,49 @@ ${communityGroupUrl || DEFAULT_COMMUNITY_GROUP_URL}
 🔑 问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。`;
 }
 
+/** 主菜单里「打开网页」那类按钮需要的身份参数。 */
+interface HomeMenuLinkContext {
+  webhookSecret: string | undefined;
+  userId: number | undefined;
+  from: { username?: string; first_name?: string; last_name?: string; language_code?: string } | undefined;
+}
+
+/**
+ * 参与者 token 的查询串（`pt=…`，不带前导 `?`/`&`）。
+ *
+ * webhookSecret / userId 任一缺失时返回空串：调用方据此生成「无身份」链接，
+ * 任何情况下都不会拼出 `pt=undefined`。
+ */
+async function participantTokenQuery(identity: HomeMenuLinkContext): Promise<string> {
+  if (!identity.webhookSecret || !identity.userId) return "";
+  const token = await createSurveyParticipantToken(identity.webhookSecret, identity.userId, identity.from ?? undefined);
+  return `${SURVEY_PARTICIPANT_TOKEN_PARAM}=${encodeURIComponent(token)}`;
+}
+
+/** 把查询串并进已有 URL（`/plaza?tab=treehole` 这类带参路径走 `&`）。 */
+function appendQuery(url: string, query: string): string {
+  if (!query) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}${query}`;
+}
+
+/**
+ * 主菜单键盘。
+ *
+ * 抽卡 / 个人中心 / 纸条聊天 在网页端（admin/src/survey）早就做完了，机器人里
+ * 只做「点按钮 → 打开那一页」，不在 Bot 内重做一遍：
+ *
+ *   /me     个人中心（MyScreen：答卷、资料卡、金币、抽卡、纸条、成就）
+ *   /gacha  抽卡（CoinCenter 的抽卡屏）
+ *   /coins  金币中心（CoinCenter：余额 / 签到 / 挑战）
+ *   /notes  纸条聊天（NoteScreen：放/抽/对话）
+ *
+ * 这四个入口一律用 `url` 按钮，不用 `web_app`：`web_app` 只在 HTTPS 页面 + 私聊
+ * 里可用（先例见 handleTelegramMessage 里 /s/{id} 的游戏题分支），域名没配进
+ * Mini App 时整条 sendMessage 会失败；而这里只需要「跳到网页」，`url` 在私聊/
+ * 群聊、http/https 下都成立。
+ *
+ * 新入口两两并排，是为了补上四个入口的同时不把主菜单撑到十几行。
+ */
 async function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
@@ -247,25 +300,47 @@ async function buildHomeKeyboard(
   /** 「网页管理后台」的入口地址；传了就优先用它（一次性免密链接）。 */
   adminPanelUrl?: string | null,
 ): Promise<InlineKeyboardMarkup> {
-  const participantParam =
-    webhookSecret && userId
-      ? `&${SURVEY_PARTICIPANT_TOKEN_PARAM}=${await createSurveyParticipantToken(webhookSecret, userId, from ?? undefined)}`
-      : "";
-  const trialUrl = origin ? `${origin}/trial${participantParam ? `?${participantParam.slice(1)}` : ""}` : null;
+  // 没有 origin 时一个网页按钮都不会生成，连 token 都不用签。
+  const query = origin ? await participantTokenQuery({ webhookSecret, userId, from }) : "";
+  /** 网页入口地址；没有 origin（本地/测试上下文）时返回 null，调用方跳过该项。 */
+  const pageUrl = (path: string): string | null => (origin ? appendQuery(`${origin}${path}`, query) : null);
+  /** 把网页入口按两列打包成行；缺 origin 时整组为空。 */
+  const packPages = (items: Array<{ text: string; path: string }>): InlineKeyboardMarkup["inline_keyboard"] => {
+    const buttons: InlineKeyboardButton[] = [];
+    for (const item of items) {
+      const url = pageUrl(item.path);
+      if (url) buttons.push({ text: item.text, url });
+    }
+    const packed: InlineKeyboardMarkup["inline_keyboard"] = [];
+    for (let index = 0; index < buttons.length; index += 2) {
+      packed.push(buttons.slice(index, index + 2));
+    }
+    return packed;
+  };
+
+  const surveysUrl = pageUrl("/s?v=3");
+  const trialUrl = pageUrl("/trial");
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
-    origin
-      ? [{ text: "浏览问卷", url: `${origin}/s?v=3${participantParam}` }]
-      : [{ text: "浏览问卷", callback_data: "home:surveys" }],
+    surveysUrl ? [{ text: "浏览问卷", url: surveysUrl }] : [{ text: "浏览问卷", callback_data: "home:surveys" }],
+    // 网页端已有、TG 里原来没有入口的四屏。身份（pt）必须带上，否则个人中心/
+    // 纸条在站内浏览器里没有 initData，会被当成匿名访客。
+    ...packPages([
+      { text: "👤 个人中心", path: "/me" },
+      { text: "🎴 抽卡", path: "/gacha" },
+      { text: "🪙 金币中心", path: "/coins" },
+      { text: "💌 纸条聊天", path: "/notes" },
+    ]),
     [{ text: "🪪 我的个人资料", callback_data: "profile:start" }],
     origin
-      ? [{ text: "🌳 树洞", url: `${origin}/plaza?tab=treehole` }]
-      : [{ text: "🌳 树洞", callback_data: "plaza:treehole:0" }],
-    origin ? [{ text: "🏛 广场", url: `${origin}/plaza` }] : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
+      ? [
+          { text: "🌳 树洞", url: `${origin}/plaza?tab=treehole` },
+          { text: "🏛 广场", url: `${origin}/plaza` },
+        ]
+      : [
+          { text: "🌳 树洞", callback_data: "plaza:treehole:0" },
+          { text: "🏛 广场", callback_data: "plaza:list" },
+        ],
     ...(trialUrl ? [[{ text: "🎮 小游戏", url: trialUrl }]] : []),
-    // 「我的」需要身份才聚合得准：带上和 /trial 同一个参与者 token。
-    ...(origin
-      ? [[{ text: "👤 我的 · 成就", url: `${origin}/me${participantParam ? `?${participantParam.slice(1)}` : ""}` }]]
-      : []),
   ];
   // Same jump the web surfaces carry. 投稿入口是一个网页表单（国内可直连、不用
   // Telegram），所以按钮文案不再写「机器人」；页面上另有「用 Telegram 投稿」的回跳按钮。
