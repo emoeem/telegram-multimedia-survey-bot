@@ -178,9 +178,15 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
   改为**真实页面 iframe** 的设备预览（手机 390 / 平板 768 / 桌面 1440 / 宽屏 1920，
   超出可用空间等比缩放、标注「已保存版本」）。右栏 LivePreview 继续负责未保存
   修改的近似预览——两者分工写在组件注释里，避免再造一套布局。
-- 测试：203 文件 / 1459 用例（+9：display 契约 4、真实 SQL 集成 5 覆盖 PATCH 合并
-  / 脏值 / 下发 / 草稿旁路 / 预览不写缓存）；新增 `qa/visual/survey-display.spec.ts`
-  （沉浸几何 / auto 回归 / 竖屏提示 / 横屏铺满，基线由 CI 工作流生成）。
+- 测试：合并 D3 后 203 文件 / 1468 用例（显示模式 +9：契约 4、真实 SQL 集成 5
+  覆盖 PATCH 合并 / 脏值 / 下发 / 草稿旁路 / 预览不写缓存）；新增
+  `qa/visual/survey-display.spec.ts`（沉浸几何 / auto 回归 / 竖屏提示 / 横屏铺满），
+  基线已由「Visual baseline」工作流在分支上生成（2399e06 系列）。
+- **staging 已部署（2026-10-29）**：staging 卷 1 = immersive、卷 2 = landscape；
+  匿名 `?preview=1` 仍 404（旁路只对管理员会话生效）。
+- 待办：① 真机竖/横屏目检 + 编辑器设备预览四档；② 合入 main（触发生产 deploy）；
+  ③ 清理 `SurveyPreview` 只剩 `PreviewAnswer` 被右栏复用（组件本身已不再作为
+  弹层预览入口，可在下个周期随旧壳一并整理）。
 
 ## CI 全绿恢复（2026-10-29，随 E 批收尾）
 
