@@ -1361,3 +1361,99 @@ input:disabled {
   gap: 10px;
   align-items: center;
 }
+
+/* ---- 盖章反馈（2026-10-29）----------------------------------------
+ * 印章从画面上方 2.4 倍大小落下、轻微回弹、随即定格淡出；
+ * 画布同步一次 0.985 的「受压」。全部只动 transform/opacity。 */
+.stamp-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  margin: -66px 0 0 -66px;
+  border-radius: 50%;
+  color: #e05252;
+  opacity: 0;
+  transform: scale(2.4) rotate(-26deg);
+  animation:
+    stamp-in 0.42s cubic-bezier(0.2, 1.4, 0.4, 1) 0.12s forwards,
+    stamp-out 0.3s ease-in 0.62s forwards;
+  pointer-events: none;
+}
+
+.stamp-ring {
+  position: absolute;
+  inset: 0;
+  border: 4px solid currentColor;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 2px currentColor,
+    inset 0 0 0 6px transparent,
+    inset 0 0 0 7px color-mix(in srgb, currentColor 70%, transparent);
+  opacity: 0.85;
+}
+
+.stamp-inner {
+  max-width: 84px;
+  overflow: hidden;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-align: center;
+  color: currentColor;
+  opacity: 0.88;
+}
+
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: scale(2.4) rotate(-26deg);
+  }
+  62% {
+    opacity: 0.95;
+    transform: scale(0.94) rotate(-9deg);
+  }
+  82% {
+    transform: scale(1.05) rotate(-11deg);
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1) rotate(-10deg);
+  }
+}
+
+@keyframes stamp-out {
+  to {
+    opacity: 0;
+    transform: scale(1.02) rotate(-10deg);
+  }
+}
+
+.canvas-wrap {
+  position: relative;
+}
+
+.canvas-wrap.stamp-press #card {
+  animation: card-press 0.26s cubic-bezier(0.2, 1.2, 0.4, 1) 0.3s;
+}
+
+@keyframes card-press {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-overlay,
+  .canvas-wrap.stamp-press #card {
+    animation: none;
+  }
+}

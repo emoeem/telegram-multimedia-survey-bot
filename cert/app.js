@@ -795,6 +795,124 @@
   /* ------------------------------------------------------------------ *
    * 统计条
    * ------------------------------------------------------------------ */
+  /* ---------------- 盖章反馈（动画 / 音效 / 震动） ---------------- */
+
+  var STAMP_SOUND_KEY = "cert-card-maker:stamp-sound";
+  var stampAudioCtx = null;
+
+  function stampSoundOn() {
+    try {
+      return localStorage.getItem(STAMP_SOUND_KEY) !== "0";
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function setStampSound(on) {
+    try {
+      localStorage.setItem(STAMP_SOUND_KEY, on ? "1" : "0");
+    } catch (e) {
+      /* 存不了就只在本次会话生效 */
+    }
+    var btn = $("stampSoundBtn");
+    if (btn) {
+      btn.textContent = on ? "🔊 盖章音效" : "🔇 盖章音效";
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  /**
+   * 合成「咚」的一声：短噪声脉冲过低通（墨章拍在纸面）+ 90Hz 正弦衰减（闷响）。
+   * 不引音频文件；AudioContext 只在用户手势（点「去认证」）里创建/恢复，
+   * 天然满足自动播放策略。
+   */
+  function playStampThump() {
+    if (!stampSoundOn()) return;
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!stampAudioCtx) stampAudioCtx = new Ctx();
+      if (stampAudioCtx.state === "suspended") stampAudioCtx.resume();
+      var ctx = stampAudioCtx;
+      var now = ctx.currentTime;
+
+      var noise = ctx.createBufferSource();
+      var buffer = ctx.createBuffer(1, ctx.sampleRate * 0.09, ctx.sampleRate);
+      var data = buffer.getChannelData(0);
+      for (var i = 0; i < data.length; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      }
+      noise.buffer = buffer;
+      var lowpass = ctx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 420;
+      var noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.28, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      noise.connect(lowpass).connect(noiseGain).connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.1);
+
+      var thump = ctx.createOscillator();
+      thump.type = "sine";
+      thump.frequency.setValueAtTime(120, now);
+      thump.frequency.exponentialRampToValueAtTime(55, now + 0.14);
+      var thumpGain = ctx.createGain();
+      thumpGain.gain.setValueAtTime(0.34, now);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      thump.connect(thumpGain).connect(ctx.destination);
+      thump.start(now);
+      thump.stop(now + 0.18);
+    } catch (e) {
+      /* 音效是装饰：任何失败都静默 */
+    }
+  }
+
+  function playStampHaptic() {
+    try {
+      if (navigator.vibrate) navigator.vibrate([16, 36, 10]);
+    } catch (e) {
+      /* 震动不可用：静默降级 */
+    }
+  }
+
+  var REDUCED_STAMP =
+    typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /** 在画布上盖一枚 DOM 印章（canvas 内的印章是位图，动画只能由覆盖层承载）。 */
+  function stampFeedback(stage) {
+    var wrap = stage && stage.querySelector(".canvas-wrap");
+    if (!wrap) return;
+    playStampThump();
+    playStampHaptic();
+    if (REDUCED_STAMP) {
+      wrap.classList.remove("flash");
+      return;
+    }
+    var sealText = "已认证";
+    try {
+      var form = themeData() && themeData().form;
+      if (form && form.sealText) sealText = String(form.sealText).slice(0, 8);
+    } catch (e) {
+      /* 取不到主题印章文案就用默认 */
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "stamp-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = '<span class="stamp-ring"></span><span class="stamp-inner">' + sealText + "</span>";
+    wrap.appendChild(overlay);
+    wrap.classList.remove("stamp-press");
+    // 强制回流让 press 动画每次都从头播
+    void wrap.offsetWidth;
+    wrap.classList.add("stamp-press");
+    overlay.addEventListener("animationend", function () {
+      overlay.remove();
+    });
+    setTimeout(function () {
+      if (overlay.parentNode) overlay.remove();
+    }, 900);
+  }
+
   function updateStats() {
     var pct = percent();
     var rank = hitRank(pct);
@@ -2131,20 +2249,24 @@
       refreshAfterTagChange();
     });
 
-    /* 去认证：滚到预览并高亮 */
+    /* 去认证：滚到预览并「盖章」——印章落下动画 + 合成音效 + 震动反馈。
+     * 三个通道各自可降级：reduced-motion 不播动画、静音开关关掉声音、
+     * navigator.vibrate 不存在时静默跳过，任何一路失败都不报错。 */
     $("certifyBtn").addEventListener("click", function () {
       var stage = $("stage");
       stage.scrollIntoView({ behavior: "smooth", block: "start" });
       render();
-      var wrap = stage.querySelector(".canvas-wrap");
-      wrap.classList.remove("flash");
-      setTimeout(function () {
-        wrap.classList.add("flash");
-      }, 350);
-      setTimeout(function () {
-        wrap.classList.remove("flash");
-      }, 1400);
+      stampFeedback(stage);
     });
+
+    /* 盖章音效开关（默认开；状态进 localStorage，刷新保持） */
+    var stampSoundBtn = $("stampSoundBtn");
+    if (stampSoundBtn) {
+      stampSoundBtn.addEventListener("click", function () {
+        setStampSound(!stampSoundOn());
+      });
+      setStampSound(stampSoundOn());
+    }
 
     /* 复制分享链接 */
     $("shareBtn").addEventListener("click", function () {
