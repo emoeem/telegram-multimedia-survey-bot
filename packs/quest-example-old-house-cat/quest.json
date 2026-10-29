@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "title": "旧宅寻猫",
+  "intro": "邻居阿婆拜托你照看她的旧宅一天。傍晚清点时，猫「小雪」不见了。整栋旧宅的门，都虚掩着。",
+  "start": "genkan",
+  "grades": { "s": 85, "a": 65, "b": 45 },
+  "items": [
+    { "id": "cat-collar", "name": "带铃铛的项圈", "icon": "🔔", "kind": "clue", "desc": "线索道具：小雪的项圈。铃铛声会在结局屏提醒你它去过哪。" },
+    { "id": "fish-snack", "name": "小鱼干", "icon": "🐟", "kind": "collectible", "desc": "收集品：厨房顺手带上的，关键时刻很管用。" },
+    { "id": "attic-key", "name": "阁楼钥匙", "icon": "🗝️", "kind": "key", "desc": "分支钥匙：井房挂钩上取到，能开玄关旁的阁楼门。" }
+  ],
+  "nodes": [
+    {
+      "id": "genkan",
+      "chapter": "玄关",
+      "speaker": "旁白",
+      "text": "玄关的地垫被蹭得歪歪斜斜——小雪从这里溜出去过。阁楼门在楼梯旁，锁得严严实实；侧门通向后院，客厅和二楼走廊也都空着。猫会去哪儿呢？",
+      "choices": [
+        { "text": "探索客厅", "goto": "living" },
+        { "text": "上二楼走廊", "goto": "corridor", "score": 1 },
+        { "text": "从侧门去后院", "goto": "yard" },
+        { "text": "打开阁楼门", "goto": "attic", "requireItem": "attic-key" },
+        { "text": "关好门，明天再来找", "goto": "end-leave" }
+      ]
+    },
+    {
+      "id": "living",
+      "chapter": "客厅",
+      "speaker": "旁白",
+      "text": "沙发底下滚着一只带铃铛的项圈——是小雪的。铃铛内壁卡着一小撮灰白的毛，阁楼上的灰尘就是这个颜色。",
+      "choices": [
+        { "text": "收起项圈", "goto": "living-note", "give": ["cat-collar"], "score": 2 },
+        { "text": "先放着，回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "living-note",
+      "chapter": "客厅",
+      "speaker": "旁白",
+      "text": "你把项圈握在手心晃了晃。叮铃——声音很轻，却让你想起阁楼门缝里那道灰白的影子。也许该先找到能开那扇门的钥匙。",
+      "choices": [
+        { "text": "回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "corridor",
+      "chapter": "二楼走廊",
+      "speaker": "旁白",
+      "text": "二楼走廊尽头是书房，窗台上有几个浅浅的猫爪印，还带着灰。窗外的后院里，井房的木门半开着。",
+      "choices": [
+        { "text": "在窗边张望", "goto": "corridor-window" },
+        { "text": "去尽头的书房", "goto": "study" },
+        { "text": "下楼回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "corridor-window",
+      "chapter": "二楼走廊",
+      "speaker": "旁白",
+      "text": "你趴在窗台上往外看：一道白影从柴堆后闪出，一头扎进了井房。看清了——就是小雪。",
+      "choices": [
+        { "text": "下楼，去后院", "goto": "yard", "score": 1 },
+        { "text": "先去书房翻翻", "goto": "study" }
+      ]
+    },
+    {
+      "id": "study",
+      "chapter": "书房",
+      "speaker": "旁白",
+      "text": "书桌上摊着一本旧绘本，《阁楼上的猫》。扉页夹着阿婆的字条：「阁楼备用钥匙挂在井房挂钩上，别让小雪进去——它总爱把纸箱当床。」",
+      "choices": [
+        { "text": "记下这条线索", "goto": "study-note", "score": 2 },
+        { "text": "合上书，回走廊", "goto": "corridor" }
+      ]
+    },
+    {
+      "id": "study-note",
+      "chapter": "书房",
+      "speaker": "旁白",
+      "text": "绘本最后一页画着阁楼的窗：月光落进来，纸箱拼成一张小床。看来小雪不是躲进了阁楼，就是……打算把那儿当家。",
+      "choices": [
+        { "text": "去后院井房取钥匙", "goto": "yard" },
+        { "text": "回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "yard",
+      "chapter": "后院",
+      "speaker": "旁白",
+      "text": "后院的草剪得很齐。井房的木门吱呀作响，厨房的后门也开着，飘出一点鱼腥气。柴堆后面安安静静。",
+      "choices": [
+        { "text": "走进井房", "goto": "well" },
+        { "text": "从后门进厨房", "goto": "kitchen" },
+        { "text": "绕回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "chapter": "厨房",
+      "speaker": "旁白",
+      "text": "灶台上的鱼干还剩最后一把。台阶角落积着一小撮灰白的猫毛——小雪来讨过吃的，没讨到。",
+      "choices": [
+        { "text": "拿上小鱼干", "goto": "kitchen-note", "give": ["fish-snack"], "score": 2 },
+        { "text": "回后院", "goto": "yard" }
+      ]
+    },
+    {
+      "id": "kitchen-note",
+      "chapter": "厨房",
+      "speaker": "旁白",
+      "text": "你把小鱼干揣进兜里。猫都记仇，也记好吃的——待会儿要是见到了，这就是最好的见面礼。",
+      "choices": [
+        { "text": "回后院", "goto": "yard" }
+      ]
+    },
+    {
+      "id": "well",
+      "chapter": "井房",
+      "speaker": "旁白",
+      "text": "井房里都是除草工具，墙上的挂钩挂着一把黄铜钥匙，牌子上写着「阁楼」。挂钩旁边的木箱被扒开过一个角——爪痕还是新的。",
+      "choices": [
+        { "text": "取下阁楼钥匙", "goto": "well-note", "give": ["attic-key"], "score": 3 },
+        { "text": "退出去，回后院", "goto": "yard" }
+      ]
+    },
+    {
+      "id": "well-note",
+      "chapter": "井房",
+      "speaker": "旁白",
+      "text": "钥匙到手了。阁楼在玄关——穿过整栋房子，原路回去吧。",
+      "choices": [
+        { "text": "原路返回玄关", "goto": "genkan" }
+      ]
+    },
+    {
+      "id": "attic",
+      "chapter": "阁楼",
+      "speaker": "旁白",
+      "text": "阁楼门吱呀一声开了。月光从圆窗漏进来，正好照在纸箱拼成的小床上——小雪蜷在那儿，耳朵抖了抖，抬起头看你。",
+      "choices": [
+        { "text": "用小鱼干把它引下来", "goto": "end-found", "requireItem": "fish-snack", "score": 4 },
+        { "text": "轻轻唤它的名字", "goto": "end-trust", "score": 2 }
+      ]
+    },
+    {
+      "id": "end-found",
+      "chapter": "结局",
+      "text": "鱼干的香气一起，小雪就自己跳下了纸箱，蹭了蹭你的裤脚。你把它裹进外套，顺手替阿婆关好阁楼的窗。回程的路上，铃铛声一路轻响。",
+      "endingTitle": "鱼干外交",
+      "endingNote": "用一把钥匙和一把鱼干，换回了小雪。阿婆说了明天的饭。"
+    },
+    {
+      "id": "end-trust",
+      "chapter": "结局",
+      "text": "「小雪——」你唤了一声。它愣了几秒，慢吞吞地站起来，踩着月光走过来，用脑袋撞了撞你的手心。没用鱼干，也没用项圈。",
+      "endingTitle": "月光里的和好",
+      "endingNote": "有些信任不靠零食。你抱着小雪下楼，阁楼的灯替你们留到最后。"
+    },
+    {
+      "id": "end-leave",
+      "chapter": "结局",
+      "text": "你把门都锁好，给阿婆发了条消息：「小雪没找到，明天带小鱼干再来。」深夜，阁楼的圆窗后闪过一道白影——它其实哪儿也没去。",
+      "endingTitle": "明天再来",
+      "endingNote": "猫有猫的道理。明天，玄关的地垫又会歪一次。"
+    }
+  ]
+}

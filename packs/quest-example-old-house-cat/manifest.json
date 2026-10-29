@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "id": "example-old-house-cat",
+  "title": "示例 · 旧宅寻猫",
+  "author": "survey-platform",
+  "description": "温馨日常向示例包：帮邻居找回跑丢的猫。钥匙「阁楼钥匙」在井房取得，却要开玄关的阁楼门——验证跨场景取钥与节点回溯的规范假设；含 clue / collectible 道具与三个结局。",
+  "adult": false
+}

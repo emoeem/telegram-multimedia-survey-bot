@@ -73,7 +73,12 @@ quest-pack.zip
 ## 导入
 
 管理端 `/admin` → 挑战任务 → 「导入扩展包」，上传 ZIP 即生成任务包（审计记录 `task_pack.import`）。
-示例包：[`quest-example-lost-study/`](quest-example-lost-study/)（含三类道具与四结局，无图片素材）。
+
+手写示例包（每个都过 `tests/unit/game-plugin/packs.test.ts` 的整包解析与引擎剧本回归）：
+
+- [`quest-example-lost-study/`](quest-example-lost-study/) —— 三类道具与四结局，无图片素材（assets 整体可选）；
+- [`quest-example-midnight-station/`](quest-example-midnight-station/) —— 悬疑向：分支钥匙「名牌」解锁隐藏真结局，含 `asset:` 封面引用（多结局分支道具样本）；
+- [`quest-example-old-house-cat/`](quest-example-old-house-cat/) —— 温馨向：钥匙在井房取得、开玄关阁楼门，依赖跨场景回溯；collectible 也能当 `requireItem` 门控（跨场景钥匙样本）。
 
 ## 打包
 

@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "id": "example-midnight-station",
+  "title": "示例 · 午夜站台",
+  "author": "survey-platform",
+  "description": "悬疑向示例包：末班站台上的四个结局。分支钥匙「检票员名牌」决定能否抵达隐藏真结局；含 clue / key / collectible 三类道具与 asset: 封面图，用于验证多结局分支道具的规范假设。",
+  "adult": false
+}

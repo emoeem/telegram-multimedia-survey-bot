@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "title": "午夜站台",
+  "intro": "末班车 23:59 进站。你在长椅上醒来，站台上只有你，和一位看不见脸的检票员。",
+  "start": "wake",
+  "grades": { "s": 90, "a": 70, "b": 50 },
+  "items": [
+    { "id": "ticket-stub", "name": "检票存根", "icon": "🎟️", "kind": "clue", "desc": "背面用铅笔写着一个名字：千代田。" },
+    { "id": "name-plate", "name": "检票员名牌", "icon": "🪪", "kind": "key", "desc": "分支钥匙：把它递还给检票员，才会有一条新的对话路。" },
+    { "id": "coin-old", "name": "昭和硬币", "icon": "🪙", "kind": "collectible", "desc": "收集品：1964 年的百円，边缘被摩挲得发亮。" },
+    { "id": "route-sticker", "name": "线路贴纸", "icon": "🚉", "kind": "collectible", "desc": "收集品：贴纸上的线路图里，有一站从未存在过。" }
+  ],
+  "nodes": [
+    {
+      "id": "wake",
+      "chapter": "序章",
+      "speaker": "旁白",
+      "text": "你在长椅上醒来，手里还攥着一张单程票。站台的白炽灯嗡嗡作响，广播报出 23:59 —— 末班车进站。检票口那边立着一个背光的身影，一动不动。",
+      "image": "asset:cover.png",
+      "choices": [
+        { "text": "先检查长椅四周", "goto": "bench", "score": 1 },
+        { "text": "走向检票口", "goto": "gate" },
+        { "text": "不管了，直接上车", "goto": "end-train" },
+        { "text": "沿铁轨步行回家", "goto": "end-rail" }
+      ]
+    },
+    {
+      "id": "bench",
+      "chapter": "序章",
+      "speaker": "旁白",
+      "text": "长椅的坐垫下压着一枚旧硬币，日期是 1964 年。椅子扶手上刻着一行小字：「别坐过站」。",
+      "choices": [
+        { "text": "收起硬币，走向检票口", "goto": "gate", "give": ["coin-old"], "score": 2 },
+        { "text": "把硬币放回原处，走向检票口", "goto": "gate" }
+      ]
+    },
+    {
+      "id": "gate",
+      "chapter": "检票口",
+      "speaker": "检票员",
+      "text": "检票口的闸门开着，检票员的手里捏着一把剪票钳。她的帽子压得很低，你看不见她的脸。「请出示车票。」她说。可你手里的票，明明是单程的。",
+      "choices": [
+        { "text": "拾取地上的检票存根", "goto": "gate-stub", "give": ["ticket-stub"], "score": 3 },
+        { "text": "把捡到的名牌递还给她", "goto": "confront", "requireItem": "name-plate", "score": 5 },
+        { "text": "转身回到站台", "goto": "wake" }
+      ]
+    },
+    {
+      "id": "gate-stub",
+      "chapter": "检票口",
+      "speaker": "旁白",
+      "text": "存根的背面用铅笔写着一个名字：千代田。字迹很旧，像是被人反复描过。检票员在你身后轻声说：「那是我的名字。已经很久没人叫过它了。」",
+      "choices": [
+        { "text": "问她末班车开往哪里", "goto": "corridor", "score": 2 },
+        { "text": "沉默地穿过闸门，上车", "goto": "end-train" }
+      ]
+    },
+    {
+      "id": "corridor",
+      "chapter": "站台深处",
+      "speaker": "旁白",
+      "text": "检票员朝站台深处偏了偏头。那条通道你从没在站牌上见过，墙皮剥落，尽头亮着一盏应急灯。自动贩卖机的灯箱在黑暗里闪了一下。",
+      "choices": [
+        { "text": "推开通道旁的值班室", "goto": "office" },
+        { "text": "先去看看贩卖机", "goto": "vending" },
+        { "text": "原路返回检票口", "goto": "gate" }
+      ]
+    },
+    {
+      "id": "office",
+      "chapter": "值班室",
+      "speaker": "旁白",
+      "text": "值班室的门虚掩着。桌上的值班表停在三十年前的日期，签到栏里只有同一个名字。门后的挂钩上掉下来一块黄铜名牌，反面刻着「千代田」。",
+      "choices": [
+        { "text": "捡起名牌", "goto": "office-desk", "give": ["name-plate"], "score": 2 },
+        { "text": "翻看值班表", "goto": "office-desk", "score": 2 },
+        { "text": "退出值班室", "goto": "corridor" }
+      ]
+    },
+    {
+      "id": "office-desk",
+      "chapter": "值班室",
+      "speaker": "旁白",
+      "text": "值班表的备注栏写着：末班车不返回。它每天 23:59 发车，终点站是「任何你想回去的那一天」。签到人一栏，千代田的名字被签了整整三十年。",
+      "choices": [
+        { "text": "回站台深处", "goto": "corridor" },
+        { "text": "再去检票口看看", "goto": "gate" }
+      ]
+    },
+    {
+      "id": "vending",
+      "chapter": "站台深处",
+      "speaker": "旁白",
+      "text": "贩卖机只卖一种东西：「返程」。投币口堵着一枚旧硬币的形状。你拍了拍机身，一张线路贴纸从取物口滑了出来——图上多出一站，站名被涂掉了。",
+      "choices": [
+        { "text": "揭下贴纸收好", "goto": "vending-out", "give": ["route-sticker"], "score": 1 },
+        { "text": "关上灯箱盖，离开", "goto": "corridor" }
+      ]
+    },
+    {
+      "id": "vending-out",
+      "chapter": "站台深处",
+      "speaker": "旁白",
+      "text": "应急灯忽明忽暗。广播轻声重复：末班车即将进站。你还来得及去任何地方——检票口、值班室，或者铁轨旁。",
+      "choices": [
+        { "text": "回检票口", "goto": "gate" },
+        { "text": "去值班室", "goto": "office" }
+      ]
+    },
+    {
+      "id": "confront",
+      "chapter": "检票口",
+      "speaker": "千代田",
+      "text": "她接过名牌，指腹在「千代田」三个字上停了很久。「三十年前我在这里睡着了，」她说，「票根攥在手里，就再也没能离开。能替我把它检掉吗？」她把剪票钳递向你。",
+      "choices": [
+        { "text": "接过钳子，替她检掉那张票", "goto": "end-chiyo", "score": 5 },
+        { "text": "退后一步，把钳子还给她", "goto": "end-walk" }
+      ]
+    },
+    {
+      "id": "end-train",
+      "chapter": "结局",
+      "text": "车门合拢。窗外，站台连同那位检票员一起退进黑暗。你攥着单程票睡着了——醒来时，列车正驶过一座你从未见过、却在梦里到过很多次的桥。",
+      "endingTitle": "末班车",
+      "endingNote": "你上了车。有些告别不需要理由，有些乘客永远到不了站。"
+    },
+    {
+      "id": "end-rail",
+      "chapter": "结局",
+      "text": "你沿着铁轨走了很久。身后的广播越来越远，最后只剩下你的脚步声和枕木的节奏。回头时，站台已经不在了——只有一盏灯还亮着，像谁忘了关。",
+      "endingTitle": "夜行",
+      "endingNote": "你选择用双脚丈量回家的路。站台在你身后熄灯，安静地等下一位乘客。"
+    },
+    {
+      "id": "end-walk",
+      "chapter": "结局",
+      "text": "你把钳子还给她，说了句「票要自己检才算数」。她愣了一下，忽然笑了。灯灭了。再亮起来时，站台上只剩下你，和长椅上一枚崭新的硬币。",
+      "endingTitle": "夜行 · 续",
+      "endingNote": "你没有替她检票，但你陪她说完了话。这就够了。"
+    },
+    {
+      "id": "end-chiyo",
+      "chapter": "结局",
+      "text": "剪票钳合上的那一声，像三十年积攒的雪同时落地。检票员脱下帽子——是张年轻的脸。「谢谢你。」她说，「到站了，请下车吧。」白光漫过站台。你在早高峰的长椅上醒来，手里的单程票变成了两张，背面写着：同行。",
+      "endingTitle": "站台尽头的灯",
+      "endingNote": "真结局：你听完了她的三十年，替她把那张票检掉了。"
+    }
+  ]
+}
