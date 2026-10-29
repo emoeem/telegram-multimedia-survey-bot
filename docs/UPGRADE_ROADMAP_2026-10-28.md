@@ -184,9 +184,15 @@ CertContentPage useDialogs、`@media (pointer: coarse)` 44px、图标轨 aria-la
   基线已由「Visual baseline」工作流在分支上生成（2399e06 系列）。
 - **staging 已部署（2026-10-29）**：staging 卷 1 = immersive、卷 2 = landscape；
   匿名 `?preview=1` 仍 404（旁路只对管理员会话生效）。
-- 待办：① 真机竖/横屏目检 + 编辑器设备预览四档；② 合入 main（触发生产 deploy）；
-  ③ 清理 `SurveyPreview` 只剩 `PreviewAnswer` 被右栏复用（组件本身已不再作为
-  弹层预览入口，可在下个周期随旧壳一并整理）。
+- **已合入 main 并生产上线（2026-10-29，2b36aed）**：CI（checks/visual/tg-archive）
+  全绿后 deploy 自动完成；生产抽查 `/health` 200、`/api/survey/9136` 下发
+  `display: auto`（存量行为不变）、旧素材 media/858 仍 200、`emoemok.top` 与
+  `emoe.eu.cc` 同一 Worker。
+  上线过程中修了一处 e2e：`scene-editor.spec.ts` 的保存断言仍期待 URL 字符串，
+  已同步为 `{assetId}`（种子数据保留旧形态做双读回归）。
+- 待办：① 作者在「问卷设置 → 显示模式」里给具体问卷选版式（默认 auto 不变）；
+  ② 真机竖/横屏目检 + 编辑器设备预览四档；③ 清理 `SurveyPreview`（仅剩
+  `PreviewAnswer` 被右栏复用），随旧壳一并整理。
 
 ## CI 全绿恢复（2026-10-29，随 E 批收尾）
 
