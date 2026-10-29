@@ -101,7 +101,7 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
     }
   }
 
-  const [assetResult, linkedResult] = await env.DB.batch([
+  const [assetResult, linkedResult, packLinkedResult] = await env.DB.batch([
     getMediaAssetByIdStatement(env.DB, mediaId),
     // One statement covers both linkage shapes: attached to a
     // once-published survey's question/option media, or serving as its cover.
@@ -143,25 +143,29 @@ export async function serveSurveyMedia(request: Request, env: Env, mediaId: numb
       SELECT 1 AS linked FROM surveys s
        JOIN media_refs mr ON mr.ref_type = 'survey_theme' AND mr.asset_id = ?
         AND mr.ref_key = 'survey:' || s.id || ':' || ?
-       WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL
-      /* 第六种挂载(2026-10-29 扩展包):quest 剧情扩展包的插画 URL 写在
-       * task_packs.settings_json 的 content(JSON 字符串字段)里——嵌套 JSON
-       * 的引号是转义形态(\"),所以匹配串要有两个分支:顶层未转义(与第四路
-       * 同款)与嵌套转义(闭合引号前多一个反斜杠)。转义形态的边界同样防
-       * 767 误配 1767(数字后面必须紧跟引号)。启用中的包才放行——停用即
-       * 不再公开(边缘缓存最长滞后一天,与上方 survey-scope 取舍一致)。 */
-      UNION
-      SELECT 1 AS linked FROM task_packs
+       WHERE s.status IN ('published', 'closed', 'archived') AND s.deleted_at IS NULL`,
+    ).bind(mediaId, mediaId, mediaId, String(mediaId), mediaId, String(mediaId)),
+    /* 第六种挂载(2026-10-29 扩展包):quest 剧情扩展包的插画 URL 写在
+     * task_packs.settings_json 的 content(JSON 字符串字段)里——嵌套 JSON
+     * 的引号是转义形态(\"),所以匹配串要有两个分支:顶层未转义(与第四路
+     * 同款)与嵌套转义(闭合引号前多一个反斜杠)。转义形态的边界同样防
+     * 767 误配 1767(数字后面必须紧跟引号)。启用中的包才放行——停用即
+     * 不再公开(边缘缓存最长滞后一天,与上方 survey-scope 取舍一致)。
+     * 单独一条语句:六路 UNION 会撞 D1 的 compound SELECT 上限(=5)。 */
+    env.DB.prepare(
+      `SELECT 1 AS linked FROM task_packs
        WHERE enabled = 1
          AND (
            instr(settings_json, '"/api/survey/media/' || ? || '"') > 0
            OR instr(settings_json, '"/api/survey/media/' || ? || '\\"') > 0
          )`,
-    ).bind(mediaId, mediaId, mediaId, String(mediaId), mediaId, String(mediaId), String(mediaId), String(mediaId)),
+    ).bind(String(mediaId), String(mediaId)),
   ]);
   const asset = mapMediaAssetStatement(assetResult);
   if (!asset) return fail(404, "media_not_found", "媒体不存在");
-  const linkedToPublicSurvey = ((linkedResult?.results ?? []) as unknown[]).length > 0;
+  const linkedToPublicSurvey =
+    ((linkedResult?.results ?? []) as unknown[]).length > 0 ||
+    ((packLinkedResult?.results ?? []) as unknown[]).length > 0;
 
   if (asset.scope === "survey") {
     /* Draft-survey and detached-survey assets are NOT public: they used to be

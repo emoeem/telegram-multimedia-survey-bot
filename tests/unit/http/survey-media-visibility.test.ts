@@ -274,4 +274,30 @@ describeIf("survey media visibility (real SQL)", () => {
     const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/7"), env, 7);
     expect(response.status).toBe(200);
   });
+
+  /* D1 把 SQLITE_MAX_COMPOUND_SELECT 降到 5（本地 SQLite 默认 500，测试拦不住）。
+   * 2026-10-30 曾在第六路挂载合入后突破上限 → 线上扩展包插画 500。这条守卫
+   * 在测试库上模拟 D1 语义：挂载校验批里的每条语句 UNIONS ≤ 4（即 ≤5 项）。 */
+  it("挂载校验的每条语句都不超过 D1 的 compound SELECT 上限（5 项）", async () => {
+    const { env, insert } = buildEnv();
+    insert.survey(1, "published");
+    insert.question(11, 1);
+    insert.questionMedia(11, 1);
+    insert.taskPack(3, true, JSON.stringify({ content: JSON.stringify({ image: "/api/survey/media/1" }) }));
+    const guard = new Proxy(env.DB, {
+      get(target, prop, receiver) {
+        if (prop !== "prepare") return Reflect.get(target, prop, receiver);
+        return (sql: string) => {
+          const unions = (sql.match(/\bUNION\b/g) ?? []).length;
+          if (unions > 4) {
+            throw new Error(`compound SELECT 超 D1 上限（5 项）：本语句含 ${unions} 个 UNION`);
+          }
+          return (target.prepare as (s: string) => D1PreparedStatement)(sql);
+        };
+      },
+    });
+    const guardedEnv = { ...env, DB: guard } as unknown as Env;
+    const response = await serveSurveyMedia(new Request("https://worker.test/api/survey/media/1"), guardedEnv, 1);
+    expect(response.status).toBe(200);
+  });
 });

@@ -5,7 +5,7 @@ import { TRIAL_AGREEMENT_KEY } from "./GamePlayer";
 import { lazyPlayView } from "../game-plugins/loader";
 import type { GameHostBridge, GamePlayResult } from "../game-plugins/types";
 import type { GameRunView } from "../../../src/game-plugin/types";
-import type { AnswerValue } from "./api";
+import { identityHeaders, type AnswerValue } from "./api";
 
 /**
  * 插件玩法的宿主（问卷 game 题在答题时的容器）。
@@ -37,7 +37,9 @@ interface ActionResult {
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // trial 路由要身份（Telegram initData / 邮箱会话 / 匿名 key），与
+    // trial-api.ts 的 trialRequest 同一待遇——不带头的请求一律 401。
+    headers: { "Content-Type": "application/json", ...identityHeaders() },
     body: JSON.stringify(body),
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -109,7 +111,7 @@ export function PluginGamePlay({
   const host = useMemo<GameHostBridge>(() => {
     const start = async (): Promise<GameRunView> => {
       // 先探进行中的局：换题/刷新回来时接着玩，而不是报 run_active。
-      const active = await fetch("/api/trial/runs/active").then(
+      const active = await fetch("/api/trial/runs/active", { headers: identityHeaders() }).then(
         (response) => response.json() as Promise<{ run: RunSummary | null; view: GameRunView | null }>,
       );
       if (active.run && active.view && active.run.status === "active") {

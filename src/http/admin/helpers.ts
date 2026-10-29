@@ -19,6 +19,7 @@ import {
 } from "../../survey/question-rules";
 import { createQuestion, createQuestionOption } from "../../db/repositories/question.repository";
 import { parseHotspotScene } from "../../survey/hotspot";
+import { parseGameQuestionSettings } from "../../survey/game";
 
 export const INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60;
 export const IMPORT_MAX_BYTES = 40 * 1024 * 1024;
@@ -426,6 +427,16 @@ export function validateQuestionPayload(
       const config = parseHotspotScene(body.settings);
       if (!config) return { error: "场景配置无效（settings.scene，见 docs/guides/HOTSPOT_SCENES.md）" };
       next.scene = config;
+    }
+    // game（小游戏题）：settings.game = { packId, gameType? }，经共享解析器
+    // 消毒（编辑器的「绑定任务包」下拉就是写这个键；此前白名单漏了它，
+    // 绑定会被静默丢弃 → 导入的 quest/flip-card 包永远接不进问卷）。
+    // 解析器吃整个 settings 对象（与读取端同一把尺子）。
+    if (body.settings.game !== undefined) {
+      if (questionType !== "game") return { error: "仅 game 题支持 settings.game" };
+      const gameConfig = parseGameQuestionSettings(body.settings);
+      if (!gameConfig) return { error: "小游戏题配置无效：settings.game.packId 必须是正整数" };
+      next.game = gameConfig;
     }
     settingsJson = Object.keys(next).length ? JSON.stringify(next) : null;
   } else if (body.settings === null) {
