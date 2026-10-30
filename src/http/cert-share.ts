@@ -91,8 +91,8 @@ export interface ResolvedCertShareChannel {
 }
 
 export interface CertShareSender {
-  album(chatId: number, photos: Array<{ bytes: Uint8Array; caption?: string }>): Promise<void>;
-  single(chatId: number, bytes: Uint8Array, caption?: string): Promise<void>;
+  album(chatId: number, photos: Array<{ bytes: Uint8Array; caption?: string; type?: string }>): Promise<void>;
+  single(chatId: number, bytes: Uint8Array, caption?: string, type?: string): Promise<void>;
 }
 
 export interface CertShareOptions {
@@ -184,8 +184,10 @@ function defaultSender(botToken: string): CertShareSender {
     async album(chatId, photos) {
       await sendPhotoAlbum(botToken, chatId, photos);
     },
-    async single(chatId, bytes, caption) {
-      await sendPhoto(botToken, chatId, bytes, caption);
+    async single(chatId, bytes, caption, type) {
+      // type 必须跟字节的真实格式一致（readImage 的 magic-byte 检测结果）：
+      // TG 按 multipart 声明选择图片解码管线，声明成 png 的 WebP 会发成灰块。
+      await sendPhoto(botToken, chatId, { bytes, ...(type ? { type } : {}) }, caption);
     },
   };
 }
@@ -409,11 +411,11 @@ export async function handleCertShare(
 
   try {
     if (sources.length === 0) {
-      await sender.single(channel, card.bytes, caption);
+      await sender.single(channel, card.bytes, caption, card.mime);
     } else {
       await sender.album(channel, [
-        { bytes: card.bytes, caption },
-        ...sources.map((source) => ({ bytes: source.bytes })),
+        { bytes: card.bytes, caption, type: card.mime },
+        ...sources.map((source) => ({ bytes: source.bytes, type: source.mime })),
       ]);
     }
   } catch (error) {

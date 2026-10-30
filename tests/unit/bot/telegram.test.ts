@@ -110,6 +110,30 @@ describe("telegram media requests", () => {
       { type: "photo", media: "attach://report_page_0", caption: "报告 1/2" },
       { type: "photo", media: "attach://report_page_1" },
     ]);
+    // 字节格式必须如实声明：TG 按声明选解码管线，WebP 字节声明成 PNG 会发成灰块。
+    const webpPart = body.get("report_page_1") as File;
+    expect(webpPart.type).toBe("image/png"); // 缺省保持 PNG（报告页调用方兼容）
+    expect(webpPart.name).toBe("report-2.png");
+  });
+
+  it("declares the real mime for binary photos (webp card must not be sent as png)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true,"result":[]}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await sendPhoto("token", 42, { bytes: new Uint8Array([1]), type: "image/webp" }, "成品");
+    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    const part = body.get("photo") as File;
+    expect(part.type).toBe("image/webp");
+    expect(part.name).toBe("completion-poster.webp");
+
+    await sendPhotoAlbum("token", 42, [
+      { bytes: new Uint8Array([1]), type: "image/webp" },
+      { bytes: new Uint8Array([2]), type: "image/jpeg" },
+    ]);
+    const albumBody = fetchMock.mock.calls[1]?.[1]?.body as FormData;
+    expect((albumBody.get("report_page_0") as File).type).toBe("image/webp");
+    expect((albumBody.get("report_page_0") as File).name).toBe("report-1.webp");
+    expect((albumBody.get("report_page_1") as File).type).toBe("image/jpeg");
+    expect((albumBody.get("report_page_1") as File).name).toBe("report-2.jpg");
   });
 
   it("splits long previews below the Telegram message limit", () => {

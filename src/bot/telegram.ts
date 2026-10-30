@@ -597,10 +597,38 @@ export async function deleteMessage(botToken: string, chatId: number, messageId:
   }
 }
 
+/**
+ * 二进制照片的真实格式声明。Telegram 的 sendPhoto/sendMediaGroup 依据
+ * multipart 里声明的 Content-Type 决定走哪条图片处理管线：声明与字节不符
+ * （例如 canvas 导出的 WebP 被声明成 image/png）时，频道里会出现灰色
+ * 占位图——TG 收下了字节（200）但解不出图。默认值保持 image/png 以兼容
+ * 既有的报告页调用方（它们的字节本来就是 PNG）。
+ */
+export interface BinaryPhoto {
+  bytes: Uint8Array;
+  /** 字节的真实 mime（image/png | image/jpeg | image/webp）。缺省按 PNG 处理。 */
+  type?: string;
+}
+
+/** mime → Telegram 文件扩展名（仅影响 multipart 文件名，声明以 type 为准）。 */
+function extForMime(mime: string): string {
+  if (mime === "image/webp") return ".webp";
+  if (mime === "image/jpeg") return ".jpg";
+  return ".png";
+}
+
+function binaryParts(photo: BinaryPhoto, baseName: string): { blob: Blob; filename: string } {
+  const type = photo.type && photo.type.startsWith("image/") ? photo.type : "image/png";
+  return {
+    blob: new Blob([photo.bytes as BlobPart], { type }),
+    filename: `${baseName}${extForMime(type)}`,
+  };
+}
+
 export async function sendPhoto(
   botToken: string,
   chatId: number,
-  photo: string | Uint8Array,
+  photo: string | Uint8Array | BinaryPhoto,
   caption?: string,
   replyMarkup?: InlineKeyboardMarkup,
   messageThreadId?: number,
@@ -623,9 +651,12 @@ export async function sendPhoto(
             signal: controller.signal,
           })
         : await (() => {
+            // Uint8Array 是既有调用方（报告页 PNG）的兼容形态；对象形态携带真实 mime。
+            const binary: BinaryPhoto = photo instanceof Uint8Array ? { bytes: photo } : (photo as BinaryPhoto);
+            const { blob, filename } = binaryParts(binary, "completion-poster");
             const form = new FormData();
             form.append("chat_id", String(chatId));
-            form.append("photo", new Blob([photo as BlobPart], { type: "image/png" }), "completion-poster.png");
+            form.append("photo", blob, filename);
             if (caption) form.append("caption", caption);
             if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
             // 二进制图片走 FormData 分支，话题 id 必须显式附加，否则论坛群里会掉进
@@ -651,7 +682,7 @@ export async function sendPhoto(
 export async function sendPhotoAlbum(
   botToken: string,
   chatId: number,
-  photos: Array<{ bytes: Uint8Array; caption?: string }>,
+  photos: Array<BinaryPhoto & { caption?: string }>,
   messageThreadId?: number,
 ): Promise<Response> {
   if (photos.length < 2 || photos.length > 10) throw new Error("Telegram 相册必须包含 2–10 张图片");
@@ -663,7 +694,8 @@ export async function sendPhotoAlbum(
     if (messageThreadId) form.append("message_thread_id", String(messageThreadId));
     const media = photos.map((photo, index) => {
       const name = `report_page_${index}`;
-      form.append(name, new Blob([photo.bytes as BlobPart], { type: "image/png" }), `report-${index + 1}.png`);
+      const { blob, filename } = binaryParts(photo, `report-${index + 1}`);
+      form.append(name, blob, filename);
       return { type: "photo", media: `attach://${name}`, ...(photo.caption ? { caption: photo.caption } : {}) };
     });
     form.append("media", JSON.stringify(media));

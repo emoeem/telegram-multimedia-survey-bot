@@ -33,8 +33,8 @@ function fakeCache(): KVNamespace {
 }
 
 interface Recorded {
-  albums: Array<{ chatId: number; photos: Array<{ bytes: Uint8Array; caption?: string }> }>;
-  singles: Array<{ chatId: number; bytes: Uint8Array; caption?: string }>;
+  albums: Array<{ chatId: number; photos: Array<{ bytes: Uint8Array; caption?: string; type?: string }> }>;
+  singles: Array<{ chatId: number; bytes: Uint8Array; caption?: string; type?: string }>;
 }
 
 function fakeSender(recorded: Recorded, failure?: Error): CertShareSender {
@@ -43,10 +43,15 @@ function fakeSender(recorded: Recorded, failure?: Error): CertShareSender {
       if (failure) throw failure;
       recorded.albums.push({ chatId, photos });
     },
-    async single(chatId, bytes, caption) {
+    async single(chatId, bytes, caption, type) {
       if (failure) throw failure;
-      /* exactOptionalPropertyTypes: caption 缺省时不能显式写 undefined */
-      recorded.singles.push({ chatId, bytes, ...(caption === undefined ? {} : { caption }) });
+      /* exactOptionalPropertyTypes: 缺省时不能显式写 undefined */
+      recorded.singles.push({
+        chatId,
+        bytes,
+        ...(caption === undefined ? {} : { caption }),
+        ...(type === undefined ? {} : { type }),
+      });
     },
   };
 }
@@ -463,6 +468,31 @@ describe("handleCertShare POST 发送", () => {
       expect(res.status).toBe(200);
       expect(recorded.singles).toHaveLength(1);
     }
+  });
+
+  it("sender 收到与字节一致的 mime——WebP 成品不得声明成 PNG（TG 按声明选解码管线，错配会发成灰块）", async () => {
+    const WEBP_HEAD = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+    const recorded: Recorded = { albums: [], singles: [] };
+    const res = await handleCertShare(
+      postRequest(buildForm({ card: imageBytes(WEBP_HEAD), sources: [imageBytes(JPEG_HEAD), imageBytes(JPEG_HEAD)] })),
+      { ...enabledEnv(), CACHE: fakeCache() },
+      { ...CLIENT, sender: fakeSender(recorded) },
+    );
+    expect(res.status).toBe(200);
+    // 有原图走相册：成品第一张带 caption，全部携带真实 mime。
+    expect(recorded.albums).toHaveLength(1);
+    const photos = first(recorded.albums).photos;
+    expect(photos[0]?.type).toBe("image/webp");
+    expect(photos[1]?.type).toBe("image/jpeg");
+    expect(photos[2]?.type).toBe("image/jpeg");
+    // 无原图的单张路径同样携带真实 mime。
+    const singleRecorded: Recorded = { albums: [], singles: [] };
+    await handleCertShare(
+      postRequest(buildForm({ card: imageBytes(WEBP_HEAD) })),
+      { ...enabledEnv(), CACHE: fakeCache() },
+      { ...CLIENT, sender: fakeSender(singleRecorded) },
+    );
+    expect(first(singleRecorded.singles).type).toBe("image/webp");
   });
 
   it("Telegram 发送失败时 502，且不回传原始错误", async () => {
