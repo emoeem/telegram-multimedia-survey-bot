@@ -130,8 +130,10 @@ test("排队中也可以看到状态（不是只有一个红色失败态）", as
 
   const card = page.locator("section", { hasText: "公开发布到 Telegram" }).first();
   await expect(card.getByText("排队发布中")).toBeVisible();
-  // 没失败就不该出现重投按钮：那条路只对 failed 有意义。
-  await expect(card.getByRole("button", { name: "重新发布" })).toHaveCount(0);
+  // 发布三选一（2026-10-29）之后 pending 也提供手动重投入口：补发没发出去的
+  // 批次；正在发布时后端拒绝（409），界面上要能看见这条提示。
+  await expect(card.getByRole("button", { name: "重新发布" })).toBeVisible();
+  await expect(card.getByText(/正在发布时后端会拒绝/)).toBeVisible();
 });
 
 test("已发布：显示状态与发布时刻，且不提供重投", async ({ page }) => {
