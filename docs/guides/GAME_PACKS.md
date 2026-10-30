@@ -2,6 +2,7 @@
 
 > 2026-10-29 落地。数据驱动的小游戏：**导入一个 ZIP = 生成一个新的剧情小游戏，全程不改代码**。
 > 格式规范（含护栏与打包命令）的唯一权威文档：仓库根 [`packs/README.md`](../../packs/README.md)；
+> 面向创作者的逐步教程（模版/字段速查/报错对照）：[`packs/AUTHORING.md`](../../packs/AUTHORING.md)；
 > 手写示例包：[`packs/quest-example-lost-study/`](../../packs/quest-example-lost-study/)。
 
 ## 一句话架构
