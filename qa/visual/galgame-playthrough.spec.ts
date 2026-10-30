@@ -414,6 +414,26 @@ interface PlayResult {
 }
 
 /**
+ * 点击底部导航的主按钮。底栏带自动隐匿（向下滚动收起，2026-10-29）：
+ * 隐匿态是 `fixed` + `translateY` 移出视口——Playwright 对 fixed 元素的
+ * scrollIntoView 是 no-op，click 会以「element is outside of the viewport」
+ * 无限重试直到超时（实测 4 分钟）。真实用户的恢复动作是向上滑一下让底栏
+ * 浮出，这里模拟同一交互：点击失败就向上滚一段、等浮出过渡完成后重试。
+ */
+async function clickNav(page: Page, nav: ReturnType<Page["locator"]>) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await nav.click({ timeout: 2500 });
+      return;
+    } catch {
+      await page.mouse.wheel(0, -180);
+      await page.waitForTimeout(450);
+    }
+  }
+  await nav.click({ timeout: 5000 });
+}
+
+/**
  * Drives the real UI through the story, following the same navigation rules the
  * engine uses, and asserts the rendered node matches the one the model expects
  * at every step (so a wrong jump fails loudly instead of silently passing).
@@ -483,7 +503,7 @@ async function play(
     const nav = page.locator("nav button.btn-primary");
     const navLabel = question.type === "note" ? "继续" : index === questions.length - 1 ? "提交问卷" : "下一题";
     await expect(nav).toContainText(navLabel);
-    await nav.click();
+    await clickNav(page, nav);
 
     const next = nextIndex(questions, byId, index, selected, answers);
     for (let between = index + 1; between < next; between++) skippedIds.push(questions[between]!.id);
