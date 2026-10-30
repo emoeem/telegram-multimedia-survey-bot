@@ -74,6 +74,25 @@ export function EditorShellNext({ data }: { data: EditorData }) {
     }
   }, [canvasView]);
   /**
+   * A3 移动端降级（2026-10-30）：节点图需要确定高度的画布视口，而编辑器
+   * 三栏在 <1000px 折叠为纵向流（.editor-canvas overflow: visible），
+   * 结构上放不下固定视口画布。窄屏强制列表形态（拖入自动接链尾、上下
+   * 排序、点卡片编辑内容），节点图按钮禁用并说明原因——与编辑器既有的
+   * 窄屏断点一致，而非另立一套。
+   */
+  const [graphAllowed, setGraphAllowed] = useState(
+    () => (typeof window !== "undefined" ? (window.matchMedia?.("(min-width: 1000px)").matches ?? true) : true),
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1000px)");
+    const sync = () => setGraphAllowed(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  const effectiveCanvasView: CanvasViewMode = graphAllowed ? canvasView : "list";
+
+  /**
    * 基础 / 专业模式与旧壳共用同一个 localStorage 键：两个壳看到的模式一致，
    * 切换只改可见性，不动文档。
    */
@@ -456,18 +475,25 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                   key={value}
                   type="button"
                   className={`px-2.5 py-1 text-[11px] font-semibold ${
-                    canvasView === value
+                    effectiveCanvasView === value
                       ? "bg-[var(--color-primary)] text-[var(--color-primary-content)]"
                       : "text-[var(--color-muted)]"
                   }`}
-                  aria-pressed={canvasView === value}
+                  aria-pressed={effectiveCanvasView === value}
+                  disabled={value === "graph" && !graphAllowed}
+                  title={value === "graph" && !graphAllowed ? "节点图需要桌面端宽度（≥1000px）；窄屏请使用列表编辑" : undefined}
                   onClick={() => setCanvasView(value)}
                 >
                   {label}
                 </button>
               ))}
+              {!graphAllowed ? (
+                <span className="text-[11px]" style={{ color: "var(--color-muted)" }}>
+                  节点图需要桌面端宽度
+                </span>
+              ) : null}
             </div>
-            {canvasView === "graph" ? (
+            {effectiveCanvasView === "graph" ? (
               <FlowCanvas
                 graph={nodeGraph}
                 viewMode="graph"
