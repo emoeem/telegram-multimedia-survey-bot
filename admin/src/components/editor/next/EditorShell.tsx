@@ -24,6 +24,9 @@ import { useDialogs } from "../../Dialogs";
 import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
 import { Canvas } from "./Canvas";
+import { FlowCanvas } from "./flow/FlowCanvas";
+import { surveyToGraph } from "../../../editor/node-graph/to-graph";
+import type { CanvasViewMode } from "../../../editor/node-graph/types";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { SceneEditorPage } from "../../../routes/SceneEditorPage";
 import { X } from "lucide-react";
@@ -48,6 +51,26 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   // P3：scene 编辑从「页面跳转」改为壳内全屏浮层——选中即配置、不出现页面跳转。
   const [sceneOverlayId, setSceneOverlayId] = useState<number | null>(null);
+  /**
+   * 中栏画布形态（A4，2026-10-30）：list=现有卡片流（默认），graph=统一节点图。
+   * 铁律「新旧并存、验收前不切默认」：localStorage 记忆 + URL ?canvas=graph
+   * 可直达，默认保持 list 不动。
+   */
+  const [canvasView, setCanvasView] = useState<CanvasViewMode>(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("canvas") === "graph") return "graph";
+      return window.localStorage.getItem("admin:editor-canvas") === "graph" ? "graph" : "list";
+    } catch {
+      return "list";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("admin:editor-canvas", canvasView);
+    } catch {
+      // 隐私模式写不进去不影响本次编辑
+    }
+  }, [canvasView]);
   /**
    * 基础 / 专业模式与旧壳共用同一个 localStorage 键：两个壳看到的模式一致，
    * 切换只改可见性，不动文档。
@@ -105,6 +128,26 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   const previewQuestions = useMemo(
     () => buildEditorPreviewFlow(survey.id, editor.questions),
     [editor.questions, survey.id],
+  );
+  // 节点图视图数据（只读派生，见 node-graph/to-graph.ts）。
+  const nodeGraph = useMemo(
+    () =>
+      surveyToGraph({
+        questions: editor.questions.map((question) => ({
+          id: question.id,
+          type: question.type,
+          title: question.title,
+          required: question.required,
+          order: question.order,
+          pageId: question.pageId,
+          condition: question.condition,
+          options: question.options,
+          speaker: question.speaker,
+          gamePackId: question.gamePackId,
+        })),
+        pages: data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order })),
+      }),
+    [editor.questions, data.pages],
   );
 
   const blocker = useBlocker(
@@ -339,21 +382,47 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             />
           </aside>
 
-          <main className="editor-canvas editor-col" aria-label="画布">
-            <Canvas
-              questions={editor.questions}
-              selection={selection}
-              editable={!editingDisabled}
-              sceneBusy={actions.sceneBusy}
-              draggingType={draggingType}
-              onOpenPicker={() => setPickerOpen(true)}
-              onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
-              onSelect={setSelection}
-              onMove={actions.moveQuestion}
-              onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
-              onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
-              onToggleRequired={toggleRequired}
-            />
+          <main className={`editor-canvas editor-col${canvasView === "graph" ? " is-graph-mode" : ""}`} aria-label="画布">
+            <div className="flow-view-toggle" role="group" aria-label="画布形态">
+              {(
+                [
+                  ["list", "列表"],
+                  ["graph", "节点图"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-2.5 py-1 text-[11px] font-semibold ${
+                    canvasView === value
+                      ? "bg-[var(--color-primary)] text-[var(--color-primary-content)]"
+                      : "text-[var(--color-muted)]"
+                  }`}
+                  aria-pressed={canvasView === value}
+                  onClick={() => setCanvasView(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {canvasView === "graph" ? (
+              <FlowCanvas graph={nodeGraph} viewMode="graph" selection={selection} onSelect={setSelection} />
+            ) : (
+              <Canvas
+                questions={editor.questions}
+                selection={selection}
+                editable={!editingDisabled}
+                sceneBusy={actions.sceneBusy}
+                draggingType={draggingType}
+                onOpenPicker={() => setPickerOpen(true)}
+                onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
+                onSelect={setSelection}
+                onMove={actions.moveQuestion}
+                onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
+                onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
+                onToggleRequired={toggleRequired}
+              />
+            )}
           </main>
 
           <aside className="editor-preview editor-col" aria-label="属性区">

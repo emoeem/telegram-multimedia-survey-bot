@@ -1,0 +1,195 @@
+/* 节图画布样式（A4）：节点卡与列表模式摘要卡同一信息密度；
+   强调色走 registry 的 --flow-accent，深浅主题均可读。 */
+
+/* 列表形态下 .editor-canvas 是滚动列；graph 形态 React Flow 需要确定的
+   视口高度——列自身改为不滚动的 flex 容器，画布吃满，缩放/平移交给 RF。 */
+.editor-canvas.is-graph-mode {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 画布形态切换条（列表 / 节点图）：与顶栏的 基础/专业 分段控件同一视觉。 */
+.flow-view-toggle {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-edge);
+  background: var(--color-page);
+}
+.flow-view-toggle button {
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.flow-canvas {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  /* 切换条占一行后画布吃剩余高度。 */
+  flex: 1 1 auto;
+}
+
+/* React Flow 需要显式尺寸：让宿主列（.editor-canvas）自己滚动，
+   画布吃满除工具条外的空间。 */
+.flow-canvas .react-flow {
+  --xy-background-color: transparent;
+  height: 100%;
+}
+
+.flow-node {
+  width: 240px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-edge);
+  border-left: 3px solid var(--flow-accent, var(--color-muted));
+  background: var(--color-surface, var(--color-page));
+  box-shadow: 0 10px 26px -18px rgba(15, 23, 42, 0.4);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.flow-node.is-selected {
+  border-color: var(--color-primary);
+  box-shadow:
+    0 0 0 1px var(--color-primary),
+    0 10px 26px -18px rgba(15, 23, 42, 0.4);
+}
+
+.flow-node.is-synthetic {
+  background: color-mix(in srgb, var(--color-muted-soft) 40%, transparent);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.flow-node.is-synthetic.is-page {
+  width: 200px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+}
+
+.flow-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.flow-node-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  color: var(--flow-accent, var(--color-muted));
+  background: color-mix(in srgb, var(--flow-accent, var(--color-muted)) 14%, transparent);
+}
+
+.flow-node-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-content);
+}
+
+.flow-node-branch-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fb923c;
+  background: color-mix(in srgb, #fb923c 16%, transparent);
+}
+
+.flow-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.flow-node-required {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+/* 端口：graph 模式显示；linear 模式整根隐藏（A2——纯问卷用户不该感到
+   画布的存在）。handle 命中区域 12px，样式走 React Flow 变量。 */
+.flow-canvas .react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-page);
+  background: var(--color-muted);
+}
+.flow-canvas.is-linear .react-flow__handle {
+  display: none;
+}
+.flow-canvas.is-linear .react-flow__edge.flow-edge-condition path {
+  stroke-dasharray: 4 4;
+  opacity: 0.45;
+}
+
+.flow-edge-sequence path {
+  stroke: color-mix(in srgb, var(--color-content, #e2e8f0) 45%, transparent);
+  stroke-width: 1.6;
+}
+.flow-edge-condition path {
+  stroke: #fb923c;
+  stroke-width: 1.6;
+}
+
+.flow-canvas-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-edge);
+  background: color-mix(in srgb, var(--color-page) 78%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 11px;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.flow-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.flow-legend-line {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 2px solid var(--color-muted-soft);
+}
+.flow-legend-line.is-condition {
+  border-top-style: dashed;
+  border-top-color: #fb923c;
+}
