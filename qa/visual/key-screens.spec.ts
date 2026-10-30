@@ -188,11 +188,12 @@ test.describe("关键页面 · 场景题", () => {
     await expect(page).toHaveScreenshot("key-scene-1440x900.png", { maxDiffPixelRatio: 0.002 });
   });
 
-  test("390×844 竖屏：阅读窄卡", async ({ page }) => {
+  test("390×844 竖屏：沉浸舞台吃满整宽（2026-10-30 重设计）", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installSurveyRoutes(page, sceneSurvey());
     await page.goto(`/s/${SCENE_ID}`);
-    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "reading");
+    // 旧契约是阅读窄卡；重设计后手机竖屏也上舞台（窄卡 18% 可视面积是主诉）。
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
     await scanA11y(page, test.info().title);
     await expect(page).toHaveScreenshot("key-scene-390x844.png", { maxDiffPixelRatio: 0.002 });

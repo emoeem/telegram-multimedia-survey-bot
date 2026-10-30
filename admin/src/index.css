@@ -3216,7 +3216,9 @@ main > header h1 {
   width: 72%;
 }
 @media (max-width: 720px) {
-  main {
+  /* 沉浸舞台版式不吃这份阅读窄屏内边距（2026-10-30）：舞台必须铺满视口，
+   * 否则 390 竖屏场景两侧各缩 14px、可视面积少 6 个百分点。 */
+  main:not(.survey-stage-main) {
     padding: 14px !important;
   }
   .card {
@@ -5099,19 +5101,20 @@ button.admin-stat:focus-visible {
   color: var(--app-danger);
 }
 
-/* ---- 舞台版式（layout = "stage"，见 src/survey/layout.ts） ----------------
+/* ---- 舞台版式 · 沉浸式（layout = "stage"，见 src/survey/layout.ts） --------
  *
- * 场景/小游戏/视频这类画布优先的题：整页变成视口高度的 flex 列，舞台吃掉
- * 头部与底栏之外的全部空间。设计要点（踩过的坑都在这）：
+ * 2026-10-30 重设计：galgame 全屏体验。before 实测（_review/immersive-2026-10-30/）
+ * 桌面 1920×1080 场景可视面积仅 50%、手机 390 竖屏仅 18%——头部、底栏、题面
+ * 全都挤占画面。本版把舞台推到整个视口：
  *
- * 1. 每个 flex 子项都要 `min-height: 0`。漏一个，子项的最小内容高度（图片原始
- *    高度、长段落）会把链撑开，舞台溢出到操作条下面——这正是上一版用固定
- *    `max-height: calc(100dvh - 260px)` 估算时的事故形态。
- * 2. 舞台尺寸用容器查询单位在 StageFrame 内算，不写任何固定留白：
- *    `width: min(100cqw, calc(100cqh * ratio))` 自动取宽/高约束里更紧的那个，
- *    保持场景比例 → 热点坐标（% of stage）不需要换算、画面也不会被裁掉。
- * 3. 底栏在舞台版式下是**静态 flex 子项**（不是 fixed）：重叠在结构上不可能发生。
- * 4. 整条链收在 StageLayout 组件内，外层再包一层 wrapper 也不会静默失效。
+ *  1. 头部信息条 position:fixed 浮层，默认 translateY(-102%) + visibility:hidden，
+ *     由顶部把手 / 指针贴边（≤8px）/ 键盘唤出，3.5s 无操作收回（use-stage-header）。
+ *  2. 底部「继续」条浮层化为居中玻璃胶囊（无 trailing 区块时）。
+ *  3. StageFrame 增加模糊背景层（.stage-backdrop）：contain-fit 的两侧留白
+ *     用场景图模糊放大填满，消灭死黑；比例框保持不动 → 热点坐标语义不变。
+ *  4. 场景 meta（已探索 x/y / 返回上一场景）悬浮成左上角玻璃 pill。
+ *
+ * 每条 flex 链的 `min-height: 0` 纪律不变（见 StageLayout 组件注释）。
  */
 .survey-stage {
   /* 固定到视口而不是 height: 100dvh 的普通块：舞台版式是整屏体验，
@@ -5145,73 +5148,127 @@ button.admin-stat:focus-visible {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 10px;
+  /* 沉浸式：body 就是舞台本体，题面已沉入头部浮层，这里不再留内边距。 */
+  padding: 0;
+  gap: 0;
 }
-.survey-stage-heading {
-  flex: none;
+/* 头部信息条浮层：默认完全让位给画面（transform 移出 + visibility 脱离
+ * a11y 树），打开时滑入。visibility 的过渡延迟保证收起动画播完才隐藏。 */
+.survey-float-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  transform: translateY(-102%);
+  visibility: hidden;
+  transition:
+    transform 0.24s ease,
+    visibility 0s linear 0.24s;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--survey-card-border);
 }
-.survey-stage-trailing {
-  flex: none;
-  font-size: 12px;
-  color: var(--survey-muted);
+.survey-float-header.is-open {
+  transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.24s ease;
 }
-.survey-stage-trailing > summary {
+.survey-float-header:focus {
+  outline: none;
+}
+/* 顶部中央唤出把手：舞台上唯一常驻的 UI（半透明小胶囊，44px 触达热区）。 */
+.stage-header-handle {
+  position: fixed;
+  top: max(6px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 39;
+  width: 44px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(10, 12, 18, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.62;
   cursor: pointer;
-  padding: 2px 4px;
-  font-weight: 600;
+  transition: opacity 0.2s ease;
 }
-.survey-stage-trailing[open] {
-  max-height: 34dvh;
-  overflow-y: auto;
+.stage-header-handle:hover,
+.stage-header-handle:focus-visible {
+  opacity: 1;
 }
-/* 短横屏：头部压成一条（隐藏进度行、收紧内边距），把高度让给舞台。 */
-@media (orientation: landscape) and (max-height: 560px) {
-  .survey-stage .survey-header-progress {
-    display: none;
-  }
-  .survey-stage > .survey-stage-inner > header {
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-  .survey-stage-body {
-    padding-top: 4px;
-    padding-bottom: 4px;
-    gap: 4px;
-  }
-  .survey-stage-heading h1 {
-    font-size: 13px;
-  }
+.stage-header-handle[aria-expanded="true"] {
+  opacity: 0;
+  pointer-events: none;
 }
-.survey-stage-nav {
-  flex: none;
-  position: static;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-/* 舞台里的场景容器：进度行占一行，舞台吃剩下的。 */
-.hotspot.is-fill {
-  flex: 1 1 auto;
-  min-height: 0;
+/* 最后一题（带公开发布区块）时底栏保持静态 flex 子项，浮动胶囊不启用——
+ * details 展开需要文档流空间（见 SurveyApp 的 stageNavOverlay 裁决）。 */
+.survey-stage-nav.is-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 30;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: center;
+  pointer-events: none;
 }
-.hotspot.is-fill .hotspot-stage {
-  border-radius: 10px;
+.survey-stage-nav.is-overlay > div {
+  /* 覆盖 JSX 里的内边距与限宽：胶囊自适应内容宽。 */
+  padding: 0 !important;
+  pointer-events: auto;
+  width: min(420px, calc(100vw - 24px));
 }
+.survey-stage-nav.is-overlay > div > div {
+  border-radius: 999px;
+  background: rgba(12, 14, 20, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.14);
+  padding: 8px 10px;
+  box-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.5);
+}
+.survey-stage-nav.is-overlay .btn:not(.btn-primary) {
+  background-color: transparent !important;
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* ---- 舞台框与模糊背景 ------------------------------------------------- */
 .stage-frame {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
   place-items: center;
   container-type: size;
+  position: relative;
+  overflow: hidden;
+}
+/* 场景图模糊放大铺满整个舞台框（含 contain-fit 留白）。inset 负值 +
+ * scale 抵消模糊边缘的透明渐晕；压暗让前景框成为视觉主体。 */
+.stage-backdrop {
+  position: absolute;
+  inset: -28px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(22px) brightness(0.45) saturate(1.15);
+  transform: scale(1.05);
 }
 .stage-frame-box {
+  position: relative;
+  z-index: 1;
   width: min(100cqw, calc(100cqh * var(--stage-ratio, 1.6)));
   aspect-ratio: var(--stage-aspect, 16 / 10);
   max-width: 100%;
   overflow: hidden;
   border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 24px 80px -24px rgba(0, 0, 0, 0.55);
 }
 .stage-frame-box.is-fluid {
   width: 100%;
@@ -5227,9 +5284,78 @@ button.admin-stat:focus-visible {
   .stage-frame-box {
     width: auto;
     height: 100%;
-    max-height: calc(100dvh - 240px);
+    max-height: calc(100dvh - 24px);
     max-width: 100%;
   }
+  .stage-backdrop {
+    display: none;
+  }
+}
+/* 短横屏：信息条浮层打开时压紧内边距；舞台本体已是全视口，无需再让位。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  .survey-stage .survey-float-header.is-open .survey-header-progress {
+    display: none;
+  }
+  .survey-float-header {
+    padding-top: 0;
+  }
+  .stage-header-handle {
+    top: 4px;
+  }
+}
+
+/* 最后一题（带「公开发布」details）的底栏保持静态 flex 子项——details 展开
+ * 需要文档流空间，浮动胶囊不启用（见 SurveyApp 的 stageNavOverlay 裁决）。 */
+.survey-stage-nav {
+  flex: none;
+  position: static;
+}
+.survey-stage-trailing {
+  flex: none;
+  margin: 0 12px 10px;
+  font-size: 12px;
+  color: var(--survey-muted);
+}
+.survey-stage-trailing > summary {
+  cursor: pointer;
+  padding: 2px 4px;
+  font-weight: 600;
+}
+.survey-stage-trailing[open] {
+  max-height: 34dvh;
+  overflow-y: auto;
+}
+/* 舞台里的场景容器：meta 悬浮 pill + 舞台吃满整条 flex 链。 */
+.hotspot.is-fill {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.hotspot.is-fill .hotspot-stage {
+  border-radius: 10px;
+}
+/* 已探索 x/y / 返回上一场景：左上角玻璃 pill，浮在画面上（唯一常驻的场景态）。 */
+.hotspot.is-fill .hotspot-meta {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 12px;
+  z-index: 5;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(10, 12, 18, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+}
+.hotspot.is-fill .hotspot-back {
+  color: rgba(255, 255, 255, 0.92);
+}
+.hotspot.is-fill .hotspot-back:focus-visible {
+  outline-color: rgba(255, 255, 255, 0.9);
 }
 
 /* ---- Touch targets ----------------------------------------------------

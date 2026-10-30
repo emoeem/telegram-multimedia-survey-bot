@@ -196,9 +196,9 @@ test.beforeAll(() => {
   mkdirSync(ARTIFACTS, { recursive: true });
 });
 
-// 2026-10-29 改版后场景题在桌面宽度（≥1024）走 stage 版式（无 .hotspot-plate，
-// 场景标题由 StageFrame 承载）。本文件的全部用例针对阅读版式的语义
-// （plate/meta/热点弹层），统一钉在平板宽度下运行。
+// 2026-10-30 沉浸式重设计后场景题在全宽度走 stage 版式（无 .hotspot-plate，
+// 场景标题由 StageFrame 的 aria-label 承载、meta 变左上悬浮 pill）。
+// 本文件覆盖热点/弹层/子场景/累计语义，钉在 900×800（stage 版式）运行。
 test.use({ viewport: { width: 900, height: 800 } });
 
 test("热点点击展开内层图片，答案以 {kind:scene,visited} 落库", async ({ page }, testInfo) => {
@@ -243,7 +243,8 @@ test("子场景切换、返回，跨场景 visited 连续累计", async ({ page 
   await expect(page.locator(".hotspot-stage img")).toBeVisible();
 
   await spot(page, "书架").click();
-  await expect(page.locator(".hotspot-plate")).toContainText("书架 · 第二层");
+  // stage 版式没有 .hotspot-plate：子场景标题由 StageFrame 的 aria-label 承载。
+  await expect(page.locator(".stage-frame[aria-label='书架 · 第二层']")).toBeVisible();
   // 切场景是「预载完成再换图」，到这里图片应已就位，不出现黑屏帧。
   await expect(page.locator(".hotspot-stage img")).toHaveAttribute("src", FIX("scene-shelf.webp"));
   await expect(page.locator(".hotspot-back")).toBeVisible();
@@ -258,7 +259,7 @@ test("子场景切换、返回，跨场景 visited 连续累计", async ({ page 
 
   // 回到第一个场景：探索进度跨场景累计（书架 + 旧书 = 2，总数 3+1=4）。
   await page.locator(".hotspot-back").click();
-  await expect(page.locator(".hotspot-plate")).toContainText("雨夜书房");
+  await expect(page.locator(".stage-frame[aria-label='雨夜书房']")).toBeVisible();
   await expect(page.locator(".hotspot-meta")).toContainText("2 / 4");
   await expect.poll(() => captured.answers.at(-1)?.value).toEqual({ kind: "scene", visited: ["shelf", "book"] });
 });

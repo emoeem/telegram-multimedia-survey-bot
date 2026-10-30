@@ -98,6 +98,23 @@ function sceneSurvey(display: "auto" | "immersive" | "landscape") {
         media: [],
         options: [],
       },
+      {
+        // 场景题不是最后一题：沉浸式底栏走浮动胶囊分支（最后一题带「公开发布」
+        // 区块时底栏保持静态，见 SurveyApp 的 stageNavOverlay 裁决）。
+        id: 2,
+        type: "text",
+        title: "补充一句",
+        description: null,
+        required: false,
+        order: 2,
+        pageId: null,
+        validation: null,
+        settings: null,
+        condition: null,
+        skipToQuestionId: null,
+        media: [],
+        options: [],
+      },
     ],
   };
 }
@@ -144,21 +161,22 @@ async function stageBox(page: Page) {
 }
 
 test.describe("显示模式 · 沉浸", () => {
-  test("immersive：舞台铺满且完整落在底栏之上（不裁切、不滚动）", async ({ page }) => {
+  test("immersive：舞台铺满整个视口，浮动底栏悬浮其上（不裁切、不滚动）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await installRoutes(page, "immersive");
     await page.goto(`/s/${SURVEY_ID}`);
 
-    // 布局契约：场景题 + 宽屏 → stage 版式。
+    // 布局契约：场景题 + immersive → stage 版式。
     await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
     await expect(page.locator(".stage-frame-box")).toBeVisible();
     await expect(page.locator(".hotspot-stage")).toBeVisible();
 
     const stage = await stageBox(page);
-    const navBox = await rectOf(page, ".survey-bottom-nav");
 
-    // 曾经的事故：固定 max-height 估算 → 舞台底部被「继续」条遮住。
-    expect(stage.y + stage.height).toBeLessThanOrEqual(navBox.y + 1);
+    // 沉浸式（2026-10-30）：底栏是浮动胶囊（pointer-events 覆盖层），舞台
+    // 吃满整个视口高度——旧的「舞台底边 ≤ 底栏顶边」契约随静态底栏一起退役。
+    expect(stage.y).toBeGreaterThanOrEqual(-1);
+    expect(stage.y + stage.height).toBeLessThanOrEqual(900 + 1);
     // 舞台宽度应明显大于阅读版式的上限（768px），证明真的铺开了。
     expect(stage.width).toBeGreaterThan(800);
     // 整页不滚动（100dvh flex 列）；横向也不能溢出。
@@ -168,6 +186,11 @@ test.describe("显示模式 · 沉浸", () => {
     }));
     expect(metrics.scrollY).toBeLessThanOrEqual(1);
     expect(metrics.scrollX).toBeLessThanOrEqual(1);
+    // 头部信息条默认完全让位给画面（translateY 出视口）。
+    const headerTop = await page.evaluate(
+      () => (document.querySelector(".survey-float-header") as HTMLElement).getBoundingClientRect().bottom,
+    );
+    expect(headerTop).toBeLessThanOrEqual(0);
 
     await expect(page).toHaveScreenshot("survey-display-immersive-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
@@ -179,17 +202,28 @@ test.describe("显示模式 · 沉浸", () => {
     // 场景是画布优先题型：宽屏不再窄卡居中（两侧空白是明确的使用反馈）。
     await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
-    // 场景引导语进 heading 区（HotspotScene 内不再重复渲染）。
+    // 场景引导语沉入头部信息条（滑出可见）。
     await expect(page.locator(".survey-stage-intro")).toContainText("点击画面里发亮的区域。");
     await expect(page).toHaveScreenshot("survey-display-auto-1600x900.png", { maxDiffPixelRatio: 0.002 });
   });
 
-  test("auto：场景题窄屏（<1024）维持阅读窄卡（回归护栏）", async ({ page }) => {
+  test("auto：场景题窄屏/手机竖屏也上舞台（2026-10-30 沉浸式重设计）", async ({ page }) => {
+    // 旧契约是 <1024 维持阅读窄卡；重设计后场景题全宽度上舞台——
+    // before 实测手机 390 竖屏窄卡只有 18% 可视面积，是本次的主诉。
     await page.setViewportSize({ width: 900, height: 900 });
     await installRoutes(page, "auto");
     await page.goto(`/s/${SURVEY_ID}`);
-    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "reading");
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", "stage");
     await expect(page.locator(".hotspot-stage")).toBeVisible();
+    const stage = await stageBox(page);
+    expect(stage.width).toBeGreaterThan(800);
+    // 手机竖屏（390）：舞台吃满整宽，宽度就是视口宽。
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    const phoneBox = await stageBox(page);
+    expect(phoneBox.width).toBe(390);
+    const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflowX).toBeLessThanOrEqual(1);
   });
 });
 
@@ -231,12 +265,8 @@ test.describe("显示模式 · 手机横屏优先", () => {
     await expect(page.getByText("横过来看，场景会铺满整块屏幕。")).toHaveCount(0);
 
     const box = await stageBox(page);
-    const navBox = await rectOf(page, ".survey-bottom-nav");
-    // 短横屏下场景吃掉头部与底栏之外的全部高度，且底边不越过底栏。
-    // 2026-10-29 头部/底栏重设计后横屏预算少 ~2px：0.45 → 0.42，
-    // 语义不变（场景吃掉除头尾外的绝大部分高度）。
-    expect(box.height).toBeGreaterThan(390 * 0.42);
-    expect(box.y + box.height).toBeLessThanOrEqual(navBox.y + 1);
+    // 短横屏沉浸式：舞台吃满整条视口高度（浮动底栏悬浮其上，不再静态占位）。
+    expect(box.height).toBeGreaterThan(390 * 0.95);
     const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflowX).toBeLessThanOrEqual(1);
 

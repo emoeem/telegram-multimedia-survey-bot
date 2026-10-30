@@ -324,7 +324,7 @@ export function HotspotScene({ question, value, onChange, disabled, display, fil
       ) : null}
 
       {fill ? (
-        <StageFrame ratio={scene.width / scene.height} label={scene.title}>
+        <StageFrame ratio={scene.width / scene.height} label={scene.title} backdrop={scene.image}>
           <div className="hotspot-stage is-fill">{stageLayerInner}</div>
         </StageFrame>
       ) : (

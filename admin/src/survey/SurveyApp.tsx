@@ -8,6 +8,7 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Coins,
   Download,
@@ -89,6 +90,7 @@ import {
 } from "./api";
 import { safeGet, safeSet } from "./storage";
 import { AnswerSaveQueue } from "./save-queue";
+import { useStageHeader } from "./use-stage-header";
 import { collectQuestionImageUrls, preloadImages } from "./media-preload";
 import { submissionTargetFromUrl } from "./submission-target";
 import { prepareImageForPublish } from "../lib/image-publish";
@@ -2343,6 +2345,11 @@ export function SurveyApp() {
   const lastScrollYRef = useRef(0);
   const [scrollNavHidden, setScrollNavHidden] = useState(false);
   const [idleNavHidden, setIdleNavHidden] = useState(false);
+  // 沉浸舞台的顶部信息条（2026-10-30 重设计）。stageLayout 在下方早退分支之后
+  // 才可计算，hook 必须无条件调用——经镜像 ref 读取（与 bottomBarModeRef 同模式）。
+  const stageLayoutRef = useRef(false);
+  const stageHeader = useStageHeader(stageLayoutRef);
+  const stageHeaderRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const onScroll = () => {
       if (bottomBarModeRef.current === "off") return;
@@ -3134,6 +3141,8 @@ export function SurveyApp() {
   const layout = resolveSurveyLayout({ display: displayMode, questionType: question.type, viewport: viewportSize });
   // 本轮只有场景题实现了 fill 渲染；小游戏/视频接入后逐个放开（契约先立住）。
   const stageLayout = layout === "stage" && isScene;
+  // 镜像给顶部信息条 hook（它在早退分支之前无条件调用，见上方说明）。
+  stageLayoutRef.current = stageLayout;
   // VN 叙事节点：正文沉到 galgame 底部对话框，流内不再渲染叙事卡。
   const vnDialogActive = vnMode && isNote && !stageLayout;
   // VN 节点自带场景图时，它就是本节点的全屏背景（galgame 的「画面」），
@@ -3337,7 +3346,17 @@ export function SurveyApp() {
             预览模式 · 已保存版本 · 提交已禁用
           </div>
         ) : null}
-        <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
+        <header
+          ref={stageHeaderRef}
+          data-stage-header={stageLayout ? "" : undefined}
+          id={stageLayout ? "survey-stage-header" : undefined}
+          tabIndex={stageLayout ? -1 : undefined}
+          className={
+            stageLayout
+              ? `survey-float-header${stageHeader.open ? " is-open" : ""}`
+              : "sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md"
+          }
+        >
           <div className="mx-auto max-w-xl px-5 pt-3 lg:max-w-3xl">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -3408,8 +3427,40 @@ export function SurveyApp() {
                 )}
               </span>
             </div>
+            {stageLayout && (question.title || question.description) ? (
+              /* 沉浸式：题面沉入信息条（默认随条隐藏），舞台本体完全让给画面。 */
+              <div className="survey-float-heading border-t border-[var(--survey-card-border)] pb-3 pt-2.5">
+                {question.title ? (
+                  <h1 className="text-sm font-bold tracking-tight text-[var(--survey-heading)]">
+                    <MousePointerClick className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                    {question.title}
+                  </h1>
+                ) : null}
+                {question.description ? <p className="survey-stage-intro">{question.description}</p> : null}
+              </div>
+            ) : null}
           </div>
         </header>
+        {stageLayout ? (
+          /* 唤出把手：舞台上唯一常驻 UI。键盘激活（detail === 0）时把焦点
+           * 移进信息条，否则头部按钮对键盘用户不可达（条收起时 visibility:hidden）。 */
+          <button
+            type="button"
+            className="stage-header-handle"
+            data-stage-header-handle
+            aria-label="显示问卷信息"
+            aria-expanded={stageHeader.open}
+            aria-controls="survey-stage-header"
+            onClick={(event) => {
+              stageHeader.reveal();
+              if (event.detail === 0) {
+                requestAnimationFrame(() => stageHeaderRef.current?.focus({ preventScroll: true }));
+              }
+            }}
+          >
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
 
         <main
           className={
@@ -3441,21 +3492,8 @@ export function SurveyApp() {
             />
           ) : null}
           {stageLayout ? (
+            /* 沉浸式：题面（heading）已沉入头部信息条，舞台本体吃满整条链。 */
             <StageLayout
-              heading={
-                <>
-                  {question.title ? (
-                    <h1 className="text-base font-bold tracking-tight text-[var(--survey-heading)]">
-                      <MousePointerClick
-                        className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
-                        aria-hidden="true"
-                      />
-                      {question.title}
-                    </h1>
-                  ) : null}
-                  {question.description ? <p className="survey-stage-intro">{question.description}</p> : null}
-                </>
-              }
               stage={
                 <HotspotScene
                   fill
@@ -3705,7 +3743,9 @@ export function SurveyApp() {
         <nav
           className={`survey-bottom-nav ${
             stageLayout
-              ? "survey-stage-nav"
+              ? // 最后一题带「公开发布」details：底栏保持静态 flex 子项（details
+                // 展开需要文档流）；其余题目浮动为居中玻璃胶囊。
+                `survey-stage-nav${publishOptions ? "" : " is-overlay"}`
               : `fixed inset-x-0 bottom-0 z-10 ${navGone ? "survey-bottom-nav-hidden" : ""}`
           }`}
           inert={stageLayout || !navGone ? undefined : true}

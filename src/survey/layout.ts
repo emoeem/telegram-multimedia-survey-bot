@@ -24,13 +24,18 @@ export const STAGE_QUESTION_TYPES = ["scene", "game", "image", "video", "audio",
 
 const STAGE_TYPE_SET = new Set<string>(STAGE_QUESTION_TYPES);
 
-/** 沉浸模式在窄屏（手机竖屏）退回阅读版式：窄屏放大画面没有意义。 */
+/**
+ * 沉浸式重设计（2026-10-30）后的宽度阈值。
+ *
+ * `IMMERSIVE_MIN_WIDTH` 仍约束**非场景**画布题型（game/video/…）与 landscape
+ * 模式的转屏语义。场景题不再受宽度阈值约束：手机竖屏上场景也上舞台
+ * （galgame 全屏体验，B 任务 before 实测手机 390 竖屏场景可视面积仅 18%）。
+ */
 export const IMMERSIVE_MIN_WIDTH = 768;
 
 /**
- * auto 模式下场景题在桌面视口也上舞台的宽度阈值：1440/1920 下场景图两侧
- * 各留 ≈336/600px 空白是明确的使用反馈（2026-10-29），场景是画布优先题型，
- * 桌面宽度足够时铺满比窄卡更合理；平板以下（<1024）维持窄卡阅读。
+ * auto 模式下**非场景**画布题型维持旧的宽度门槛；场景题已全宽度上舞台，
+ * 此常量仅为兼容保留（不再参与 scene 裁决）。
  */
 export const AUTO_SCENE_MIN_WIDTH = 1024;
 
@@ -55,24 +60,33 @@ export function isShortLandscape(viewport: ViewportSize): boolean {
 }
 
 /**
- * 布局裁决（唯一入口）。
+ * 布局裁决（唯一入口）。2026-10-30 沉浸式重设计版：
  *
- * - auto：文字题永远 reading；场景题在桌面宽度（≥1024）走 stage——
- *   窄卡居中留下的两侧空白在宽屏上是纯损耗（2026-10-29 使用反馈），
- *   平板/手机维持 reading 不变
- * - immersive：画布优先题型 + 宽度 ≥768 才 stage；手机竖屏仍 reading
- * - landscape：画布优先题型，且**只**在矮横屏 stage——竖屏由提示条引导转屏，
- *   转过来之后才铺满；桌面借此模式与 immersive 行为一致（宽屏 stage）
+ * - 场景题（scene）：auto / immersive 下**全宽度**上舞台（含手机竖屏）——
+ *   舞台内 contain 放到最大 + 场景图模糊背景填满（StageFrame backdrop），
+ *   手机竖屏从阅读窄卡 18% 可视面积提升到 ~29%（before 实测，见
+ *   _review/immersive-2026-10-30/）。landscape 模式保留「竖屏提示转屏」
+ *   语义（转过来之后才铺满）。
+ * - 其他画布优先题型（game/video/…）：行为不变——auto 维持 reading
+ *   （SurveyApp 的 isScene 门控只对 scene 实现 fill 渲染），
+ *   immersive/landscape 按宽度与矮横屏裁决。
+ * - 文字/选项/剧情：永远 reading。
  */
 export function resolveSurveyLayout(input: {
   display: SurveyDisplayMode;
   questionType: string | null | undefined;
   viewport: ViewportSize;
 }): SurveyLayout {
-  if (input.display === "auto") {
-    return input.questionType === "scene" && input.viewport.width >= AUTO_SCENE_MIN_WIDTH ? "stage" : "reading";
+  if (input.questionType === "scene") {
+    if (input.display === "landscape") {
+      // 矮横屏必然走 stage；竖着的手机屏留给提示条引导转屏；宽屏桌面 stage。
+      if (isShortLandscape(input.viewport)) return "stage";
+      return input.viewport.width >= IMMERSIVE_MIN_WIDTH ? "stage" : "reading";
+    }
+    return "stage";
   }
   if (!isStageQuestionType(input.questionType)) return "reading";
+  if (input.display === "auto") return "reading";
   if (input.display === "landscape") {
     // 矮横屏必然是走 stage；宽屏桌面（immersive 等价）也 stage，
     // 但竖着的手机屏（width < 768 且非矮横屏）留给提示条引导。
