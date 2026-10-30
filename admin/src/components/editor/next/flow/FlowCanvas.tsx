@@ -68,8 +68,20 @@ function FitOnGraphChange({
         const maxY = Math.max(...nodes.map((n) => n.position.y + (n.height ?? NODE_HEIGHT)));
         const raw = Math.min(pane.width / (maxX - minX), pane.height / (maxY - minY)) * 0.88;
         const zoom = Math.min(Math.max(raw, 0.15), 1.15);
-        const x = (pane.width - (maxX - minX) * zoom) / 2 - minX * zoom;
-        const y = (pane.height - (maxY - minY) * zoom) / 2 - minY * zoom;
+        let x: number;
+        let y: number;
+        if (raw < 0.5) {
+          // 大图（如 58 题的 galgame 流）：全图塞进来标题只有十几像素，不可读。
+          // 取景钳制到 0.5 并锚定图首（左上），其余靠平移/缩放浏览——
+          // 与 ComfyUI 打开大图的行为一致。
+          const clamped = Math.max(raw, 0.5);
+          x = -minX * clamped + 24;
+          y = -minY * clamped + 24;
+          void setViewport({ x, y, zoom: clamped });
+          return;
+        }
+        x = (pane.width - (maxX - minX) * zoom) / 2 - minX * zoom;
+        y = (pane.height - (maxY - minY) * zoom) / 2 - minY * zoom;
         void setViewport({ x, y, zoom });
       }),
     );
