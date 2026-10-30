@@ -3432,7 +3432,10 @@ export function SurveyApp() {
               <div className="survey-float-heading border-t border-[var(--survey-card-border)] pb-3 pt-2.5">
                 {question.title ? (
                   <h1 className="text-sm font-bold tracking-tight text-[var(--survey-heading)]">
-                    <MousePointerClick className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                    <MousePointerClick
+                      className="mr-1 inline h-4 w-4 text-[var(--survey-primary)]"
+                      aria-hidden="true"
+                    />
                     {question.title}
                   </h1>
                 ) : null}

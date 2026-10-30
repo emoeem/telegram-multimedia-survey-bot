@@ -61,7 +61,10 @@ export function connectCommand(connection: EndpointPair, questions: CommandQuest
 }
 
 /** 删边 → 条件补丁。只处理条件边（sequence 是顺序流，由排序管理）。 */
-export function disconnectCommand(edge: { source: string | null; target: string | null }, questions: CommandQuestion[]): ConditionCommand | null {
+export function disconnectCommand(
+  edge: { source: string | null; target: string | null },
+  questions: CommandQuestion[],
+): ConditionCommand | null {
   const source = questionIdOf(edge.source);
   const target = questionIdOf(edge.target);
   if (source === null || target === null) return null;

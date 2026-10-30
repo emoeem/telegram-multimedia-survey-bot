@@ -23,7 +23,9 @@ export function layoutGraph(graph: SurveyGraph, mode: "linear" | "layered"): Gra
 function layoutLinear(graph: SurveyGraph): GraphNode[] {
   // 线性顺序：entry → （页标记按分组位置）→ 题目按 order → ending。
   const questionNodes = graph.nodes.filter((node) => node.data.kind === "question");
-  const pageById = new Map(graph.nodes.filter((node) => node.data.kind === "page").map((node) => [node.data.pageId!, node]));
+  const pageById = new Map(
+    graph.nodes.filter((node) => node.data.kind === "page").map((node) => [node.data.pageId!, node]),
+  );
   const ordered: GraphNode[] = graph.nodes.filter((node) => node.data.kind === "entry");
   let lastPageId: number | null = questionNodes[0]?.data.pageId ?? null;
   if (lastPageId !== null && pageById.has(lastPageId)) {

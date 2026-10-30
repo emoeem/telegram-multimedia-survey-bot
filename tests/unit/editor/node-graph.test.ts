@@ -55,7 +55,13 @@ describe("surveyToGraph 保真", () => {
 
   it("条件分支：边集合与 buildCanvasEdges 同源一致，节点带 branching 角标", () => {
     const questions = [
-      q({ id: 1, order: 0, type: "single", options: [{ id: 11 }, { id: 12 }], condition: { rules: [{ optionId: 11, targetQuestionId: 3 }] } }),
+      q({
+        id: 1,
+        order: 0,
+        type: "single",
+        options: [{ id: 11 }, { id: 12 }],
+        condition: { rules: [{ optionId: 11, targetQuestionId: 3 }] },
+      }),
       q({ id: 2, order: 1 }),
       q({ id: 3, order: 2 }),
     ];
@@ -64,9 +70,7 @@ describe("surveyToGraph 保真", () => {
     const conditionEdges = graph.edges.filter((edge) => edge.data?.kind !== "sequence");
     const expected = buildCanvasEdges(questions);
     expect(conditionEdges).toHaveLength(expected.length);
-    expect(conditionEdges.map((edge) => [edge.source, edge.target])).toEqual([
-      ["q1", "q3"],
-    ]);
+    expect(conditionEdges.map((edge) => [edge.source, edge.target])).toEqual([["q1", "q3"]]);
     expect(conditionEdges[0]?.data?.label).toBe(expected[0]?.label);
 
     const branchNode = graph.nodes.find((node) => node.data.questionId === 1);
@@ -120,7 +124,13 @@ describe("layoutGraph", () => {
 
   it("layered：分支目标在更深层（最长路径），同层不重叠", () => {
     const questions = [
-      q({ id: 1, order: 0, type: "single", options: [{ id: 11 }], condition: { rules: [{ optionId: 11, targetQuestionId: 4 }] } }),
+      q({
+        id: 1,
+        order: 0,
+        type: "single",
+        options: [{ id: 11 }],
+        condition: { rules: [{ optionId: 11, targetQuestionId: 4 }] },
+      }),
       q({ id: 2, order: 1 }),
       q({ id: 3, order: 2 }),
       q({ id: 4, order: 3 }),
@@ -139,9 +149,7 @@ describe("layoutGraph", () => {
   });
 
   it("环（手改 JSON）不挂死：Kahn 不收敛时回退线性布局", () => {
-    const questions = [
-      q({ id: 1, order: 0, condition: { rules: [{ optionId: 1, targetQuestionId: 1 }] } }),
-    ];
+    const questions = [q({ id: 1, order: 0, condition: { rules: [{ optionId: 1, targetQuestionId: 1 }] } })];
     const graph = surveyToGraph({ questions, pages: [] });
     expect(() => layoutGraph(graph, "layered")).not.toThrow();
   });
@@ -178,14 +186,16 @@ describe("真实内容回放（仓库三份存量）", () => {
     expect(new Set(ids).size, `${label}: 节点无重复`).toBe(ids.length);
     expect(ids, `${label}: 题目全覆盖`).toEqual(questions.map((item) => item.id));
     // 线性链 = n+1 条顺序边（含 entry/ending）。
-    expect(graph.edges.filter((e) => e.data?.kind === "sequence"), `${label}: 链边数`).toHaveLength(
-      questions.length + 1,
-    );
+    expect(
+      graph.edges.filter((e) => e.data?.kind === "sequence"),
+      `${label}: 链边数`,
+    ).toHaveLength(questions.length + 1);
     // 条件边与 buildCanvasEdges 完全一致。
     const conditionEdges = graph.edges.filter((e) => e.data?.kind !== "sequence");
-    expect(conditionEdges.map((e) => [e.source, e.target, e.data?.label]), `${label}: 条件边一致`).toEqual(
-      buildCanvasEdges(questions).map((e) => [`q${e.fromId}`, `q${e.toId}`, e.label]),
-    );
+    expect(
+      conditionEdges.map((e) => [e.source, e.target, e.data?.label]),
+      `${label}: 条件边一致`,
+    ).toEqual(buildCanvasEdges(questions).map((e) => [`q${e.fromId}`, `q${e.toId}`, e.label]));
     // 两种布局都不丢节点。
     for (const mode of ["linear", "layered"] as const) {
       expect(layoutGraph(graph, mode), `${label}: ${mode} 布局保节点`).toHaveLength(graph.nodes.length);

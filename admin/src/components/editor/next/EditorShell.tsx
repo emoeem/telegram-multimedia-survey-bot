@@ -80,8 +80,8 @@ export function EditorShellNext({ data }: { data: EditorData }) {
    * 排序、点卡片编辑内容），节点图按钮禁用并说明原因——与编辑器既有的
    * 窄屏断点一致，而非另立一套。
    */
-  const [graphAllowed, setGraphAllowed] = useState(
-    () => (typeof window !== "undefined" ? (window.matchMedia?.("(min-width: 1000px)").matches ?? true) : true),
+  const [graphAllowed, setGraphAllowed] = useState(() =>
+    typeof window !== "undefined" ? (window.matchMedia?.("(min-width: 1000px)").matches ?? true) : true,
   );
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1000px)");
@@ -463,7 +463,10 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             />
           </aside>
 
-          <main className={`editor-canvas editor-col${canvasView === "graph" ? " is-graph-mode" : ""}`} aria-label="画布">
+          <main
+            className={`editor-canvas editor-col${canvasView === "graph" ? " is-graph-mode" : ""}`}
+            aria-label="画布"
+          >
             <div className="flow-view-toggle" role="group" aria-label="画布形态">
               {(
                 [
@@ -481,7 +484,11 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                   }`}
                   aria-pressed={effectiveCanvasView === value}
                   disabled={value === "graph" && !graphAllowed}
-                  title={value === "graph" && !graphAllowed ? "节点图需要桌面端宽度（≥1000px）；窄屏请使用列表编辑" : undefined}
+                  title={
+                    value === "graph" && !graphAllowed
+                      ? "节点图需要桌面端宽度（≥1000px）；窄屏请使用列表编辑"
+                      : undefined
+                  }
                   onClick={() => setCanvasView(value)}
                 >
                   {label}

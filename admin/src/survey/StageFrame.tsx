@@ -43,7 +43,9 @@ export function StageFrame({
     : undefined;
   return (
     <div className="stage-frame" role="group" aria-label={label}>
-      {backdrop ? <div aria-hidden className="stage-backdrop" style={{ backgroundImage: `url("${backdrop}")` }} /> : null}
+      {backdrop ? (
+        <div aria-hidden className="stage-backdrop" style={{ backgroundImage: `url("${backdrop}")` }} />
+      ) : null}
       <div className={`stage-frame-box${ratio ? "" : " is-fluid"}`} style={style}>
         {children}
       </div>

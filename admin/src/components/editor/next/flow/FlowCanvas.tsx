@@ -155,9 +155,7 @@ export function FlowCanvas({
   const selectedId = selection.kind === "question" ? `q${selection.id}` : undefined;
   // 右栏选中的题目在画布上同步高亮（React Flow 12 选中态在节点对象上）。
   useEffect(() => {
-    setNodes((current) =>
-      current.map((node) => ({ ...node, selected: node.id === selectedId ? true : undefined })),
-    );
+    setNodes((current) => current.map((node) => ({ ...node, selected: node.id === selectedId ? true : undefined })));
   }, [selectedId]);
 
   // 取景签名：节点集合或形态变化才重新取景（选中/拖动不触发）。
@@ -171,49 +169,51 @@ export function FlowCanvas({
   return (
     <div ref={wrapperRef} className={`flow-canvas is-${viewMode}`} data-canvas-view={viewMode}>
       <NodeActionsContext.Provider value={nodeActions}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        nodesDraggable
-        nodesConnectable={viewMode === "graph"}
-        edgesFocusable
-        minZoom={0.15}
-        maxZoom={1.6}
-        proOptions={{ hideAttribution: true }}
-        onNodeClick={handleNodeClick}
-        onConnect={(connection) => onConnectEdge?.(connection)}
-        onEdgesDelete={(edges) => onEdgesDelete?.(edges)}
-        // 右键条件边 = 删除分支（顺序流边在 Shell 的 handleEdgesDelete 里
-        // 不产生命令，天然只对条件边生效）。
-        onEdgeContextMenu={(event, edge) => {
-          event.preventDefault();
-          onEdgesDelete?.([edge]);
-        }}
-        onConnectEnd={(event, connectionState) => {
-          // 拖到空白处松手（valid=false 表示没落在任何目标端口上）。
-          const source = connectionState.fromNode?.id;
-          const valid = connectionState.isValid;
-          if (!source || valid) return;
-          onConnectEnd?.({
-            source,
-            screenX: (event as PointerEvent).clientX,
-            screenY: (event as PointerEvent).clientY,
-          });
-        }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} />
-        <Controls showInteractive={false} position="bottom-right" />
-        <FitOnGraphChange nodes={nodes} wrapperRef={wrapperRef} signature={fitSignature} />
-      </ReactFlow>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          nodesDraggable
+          nodesConnectable={viewMode === "graph"}
+          edgesFocusable
+          minZoom={0.15}
+          maxZoom={1.6}
+          proOptions={{ hideAttribution: true }}
+          onNodeClick={handleNodeClick}
+          onConnect={(connection) => onConnectEdge?.(connection)}
+          onEdgesDelete={(edges) => onEdgesDelete?.(edges)}
+          // 右键条件边 = 删除分支（顺序流边在 Shell 的 handleEdgesDelete 里
+          // 不产生命令，天然只对条件边生效）。
+          onEdgeContextMenu={(event, edge) => {
+            event.preventDefault();
+            onEdgesDelete?.([edge]);
+          }}
+          onConnectEnd={(event, connectionState) => {
+            // 拖到空白处松手（valid=false 表示没落在任何目标端口上）。
+            const source = connectionState.fromNode?.id;
+            const valid = connectionState.isValid;
+            if (!source || valid) return;
+            onConnectEnd?.({
+              source,
+              screenX: (event as PointerEvent).clientX,
+              screenY: (event as PointerEvent).clientY,
+            });
+          }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} />
+          <Controls showInteractive={false} position="bottom-right" />
+          <FitOnGraphChange nodes={nodes} wrapperRef={wrapperRef} signature={fitSignature} />
+        </ReactFlow>
       </NodeActionsContext.Provider>
       <div className="flow-canvas-legend" aria-hidden="true">
         <span className="flow-legend-item">
-          <i className="flow-legend-line is-sequence" />顺序流
+          <i className="flow-legend-line is-sequence" />
+          顺序流
         </span>
         <span className="flow-legend-item">
-          <i className="flow-legend-line is-condition" />条件分支（右键删除）
+          <i className="flow-legend-line is-condition" />
+          条件分支（右键删除）
         </span>
       </div>
     </div>

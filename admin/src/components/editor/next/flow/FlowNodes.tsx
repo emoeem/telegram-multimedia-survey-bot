@@ -18,7 +18,15 @@ function questionIcon(questionType: string) {
   return Flag;
 }
 
-export const QuestionNode = memo(function QuestionNode({ id, data, selected }: { id?: string; data: GraphNode["data"]; selected?: boolean }) {
+export const QuestionNode = memo(function QuestionNode({
+  id,
+  data,
+  selected,
+}: {
+  id?: string;
+  data: GraphNode["data"];
+  selected?: boolean;
+}) {
   const type = nodeTypeOf(data.questionType ?? "");
   const Icon = questionIcon(data.questionType ?? "");
   const { removeBranch } = useNodeActions();
@@ -101,7 +109,10 @@ export const EntryNode = memo(function EntryNode() {
 
 export const PageNode = memo(function PageNode({ data }: { data: GraphNode["data"] }) {
   return (
-    <div className="flow-node is-synthetic is-page" style={{ ["--flow-accent" as string]: SYNTHETIC_NODES.page.accent }}>
+    <div
+      className="flow-node is-synthetic is-page"
+      style={{ ["--flow-accent" as string]: SYNTHETIC_NODES.page.accent }}
+    >
       <div className="flow-node-head">
         <span className="flow-node-title">{data.title}</span>
       </div>

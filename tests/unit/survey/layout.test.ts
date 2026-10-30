@@ -44,9 +44,9 @@ describe("问卷布局契约", () => {
     expect(
       resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: { width: 1023, height: 768 } }),
     ).toBe("stage");
-    expect(
-      resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: { width: 320, height: 568 } }),
-    ).toBe("stage");
+    expect(resolveSurveyLayout({ display: "auto", questionType: "scene", viewport: { width: 320, height: 568 } })).toBe(
+      "stage",
+    );
     // 非场景题型（含其他画布优先类型）：auto 行为不变（game/image 由
     // SurveyApp 的 isScene 门控，layout 层维持 reading）。
     for (const questionType of ["game", "single", "note"]) {
