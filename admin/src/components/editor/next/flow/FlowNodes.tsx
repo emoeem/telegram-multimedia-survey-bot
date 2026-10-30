@@ -1,7 +1,8 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { BookOpen, Flag, MousePointerClick, PartyPopper, Play, Puzzle } from "lucide-react";
+import { BookOpen, Flag, MousePointerClick, PartyPopper, Play, Puzzle, X } from "lucide-react";
 import { nodeTypeOf, SYNTHETIC_NODES } from "../../../../editor/node-graph/registry";
+import { useNodeActions } from "./node-actions";
 import type { GraphNode } from "../../../../editor/node-graph/types";
 
 /**
@@ -17,9 +18,12 @@ function questionIcon(questionType: string) {
   return Flag;
 }
 
-export const QuestionNode = memo(function QuestionNode({ data, selected }: { data: GraphNode["data"]; selected?: boolean }) {
+export const QuestionNode = memo(function QuestionNode({ id, data, selected }: { id?: string; data: GraphNode["data"]; selected?: boolean }) {
   const type = nodeTypeOf(data.questionType ?? "");
   const Icon = questionIcon(data.questionType ?? "");
+  const { removeBranch } = useNodeActions();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const questionId = typeof id === "string" && id.startsWith("q") ? Number(id.slice(1)) : null;
   return (
     <div
       className={`flow-node${selected ? " is-selected" : ""}`}
@@ -32,9 +36,40 @@ export const QuestionNode = memo(function QuestionNode({ data, selected }: { dat
           <Icon className="h-3.5 w-3.5" />
         </span>
         <span className="flow-node-title">{data.title}</span>
-        {data.branching ? (
-          <span className="flow-node-branch-badge" title="该节点有条件分支出边">
-            分支
+        {data.branching && questionId !== null ? (
+          <span className="flow-node-branch-wrap">
+            <button
+              type="button"
+              className="flow-node-branch-badge"
+              title="查看/移除该节点的分支跳转"
+              aria-expanded={menuOpen}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((open) => !open);
+              }}
+            >
+              分支
+            </button>
+            {menuOpen ? (
+              <span className="flow-node-branch-menu" onClick={(event) => event.stopPropagation()}>
+                {(data.branches ?? []).map((branch) => (
+                  <span key={branch.targetId} className="flow-node-branch-item">
+                    <span className="flow-node-branch-label">{branch.label}</span>
+                    <button
+                      type="button"
+                      className="flow-node-branch-remove"
+                      aria-label={`移除${branch.label}`}
+                      onClick={() => {
+                        removeBranch(questionId, branch.targetId);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>

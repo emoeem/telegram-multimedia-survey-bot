@@ -6,6 +6,8 @@ import {
   Controls,
   ReactFlow,
   useReactFlow,
+  type Connection,
+  type Edge,
   type EdgeMouseHandler,
   type NodeMouseHandler,
   type NodeChange,
@@ -17,6 +19,7 @@ import { layoutGraph } from "../../../../editor/node-graph/layout";
 import type { CanvasViewMode, GraphEdge, GraphNode } from "../../../../editor/node-graph/types";
 import { NODE_HEIGHT, NODE_WIDTH, type SurveyGraph } from "../../../../editor/node-graph/to-graph";
 import { EndingNode, EntryNode, PageNode, QuestionNode } from "./FlowNodes";
+import { NodeActionsContext } from "./node-actions";
 import "./flow-canvas.css";
 
 /**
@@ -83,14 +86,23 @@ export function FlowCanvas({
   viewMode,
   selection,
   onSelect,
-  onEdgeContextMenu,
+  onConnectEdge,
+  onEdgesDelete,
+  onConnectEnd,
+  onRemoveBranch,
 }: {
   graph: SurveyGraph;
   viewMode: CanvasViewMode;
   selection: BuilderSelection;
   onSelect: (selection: BuilderSelection) => void;
-  /** 批3 预留：条件边的右键菜单（删除分支）。 */
-  onEdgeContextMenu?: EdgeMouseHandler<GraphEdge>;
+  /** 端口连线完成：映射为该题 skipToQuestionId 补丁（node-graph/commands）。 */
+  onConnectEdge?: (connection: Connection) => void;
+  /** 右键条件边 / 选中后按 Delete：移除对应跳转（顺序流边由排序管理，不可删）。 */
+  onEdgesDelete?: (edges: Edge[]) => void;
+  /** 从端口拖到空白处松手：由壳弹题型选择并接新题（one-shot 建分支）。 */
+  onConnectEnd?: (event: { source: string; screenX: number; screenY: number }) => void;
+  /** 分支角标菜单的「移除」：映射为该题 condition 补丁（等价删边）。 */
+  onRemoveBranch?: (questionId: number, targetId: number) => void;
 }) {
   // 图派生布局（每次 graph/viewMode 变化重算）。
   const layout = useMemo(() => layoutGraph(graph, viewMode === "list" ? "linear" : "layered"), [graph, viewMode]);
@@ -139,9 +151,14 @@ export function FlowCanvas({
   // 取景签名：节点集合或形态变化才重新取景（选中/拖动不触发）。
   const fitSignature = `${viewMode}:${graph.nodes.length}:${graph.edges.length}`;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const nodeActions = useMemo(
+    () => ({ removeBranch: (questionId: number, targetId: number) => onRemoveBranch?.(questionId, targetId) }),
+    [onRemoveBranch],
+  );
 
   return (
     <div ref={wrapperRef} className={`flow-canvas is-${viewMode}`} data-canvas-view={viewMode}>
+      <NodeActionsContext.Provider value={nodeActions}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -154,18 +171,37 @@ export function FlowCanvas({
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
         onNodeClick={handleNodeClick}
-        onEdgeContextMenu={onEdgeContextMenu}
+        onConnect={(connection) => onConnectEdge?.(connection)}
+        onEdgesDelete={(edges) => onEdgesDelete?.(edges)}
+        // 右键条件边 = 删除分支（顺序流边在 Shell 的 handleEdgesDelete 里
+        // 不产生命令，天然只对条件边生效）。
+        onEdgeContextMenu={(event, edge) => {
+          event.preventDefault();
+          onEdgesDelete?.([edge]);
+        }}
+        onConnectEnd={(event, connectionState) => {
+          // 拖到空白处松手（valid=false 表示没落在任何目标端口上）。
+          const source = connectionState.fromNode?.id;
+          const valid = connectionState.isValid;
+          if (!source || valid) return;
+          onConnectEnd?.({
+            source,
+            screenX: (event as PointerEvent).clientX,
+            screenY: (event as PointerEvent).clientY,
+          });
+        }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} />
         <Controls showInteractive={false} position="bottom-right" />
         <FitOnGraphChange nodes={nodes} wrapperRef={wrapperRef} signature={fitSignature} />
       </ReactFlow>
+      </NodeActionsContext.Provider>
       <div className="flow-canvas-legend" aria-hidden="true">
         <span className="flow-legend-item">
           <i className="flow-legend-line is-sequence" />顺序流
         </span>
         <span className="flow-legend-item">
-          <i className="flow-legend-line is-condition" />条件分支
+          <i className="flow-legend-line is-condition" />条件分支（右键删除）
         </span>
       </div>
     </div>

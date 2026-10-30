@@ -193,3 +193,66 @@
   border-top-style: dashed;
   border-top-color: #fb923c;
 }
+
+/* 分支角标菜单：角标按钮 + 展开列表（移除单条跳转）。 */
+.flow-node-branch-wrap {
+  position: relative;
+  flex: none;
+}
+.flow-node-branch-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fb923c;
+  background: color-mix(in srgb, #fb923c 16%, transparent);
+  cursor: pointer;
+  border: 0;
+}
+.flow-node-branch-badge:hover {
+  background: color-mix(in srgb, #fb923c 26%, transparent);
+}
+.flow-node-branch-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--color-edge);
+  background: var(--color-surface, var(--color-page));
+  box-shadow: 0 16px 40px -18px rgba(15, 23, 42, 0.5);
+}
+.flow-node-branch-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow-node-branch-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--color-content);
+}
+.flow-node-branch-remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  color: #f87171;
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  cursor: pointer;
+}
+.flow-node-branch-remove:hover {
+  background: color-mix(in srgb, #f87171 24%, transparent);
+}

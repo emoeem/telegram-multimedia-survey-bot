@@ -34,6 +34,8 @@ export interface GraphNodeData extends Record<string, unknown> {
   required?: boolean;
   /** question 节点是否带条件出边（分支），用于节点角标。 */
   branching?: boolean;
+  /** 该节点的条件跳转列表（分支角标菜单的数据源，targetId = 目标题 id）。 */
+  branches?: Array<{ targetId: number; label: string }>;
   /** page 节点所属页 id。 */
   pageId?: number;
 }

@@ -25,8 +25,10 @@ import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
 import { Canvas } from "./Canvas";
 import { FlowCanvas } from "./flow/FlowCanvas";
+import { connectCommand, disconnectCommand, type ConditionCommand } from "../../../editor/node-graph/commands";
 import { surveyToGraph } from "../../../editor/node-graph/to-graph";
 import type { CanvasViewMode } from "../../../editor/node-graph/types";
+import type { Connection, Edge } from "@xyflow/react";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { SceneEditorPage } from "../../../routes/SceneEditorPage";
 import { X } from "lucide-react";
@@ -168,6 +170,66 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   const addDefaultQuestion = (type: string) => {
     const tempId = actions.addQuestionOfType(type);
     setSelection({ kind: "question", id: tempId });
+    setPickerOpen(false);
+  };
+
+  // ---- 节点图的写路径（批3）：连线 = 默认跳转补丁，删边 = 移除跳转。
+  // 命令层见 node-graph/commands.ts（纯函数）；这里只做本地生效 + 入队，
+  // 与必答开关同一条「本地 patchQuestionLocal + queueQuestionPatch」语义。
+  const applyConditionCommand = useCallback(
+    (command: ConditionCommand | null) => {
+      if (!command || editingDisabled) return;
+      editor.patchQuestionLocal(command.questionId, { condition: command.nextCondition });
+      editor.queueQuestionPatch(command.questionId, { condition: command.nextCondition }, command.label);
+    },
+    [editor, editingDisabled],
+  );
+  const handleConnectEdge = useCallback(
+    (connection: Connection) => {
+      applyConditionCommand(connectCommand(connection, editor.questions));
+    },
+    [applyConditionCommand, editor.questions],
+  );
+  const handleEdgesDelete = useCallback(
+    (edges: Edge[]) => {
+      for (const edge of edges) {
+        // 顺序流边（sequence）不产生命令：删除顺序 = 列表模式排序，画布不碰 order。
+        applyConditionCommand(disconnectCommand(edge, editor.questions));
+      }
+    },
+    [applyConditionCommand, editor.questions],
+  );
+  // 从端口拖到空白处松手 = 一步建分支（A2）：弹题型选择，创建后把
+  // source 的默认跳转指向新题（tempId 由保存管线 remap 成真实 id，
+  // 见 useSurveyEditor.resolveOpReferences 的 condition 重映射）。
+  const [branchSource, setBranchSource] = useState<number | null>(null);
+  const handleConnectEnd = useCallback(
+    (event: { source: string }) => {
+      if (editingDisabled) return;
+      const sourceId = Number(event.source.slice(1));
+      if (!Number.isInteger(sourceId) || sourceId <= 0) return;
+      setBranchSource(sourceId);
+      setPickerOpen(true);
+    },
+    [editingDisabled],
+  );
+  // 分支角标菜单的「移除」：等价于删边（同一条 disconnectCommand 映射）。
+  const handleRemoveBranch = useCallback(
+    (questionId: number, targetId: number) => {
+      applyConditionCommand(disconnectCommand({ source: `q${questionId}`, target: `q${targetId}` }, editor.questions));
+    },
+    [applyConditionCommand, editor.questions],
+  );
+  /** 分支挂起时选题型：创建新题并接上 source 的默认跳转；普通选型走原路径。 */
+  const addQuestionAndBranch = (type: string) => {
+    if (branchSource === null) {
+      addDefaultQuestion(type);
+      return;
+    }
+    const tempId = actions.addQuestionOfType(type);
+    applyConditionCommand(connectCommand({ source: `q${branchSource}`, target: `q${tempId}` }, editor.questions));
+    setSelection({ kind: "question", id: tempId });
+    setBranchSource(null);
     setPickerOpen(false);
   };
   // 稳定身份：下游 QuestionSummaryRow / PropertiesPanel 是 memo 组件。
@@ -406,7 +468,16 @@ export function EditorShellNext({ data }: { data: EditorData }) {
               ))}
             </div>
             {canvasView === "graph" ? (
-              <FlowCanvas graph={nodeGraph} viewMode="graph" selection={selection} onSelect={setSelection} />
+              <FlowCanvas
+                graph={nodeGraph}
+                viewMode="graph"
+                selection={selection}
+                onSelect={setSelection}
+                onConnectEdge={handleConnectEdge}
+                onEdgesDelete={handleEdgesDelete}
+                onConnectEnd={handleConnectEnd}
+                onRemoveBranch={handleRemoveBranch}
+              />
             ) : (
               <Canvas
                 questions={editor.questions}
@@ -480,9 +551,10 @@ export function EditorShellNext({ data }: { data: EditorData }) {
         <TypePickerSheet
           disabled={editingDisabled}
           onClose={() => setPickerOpen(false)}
-          onPick={(type) => addDefaultQuestion(type)}
+          onPick={(type) => addQuestionAndBranch(type)}
           onScene={() => {
             setPickerOpen(false);
+            setBranchSource(null);
             void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId);
           }}
         />

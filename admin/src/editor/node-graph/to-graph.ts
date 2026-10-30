@@ -117,7 +117,16 @@ export function surveyToGraph(input: GraphSummaryInput): SurveyGraph {
       data: { kind: edge.kind, label: edge.label },
     });
     const node = nodes.find((item) => item.id === `q${edge.fromId}`);
-    if (node) node.data.branching = true;
+    if (node) {
+      node.data.branching = true;
+      // 分支角标的快捷菜单数据：该题的每条条件跳转都可从节点上直接移除
+      // （同列布局下分支边会被中间节点遮挡，右键命中不可靠——见走查记录）。
+      const targetNode = nodes.find((item) => item.id === `q${edge.toId}`);
+      (node.data.branches ??= []).push({
+        targetId: edge.toId,
+        label: `${edge.label} → ${targetNode?.data.title ?? `第 ${edge.toId} 题`}`,
+      });
+    }
   }
 
   // 分页标记：只有一页时不渲染（纯噪声）；多页时按 order 插进链的分组间隙。
