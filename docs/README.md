@@ -55,16 +55,17 @@
 | [`EMAIL_DELIVERABILITY.md`](guides/EMAIL_DELIVERABILITY.md)             | 邮件送达率（发信域、SPF/DKIM）        |
 | [`WEB_VIEW_ARCHIVE_MVP.md`](guides/WEB_VIEW_ARCHIVE_MVP.md)             | `tg-archive` 网页版归档的最小实现设计 |
 
-### `releases/` — 更新记录（12 份）
+### `releases/` — 更新记录（13 份）
 
 每次上线的对外说明，命名 `RELEASE_YYYY-MM-DD[_主题].md`。格式固定：元信息表
 （部署版本 ID / 线上入口 / 迁移 / 测试数）+ 分章正文。**新的一份按最近一份的骨架写。**
-最新：`RELEASE_2026-10-29_SUBMISSIONS_UI.md`。
+最新：`RELEASE_2026-10-30_ROUND2.md`。
 
 ### `reports/` — 报告（3 份）
 
 | 文档                                                             | 内容                                                           |
 | ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| [`WORK_REPORT_2026-10-30.md`](reports/WORK_REPORT_2026-10-30.md) | 二轮优化的交付报告：quest 生态端到端断点、视觉基线方法论、门禁实测 |
 | [`WORK_REPORT_2026-10-29.md`](reports/WORK_REPORT_2026-10-29.md) | 发布链路加固的交付报告：结论表、门禁实测、已知限制、下一步建议 |
 | [`PROJECT_REPORT.md`](reports/PROJECT_REPORT.md)                 | 项目完成情况报告（2026-08-23，历史基线）                       |
 | [`round-p1.md`](reports/round-p1.md)                             | P1 功能增强的一轮交付报告                                      |

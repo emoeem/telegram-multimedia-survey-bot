@@ -1,0 +1,69 @@
+# 工作报告 · 2026-10-30（二轮优化：三项目收尾 + 深化）
+
+| 项           | 值                                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| 报告日期     | 2026-10-30                                                                                     |
+| 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                          |
+| 生产版本     | `_DEPLOY_VERSION_ID_`（部署后回填）· git `777e72b`（本轮）+ 13 个 10-29 既有提交一并对齐远程    |
+| 对应更新记录 | [`RELEASE_2026-10-30_ROUND2.md`](../releases/RELEASE_2026-10-30_ROUND2.md)                      |
+
+## 1. 本轮范围
+
+上轮审查后的二轮优化：第 0 步收尾（上轮未提交改动按主题拆分提交）→ quest 扩展
+包生态深化 → 视觉基线固化。全程门禁（双端 tsc / 1580 用例 / lint / build）绿后
+才提交，共 8 个 commit（`18804d8` P2 界面、`6a69951` P3+P4 扩展包、`a022473`
+P5 认证卡、`84e57c8` 示例包、`8d88aaf` 端到端断点修复、`b0769eb` 静音键、
+`95c8b07` 测试类型收口、`777e72b` 视觉基线）。
+
+## 2. 端到端验证发现的三个断点（重点）
+
+「导入即上架」的承诺在真实链路上断成三截，逐个核实与修复：
+
+| # | 断点 | 根因 | 修复 | 防回退 |
+| - | ---- | ---- | ---- | ------ |
+| 1 | 扩展包绑不进问卷 | `validateQuestionPayload` 的 settings 白名单只有 columns/speaker/scene，编辑器写入的 `settings.game` 被静默丢弃（D1 实测 settings_json 落成 NULL） | 白名单补 game 分支，复用读取端 `parseGameQuestionSettings` 消毒（仅 game 题、packId 必须正整数）；editor.ts 的 PATCH 守卫同步放行 | `question-game.test.ts` 3 例 |
+| 2 | 问卷内小游戏全 401 | `PluginGamePlay` 宿主桥的 fetch 裸调用 `/api/trial/runs*`，不带 identityHeaders（trial-api 的 trialRequest 有带） | 请求统一注入 `identityHeaders()` | 端到端通关脚本实测 |
+| 3 | 扩展包插画线上 500 | 媒体可见性六路 UNION 撞 D1 的 `SQLITE_MAX_COMPOUND_SELECT`=5（本地 SQLite 是 500，单测拦不住） | 第六路（task_packs）拆成批内独立语句 | Proxy 守卫测试：批内每条语句 UNION ≤4 |
+
+## 3. 示例扩展包的规范验证
+
+手写两个不同题材的包走真实导入管线（内存 ZIP → `parseQuestPackBundle` → asset
+引用核对）+ 引擎剧本通关，验证规范隐含假设全部成立：
+
+- 多结局分支道具：`requireItem` 能锁出隐藏结局（午夜站台的检票员名牌）；
+- 跨场景钥匙：A 场景取钥、B 场景使用，依赖节点回溯且重入不重复计分；
+- collectible 当门控道具（旧宅寻猫的「小鱼干」引猫选项）；
+- `asset:` 图片引用：导入时替换为站内 URL、停用包后不可读（沿用第 6 路挂载）。
+
+浏览器端到端（wrangler dev + 本地 D1 + Telegram 身份链路）：两包分别抵达
+「站台尽头的灯」（25 分）与「鱼干外交」（13 分），问卷提交成功。
+
+## 4. 视觉基线的方法论
+
+基线只能在与 CI 相同的字体渲染环境生成（仓库既有规则）。做法：podman 容器
+`mcr.microsoft.com/playwright:v1.62.1-noble` + `fonts-noto-cjk`，先用既有 211 张
+基线验证该容器与 CI 渲染逐像素一致，再重拍全部基线并新增 5 张关键页面基线。
+认证卡盖章是瞬态动画（落下 0.42s + 淡出 0.3s + 900ms 自毁），用「冻结 ≥800ms
+定时器 + CSS 把动画钉在终态」获得确定性截图。
+
+已知限制：容器低配环境下 `survey-display` 横屏（2px 位移）与
+`admin-report-publication`（排队文案时序）两例存在容器特有的脆弱——改动前
+同样失败、真实 GitHub CI 通过，已记录不纳入基线修正。
+
+## 5. 门禁实测与回滚
+
+- 双端 tsc、eslint、`build:admin`（含 cert 单文件构建）全绿；
+- vitest 219 文件 / 1580 用例（基线 1572 + 本轮净增 8）；
+- 视觉门禁 226 用例（容器 224 过 + 2 例上述容器脆弱）；
+- 端到端：quest 包浏览器通关 + CAPTCHA=0 相关无涉及（本仓库不涉及）。
+
+回滚：8 个 commit 相互独立，逐个 `git revert` 即可；无数据库迁移。
+`8d88aaf` 同时含三个断点修复，如需拆分回滚，媒体 UNION 一条可用
+`git checkout <prev> -- src/http/survey/media.ts tests/unit/http/survey-media-visibility.test.ts`。
+
+## 6. 下一步建议
+
+- `/trial` 列表对 quest 包只展示不可开局（开局流程仅支持爬塔）——要么接入
+  插件渲染，要么列表隐藏非 tower 包，待产品决策；
+- quest 新道具类型（限时 / 组合合成）设计方案已提报，待确认后实施；
+- 子模块 `blog-source-migrate` 的内部改动属博客项目自身工作，未纳入本仓库。
