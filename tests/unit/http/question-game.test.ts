@@ -32,8 +32,9 @@ describe("game 题 payload（settings.game 绑定）", () => {
   });
 
   it("非 game 题不允许 settings.game；PATCH 既有 game 题可换绑", () => {
-    expect(validateQuestionPayload({ type: "text", title: "x", settings: { game: { packId: 1 } } }, true).error)
-      .toContain("仅 game 题");
+    expect(
+      validateQuestionPayload({ type: "text", title: "x", settings: { game: { packId: 1 } } }, true).error,
+    ).toContain("仅 game 题");
 
     // 与 question-note.test.ts 同款：PATCH 时校验器按存量题型收口。
     const rebind = validateQuestionPayload({ settings: { game: { packId: 9 } } }, false, "game");

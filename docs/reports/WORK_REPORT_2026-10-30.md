@@ -1,11 +1,11 @@
 # 工作报告 · 2026-10-30（二轮优化：三项目收尾 + 深化）
 
-| 项           | 值                                                                                             |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| 报告日期     | 2026-10-30                                                                                     |
-| 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                          |
-| 生产版本     | `_DEPLOY_VERSION_ID_`（部署后回填）· git `777e72b`（本轮）+ 13 个 10-29 既有提交一并对齐远程    |
-| 对应更新记录 | [`RELEASE_2026-10-30_ROUND2.md`](../releases/RELEASE_2026-10-30_ROUND2.md)                      |
+| 项           | 值                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| 报告日期     | 2026-10-30                                                                                   |
+| 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                       |
+| 生产版本     | `_DEPLOY_VERSION_ID_`（部署后回填）· git `777e72b`（本轮）+ 13 个 10-29 既有提交一并对齐远程 |
+| 对应更新记录 | [`RELEASE_2026-10-30_ROUND2.md`](../releases/RELEASE_2026-10-30_ROUND2.md)                   |
 
 ## 1. 本轮范围
 
@@ -19,11 +19,11 @@ P5 认证卡、`84e57c8` 示例包、`8d88aaf` 端到端断点修复、`b0769eb`
 
 「导入即上架」的承诺在真实链路上断成三截，逐个核实与修复：
 
-| # | 断点 | 根因 | 修复 | 防回退 |
-| - | ---- | ---- | ---- | ------ |
-| 1 | 扩展包绑不进问卷 | `validateQuestionPayload` 的 settings 白名单只有 columns/speaker/scene，编辑器写入的 `settings.game` 被静默丢弃（D1 实测 settings_json 落成 NULL） | 白名单补 game 分支，复用读取端 `parseGameQuestionSettings` 消毒（仅 game 题、packId 必须正整数）；editor.ts 的 PATCH 守卫同步放行 | `question-game.test.ts` 3 例 |
-| 2 | 问卷内小游戏全 401 | `PluginGamePlay` 宿主桥的 fetch 裸调用 `/api/trial/runs*`，不带 identityHeaders（trial-api 的 trialRequest 有带） | 请求统一注入 `identityHeaders()` | 端到端通关脚本实测 |
-| 3 | 扩展包插画线上 500 | 媒体可见性六路 UNION 撞 D1 的 `SQLITE_MAX_COMPOUND_SELECT`=5（本地 SQLite 是 500，单测拦不住） | 第六路（task_packs）拆成批内独立语句 | Proxy 守卫测试：批内每条语句 UNION ≤4 |
+| #   | 断点               | 根因                                                                                                                                               | 修复                                                                                                                              | 防回退                                |
+| --- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| 1   | 扩展包绑不进问卷   | `validateQuestionPayload` 的 settings 白名单只有 columns/speaker/scene，编辑器写入的 `settings.game` 被静默丢弃（D1 实测 settings_json 落成 NULL） | 白名单补 game 分支，复用读取端 `parseGameQuestionSettings` 消毒（仅 game 题、packId 必须正整数）；editor.ts 的 PATCH 守卫同步放行 | `question-game.test.ts` 3 例          |
+| 2   | 问卷内小游戏全 401 | `PluginGamePlay` 宿主桥的 fetch 裸调用 `/api/trial/runs*`，不带 identityHeaders（trial-api 的 trialRequest 有带）                                  | 请求统一注入 `identityHeaders()`                                                                                                  | 端到端通关脚本实测                    |
+| 3   | 扩展包插画线上 500 | 媒体可见性六路 UNION 撞 D1 的 `SQLITE_MAX_COMPOUND_SELECT`=5（本地 SQLite 是 500，单测拦不住）                                                     | 第六路（task_packs）拆成批内独立语句                                                                                              | Proxy 守卫测试：批内每条语句 UNION ≤4 |
 
 ## 3. 示例扩展包的规范验证
 

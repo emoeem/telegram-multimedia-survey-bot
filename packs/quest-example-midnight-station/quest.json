@@ -5,10 +5,34 @@
   "start": "wake",
   "grades": { "s": 90, "a": 70, "b": 50 },
   "items": [
-    { "id": "ticket-stub", "name": "检票存根", "icon": "🎟️", "kind": "clue", "desc": "背面用铅笔写着一个名字：千代田。" },
-    { "id": "name-plate", "name": "检票员名牌", "icon": "🪪", "kind": "key", "desc": "分支钥匙：把它递还给检票员，才会有一条新的对话路。" },
-    { "id": "coin-old", "name": "昭和硬币", "icon": "🪙", "kind": "collectible", "desc": "收集品：1964 年的百円，边缘被摩挲得发亮。" },
-    { "id": "route-sticker", "name": "线路贴纸", "icon": "🚉", "kind": "collectible", "desc": "收集品：贴纸上的线路图里，有一站从未存在过。" }
+    {
+      "id": "ticket-stub",
+      "name": "检票存根",
+      "icon": "🎟️",
+      "kind": "clue",
+      "desc": "背面用铅笔写着一个名字：千代田。"
+    },
+    {
+      "id": "name-plate",
+      "name": "检票员名牌",
+      "icon": "🪪",
+      "kind": "key",
+      "desc": "分支钥匙：把它递还给检票员，才会有一条新的对话路。"
+    },
+    {
+      "id": "coin-old",
+      "name": "昭和硬币",
+      "icon": "🪙",
+      "kind": "collectible",
+      "desc": "收集品：1964 年的百円，边缘被摩挲得发亮。"
+    },
+    {
+      "id": "route-sticker",
+      "name": "线路贴纸",
+      "icon": "🚉",
+      "kind": "collectible",
+      "desc": "收集品：贴纸上的线路图里，有一站从未存在过。"
+    }
   ],
   "nodes": [
     {

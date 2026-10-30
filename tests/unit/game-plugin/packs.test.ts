@@ -71,7 +71,12 @@ function playthrough(content: QuestContent, script: Array<[string, number]>) {
   const random = () => 0.5;
   let state: QuestState | null = null;
   let view: QuestViewLike | null = null;
-  const created = questEngine.createRun({ config: config as unknown as Record<string, unknown>, persona: "female", mode: "normal", random });
+  const created = questEngine.createRun({
+    config: config as unknown as Record<string, unknown>,
+    persona: "female",
+    mode: "normal",
+    random,
+  });
   state = created.state as QuestState;
   view = created.view as unknown as QuestViewLike;
   for (const [nodeId, choiceIndex] of script) {

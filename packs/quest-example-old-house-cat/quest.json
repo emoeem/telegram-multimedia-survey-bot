@@ -5,9 +5,27 @@
   "start": "genkan",
   "grades": { "s": 85, "a": 65, "b": 45 },
   "items": [
-    { "id": "cat-collar", "name": "带铃铛的项圈", "icon": "🔔", "kind": "clue", "desc": "线索道具：小雪的项圈。铃铛声会在结局屏提醒你它去过哪。" },
-    { "id": "fish-snack", "name": "小鱼干", "icon": "🐟", "kind": "collectible", "desc": "收集品：厨房顺手带上的，关键时刻很管用。" },
-    { "id": "attic-key", "name": "阁楼钥匙", "icon": "🗝️", "kind": "key", "desc": "分支钥匙：井房挂钩上取到，能开玄关旁的阁楼门。" }
+    {
+      "id": "cat-collar",
+      "name": "带铃铛的项圈",
+      "icon": "🔔",
+      "kind": "clue",
+      "desc": "线索道具：小雪的项圈。铃铛声会在结局屏提醒你它去过哪。"
+    },
+    {
+      "id": "fish-snack",
+      "name": "小鱼干",
+      "icon": "🐟",
+      "kind": "collectible",
+      "desc": "收集品：厨房顺手带上的，关键时刻很管用。"
+    },
+    {
+      "id": "attic-key",
+      "name": "阁楼钥匙",
+      "icon": "🗝️",
+      "kind": "key",
+      "desc": "分支钥匙：井房挂钩上取到，能开玄关旁的阁楼门。"
+    }
   ],
   "nodes": [
     {
@@ -38,9 +56,7 @@
       "chapter": "客厅",
       "speaker": "旁白",
       "text": "你把项圈握在手心晃了晃。叮铃——声音很轻，却让你想起阁楼门缝里那道灰白的影子。也许该先找到能开那扇门的钥匙。",
-      "choices": [
-        { "text": "回玄关", "goto": "genkan" }
-      ]
+      "choices": [{ "text": "回玄关", "goto": "genkan" }]
     },
     {
       "id": "corridor",
@@ -109,9 +125,7 @@
       "chapter": "厨房",
       "speaker": "旁白",
       "text": "你把小鱼干揣进兜里。猫都记仇，也记好吃的——待会儿要是见到了，这就是最好的见面礼。",
-      "choices": [
-        { "text": "回后院", "goto": "yard" }
-      ]
+      "choices": [{ "text": "回后院", "goto": "yard" }]
     },
     {
       "id": "well",
@@ -128,9 +142,7 @@
       "chapter": "井房",
       "speaker": "旁白",
       "text": "钥匙到手了。阁楼在玄关——穿过整栋房子，原路回去吧。",
-      "choices": [
-        { "text": "原路返回玄关", "goto": "genkan" }
-      ]
+      "choices": [{ "text": "原路返回玄关", "goto": "genkan" }]
     },
     {
       "id": "attic",

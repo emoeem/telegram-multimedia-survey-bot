@@ -169,10 +169,13 @@ async function installSurveyRoutes(page: Page, survey: unknown) {
 }
 
 async function rectOf(page: Page, selector: string) {
-  return page.locator(selector).first().evaluate((element) => {
-    const r = element.getBoundingClientRect();
-    return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom };
-  });
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((element) => {
+      const r = element.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom };
+    });
 }
 
 test.describe("关键页面 · 场景题", () => {
@@ -236,7 +239,9 @@ test.describe("关键页面 · 认证卡盖章", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     // 认证卡是独立单文件页（cert.html），线上只有这些 API 且全部失败降级，
     // 这里拦截成 404 让它走本地默认主题，行为与离线 file:// 一致。
-    await page.route("**/api/cert*/**", (route) => route.fulfill({ status: 404, body: "{}", contentType: "application/json" }));
+    await page.route("**/api/cert*/**", (route) =>
+      route.fulfill({ status: 404, body: "{}", contentType: "application/json" }),
+    );
     await page.goto("/cert/cert.html");
 
     // 盖章动画「落下 0.42s + 淡出 0.3s + 900ms 自毁」是瞬态：冻结两件事让
@@ -245,7 +250,9 @@ test.describe("关键页面 · 认证卡盖章", () => {
     await page.evaluate(() => {
       const original = window.setTimeout;
       window.setTimeout = (handler: TimerHandler, delay?: number, ...args: unknown[]) =>
-        (delay ?? 0) >= 800 ? 0 : (original as (h: TimerHandler, d?: number, ...a: unknown[]) => number)(handler, delay, ...args);
+        (delay ?? 0) >= 800
+          ? 0
+          : (original as (h: TimerHandler, d?: number, ...a: unknown[]) => number)(handler, delay, ...args);
     });
     await page.addStyleTag({
       content: `.stamp-overlay { animation: none !important; opacity: 0.92 !important; transform: scale(1) rotate(-10deg) !important; }
