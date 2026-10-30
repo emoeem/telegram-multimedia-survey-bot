@@ -41,7 +41,7 @@ jobs:
         # 与 ci.yml 的 visual job 同口径：排除 @production（联网打真实生产站的
         # 冒烟用例）。基线环境的确定性不应依赖生产站此刻的可用性——它们超时
         # 会让整个基线更新中断、已重拍的基线也提交不出去。
-        run: pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test --update-snapshots --grep-invert @production
+        run: pnpm build:admin && pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test --update-snapshots --grep-invert @production
       - name: Commit updated baselines
         run: |
           git config user.name "github-actions[bot]"
