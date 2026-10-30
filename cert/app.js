@@ -789,6 +789,24 @@
       qrText: state.shared.qr || defaultQrText(),
     });
 
+    /* 用户自定义章（2026-10-31 盖章强化）：配置启用时直接烧进画布——
+     * 预览与导出是同一份像素，「原图保留」由全量重绘保证（改配置即重盖）。
+     * 版式自带的印章是版式设计的一部分，用户章是额外叠上去的确认章。 */
+    var stamp = readStampCfg();
+    if (stamp.enabled) {
+      var anchor = R.stampAnchor(stamp.position, ratio.w, ratio.h);
+      R.drawSeal(
+        ctx,
+        anchor.cx,
+        anchor.cy,
+        anchor.r,
+        stamp.text || stampFallbackText(),
+        t.palette.accent,
+        anchor.angle,
+        stamp.opacity / 100,
+      );
+    }
+
     $("sizeEcho").textContent = ratio.w + " × " + ratio.h;
   }
 
@@ -889,12 +907,17 @@
       wrap.classList.remove("flash");
       return;
     }
+    /* 文案优先级：用户盖章配置 > 主题印章文案 > 默认「已认证」。 */
     var sealText = "已认证";
     try {
-      var form = themeData() && themeData().form;
-      if (form && form.sealText) sealText = String(form.sealText).slice(0, 8);
+      var stampCfg = readStampCfg();
+      if (stampCfg.enabled && stampCfg.text) sealText = stampCfg.text;
+      else {
+        var form = themeData() && themeData().form;
+        if (form && form.sealText) sealText = String(form.sealText).slice(0, 8);
+      }
     } catch (e) {
-      /* 取不到主题印章文案就用默认 */
+      /* 取不到印章文案就用默认 */
     }
     var overlay = document.createElement("div");
     overlay.className = "stamp-overlay";
@@ -911,6 +934,155 @@
     setTimeout(function () {
       if (overlay.parentNode) overlay.remove();
     }, 900);
+  }
+
+  /* ---------------- 盖章配置（文字 / 位置 / 透明度） ----------------
+   * 配置独立存一个键（不进 state.shared）：它是「怎么盖」，不是「卡上内容」，
+   * 不该被分享链接 #s= 带出去，也要在重开页面后原样复用（2026-10-31）。 */
+
+  var STAMP_CFG_KEY = "cert-card-maker:stamp-cfg";
+  var STAMP_TEXT_MAX = 8;
+
+  function stampFallbackText() {
+    /* 建议值：日期（北京时间的月日）+ 固定词，占位符提示里写明可自定义 */
+    var d = new Date();
+    var p = function (n) {
+      return n < 10 ? "0" + n : "" + n;
+    };
+    return p(d.getMonth() + 1) + p(d.getDate()) + "认证";
+  }
+
+  function readStampCfg() {
+    var fallback = { enabled: false, text: "认证通过", position: "tr", opacity: 85 };
+    try {
+      var raw = localStorage.getItem(STAMP_CFG_KEY);
+      if (!raw) return fallback;
+      var cfg = JSON.parse(raw) || {};
+      var text = typeof cfg.text === "string" ? cfg.text.slice(0, STAMP_TEXT_MAX) : fallback.text;
+      var position = R.STAMP_POSITIONS[cfg.position] ? cfg.position : fallback.position;
+      var opacity = Number(cfg.opacity);
+      return {
+        enabled: !!cfg.enabled,
+        text: text,
+        position: position,
+        opacity: Number.isFinite(opacity) ? clamp(opacity, 20, 100) : fallback.opacity,
+      };
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function saveStampCfg(cfg) {
+    try {
+      localStorage.setItem(STAMP_CFG_KEY, JSON.stringify(cfg));
+    } catch (e) {
+      /* 存不了就本次会话生效 */
+    }
+  }
+
+  /** 盖章设置弹层：改动即时生效（save + render），「完成」只是关闭。 */
+  function openStampDialog() {
+    var old = document.getElementById("stampDialog");
+    if (old) old.remove();
+    var cfg = readStampCfg();
+
+    var dialog = document.createElement("div");
+    dialog.id = "stampDialog";
+    dialog.className = "stamp-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-label", "盖章设置");
+
+    var row1 = document.createElement("label");
+    row1.className = "stamp-dialog-row";
+    row1.innerHTML =
+      "<span>印章文字（≤" +
+      STAMP_TEXT_MAX +
+      ' 字，留空用日期）</span><input id="stampTextInput" maxlength="' +
+      STAMP_TEXT_MAX +
+      '" value="' +
+      String(cfg.text).replace(/"/g, "&quot;") +
+      '" placeholder="如 0601认证 / 认证通过" />';
+
+    var row2 = document.createElement("div");
+    row2.className = "stamp-dialog-row";
+    row2.innerHTML = "<span>位置</span>";
+    var posWrap = document.createElement("div");
+    posWrap.className = "stamp-pos-group";
+    var posLabels = { tl: "左上", tr: "右上", bl: "左下", br: "右下", center: "居中" };
+    Object.keys(posLabels).forEach(function (pos) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn ghost stamp-pos-btn" + (cfg.position === pos ? " is-active" : "");
+      b.textContent = posLabels[pos];
+      b.addEventListener("click", function () {
+        cfg.position = pos;
+        posWrap.querySelectorAll(".stamp-pos-btn").forEach(function (x) {
+          x.classList.remove("is-active");
+        });
+        b.classList.add("is-active");
+        saveStampCfg(cfg);
+        render();
+      });
+      posWrap.appendChild(b);
+    });
+    row2.appendChild(posWrap);
+
+    var row3 = document.createElement("label");
+    row3.className = "stamp-dialog-row";
+    row3.innerHTML =
+      '<span>透明度 <b id="stampOpacityEcho">' +
+      cfg.opacity +
+      '%</b></span><input id="stampOpacityInput" type="range" min="20" max="100" step="5" value="' +
+      cfg.opacity +
+      '" />';
+
+    var row4 = document.createElement("div");
+    row4.className = "stamp-dialog-actions";
+    var doneBtn = document.createElement("button");
+    doneBtn.type = "button";
+    doneBtn.className = "btn primary";
+    doneBtn.textContent = "确认盖章";
+    doneBtn.addEventListener("click", function () {
+      cfg.enabled = true;
+      var input = $("stampTextInput");
+      cfg.text = (input && input.value ? input.value : "").trim().slice(0, STAMP_TEXT_MAX);
+      saveStampCfg(cfg);
+      render();
+      dialog.remove();
+      toast("盖章已保存，导出会带上");
+      stampFeedback($("stage"));
+    });
+    var offBtn = document.createElement("button");
+    offBtn.type = "button";
+    offBtn.className = "btn ghost";
+    offBtn.textContent = "不用了";
+    offBtn.addEventListener("click", function () {
+      cfg.enabled = false;
+      saveStampCfg(cfg);
+      render();
+      dialog.remove();
+    });
+    row4.appendChild(doneBtn);
+    row4.appendChild(offBtn);
+
+    dialog.appendChild(row1);
+    dialog.appendChild(row2);
+    dialog.appendChild(row3);
+    dialog.appendChild(row4);
+    document.body.appendChild(dialog);
+
+    var opacityInput = $("stampOpacityInput");
+    opacityInput.addEventListener("input", function () {
+      cfg.opacity = Number(opacityInput.value);
+      $("stampOpacityEcho").textContent = cfg.opacity + "%";
+      saveStampCfg(cfg);
+      if (cfg.enabled) render();
+    });
+    $("stampTextInput").addEventListener("input", function () {
+      cfg.text = this.value.trim().slice(0, STAMP_TEXT_MAX);
+      saveStampCfg(cfg);
+      if (cfg.enabled) render();
+    });
   }
 
   function updateStats() {
@@ -1878,8 +2050,8 @@
    *
    * cert/ 是零依赖的离线单文件（还要被 scripts/build-cert-single.mjs 内联），
    * 不能 import React 那边的模块，所以这里保留一份同参数实现。
-   * tests/unit/media/image-publish-parity.test.ts 会读这两个文件并断言常量
-   * 一致——改一边不改另一边，测试直接红。
+   * tests/unit/media/image-publish.test.ts 会读本文件源码并断言常量
+   * 一致（该文件头部注释即 parity 说明）——改一边不改另一边，测试直接红。
    * ------------------------------------------------------------------ */
   var PUBLISH_MAX_EDGE = 1600;
   var PUBLISH_QUALITY = 0.86;
@@ -1968,7 +2140,10 @@
           .then(function (blob) {
             return normalizeForPublish(blob);
           })
-          .catch(function () {
+          .catch(function (e) {
+            /* 单张原图取回失败不阻断分享，但必须留下线索——
+             * 否则频道消息只会出现「未上传原图」，无从排查。 */
+            console.warn("原图取回失败，该张不会随分享上传", e);
             return null;
           });
       }),
@@ -2258,6 +2433,12 @@
       render();
       stampFeedback(stage);
     });
+
+    /* 盖章设置：印章文字 / 位置 / 透明度，改动即存（复用上次配置）。 */
+    var stampCfgBtn = $("stampCfgBtn");
+    if (stampCfgBtn) {
+      stampCfgBtn.addEventListener("click", openStampDialog);
+    }
 
     /* 盖章音效开关（默认开；状态进 localStorage，刷新保持） */
     var stampSoundBtn = $("stampSoundBtn");

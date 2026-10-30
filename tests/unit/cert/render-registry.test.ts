@@ -108,3 +108,45 @@ describe("认证卡版式注册表", () => {
     expect(registry.findRatio("nope").id).toBe("1:1");
   });
 });
+
+describe("盖章锚点（2026-10-31 盖章强化）", () => {
+  type WithStamp = Registry & {
+    drawSeal: unknown;
+    stampAnchor: (position: string, W: number, H: number) => { cx: number; cy: number; r: number; angle: number };
+    STAMP_POSITIONS: Record<string, number>;
+  };
+  const withStamp = registry as WithStamp;
+
+  it("drawSeal 与 stampAnchor 已导出（app.js 预览/烧录共用）", () => {
+    expect(typeof withStamp.drawSeal).toBe("function");
+    expect(typeof withStamp.stampAnchor).toBe("function");
+  });
+
+  it("五预设都在卡面内、半径一致（DOM 预览与导出烧录共用同一几何）", () => {
+    const W = 1080;
+    const H = 1920;
+    for (const position of ["tl", "tr", "bl", "br", "center"]) {
+      const a = withStamp.stampAnchor(position, W, H);
+      expect(a.cx).toBeGreaterThan(0);
+      expect(a.cx).toBeLessThan(W);
+      expect(a.cy).toBeGreaterThan(0);
+      expect(a.cy).toBeLessThan(H);
+      // 整章（含半径）不越界
+      expect(a.cx - a.r).toBeGreaterThanOrEqual(0);
+      expect(a.cx + a.r).toBeLessThanOrEqual(W);
+      expect(a.cy - a.r).toBeGreaterThanOrEqual(0);
+      expect(a.cy + a.r).toBeLessThanOrEqual(H);
+    }
+    // 四角半径一致（同一张卡上盖多枚不会大小不一）
+    const r = withStamp.stampAnchor("tl", W, H).r;
+    for (const position of ["tr", "bl", "br", "center"]) {
+      expect(withStamp.stampAnchor(position, W, H).r).toBe(r);
+    }
+  });
+
+  it("未知位置回退到右上（与 app.js 缺省一致），长图与方形都能用", () => {
+    const fallback = withStamp.stampAnchor("mystery", 1080, 1920);
+    expect(fallback.cx).toBe(withStamp.stampAnchor("tr", 1080, 1920).cx);
+    expect(() => withStamp.stampAnchor("center", 1080, 1080)).not.toThrow();
+  });
+});

@@ -286,11 +286,11 @@ window.CERT_RENDER = (function () {
     }
   }
 
-  function seal(ctx, cx, cy, r, text, color, angle) {
+  function seal(ctx, cx, cy, r, text, color, angle, alpha) {
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle === undefined ? -0.28 : angle);
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = alpha === undefined ? 0.5 : alpha;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = Math.max(1.6, r * 0.055);
@@ -4663,5 +4663,33 @@ window.CERT_RENDER = (function () {
     return RATIOS[0];
   }
 
-  return { STYLES: STYLES, RATIOS: RATIOS, findStyle: findStyle, findRatio: findRatio };
+  /**
+   * 用户自定义章的锚点（2026-10-31 盖章强化）：五预设，坐标按卡面比例，
+   * DOM 预览与导出烧录共用同一份几何，保证「所见即所得」。
+   * default 表示跟版式（不烧录用户章）。
+   */
+  var STAMP_POSITIONS = { tl: 1, tr: 1, bl: 1, br: 1, center: 1 };
+  function stampAnchor(position, W, H) {
+    var r = Math.min(W, H) * 0.085;
+    var margin = r * 0.55;
+    var anchors = {
+      tl: { cx: margin + r, cy: margin + r, angle: -0.28 },
+      tr: { cx: W - margin - r, cy: margin + r, angle: 0.22 },
+      bl: { cx: margin + r, cy: H - margin - r, angle: 0.16 },
+      br: { cx: W - margin - r, cy: H - margin - r, angle: -0.2 },
+      center: { cx: W / 2, cy: H / 2, angle: -0.12 },
+    };
+    var anchor = anchors[position] || anchors.tr;
+    return { cx: anchor.cx, cy: anchor.cy, r: r, angle: anchor.angle };
+  }
+
+  return {
+    STYLES: STYLES,
+    RATIOS: RATIOS,
+    findStyle: findStyle,
+    findRatio: findRatio,
+    drawSeal: seal,
+    stampAnchor: stampAnchor,
+    STAMP_POSITIONS: STAMP_POSITIONS,
+  };
 })();
