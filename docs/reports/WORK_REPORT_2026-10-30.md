@@ -4,7 +4,7 @@
 | ------------ | -------------------------------------------------------------------------------------------- |
 | 报告日期     | 2026-10-30                                                                                   |
 | 项目         | telegram-multimedia-survey-bot（Cloudflare Worker + D1/KV/R2 + React）                       |
-| 生产版本     | `_DEPLOY_VERSION_ID_`（部署后回填）· git `777e72b`（本轮）+ 13 个 10-29 既有提交一并对齐远程 |
+| 生产版本     | Worker `f6b4f5ff-4ba1-4c4f-a2c8-5bb13374718b`（12:14 CST）· git `9e6beea`（含 10-29 既有批次一并对齐远程） |
 | 对应更新记录 | [`RELEASE_2026-10-30_ROUND2.md`](../releases/RELEASE_2026-10-30_ROUND2.md)                   |
 
 ## 1. 本轮范围
