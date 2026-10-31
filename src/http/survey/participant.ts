@@ -9,6 +9,7 @@ import { getParticipantLink, participantHashForKey } from "../../db/repositories
 import { canonicalizeHash } from "../../services/identity-link.service";
 import { RELAY_OBSCURED_GEO_KEYS, type ClientIdentity } from "../../services/client-identity.service";
 import { fail } from "../api-response";
+import { EMAIL_DOMAIN_BLOCKED_MESSAGE, isBlockedEmailAddress, loadBlockedEmailDomainsSetting } from "../../services/disposable-email.service";
 
 export const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -146,6 +147,11 @@ export async function resolveParticipant(request: Request, env: Env): Promise<Pa
     const accountUser = account.userId === null ? null : await getUserById(env.DB, account.userId);
     const banned = accountUser ? bannedResponse(env, accountUser) : null;
     if (banned) return banned;
+    // 域名复查：管理员把某域加进 blocked_email_domains 后，该域已签发的会话
+    // 也在下一次身份解析时失效，不用等 token 过期。
+    if (isBlockedEmailAddress(account.email, await loadBlockedEmailDomainsSetting(env.DB))) {
+      return fail(403, "email_domain_blocked", EMAIL_DOMAIN_BLOCKED_MESSAGE);
+    }
     return {
       kind: "email",
       dbUserId: account.userId,

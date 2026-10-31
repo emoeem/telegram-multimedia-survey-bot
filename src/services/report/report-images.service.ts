@@ -2,6 +2,7 @@ import type { MediaAsset } from "../../db/schema";
 import { getMediaAssetById, getMediaAssetsByIds } from "../../db/repositories/media.repository";
 import { downloadTelegramFile } from "../../bot/telegram";
 import { createMediaStore } from "../media/temporary-media-store";
+import { assertFetchablePublicUrl, isFetchablePublicUrl } from "../media/url-guard";
 import type { ResultProfileSnapshot } from "../../result/schema";
 
 export interface ReportImagesEnv {
@@ -90,11 +91,20 @@ async function resolveAssetDataUrl(env: ReportImagesEnv, asset: MediaAsset): Pro
     return bytesToDataUrl(bytes, asset.mimeType ?? "image/jpeg");
   }
   if (asset.url) {
+    // Inline data URLs are not fetches at all — the SSRF guard must only apply
+    // to the http(s) branch below, or imported data-URL assets would be
+    // dropped from every report.
+    if (isInlineImage(asset.url)) return asset.url;
     try {
+      // Server-side fetch of an admin-authored URL: same public-host guard as
+      // every other remote image fetch, plus the same size cap — nothing here
+      // justifies an unbounded download.
+      assertFetchablePublicUrl(asset.url);
       const response = await fetch(asset.url);
       if (!response.ok) return null;
       const bytes = new Uint8Array(await response.arrayBuffer());
-      return bytesToDataUrl(bytes, asset.mimeType ?? response.headers.get("Content-Type") ?? "image/jpeg");
+      if (bytes.byteLength > MAX_REMOTE_IMAGE_BYTES) return null;
+      return bytesToDataUrl(bytes, asset.mimeType ?? "image/jpeg");
     } catch {
       return null;
     }
@@ -104,6 +114,10 @@ async function resolveAssetDataUrl(env: ReportImagesEnv, asset: MediaAsset): Pro
 
 async function fetchRemoteImageAsDataUrl(url: string): Promise<string | null> {
   try {
+    // A result rule set can copy respondent answer text into an image slot,
+    // so this fetch is not purely admin-controlled: keep it on public hosts
+    // (the 2026-10-31 probe response pasted a 169.254.169.254 metadata URL).
+    if (!isFetchablePublicUrl(url)) return null;
     const response = await fetch(url);
     if (!response.ok) return null;
     const declaredLength = Number(response.headers.get("Content-Length") ?? "0");
@@ -240,14 +254,35 @@ export async function mapWithConcurrency<T, R>(
 const IMAGE_RESOLVE_CONCURRENCY = 4;
 
 /**
+ * Why a referenced image could not be embedded. The archive manifest carries
+ * these so a "broken image" in an exported report is explained in the package
+ * itself instead of being silent.
+ */
+export interface ReportImageWarning {
+  /** Snapshot image key, e.g. "gallery.2" or "question_5662". */
+  key: string;
+  assetId: number | null;
+  reason: string;
+}
+
+export interface ResolvedReportImages {
+  images: Record<string, string>;
+  warnings: ReportImageWarning[];
+}
+
+/** Missing asset / cleared storage key / unreachable source. */
+export const REPORT_IMAGE_MISSING_REASON = "媒体资产不存在、已过期或内容缺失，未包含在本归档中";
+
+/**
  * Resolves every image referenced by a ResultProfile into embeddable data
  * URLs for PDF/archive rendering, covering temporary KV, Telegram and future
- * R2 storage. Unavailable images are skipped so archiving never fails.
+ * R2 storage. Unavailable images are skipped so archiving never fails, and
+ * every skip is reported back as a warning for the archive manifest.
  */
-export async function resolveReportProfileImages(
+export async function resolveReportProfileImagesDetailed(
   env: ReportImagesEnv,
   profile: ResultProfileSnapshot,
-): Promise<Record<string, string>> {
+): Promise<ResolvedReportImages> {
   // Collect every value that needs resolving first so the referenced media
   // rows are loaded in one batched query instead of one SELECT per image.
   const keyedValues = collectReportImageEntries(profile);
@@ -257,16 +292,39 @@ export async function resolveReportProfileImages(
     .filter((id): id is number => id !== null);
   const assets = await getMediaAssetsByIds(env.DB, assetIds);
 
+  const warnings: ReportImageWarning[] = [];
   const resolvedValues = await mapWithConcurrency(keyedValues, IMAGE_RESOLVE_CONCURRENCY, async (entry) => {
+    const assetId = reportImageAssetId(entry.value);
     try {
-      return await resolveImageValue(env, entry.value, assets);
+      const resolved = await resolveImageValue(env, entry.value, assets);
+      if (!resolved) {
+        warnings.push({ key: entry.key, assetId, reason: REPORT_IMAGE_MISSING_REASON });
+      }
+      return resolved;
     } catch (error) {
       // Enforce the documented contract: one unreadable image is skipped, it
       // must never fail the whole archive/PDF. A storage hiccup on a single
       // photo used to abort report archiving entirely.
       console.warn("Report image skipped", { error });
+      warnings.push({
+        key: entry.key,
+        assetId,
+        reason: `图片解析失败：${error instanceof Error ? error.message : String(error)}`,
+      });
       return null;
     }
   });
-  return assembleReportImages(keyedValues, resolvedValues);
+  return { images: assembleReportImages(keyedValues, resolvedValues), warnings };
+}
+
+/**
+ * Resolves every image referenced by a ResultProfile into embeddable data
+ * URLs, discarding the skip reasons. Callers that surface warnings (the
+ * archive manifest) should use `resolveReportProfileImagesDetailed` instead.
+ */
+export async function resolveReportProfileImages(
+  env: ReportImagesEnv,
+  profile: ResultProfileSnapshot,
+): Promise<Record<string, string>> {
+  return (await resolveReportProfileImagesDetailed(env, profile)).images;
 }

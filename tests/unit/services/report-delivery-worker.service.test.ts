@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   prepareResultProfileForResponse: vi.fn(),
   deserializeResultProfile: vi.fn(),
   renderReportPdf: vi.fn(),
-  resolveReportProfileImages: vi.fn(),
+  resolveReportProfileImagesDetailed: vi.fn(),
   sendDocument: vi.fn(),
   sendPhoto: vi.fn(),
   sendMessage: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock("../../../src/services/report/pdf", () => ({
 }));
 
 vi.mock("../../../src/services/report/report-images.service", () => ({
-  resolveReportProfileImages: mocks.resolveReportProfileImages,
+  resolveReportProfileImagesDetailed: mocks.resolveReportProfileImagesDetailed,
 }));
 
 vi.mock("../../../src/bot/telegram", () => ({
@@ -155,7 +155,7 @@ describe("report delivery worker", () => {
     mocks.claimReportDelivery.mockResolvedValue(true);
     mocks.prepareResultProfileForResponse.mockResolvedValue({ profile: { id: 9 } });
     mocks.deserializeResultProfile.mockReturnValue({ images: {}, metadata: {} });
-    mocks.resolveReportProfileImages.mockResolvedValue({});
+    mocks.resolveReportProfileImagesDetailed.mockResolvedValue({ images: {}, warnings: [] });
     mocks.renderReportPdf.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), byteSize: 3 });
     mocks.sendDocument.mockResolvedValue(telegramResponse(55));
   });
@@ -170,8 +170,11 @@ describe("report delivery worker", () => {
   });
 
   it("archives the PDF, attaches images, completes and cleans temporary media", async () => {
-    mocks.resolveReportProfileImages.mockResolvedValue({
-      question_1: "data:image/png;base64,AAAA",
+    mocks.resolveReportProfileImagesDetailed.mockResolvedValue({
+      images: {
+        question_1: "data:image/png;base64,AAAA",
+      },
+      warnings: [],
     });
     mocks.sendPhoto.mockResolvedValue(telegramResponse(56));
     const env = makeEnv();
@@ -207,7 +210,7 @@ describe("report delivery worker", () => {
   });
 
   it("falls back to the cached channel id from KV when the env is empty", async () => {
-    mocks.resolveReportProfileImages.mockResolvedValue({});
+    mocks.resolveReportProfileImagesDetailed.mockResolvedValue({ images: {}, warnings: [] });
     const env = makeEnv({
       channelId: "",
       cache: {

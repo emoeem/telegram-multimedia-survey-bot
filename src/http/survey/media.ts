@@ -19,7 +19,7 @@ import {
   STREAM_TICKET_TTL_SECONDS,
   streamConfigured,
 } from "../../services/media/stream.service";
-import { isActiveContentMime, verifyUploadContent } from "../../services/media/upload-validation.service";
+import { isActiveContentMime, verifyImageUpload } from "../../services/media/upload-validation.service";
 import { checkRateLimit } from "../../services/rate-limit.service";
 import { r18ParticipantGate } from "../../services/content-rating.service";
 import { loadSystemSettings } from "../../services/system-settings.service";
@@ -366,7 +366,10 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   // serve-side downgrade in `buildMediaResponse`, and their declared type is
   // kept so legitimate documents (docx/xlsx/...) are not mislabeled.
   if (questionType !== "file") {
-    const validation = verifyUploadContent(bytes, mimeType);
+    // verifyImageUpload additionally structurally-parses declared images: the
+    // magic prefix alone once accepted a "PNG" that was 8 magic bytes followed
+    // by zeros, which then exported as a broken image nobody could explain.
+    const validation = verifyImageUpload(bytes, mimeType);
     if (!validation.ok) {
       return fail(400, "invalid_media_type", validation.reason ?? "文件内容无效");
     }

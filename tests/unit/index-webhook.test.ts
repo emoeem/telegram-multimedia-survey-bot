@@ -259,7 +259,9 @@ describe("telegram webhook idempotency wiring", () => {
         new Request("https://example.test/api/auth/email/register", {
           method: "POST",
           headers: { "Content-Type": "application/json", "cf-connecting-ip": "198.51.100.7" },
-          body: JSON.stringify({ email: `user-${attempt}@example.com`, password: "short" }),
+          // 域名轮换：非主流域另有 5 注册/小时/域 的限制（fldubai.com 事件后的
+          // 新防线），固定域名会让第 6 次 429 而不是走到这里测的 IP 预算。
+          body: JSON.stringify({ email: `user-${attempt}@mail${attempt}.example`, password: "short" }),
         }),
         env as never,
       );

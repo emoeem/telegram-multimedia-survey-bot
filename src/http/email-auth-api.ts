@@ -19,6 +19,7 @@ import {
   verifyPassword,
 } from "../services/email-auth.service";
 import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
+import { EMAIL_DOMAIN_BLOCKED_MESSAGE, isBlockedEmailAddress, loadBlockedEmailDomainsSetting } from "../services/disposable-email.service";
 import { claimParticipantKey } from "../services/identity-link.service";
 import { ensureEmailAccountUser } from "../services/identity-link.service";
 
@@ -105,6 +106,12 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!isValidEmail(email)) return fail(400, "validation_failed", "邮箱格式不正确");
+  // 一次性邮箱域拦截（内置库 + 管理端 blocked_email_domains）。盖住发码/注册/
+  // 登录/重置全部路由：2026-10-31 事件里 fldubai.com 的三个账号就是这样进来的，
+  // 已注册账号另有 users.banned_at 封禁，这里是把新入口关死。
+  if (isBlockedEmailAddress(email, await loadBlockedEmailDomainsSetting(db))) {
+    return fail(403, "email_domain_blocked", EMAIL_DOMAIN_BLOCKED_MESSAGE);
+  }
 
   if (url.pathname === "/api/auth/email/request-code") {
     const purpose = body?.purpose === "reset" ? "reset" : "register";

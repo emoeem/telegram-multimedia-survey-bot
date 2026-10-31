@@ -63,6 +63,7 @@ import { loadSystemSettings } from "./services/system-settings.service";
 import { sendMessage } from "./bot/telegram";
 import { createUpdateDedupStore } from "./services/update-dedup.service";
 import { createPreferredRateLimiter } from "./services/rate-limit.service";
+import { emailDomainOf, isAggregateProviderDomain } from "./services/disposable-email.service";
 import { withQueueMetrics, withRequestMetrics } from "./observability/metrics";
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 import type { BrowserWorker } from "@cloudflare/puppeteer";
@@ -430,14 +431,25 @@ async function applyPublicApiRateLimit(request: Request, env: Env, url: URL): Pr
       let scope = url.pathname.slice("/api/auth/email/".length);
       if (scope === "request-code") scope = body?.purpose === "reset" ? "reset" : "register";
       if (scope === "register" || scope === "login" || scope === "reset") {
-        const [perEmail, perIp] = await Promise.all([
+        // 域名维度只打非主流域：fldubai.com 这类新型一次性域（还没进黑名单时）
+        // 被压到 5 个注册/小时/域，而 gmail.com 等共享域的聚合注册量是正常业务，
+        // 绝不能套这个限。
+        const domain = emailDomainOf(email);
+        const throttleDomain = domain !== null && !isAggregateProviderDomain(domain);
+        const [perEmail, perIp, perDomain] = await Promise.all([
           limiter.allow(`${scope}|${email}`, 5, 3600),
           clientIp ? limiter.allow(`email-auth-ip|${clientIp}`, 20, 3600) : Promise.resolve(true),
+          scope === "register" && throttleDomain
+            ? limiter.allow(`register-domain|${domain}`, 5, 3600)
+            : Promise.resolve(true),
         ]);
         if (!clientIp) {
           console.warn("邮件登录按地址限流已跳过：无法确定调用方地址", { scope, path: url.pathname });
         }
-        if (!perEmail || !perIp) {
+        if (!perDomain) {
+          console.warn("单域名注册触发限流（疑似一次性邮箱域批量注册）", { domain });
+        }
+        if (!perEmail || !perIp || !perDomain) {
           return Response.json(
             { ok: false, code: "rate_limited", message: "请求过于频繁，请稍后再试" },
             { status: 429, headers: { "Cache-Control": "no-store" } },

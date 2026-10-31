@@ -1,4 +1,5 @@
 import type { Env } from "../index";
+import { newSandboxedPage } from "../services/browser-launch";
 import { fail } from "./api-response";
 import { getActiveShareByToken, type ReportShareRow } from "../services/report-share.service";
 import { getActiveProfileShareByToken, type ProfileShareRow } from "../services/profile-share.service";
@@ -249,7 +250,7 @@ async function getOrRenderShareOg(env: Env, share: ReportShareRow, view: ShareCa
   if (!env.BROWSER) return null;
   const browser = await puppeteer.launch(env.BROWSER);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     await page.setViewport({ width: OG_WIDTH, height: OG_HEIGHT });
     await page.setContent(buildShareCardHtml(view), { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");
@@ -469,7 +470,7 @@ async function getOrRenderOgGeneric(env: Env, cacheKey: string, buildHtml: () =>
   const puppeteer = (await import("@cloudflare/puppeteer")).default;
   const browser = await puppeteer.launch(env.BROWSER);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     await page.setViewport({ width: OG_WIDTH, height: OG_HEIGHT });
     await page.setContent(buildHtml(), { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");

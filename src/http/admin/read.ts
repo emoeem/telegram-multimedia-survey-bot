@@ -1,3 +1,4 @@
+import { getEmailAccountByUserId } from "../../db/repositories/email-account.repository";
 import { getUserById } from "../../db/repositories/user.repository";
 import { getSurveyCoinAccess } from "../../services/coin/unlock.service";
 import { readCachedJson, writeCachedJson } from "../../services/kv-cache.service";
@@ -569,6 +570,11 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
       }),
     ]);
     const { items: responses, total: responseTotal } = responsePage;
+    // 邮箱账号显示原始地址（合成 TG id 的用户查反查 email_accounts）：运营要靠
+    // 它发现一次性邮箱域——2026-10-31 的 fldubai.com 三连注册就是从这里看出来的。
+    const emailAccount = user.telegramUserId >= 1_000_000_000_000
+      ? await getEmailAccountByUserId(env.DB, user.id)
+      : null;
     return json({
       user: {
         id: user.id,
@@ -577,6 +583,7 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
         firstName: user.firstName,
         lastName: user.lastName,
         systemRole: user.systemRole,
+        email: emailAccount?.email ?? null,
         bannedAt: user.bannedAt,
         bannedBy: user.bannedBy,
         banReason: user.banReason,

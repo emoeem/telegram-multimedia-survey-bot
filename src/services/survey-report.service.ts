@@ -1,4 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
+import { newSandboxedPage } from "./browser-launch";
 import type { CompletionTimeBucket, NumericStat, OptionStat, SurveyStatistics } from "./statistics.service";
 import {
   renderPieChartSvg,
@@ -483,7 +484,7 @@ export async function renderSurveySummaryReport(
 ): Promise<Uint8Array> {
   const browser = await puppeteer.launch(browserBinding);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     await page.setContent(buildSurveySummaryReportHtml(report), { waitUntil: "load" });
     const output = await page.pdf({
       format: "A4",

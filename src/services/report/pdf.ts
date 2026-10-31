@@ -1,5 +1,5 @@
 import type { BrowserWorker } from "@cloudflare/puppeteer";
-import { launchBrowser } from "../browser-launch";
+import { launchBrowser, newSandboxedPage } from "../browser-launch";
 import type { ResultProfileSnapshot } from "../../result/schema";
 import { buildReportViewModel, optimizeReportImagesInPage } from "../html-report-renderer.service";
 import { buildResponsiveReportHtml, type ResponsiveReportMeta } from "./web";
@@ -38,7 +38,7 @@ export async function renderReportPdf(
 ): Promise<ReportPdfResult> {
   const browser = await launchBrowser(browserBinding, { kind: "report-pdf", responseId: meta.reportId });
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     const maxImageDimension = options.maxImageDimension ?? 1200;
     const optimizedImages = await optimizeReportImagesInPage(page, images, {
       maxImageDimension: {

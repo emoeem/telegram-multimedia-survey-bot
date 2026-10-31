@@ -1,5 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
-import { launchBrowser } from "./browser-launch";
+import { launchBrowser, newSandboxedPage } from "./browser-launch";
 import { buildResponseReportHtmlDocument } from "./response-report/html";
 import type { ResponseReport, ResponseReportRenderResult, ResponseReportRenderedPage } from "./response-report/model";
 import { planResponseReportPages } from "./response-report/pagination";
@@ -185,7 +185,7 @@ export async function renderResponseReport(
 ): Promise<ResponseReportRenderResult> {
   const browser = await launchBrowser(browserBinding, { format });
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     try {
       const pages = planResponseReportPages(sourceReport);
       if (format === "png") return renderPngReport(page, sourceReport, pages, viewportStrategy);

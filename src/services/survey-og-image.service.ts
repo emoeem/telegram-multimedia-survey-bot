@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import { newSandboxedPage } from "./browser-launch";
 import { RESULT_VISUAL_FONT } from "./result-visual-font";
 import type { Env } from "../index";
 import { reportThemes, type ReportTheme } from "./report/themes";
@@ -169,7 +170,7 @@ export async function getSurveyOgImage(
 
   const browser = await puppeteer.launch(env.BROWSER);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser, { allowedOrigins: [origin] });
     await page.setViewport({ width: OG_WIDTH, height: OG_HEIGHT });
     await page.setContent(buildOgCardHtml(meta, origin), { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");

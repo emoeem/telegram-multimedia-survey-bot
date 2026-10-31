@@ -12,7 +12,11 @@ import { getSurveyById } from "../db/repositories/survey.repository";
 import { prepareResultProfileForResponse } from "./result-visual.service";
 import { deserializeResultProfile } from "./result-engine.service";
 import { renderReportPdf } from "./report/pdf";
-import { resolveReportProfileImages } from "./report/report-images.service";
+import {
+  resolveReportProfileImagesDetailed,
+  type ReportImageWarning,
+} from "./report/report-images.service";
+import { inspectImageStructure } from "./media/upload-validation.service";
 import {
   isReportDeliveryMessage,
   nextReportRetryAt,
@@ -215,7 +219,7 @@ async function deliverReportToChannel(
     throw new Error("无法生成答卷结果");
   }
   const snapshot = deserializeResultProfile(prepared.profile);
-  const images = await resolveReportProfileImages(env, snapshot);
+  const { images, warnings: imageWarnings } = await resolveReportProfileImagesDetailed(env, snapshot);
   const respondentInfo = await resolveRespondentDisplay(env.DB, response);
   const answers = await listAnswersByResponseId(env.DB, responseId);
   const completedAt = formatChinaDateTime(response.completedAt);
@@ -253,6 +257,21 @@ async function deliverReportToChannel(
   const mediaFiles = Object.entries(images)
     .filter(([, url]) => url.startsWith("data:image/"))
     .map(([key, url]) => ({ key, bytes: dataUrlToBytes(url), extension: dataUrlExtension(url) }));
+  // The manifest must explain itself: skipped references and uploads whose
+  // bytes never parsed as an image are listed as warnings instead of shipping
+  // a silently broken archive.
+  const zipWarnings: Array<{ file: string; assetId: number | null; reason: string }> = imageWarnings.map(
+    (warning: ReportImageWarning) => ({ file: warning.key, assetId: warning.assetId, reason: warning.reason }),
+  );
+  for (const item of mediaFiles) {
+    if (!inspectImageStructure(item.bytes)) {
+      zipWarnings.push({
+        file: `${item.key}.${item.extension}`,
+        assetId: null,
+        reason: "上传内容未通过图片完整性校验，原始字节按原样保留",
+      });
+    }
+  }
   const zip = buildReportZip({
     responseId,
     surveyId: response.surveyId,
@@ -263,6 +282,7 @@ async function deliverReportToChannel(
     answers,
     pdfBytes: pdf.bytes,
     media: mediaFiles,
+    warnings: zipWarnings,
   });
   const sendZip = zip.byteLength <= 45 * 1024 * 1024;
   const archiveName = sendZip ? `report-${responseId}.zip` : `report-${responseId}.pdf`;
@@ -350,6 +370,7 @@ function buildReportZip(input: {
   answers: Awaited<ReturnType<typeof listAnswersByResponseId>>;
   pdfBytes: Uint8Array;
   media: Array<{ key: string; bytes: Uint8Array; extension: string }>;
+  warnings: Array<{ file: string; assetId: number | null; reason: string }>;
 }): Uint8Array {
   const files: Record<string, Uint8Array> = {
     "01-report/report.pdf": input.pdfBytes,
@@ -372,7 +393,10 @@ function buildReportZip(input: {
     ),
   };
   const manifest = {
-    packageVersion: 2,
+    // v3 adds `warnings`: image references that could not be resolved and
+    // uploads that failed the image-structure check are listed instead of
+    // silently shipping (or silently dropping) broken files.
+    packageVersion: 3,
     responseId: input.responseId,
     surveyId: input.surveyId,
     surveyTitle: input.surveyTitle,
@@ -390,6 +414,7 @@ function buildReportZip(input: {
           : { kind: "web_user", userId: input.respondent.userId }
       : null,
     files: ["01-report/report.pdf", "01-report/result.json", "02-answers/answers.json"],
+    warnings: input.warnings,
   };
   input.media.forEach((item, index) => {
     const safeKey = item.key.replace(/[^A-Za-z0-9._-]+/g, "_");

@@ -5,6 +5,7 @@ import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repos
 import type { MediaAsset, MediaType, QuestionType, Survey, SurveyQuestion } from "../../db/schema";
 import type { Env } from "../../index";
 import { createMediaStore } from "../../services/media/temporary-media-store";
+import { verifyImageUpload } from "../../services/media/upload-validation.service";
 import { storeDeduplicatedMedia } from "../../services/media/media-dedup.service";
 import { REPORT_TEMPLATES } from "../../services/report/template";
 import type { ImportedSurvey } from "../../services/import.service";
@@ -128,6 +129,13 @@ export async function storeSurveyAdminMedia(
   }
   const store = createMediaStore(storeEnv);
   const bytes = new Uint8Array(await file.arrayBuffer());
+  // Admin/creator uploads skip the respondent endpoint's checks, so the same
+  // content + image-structure gate runs here: a declared image/* must parse,
+  // otherwise mislabeled HTML would be stored and served inline as an image.
+  const validation = verifyImageUpload(bytes, mimeType);
+  if (!validation.ok) {
+    throw new Error(validation.reason ?? "文件内容无效，请重新选择");
+  }
   const { asset } = await storeDeduplicatedMedia(db, store, {
     bytes,
     mimeType,

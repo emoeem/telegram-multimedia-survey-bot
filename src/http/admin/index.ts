@@ -4,6 +4,7 @@ import { describeDatabaseError, isDatabaseCapacityError } from "../../db/errors"
 import { hasActiveCreatorTrial } from "../../db/repositories/creator-trial.repository";
 import type { Env } from "../../index";
 import { createMediaStore } from "../../services/media/temporary-media-store";
+import { verifyUploadContent } from "../../services/media/upload-validation.service";
 import { storeDeduplicatedMedia } from "../../services/media/media-dedup.service";
 import { handleAdminRead } from "./read";
 import { handleAdminWrite } from "./write";
@@ -386,6 +387,12 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
       return fail(413, "upload_too_large", "背景音乐不能超过 20MB");
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
+    // Declared-audio uploads must carry a recognizable audio signature: this
+    // endpoint is reachable with a creator trial, not just by admins.
+    const audioValidation = verifyUploadContent(bytes, file.type);
+    if (!audioValidation.ok) {
+      return fail(400, "invalid_upload", audioValidation.reason ?? "音频文件内容无效");
+    }
     const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
     // BGM 走同一份去重管线：同一首曲子多个问卷复用一份 blob。
     const { asset } = await storeDeduplicatedMedia(env.DB, store, {

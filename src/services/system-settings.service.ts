@@ -11,6 +11,7 @@ export const SYSTEM_SETTING_KEYS = [
   "pdf_max_mb",
   "report_watermark",
   "profile_gallery_survey_id",
+  "blocked_email_domains",
 ] as const;
 
 export type SystemSettingKey = (typeof SYSTEM_SETTING_KEYS)[number] | "admin_password_hash" | "admin_session_epoch";
@@ -40,6 +41,8 @@ export interface SystemSettings {
   pdfMaxMb: number;
   reportWatermark: string;
   profileGallerySurveyId: string;
+  /** 管理端维护的一次性邮箱域黑名单（空白/逗号分隔），配合内置库做即时处置。 */
+  blockedEmailDomains: string;
 }
 
 export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
@@ -53,6 +56,7 @@ export const SYSTEM_SETTING_DEFAULTS: SystemSettings = {
   pdfMaxMb: 15,
   reportWatermark: "更多问卷 @hnhgggfj_bot",
   profileGallerySurveyId: "",
+  blockedEmailDomains: "",
 };
 
 export async function loadSystemSettings(db: D1Database): Promise<SystemSettings> {
@@ -85,6 +89,7 @@ export function settingsFromRows(rows: Array<{ key: string; value: string }>): S
     pdfMaxMb: number("pdf_max_mb", SYSTEM_SETTING_DEFAULTS.pdfMaxMb),
     reportWatermark: stored["report_watermark"] ?? SYSTEM_SETTING_DEFAULTS.reportWatermark,
     profileGallerySurveyId: stored["profile_gallery_survey_id"] ?? SYSTEM_SETTING_DEFAULTS.profileGallerySurveyId,
+    blockedEmailDomains: stored["blocked_email_domains"] ?? SYSTEM_SETTING_DEFAULTS.blockedEmailDomains,
   };
 }
 

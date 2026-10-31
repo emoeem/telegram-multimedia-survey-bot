@@ -1,3 +1,5 @@
+import { imageSize } from "image-size";
+
 /**
  * Upload content validation.
  *
@@ -201,6 +203,53 @@ export function verifyUploadContent(bytes: Uint8Array, declaredMime: string): Up
 /** True when the declared MIME is a media kind that must be content-checked. */
 export function requiresContentCheck(mime: string): boolean {
   return familyForMime(mime) !== "document";
+}
+
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+/**
+ * Parses the image structure far enough to prove the bytes decode as a real
+ * image, returning its dimensions. `detectContent` only matches an 8-byte
+ * magic prefix, so a probe file (PNG magic + zero bytes) used to pass as
+ * `image/png`, land in storage and export archives as a "broken image". The
+ * structural parse rejects anything a renderer could not draw anyway.
+ *
+ * Returns null when the bytes do not parse; callers turn that into a
+ * user-facing rejection.
+ */
+export function inspectImageStructure(bytes: Uint8Array): ImageDimensions | null {
+  try {
+    const dimensions = imageSize(bytes);
+    if (!dimensions.width || !dimensions.height) return null;
+    return { width: dimensions.width, height: dimensions.height };
+  } catch {
+    return null;
+  }
+}
+
+/** User-facing rejection for declared-image uploads whose bytes do not parse. */
+export const INVALID_IMAGE_CONTENT_MESSAGE = "图片文件已损坏或不是有效的图片，请重新选择";
+
+/**
+ * Full gate for uploads declared as images: the magic-byte content check plus
+ * a structural parse. Non-image declarations pass through unchanged (only the
+ * content check applies) so documents and octet-stream uploads keep working.
+ */
+export function verifyImageUpload(
+  bytes: Uint8Array,
+  declaredMime: string,
+): UploadValidationResult & { dimensions?: ImageDimensions } {
+  const content = verifyUploadContent(bytes, declaredMime);
+  if (!content.ok) return content;
+  if (familyForMime(declaredMime) !== "image") return content;
+  const dimensions = inspectImageStructure(bytes);
+  if (!dimensions) {
+    return { ok: false, detected: content.detected, reason: INVALID_IMAGE_CONTENT_MESSAGE };
+  }
+  return { ...content, dimensions };
 }
 
 /**

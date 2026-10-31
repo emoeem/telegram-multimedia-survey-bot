@@ -140,7 +140,8 @@ describe("report API", () => {
       new URL(`https://worker.test/report/42?t=${token}`),
     );
     const html = await response?.text();
-    expect(html).toContain(`/api/report/media/77?t=${token}&rid=42`);
+    // src 属性经 HTML 转义后 `&` 序列化为 `&amp;`（浏览器解码回 &）。
+    expect(html).toContain(`/api/report/media/77?t=${token}&amp;rid=42`);
   });
 
   it("rejects pages without a valid token", async () => {
@@ -165,8 +166,9 @@ describe("report API", () => {
       new URL(`https://worker.test/report/42?t=${token}`),
     );
     const html = await response?.text();
-    expect(html).toContain(`/api/report/media/77?t=${token}&rid=42`);
-    expect(html).toContain(`/api/report/media/78?t=${token}&rid=42`);
+    // src 属性经 HTML 转义后 `&` 序列化为 `&amp;`（浏览器解码回 &）。
+    expect(html).toContain(`/api/report/media/77?t=${token}&amp;rid=42`);
+    expect(html).toContain(`/api/report/media/78?t=${token}&amp;rid=42`);
     // The first photo is also the question's answer image: the gallery entry
     // must not repeat it, so the report shows each asset exactly once.
     expect(html?.split("/api/report/media/77?").length).toBe(2);

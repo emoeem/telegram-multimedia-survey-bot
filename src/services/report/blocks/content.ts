@@ -9,8 +9,14 @@ export function renderHeroBlock(
   input: { title: string; thesis: string; avatar?: string; tags: string[]; primaryScore?: ReportScore },
   context: ContentBlockContext,
 ): string {
-  const avatar = input.avatar
-    ? `<img class="hero-avatar" src="${input.avatar}" alt="用户图片" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div>`
+  // Same safe-shape rule as the gallery block: hero avatars may only be
+  // inline data URLs or same-origin media links, escaped at the attribute.
+  const safeAvatarSrc =
+    input.avatar && (/^data:image\//i.test(input.avatar) || input.avatar.startsWith("/api/"))
+      ? context.escape(input.avatar)
+      : "";
+  const avatar = safeAvatarSrc
+    ? `<img class="hero-avatar" src="${safeAvatarSrc}" alt="用户图片" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div>`
     : "";
   const tags = input.tags
     .slice(0, 4)

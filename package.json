@@ -50,9 +50,11 @@
   "dependencies": {
     "@resvg/resvg-wasm": "^2.6.2",
     "daisyui": "^5.7.20",
+    "disposable-email-domains": "^1.0.62",
     "echarts": "^6.1.0",
     "fflate": "^0.8.3",
     "he": "^1.2.0",
+    "image-size": "^2.0.4",
     "parse5": "^8.0.1",
     "playwright": "^1.62.1"
   }

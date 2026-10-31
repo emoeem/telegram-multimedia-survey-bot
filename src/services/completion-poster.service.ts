@@ -1,4 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
+import { newSandboxedPage } from "./browser-launch";
 import type { CompletionPosterStyle } from "../db/repositories/completion-poster.repository";
 
 export interface CompletionPosterData {
@@ -37,7 +38,7 @@ export async function renderCompletionPoster(
 ): Promise<Uint8Array> {
   const browser = await puppeteer.launch(browserBinding);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 1 });
     await page.setContent(buildCompletionPosterHtml(data), { waitUntil: "load" });
     return new Uint8Array(await page.screenshot({ type: "png" }));

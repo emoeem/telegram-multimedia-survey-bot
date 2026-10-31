@@ -1,4 +1,5 @@
 import puppeteer, { type BrowserWorker } from "@cloudflare/puppeteer";
+import { newSandboxedPage } from "./browser-launch";
 import type { ResultProfileSnapshot } from "../result/schema";
 import { RESULT_VISUAL_EMOJI_FONT, RESULT_VISUAL_FONT } from "./result-visual-font";
 import { reportTokenCss } from "./report/tokens";
@@ -691,7 +692,7 @@ export async function renderHtmlReportArtifact(
   const browser = await puppeteer.launch(browserBinding);
   const failures: ReportArtifact["failures"] = [];
   try {
-    const optimizerPage = await browser.newPage();
+    const optimizerPage = await newSandboxedPage(browser);
     let optimizedImages: Record<string, string>;
     try {
       optimizedImages = await optimizeReportImagesInPage(optimizerPage, images, policy);
@@ -721,7 +722,7 @@ export async function renderHtmlReportArtifact(
       for (let attempt = 0; attempt < maxAttempts && !rendered; attempt += 1) {
         const dpr = attempt === 0 ? policy.preferredDpr : policy.fallbackDpr;
         const format: "png" | "jpeg" = attempt === 2 || imageCount >= 3 ? "jpeg" : "png";
-        const page = await browser.newPage();
+        const page = await newSandboxedPage(browser);
         try {
           if (htmlByteSize > policy.maxHtmlBytesPerPage)
             throw new Error(`page HTML exceeds ${policy.maxHtmlBytesPerPage} bytes`);
@@ -843,7 +844,7 @@ export async function renderHtmlReportArtifact(
       selectedPages = selectedPages.filter((page) => !removed.has(page.id));
     }
     let archivePdf: Uint8Array | undefined;
-    const pdfPage = await browser.newPage();
+    const pdfPage = await newSandboxedPage(browser);
     try {
       await pdfPage.setViewport({ width: policy.pageWidth, height: policy.maxPageHeight, deviceScaleFactor: 1 });
       await pdfPage.setContent(buildHtmlReport(profile, templateName, optimizedImages, options), { waitUntil: "load" });
@@ -904,7 +905,7 @@ export async function renderHtmlReportPdf(
 ): Promise<Uint8Array> {
   const browser = await puppeteer.launch(browserBinding);
   try {
-    const page = await browser.newPage();
+    const page = await newSandboxedPage(browser);
     await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
     await page.setContent(buildHtmlReport(profile, templateName, images, options), { waitUntil: "load" });
     await page.evaluate("document.fonts ? document.fonts.ready : Promise.resolve()");

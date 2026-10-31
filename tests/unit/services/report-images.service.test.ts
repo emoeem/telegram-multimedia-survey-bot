@@ -11,8 +11,10 @@ vi.mock("../../../src/db/repositories/media.repository", () => ({
 }));
 
 import {
+  REPORT_IMAGE_MISSING_REASON,
   resolveMediaAssetDataUrl,
   resolveReportProfileImages,
+  resolveReportProfileImagesDetailed,
 } from "../../../src/services/report/report-images.service";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
 
@@ -126,5 +128,51 @@ describe("report image resolution", () => {
       resolveMediaAssetDataUrl({ ...envWith(kvStub()), MEDIA: { get: r2Get } as unknown as R2Bucket }, 1),
     ).resolves.toBeNull();
     expect(r2Get).not.toHaveBeenCalled();
+  });
+
+  it("keeps data-URL assets inline without running them through the SSRF guard", async () => {
+    // Imported media rows carry their bytes as a data: URL. The public-host
+    // guard only applies to real fetches; a data: URL must pass straight
+    // through (a naive guard would drop every imported image from reports).
+    repositoryMocks.getMediaAssetById.mockResolvedValue(
+      asset({ storageKind: "url", url: "data:image/png;base64,AAAA" }),
+    );
+    await expect(resolveMediaAssetDataUrl(envWith(kvStub()), 1)).resolves.toBe("data:image/png;base64,AAAA");
+  });
+
+  it("refuses to fetch a url-kind asset pointing at a private address", async () => {
+    repositoryMocks.getMediaAssetById.mockResolvedValue(
+      asset({ storageKind: "url", url: "http://169.254.169.254/latest/meta-data/" }),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(resolveMediaAssetDataUrl(envWith(kvStub()), 1)).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("reports skipped references as manifest warnings instead of silently dropping them", async () => {
+    // The 2026-10-31 archive shipped a broken probe PNG with no explanation.
+    // The detailed resolver surfaces every skip so the zip manifest can.
+    repositoryMocks.getMediaAssetsByIds.mockResolvedValue(
+      new Map([[2, asset({ id: 2, storageKey: "media:temp:42:good" })]]),
+    );
+    const kv = kvStub(new Uint8Array([1, 2, 3]));
+    const profile = {
+      schemaVersion: 1,
+      resultType: "survey_result",
+      title: "t",
+      fields: {},
+      stats: [],
+      tags: [],
+      images: { missing: { mediaAssetId: 1 }, present: { mediaAssetId: 2 } },
+      metadata: {},
+    } as unknown as ResultProfileSnapshot;
+
+    const { images, warnings } = await resolveReportProfileImagesDetailed(envWith(kv), profile);
+
+    expect(images.missing ?? null).toBeNull();
+    expect(images.present).toMatch(/^data:image\/png;base64,/);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ key: "missing", assetId: 1, reason: REPORT_IMAGE_MISSING_REASON });
   });
 });

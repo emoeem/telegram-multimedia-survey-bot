@@ -4,6 +4,7 @@ import { readTemporaryMedia } from "./temporary-media.service";
 import { createMediaStore } from "./temporary-media-store";
 import { decodeDataUrl } from "../import.service";
 import { isActiveContentMime } from "./upload-validation.service";
+import { isFetchablePublicUrl } from "./url-guard";
 import { expireMediaAsset, markMediaAssetPromotedToR2 } from "../../db/repositories/media.repository";
 import { getStreamVideoStatus, type StreamEnv } from "./stream.service";
 
@@ -99,6 +100,15 @@ export async function buildMediaResponse(env: MediaServeEnv, asset: MediaAsset):
         ) as ArrayBuffer,
         { headers },
       );
+    }
+    if (!isFetchablePublicUrl(asset.url)) {
+      // url-kind rows are admin-authored, but the 302 is an open redirect
+      // primitive if a row ever goes stale or hostile — refuse non-public
+      // targets instead of bouncing visitors to them.
+      return new Response("媒体地址无效", {
+        status: 410,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
     return Response.redirect(asset.url, 302);
   }

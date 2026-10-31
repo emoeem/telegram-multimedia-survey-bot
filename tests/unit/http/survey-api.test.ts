@@ -638,7 +638,12 @@ describe("web survey API", () => {
     const form = new FormData();
     // Real PNG magic bytes: upload content is now magic-byte checked, so a
     // text blob declared as image/png is rejected instead of stored.
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    // A structurally valid 1x1 PNG: since the image-structure gate, a bare
+    // magic prefix + zeros no longer passes as image/png.
+    const pngBytes = Uint8Array.from(
+      atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+      (char) => char.charCodeAt(0),
+    );
     form.append("file", new File([pngBytes], "photo.png", { type: "image/png" }));
     const response = await handleSurveyApiRequest(
       request("/api/survey/1/media", {
