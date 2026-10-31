@@ -73,3 +73,16 @@
 | 单回答题页     | `git revert cf491ef && pnpm build:admin && pnpm exec wrangler deploy`                                                            |
 | 单关节点编辑器 | `git revert d4932b3 787951a e6b3e7b cf63070 8fc5f91` 后同上（新文件全在 `editor/node-graph/` 与 `components/editor/next/flow/`） |
 | 不回滚代码     | 编辑器内切「列表」即回到旧行为；答题页形态无开关，需走 revert                                                                    |
+
+---
+
+## 五、10-31 批次追加（归档图片修复 + 盖章强化）
+
+| 项   | 值                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------- |
+| 版本 | `9a2611f4-3e60-46c6-856f-e9fe15e38dca`（2026-10-31 08:22 CST，CI 一次全绿自动部署）                       |
+| 内容 | cert-share 二进制按真实 mime 声明（修归档频道 WebP 灰块）；盖章配置+canvas 烧录；巡检必修项；changtu 分析 |
+| 验证 | production-smoke 8/8（44s）；线上 /cert/app.js、/cert/render.js 已确认携带盖章代码                        |
+| 待办 | 归档频道真实发 WebP 成品验证灰块消失（需用户在 TG 侧确认）                                                |
+
+详见 [`../reports/WORK_REPORT_2026-10-31.md`](../reports/WORK_REPORT_2026-10-31.md)。
