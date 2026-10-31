@@ -1,0 +1,48 @@
+{
+  "incident": "disposable-email probe submissions with SSRF/XSS payloads and disguised file uploads",
+  "detectedAt": "2026-10-31T09:40:00Z",
+  "containedAt": "2026-10-31T09:50:00Z",
+  "deployedFixAt": "2026-10-31T11:08:00Z",
+  "deployedFixVersion": "f9977060-2640-4b02-9fd6-a80db50f7946",
+  "fixCommit": "637b400",
+  "report": "Operator downloaded report-4675.zip from the archiving channel and asked why the bundled image was broken, suspecting a webshell.",
+  "summary": "Three accounts on the throwaway domain fldubai.com registered within 11 minutes (email_accounts 133/134/135, users 16419/16420/16421) and submitted survey #97 'personal profile' responses #4675, #4677, #4678 plus an abandoned draft #4676 on survey 9136. Answer text carried SSRF and XSS probes: '<img src=\"http://169.254.169.254/\">', '<iframe src=\"http://169.254.169.254/\">', '<a href=\"javascript:alert(1)\">'. Uploads disguised as image/png included x.php, x.html, x.svg, x.PNG and x.png. (trailing-dot bypass); the archived 'image' that triggered the report was 68 bytes — the PNG magic number followed by 60 zero bytes.",
+  "finding": "The probe PNG contained no executable content (magic number + zeros, no IHDR/IDAT, no script). No webshell is possible on this stack: Cloudflare Workers has no PHP/JSP execution surface, and uploaded bytes were always stored and served as inert blobs behind nosniff + CSP sandbox. The real defect was that upload validation matched only the 8-byte magic prefix, so the probe file passed, was stored, and was exported into the archive with no explanation of why it rendered as nothing.",
+  "why": "detectContent (upload-validation.service.ts) checks signatures only, and the admin media library path called no content validation at all. Report image resolution swallowed failures to console and the zip manifest carried no record of them, so an operator could not tell a probe file from a broken pipeline.",
+  "blocked": {
+    "accounts": [133, 134, 135],
+    "userIds": [16419, 16420, 16421],
+    "domain": "fldubai.com",
+    "method": "users.banned_at + ban_reason, enforced at the single participant.ts choke point (403 account_banned on every web surface)"
+  },
+  "disposed": {
+    "archivedResponses": [4675, 4677, 4678],
+    "cancelledDrafts": [4676],
+    "deletedMediaAssets": [880, 881, 882, 885, 890, 892, 895, 896, 897, 898, 899, 900, 901, 902],
+    "deletedAnswerMediaRows": 16,
+    "deletedR2Objects": 12,
+    "note": "Assets 880 and 881 had already been nulled by the retention sweep; 882 and the twelve later assets were live in R2 survey-media and were deleted object by object. answered rows 895-902 are the x.php/x.html/x.svg/x.PNG/x.png. disguises (158-474 bytes each)."
+  },
+  "verified": {
+    "bannedAccounts": 3,
+    "probeAssetsRemaining": 0,
+    "liveDomainBlockFldubai": "403 email_domain_blocked",
+    "liveDomainBlockDataset": "403 email_domain_blocked (mailinator.com)",
+    "liveDomainAllow": "200 (gmail.com reaches the code-issue stage)",
+    "deletedAssetEndpoint": "404 (/api/survey/media/882)",
+    "tests": "1620 passing"
+  },
+  "hardening": {
+    "fakeImage": "verifyImageUpload parses image structure with image-size after the magic check; a declared image that does not decode is rejected. Wired into survey uploads, the admin media library (previously unchecked) and the creator-reachable BGM endpoint.",
+    "ssrf": "services/media/url-guard.ts allows only public http(s) on standard ports, rejecting localhost, *.internal/.local/.home.arpa, private/loopback/link-local (169.254.0.0/16 cloud metadata)/CGNAT/reserved ranges, hex/octal/integer host encodings and IPv4-mapped IPv6. Applied to both report image fetches (the asset.url branch gained a 12 MB cap) and the url-kind 302 in media serving.",
+    "renderSandbox": "newSandboxedPage installs request interception on all 11 headless-browser render sites, aborting every remote request; the OG card allowlists its own origin. Escaping regressions can no longer become a server-side fetch primitive.",
+    "exportExplainability": "Archive manifest packageVersion 2 → 3 adds warnings[] listing unresolved image references and uploads that failed the structure check.",
+    "escaping": "The two unescaped src attribute slots (gallery block, hero avatar) now escape and require a data:image/ or /api/ prefix.",
+    "disposableEmail": "Built-in disposable-email-domains dataset plus the admin-managed blocked_email_domains setting (fldubai.com seeded in D1 and also pinned in code as INCIDENT_EMAIL_DOMAINS so a fresh deployment blocks it before configuration). Checked at request-code/register/login/reset and re-checked when resolving an existing email session. Non-major domains additionally throttle to 5 registrations/hour/domain; aggregate providers are exempt.",
+    "observability": "Admin user detail now returns the underlying email address so a throwaway domain burst is visible without SQL."
+  },
+  "openItems": [
+    "The customer delivery package (delivery/01-发给部署服务人员/客户部署包) has diverged from src by ~190 files and cannot build after partial sync (verified: tsc clean before, errors after). It must be regenerated from the main tree rather than patched; customer deployments take code from the main repo via scripts/deploy-customer.mjs, so they inherit these fixes on their next deploy.",
+    "The mistaken Cloudflare account fb8f4c599afffea6f419532f2d95ab54 (contains an empty telegram-survey-db b7fb7834-..., submission-bot-db, tg-bot-db) is unrelated to production and can be cleaned up separately."
+  ]
+}
