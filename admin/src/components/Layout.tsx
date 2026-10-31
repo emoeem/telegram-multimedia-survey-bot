@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import {
   ArrowLeft,
-  ArrowUpRight,
   BadgeCheck,
-  ChevronDown,
   ClipboardList,
   Coins,
   Contact,
@@ -12,7 +10,6 @@ import {
   LayoutDashboard,
   ListChecks,
   Menu,
-  MoreHorizontal,
   Package,
   Palette,
   Target,
@@ -34,45 +31,68 @@ import { TestBanner } from "./TestBanner";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 type NavItem = { to: string; icon: LucideIcon; label: string };
-type NavGroup = {
+
+/**
+ * 工作区信息架构（2026-10-31，用户提案）：左侧常驻的 20+ 项全局导航在
+ * 创作/操作时几乎全是噪音。改为两层：
+ *
+ *  - 全局图标轨（56px 常驻）：每个工作区一个图标，点击进入其着陆页；
+ *  - 工作区子导航：进入工作区后，主区域顶部出现该工作区的横向 tab 条
+ *    （如问卷工作区：列表|分类|导入|答卷动态|报告），其余工作区不可见——
+ *    「点问卷这个分类，整个界面就不一样」。
+ *
+ * 路由不变，只是导航的组织方式变了；问卷详情子页（/surveys/:id/*）归属
+ * 问卷工作区，子导航条继续显示，页内返回按钮负责上下层回退。
+ */
+type Workspace = {
+  id: string;
   label: string;
-  items: NavItem[];
-  /** Renders a disclosure button instead of a static label (lg and up only). */
-  collapsible?: boolean;
-  /** Starts folded. Only used when `collapsible` is set. */
-  defaultCollapsed?: boolean;
+  icon: LucideIcon;
+  /** 图标轨点击后的着陆页。 */
+  entry: string;
+  /** 工作区顶部 tab 条（含着陆页自身）。 */
+  tabs: NavItem[];
+  /** 一句话说明（图标轨 tooltip）。 */
+  hint: string;
 };
 
-const NAV_GROUPS: NavGroup[] = [
+const WORKSPACES: Workspace[] = [
   {
-    label: "工作台",
-    items: [
-      { to: "/", icon: LayoutDashboard, label: "总览" },
-      { to: "/surveys", icon: ClipboardList, label: "问卷" },
+    id: "surveys",
+    label: "问卷",
+    icon: ClipboardList,
+    entry: "/surveys",
+    hint: "创建与编辑问卷、查看答卷与报告",
+    tabs: [
+      { to: "/surveys", icon: ClipboardList, label: "问卷列表" },
       { to: "/categories", icon: Tags, label: "分类" },
-      { to: "/responses", icon: ListChecks, label: "答卷动态" },
       { to: "/imports", icon: FileUp, label: "导入" },
+      { to: "/responses", icon: ListChecks, label: "答卷动态" },
+      { to: "/reports", icon: Package, label: "报告" },
     ],
   },
   {
+    id: "content",
     label: "内容",
-    // Collapsible but expanded by default: this is the daily working set.
-    // On a short screen (1280x800) folding it is the escape hatch that brings
-    // the sidebar back under the fold — see COLLAPSE_STORAGE_KEY below.
-    collapsible: true,
-    items: [
+    icon: Coins,
+    entry: "/coin-economy",
+    hint: "投稿、用户、模板与素材",
+    tabs: [
       { to: "/coin-economy", icon: Coins, label: "金币经济" },
       { to: "/web-submissions", icon: Inbox, label: "网页投稿" },
       { to: "/users", icon: Users, label: "用户" },
-      { to: "/reports", icon: Package, label: "报告" },
       { to: "/templates", icon: Palette, label: "模板" },
       { to: "/cert-content", icon: BadgeCheck, label: "认证卡内容" },
       { to: "/media-library", icon: Images, label: "素材库" },
     ],
   },
   {
+    id: "community",
     label: "社区",
-    items: [
+    icon: Sprout,
+    entry: "/plaza",
+    hint: "树洞、画廊与展示区",
+    tabs: [
       { to: "/plaza", icon: Sprout, label: "树洞" },
       { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
       { to: "/showcase", icon: Images, label: "展示区" },
@@ -83,12 +103,12 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "system",
     label: "系统",
-    // Folded by default: it is the least-used group and it is exactly the one
-    // that got pushed below the fold on a 900px-tall window.
-    collapsible: true,
-    defaultCollapsed: true,
-    items: [
+    icon: Settings,
+    entry: "/settings",
+    hint: "审计、回收站、授权与设置",
+    tabs: [
       { to: "/audit", icon: ScrollText, label: "审计" },
       { to: "/trash", icon: Trash2, label: "回收站" },
       { to: "/licenses", icon: KeyRound, label: "授权" },
@@ -98,39 +118,22 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const COLLAPSE_STORAGE_KEY = "admin:nav-collapsed";
+/** 沉浸创作态：整宽渲染，图标轨与子导航都隐藏（顶栏返回按钮负责退出）。 */
+const IMMERSIVE_PATH = /\/surveys\/\d+\/(editor|scene\/\d+)$/;
 
-function readCollapsedGroups(): Record<string, boolean> {
-  try {
-    const raw = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const collapsed: Record<string, boolean> = {};
-    for (const [label, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof value === "boolean") collapsed[label] = value;
-    }
-    return collapsed;
-  } catch {
-    // Corrupt JSON or storage disabled: fall back to the per-group defaults.
-    return {};
+function workspaceIdOf(pathname: string): string | null {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  for (const workspace of WORKSPACES) {
+    if (workspace.tabs.some((item) => isActivePath(item.to, normalized))) return workspace.id;
   }
-}
-
-function writeCollapsedGroups(value: Record<string, boolean>): void {
-  try {
-    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // Quota exceeded or private mode: folding still works for this session.
-    return;
-  }
+  // 问卷详情子页（详情/编辑/答卷/统计/版本/场景）归属问卷工作区。
+  if (/^\/surveys\/\d+/.test(normalized)) return "surveys";
+  return null;
 }
 
 // `sm`/`lg` are Tailwind's 640px/1000px boundaries; the icon rail lives between
 // them. Read the same numbers here so the disclosure button is only rendered
 // where its label is actually visible.
-const RAIL_QUERY = "(min-width: 640px) and (max-width: 999px)";
-
 /**
  * 「矮窗口」：nav 装不下时，把后两组收进「更多」面板。
  *
@@ -148,18 +151,6 @@ const RAIL_QUERY = "(min-width: 640px) and (max-width: 999px)";
  */
 const COMPACT_NAV_QUERY =
   "(min-width: 640px) and (max-height: 860px), (min-width: 640px) and (pointer: coarse) and (max-height: 1000px)";
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const onChange = () => setMatches(mql.matches);
-    onChange();
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, [query]);
-  return matches;
-}
 
 function isActivePath(itemPath: string, pathname: string): boolean {
   return itemPath === "/" ? pathname === "/" : pathname === itemPath || pathname.startsWith(`${itemPath}/`);
@@ -208,91 +199,28 @@ export function Layout() {
     });
   }, []);
 
-  const navGroups = useMemo(() => {
+  // 角色过滤平移到工作区模型：creator 只见问卷工作区（+总览）；未接入
+  // 授权中心的部署隐藏「授权/控制中心」两个 tab。
+  const workspaces = useMemo(() => {
     if (isCreator) {
-      return NAV_GROUPS.map((group) => ({
-        ...group,
-        items: group.items.filter((item) => CREATOR_NAV_TARGETS.has(item.to)),
-      })).filter((group) => group.items.length > 0);
+      return WORKSPACES.map((workspace) =>
+        workspace.id === "surveys"
+          ? { ...workspace, tabs: workspace.tabs.filter((item) => item.to !== "/imports" && item.to !== "/categories") }
+          : workspace,
+      );
     }
-    if (licenseCenter) return NAV_GROUPS;
-    return NAV_GROUPS.map((group) => ({
-      ...group,
-      items: group.items.filter((item) => item.to !== "/licenses" && item.to !== "/control"),
-    })).filter((group) => group.items.length > 0);
+    if (licenseCenter) return WORKSPACES;
+    return WORKSPACES.map((workspace) =>
+      workspace.id === "system"
+        ? { ...workspace, tabs: workspace.tabs.filter((item) => item.to !== "/licenses" && item.to !== "/control") }
+        : workspace,
+    );
   }, [isCreator, licenseCenter]);
 
-  const railMode = useMediaQuery(RAIL_QUERY);
-  const compactNav = useMediaQuery(COMPACT_NAV_QUERY);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(readCollapsedGroups);
-  const [railMenuOpen, setRailMenuOpen] = useState(false);
-  const railMenuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const railMenuRef = useRef<HTMLDivElement | null>(null);
-  // 紧凑轨把「其余组 + 两个外部入口」收进一个面板。面板条目统一成同一形状，
-  // 因为组内条目是路由（react-router Link），而两个快捷入口是开新标签的原生
-  // <a>——混在一起渲染会让「问卷列表」丢掉 target=_blank。
-  const railGroups = useMemo(() => {
-    if (!compactNav) return { primary: navGroups, secondary: [] as NavGroup[] };
-    return { primary: navGroups.slice(0, 2), secondary: navGroups.slice(2) };
-  }, [navGroups, compactNav]);
-  const railMenuGroups = useMemo(() => {
-    const groups = railGroups.secondary.map((group) => ({
-      label: group.label,
-      items: group.items.map((item) => ({
-        key: item.to,
-        label: item.label,
-        icon: item.icon,
-        to: item.to,
-        external: false,
-      })),
-    }));
-    groups.push({
-      label: "快捷入口",
-      items: [
-        ...(isCreator ? [] : [{ key: "/trial", label: "挑战任务", icon: Target, to: "/trial", external: true }]),
-        { key: "/s", label: "问卷列表", icon: ClipboardList, to: "/s", external: true },
-      ],
-    });
-    return groups;
-  }, [isCreator, railGroups]);
-  const railMenuActive = railMenuGroups.some((group) =>
-    group.items.some((item) => !item.external && isActivePath(item.to, location.pathname)),
-  );
-
-  const setGroupCollapsed = (label: string, collapsed: boolean) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [label]: collapsed };
-      writeCollapsedGroups(next);
-      return next;
-    });
-  };
-
-  // Navigating into a folded group opens it, so a deep link (or the "设置"
-  // button in the header) never lands on a page whose own nav entry is hidden.
-  // The stored value is updated too: the user asked for it to be reachable.
-  const activeGroupLabels = useMemo(
-    () =>
-      navGroups
-        .filter((group) => group.items.some((item) => isActivePath(item.to, location.pathname)))
-        .map((group) => group.label),
-    [navGroups, location.pathname],
-  );
-
-  useEffect(() => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const label of activeGroupLabels) {
-        if (next[label] !== false) {
-          next[label] = false;
-          changed = true;
-        }
-      }
-      if (!changed) return prev;
-      writeCollapsedGroups(next);
-      return next;
-    });
-  }, [activeGroupLabels]);
+  const activeWorkspaceId = workspaceIdOf(location.pathname);
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+  // 沉浸创作态：编辑器/场景编辑器整宽渲染，图标轨与子导航都不出现。
+  const immersive = IMMERSIVE_PATH.test(location.pathname.replace(/\/+$/, ""));
 
   useEffect(() => {
     if (!drawer) return undefined;
@@ -310,33 +238,6 @@ export function Layout() {
   useEffect(() => {
     setDrawer(false);
   }, [location.pathname]);
-
-  // 「更多」面板：Esc 关闭并把焦点还给触发器，点面板外关闭（面板是 absolute，
-  // 靠 document 级 pointerdown 判断，不铺遮罩——遮罩会盖住正在看的页面）。
-  useEffect(() => {
-    if (!railMenuOpen) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setRailMenuOpen(false);
-      railMenuButtonRef.current?.focus();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (railMenuRef.current?.contains(target) || railMenuButtonRef.current?.contains(target)) return;
-      setRailMenuOpen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [railMenuOpen]);
-
-  useEffect(() => {
-    setRailMenuOpen(false);
-  }, [location.pathname, compactNav]);
 
   // A creator trial that reaches an admin-only URL (bookmark, typed address) is
   // sent back to the survey workspace; the API refuses those pages anyway.
@@ -406,201 +307,85 @@ export function Layout() {
   };
 
   return (
-    <div className="admin-shell flex min-h-dvh flex-col bg-page">
+    <div className={`admin-shell flex min-h-dvh flex-col bg-page${immersive ? " is-immersive" : ""}`}>
       <div className="flex flex-1">
         <aside
-          // `sm:static` let the sidebar stretch with the page: on the dashboard
-          // the flex row grew to 1118px inside a 900px window, so the footer's
-          // shortcuts and the environment line sat below the fold and no amount
-          // of nav sizing could bring them back. Sticky + viewport height makes
-          // the sidebar a fixed frame whose nav is the only scrolling part.
-          className={`admin-sidebar fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-sidebar px-4 py-5 text-slate-300 transition-transform duration-200 sm:sticky sm:top-0 sm:h-dvh sm:translate-x-0 sm:self-start sm:w-16 sm:px-2 lg:w-64 lg:px-4 ${
+          /* 工作区图标轨（2026-10-31）：桌面常驻 56px，只放工作区图标——
+           * 点哪个进哪个的「工作区」，子导航出现在主区域顶部。
+           * <640px 保持抽屉：抽屉里列工作区（带说明），选完进工作区、
+           * 用页面顶部的子导航条切换。 */
+          className={`admin-sidebar fixed inset-y-0 left-0 z-30 flex w-56 -translate-x-full flex-col bg-sidebar px-3 py-4 text-slate-300 transition-transform duration-200 sm:sticky sm:top-0 sm:h-dvh sm:translate-x-0 sm:self-start sm:w-14 sm:px-1.5 ${
             drawer ? "translate-x-0" : ""
           }`}
         >
-          <div className="admin-brand mb-4 flex items-center gap-2.5 whitespace-nowrap px-1.5">
-            <BrandMark />
-            <span className="text-[15px] font-bold tracking-tight text-white sm:hidden lg:inline">问卷管理后台</span>
+          <div className="admin-brand mb-4 flex items-center justify-center whitespace-nowrap px-1">
+            <Link to="/" aria-label="回到总览" title="总览">
+              <BrandMark />
+            </Link>
           </div>
-          <nav className="admin-nav flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-1">
-            {railGroups.primary.map((group) => {
-              // The icon rail hides every label, so a disclosure button there
-              // would be a nameless chevron: rail mode always shows the items.
-              const foldable = Boolean(group.collapsible) && !railMode;
-              const collapsed = foldable ? (collapsedGroups[group.label] ?? Boolean(group.defaultCollapsed)) : false;
-              const itemsId = `nav-group-${group.label}`;
+          <nav
+            className="admin-nav flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain py-1"
+            aria-label="工作区"
+          >
+            {workspaces.map((workspace) => {
+              const Icon = workspace.icon;
+              const active = activeWorkspaceId === workspace.id;
               return (
-                <div key={group.label} className={`admin-nav-group${collapsed ? " is-collapsed" : ""}`}>
-                  {foldable ? (
-                    <button
-                      type="button"
-                      className="admin-nav-toggle"
-                      aria-expanded={!collapsed}
-                      aria-controls={itemsId}
-                      title={`${collapsed ? "展开" : "收起"}${group.label}`}
-                      onClick={() => setGroupCollapsed(group.label, !collapsed)}
-                    >
-                      <span>{group.label}</span>
-                      <ChevronDown className="admin-nav-caret" aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <p className="admin-nav-label">{group.label}</p>
-                  )}
-                  {/* `display:none` rather than the `hidden` attribute: a Tailwind
-                    `flex` class on the same element outranks the UA `[hidden]`
-                    rule. display:none also drops the links from the tab order. */}
-                  <div
-                    id={itemsId}
-                    className="flex flex-col gap-px"
-                    style={collapsed ? { display: "none" } : undefined}
-                  >
-                    {group.items.map((item) => {
-                      const active = isActivePath(item.to, location.pathname);
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          // The icon rail (640–999px) hides `.admin-nav-label`
-                          // and every item's text, and these links carried no
-                          // accessible name at all — on an iPad in portrait the
-                          // sidebar was 19 anonymous icons for both sighted and
-                          // screen-reader users. `title` gives the mouse a
-                          // tooltip, `aria-label` gives assistive tech the name.
-                          title={item.label}
-                          aria-label={item.label}
-                          aria-current={active ? "page" : undefined}
-                          className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
-                            active
-                              ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
-                              : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
-                          }`}
-                        >
-                          {active ? (
-                            <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-[var(--color-primary)]" />
-                          ) : null}
-                          <Icon className="h-[18px] w-[18px] shrink-0" />
-                          <span className="sm:hidden lg:inline">{item.label}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
+                <Link
+                  key={workspace.id}
+                  to={workspace.entry}
+                  title={`${workspace.label} · ${workspace.hint}`}
+                  aria-label={workspace.label}
+                  aria-current={active ? "page" : undefined}
+                  className={`admin-rail-icon group relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors sm:justify-center sm:px-0 ${
+                    active
+                      ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
+                      : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
+                  }`}
+                >
+                  {active ? (
+                    <span className="absolute left-0 top-1/2 hidden h-7 w-1 -translate-y-1/2 rounded-r-full bg-[var(--color-primary)] sm:block" />
+                  ) : null}
+                  <Icon className="h-[19px] w-[19px] shrink-0" />
+                  <span className="min-w-0 flex-1 truncate sm:hidden">{workspace.label}</span>
+                  <span className="hidden truncate text-[11px] font-normal text-slate-500 sm:hidden sm:block lg:hidden">
+                    {workspace.hint}
+                  </span>
+                </Link>
               );
             })}
           </nav>
-          {compactNav ? (
-            <button
-              ref={railMenuButtonRef}
-              type="button"
-              aria-expanded={railMenuOpen}
-              aria-controls="admin-rail-more"
-              aria-label="更多"
-              title="更多"
-              onClick={() => setRailMenuOpen((open) => !open)}
-              className={`admin-rail-more mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:justify-center lg:justify-start ${
-                railMenuOpen || railMenuActive
-                  ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
-                  : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
-              }`}
-            >
-              <MoreHorizontal className="h-[18px] w-[18px] shrink-0" />
-            </button>
-          ) : null}
-          {compactNav && railMenuOpen ? (
-            <div
-              id="admin-rail-more"
-              ref={railMenuRef}
-              className="absolute left-full top-0 z-40 flex h-full w-60 flex-col gap-3 overflow-y-auto overscroll-contain bg-sidebar px-3 py-5 shadow-2xl ring-1 ring-white/10"
-            >
-              {railMenuGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="admin-nav-label">{group.label}</p>
-                  <div className="mt-0.5 flex flex-col gap-px">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const active = !item.external && isActivePath(item.to, location.pathname);
-                      const className = `admin-rail-more-item flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                        active
-                          ? "bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-white"
-                          : "text-slate-400 hover:bg-sidebar-hover hover:text-white"
-                      }`;
-                      if (item.external) {
-                        return (
-                          <a
-                            key={item.key}
-                            href={item.to}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={className}
-                            onClick={() => setRailMenuOpen(false)}
-                          >
-                            <Icon className="h-[18px] w-[18px] shrink-0" />
-                            <span>{item.label}</span>
-                            <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60" />
-                          </a>
-                        );
-                      }
-                      return (
-                        <Link
-                          key={item.key}
-                          to={item.to}
-                          className={className}
-                          aria-current={active ? "page" : undefined}
-                          onClick={() => setRailMenuOpen(false)}
-                        >
-                          <Icon className="h-[18px] w-[18px] shrink-0" />
-                          <span>{item.label}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {compactNav ? null : (
-            <div className="mt-3 border-t border-white/5 pt-2.5">
-              {/* No 线上体验 caption: the divider above already separates these
-                two shortcuts, and the caption cost 28px of a 900px window. */}
-              <div className="flex flex-col gap-0.5">
-                {/* 打开树洞 / 打开展示区 used to live here pointing at /plaza and
-                  /showcase — the exact URLs the 社区 group already links to, so
-                  the footer only offered a second way to the same two pages.
-                  The community group is the single entry point now. */}
-                {isCreator ? null : (
-                  <a
-                    href="/trial"
-                    target="_blank"
-                    rel="noreferrer"
-                    title="挑战任务"
-                    aria-label="挑战任务"
-                    className="group flex items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
-                  >
-                    <Target className="h-[18px] w-[18px] shrink-0" />
-                    <span className="sm:hidden lg:inline">挑战任务</span>
-                    <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
-                  </a>
-                )}
+          <div className="mt-3 border-t border-white/5 pt-2.5">
+            <div className="flex flex-col gap-0.5">
+              {isCreator ? null : (
                 <a
-                  href="/s"
+                  href="/trial"
                   target="_blank"
                   rel="noreferrer"
-                  title="问卷列表"
-                  aria-label="问卷列表"
-                  className="group flex items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center lg:justify-start"
+                  title="挑战任务（新标签打开）"
+                  aria-label="挑战任务"
+                  className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center sm:px-0"
                 >
-                  <ClipboardList className="h-[18px] w-[18px] shrink-0" />
-                  <span className="sm:hidden lg:inline">问卷列表</span>
-                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 opacity-60 sm:hidden lg:inline" />
+                  <Target className="h-[18px] w-[18px] shrink-0" />
+                  <span className="sm:hidden">挑战任务</span>
                 </a>
-              </div>
+              )}
+              <a
+                href="/s"
+                target="_blank"
+                rel="noreferrer"
+                title="问卷列表（新标签打开）"
+                aria-label="问卷列表"
+                className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-sidebar-hover hover:text-white sm:justify-center sm:px-0"
+              >
+                <ClipboardList className="h-[18px] w-[18px] shrink-0" />
+                <span className="sm:hidden">问卷列表</span>
+              </a>
             </div>
-          )}
+          </div>
           {/* Only the phone drawer needs this: from 640px up the header's
-              `.admin-env-pill` already shows the same string, and at 1000px+
-              the duplicate cost 29px of a 900px window. */}
-          <div className="mt-3 px-1.5 text-[11px] text-slate-300 sm:hidden">
+              `.admin-env-pill` already shows the same string. */}
+          <div className="mt-3 px-2 text-[11px] text-slate-300 sm:hidden">
             {environment === "production" ? "生产环境" : environment ? "开发 / 预发布环境" : "…"}
           </div>
         </aside>
@@ -677,6 +462,27 @@ export function Layout() {
               )}
             </div>
           </header>
+          {/* 工作区子导航：进入工作区后主区域顶部的横向 tab 条——
+              「点问卷这个分类，整个界面就不一样」。总览与沉浸创作态不出现。 */}
+          {activeWorkspace && !immersive ? (
+            <nav className="admin-workspace-tabs" aria-label={`${activeWorkspace.label}工作区`}>
+              {activeWorkspace.tabs.map((item) => {
+                const Icon = item.icon;
+                const active = isActivePath(item.to, location.pathname);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    aria-current={active ? "page" : undefined}
+                    className={`admin-workspace-tab${active ? " is-active" : ""}`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          ) : null}
           {/* Scoped to the route: a render error on one page used to replace
               the whole shell (sidebar, navigation and an editor's unsaved
               state included). Re-keyed by path so navigating away resets it. */}

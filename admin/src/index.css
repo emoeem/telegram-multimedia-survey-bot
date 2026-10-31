@@ -6987,3 +6987,64 @@ body.hotspot-lock {
 .quest-dialog {
   max-height: none;
 }
+
+/* ---- 工作区信息架构（2026-10-31）--------------------------------------
+ * 两层导航：56px 全局图标轨（每个工作区一个图标）+ 工作区子导航 tab 条。
+ * 「点问卷这个分类，整个界面就不一样」——进入工作区后主区域顶部出现该
+ * 工作区的横向 tab，其余工作区全部隐去；编辑器等创作态整宽沉浸。 */
+.admin-shell.is-immersive .admin-sidebar,
+.admin-shell.is-immersive .admin-workspace-tabs {
+  display: none;
+}
+
+.admin-shell.is-immersive > div > .admin-main {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+@media (min-width: 1000px) {
+  .admin-shell.is-immersive > div > .admin-main {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* 子导航 tab 条：粘性顶栏下方，横向滚动（窄屏放得下全部 tab）。 */
+.admin-workspace-tabs {
+  position: sticky;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 0 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--color-edge);
+}
+.admin-workspace-tabs::-webkit-scrollbar {
+  display: none;
+}
+.admin-workspace-tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.admin-workspace-tab:hover {
+  color: var(--color-content);
+}
+.admin-workspace-tab.is-active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+}
