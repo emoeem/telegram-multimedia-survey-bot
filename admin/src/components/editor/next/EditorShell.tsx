@@ -30,6 +30,7 @@ import { surveyToGraph } from "../../../editor/node-graph/to-graph";
 import type { CanvasViewMode } from "../../../editor/node-graph/types";
 import type { Connection, Edge } from "@xyflow/react";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { SurveySettingsPanel } from "../SurveySettingsPanel";
 import { SceneEditorPage } from "../../../routes/SceneEditorPage";
 import { X } from "lucide-react";
 
@@ -73,6 +74,19 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       // 隐私模式写不进去不影响本次编辑
     }
   }, [canvasView]);
+  // 移动端设置入口（2026-10-31 批2）：≤999px 右栏隐藏，「问卷设置」在手机上
+  // 原本不可达。窄屏时把 SurveySettingsPanel 渲染进中栏（桌面由 CSS 隐藏该份，
+  // 条件渲染避免双份 fetch）。
+  const [narrowEditor, setNarrowEditor] = useState(() =>
+    typeof window !== "undefined" ? (window.matchMedia?.("(max-width: 999px)").matches ?? false) : false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 999px)");
+    const sync = () => setNarrowEditor(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
   /**
    * A3 移动端降级（2026-10-30）：节点图需要确定高度的画布视口，而编辑器
    * 三栏在 <1000px 折叠为纵向流（.editor-canvas overflow: visible），
@@ -525,6 +539,22 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                 onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
                 onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
                 onToggleRequired={toggleRequired}
+                settingsPanel={
+                  narrowEditor ? (
+                    <SurveySettingsPanel
+                      surveyId={data.survey.id}
+                      questions={editor.questions}
+                      meta={editor.surveyMeta}
+                      disabled={!editingDisabled}
+                      coinAccess={
+                        data.coinAccess ?? { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null }
+                      }
+                      display={data.survey.display ?? "auto"}
+                      proMode={editorMode === "pro"}
+                      onUpdate={(patch) => editor.updateSurveyMeta(patch)}
+                    />
+                  ) : undefined
+                }
               />
             )}
           </main>

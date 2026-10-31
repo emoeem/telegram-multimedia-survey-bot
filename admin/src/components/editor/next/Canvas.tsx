@@ -32,6 +32,7 @@ export function Canvas({
   onDuplicate,
   onDelete,
   onToggleRequired,
+  settingsPanel,
 }: {
   questions: EditableQuestion[];
   selection: BuilderSelection;
@@ -46,6 +47,12 @@ export function Canvas({
   onDuplicate: (questionId: number) => void;
   onDelete: (questionId: number) => void;
   onToggleRequired: (questionId: number) => void;
+  /**
+   * 移动端设置入口（2026-10-31）：≤999px 时右栏 display:none，「问卷设置」
+   * 在手机上原本不可达（提示指向一个看不见的面板）。壳侧窄屏条件渲染
+   * SurveySettingsPanel 传进来，中栏内直接展开——桌面由 CSS 隐藏这份。
+   */
+  settingsPanel?: React.ReactNode;
 }) {
   const activeId = selection.kind === "question" ? selection.id : null;
   // 稳定身份：QuestionSummaryRow 是 memo 组件，行内闭包会让 memo 全部失效。
@@ -83,12 +90,14 @@ export function Canvas({
       <CanvasDropArea baseRef={baseRef}>
         <div className="p-3">
           {selection.kind === "settings" ? (
-            <p
-              className="mb-3 rounded-lg border border-[var(--color-edge)] px-3 py-2 text-xs"
-              style={{ color: "var(--color-muted)" }}
-            >
-              正在编辑问卷设置（右侧属性面板）。
-            </p>
+            <>
+              <p className="editor-canvas-settings-hint" style={{ color: "var(--color-muted)" }}>
+                正在编辑问卷设置
+              </p>
+              {/* 桌面：设置在右栏（此份 CSS 隐藏）；≤999px：右栏隐藏，
+                  设置表单直接在中栏展开（手机上的唯一入口）。 */}
+              {settingsPanel ? <div className="editor-canvas-settings">{settingsPanel}</div> : null}
+            </>
           ) : null}
           <SortableContext items={questions.map((question) => question.id)} strategy={verticalListSortingStrategy}>
             <div className="block-list">

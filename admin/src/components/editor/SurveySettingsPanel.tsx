@@ -12,6 +12,11 @@ import {
 /**
  * 问卷设置面板（S2 从 EditorPage 抽出，两套壳共用）：
  * 标题/描述、报告模板、金币解锁、结局奖池、结果规则、匿名/18+/重复填写。
+ *
+ * 2026-10-31：结果设计器从「无条件全展开」改为**折叠入口**——它是为整页宽
+ * 设计的复合面板（双列 + sticky 预览），塞进 360px 右栏时内层网格硬下限会把
+ * 配置列压成 0 宽（文字逐字竖排）。入口卡默认收起，点开才渲染面板；
+ * 基础模式（proMode=false）展开后只显示引导，不渲染编辑器。
  */
 export function SurveySettingsPanel({
   surveyId,
@@ -20,6 +25,7 @@ export function SurveySettingsPanel({
   disabled,
   coinAccess,
   display,
+  proMode = false,
   onUpdate,
 }: {
   surveyId: number;
@@ -29,8 +35,11 @@ export function SurveySettingsPanel({
   coinAccess: { enabled: boolean; autoPrice: boolean; basePrice: number; fixedPrice: number | null };
   /** 当前显示模式（settings_json.display）；设置面板里独立保存，不走 meta 队列。 */
   display: SurveyDisplayMode;
+  /** 专业模式才渲染结果设计器本体；基础模式显示升级引导（与旧壳注释承诺一致）。 */
+  proMode?: boolean;
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
 }) {
+  const [rulesOpen, setRulesOpen] = useState(false);
   return (
     <div className="settings-panel">
       <div>
@@ -74,7 +83,25 @@ export function SurveySettingsPanel({
 
       <CoinAccessSetting surveyId={surveyId} initial={coinAccess} disabled={disabled} />
 
-      <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
+      {rulesOpen && proMode ? (
+        <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
+      ) : (
+        <button
+          type="button"
+          className="result-rules-entry"
+          aria-expanded={rulesOpen && proMode}
+          onClick={() => setRulesOpen((open) => !open)}
+        >
+          <span className="result-rules-entry-icon" aria-hidden="true">
+            📊
+          </span>
+          <span className="result-rules-entry-text">
+            <strong>结果设计器</strong>
+            <small>{proMode ? "评分维度 · 分数区间 · 结果文案" : "评分与结果区间配置（专业模式可用）"}</small>
+          </span>
+          <span className="result-rules-entry-action">{rulesOpen ? "收起" : "打开"}</span>
+        </button>
+      )}
 
       <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
 

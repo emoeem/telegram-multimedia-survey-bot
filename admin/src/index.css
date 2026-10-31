@@ -2528,11 +2528,21 @@ html[data-theme="foxgold"] body::before {
   }
 }
 
+.result-rules-panel {
+  container-type: inline-size;
+}
 .result-designer-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   gap: 16px;
   align-items: start;
+}
+/* 容器查询（2026-10-31）：360px 右栏里双列必然爆——预览列硬下限曾把配置列
+ * 压成 0 宽（文字逐字竖排）。列宽 <480px 一律单列，救「宽视口里的窄列」。 */
+@container (max-width: 479px) {
+  .result-designer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .result-rule-config {
   display: grid;
@@ -7047,4 +7057,72 @@ body.hotspot-lock {
 .admin-workspace-tab.is-active {
   border-bottom-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* ---- 结果设计器折叠入口（2026-10-31）-------------------------------- */
+.result-rules-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+.result-rules-entry:hover {
+  border-color: var(--color-primary);
+}
+.result-rules-entry-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  font-size: 14px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+.result-rules-entry-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.result-rules-entry-text strong {
+  font-size: 12.5px;
+  color: var(--color-ink);
+}
+.result-rules-entry-text small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.result-rules-entry-action {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+/* ---- 移动端设置入口（2026-10-31 批2）----------------------------------
+ * ≤999px 右栏 display:none；选中「问卷设置」时中栏直接展开设置表单。 */
+.editor-canvas-settings-hint {
+  margin: 0 0 10px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--color-edge);
+  font-size: 12px;
+}
+.editor-canvas-settings {
+  margin: 0 0 14px;
+}
+@media (min-width: 1000px) {
+  /* 桌面：设置在右栏（此份隐藏，条件渲染也只在窄屏发生）。 */
+  .editor-canvas-settings-hint {
+    display: none;
+  }
 }

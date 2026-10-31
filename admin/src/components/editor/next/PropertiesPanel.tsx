@@ -95,6 +95,7 @@ function PropertiesPanelImpl({
             disabled={!editable}
             coinAccess={data.coinAccess ?? { enabled: false, autoPrice: true, basePrice: 0, fixedPrice: null }}
             display={data.survey.display ?? "auto"}
+            proMode={editorMode === "pro"}
             onUpdate={(patch) => editor.updateSurveyMeta(patch)}
           />
         ) : (
