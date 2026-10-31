@@ -3262,6 +3262,17 @@ main > header h1 {
 .admin-notices {
   margin: -32px -32px 24px;
 }
+/* 沉浸创作态 main 内边距收窄到 20px（见上方 is-immersive 规则），
+ * notices 的负边距必须同步，否则在 1440 下横向溢出 12px（走查实测）。 */
+.admin-shell.is-immersive .admin-notices {
+  margin: -20px -20px 16px;
+}
+/* ≤720px 的 main padding 是 14px !important（全局窄屏规则），同步对齐。 */
+@media (max-width: 720px) {
+  .admin-shell.is-immersive .admin-notices {
+    margin: -14px -14px 12px;
+  }
+}
 @media (max-width: 720px) {
   .admin-notices {
     margin: -14px -14px 16px;
@@ -7007,15 +7018,12 @@ body.hotspot-lock {
   display: none;
 }
 
+/* 沉浸态 main 内边距必须与 .admin-notices 的负边距逐档相等（notices 用
+ * 负 margin 抵消 main padding 做通栏，差值就是横向溢出——900px 断言
+ * 实测过 8px）。默认 20px；≤720px 全局窄屏规则是 14px。 */
 .admin-shell.is-immersive > div > .admin-main {
-  padding-left: 12px;
-  padding-right: 12px;
-}
-@media (min-width: 1000px) {
-  .admin-shell.is-immersive > div > .admin-main {
-    padding-left: 20px;
-    padding-right: 20px;
-  }
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 /* 子导航 tab 条：粘性顶栏下方，横向滚动（窄屏放得下全部 tab）。 */
