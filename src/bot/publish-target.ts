@@ -3,8 +3,13 @@ import { upsertPublicationTargetForChat } from "../db/repositories/publication-t
 import { canCreateSurvey, isAdmin } from "../services/permission.service";
 import type { BotContext, TelegramMessage } from "./types";
 import { replyMessage } from "./reply";
+import { parseCommand } from "./commands";
 
-export const PUBLISH_TARGET_COMMAND_PATTERN = /^\/set_publish_target(?:@[A-Za-z0-9_]{3,64})?(?:\s|$)/;
+/**
+ * 命令名：`/publish_here`（旧名 `/set_publish_target` 由 commands.ts 的
+ * 重命名表回指引）。解析统一走 parseCommand，这里只看命令名。
+ */
+export const PUBLISH_TARGET_COMMAND = "publish_here";
 
 /**
  * 「公开发布到 Telegram」的目标群组绑定。
@@ -19,7 +24,8 @@ export const PUBLISH_TARGET_COMMAND_PATTERN = /^\/set_publish_target(?:@[A-Za-z0
  * 挤掉。停用或移除某个群请在后台「控制中心 → 发布目标」列表里操作。
  */
 export async function maybeHandlePublishTargetCommand(ctx: BotContext, message: TelegramMessage): Promise<boolean> {
-  if (!PUBLISH_TARGET_COMMAND_PATTERN.test(message.text ?? "")) return false;
+  const parsed = parseCommand(message.text);
+  if (!parsed || parsed.name !== PUBLISH_TARGET_COMMAND) return false;
 
   const chatType = message.chat.type;
   if (chatType === "group" || chatType === "supergroup") {
@@ -29,7 +35,7 @@ export async function maybeHandlePublishTargetCommand(ctx: BotContext, message: 
   await replyMessage(
     ctx,
     message.chat.id,
-    "请在「目标群组」里发送 /set_publish_target（私聊里无效）。\n" +
+    "请在「目标群组」里发送 /publish_here（私聊里无效）。\n" +
       "机器人会把这条命令所在的群组加入公开报告发布目标，\n" +
       "要求机器人在该群里能正常发言。",
   );
@@ -50,7 +56,8 @@ async function bindGroupPublishTarget(ctx: BotContext, message: TelegramMessage)
   const allowed =
     isAdmin(senderId, ctx.adminIds) || (dbUser !== null && (await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)));
   if (!allowed) {
-    await replyMessage(ctx, chatId, "只有管理员或创作者可以设置公开发布目标。");
+    // 静默：群里普通成员本来就不该看到这条命令的任何反馈。此前的错误提示反而
+    // 把「这里有个操作员命令」暴露给了所有人（运营实测连续两位成员因此尝试）。
     return;
   }
 

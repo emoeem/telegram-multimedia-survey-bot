@@ -160,7 +160,7 @@ describe("survey message routing", () => {
     const sendCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/sendMessage"));
     expect(sendCalls).toHaveLength(1);
     const body = JSON.parse(String((sendCalls[0]?.[1] as RequestInit).body));
-    expect(body.text).toContain("/set_publish_target");
+    expect(body.text).toContain("/surveys");
     expect(body.text).toContain("https://t.me/hnhgggfj_bot");
     // 群里绝不能出现主菜单按钮（「网页管理后台」「管理员中心」等）
     expect(body.reply_markup).toBeUndefined();
@@ -335,7 +335,7 @@ describe("survey message routing", () => {
         message_id: 2,
         chat: { id: 3 },
         from: { id: 88 },
-        text: "/passwords",
+        text: "/codes",
       },
     );
 
@@ -445,7 +445,8 @@ describe("survey message routing", () => {
     expect(mocks.handleBuilderMessage).not.toHaveBeenCalled();
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body)) as { text: string };
-    expect(body.text).toBe("你没有创建或导入问卷的权限。");
+    // 建卷/导入已收拢到网页后台：命令不再进 builder，只回一行迁移指引。
+    expect(body.text).toContain("网页后台");
   });
 
   it("does not advertise creator commands to ordinary participants", async () => {
@@ -476,13 +477,16 @@ describe("survey message routing", () => {
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body)) as { text: string };
-    expect(body.text).toContain("浏览问卷");
+    expect(body.text).toContain("/surveys");
+    expect(body.text).toContain("/me");
     expect(body.text).not.toContain("/create");
     expect(body.text).not.toContain("/import");
-    expect(body.text).toContain("@ehdhhsbot");
+    // 普通成员的清单里不出现管理员/授权命令。
+    expect(body.text).not.toContain("/admin");
+    expect(body.text).not.toContain("/license");
   });
 
-  it("keeps creator shortcuts focused on my surveys and the web admin", async () => {
+  it("lists admin commands for admins in /help", async () => {
     mocks.getUserByTelegramId.mockResolvedValue({
       id: 7,
       telegramUserId: 99,
@@ -511,16 +515,12 @@ describe("survey message routing", () => {
     );
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    const body = JSON.parse(String(request.body)) as {
-      text: string;
-      reply_markup: { inline_keyboard: Array<Array<{ text: string }>> };
-    };
-    const buttonTexts = body.reply_markup.inline_keyboard.flat().map((button) => button.text);
-    expect(body.text).toContain("网页后台");
-    expect(buttonTexts).toContain("🌐 网页管理后台");
-    expect(buttonTexts).toContain("我的问卷");
-    expect(buttonTexts).toContain("管理员中心");
-    expect(buttonTexts).not.toContain("创建与导入");
+    const body = JSON.parse(String(request.body)) as { text: string };
+    expect(body.text).toContain("/admin");
+    expect(body.text).toContain("/review");
+    expect(body.text).toContain("/users");
+    // 编辑器命令已移除，永远不再出现在清单里。
+    expect(body.text).not.toContain("/create");
   });
 
   // /invite 兑换邀请码：开通的是兑换者自己的账号。
@@ -551,7 +551,7 @@ describe("survey message routing", () => {
         exportQueue: {} as Queue,
         origin: "https://example.com",
       },
-      { message_id: 7, chat: { id: 6 }, from: { id: 88 }, text: "/invite CR-7F3K-9Q2M" },
+      { message_id: 7, chat: { id: 6 }, from: { id: 88 }, text: "/redeem CR-7F3K-9Q2M" },
     );
 
     expect(mocks.redeemCreatorInviteForUser).toHaveBeenCalledWith(expect.anything(), {
@@ -583,7 +583,7 @@ describe("survey message routing", () => {
         exportQueue: {} as Queue,
         origin: "https://example.com",
       },
-      { message_id: 8, chat: { id: 6 }, from: { id: 88 }, text: "/invite CR-7F3K-9Q2M" },
+      { message_id: 8, chat: { id: 6 }, from: { id: 88 }, text: "/redeem CR-7F3K-9Q2M" },
     );
 
     const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body))) as Array<{
@@ -611,7 +611,9 @@ describe("survey message routing", () => {
     await handleTelegramMessage(
       {
         botToken: "token",
-        db: {} as D1Database,
+        db: {
+          prepare: () => ({ bind: () => ({ run: async () => ({ success: true }) }) }),
+        } as unknown as D1Database,
         session: {} as SurveySessionNamespace,
         builder: {} as SurveyBuilderNamespace,
         adminIds: [99],
@@ -619,7 +621,12 @@ describe("survey message routing", () => {
         origin: "https://example.com",
         cache: cache as unknown as KVNamespace,
       },
-      { message_id: 6, chat: { id: 6 }, from: { id: 99 }, text: "/help" },
+      {
+        message_id: 6,
+        chat: { id: 6 },
+        from: { id: 99 },
+        text: "/start",
+      },
     );
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;

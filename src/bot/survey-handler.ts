@@ -83,7 +83,8 @@ import { clearAdminInteractionState, handleAdminCallback, handleAdminMessage } f
 import { decryptSurveyAccessCode } from "../core/security";
 import { REPORT_CHANNEL_CACHE_KEY, reportChannelPendingKey } from "../services/report-delivery.service";
 import { botCanManageChannel, REPORT_CHANNEL_DETECT_REQUEST_KEY } from "./channel-detection";
-import { buildGroupUsageHint, BOT_USERNAME_CACHE_KEY, isGroupChat } from "./chat-addressing";
+import { buildGroupUsageHint, BOT_USERNAME_CACHE_KEY, isGroupChat, resolveBotIdentity } from "./chat-addressing";
+import { helpText, parseCommand, renameHint } from "./commands";
 import type { Survey } from "../db/schema";
 import { showQuestionEditor, showQuestionList } from "./question-editor";
 import {
@@ -289,6 +290,45 @@ function appendQuery(url: string, query: string): string {
  *
  * 新入口两两并排，是为了补上四个入口的同时不把主菜单撑到十几行。
  */
+/**
+ * `/me` 的菜单：把「我的」相关的入口从主菜单拆出来，主菜单保持浏览型。
+ * 复用既有回调（home:my_surveys / owner:access_codes / home:inbox）与网页入口，
+ * 不引入新的按钮协议。
+ */
+async function buildMeKeyboard(
+  creator: boolean,
+  administrator: boolean,
+  origin?: string,
+  webhookSecret?: string,
+  userId?: number,
+  from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
+  submissionBotUrl?: string | null,
+  adminPanelUrl?: string | null,
+): Promise<InlineKeyboardMarkup> {
+  const query = origin ? await participantTokenQuery({ webhookSecret, userId, from }) : "";
+  const pageUrl = (path: string): string | null => (origin ? appendQuery(`${origin}${path}`, query) : null);
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
+  if (creator) {
+    rows.push([{ text: "📋 我的问卷", callback_data: "home:my_surveys" }]);
+    rows.push([{ text: "🔑 问卷访问密码", callback_data: "owner:access_codes" }]);
+    const panelUrl = adminPanelUrl ?? (origin ? `${origin}/admin` : null);
+    if (panelUrl) rows.push([{ text: "🌐 网页管理后台", url: panelUrl }]);
+  }
+  const meUrl = pageUrl("/me");
+  if (meUrl) rows.push([{ text: "👤 个人中心", url: meUrl }]);
+  const inboxUrl = pageUrl("/submissions?tab=inbox");
+  if (inboxUrl) {
+    rows.push([{ text: "📮 我的投稿", url: inboxUrl }]);
+  } else if (submissionBotUrl) {
+    rows.push([{ text: "📮 我的投稿", url: submissionBotUrl }]);
+  }
+  if (administrator) {
+    rows.push([{ text: "🛠 管理员中心", callback_data: "admin:home" }]);
+  }
+  rows.push([{ text: "⬅️ 主菜单", callback_data: "home:menu" }]);
+  return { inline_keyboard: rows };
+}
+
 async function buildHomeKeyboard(
   creator: boolean,
   administrator: boolean,
@@ -478,20 +518,30 @@ async function showHomeMenu(
   });
 }
 
+/**
+ * 「新建问卷」入口：建卷/改题已整体迁到网页后台编辑器（bot 里的多步问答
+ * 建卷流程不再对外暴露），这里只负责把有权限的人送过去。
+ */
 async function showCreateMenu(ctx: BotContext, chatId: number, userId: number): Promise<void> {
   const user = await getUserByTelegramId(ctx.db, userId);
   if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
     await replyMessage(ctx, chatId, "你没有创建问卷的权限。");
     return;
   }
+  const editorUrl = ctx.origin ? `${ctx.origin}/admin/surveys/new/editor` : null;
   await renderUiScreen(ctx, chatId, userId, {
     screen: "create_menu",
-    text: "创建问卷\n\n选择一种开始方式：",
+    text: [
+      "🌐 新建问卷",
+      "",
+      "问卷的创建、题目编辑、导入与模板都在网页后台完成（手机上也能用）。",
+      editorUrl ? "点下面的按钮直接打开编辑器。" : "请先发送 /start 打开主菜单进入网页后台。",
+    ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
-        [{ text: "➕ 新建问卷", callback_data: "home:new_survey" }],
-        [{ text: "📝 继续草稿", callback_data: "home:continue" }],
-        [{ text: "📥 导入或复制", callback_data: "home:import_or_copy" }],
+        ...(editorUrl ? [[{ text: "🌐 打开问卷编辑器", url: editorUrl }]] : []),
+        [{ text: "📋 我的问卷", callback_data: "home:my_surveys" }],
+        [{ text: "⬅️ 主菜单", callback_data: "home:menu" }],
       ],
     },
   });
@@ -1082,6 +1132,43 @@ async function showPublishCheck(ctx: BotContext, chatId: number, userId: number,
   });
 }
 
+/**
+ * 群里的问卷列表：只渲染 URL 按钮，不发回调、不做翻页。
+ *
+ * 群里的按钮点击者是任何人，回调会把结果 render 回群（刷屏）；而搜索/翻页
+ * 状态是按私聊用户存在 KV 的。所以群版本固定显示最新 8 份 + 一个回私聊的链接。
+ */
+async function listSurveysForGroup(ctx: BotContext, chatId: number): Promise<void> {
+  const result = await ctx.db
+    .prepare(
+      `SELECT s.id, s.title, s.access_code
+         FROM surveys s
+        WHERE s.status = 'published' AND s.deleted_at IS NULL
+        ORDER BY s.published_at DESC, s.id DESC
+        LIMIT 8`,
+    )
+    .all<{ id: number; title: string; access_code: string | null }>();
+  const surveys = result.results ?? [];
+  const { username } = await resolveBotIdentity(ctx);
+  const privateUrl = username ? `https://t.me/${username}` : null;
+  if (!ctx.origin) {
+    await replyMessage(ctx, chatId, privateUrl ? `请在私聊里浏览问卷：${privateUrl}` : "请在私聊里浏览问卷。");
+    return;
+  }
+  const rows: InlineKeyboardMarkup["inline_keyboard"] = surveys.map((survey) => [
+    {
+      text: `${survey.access_code ? "🔐" : "📝"} ${compactSurveyTitle(survey.title, 32)}`,
+      url: `${ctx.origin}/s/${survey.id}?v=3`,
+    },
+  ]);
+  if (privateUrl) rows.push([{ text: "💬 私聊查看更多", url: privateUrl }]);
+  const text =
+    surveys.length === 0
+      ? "当前没有已发布的问卷。"
+      : ["📋 已发布问卷", "", ...surveys.map((survey, index) => `${index + 1}. ${compactSurveyTitle(survey.title, 40)}`)].join("\n");
+  await replyMessage(ctx, chatId, text, { inline_keyboard: rows });
+}
+
 async function listSurveys(
   ctx: BotContext,
   chatId: number,
@@ -1253,10 +1340,19 @@ async function showResponseReportTemplates(
 export async function handleTelegramMessage(ctx: BotContext, message: TelegramMessage): Promise<void> {
   const text = message.text?.trim();
 
-  // 群聊里唯一的功能是 /set_publish_target（router.ts 已提前处理并返回）。这里再兜一层：
-  // 群消息绝不能落到本函数末尾的 renderUiScreen(home) —— 那等于把私聊主菜单（含
-  // 「网页管理后台」「管理员中心」按钮）贴进公开群。被点名时只回一句提示。
+  // 群聊：只放行 /surveys、/help（/publish_here 已在 router 里处理并返回）。
+  // 其余消息回一句简短提示 —— 群消息绝不能落到本函数末尾的 renderUiScreen(home)，
+  // 那等于把私聊主菜单（含「网页管理后台」「管理员中心」按钮）贴进公开群。
   if (isGroupChat(message.chat.type)) {
+    const parsed = parseCommand(message.text);
+    if (parsed?.name === "surveys") {
+      await listSurveysForGroup(ctx, message.chat.id);
+      return;
+    }
+    if (parsed?.name === "help") {
+      await replyMessage(ctx, message.chat.id, helpText("public", "group"));
+      return;
+    }
     await replyMessage(ctx, message.chat.id, await buildGroupUsageHint(ctx));
     return;
   }
@@ -1293,6 +1389,17 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
   // Telegram sends `/start@bot_name` and `/cancel@bot_name` in groups.  These
   // commands must be treated exactly like their private-chat form, otherwise a
   // pending upload wizard can consume the command as ordinary text.
+  // 旧命令指引：重命名/迁移后不再保留原行为，但回一行「请用 /xxx」比无响应好
+  // 排查（批量改命令时最怕用户以为机器人坏了）。
+  const earlyCommand = parseCommand(text);
+  if (earlyCommand) {
+    const hint = renameHint(earlyCommand.name);
+    if (hint) {
+      await replyMessage(ctx, message.chat.id, hint);
+      return;
+    }
+  }
+
   const startMatch = text?.match(/^\/start(?:@[A-Za-z0-9_]{3,64})?(?:\s+([A-Za-z0-9_-]{1,64}))?$/);
   if (startMatch) {
     const payload = startMatch[1];
@@ -1663,9 +1770,9 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     }
   }
 
-  const inviteCommand = text?.match(/^\/invite(?:@[A-Za-z0-9_]{3,64})?(?:\s+(\S{4,40}))?$/);
-  if (inviteCommand) {
-    await redeemInvite(ctx, message.chat.id, userId, dbUser, inviteCommand[1] ?? null);
+  const redeemCommand = text?.match(/^\/redeem(?:@[A-Za-z0-9_]{3,64})?(?:\s+(\S{4,40}))?$/);
+  if (redeemCommand) {
+    await redeemInvite(ctx, message.chat.id, userId, dbUser, redeemCommand[1] ?? null);
     return;
   }
 
@@ -1675,23 +1782,8 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
   }
 
   if (text === "/help") {
-    const creator = Boolean(dbUser && (await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)));
-    await renderUiScreen(ctx, message.chat.id, userId, {
-      screen: "home",
-      text: creator
-        ? "快捷入口在下方。问卷创建和完整管理请进入网页后台。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。"
-        : "从下方选择“浏览问卷”即可开始填写。\n\n🔑 需要问卷密码、软件授权或部署支持，请联系 @ehdhhsbot。",
-      replyMarkup: await buildHomeKeyboard(
-        creator,
-        Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
-        ctx.origin,
-        ctx.webhookSecret,
-        userId,
-        message.from,
-        ctx.submissionBotUrl,
-        await resolveAdminPanelUrl(ctx, dbUser, creator),
-      ),
-    });
+    const role: "public" | "admin" = isAdmin(userId, ctx.adminIds) ? "admin" : "public";
+    await replyMessage(ctx, message.chat.id, helpText(role, "private"));
     return;
   }
 
@@ -1707,91 +1799,44 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
     return;
   }
 
-  if (text === "/my_surveys") {
-    await listMySurveys(ctx, message.chat.id, userId);
+  // /me = 我的（问卷 / 投稿 / 个人中心 / 管理后台），替代原 /my_surveys。
+  if (text === "/me") {
+    const creator = Boolean(dbUser && (await canCreateSurvey(ctx.db, dbUser, ctx.adminIds)));
+    await renderUiScreen(ctx, message.chat.id, userId, {
+      screen: "home",
+      text: [
+        "👤 我的",
+        "",
+        creator ? "· 我的问卷：发布 / 关闭 / 导出 / 预览 / 编辑" : "· 填过的问卷与结果在「个人中心」",
+        "· 我的投稿：审核进度与管理员留言",
+        "· 问卷访问密码",
+      ].join("\n"),
+      replyMarkup: await buildMeKeyboard(
+        creator,
+        Boolean(dbUser && isAdmin(userId, ctx.adminIds)),
+        ctx.origin,
+        ctx.webhookSecret,
+        userId,
+        message.from,
+        ctx.submissionBotUrl,
+        await resolveAdminPanelUrl(ctx, dbUser, creator),
+      ),
+    });
     return;
   }
 
-  if (text?.startsWith("/duplicate ")) {
-    const surveyId = Number(text.slice("/duplicate ".length));
-    try {
-      await duplicateManagedSurvey(ctx, message.chat.id, userId, surveyId);
-    } catch (error) {
-      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "复制失败。");
-    }
-    return;
-  }
-
-  if (text === "/passwords" || text === "/set_survey_code" || text === "/get_survey_code") {
+  if (text === "/codes") {
     await showSurveyPasswordMenu(ctx, message.chat.id, userId);
     return;
   }
 
-  if (text?.startsWith("/set_survey_code ") || text?.startsWith("/get_survey_code ")) {
-    await replyMessage(ctx, message.chat.id, "密码功能已整合。请发送 /passwords 后直接点选问卷操作。");
-    return;
-  }
-
-  if (text?.startsWith("/export ")) {
-    const [, surveyIdRaw, formatRaw] = text.split(/\s+/);
-    const surveyId = Number(surveyIdRaw);
-    const exportFormat = formatRaw?.toLowerCase() ?? "csv";
-    if (!Number.isInteger(surveyId) || surveyId <= 0 || !["csv", "zip"].includes(exportFormat)) {
-      await replyMessage(ctx, message.chat.id, "用法：/export <内部编号> [csv|zip]");
-      return;
-    }
-
-    try {
-      await sendSurveyExport(ctx, message.chat.id, userId, surveyId, exportFormat as SurveyExportFormat);
-    } catch (error) {
-      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "导出失败。");
-    }
-    return;
-  }
-
-  if (text?.startsWith("/export_json ")) {
-    const surveyId = Number(text.slice("/export_json ".length));
-    try {
-      await sendSurveyJsonExport(ctx, message.chat.id, userId, surveyId);
-    } catch (error) {
-      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "导出失败。");
-    }
-    return;
-  }
-
-  if (text?.startsWith("/preview ")) {
-    const surveyId = Number(text.slice("/preview ".length));
-    try {
-      await sendSurveyPreview(ctx, message.chat.id, userId, surveyId);
-    } catch (error) {
-      await replyMessage(ctx, message.chat.id, error instanceof Error ? error.message : "预览失败。");
-    }
-    return;
-  }
-
-  if (text === "/create" || text === "/continue" || text === "/import") {
-    const user = await getUserByTelegramId(ctx.db, userId);
-    if (!user || !(await canCreateSurvey(ctx.db, user, ctx.adminIds))) {
-      await replyMessage(ctx, message.chat.id, "你没有创建或导入问卷的权限。");
-      return;
-    }
-  }
-
+  // 建卷/改题已收拢到网页后台（/create、/import 等命令走 commands.ts 的迁移指引）。
+  // 这里只保留**已在进行中的**草稿状态机：老用户手上还有没写完的草稿，/cancel、
+  // /back、/save 需要继续可用，否则草稿会永远卡住。
   const builderState = await getBuilderState(ctx.builder, userId);
-  const isBuilderCommand = Boolean(
-    text === "/create" ||
-    text === "/continue" ||
-    text === "/import" ||
-    text === "/save" ||
-    text === "/discard" ||
-    text === "/cancel" ||
-    text === "/back" ||
-    text?.startsWith("/option_media ") ||
-    text?.startsWith("/question_media ") ||
-    text?.startsWith("/edit_question_title "),
-  );
-
-  if (isBuilderCommand || builderOwnsNextMessage(builderState) || builderState?.step === "set_survey_access_code") {
+  const builderStillActive =
+    builderOwnsNextMessage(builderState) || builderState?.step === "set_survey_access_code";
+  if (builderStillActive) {
     if (await handleBuilderMessage(ctx, message)) {
       return;
     }

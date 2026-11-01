@@ -27,10 +27,21 @@ import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 
+/** /start 会写 bot_started_at，这里给一个最小的 D1 桩。 */
+function dbStub(): D1Database {
+  const statement = {
+    bind: () => statement,
+    run: async () => ({ success: true }),
+    first: async () => null,
+    all: async () => ({ results: [] }),
+  };
+  return { prepare: () => statement } as unknown as D1Database;
+}
+
 function makeCtx(overrides: Partial<BotContext> = {}): BotContext {
   return {
     botToken: "token",
-    db: {} as D1Database,
+    db: dbStub(),
     session: {} as SurveySessionNamespace,
     builder: {} as SurveyBuilderNamespace,
     adminIds: [],
@@ -56,7 +67,7 @@ async function homeKeyboard(ctx: BotContext): Promise<{ rows: KeyboardButton[][]
     message_id: 1,
     chat: { id: 2 },
     from: { id: 88, first_name: "tester" },
-    text: "/help",
+    text: "/start",
   });
   const body = bodies[0] ?? {};
   const markup = body.reply_markup as { inline_keyboard?: KeyboardButton[][] } | undefined;

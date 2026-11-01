@@ -4,7 +4,7 @@ import { RateLimitDO } from "./durable-objects/rate-limit";
 import { UiSessionDO } from "./durable-objects/ui-session";
 import { handleTelegramUpdate } from "./bot/router";
 import { isTelegramUpdateHandledError } from "./bot/router";
-import { syncDefaultBotCommands } from "./bot/telegram";
+import { syncBotCommands } from "./bot/telegram";
 import { answerCallbackQuery, getWebhookInfo, setWebhook } from "./bot/telegram";
 import { describePublicDatabaseError, isDatabaseCapacityError, isKeyValueCapacityError } from "./db/errors";
 import type { BotContext } from "./bot/types";
@@ -510,7 +510,10 @@ async function guardApiResponse(
 async function ensureTelegramCommandMenu(env: Env): Promise<void> {
   try {
     if (await env.CACHE.get(commandMenuCacheKey)) return;
-    await syncDefaultBotCommands(env.BOT_TOKEN);
+    await syncBotCommands(env.BOT_TOKEN, {
+      adminIds: parseAdminIds(env.ADMIN_IDS),
+      vendor: isLicenseCenter(env),
+    });
     await env.CACHE.put(commandMenuCacheKey, "synced", { expirationTtl: 24 * 3600 });
   } catch (error) {
     console.warn("Telegram command menu sync failed", error);

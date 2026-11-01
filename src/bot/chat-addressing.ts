@@ -131,9 +131,11 @@ function hasMentionEntity(message: TelegramMessage): boolean {
 export async function buildGroupUsageHint(ctx: BotContext): Promise<string> {
   const { username } = await resolveBotIdentity(ctx);
   return [
-    "🤖 群里我只负责 /set_publish_target —— 把本群加入公开报告发布目标。",
+    "🤖 本群可用命令：",
+    "/surveys — 浏览并填写问卷",
+    "/help — 使用说明",
     "",
-    "填写问卷、查看结果、管理问卷请在私聊里进行：",
+    "填卷、查看结果、管理问卷请在私聊里进行：",
     username ? `https://t.me/${username}` : "请在 Telegram 里私聊本机器人。",
   ].join("\n");
 }

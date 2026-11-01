@@ -41,12 +41,12 @@ function groupMessage(overrides: Partial<Parameters<typeof maybeHandlePublishTar
     message_id: 1,
     chat: { id: -1009876543210, type: "supergroup", title: "测试发布群" },
     from: { id: 42, first_name: "Owner" },
-    text: "/set_publish_target",
+    text: "/publish_here",
     ...overrides,
   };
 }
 
-describe("set_publish_target command", () => {
+describe("publish_here command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.sendMessage.mockResolvedValue(undefined);
@@ -135,21 +135,18 @@ describe("set_publish_target command", () => {
     }
   });
 
-  it("forwards the topic on the permission refusal too", async () => {
+  it("stays silent for unauthorized senders even inside a topic", async () => {
+    // 静默是刻意的：回一句「只有管理员…」等于在群里公开「这里有个操作员命令」，
+    // 运营实测就是被这句提示引导，两位普通成员跟着发了一遍（2026-11-01）。
     mocks.canCreateSurvey.mockResolvedValue(false);
 
-    await maybeHandlePublishTargetCommand(
+    const handled = await maybeHandlePublishTargetCommand(
       makeCtx({ chatId: GROUP_CHAT_ID, threadId: 77 }),
       groupMessage({ from: { id: 999, first_name: "Random" }, message_thread_id: 77 }),
     );
 
-    expect(mocks.sendMessage).toHaveBeenCalledWith(
-      "token",
-      -1009876543210,
-      expect.stringContaining("只有管理员或创作者"),
-      undefined,
-      77,
-    );
+    expect(handled).toBe(true);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 
   it("explains a genuinely closed topic when Telegram answers TOPIC_CLOSED", async () => {
@@ -165,7 +162,7 @@ describe("set_publish_target command", () => {
     expect(mocks.sendMessage).toHaveBeenCalledWith("token", 42, expect.stringContaining("话题已被关闭"), undefined);
   });
 
-  it("rejects senders without creator or admin rights", async () => {
+  it("ignores senders without creator or admin rights without replying", async () => {
     mocks.canCreateSurvey.mockResolvedValue(false);
 
     const handled = await maybeHandlePublishTargetCommand(
@@ -175,12 +172,7 @@ describe("set_publish_target command", () => {
 
     expect(handled).toBe(true);
     expect(mocks.upsertPublicationTargetForChat).not.toHaveBeenCalled();
-    expect(mocks.sendMessage).toHaveBeenCalledWith(
-      "token",
-      -1009876543210,
-      expect.stringContaining("只有管理员或创作者"),
-      undefined,
-    );
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 
   it("does not bind a group the bot cannot post in", async () => {

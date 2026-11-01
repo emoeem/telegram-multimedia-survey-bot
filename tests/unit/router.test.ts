@@ -150,7 +150,7 @@ describe("handleTelegramUpdate", () => {
     const sendCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes("/sendMessage"));
     expect(sendCalls).toHaveLength(1);
     const body = JSON.parse(String((sendCalls[0]?.[1] as RequestInit).body));
-    expect(body.text).toContain("/set_publish_target");
+    expect(body.text).toContain("/surveys");
     expect(body.text).toContain("https://t.me/hnhgggfj_bot");
     expect(body.reply_markup).toBeUndefined();
   });

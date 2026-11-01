@@ -1,4 +1,5 @@
 import type { TelegramMediaFile } from "./types";
+import { menuFor, type CommandAudience } from "./commands";
 
 export interface InlineKeyboardButton {
   text: string;
@@ -10,13 +11,6 @@ export interface InlineKeyboardButton {
 export interface InlineKeyboardMarkup {
   inline_keyboard: InlineKeyboardButton[][];
 }
-
-const defaultBotCommands = [
-  { command: "start", description: "打开主菜单" },
-  { command: "surveys", description: "浏览可填写问卷" },
-  { command: "my_surveys", description: "管理我的问卷" },
-  { command: "admin", description: "打开管理员中心" },
-];
 
 interface TelegramErrorBody {
   ok?: boolean;
@@ -103,13 +97,51 @@ export async function sendMessage(
   return assertTelegramResponse(response, "sendMessage");
 }
 
-export async function syncDefaultBotCommands(botToken: string): Promise<void> {
+interface SyncBotCommandsOptions {
+  /** 管理员 Telegram ID 列表；这些人的私聊菜单会额外出现管理命令。 */
+  adminIds?: number[];
+  /** 是否授权中心部署（DEPLOYMENT_ROLE=vendor）；只有它才暴露 /license 等。 */
+  vendor?: boolean;
+}
+
+async function setMyCommands(
+  botToken: string,
+  commands: Array<{ command: string; description: string }>,
+  scope?: Record<string, unknown>,
+): Promise<void> {
   const response = await fetch(`https://api.telegram.org/bot${botToken}/setMyCommands`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ commands: defaultBotCommands }),
+    body: JSON.stringify({ commands, ...(scope ? { scope } : {}) }),
   });
   await assertTelegramResponse(response, "setMyCommands");
+}
+
+/**
+ * 按场景/角色注册命令菜单（见 bot/commands.ts）。
+ *
+ * 三处 scope：
+ *   1. default（私聊）——公共 6 条；
+ *   2. all_group_chats——群组 3 条（/surveys /help /publish_here）；
+ *   3. chat（逐个管理员私聊）——公共 + 管理（+ 厂商）。
+ * 这样普通用户在私聊/群里都看不到管理命令，管理员只在自己的私聊里看到。
+ */
+export async function syncBotCommands(botToken: string, options: SyncBotCommandsOptions = {}): Promise<void> {
+  const vendor = options.vendor === true;
+  await setMyCommands(botToken, menuFor("private", "public"));
+  await setMyCommands(botToken, menuFor("group", "public"), { type: "all_group_chats" });
+
+  const adminRole: CommandAudience = vendor ? "vendor" : "admin";
+  const adminMenu = menuFor("private", adminRole);
+  for (const adminId of options.adminIds ?? []) {
+    if (!Number.isSafeInteger(adminId) || adminId <= 0) continue;
+    try {
+      await setMyCommands(botToken, adminMenu, { type: "chat", chat_id: adminId });
+    } catch (error) {
+      // 管理员还没私聊过机器人时 Telegram 会拒绝 chat scope；不影响其他 scope。
+      console.warn("setMyCommands for admin chat failed", { adminId, error: String(error) });
+    }
+  }
 }
 
 export async function getBotUsername(botToken: string): Promise<string> {

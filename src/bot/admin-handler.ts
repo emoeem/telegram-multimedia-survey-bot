@@ -46,6 +46,7 @@ import { handleResultVisualAdminCallback, handleResultVisualAdminMessage } from 
 import { handleImageGeneratorAdminMessage, handleImageGeneratorCallback } from "./image-generator-handler";
 import { hashSurveyAccessCode } from "../core/security";
 import { replyLongMessage, replyMessage, replyPhoto, replyPhotoAlbum, replyScreen } from "./reply";
+import { parseCommand } from "./commands";
 import { WebSubmitStore, type WebSubmissionRow } from "../services/submit/store";
 import {
   attachmentsOf,
@@ -769,7 +770,7 @@ async function handleLicenseAdminCommand(
         "3. 在客户部署的软件中填入这段密钥，机器人会自动激活。",
         "",
         "常用管理：",
-        "/licenses 查看授权",
+        "/license 授权管理（列表 / 发放 / 停用）",
         "/license_revoke <授权编号>",
         "",
         "30 和 365 表示可使用天数，forever 表示永久使用和永久升级。",
@@ -795,7 +796,7 @@ async function handleLicenseAdminCommand(
         "/license_resume <授权编号>",
         "/license_revoke <授权编号>",
         "/release_add <版本号> [YYYY-MM-DD]",
-        "/releases 查看已登记版本",
+        "/release 查看已登记版本",
         "",
         "永久授权的使用权不会到期；升级期限只决定它能运行哪些发布日期的版本。",
       ].join("\n"),
@@ -803,8 +804,9 @@ async function handleLicenseAdminCommand(
     return true;
   }
 
-  if (text === "/licenses") {
-    await sendLicenseList(ctx, message.chat.id);
+  // /license：授权管理入口（按钮流）。高级子命令仍可用，见帮助文本。
+  if (text === "/license") {
+    await showLicenseMenu(ctx, message.chat.id);
     return true;
   }
 
@@ -939,7 +941,7 @@ async function handleLicenseAdminCommand(
     return true;
   }
 
-  if (text === "/releases") {
+  if (text === "/release") {
     const releases = await listSoftwareReleases(ctx.db, 50);
     const body =
       releases.length === 0
@@ -957,24 +959,34 @@ async function handleLicenseAdminCommand(
   return false;
 }
 
+/**
+ * 管理员/厂商命令（对应 bot/commands.ts 的 admin + vendor 层）。
+ * 旧名（/surveys_admin、/licenses、/license_*、/releases、/trials）统一由
+ * commands.ts 的 RENAMED_COMMANDS 回指引，这里只认新名。
+ */
+const ADMIN_COMMAND_NAMES = new Set([
+  "admin",
+  "review",
+  "users",
+  "license",
+  "release",
+  "trial",
+  // 高级授权子命令（仅厂商管理员，不注册菜单）：需要参数，保留命令形态。
+  "license_help",
+  "license_help_advanced",
+  "license_create",
+  "license_extend",
+  "license_updates",
+  "license_deactivate",
+  "license_suspend",
+  "license_resume",
+  "license_revoke",
+  "release_add",
+]);
+
 function isAdminCommand(text: string): boolean {
-  return [
-    "/admin",
-    "/surveys_admin",
-    "/licenses",
-    "/license_help",
-    "/license_help_advanced",
-    "/license_create",
-    "/license_extend",
-    "/license_updates",
-    "/license_deactivate",
-    "/license_suspend",
-    "/license_resume",
-    "/license_revoke",
-    "/release_add",
-    "/releases",
-    "/trials",
-  ].some((command) => text === command || text.startsWith(`${command} `));
+  const parsed = parseCommand(text);
+  return parsed !== null && ADMIN_COMMAND_NAMES.has(parsed.name);
 }
 
 export async function handleAdminMessage(ctx: BotContext, message: TelegramMessage): Promise<boolean> {
@@ -1117,13 +1129,13 @@ export async function handleAdminMessage(ctx: BotContext, message: TelegramMessa
 
   if (
     ctx.licenseAdminEnabled === false &&
-    (text.startsWith("/license_") || text === "/licenses" || text === "/releases" || text.startsWith("/release_add"))
+    (text === "/license" || text === "/release")
   ) {
     await replyMessage(ctx, message.chat.id, "此部署不是授权中心，无法发放或管理软件授权。");
     return true;
   }
 
-  if (text === "/trials") {
+  if (text === "/trial") {
     if (ctx.licenseAdminEnabled === false) {
       await replyMessage(ctx, message.chat.id, "此部署不是授权中心，无法管理体验创作者。");
     } else {
@@ -1141,6 +1153,17 @@ export async function handleAdminMessage(ctx: BotContext, message: TelegramMessa
     return true;
   }
 
+  if (text === "/review") {
+    await showWebSubmitList(ctx, message.chat.id, userId, 0);
+    return true;
+  }
+
+  if (text === "/users") {
+    await showBotUserDirectory(ctx, message.chat.id, userId, 0, "");
+    return true;
+  }
+
+  // 其余（无参数的管理命令）落到问卷快捷操作，保持原有兜底行为。
   await showAdminSurveyDirectory(ctx, message.chat.id, userId);
   return true;
 }

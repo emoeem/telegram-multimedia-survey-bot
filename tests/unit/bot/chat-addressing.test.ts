@@ -177,20 +177,20 @@ describe("resolveBotIdentity", () => {
 });
 
 describe("buildGroupUsageHint", () => {
-  it("points at the private chat and names /set_publish_target", async () => {
+  it("points at the private chat and lists the group commands", async () => {
     const { ctx } = createContext({ [BOT_USERNAME_CACHE_KEY]: "hnhgggfj_bot" });
 
     const hint = await buildGroupUsageHint(ctx);
-    expect(hint).toContain("/set_publish_target");
+    expect(hint).toContain("/surveys");
     expect(hint).toContain("https://t.me/hnhgggfj_bot");
   });
 
-  it("still explains the group's only job when the username is unknown", async () => {
+  it("still lists the group commands when the username is unknown", async () => {
     mocks.getBotIdentity.mockRejectedValue(new Error("Telegram getMe failed: 401"));
     const { ctx } = createContext();
 
     const hint = await buildGroupUsageHint(ctx);
-    expect(hint).toContain("/set_publish_target");
+    expect(hint).toContain("/surveys");
     expect(hint).toContain("请在 Telegram 里私聊本机器人。");
   });
 });

@@ -7,7 +7,7 @@ import {
   sendPhotoAlbum,
   getBotUsername,
   splitTelegramText,
-  syncDefaultBotCommands,
+  syncBotCommands,
   uploadMediaForReuse,
 } from "../../../src/bot/telegram";
 
@@ -56,21 +56,34 @@ describe("telegram media requests", () => {
     expect(body.reply_markup).toBeTruthy();
   });
 
-  it("replaces legacy command entries with the compact command menu", async () => {
+  it("registers the public menu by default and the group menu for all group chats", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await syncDefaultBotCommands("token");
+    await syncBotCommands("token");
 
+    const calls = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/setMyCommands");
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      commands: [
-        { command: "start", description: "打开主菜单" },
-        { command: "surveys", description: "浏览可填写问卷" },
-        { command: "my_surveys", description: "管理我的问卷" },
-        { command: "admin", description: "打开管理员中心" },
-      ],
-    });
+    // 第一条：默认（私聊）菜单，只有公共命令，没有管理/厂商命令。
+    const defaults = calls[0]?.commands as Array<{ command: string }>;
+    expect(defaults.map((item) => item.command)).toEqual(["start", "surveys", "me", "codes", "redeem", "help"]);
+    // 第二条：群菜单 scope。
+    expect(calls[1]?.scope).toEqual({ type: "all_group_chats" });
+    const group = calls[1]?.commands as Array<{ command: string }>;
+    expect(group.map((item) => item.command)).toEqual(["surveys", "help", "publish_here"]);
+  });
+
+  it("adds admin (and vendor) commands only to each admin's private chat scope", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await syncBotCommands("token", { adminIds: [42], vendor: true });
+
+    const calls = fetchMock.mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>);
+    const adminCall = calls.find((body) => (body.scope as { type?: string } | undefined)?.type === "chat");
+    expect(adminCall?.scope).toEqual({ type: "chat", chat_id: 42 });
+    const names = (adminCall?.commands as Array<{ command: string }>).map((item) => item.command);
+    expect(names).toEqual(["start", "surveys", "me", "codes", "redeem", "help", "admin", "review", "users", "license", "release", "trial"]);
   });
 
   it("reads the bot username for direct survey links", async () => {
