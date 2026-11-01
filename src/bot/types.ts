@@ -103,6 +103,8 @@ export interface BotContext {
   cache?: KVNamespace;
   /** Media KV store; used to serve stored identity card renders. */
   mediaKv?: KVNamespace;
+  /** R2 媒体桶；网页投稿审核的附件读取（TieredMediaStore 主层）。 */
+  media?: R2Bucket | undefined;
   session: SurveySessionNamespace;
   ui?: UiSessionNamespace;
   builder: SurveyBuilderNamespace;

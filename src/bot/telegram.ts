@@ -90,12 +90,14 @@ export async function sendMessage(
   text: string,
   replyMarkup?: InlineKeyboardMarkup,
   messageThreadId?: number,
+  parseMode?: "Markdown" | "MarkdownV2" | "HTML",
 ): Promise<Response> {
   const response = await postTelegramJson(botToken, "sendMessage", {
     chat_id: chatId,
     text,
     reply_markup: replyMarkup,
     ...(messageThreadId ? { message_thread_id: messageThreadId } : {}),
+    ...(parseMode ? { parse_mode: parseMode } : {}),
   });
 
   return assertTelegramResponse(response, "sendMessage");

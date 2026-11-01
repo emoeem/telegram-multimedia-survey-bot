@@ -147,7 +147,7 @@ export async function loadWebSubmitFormSetting(db: D1Database): Promise<WebSubmi
     raw = await getSystemSetting(db, WEB_SUBMIT_FORM_SETTING_KEY);
   } catch (error) {
     console.warn("web_submit_form setting unreadable; using defaults", { error: String(error) });
-    return DEFAULT_WEB_SUBMIT_FORM;
+    return { ...DEFAULT_WEB_SUBMIT_FORM };
   }
   const { config, problems } = mergeWebSubmitForm(raw);
   if (problems.length > 0) {
@@ -218,15 +218,15 @@ export function mergeWebSubmitForm(raw: string | null | undefined): {
   config: WebSubmitFormConfig;
   problems: string[];
 } {
-  if (!raw || !raw.trim()) return { config: DEFAULT_WEB_SUBMIT_FORM, problems: [] };
+  if (!raw || !raw.trim()) return { config: { ...DEFAULT_WEB_SUBMIT_FORM }, problems: [] };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { config: DEFAULT_WEB_SUBMIT_FORM, problems: ["web_submit_form 不是合法 JSON,已回落默认配置"] };
+    return { config: { ...DEFAULT_WEB_SUBMIT_FORM }, problems: ["web_submit_form 不是合法 JSON,已回落默认配置"] };
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { config: DEFAULT_WEB_SUBMIT_FORM, problems: ["web_submit_form 不是对象,已回落默认配置"] };
+    return { config: { ...DEFAULT_WEB_SUBMIT_FORM }, problems: ["web_submit_form 不是对象,已回落默认配置"] };
   }
   const input = parsed as Record<string, unknown>;
   const problems: string[] = [];

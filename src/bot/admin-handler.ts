@@ -45,7 +45,18 @@ import { renderScreen } from "./ui-message-controller";
 import { handleResultVisualAdminCallback, handleResultVisualAdminMessage } from "./result-visual-admin-handler";
 import { handleImageGeneratorAdminMessage, handleImageGeneratorCallback } from "./image-generator-handler";
 import { hashSurveyAccessCode } from "../core/security";
-import { replyLongMessage, replyMessage, replyScreen } from "./reply";
+import { replyLongMessage, replyMessage, replyPhoto, replyPhotoAlbum, replyScreen } from "./reply";
+import { WebSubmitStore, type WebSubmissionRow } from "../services/submit/store";
+import {
+  attachmentsOf,
+  loadWebSubmitFormSetting,
+  textOf,
+  type WebSubmitAttachment,
+  type WebSubmitFormConfig,
+} from "../services/submit/form-config";
+import { approveWebSubmission, rejectWebSubmission } from "../services/submit/review.service";
+import { createMediaStore } from "../services/media/temporary-media-store";
+import { getMediaAssetsByIds } from "../db/repositories/media.repository";
 
 const surveyStatusLabels = {
   draft: "草稿",
@@ -142,6 +153,7 @@ async function showAdminHome(ctx: BotContext, chatId: number, userId: number, me
     inline_keyboard: [
       ...(ctx.origin ? [[{ text: "🌐 网页管理后台", url: `${ctx.origin}/admin` }]] : []),
       [{ text: "📋 问卷快捷操作", callback_data: "admin:surveys" }],
+      [{ text: "📮 投稿审核", callback_data: "admin:submissions" }],
       ctx.origin
         ? [{ text: "🏛 广场", url: `${ctx.origin}/plaza` }]
         : [{ text: "🏛 广场 · 树洞", callback_data: "plaza:list" }],
@@ -1182,6 +1194,102 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
     return true;
   }
 
+  if (data === "admin:submissions" || data.startsWith("admin:submissions:")) {
+    const page = data === "admin:submissions" ? 0 : Number(data.slice("admin:submissions:".length));
+    if (!Number.isInteger(page) || page < 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "页码无效");
+      return true;
+    }
+    await showWebSubmitList(ctx, chatId, userId, page, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:subview:")) {
+    const id = Number(data.slice("admin:subview:".length));
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "投稿编号无效");
+      return true;
+    }
+    await showWebSubmitDetail(ctx, chatId, userId, id, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:subapprove:")) {
+    const id = Number(data.slice("admin:subapprove:".length));
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "投稿编号无效");
+      return true;
+    }
+    const config = await loadWebSubmitFormSetting(ctx.db);
+    const outcome = await approveWebSubmission({ BOT_TOKEN: ctx.botToken }, ctx.db, config, id);
+    if (!outcome.ok) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        callback.id,
+        outcome.code === "already_published" ? "这条已经发布过了" : "状态已变化，刷新后再试",
+      );
+    } else {
+      await answerCallbackQuery(ctx.botToken, callback.id, outcome.link ? "已通过并推送频道 ✅" : "已通过 ✅");
+    }
+    await showWebSubmitDetail(ctx, chatId, userId, id, callback.message?.message_id);
+    return true;
+  }
+
+  if (data.startsWith("admin:subreject_ask:")) {
+    const id = Number(data.slice("admin:subreject_ask:".length));
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "投稿编号无效");
+      return true;
+    }
+    await showWebSubmitRejectAsk(ctx, chatId, userId, id, callback.message?.message_id);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
+  if (data.startsWith("admin:subreject:")) {
+    const rest = data.slice("admin:subreject:".length);
+    const [idRaw, indexRaw] = rest.split(":");
+    const id = Number(idRaw);
+    const index = Number(indexRaw);
+    if (!Number.isSafeInteger(id) || id <= 0 || !Number.isInteger(index) || index < 0 || index >= WEB_SUBMIT_REJECT_REASONS.length) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "参数无效");
+      return true;
+    }
+    const reason = WEB_SUBMIT_REJECT_REASONS[index]?.[0] ?? "";
+    const outcome = await rejectWebSubmission(ctx.db, id, reason);
+    if (!outcome.ok) {
+      await answerCallbackQuery(
+        ctx.botToken,
+        callback.id,
+        outcome.code === "already_published"
+          ? "已发布的投稿不能驳回"
+          : outcome.code === "already_rejected"
+            ? "这条已经被驳回过了"
+            : "状态已变化，刷新后再试",
+      );
+    } else {
+      await answerCallbackQuery(ctx.botToken, callback.id, "已驳回");
+    }
+    await showWebSubmitDetail(ctx, chatId, userId, id, callback.message?.message_id);
+    return true;
+  }
+
+  if (data.startsWith("admin:subphoto:")) {
+    const rest = data.slice("admin:subphoto:".length);
+    const [idRaw, indexRaw] = rest.split(":");
+    const id = Number(idRaw);
+    const index = Number(indexRaw);
+    if (!Number.isSafeInteger(id) || id <= 0 || !Number.isInteger(index) || index < 0) {
+      await answerCallbackQuery(ctx.botToken, callback.id, "参数无效");
+      return true;
+    }
+    await sendWebSubmitAttachments(ctx, chatId, id, index);
+    await answerCallbackQuery(ctx.botToken, callback.id);
+    return true;
+  }
+
   if (data === "admin:overview") {
     await showAdminSurveyDirectory(ctx, chatId, userId, 0, true, callback.message?.message_id);
     await answerCallbackQuery(ctx.botToken, callback.id);
@@ -1543,4 +1651,250 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
   }
 
   return false;
+}
+
+// ---------- 网页投稿审核（与网页后台共用 review.service） ----------
+
+const WEB_SUBMIT_PAGE_SIZE = 8;
+
+/** 驳回理由预设：选中后会原样转告投稿人（进作者线程）。 */
+const WEB_SUBMIT_REJECT_REASONS: ReadonlyArray<readonly [string, string]> = [
+  ["", "无理由"],
+  ["内容不适合在本站发布", "内容不合适"],
+  ["与站点主题无关", "主题无关"],
+  ["重复投稿", "重复投稿"],
+];
+
+const WEB_SUBMIT_STATUS_LABELS: Record<string, string> = {
+  pending: "待审",
+  publishing: "发布中",
+  published: "已发布",
+  rejected: "已驳回",
+  failed: "发布失败",
+  recalled: "已撤回",
+  deleted: "已删除",
+};
+
+function webSubmitCategory(row: WebSubmissionRow, config: WebSubmitFormConfig): string {
+  const choiceStep = config.steps.find((step) => step.type === "choice");
+  const value = choiceStep ? String(row.data[choiceStep.id] ?? "") : "";
+  return value || "未分类";
+}
+
+function webSubmitAttachments(row: WebSubmissionRow, config: WebSubmitFormConfig): WebSubmitAttachment[] {
+  return attachmentsOf(row.data, config.steps);
+}
+
+function webSubmitTime(epochSeconds: number): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(epochSeconds * 1000));
+}
+
+async function showWebSubmitList(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  page: number,
+  messageId?: number,
+): Promise<void> {
+  const config = await loadWebSubmitFormSetting(ctx.db);
+  const store = new WebSubmitStore(ctx.db);
+  const total = await store.countForReview("pending");
+  const lastPage = Math.max(0, Math.ceil(total / WEB_SUBMIT_PAGE_SIZE) - 1);
+  const safePage = Math.min(Math.max(0, page), lastPage);
+  const rows = await store.listForReview({
+    status: "pending",
+    limit: WEB_SUBMIT_PAGE_SIZE,
+    offset: safePage * WEB_SUBMIT_PAGE_SIZE,
+  });
+
+  const text =
+    total === 0
+      ? "📮 网页投稿待审：0 条\n\n都处理完了。有新投稿时来这里刷新即可。"
+      : `📮 网页投稿待审：${total} 条（第 ${safePage + 1}/${lastPage + 1} 页）`;
+  const itemRows = rows.map((row) => {
+    const title = textOf(row.data.title).trim().slice(0, 24) || "无标题";
+    return [
+      {
+        text: `#${row.id} ${webSubmitCategory(row, config)} · ${title}`,
+        callback_data: `admin:subview:${row.id}`,
+      },
+    ];
+  });
+  const navigation: InlineKeyboardMarkup["inline_keyboard"] = [];
+  if (safePage > 0) navigation.push([{ text: "⬅️ 上一页", callback_data: `admin:submissions:${safePage - 1}` }]);
+  if (safePage < lastPage) navigation.push([{ text: "下一页 ➡️", callback_data: `admin:submissions:${safePage + 1}` }]);
+  navigation.push([{ text: "⬅️ 返回管理员中心", callback_data: "admin:home" }]);
+
+  const replyMarkup: InlineKeyboardMarkup = { inline_keyboard: [...itemRows, ...navigation] };
+  if (messageId !== undefined) {
+    await replyScreen(ctx, {
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_WEB_SUBMISSIONS",
+      text,
+      replyMarkup,
+    });
+    return;
+  }
+  await replyMessage(ctx, chatId, text, replyMarkup);
+}
+
+async function showWebSubmitDetail(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  id: number,
+  messageId?: number,
+): Promise<void> {
+  const config = await loadWebSubmitFormSetting(ctx.db);
+  const row = await new WebSubmitStore(ctx.db).getSubmission(id);
+  if (!row) {
+    await replyMessage(ctx, chatId, `找不到投稿 #${id}（可能已被清理）。`);
+    return;
+  }
+  const attachments = webSubmitAttachments(row, config);
+  const title = textOf(row.data.title).trim();
+  const body = textOf(row.data.body).trim();
+  const lines = [
+    `📮 投稿 #${row.id} · ${WEB_SUBMIT_STATUS_LABELS[row.status] ?? row.status}`,
+    `分类：${webSubmitCategory(row, config)}`,
+    title ? `标题：${title}` : null,
+    "",
+    body ? (body.length > 600 ? `${body.slice(0, 600)}…` : body) : "（无正文）",
+    "",
+    `署名：${row.nickname || "匿名"} · ${webSubmitTime(row.createdAt)}`,
+    attachments.length > 0 ? `附件：${attachments.length} 个` : null,
+    row.flags.length > 0 ? `标记：${row.flags.join("、")}` : null,
+  ].filter((line): line is string => line !== null);
+  const text = lines.join("\n");
+
+  const buttons: InlineKeyboardMarkup["inline_keyboard"] = [];
+  if (row.status === "pending" || row.status === "failed") {
+    buttons.push([
+      { text: "✅ 通过", callback_data: `admin:subapprove:${row.id}` },
+      { text: "❌ 驳回", callback_data: `admin:subreject_ask:${row.id}` },
+    ]);
+  }
+  if (attachments.length > 0) {
+    buttons.push([
+      {
+        text: attachments.length === 1 ? "🖼 查看附件" : `🖼 查看附件（${attachments.length}）`,
+        callback_data: `admin:subphoto:${row.id}:0`,
+      },
+    ]);
+  }
+  buttons.push([{ text: "⬅️ 返回待审列表", callback_data: "admin:submissions:0" }]);
+  const replyMarkup: InlineKeyboardMarkup = { inline_keyboard: buttons };
+
+  if (messageId !== undefined) {
+    await replyScreen(ctx, {
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_WEB_SUBMISSION_DETAIL",
+      text,
+      replyMarkup,
+    });
+    return;
+  }
+  await replyMessage(ctx, chatId, text, replyMarkup);
+}
+
+async function showWebSubmitRejectAsk(
+  ctx: BotContext,
+  chatId: number,
+  userId: number,
+  id: number,
+  messageId?: number,
+): Promise<void> {
+  const reasonRows = WEB_SUBMIT_REJECT_REASONS.map(([, label], index) => [
+    { text: `❌ ${label}`, callback_data: `admin:subreject:${id}:${index}` },
+  ]);
+  const replyMarkup: InlineKeyboardMarkup = {
+    inline_keyboard: [
+      ...reasonRows,
+      [{ text: "⬅️ 返回详情", callback_data: `admin:subview:${id}` }],
+    ],
+  };
+  const text = `驳回投稿 #${id}：选一个理由，会原样转告投稿人。`;
+  if (messageId !== undefined) {
+    await replyScreen(ctx, {
+      chatId,
+      userId,
+      messageId,
+      screen: "ADMIN_WEB_SUBMISSION_REJECT",
+      text,
+      replyMarkup,
+    });
+    return;
+  }
+  await replyMessage(ctx, chatId, text, replyMarkup);
+}
+
+async function sendWebSubmitAttachments(
+  ctx: BotContext,
+  chatId: number,
+  id: number,
+  startIndex: number,
+): Promise<void> {
+  const config = await loadWebSubmitFormSetting(ctx.db);
+  const row = await new WebSubmitStore(ctx.db).getSubmission(id);
+  if (!row) {
+    await replyMessage(ctx, chatId, `找不到投稿 #${id}。`);
+    return;
+  }
+  const attachments = webSubmitAttachments(row, config).slice(startIndex, startIndex + 6);
+  if (attachments.length === 0) {
+    await replyMessage(ctx, chatId, "这条投稿没有可查看的附件。");
+    return;
+  }
+  const assetIds = attachments
+    .map((attachment) => attachment.mediaAssetId)
+    .filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value > 0);
+  const assets = assetIds.length > 0 ? await getMediaAssetsByIds(ctx.db, assetIds) : new Map<number, { storageKey: string | null }>();
+  const store = createMediaStore({ MEDIA: ctx.media, MEDIA_KV: ctx.mediaKv });
+  const photos: Array<{ bytes: Uint8Array; caption?: string }> = [];
+  let sent = 0;
+  let missing = 0;
+  for (const attachment of attachments) {
+    if (typeof attachment.mediaAssetId !== "number") {
+      missing += 1;
+      continue;
+    }
+    const asset = assets.get(attachment.mediaAssetId);
+    if (!asset?.storageKey) {
+      missing += 1;
+      continue;
+    }
+    const bytes = await store.get(asset.storageKey);
+    if (!bytes) {
+      missing += 1;
+      continue;
+    }
+    sent += 1;
+    photos.push({
+      bytes,
+      caption:
+        attachments.length > 1 ? `投稿 #${id} 附件 ${sent}/${attachments.length}` : `投稿 #${id} 的附件`,
+    });
+  }
+  if (photos.length === 0) {
+    await replyMessage(ctx, chatId, "附件读取不到（可能已被清理）。");
+    return;
+  }
+  if (photos.length === 1) {
+    await replyPhoto(ctx, chatId, photos[0]?.bytes ?? new Uint8Array(), photos[0]?.caption);
+  } else {
+    await replyPhotoAlbum(ctx, chatId, photos);
+  }
+  if (missing > 0) {
+    await replyMessage(ctx, chatId, `有 ${missing} 个附件读取不到（可能已被清理）。`);
+  }
 }

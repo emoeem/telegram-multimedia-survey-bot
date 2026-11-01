@@ -23,6 +23,7 @@ import type { Env } from "../../index";
 import { sendMessage } from "../../bot/telegram";
 import { WebSubmitStore, type WebSubmissionRow, type WebSubmissionStatus } from "../../services/submit/store";
 import { getMediaAssetById } from "../../db/repositories/media.repository";
+import { approveWebSubmission, rejectWebSubmission } from "../../services/submit/review.service";
 import { createMediaStore } from "../../services/media/temporary-media-store";
 import {
   DEFAULT_WEB_SUBMIT_FORM,
@@ -179,36 +180,16 @@ export async function handleWebSubmissionAdmin(
       if (id === null) return ctx.fail(400, "invalid_id", "缺少投稿编号");
       const row = await store.getSubmission(id);
       if (!row) return ctx.fail(404, "not_found", "找不到这条投稿");
-      if (row.status === "published") {
-        return ctx.fail(409, "already_published", "这条投稿已经发布过了");
+      /* 审核动作与 TG bot 管理共用 review.service（CAS + 可选频道推送 +
+       * 作者线程留言），两边行为永远一致。 */
+      const outcome = await approveWebSubmission(env, env.DB, config, id);
+      if (!outcome.ok) {
+        const { code } = outcome;
+        if (code === "not_found") return ctx.fail(404, "not_found", "找不到这条投稿");
+        if (code === "already_published") return ctx.fail(409, "already_published", "这条投稿已经发布过了");
+        return ctx.fail(409, code, "这条投稿现在不能通过");
       }
-      /* CAS:并发双击/两处同时通过,只有一方能把 pending/failed 翻成 published。 */
-      const won = await store.setStatus(id, "published", ["pending", "failed", "publishing"]);
-      if (!won) {
-        const fresh = await store.getSubmission(id);
-        return ctx.fail(
-          409,
-          fresh?.status === "published" ? "already_published" : "in_flight",
-          fresh?.status === "published" ? "这条投稿已经发布过了" : "这条投稿现在不能通过",
-        );
-      }
-      /* 可选推送:运营在表单配置里填 publishChannelId 时,通过后往频道发一条
-       * 摘要(链接进投稿详情)。发送失败不回滚状态——公开性的本体在站内。 */
-      const channelId = Number(config.publishChannelId);
-      let link: string | null = null;
-      if (Number.isInteger(channelId) && channelId !== 0) {
-        try {
-          const text = composeWebSubmissionText(config, row.data, id);
-          const sent = await sendMessage(env.BOT_TOKEN, channelId, text.slice(0, 4000));
-          const payload = (await sent.json()) as { result?: { message_id?: number } };
-          const messageId = payload?.result?.message_id;
-          if (messageId) link = `https://t.me/c/${String(channelId).slice(4)}/${messageId}`;
-        } catch (error) {
-          console.warn("web submission channel push failed", { id, error: String(error) });
-        }
-      }
-      await store.addThreadMessage(id, "to_author", "你的投稿已通过审核 ✅");
-      return ctx.json({ ok: true, id, link });
+      return ctx.json({ ok: true, id, link: outcome.link });
     }
 
     if (suffix === "/reject" && request.method === "POST") {
@@ -222,12 +203,16 @@ export async function handleWebSubmissionAdmin(
       if (row.status === "published") {
         return ctx.fail(409, "already_published", "这条投稿已经发布，不能直接驳回；如需下架请单独处理");
       }
-      const won = await store.setStatus(id, "rejected", ["pending", "failed"]);
-      if (!won) {
-        const fresh = await store.getSubmission(id);
-        return ctx.fail(409, fresh?.status === "rejected" ? "already_rejected" : "in_flight", "这条投稿现在不能驳回");
+      const outcome = await rejectWebSubmission(env.DB, id, reason);
+      if (!outcome.ok) {
+        const { code } = outcome;
+        if (code === "not_found") return ctx.fail(404, "not_found", "找不到这条投稿");
+        if (code === "already_published") {
+          return ctx.fail(409, "already_published", "这条投稿已经发布，不能直接驳回；如需下架请单独处理");
+        }
+        if (code === "already_rejected") return ctx.fail(409, "already_rejected", "这条投稿已经被驳回过了");
+        return ctx.fail(409, code, "这条投稿现在不能驳回");
       }
-      if (reason) await store.addThreadMessage(id, "to_author", `你的投稿未通过审核：${reason}`);
       return ctx.json({ ok: true, id });
     }
 

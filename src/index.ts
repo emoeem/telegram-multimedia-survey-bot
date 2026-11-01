@@ -887,6 +887,7 @@ export default {
             exportQueue: createExportJobSender(env),
             ...(env.BROWSER ? { browser: env.BROWSER } : {}),
             mediaKv: env.MEDIA_KV,
+            media: env.MEDIA,
             origin: resolvePublicOrigin(env, url.origin),
             submissionBotUrl: resolveSubmissionBotUrl(env),
             communityGroupUrl: env.COMMUNITY_GROUP_URL || null,
