@@ -42,7 +42,7 @@ async function makeDb(): Promise<D1Database> {
   return db;
 }
 
-const ENV = { BOT_TOKEN: "test-token" };
+const ENV = { BOT_TOKEN: "test-token", DB: null as unknown as D1Database };
 
 beforeEach(() => {
   telegramMocks.sendMessage.mockReset();
@@ -59,7 +59,7 @@ describeIf("投稿审核共享服务", () => {
     const config = await loadWebSubmitFormSetting(db);
     // 不原地改配置：loadWebSubmitFormSetting 无设置行时返回共享默认对象，
     // 原地改会泄漏进其他用例。
-    const outcome = await approveWebSubmission(ENV, db, { ...config, publishChannelId: "-100123" }, 1);
+    const outcome = await approveWebSubmission({ ...ENV, DB: db }, db, { ...config, publishChannelId: "-100123" }, 1);
     // 链接沿用原有格式：剥掉 -100 前缀得到 t.me/c/<id> 形态。
     expect(outcome).toEqual({ ok: true, link: "https://t.me/c/123/77" });
 
@@ -72,10 +72,26 @@ describeIf("投稿审核共享服务", () => {
     expect(telegramMocks.sendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("配置话题时卡片带 message_thread_id 与 HTML 解析模式发出", async () => {
+    const db = await makeDb();
+    const config = await loadWebSubmitFormSetting(db);
+    const outcome = await approveWebSubmission(
+      { ...ENV, DB: db },
+      db,
+      { ...config, publishChannelId: "-1004497177255", publishThreadId: "6016" },
+      1,
+    );
+    expect(outcome.ok).toBe(true);
+    const call = telegramMocks.sendMessage.mock.calls[0] as unknown[];
+    expect(call[1]).toBe(-1004497177255);
+    expect(call[4]).toBe(6016); // messageThreadId
+    expect(call[5]).toBe("HTML");
+  });
+
   it("未配置 publishChannelId：通过成功但不推送、链接为空", async () => {
     const db = await makeDb();
     const config = await loadWebSubmitFormSetting(db);
-    const outcome = await approveWebSubmission(ENV, db, config, 1);
+    const outcome = await approveWebSubmission({ ...ENV, DB: db }, db, config, 1);
     expect(outcome).toEqual({ ok: true, link: null });
     expect(telegramMocks.sendMessage).not.toHaveBeenCalled();
   });
@@ -84,7 +100,7 @@ describeIf("投稿审核共享服务", () => {
     const db = await makeDb();
     telegramMocks.sendMessage.mockRejectedValue(new Error("telegram down"));
     const config = await loadWebSubmitFormSetting(db);
-    const outcome = await approveWebSubmission(ENV, db, { ...config, publishChannelId: "-100123" }, 1);
+    const outcome = await approveWebSubmission({ ...ENV, DB: db }, db, { ...config, publishChannelId: "-100123" }, 1);
     expect(outcome.ok).toBe(true);
     const row = await db.prepare("SELECT status FROM web_submissions WHERE id = 1").first<{ status: string }>();
     expect(row?.status).toBe("published");
@@ -93,8 +109,8 @@ describeIf("投稿审核共享服务", () => {
   it("并发保护：已发布后再通过返回 already_published", async () => {
     const db = await makeDb();
     const config = await loadWebSubmitFormSetting(db);
-    await approveWebSubmission(ENV, db, config, 1);
-    const again = await approveWebSubmission(ENV, db, config, 1);
+    await approveWebSubmission({ ...ENV, DB: db }, db, config, 1);
+    const again = await approveWebSubmission({ ...ENV, DB: db }, db, config, 1);
     expect(again).toEqual({ ok: false, code: "already_published" });
   });
 
@@ -116,7 +132,7 @@ describeIf("投稿审核共享服务", () => {
   it("不存在的投稿返回 not_found", async () => {
     const db = await makeDb();
     const config = await loadWebSubmitFormSetting(db);
-    expect(await approveWebSubmission(ENV, db, config, 999)).toEqual({ ok: false, code: "not_found" });
+    expect(await approveWebSubmission({ ...ENV, DB: db }, db, config, 999)).toEqual({ ok: false, code: "not_found" });
     expect(await rejectWebSubmission(db, 999, "")).toEqual({ ok: false, code: "not_found" });
   });
 });

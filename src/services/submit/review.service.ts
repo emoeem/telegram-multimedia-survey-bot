@@ -1,6 +1,12 @@
 import { WebSubmitStore } from "./store";
-import { composeWebSubmissionText, type WebSubmitFormConfig } from "./form-config";
-import { sendMessage } from "../../bot/telegram";
+import {
+  attachmentsOf,
+  composeWebSubmissionText,
+  type WebSubmitAttachment,
+  type WebSubmitFormConfig,
+} from "./form-config";
+import { sendMessage, sendPhoto, sendPhotoAlbum } from "../../bot/telegram";
+import { createMediaStore } from "../media/temporary-media-store";
 
 /**
  * 免登录投稿的审核动作（HTTP 管理端与 TG bot 管理共用）。
@@ -16,8 +22,19 @@ export type ReviewOutcome = { ok: true; link: string | null } | { ok: false; cod
 
 export interface ReviewEnv {
   BOT_TOKEN: string;
+  /** 附件字节读取（网页投稿的图片卡片发布）；与 BotContext.media 同源。 */
+  MEDIA?: R2Bucket | undefined;
+  MEDIA_KV?: KVNamespace | undefined;
+  /** loadAttachmentPhotos 批量取资产行用。 */
+  DB: D1Database;
 }
 
+/**
+ * 把通过的网页投稿发布成旧投稿机器人同款卡片：图片走相册（≥2 张）或单图
+ * （1 张），文字卡片跟在后面，一起发进配置的群/话题（曝光区）。文本摘要
+ * 推送（publishChannelId 配了但没配话题时的旧行为）保留为图片不可用时的
+ * 兜底。卡片消息 id 会写回投稿行，作者收件箱的「查看发布」链接靠它。
+ */
 export async function approveWebSubmission(
   env: ReviewEnv,
   db: D1Database,
@@ -36,18 +53,58 @@ export async function approveWebSubmission(
   const channelId = Number(config.publishChannelId);
   let link: string | null = null;
   if (Number.isInteger(channelId) && channelId !== 0) {
+    const threadId = Number(config.publishThreadId);
+    const messageThreadId = Number.isInteger(threadId) && threadId > 0 ? threadId : undefined;
     try {
-      const text = composeWebSubmissionText(config, row.data, id);
-      const sent = await sendMessage(env.BOT_TOKEN, channelId, text.slice(0, 4000), undefined, undefined, "HTML");
-      const payload = (await sent.json()) as { result?: { message_id?: number } };
-      const messageId = payload?.result?.message_id;
-      if (messageId) link = `https://t.me/c/${String(channelId).slice(4)}/${messageId}`;
+      const card = composeWebSubmissionText(config, row.data, id).slice(0, 4000);
+      const photos = await loadAttachmentPhotos(env, row.data, config);
+      let cardMessageId: number | null = null;
+      if (photos.length >= 2) {
+        await sendPhotoAlbum(env.BOT_TOKEN, channelId, photos, messageThreadId);
+      } else if (photos.length === 1) {
+        await sendPhoto(env.BOT_TOKEN, channelId, photos[0]?.bytes ?? new Uint8Array(), undefined, undefined, messageThreadId);
+      }
+      const sent = await sendMessage(env.BOT_TOKEN, channelId, card, undefined, messageThreadId, "HTML");
+      const payload = (await sent.json()) as { result?: { message_id?: number }; description?: string };
+      cardMessageId = typeof payload?.result?.message_id === "number" ? payload.result.message_id : null;
+      if (cardMessageId === null) {
+        console.warn("web submission card push rejected", { id, description: payload?.description?.slice(0, 200) });
+      }
+      if (cardMessageId !== null) {
+        const chatRef = String(channelId);
+        link = `https://t.me/c/${chatRef.slice(4)}/${cardMessageId}`;
+        await store.setPublishInfo(id, chatRef, cardMessageId);
+      }
     } catch (error) {
       console.warn("web submission channel push failed", { id, error: String(error) });
     }
   }
   await store.addThreadMessage(id, "to_author", "你的投稿已通过审核 ✅");
   return { ok: true, link };
+}
+
+/** 读回图片附件的字节（media_refs 保护下的 media_assets），坏图跳过。 */
+async function loadAttachmentPhotos(
+  env: ReviewEnv,
+  data: Record<string, unknown>,
+  config: WebSubmitFormConfig,
+): Promise<Array<{ bytes: Uint8Array; caption?: string }>> {
+  const attachments: WebSubmitAttachment[] = attachmentsOf(data, config.steps).filter(
+    (item) => item.kind === "photo" && typeof item.mediaAssetId === "number",
+  );
+  if (attachments.length === 0 || (!env.MEDIA && !env.MEDIA_KV)) return [];
+  const assetIds = attachments.map((item) => item.mediaAssetId as number);
+  const { getMediaAssetsByIds } = await import("../../db/repositories/media.repository");
+  const assets = await getMediaAssetsByIds(env.DB, assetIds);
+  const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
+  const photos: Array<{ bytes: Uint8Array; caption?: string }> = [];
+  for (const attachment of attachments) {
+    const asset = assets.get(attachment.mediaAssetId as number);
+    if (!asset?.storageKey) continue;
+    const bytes = await store.get(asset.storageKey);
+    if (bytes) photos.push({ bytes });
+  }
+  return photos;
 }
 
 export async function rejectWebSubmission(

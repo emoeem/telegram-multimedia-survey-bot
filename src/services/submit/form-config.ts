@@ -47,6 +47,8 @@ export interface WebSubmitFormConfig {
   /** 审核通过时的署名模板占位符与页脚(照搬旧 PUBLISH_TEMPLATE 的渲染语义)。 */
   publishTag: string;
   publishFooter: string;
+  /** 发布目标的话题 id（群话题模式，如旧投稿机器人的曝光区）。空 = 整个chat。 */
+  publishThreadId: string;
   /** 审核通过后可选推送的 Telegram 频道/群 chat_id;空 = 只标记状态不推送。 */
   publishChannelId: string;
   steps: WebSubmitStep[];
@@ -129,6 +131,7 @@ export const DEFAULT_WEB_SUBMIT_FORM: WebSubmitFormConfig = {
   blockLinks: false,
   publishTag: "#投稿",
   publishFooter: "",
+  publishThreadId: "",
   publishChannelId: "",
   steps: DEFAULT_WEB_SUBMIT_STEPS,
 };
@@ -264,6 +267,7 @@ export function mergeWebSubmitForm(raw: string | null | undefined): {
     blockLinks: boolOr(input.blockLinks, base.blockLinks),
     publishTag: strOr(input.publishTag, base.publishTag),
     publishFooter: strOr(input.publishFooter, base.publishFooter),
+    publishThreadId: strOr(input.publishThreadId, base.publishThreadId),
     publishChannelId: strOr(input.publishChannelId, base.publishChannelId),
     steps,
   };

@@ -1223,7 +1223,12 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
       return true;
     }
     const config = await loadWebSubmitFormSetting(ctx.db);
-    const outcome = await approveWebSubmission({ BOT_TOKEN: ctx.botToken }, ctx.db, config, id);
+    const outcome = await approveWebSubmission(
+      { BOT_TOKEN: ctx.botToken, DB: ctx.db, MEDIA: ctx.media, MEDIA_KV: ctx.mediaKv },
+      ctx.db,
+      config,
+      id,
+    );
     if (!outcome.ok) {
       await answerCallbackQuery(
         ctx.botToken,

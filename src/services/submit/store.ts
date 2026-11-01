@@ -149,6 +149,14 @@ export class WebSubmitStore {
 
   // ---------- 收件箱 ----------
 
+  /** 记录卡片在频道/群里的位置：作者收件箱的「查看发布」链接靠它。 */
+  async setPublishInfo(id: number, chatId: string, messageId: number): Promise<void> {
+    await this.db
+      .prepare("UPDATE web_submissions SET publish_chat_id = ?, publish_message_id = ?, updated_at = ? WHERE id = ?")
+      .bind(chatId, messageId, Math.floor(Date.now() / 1000), id)
+      .run();
+  }
+
   async listByViewer(viewerToken: string, limit = 20): Promise<WebSubmissionRow[]> {
     const result = await this.db
       .prepare("SELECT * FROM web_submissions WHERE viewer_token = ? AND status != 'deleted' ORDER BY id DESC LIMIT ?")
