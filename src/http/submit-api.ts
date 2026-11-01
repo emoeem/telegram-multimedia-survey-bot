@@ -32,7 +32,7 @@ import {
 import { issueFormToken, normalizeEmail, normalizeViewer, verifyFormToken } from "../services/submit/captcha";
 import { WebSubmitStore, type WebSubmissionRow } from "../services/submit/store";
 import { createMediaStore } from "../services/media/temporary-media-store";
-import { createMediaAsset } from "../db/repositories/media.repository";
+import { createMediaAsset, upsertMediaRef } from "../db/repositories/media.repository";
 import { verifyUploadContent } from "../services/media/upload-validation.service";
 import { resolveClientIdentity } from "../services/client-identity.service";
 
@@ -201,7 +201,14 @@ async function storeWebMedia(env: Env, picked: PickedFile): Promise<WebSubmitAtt
   const storageKey = `media:websubmit:${crypto.randomUUID()}`;
   await store.put({ storageKey, bytes, contentType: mimeType });
   const asset = await createMediaAsset(env.DB, {
-    scope: "web_submission",
+    /* scope 为什么不是 "web_submission"：media_assets.asset_scope 上有 CHECK
+     * 约束（0017 引入），而 D1 迁移是原子批处理，重建父表放宽 CHECK 会级联
+     * 删光子表数据（0068 的注释记录过生产事故）。web_submission 不在 CHECK
+     * 白名单里，INSERT 直接违反约束——并轨（0088）以来所有带图的投稿都在
+     * 这里 500，纯文字投稿不走这条路所以一直正常。与树洞配图（plaza-media
+     * .service.ts）同一解法：写 CHECK 允许的 "response"，真正区分投稿附件
+     * 的是 storage_key 的 media:websubmit: 前缀。 */
+    scope: "response",
     mediaType: picked.kind === "photo" ? "photo" : picked.kind === "video" ? "video" : "document",
     mimeType,
     fileName: picked.name ?? null,
@@ -503,6 +510,18 @@ async function handleSubmit(
       flags: screening.flags,
       contentHash: screening.hash,
     });
+
+    // 投稿附件只被 data JSON 引用，孤儿清扫的探测表摸不到它；写入时登记
+    // media_refs 弱引用（清扫的 NOT EXISTS 探针覆盖 media_refs），否则附件
+    // 会在清扫窗口后被当成孤儿连行带字节一起删掉，投稿变成破图。
+    for (const attachment of attachments) {
+      if (attachment.mediaAssetId === undefined) continue;
+      await upsertMediaRef(env.DB, {
+        refType: "web_submission",
+        refKey: `websubmit:${submissionId}:${attachment.mediaAssetId}`,
+        assetId: attachment.mediaAssetId,
+      });
+    }
 
     if (config.rateLimitCount > 0 && config.rateLimitWindowSeconds > 0 && client.addressKnown) {
       const window = rateLimitWindow(config.rateLimitWindowSeconds);

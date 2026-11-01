@@ -39,14 +39,27 @@ CREATE TABLE web_submission_comments (
   author_name TEXT, text TEXT, kind TEXT NOT NULL DEFAULT 'user', parent_author TEXT, created_at INTEGER NOT NULL
 );
 CREATE TABLE web_rate_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, count INTEGER NOT NULL);
+CREATE TABLE media_refs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id INTEGER NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+  ref_type TEXT NOT NULL,
+  ref_key TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(ref_type, ref_key)
+);
 CREATE TABLE media_assets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  asset_scope TEXT NOT NULL, media_type TEXT NOT NULL,
+  asset_scope TEXT NOT NULL DEFAULT 'legacy'
+    /* 与生产 0017 的 CHECK 一致：web_submission 不在白名单里，这正是
+     * 带图投稿 500 回归要钉住的约束 */
+    CHECK (asset_scope IN ('survey', 'response', 'template', 'generated_result', 'template_preview', 'identity_card', 'legacy')),
+  media_type TEXT NOT NULL,
   telegram_file_id TEXT, telegram_file_unique_id TEXT, url TEXT,
   storage_kind TEXT, storage_key TEXT, expires_at TEXT,
   mime_type TEXT, file_name TEXT, file_size INTEGER,
   width INTEGER, height INTEGER, duration INTEGER, r2_key TEXT,
-  created_at TEXT, updated_at TEXT
+  content_hash TEXT, created_at TEXT, updated_at TEXT
 );
 `;
 
@@ -213,6 +226,53 @@ describeIf("/api/submit HTTP 契约", () => {
     expect(row?.viewer_token).toBe("abcdef0123456789");
     expect(row?.email).toBe("x@y.zz");
     expect(JSON.parse(row!.data).body).toBe("这是正文");
+  });
+
+  it("POST /submit 带图全链路:图片落库为 response scope 并登记 media_refs 弱引用", async () => {
+    // 回归钉子：0088 并轨时写 asset_scope='web_submission'，撞上生产的
+    // CHECK 白名单（D1 不能重建父表放宽，见 0068），所有带图投稿 500。
+    // 测试库曾没有这条 CHECK，所以一直测不出来。
+    const env = makeEnv();
+    await env.DB.prepare("INSERT INTO system_settings (key, value) VALUES ('web_submit_form', ?)")
+      .bind(JSON.stringify({ captcha: false, minFillSeconds: 0 }))
+      .run();
+    const issued = await issueFormToken(SECRET, { captcha: false, now: Math.floor(Date.now() / 1000) - 10 });
+
+    // 结构合法的 1x1 PNG（魔数校验要求真实图片字节）。
+    const png = Uint8Array.from(
+      atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+      (char) => char.charCodeAt(0),
+    );
+    const form = new FormData();
+    form.set("step:category", "图片分享");
+    form.set("step:title", "一张图");
+    form.set("step:body", "看图");
+    form.set("step:author", "匿名投稿");
+    form.set("nickname", "小明");
+    form.set("token", issued.token);
+    form.append("file:photos", new File([png], "photo.png", { type: "image/png" }));
+
+    const response = await handleSubmitApiRequest(
+      req("/api/submit", { method: "POST", body: form }),
+      env,
+      new URL("https://site.example/api/submit"),
+    );
+    const body = (await response!.json()) as { ok: boolean; id: number };
+    expect(response!.status).toBe(200);
+    expect(body.ok).toBe(true);
+
+    const asset = await env.DB
+      .prepare("SELECT asset_scope, storage_key, mime_type FROM media_assets ORDER BY id DESC LIMIT 1")
+      .first<{ asset_scope: string; storage_key: string; mime_type: string }>();
+    expect(asset?.asset_scope).toBe("response"); // CHECK 白名单内的值
+    expect(asset?.storage_key).toMatch(/^media:websubmit:/); // 身份靠键前缀区分
+    expect(asset?.mime_type).toBe("image/png");
+
+    const ref = await env.DB
+      .prepare("SELECT ref_type, ref_key, asset_id FROM media_refs ORDER BY id DESC LIMIT 1")
+      .first<{ ref_type: string; ref_key: string; asset_id: number }>();
+    expect(ref?.ref_type).toBe("web_submission");
+    expect(ref?.ref_key).toBe(`websubmit:${body.id}:${ref?.asset_id}`);
   });
 
   it("蜜罐被填 → 400;字段缺必填 → 422 且错误带字段名", async () => {
