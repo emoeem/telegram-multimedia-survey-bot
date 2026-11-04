@@ -154,7 +154,9 @@ export function GamePackField({
     let cancelled = false;
     void fetchAdminTaskPacks()
       .then((response) => {
-        if (!cancelled) setPacks(response.packs);
+        // 接口形状异常时也保持数组语义：下面直接读 packs.length，undefined
+        // 会让整张属性面板崩掉（体检跳转到未绑包的小游戏题就会踩到）。
+        if (!cancelled) setPacks(Array.isArray(response.packs) ? response.packs : []);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "小游戏包加载失败");
