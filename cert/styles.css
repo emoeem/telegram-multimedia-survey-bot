@@ -1518,3 +1518,172 @@ input:disabled {
 .stamp-dialog-actions .btn {
   flex: 1 1 auto;
 }
+
+/* ---------- 折叠面板（每组一个 <details>） ----------
+ * 桌面端全部展开，折叠只是可选能力；移动端由 app.js 只展开「基本信息」。
+ * summary 里可能放操作按钮（标签随机/清空、照片全部上卡），所以 chevron
+ * 用绝对定位放到最右，避免和 .head-actions 的 margin-left:auto 抢空间。 */
+.card-summary {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding-right: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card-summary::-webkit-details-marker,
+.card-summary::marker {
+  display: none;
+  content: "";
+}
+
+.card-summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.card-summary::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 0.62em;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+details.card[open] > .card-summary::after {
+  transform: rotate(-135deg);
+}
+
+.card-summary .hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card-summary .head-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.fold-badge {
+  align-self: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.fold-badge[hidden] {
+  display: none;
+}
+
+.card-body {
+  padding-top: 12px;
+}
+
+/* 桌面端不显示「展开全部」和预览折叠：桌面不缺高度。 */
+.fold-toggle,
+.stage-collapse-btn {
+  display: none;
+}
+
+.fold-toggle {
+  pointer-events: auto;
+  align-self: flex-end;
+  margin-right: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fold-toggle:hover {
+  color: var(--ink);
+}
+
+/* ---------- 移动端（≤640px）：单栏、紧凑、可折叠 ---------- */
+@media (max-width: 640px) {
+  .shell {
+    padding: 12px 12px 44px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+
+  /* 提示文字在折叠标题里占三行，移动端直接收起；需要时点开组内可见。 */
+  .card-summary .hint {
+    display: none;
+  }
+
+  .card-summary {
+    font-size: 13.5px;
+  }
+
+  /* 触控最小目标 44px（只作用于表单输入，不影响 chip 密度）。 */
+  .card-body .field input,
+  .card-body .field select {
+    min-height: 44px;
+  }
+
+  /* 长列表组（标签 / 等级 / 照片 / 版式 / 主题）限高，避免整页无限长。 */
+  details.card[open] > .card-body[data-scroll] {
+    max-height: 60vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fold-toggle,
+  .stage-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cta-bar {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .cta-btn {
+    min-width: min(420px, 100%);
+  }
+
+  /* 预览默认收起（app.js 加载时加 is-collapsed），需要时点「展开预览」。 */
+  #stage.is-collapsed .canvas-wrap,
+  #stage.is-collapsed .stage-foot,
+  #stage.is-collapsed .publish-row {
+    display: none;
+  }
+
+  #stage.is-collapsed {
+    padding-bottom: 12px;
+  }
+}

@@ -808,6 +808,7 @@
     }
 
     $("sizeEcho").textContent = ratio.w + " × " + ratio.h;
+    updateFoldBadges();
   }
 
   /* ------------------------------------------------------------------ *
@@ -2429,6 +2430,9 @@
      * navigator.vibrate 不存在时静默跳过，任何一路失败都不报错。 */
     $("certifyBtn").addEventListener("click", function () {
       var stage = $("stage");
+      /* 手机上预览默认收起：去认证必须先展开，否则滚过去只看到一条标题。 */
+      stage.classList.remove("is-collapsed");
+      syncStageCollapse();
       stage.scrollIntoView({ behavior: "smooth", block: "start" });
       render();
       stampFeedback(stage);
@@ -2619,6 +2623,147 @@
     });
   }
 
+  /* ------------------------------------------------------------------ *
+   * 折叠面板（移动端）
+   *
+   * 每组是一个 <details class="card" data-group="…">。移动端只展开
+   * 「基本信息」（全站没有 required 字段，basic 是唯一有真实输入框的组），
+   * 桌面端全部展开；用户手动开合后按组记忆，刷新保持。
+   * 状态键沿用现有 cert-card-maker: 命名空间，不另起一套。
+   * ------------------------------------------------------------------ */
+  var FOLD_KEY = "cert-card-maker:fold:v1";
+
+  function folds() {
+    return document.querySelectorAll("details.card[data-group]");
+  }
+
+  function isMobile() {
+    return window.matchMedia("(max-width: 640px)").matches;
+  }
+
+  function readFoldState() {
+    try {
+      var raw = localStorage.getItem(FOLD_KEY);
+      var map = raw ? JSON.parse(raw) : null;
+      return map && typeof map === "object" ? map : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeFoldState() {
+    var map = {};
+    folds().forEach(function (el) {
+      map[el.getAttribute("data-group")] = !!el.open;
+    });
+    try {
+      localStorage.setItem(FOLD_KEY, JSON.stringify(map));
+    } catch (e) {
+      /* 隐私模式下 localStorage 会抛错：折叠仍可用，只是不记忆。 */
+    }
+  }
+
+  function syncFoldToggle() {
+    var btn = $("foldToggleBtn");
+    if (!btn) return;
+    var all = folds();
+    var open = 0;
+    all.forEach(function (el) {
+      if (el.open) open += 1;
+    });
+    var collapsed = open < all.length;
+    btn.textContent = collapsed ? "展开全部" : "收起全部";
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
+  function syncStageCollapse() {
+    var stage = $("stage");
+    var btn = $("stageCollapseBtn");
+    if (!stage || !btn) return;
+    var collapsed = stage.classList.contains("is-collapsed");
+    if (!isMobile()) {
+      stage.classList.remove("is-collapsed");
+      collapsed = false;
+    }
+    btn.textContent = collapsed ? "展开预览" : "收起预览";
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
+  /** 组内可操作控件数量，作为标题右侧徽标（动态渲染的 chip 也算）。 */
+  function updateFoldBadges() {
+    folds().forEach(function (el) {
+      var badge = el.querySelector("[data-fold-count]");
+      var body = el.querySelector(".card-body");
+      if (!badge || !body) return;
+      var n = body.querySelectorAll("input, button, select, textarea").length;
+      badge.textContent = String(n);
+      badge.hidden = n === 0;
+    });
+  }
+
+  function applyFoldState() {
+    var saved = readFoldState();
+    folds().forEach(function (el) {
+      var group = el.getAttribute("data-group");
+      if (saved) el.open = saved[group] !== false;
+      else el.open = !isMobile() || group === "basic";
+    });
+    /* 手机上预览默认收起（首次进入）：屏幕先给表单。之后以用户手动开关为准。 */
+    var stage = $("stage");
+    if (stage && isMobile() && !saved) stage.classList.add("is-collapsed");
+    syncFoldToggle();
+    syncStageCollapse();
+  }
+
+  function bindFolds() {
+    folds().forEach(function (el) {
+      el.addEventListener("toggle", function () {
+        writeFoldState();
+        syncFoldToggle();
+      });
+      var summary = el.querySelector("summary");
+      if (!summary) return;
+      /* summary 里有「帮我选 / 清空 / 全部上卡」等按钮：不拦的话点按钮
+       * 会顺带折叠整组。preventDefault 取消的是 summary 的默认开合动作，
+       * 按钮自己的 click 监听照常执行。 */
+      summary.addEventListener("click", function (e) {
+        var target = e.target;
+        if (target && target.closest && target.closest("button, a, input, select, textarea")) {
+          e.preventDefault();
+        }
+      });
+    });
+
+    var toggle = $("foldToggleBtn");
+    if (toggle) {
+      toggle.addEventListener("click", function () {
+        var all = folds();
+        var anyClosed = false;
+        all.forEach(function (el) {
+          if (!el.open) anyClosed = true;
+        });
+        all.forEach(function (el) {
+          el.open = anyClosed;
+        });
+        writeFoldState();
+        syncFoldToggle();
+      });
+    }
+
+    var stageBtn = $("stageCollapseBtn");
+    if (stageBtn) {
+      stageBtn.addEventListener("click", function () {
+        var stage = $("stage");
+        if (!stage) return;
+        stage.classList.toggle("is-collapsed");
+        syncStageCollapse();
+      });
+    }
+
+    applyFoldState();
+    updateFoldBadges();
+  }
+
   function init() {
     if (!window.CERT_THEMES || !R) {
       document.body.innerHTML =
@@ -2764,6 +2909,7 @@
     renderPhotoModes();
     updateStats();
     render();
+    bindFolds();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
