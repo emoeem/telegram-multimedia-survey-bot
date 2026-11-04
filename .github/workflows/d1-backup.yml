@@ -62,14 +62,15 @@ jobs:
 
       - name: Ensure the backup bucket exists
         run: |
-          # 幂等建桶:R2 桶默认私有、不开公开访问,符合 runbook「单独一个桶」。
-          # 「已存在」视作成功;其余失败(权限/配额)在这里就显式炸,不拖到上传。
-          if ! create_out="$(pnpm exec wrangler r2 bucket create "$bucket" 2>&1)"; then
-            echo "$create_out"
-            if echo "$create_out" | grep -qi "already exist"; then
-              echo "桶已存在,继续"
-            else
-              echo "::error::建桶失败(非「已存在」原因),检查 CLOUDFLARE_API_TOKEN 的 R2 编辑权限"
+          # 先只读探测桶是否存在;不存在才建(默认私有、不开公开访问)。
+          # 2026-11-04 验证:当前 CI token 对 r2/buckets 无权限(code 10000),
+          # 建不了桶时给出明确指引,而不是拖到上传才炸。
+          if pnpm exec wrangler r2 bucket info "$bucket" >/dev/null 2>&1; then
+            echo "桶已存在,继续"
+          else
+            if ! create_out="$(pnpm exec wrangler r2 bucket create "$bucket" 2>&1)"; then
+              echo "$create_out"
+              echo "::error::备份桶 $bucket 不存在,自动建桶失败(大概率 CLOUDFLARE_API_TOKEN 没有 Workers R2 Storage Edit 权限)。二选一:① Cloudflare Dashboard → R2 手动建桶 $bucket;② 给 token 加 R2 编辑权限(https://dash.cloudflare.com/profile/api-tokens)后重跑。"
               exit 1
             fi
           fi
