@@ -24,9 +24,11 @@
  * 热的。
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { Coins, Zap } from "lucide-react";
+import { Coins, X, Zap } from "lucide-react";
 
 import { PageHeader } from "./PageHeader";
+import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
+import { closeWebApp } from "./navigation";
 import { searchForTab, tabFromSearch, directEntryFromSearch, type SubmissionTab } from "./submission-tab";
 import { preloadSubmitForm } from "./submit-form-preload";
 import { FormSkeleton } from "./FormSkeleton";
@@ -101,42 +103,58 @@ export function SubmissionHub() {
 
   const subtitle =
     tab === "inbox" ? "进度 · 评论 · 管理员留言" : (MODE_META.find((entry) => entry.id === mode)?.hint ?? "");
+  const themeState = usePublicTheme();
 
   return (
-    <div className="survey-glow min-h-dvh" data-submission-hub={tab}>
-      <PageHeader
-        title="投稿中心"
-        subtitle={subtitle}
-        /* 本页不渲染 BottomNav：桌面顶栏必须贴住视口顶（topNav=false），
-         * 内容列与下方表单同宽（wide=false），否则标题悬在空列的左端、
-         * 表单却居中，两边对不上。 */
-        topNav={false}
-        wide={false}
-        tabs={
-          <>
-            {(["submit", "inbox"] as const).map((entry) => {
-              const isActive = entry === tab;
-              return (
-                <button
-                  key={entry}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => select(entry)}
-                  className={`h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold transition-colors ${
-                    isActive
-                      ? "bg-[var(--survey-primary)] text-white"
-                      : "bg-[var(--survey-primary-soft)] text-[var(--survey-heading)]"
-                  }`}
-                >
-                  {entry === "submit" ? "投稿" : "我的投稿"}
-                </button>
-              );
-            })}
-          </>
-        }
-      />
-      <div className="mx-auto max-w-xl lg:max-w-3xl">
+    <ScreenShell themeState={themeState} nav={false}>
+      <div data-submission-hub={tab}>
+        <PageHeader
+          title="投稿中心"
+          subtitle={subtitle}
+          /* 本页不渲染 BottomNav：桌面顶栏必须贴住视口顶（topNav=false），
+           * 内容列与下方表单同宽（wide=false），否则标题悬在空列的左端、
+           * 表单却居中，两边对不上。 */
+          topNav={false}
+          wide={false}
+          actions={
+            <>
+              <ThemeAction themeState={themeState} />
+              <button
+                type="button"
+                aria-label="关闭"
+                title="关闭"
+                className="survey-icon-btn"
+                onClick={() => closeWebApp()}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          }
+          tabs={
+            <>
+              {(["submit", "inbox"] as const).map((entry) => {
+                const isActive = entry === tab;
+                return (
+                  <button
+                    key={entry}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => select(entry)}
+                    className={`h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold transition-colors ${
+                      isActive
+                        ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                        : "bg-[var(--survey-primary-soft)] text-[var(--survey-heading)]"
+                    }`}
+                  >
+                    {entry === "submit" ? "投稿" : "我的投稿"}
+                  </button>
+                );
+              })}
+            </>
+          }
+        />
+        <main className="mx-auto max-w-xl lg:max-w-3xl">
         {tab === "submit" ? (
           <>
             {/* 次级分段：两条投稿流水线的切换，视觉权重刻意低于顶栏页签。 */}
@@ -177,7 +195,8 @@ export function SubmissionHub() {
             <InboxTab embedded />
           </Suspense>
         )}
+        </main>
       </div>
-    </div>
+    </ScreenShell>
   );
 }

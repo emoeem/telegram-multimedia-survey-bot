@@ -604,7 +604,7 @@ export function TrialScreen() {
   };
 
   const renderHeader = (title: string, subtitle: string, showBack: boolean) => (
-    <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
+    <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md lg:top-14">
       <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-2xl">
         <div className="flex min-w-0 items-center gap-2">
           {showBack ? (

@@ -1,26 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  BookOpen,
-  ChevronRight,
-  FileCheck2,
-  Images,
-  Link2,
-  MailCheck,
-  Palette,
-  Target,
-  UserRound,
-  X,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookOpen, ChevronRight, FileCheck2, Images, Link2, MailCheck, Target, UserRound, X } from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
-import { BottomNav } from "./BottomNav";
-import {
-  loadGlobalPreset,
-  saveGlobalPreset,
-  themeBackgroundStyle,
-  themeCssVars,
-  ThemePickerSheet,
-  useResolvedPreset,
-} from "./theme-ui";
+import { PageHeader } from "./PageHeader";
+import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
+import { EntryRow, ErrorState, LoadingState, SectionHeader } from "./PublicPrimitives";
 import {
   coinApi,
   createMyShowcase,
@@ -141,12 +124,8 @@ function ReportList() {
   if (!reports || reports.length === 0) return null;
 
   return (
-    <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-        <FileCheck2 className="h-3.5 w-3.5" />
-        我的报告
-        <span className="font-normal">（{reports.length}）</span>
-      </p>
+    <section className="survey-card p-4">
+      <SectionHeader icon={FileCheck2} title="我的报告" count={reports.length} />
       <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
         {reports.map((report) => (
           <li key={report.responseId} className="flex items-center gap-2 py-2.5">
@@ -216,8 +195,8 @@ function ProfileShareCard() {
     }
   };
   return (
-    <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-      <p className="text-[11px] font-semibold text-[var(--survey-muted)]">个人画像</p>
+    <section className="survey-card p-4">
+      <SectionHeader icon={UserRound} title="个人画像" />
       <p className="mt-1 text-xs text-[var(--survey-muted)]">
         把你的答卷足迹（完成卷数、结局收集、成就）做成一张可分享的公开页。只含聚合数字，不含任何答案。
       </p>
@@ -315,21 +294,17 @@ function ReportShareButton({ responseId }: { responseId: number }) {
 export function MyScreen() {
   const [overview, setOverview] = useState<MyOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseError, setShowcaseError] = useState<string | null>(null);
-  const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [hasTelegramIdentity] = useState<boolean>(
     () => safeGet("tg:linked") === "1" || Boolean(safeGet("tg:identity")),
   );
-
-  const resolvedPreset = useResolvedPreset(themePreset);
-  const theme = resolvedPreset ? { preset: resolvedPreset } : null;
-  const vars = useMemo(() => themeCssVars(theme), [theme]);
-  const backgroundStyle = useMemo(() => themeBackgroundStyle(theme), [theme]);
+  const themeState = usePublicTheme();
 
   useEffect(() => {
     let cancelled = false;
+    setError(null);
     fetchMyOverview()
       .then((data) => {
         if (!cancelled) setOverview(data);
@@ -344,12 +319,7 @@ export function MyScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const selectTheme = (preset: string | null) => {
-    setThemePreset(preset);
-    saveGlobalPreset(preset);
-  };
+  }, [retryKey]);
 
   /** 用当前资料卡生成展示页草稿；展示区是策展空间，公开与否归管理员。 */
   const generateShowcase = async () => {
@@ -370,50 +340,32 @@ export function MyScreen() {
   };
 
   return (
-    <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
-      <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
-          <div>
-            <p className="inline-flex items-center gap-1.5 text-[15px] font-bold text-[var(--survey-heading)]">
-              <UserRound className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-              我的
-            </p>
-            <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">你的答卷、资料卡与挑战记录</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="选择主题"
-              title="选择主题"
-              className="survey-icon-btn"
-              onClick={() => setThemePickerOpen(true)}
-            >
-              <Palette className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              aria-label="关闭"
-              title="关闭"
-              className="survey-icon-btn"
-              onClick={() => closeWebApp()}
-            >
+    <ScreenShell themeState={themeState}>
+      <PageHeader
+        title="我的"
+        subtitle="你的答卷、资料卡与挑战记录"
+        titleIcon={<UserRound className="h-4 w-4" />}
+        backHref={null}
+        wide={false}
+        actions={
+          <>
+            <ThemeAction themeState={themeState} />
+            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
               <X className="h-4 w-4" />
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-3xl">
         {error ? (
-          <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 text-center text-sm text-[var(--survey-body)]">
-            {error}
-          </div>
+          <ErrorState message={error} onRetry={() => setRetryKey((key) => key + 1)} />
         ) : overview === null ? (
-          <p className="py-16 text-center text-sm text-[var(--survey-muted)]">加载中…</p>
+          <LoadingState label="正在加载我的资料" rows={4} />
         ) : (
           <>
             {/* 身份 */}
-            <section className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+            <section className="flex items-center gap-3 survey-card p-4">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
                 <UserRound className="h-6 w-6" />
               </span>
@@ -434,7 +386,7 @@ export function MyScreen() {
                 </p>
               </div>
               {overview.identity.telegram || overview.identity.email ? (
-                <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--app-success)_14%,transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-success)]">
                   {overview.identity.telegram ? "已认证" : "已登录"}
                 </span>
               ) : (
@@ -450,32 +402,23 @@ export function MyScreen() {
             <CoinCard />
 
             {/* 纸条聊天（0089）：个人中心的一等入口。 */}
-            <a
+            <EntryRow
               href="/notes"
-              className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-                <MailCheck className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-bold text-[var(--survey-heading)]">纸条聊天</span>
-                <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">
-                  放一张纸条，抽到同路的人就开始私聊
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-            </a>
+              icon={MailCheck}
+              title="纸条聊天"
+              subtitle="放一张纸条，抽到同路的人就开始私聊"
+            />
 
-            <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-              <div className="flex items-center justify-between">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  系列书架
-                </p>
-                <a href="/series" className="text-[11px] font-semibold text-[var(--survey-primary)]">
-                  去追更 →
-                </a>
-              </div>
+            <section className="survey-card p-4">
+              <SectionHeader
+                icon={BookOpen}
+                title="系列书架"
+                action={
+                  <a href="/series" className="text-[11px] font-semibold text-[var(--survey-primary)]">
+                    去追更 →
+                  </a>
+                }
+              />
               <NotificationCenter />
             </section>
 
@@ -485,21 +428,15 @@ export function MyScreen() {
 
             {/* 数据总览 */}
             <section className="grid grid-cols-2 gap-3">
-              <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-                  <FileCheck2 className="h-3.5 w-3.5" />
-                  已完成问卷
-                </p>
+              <div className="survey-card p-4">
+                <SectionHeader icon={FileCheck2} title="已完成问卷" />
                 <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
                   {overview.completedSurveys}
                   <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">份</span>
                 </p>
               </div>
-              <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-                  <Target className="h-3.5 w-3.5" />
-                  挑战通关
-                </p>
+              <div className="survey-card p-4">
+                <SectionHeader icon={Target} title="挑战通关" />
                 <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
                   {overview.trial.completed}
                   <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">
@@ -510,11 +447,8 @@ export function MyScreen() {
             </section>
 
             {/* 我的资料卡 */}
-            <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-                <Link2 className="h-3.5 w-3.5" />
-                我的资料卡
-              </p>
+            <section className="survey-card p-4">
+              <SectionHeader icon={Link2} title="我的资料卡" />
               {overview.myProfile ? (
                 <a href={`/plaza/profile/${overview.myProfile.responseId}`} className="mt-2.5 flex items-center gap-2">
                   <span className="min-w-0 flex-1">
@@ -546,10 +480,7 @@ export function MyScreen() {
 
               {overview.myProfile ? (
                 <div className="mt-3 border-t border-[var(--survey-card-border)] pt-3">
-                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-                    <Images className="h-3.5 w-3.5" />
-                    展示页
-                  </p>
+                  <SectionHeader icon={Images} title="展示页" />
                   {overview.showcase?.published ? (
                     <a href={`/showcase?p=${overview.showcase.personId}`} className="mt-2 flex items-center gap-2">
                       <span className="min-w-0 flex-1">
@@ -572,7 +503,9 @@ export function MyScreen() {
                       {showcaseBusy ? "生成中…" : "把我的资料卡生成展示页"}
                     </button>
                   )}
-                  {showcaseError ? <p className="mt-1.5 text-[11px] text-red-500">{showcaseError}</p> : null}
+                  {showcaseError ? (
+                    <p className="mt-1.5 text-[11px] text-[var(--app-danger)]">{showcaseError}</p>
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -581,30 +514,10 @@ export function MyScreen() {
             {overview.achievements?.items?.length ? <AchievementWall overview={overview.achievements} /> : null}
 
             {/* 入口 */}
-            <a
-              href="/trial"
-              className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-                <Target className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">挑战任务</span>
-                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">查看完整对局记录与排行榜</span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-            </a>
+            <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
           </>
         )}
       </main>
-
-      <ThemePickerSheet
-        open={themePickerOpen}
-        onClose={() => setThemePickerOpen(false)}
-        selected={themePreset}
-        onSelect={selectTheme}
-      />
-      <BottomNav />
-    </div>
+    </ScreenShell>
   );
 }

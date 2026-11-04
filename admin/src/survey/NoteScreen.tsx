@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CornerDownLeft, EyeOff, ImagePlus, Loader2, Send, Sparkles, Trash2, X } from "lucide-react";
 import { PageHeader } from "./PageHeader";
-import { BottomNav } from "./BottomNav";
+import { ScreenShell, usePublicTheme } from "./ScreenShell";
+import { ErrorState, LoadingState } from "./PublicPrimitives";
+import { SURVEY_CARD } from "./ui";
 import { useDialogs } from "../components/Dialogs";
 import {
   noteImageUrl,
@@ -47,7 +49,7 @@ function formatDay(iso: string): string {
   return iso.slice(0, 10);
 }
 
-const CARD = "rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]";
+const CARD = SURVEY_CARD;
 const CHIP =
   "inline-flex items-center gap-1 rounded-full bg-[var(--survey-bg)] px-2.5 py-0.5 text-[11px] text-[var(--survey-muted)]";
 const BTN_PRIMARY =
@@ -631,23 +633,19 @@ export function NoteScreen() {
   }, []);
 
   useEffect(reload, [reload]);
+  const themeState = usePublicTheme();
 
   return (
-    <div className="survey-glow min-h-dvh pb-24" data-theme={undefined}>
-      <PageHeader title="纸条聊天" subtitle="放一张纸条 · 抽一段缘分 · 聊聊看" />
-      <div className="mx-auto max-w-xl px-5 pt-4 lg:max-w-3xl">
+    <ScreenShell themeState={themeState}>
+      <PageHeader title="纸条聊天" subtitle="放一张纸条 · 抽一段缘分 · 聊聊看" wide={false} />
+      <main className="mx-auto max-w-xl px-5 pt-4 lg:max-w-3xl">
         {loadError ? (
-          <div className={`${CARD} p-6 text-center`}>
-            <p className="text-sm text-[var(--survey-body)]">纸条功能加载失败</p>
-            <button type="button" className={`${BTN_GHOST} mt-3`} onClick={reload}>
-              重新加载
-            </button>
-          </div>
+          <ErrorState message="纸条功能加载失败" onRetry={reload} retryLabel="重新加载" />
         ) : me === null ? (
-          <p className="py-16 text-center text-sm text-[var(--survey-muted)]">加载中…</p>
+          <LoadingState label="正在加载纸条" rows={2} />
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-1.5" role="tablist" aria-label="纸条页面切换">
+            <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label="纸条页面切换">
               {(
                 [
                   { id: "mine", label: "我的纸条" },
@@ -673,8 +671,7 @@ export function NoteScreen() {
             <div className="mt-4">{tab === "mine" ? <MineTab me={me} onReload={reload} /> : null}</div>
           </>
         )}
-      </div>
-      <BottomNav />
-    </div>
+      </main>
+    </ScreenShell>
   );
 }

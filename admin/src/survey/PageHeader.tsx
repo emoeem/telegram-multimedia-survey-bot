@@ -17,6 +17,7 @@ export function PageHeader({
   subtitle,
   actions,
   tabs,
+  titleIcon,
   backHref = "/",
   backLabel = "首页",
   topNav = true,
@@ -26,7 +27,10 @@ export function PageHeader({
   subtitle?: string;
   actions?: ReactNode;
   tabs?: ReactNode;
-  backHref?: string;
+  /** 标题前的小图标（如「我的」的 UserRound）。 */
+  titleIcon?: ReactNode;
+  /** null = 不渲染返回键（/me、/coins 这类从底部导航进入的页面）。 */
+  backHref?: string | null;
   backLabel?: string;
   /**
    * 桌面端是否给主导航（BottomNav 在 ≥lg 是 fixed top-0 高 56px）让位。
@@ -52,14 +56,23 @@ export function PageHeader({
         }`}
       >
         <div className="flex items-center gap-2.5">
-          <a href={backHref} className="survey-home-link" aria-label={`返回${backLabel}`} title={`返回${backLabel}`}>
-            <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} />
-            <span>{backLabel}</span>
-          </a>
+          {backHref !== null ? (
+            <a href={backHref} className="survey-home-link" aria-label={`返回${backLabel}`} title={`返回${backLabel}`}>
+              <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} />
+              <span>{backLabel}</span>
+            </a>
+          ) : null}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:text-[17px] lg:tracking-[0.04em]">
-              {title}
-            </p>
+            <div className="flex min-w-0 items-center gap-1.5">
+              {titleIcon ? (
+                <span className="shrink-0 text-[var(--survey-primary)]" aria-hidden="true">
+                  {titleIcon}
+                </span>
+              ) : null}
+              <h1 className="truncate text-[15px] font-bold text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:text-[17px] lg:tracking-[0.04em]">
+                {title}
+              </h1>
+            </div>
             {subtitle ? <p className="mt-0.5 truncate text-[11px] text-[var(--survey-muted)]">{subtitle}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}

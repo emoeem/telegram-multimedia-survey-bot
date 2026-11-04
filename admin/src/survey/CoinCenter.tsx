@@ -17,8 +17,10 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
+import { PageHeader } from "./PageHeader";
+import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
+import { LoadingState } from "./PublicPrimitives";
 import {
   drawNote as drawNoteApi,
   fetchNoteMe,
@@ -72,35 +74,35 @@ async function probeAudioDuration(file: File): Promise<number | null> {
 
 function CoinPageShell(props: { title: string; subtitle: string; embedded?: boolean; children: React.ReactNode }) {
   /* embedded = 已经嵌在 /submissions 投稿中心里，外壳（顶栏 / 底部导航 /
-   * survey-glow）由投稿中心统一提供。不这样的话页面上会出现两条 header。 */
+   * survey-glow）由投稿中心统一提供。不这样的话页面上会出现两条 header。
+   *
+   * 主题 hook 必须在 early return 之前调用：embedded 是同一组件实例的 prop，
+   * 条件调用会破坏 Hook 顺序。 */
+  const themeState = usePublicTheme();
   if (props.embedded) return <>{props.children}</>;
   return (
-    <div className="survey-glow min-h-dvh pb-24">
-      <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
-          <div>
-            <p className="text-[15px] font-bold text-[var(--survey-heading)]">{props.title}</p>
-            <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">{props.subtitle}</p>
-          </div>
-          <button
-            type="button"
-            aria-label="关闭"
-            title="关闭"
-            className="survey-icon-btn"
-            onClick={() => closeWebApp()}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
+    <ScreenShell themeState={themeState}>
+      <PageHeader
+        title={props.title}
+        subtitle={props.subtitle}
+        backHref={null}
+        wide={false}
+        actions={
+          <>
+            <ThemeAction themeState={themeState} />
+            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+              <X className="h-4 w-4" />
+            </button>
+          </>
+        }
+      />
       <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-3xl">{props.children}</main>
-      <BottomNav />
-    </div>
+    </ScreenShell>
   );
 }
 
 function Loading() {
-  return <p className="py-16 text-center text-sm text-[var(--survey-muted)]">加载中…</p>;
+  return <LoadingState label="正在加载金币数据" rows={3} />;
 }
 
 function ErrorBox(props: { message: string }) {

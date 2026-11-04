@@ -4,15 +4,19 @@ import type { CSSProperties, FocusEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   BadgeCheck,
   BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Coins,
+  Compass,
   Download,
   EyeOff,
+  FileText,
   Flag,
   Globe,
   Home,
@@ -21,16 +25,19 @@ import {
   MailCheck,
   Map as MapIcon,
   Megaphone,
+  MessageSquare,
   MousePointerClick,
   Palette,
   Paperclip,
   RefreshCw,
+  Search,
   Send,
   Share2,
   ShieldAlert,
   Sparkles,
   Star,
   Trophy,
+  UserRound,
   Users,
   Volume2,
   VolumeX,
@@ -40,6 +47,8 @@ import { SpriteLayer } from "./SpriteLayer";
 import { closeWebApp } from "./navigation";
 import { resolveBgmUrl, resolveSprite, resolveSurveySfxUrls, resolveThemeMediaRef } from "../../../src/survey/theme";
 import { BottomNav } from "./BottomNav";
+import { ScreenShell, usePublicTheme } from "./ScreenShell";
+import { EmptyState, ErrorState } from "./PublicPrimitives";
 import { PublishOptionsDialog } from "./PublishOptionsDialog";
 import { vibrateFail, vibrateSuccess } from "./haptics";
 import {
@@ -50,10 +59,8 @@ import {
 } from "./publish-choice";
 import {
   isValidPresetId,
-  loadGlobalPreset,
   PresetSwatch,
   resolvePresetId,
-  saveGlobalPreset,
   SURVEY_THEME_PRESETS,
   themeBackgroundStyle,
   themeCssVars,
@@ -89,6 +96,13 @@ import {
   verifyAccessCode,
 } from "./api";
 import { safeGet, safeSet } from "./storage";
+import {
+  clearResumeSnapshot,
+  readResumeSnapshot,
+  shouldOfferResume,
+  writeResumeSnapshot,
+  type ResumeSnapshot,
+} from "./resume-snapshot";
 import { AnswerSaveQueue } from "./save-queue";
 import { useStageHeader } from "./use-stage-header";
 import { collectQuestionImageUrls, preloadImages } from "./media-preload";
@@ -279,11 +293,35 @@ type Screen =
  * VN 打字机（P2）：逐字展现文本，点击立即补全；respect prefers-reduced-motion
  * （系统减少动效时直接整段显示）。仅在问卷主题显式开启 vn 时使用。
  */
-function Typewriter({ text, enabled, className }: { text: string; enabled: boolean; className?: string }) {
-  const [shown, setShown] = useState(() => (enabled ? 0 : text.length));
-  const doneRef = useRef(false);
+function Typewriter({
+  text,
+  enabled,
+  className,
+  instant = false,
+  onComplete,
+}: {
+  text: string;
+  enabled: boolean;
+  className?: string;
+  /** 快进模式：跳过逐字，直接整段显示。 */
+  instant?: boolean;
+  /** 整段显示完成（含点击补全/减少动效/instant）后触发一次；供自动播放接力。 */
+  onComplete?: () => void;
+}) {
+  const [shown, setShown] = useState(() => (enabled && !instant ? 0 : text.length));
+  const onCompleteRef = useRef(onComplete);
+  const firedRef = useRef(false);
   useEffect(() => {
-    if (!enabled) {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+  const fire = useCallback(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onCompleteRef.current?.();
+  }, []);
+  useEffect(() => {
+    firedRef.current = false;
+    if (!enabled || instant) {
       setShown(text.length);
       return;
     }
@@ -292,7 +330,6 @@ function Typewriter({ text, enabled, className }: { text: string; enabled: boole
       return;
     }
     setShown(0);
-    doneRef.current = false;
     const timer = window.setInterval(() => {
       setShown((current) => {
         if (current >= text.length) {
@@ -303,7 +340,11 @@ function Typewriter({ text, enabled, className }: { text: string; enabled: boole
       });
     }, 28);
     return () => window.clearInterval(timer);
-  }, [text, enabled]);
+  }, [text, enabled, instant]);
+  // 完成通知放在渲染后的 effect 里：不在 setState updater 里做副作用。
+  useEffect(() => {
+    if (enabled && shown >= text.length) fire();
+  }, [shown, text.length, enabled, fire]);
   const complete = () => setShown(text.length);
   const animating = enabled && shown < text.length;
   return (
@@ -598,6 +639,53 @@ function backSurveyPage(): void {
   window.location.href = "/s";
 }
 
+/** 目录里没有分类图标字段，按已知中文名/英文 slug 归到一组常用图标；
+ *  未知分类回落 Compass。图标只负责让卡片有视觉锚点，不承载信息。 */
+function categoryGlyph(category: { name: string; slug: string } | null | undefined) {
+  if (!category) return Compass;
+  const key = `${category.slug} ${category.name}`.toLowerCase();
+  if (/novel|story|fiction|剧情|小说|情景|互动/.test(key)) return BookOpen;
+  if (/profile|self|档案|个人|自我/.test(key)) return UserRound;
+  if (/social|opinion|社会|议题|观点|态度/.test(key)) return Users;
+  if (/emotion|feeling|情感|心理|情绪/.test(key)) return Sparkles;
+  if (/consume|product|消费|产品|品牌/.test(key)) return Star;
+  return Compass;
+}
+
+/** 阅读时长估算：一道题按 40 秒计，向上取整；0 题也显示 1 分钟。 */
+function estimateMinutes(questionCount: number): number {
+  return Math.max(1, Math.ceil((questionCount || 0) * (40 / 60)));
+}
+
+/** hero 右侧的纸张插画：纯 CSS 绘制（无图片资源），颜色全部走 survey token。 */
+function SurveyHallHeroArt() {
+  return (
+    <div className="survey-hall-art" aria-hidden="true">
+      <span className="survey-hall-art-glow" />
+      <span className="survey-hall-art-card survey-hall-art-card-back" />
+      <div className="survey-hall-art-card">
+        <span className="survey-hall-art-eyebrow">MAKE YOUR CHOICE</span>
+        {[72, 58, 64].map((width) => (
+          <span key={width} className="survey-hall-art-row">
+            <span className="survey-hall-art-check">
+              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+            </span>
+            <span className="survey-hall-art-line" style={{ width: `${width}%` }} />
+          </span>
+        ))}
+        <span className="survey-hall-art-cta">
+          开始填写
+          <ArrowRight className="h-3 w-3" />
+        </span>
+      </div>
+      <span className="survey-hall-art-badge">
+        <Sparkles className="h-5 w-5" />
+      </span>
+      <span className="survey-hall-art-dot" />
+    </div>
+  );
+}
+
 function SurveyListPage() {
   const [surveys, setSurveys] = useState<SurveyListItem[] | null>(null);
   const [communityGroupUrl, setCommunityGroupUrl] = useState<string | null>(null);
@@ -617,14 +705,12 @@ function SurveyListPage() {
   const [completedIds, setCompletedIds] = useState<number[]>(() => getCompletedSurveyIds());
   // 金币解锁状态：列表载荷是访客无关的（KV 缓存），解锁与否只能单独取。
   const [unlockedSurveyIds, setUnlockedSurveyIds] = useState<number[] | null>(null);
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
+  const themeState = usePublicTheme();
   const [retryKey, setRetryKey] = useState(0);
   // 内容分级（0080）：未确认年龄时目录隐藏 r18 问卷，给一个确认入口。
   const [ageVerified, setAgeVerified] = useState(true);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [confirmingAge, setConfirmingAge] = useState(false);
-  const resolvedPreset = useResolvedPreset(themePreset);
 
   // 切分类时同步 URL：这样「只看某类」的链接可以直接发出去，刷新也还在
   // 同一类里；用 replaceState 而不是 pushState，避免手机返回键要按十几次
@@ -637,14 +723,6 @@ function SurveyListPage() {
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   };
-
-  const selectHomeTheme = (id: string | null) => {
-    setThemePreset(id);
-    setThemePickerOpen(false);
-    saveGlobalPreset(id);
-  };
-
-  const homeTheme = resolvedPreset ? ({ preset: resolvedPreset } as Parameters<typeof themeCssVars>[0]) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -699,55 +777,49 @@ function SurveyListPage() {
   // a single flaky request left the visitor with a red line and no retry, and
   // no way to reach the challenge or plaza tabs without reloading the WebView.
   const shell = (content: React.ReactNode) => (
-    <div
-      className="survey-glow min-h-dvh pb-24"
-      data-theme={resolvedPreset ?? undefined}
-      style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
-    >
-      {content}
-      <BottomNav />
-    </div>
+    <ScreenShell themeState={themeState}>{content}</ScreenShell>
   );
   if (error) {
     return shell(
-      <div className="mx-auto max-w-xl px-5 py-16 text-center">
-        <p className="text-[var(--app-danger)]">{error}</p>
-        <button
-          type="button"
-          className="survey-card mt-5 w-full py-3 text-sm font-semibold text-[var(--survey-heading)]"
-          onClick={() => {
-            setError(null);
-            setRetryKey((key) => key + 1);
-          }}
-        >
-          重新加载
-        </button>
+      <div className="mx-auto w-full max-w-[1200px] px-5 py-12">
+        <div className="mx-auto max-w-xl">
+          <ErrorState
+            message={error}
+            retryLabel="重新加载"
+            onRetry={() => {
+              setError(null);
+              setRetryKey((key) => key + 1);
+            }}
+          />
+        </div>
       </div>,
     );
   }
   if (!surveys) {
     return shell(
-      <div className="mx-auto w-full max-w-[1200px] px-5 pt-5">
-        {/* 骨架屏复刻列表结构（入口卡 + 三张问卷卡），替代原来一行「加载中…」文字。 */}
-        <div className="survey-card mb-4 flex items-center gap-3 px-4 py-3" aria-hidden="true">
-          <div className="h-11 w-11 shrink-0 animate-pulse rounded-2xl bg-[var(--survey-primary-soft)]" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-3.5 w-1/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-            <div className="h-3 w-2/5 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-          </div>
+      <div className="mx-auto w-full max-w-[1200px] px-5 pt-8">
+        {/* 骨架屏复刻新列表结构：hero 文案块 + 三张带媒体区的等高卡。 */}
+        <div className="space-y-3" aria-hidden="true">
+          <div className="h-2.5 w-28 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+          <div className="h-9 w-2/3 max-w-md animate-pulse rounded-xl bg-[var(--survey-primary-soft)]" />
+          <div className="h-3 w-1/2 max-w-sm animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="正在加载问卷列表">
+        <div
+          className="mt-8 grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label="正在加载问卷列表"
+        >
           {[0, 1, 2].map((index) => (
-            <div key={index} className="survey-card p-4">
-              <div className="mb-3 h-3.5 w-3/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-              <div className="mb-2 h-3 w-1/2 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-              <div className="mb-4 flex gap-1.5">
-                <div className="h-6 w-14 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                <div className="h-6 w-14 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                <div className="h-9 w-24 animate-pulse rounded-xl bg-[var(--survey-primary-soft)]" />
+            <div key={index} className="survey-card flex h-full flex-col overflow-hidden">
+              <div className="h-32 animate-pulse bg-[var(--survey-primary-soft)]" />
+              <div className="flex flex-1 flex-col p-4">
+                <div className="mb-2 h-4 w-4/5 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                <div className="mb-1.5 h-3 w-full animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                <div className="mb-4 h-3 w-3/5 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                <div className="mt-auto flex items-center justify-between border-t border-[var(--survey-card-border)] pt-3">
+                  <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                  <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
+                </div>
               </div>
             </div>
           ))}
@@ -757,21 +829,21 @@ function SurveyListPage() {
   }
   if (surveys.length === 0) {
     return shell(
-      <div className="mx-auto max-w-xl px-5 py-16 text-center text-[var(--color-muted)]">
-        {debouncedQuery ? (
-          <>
-            没有找到与「{debouncedQuery}」相关的问卷
-            <button
-              type="button"
-              className="survey-card mt-5 w-full py-3 text-sm font-semibold text-[var(--survey-heading)]"
-              onClick={() => setQuery("")}
-            >
-              清空搜索，看全部问卷
-            </button>
-          </>
-        ) : (
-          "当前没有可填写的问卷，过段时间再来看看"
-        )}
+      <div className="mx-auto w-full max-w-[1200px] px-5 py-12">
+        <div className="mx-auto max-w-xl">
+          <EmptyState
+            icon={Compass}
+            title={debouncedQuery ? `没有找到与「${debouncedQuery}」相关的问卷` : "当前没有可填写的问卷"}
+            description={debouncedQuery ? "换个关键词，或者清空搜索看全部。" : "过段时间再来看看，新的问卷正在路上。"}
+            action={
+              debouncedQuery ? (
+                <button type="button" className="btn btn-primary btn-sm px-5" onClick={() => setQuery("")}>
+                  清空搜索，看全部问卷
+                </button>
+              ) : null
+            }
+          />
+        </div>
       </div>,
     );
   }
@@ -795,23 +867,15 @@ function SurveyListPage() {
     sortOrder === "hot"
       ? [...filteredSurveys].sort((a, b) => (b.responseCount ?? 0) - (a.responseCount ?? 0))
       : filteredSurveys;
+  const totalResponses = surveys.reduce((sum, survey) => sum + (survey.responseCount ?? 0), 0);
 
   return (
-    <div
-      className="survey-glow min-h-dvh pb-24"
-      data-theme={resolvedPreset ?? undefined}
-      style={{ ...themeCssVars(homeTheme), ...themeBackgroundStyle(homeTheme) }}
-    >
-      <header className="border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] px-5 pb-4 pt-7 backdrop-blur-md">
-        <div className="mx-auto w-full max-w-[1200px]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-[var(--color-ink)] lg:font-[family-name:var(--fx-font-serif)] lg:tracking-[0.04em]">
-                可填写问卷
-              </h1>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">选择一份问卷，开始你的回答</p>
-            </div>
-            <div className="mt-1 flex shrink-0 items-center gap-1.5">
+    <ScreenShell themeState={themeState}>
+      <header className="survey-hall-hero border-b border-[var(--survey-card-border)]">
+        <div className="mx-auto w-full max-w-[1200px] px-5 pb-9 pt-7 lg:pb-14 lg:pt-12">
+          <div className="flex items-center justify-between gap-3">
+            <p className="survey-hall-eyebrow">SURVEY HALL · 问卷大厅</p>
+            <div className="flex shrink-0 items-center gap-1.5">
               <a href="/auth" aria-label="邮箱登录" title="邮箱登录" className="survey-icon-btn">
                 <MailCheck className="h-4 w-4" />
               </a>
@@ -820,47 +884,112 @@ function SurveyListPage() {
                 aria-label="选择主题"
                 title="选择主题"
                 className="survey-icon-btn"
-                onClick={() => setThemePickerOpen(true)}
+                onClick={themeState.openPicker}
               >
                 <Palette className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <input
-            type="search"
-            className="input mt-4 w-full sm:max-w-md"
-            placeholder="搜索问卷…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <div className="mt-3 flex items-center gap-2">
-            {(
-              [
-                { id: "new", label: "最新" },
-                { id: "hot", label: "热门" },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setSortOrder(option.id)}
-                aria-pressed={sortOrder === option.id}
-                className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
-                  sortOrder === option.id
-                    ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                    : "text-[var(--color-muted)] hover:bg-[var(--survey-primary-soft)]"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(280px,0.88fr)] lg:items-center lg:gap-10">
+            <div className="min-w-0">
+              <h1 className="survey-hall-title text-[clamp(2rem,5.5vw,3.35rem)] font-bold leading-[1.14] text-[var(--color-ink)]">
+                每个回答，
+                <br />
+                <span className="text-[var(--survey-primary)]">都值得被听见。</span>
+              </h1>
+              <p className="mt-4 max-w-md text-sm leading-7 text-[var(--color-muted)]">
+                从一份问卷开始，聊聊你在意的事。慢慢挑，认真答——你的每个选择，都会被好好收下。
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-2.5">
+                <a href="#surveys" className="survey-hall-cta">
+                  开始探索
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+                <a href="/cert/" className="survey-hall-ghost">
+                  <BadgeCheck className="h-4 w-4" />
+                  做一张认证卡
+                </a>
+              </div>
+              <div className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-2 text-xs text-[var(--survey-muted)]">
+                <span className="survey-hall-stat">
+                  <strong>{surveys.length}</strong> 份问卷
+                </span>
+                <span className="survey-hall-stat">
+                  <strong>{visibleCategories.length}</strong> 个分类
+                </span>
+                <span className="survey-hall-stat">
+                  <strong>{totalResponses}</strong> 份回答
+                </span>
+              </div>
+            </div>
+            <SurveyHallHeroArt />
           </div>
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-[1200px] px-5 pb-12 pt-8">
+        <section id="surveys" className="scroll-mt-24" aria-labelledby="survey-hall-heading">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 id="survey-hall-heading" className="text-xl font-bold text-[var(--color-ink)]">
+                  发现问卷
+                </h2>
+                <span className="rounded-full bg-[var(--survey-primary-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--survey-primary)]">
+                  {orderedSurveys.length}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[var(--color-muted)]">挑一份合眼缘的，几分钟后带着新的答案回来。</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="relative block">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--survey-muted)]"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  className="input w-full pl-9 sm:w-60"
+                  placeholder="搜索问卷…"
+                  aria-label="搜索问卷"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              <div
+                className="flex shrink-0 items-center rounded-full border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-1"
+                role="group"
+                aria-label="排序方式"
+              >
+                {(
+                  [
+                    { id: "new", label: "最新" },
+                    { id: "hot", label: "热门" },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSortOrder(option.id)}
+                    aria-pressed={sortOrder === option.id}
+                    className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+                      sortOrder === option.id
+                        ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                        : "text-[var(--color-muted)] hover:text-[var(--survey-heading)]"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {visibleCategories.length > 1 ? (
             /* 分类筛选条（0087）。横向滚动而不是折行：8 个抽屉折成三行会把
-               搜索框和列表往下推掉一整屏，而手机上「横向轻扫」是本能手势。
+               列表往下推掉一整屏，而手机上「横向轻扫」是本能手势。
                -mx-5/px-5 让它贴着屏幕边缘出血，滚动时不会在两侧留一条硬边。 */
             <div
-              className="-mx-5 mt-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="-mx-5 mt-5 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               role="tablist"
               aria-label="问卷分类"
             >
@@ -903,182 +1032,191 @@ function SurveyListPage() {
               </div>
             </div>
           ) : null}
-          {communityGroupUrl ? (
-            <a
-              href={communityGroupUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
-            >
-              加入 Telegram 群聊，和大家交流
-              <ArrowRight className="h-4 w-4" />
-            </a>
+
+          {communityGroupUrl || submissionBotUrl ? (
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+              {communityGroupUrl ? (
+                <a href={communityGroupUrl} target="_blank" rel="noreferrer" className="survey-hall-link">
+                  <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                  加入 Telegram 群聊
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              ) : null}
+              {submissionBotUrl ? (
+                <a href={submissionBotUrl} target="_blank" rel="noreferrer" className="survey-hall-link">
+                  <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                  {submissionEntryText(submissionBotUrl)}
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              ) : null}
+            </div>
           ) : null}
-          {submissionBotUrl ? (
-            <a
-              href={submissionBotUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
-            >
-              <Send className="h-3.5 w-3.5" />
-              {submissionEntryText(submissionBotUrl)}
-              <ArrowRight className="h-4 w-4" />
-            </a>
-          ) : null}
-        </div>
-      </header>
-      {!ageVerified && hiddenCount > 0 ? (
-        <div className="mx-auto w-full max-w-[1200px] px-5 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-            <p className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
-              <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-              目录中还有 <span className="font-bold">{hiddenCount}</span> 份 18+ 问卷未显示
-            </p>
-            <button
-              type="button"
-              className="btn btn-primary px-5"
-              disabled={confirmingAge}
-              onClick={async () => {
-                if (confirmingAge) return;
-                setConfirmingAge(true);
-                try {
-                  await confirmAgeVerification();
-                  setRetryKey((key) => key + 1);
-                } catch {
-                  // 失败回位，可重试。
-                } finally {
-                  setConfirmingAge(false);
-                }
-              }}
-            >
-              {confirmingAge ? "确认中…" : "我已满 18 岁，查看"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-      <main className="mx-auto w-full max-w-[1200px] px-5 pt-5">
-        {/* 认证卡生成器入口卡：它和问卷、挑战、广场是同一个产品的功能，不该
-            只靠「自己记得 /cert」才进得去。卡片完全复用 .survey-card（与下面的
-            问卷卡同一套边框、圆角、阴影、悬停位移），所以一眼就是同体系的一块，
-            视觉权重低于问卷列表、高于页脚文字链。 */}
-        <a
-          href="/cert/"
-          className="survey-card mb-4 flex items-center gap-3 px-4 py-3 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
-        >
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-            <BadgeCheck className="h-5 w-5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-bold text-[var(--survey-heading)]">认证卡生成器</span>
-            <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">
-              挑主题、改字段、传张证件照，做一张趣味认证卡
-            </span>
-          </span>
-          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-        </a>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orderedSurveys.map((survey) => {
-            const isClosed = Boolean(survey.closedAt && new Date(survey.closedAt).getTime() < Date.now());
-            const answered = completedIds.includes(survey.id);
-            // 金币门：只有启用了金币解锁、且当前身份尚未解锁时才提示。
-            const coinPrice = survey.coinUnlock?.price ?? null;
-            const coinLocked = coinPrice !== null && !(unlockedSurveyIds ?? []).includes(survey.id);
-            return (
-              <a
-                key={survey.id}
-                href={`/s/${survey.id}`}
-                className="survey-card block p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
+
+          {!ageVerified && hiddenCount > 0 ? (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+              <p className="flex items-center gap-2 text-sm text-[var(--color-ink)]">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+                目录中还有 <span className="font-bold">{hiddenCount}</span> 份 18+ 问卷未显示
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary px-5"
+                disabled={confirmingAge}
+                onClick={async () => {
+                  if (confirmingAge) return;
+                  setConfirmingAge(true);
+                  try {
+                    await confirmAgeVerification();
+                    setRetryKey((key) => key + 1);
+                  } catch {
+                    // 失败回位，可重试。
+                  } finally {
+                    setConfirmingAge(false);
+                  }
+                }}
               >
-                {survey.coverUrl ? (
-                  <img
-                    src={survey.coverUrl}
-                    alt=""
-                    className="mb-3 aspect-[16/7] w-full rounded-xl object-cover"
-                    loading="lazy"
-                    onError={(event) => {
-                      // 封面失效时直接隐藏，避免公开页出现破图
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                ) : null}
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-[17px] font-semibold leading-snug text-[var(--color-ink)]">{survey.title}</h2>
-                  {survey.contentRating === "r18" ? (
-                    <span className="badge shrink-0 bg-red-600 text-white">18+</span>
-                  ) : null}
-                  {survey.accessCodeRequired ? (
-                    <span className="badge badge-amber shrink-0">
-                      <Lock className="h-3 w-3" />
-                      需密码
+                {confirmingAge ? "确认中…" : "我已满 18 岁，查看"}
+              </button>
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {orderedSurveys.map((survey) => {
+              const isClosed = Boolean(survey.closedAt && new Date(survey.closedAt).getTime() < Date.now());
+              const answered = completedIds.includes(survey.id);
+              // 金币门：只有启用了金币解锁、且当前身份尚未解锁时才提示。
+              const coinPrice = survey.coinUnlock?.price ?? null;
+              const coinLocked = coinPrice !== null && !(unlockedSurveyIds ?? []).includes(survey.id);
+              const Glyph = categoryGlyph(survey.category);
+              const actionLabel = isClosed
+                ? "已截止"
+                : coinLocked
+                  ? coinPrice > 0
+                    ? "解锁填写"
+                    : "免费领取"
+                  : survey.accessCodeRequired
+                    ? "输入密码"
+                    : answered
+                      ? "再答一次"
+                      : "开始填写";
+              return (
+                <a
+                  key={survey.id}
+                  href={`/s/${survey.id}`}
+                  className="survey-card group flex h-full flex-col overflow-hidden transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-1 hover:shadow-[var(--fx-glow-md)]"
+                >
+                  <div className="survey-card-media">
+                    {survey.coverUrl ? (
+                      <img
+                        src={survey.coverUrl}
+                        alt=""
+                        loading="lazy"
+                        onError={(event) => {
+                          // 封面失效时降级成图标底色，避免公开页出现破图。
+                          event.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : null}
+                    {!survey.coverUrl ? (
+                      <span className="survey-card-media-fallback">
+                        <Glyph className="h-9 w-9" strokeWidth={1.5} aria-hidden="true" />
+                      </span>
+                    ) : null}
+                    {survey.category ? (
+                      <span className="survey-media-chip survey-media-chip-category">{survey.category.name}</span>
+                    ) : null}
+                    <span className="absolute right-3 top-3 flex flex-wrap justify-end gap-1.5">
+                      {survey.contentRating === "r18" ? (
+                        <span className="survey-media-chip survey-media-chip-danger">18+</span>
+                      ) : null}
+                      {survey.accessCodeRequired ? (
+                        <span className="survey-media-chip">
+                          <Lock className="h-3 w-3" aria-hidden="true" />
+                          密码
+                        </span>
+                      ) : null}
+                      {coinPrice !== null ? (
+                        <span className={`survey-media-chip ${coinLocked ? "" : "survey-media-chip-success"}`}>
+                          <Coins className="h-3 w-3" aria-hidden="true" />
+                          {coinPrice > 0 ? `${coinPrice} 金币` : "限时免费"}
+                        </span>
+                      ) : null}
                     </span>
-                  ) : null}
-                  {coinPrice !== null ? (
-                    <span className={`badge shrink-0 ${coinLocked ? "badge-amber" : "badge-green"}`}>
-                      <Coins className="h-3 w-3" />
-                      {coinPrice > 0 ? `${coinPrice} 金币` : "限时免费"}
-                    </span>
-                  ) : null}
-                </div>
-                {survey.description ? (
-                  <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted)]">{survey.description}</p>
-                ) : null}
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                  {survey.category ? <span className="chip text-xs">{survey.category.name}</span> : null}
-                  <span className="chip text-xs">{survey.questionCount} 道题</span>
-                  {survey.anonymous ? (
-                    <span className="chip inline-flex items-center gap-1 text-xs">
-                      <EyeOff className="h-3 w-3" aria-hidden="true" />
-                      匿名
-                    </span>
-                  ) : null}
-                  {isClosed ? <span className="chip text-xs text-[var(--color-muted)]">已截止</span> : null}
-                  {coinPrice !== null && !coinLocked ? (
-                    <span className="chip text-xs text-[var(--color-muted)]">已解锁</span>
-                  ) : null}
-                  {answered ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--survey-primary)]">
-                      <Check className="h-3 w-3" />
-                      已填过
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-[var(--color-muted)]">
-                    {(survey.responseCount ?? 0) > 0 ? `${survey.responseCount} 份答卷` : "期待第一份回答"}
-                  </span>
-                  <span
-                    className="inline-flex items-center gap-1 rounded-xl px-3.5 py-2 text-sm font-medium shadow-md transition-transform"
-                    style={{
-                      backgroundColor: isClosed ? "var(--color-muted)" : "var(--survey-primary)",
-                      color: isClosed ? "var(--survey-card-bg)" : "var(--survey-primary-content)",
-                    }}
-                  >
-                    {isClosed
-                      ? "已截止"
-                      : coinLocked
-                        ? coinPrice > 0
-                          ? "解锁填写"
-                          : "免费领取"
-                        : survey.accessCodeRequired
-                          ? "输入密码"
-                          : "开始填写"}
-                    <ArrowRight className="h-4 w-4" />
-                  </span>
-                </div>
-              </a>
-            );
-          })}
-        </div>
+                  </div>
+                  <div className="flex flex-1 flex-col p-4">
+                    <h3 className="line-clamp-2 text-[17px] font-semibold leading-snug text-[var(--color-ink)]">
+                      {survey.title}
+                    </h3>
+                    {survey.description ? (
+                      <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-[var(--color-muted)]">
+                        {survey.description}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--survey-muted)]">
+                      <span className="inline-flex items-center gap-1">
+                        <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                        {survey.questionCount} 题
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" aria-hidden="true" />约 {estimateMinutes(survey.questionCount)}{" "}
+                        分钟
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                        {(survey.responseCount ?? 0) > 0 ? `${survey.responseCount} 份回答` : "等你第一份"}
+                      </span>
+                    </div>
+                    <div className="mt-auto pt-4">
+                      <div className="flex items-center justify-between gap-2 border-t border-[var(--survey-card-border)] pt-3">
+                        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-[var(--survey-muted)]">
+                          {answered ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 shrink-0 text-[var(--survey-primary)]" aria-hidden="true" />
+                              已填过
+                            </>
+                          ) : survey.anonymous ? (
+                            <>
+                              <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              匿名填写
+                            </>
+                          ) : isClosed ? (
+                            "已截止"
+                          ) : (
+                            "随时可以开始"
+                          )}
+                        </span>
+                        <span className={`survey-hall-card-action ${isClosed ? "is-disabled" : ""}`} aria-hidden="true">
+                          {actionLabel}
+                          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-[var(--fx-dur-fast)] group-hover:translate-x-0.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+
+          {/* 认证卡生成器：与问卷同属一个产品，但不占主列表的视觉权重。
+              放在列表之后做一条轻量延伸入口，hero 里另有一个主 CTA。 */}
+          <a href="/cert/" className="survey-hall-strip group mt-4">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+              <BadgeCheck className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-[var(--survey-heading)]">还想玩点别的？做一张认证卡</span>
+              <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">
+                挑主题、改字段、传张证件照，几分钟生成一张趣味认证卡
+              </span>
+            </span>
+            <ArrowRight
+              className="h-4 w-4 shrink-0 text-[var(--survey-muted)] transition-transform duration-[var(--fx-dur-fast)] group-hover:translate-x-0.5"
+              aria-hidden="true"
+            />
+          </a>
+        </section>
       </main>
-      <ThemePickerSheet
-        open={themePickerOpen}
-        onClose={() => setThemePickerOpen(false)}
-        selected={themePreset}
-        onSelect={selectHomeTheme}
-      />
-      <BottomNav />
-    </div>
+    </ScreenShell>
   );
 }
 
@@ -2214,6 +2352,13 @@ export function SurveyApp() {
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // VN 播放器（2026-11）：快进 / 自动播放只作用于 note 节点；默认关闭。
+  const [skipMode, setSkipMode] = useState(false);
+  const [autoMode, setAutoMode] = useState(false);
+  const [typingDoneIndex, setTypingDoneIndex] = useState<number | null>(null);
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  // 本地单槽自动续玩：只提示「当前题未提交的输入」，不改变服务端进度。
+  const [resumeCandidate, setResumeCandidate] = useState<ResumeSnapshot | null>(null);
   const [publishToGallery, setPublishToGallery] = useState(false);
   // 公开发布的三项选择（是否公开 / 是否匿名 / 想说的话）。只有弹窗能把它置为
   // 「公开」——也就是说"要发布"这件事必然经过一次明确的三选一，而不是复选框
@@ -2543,6 +2688,10 @@ export function SurveyApp() {
         }
         setBackStack(replayedStack);
         setIndex(startIndex >= 0 ? startIndex : 0);
+        setSkipMode(false);
+        setAutoMode(false);
+        setTypingDoneIndex(null);
+        setBacklogOpen(false);
         setScreen({
           kind: "filling",
           survey,
@@ -2550,6 +2699,9 @@ export function SurveyApp() {
           currentQuestionId: started.currentQuestionId,
           answers: resumeAnswers,
         });
+        // 单槽自动续玩：只恢复「最后一题未提交的输入」，不改服务端答案。
+        const snapshot = readResumeSnapshot(survey.id);
+        setResumeCandidate(shouldOfferResume(snapshot, started.responseId, startIndex) ? snapshot : null);
       } catch (err) {
         if (isCancelled()) return;
         // 注册墙（产品决策）：未登录开卷 → 登录门。

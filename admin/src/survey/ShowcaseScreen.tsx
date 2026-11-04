@@ -5,7 +5,7 @@ import { ShowcaseSheet } from "./ShowcaseSheet";
 import { closeWebApp } from "./navigation";
 import { vibrateLight } from "./haptics";
 import { fetchShowcase, type ShowcasePerson } from "./showcase-api";
-import { loadGlobalPreset, saveGlobalPreset, ThemePickerSheet, themeCssVars, useResolvedPreset } from "./theme-ui";
+import { loadGlobalPreset, saveGlobalPreset, ThemePickerSheet, themeCssVars } from "./theme-ui";
 
 /**
  * Showcase (展示区) — the immersive person gallery.
@@ -115,8 +115,9 @@ export function ShowcaseScreen() {
   const loadingRef = useRef(false);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  const resolvedPreset = useResolvedPreset(themePreset);
-  const themeVars = useMemo(() => themeCssVars(resolvedPreset ? { preset: resolvedPreset } : null), [resolvedPreset]);
+  // 展示区是固定深色舞台：无论用户全局选了什么主题，舞台与底部导航都用
+  // 暗色 token，避免「light 预设下白底导航压在黑场上」的割裂。
+  const themeVars = useMemo(() => themeCssVars({ preset: "dark" }), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -323,8 +324,8 @@ export function ShowcaseScreen() {
   const total = people?.length ?? 0;
 
   return (
-    <div className="showcase-root" data-theme={resolvedPreset ?? undefined} style={rootStyle}>
-      <div className="showcase-stage">
+    <div className="showcase-root" data-theme="dark" style={rootStyle}>
+      <main className="showcase-stage" aria-label="展示区">
         {people && people.length > 0 ? (
           <div className="showcase-backdrop" aria-hidden="true">
             {people.map((person, position) => {
@@ -465,7 +466,7 @@ export function ShowcaseScreen() {
             </div>
           </>
         )}
-      </div>
+      </main>
 
       <BottomNav />
 

@@ -7,7 +7,6 @@ import {
   EyeOff,
   ImagePlus,
   MessageCircle,
-  Palette,
   Pencil,
   PencilLine,
   Send,
@@ -17,16 +16,9 @@ import {
   Users,
   X,
 } from "lucide-react";
-import {
-  loadGlobalPreset,
-  saveGlobalPreset,
-  ThemePickerSheet,
-  themeBackgroundStyle,
-  themeCssVars,
-  useResolvedPreset,
-} from "./theme-ui";
-import { BottomNav } from "./BottomNav";
 import { PageHeader } from "./PageHeader";
+import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
+import { EmptyState, EntryRow, ErrorState, LoadingState } from "./PublicPrimitives";
 import { closeWebApp } from "./navigation";
 import {
   createPlazaPost,
@@ -131,7 +123,7 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
   const personaLabel = payload?.persona === "male" ? "公" : "母";
 
   return (
-    <article className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+    <article className="survey-card p-4">
       {payload ? (
         <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-primary-soft)] px-2.5 py-0.5 text-[11px] font-bold text-[var(--survey-primary)]">
@@ -486,9 +478,7 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [userThemePreset] = useState<string | null>(() => loadGlobalPreset());
-  const resolvedPreset = useResolvedPreset(userThemePreset);
-  const theme = resolvedPreset ? { preset: resolvedPreset } : null;
+  const themeState = usePublicTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -515,12 +505,8 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
     profile && headingField ? profile.fields.filter((field, index) => index !== headingIndex) : (profile?.fields ?? []);
 
   return (
-    <div
-      className="survey-glow min-h-dvh pb-24"
-      data-theme={theme?.preset}
-      style={{ ...themeCssVars(theme), ...themeBackgroundStyle(theme) }}
-    >
-      <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md">
+    <ScreenShell themeState={themeState}>
+      <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md lg:top-14">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
           <a href="/plaza" className="flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
             <ArrowLeft className="h-4 w-4" />
@@ -591,8 +577,7 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
         )}
       </main>
       {lightboxUrl ? <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} /> : null}
-      <BottomNav />
-    </div>
+    </ScreenShell>
   );
 }
 
@@ -605,8 +590,7 @@ export function PlazaScreen() {
     new URLSearchParams(window.location.search).get("tab") === "treehole" ? "treehole" : "profiles",
   );
   const [reloadKey, setReloadKey] = useState(0);
-  const [userThemePreset, setUserThemePreset] = useState<string | null>(() => loadGlobalPreset());
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const themeState = usePublicTheme();
   const [composerOpen, setComposerOpen] = useState(false);
   const [content, setContent] = useState("");
   const [anonymous, setAnonymous] = useState(true);
@@ -635,16 +619,6 @@ export function PlazaScreen() {
       cancelled = true;
     };
   }, [tab, reloadKey]);
-
-  const selectTheme = (presetId: string | null) => {
-    setUserThemePreset(presetId);
-    saveGlobalPreset(presetId);
-  };
-
-  const resolvedPreset = useResolvedPreset(userThemePreset);
-  const theme = resolvedPreset ? { preset: resolvedPreset } : null;
-  const vars = themeCssVars(theme);
-  const backgroundStyle = themeBackgroundStyle(theme);
 
   const openComposer = () => {
     setComposerMessage(null);
@@ -714,22 +688,15 @@ export function PlazaScreen() {
   const submissionTarget = submissionTargetFromUrl(profiles.submissionBotUrl);
 
   return (
-    <div className="survey-glow min-h-dvh pb-24" data-theme={theme?.preset} style={{ ...vars, ...backgroundStyle }}>
+    <ScreenShell themeState={themeState}>
       <div className="relative">
         <PageHeader
           title="广场"
           subtitle="个人资料 · 树洞心里话"
+          wide={false}
           actions={
             <>
-              <button
-                type="button"
-                aria-label="选择主题"
-                title="选择主题"
-                className="survey-icon-btn"
-                onClick={() => setThemePickerOpen(true)}
-              >
-                <Palette className="h-4 w-4" />
-              </button>
+              <ThemeAction themeState={themeState} />
               <button
                 type="button"
                 aria-label="关闭"
@@ -798,44 +765,26 @@ export function PlazaScreen() {
             </div>
           ) : null}
           {profiles.communityGroupUrl ? (
-            <a
-              href={profiles.communityGroupUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mb-3 flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-                <Users className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">加入 Telegram 群聊</span>
-                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                  认识更多参与者，交流个人资料卡和问卷内容
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-            </a>
+            <div className="mb-3">
+              <EntryRow
+                href={profiles.communityGroupUrl}
+                external
+                icon={Users}
+                title="加入 Telegram 群聊"
+                subtitle="认识更多参与者，交流个人资料卡和问卷内容"
+              />
+            </div>
           ) : null}
           {profiles.submissionBotUrl ? (
-            <a
-              href={profiles.submissionBotUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mb-3 flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-                <Send className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                  {submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
-                </span>
-                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                  通过 {submissionTarget?.label ?? ""} 投稿你的内容
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-            </a>
+            <div className="mb-3">
+              <EntryRow
+                href={profiles.submissionBotUrl}
+                external
+                icon={Send}
+                title={submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
+                subtitle={`通过 ${submissionTarget?.label ?? ""} 投稿你的内容`}
+              />
+            </div>
           ) : null}
           {tab === "profiles" && profiles.surveyId !== null ? (
             <a
@@ -847,46 +796,21 @@ export function PlazaScreen() {
             </a>
           ) : null}
           {activeFeed.error ? (
-            <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 text-center text-sm text-[var(--survey-body)]">
-              {activeFeed.error}
-              <button
-                type="button"
-                onClick={() => setReloadKey((key) => key + 1)}
-                className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-[13px] font-semibold text-[var(--survey-primary-content)]"
-              >
-                重新加载
-              </button>
-            </div>
+            <ErrorState message={activeFeed.error} onRetry={() => setReloadKey((key) => key + 1)} />
           ) : activeFeed.loading && activeFeed.items.length === 0 ? (
-            /* 首屏骨架：复刻信息流卡面（头像行 + 两行文字），替换原来的整块空白。 */
-            <div className="space-y-3" aria-busy="true" aria-label="正在加载内容">
-              {[0, 1].map((index) => (
-                <div
-                  key={index}
-                  className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-10 w-10 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                    <div className="h-3.5 w-1/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                  </div>
-                  <div className="mt-3 h-3 w-full animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                  <div className="mt-2 h-3 w-3/4 animate-pulse rounded-full bg-[var(--survey-primary-soft)]" />
-                </div>
-              ))}
-            </div>
+            <LoadingState label="正在加载内容" rows={2} />
           ) : !activeFeed.loading && activeFeed.items.length === 0 ? (
-            <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-8 text-center">
-              <p className="text-sm font-medium text-[var(--survey-heading)]">
-                {tab === "treehole" ? "树洞还没有内容" : "个人画廊还没有内容"}
-              </p>
-              <p className="mt-1.5 text-xs text-[var(--survey-muted)]">
-                {tab === "treehole"
+            <EmptyState
+              icon={tab === "treehole" ? TreePine : Users}
+              title={tab === "treehole" ? "树洞还没有内容" : "个人画廊还没有内容"}
+              description={
+                tab === "treehole"
                   ? "点击右下角按钮说出第一句心里话（可以匿名）。"
                   : profiles.surveyId
                     ? "填写一份个人介绍问卷，提交时选择「发布到个人画廊」，就会出现在这里。"
-                    : "还没有人发布个人资料，先去逛逛树洞吧。"}
-              </p>
-            </div>
+                    : "还没有人发布个人资料，先去逛逛树洞吧。"
+              }
+            />
           ) : tab === "treehole" ? (
             <div className="flex flex-col gap-3">
               {posts.items.map((post) => (
@@ -1023,7 +947,9 @@ export function PlazaScreen() {
                 </div>
                 <span className="text-[11px] text-[var(--survey-muted)]">{content.trim().length}/500</span>
               </div>
-              {composerMessage ? <p className="mt-2 text-xs text-red-500">{composerMessage}</p> : null}
+              {composerMessage ? (
+                <p className="mt-2 text-xs text-[var(--app-danger)]">{composerMessage}</p>
+              ) : null}
               <button
                 type="button"
                 disabled={submitting || imageBusy || (!imageAssetId && content.trim().length < 5)}
@@ -1036,14 +962,7 @@ export function PlazaScreen() {
           </div>
         ) : null}
 
-        <ThemePickerSheet
-          open={themePickerOpen}
-          onClose={() => setThemePickerOpen(false)}
-          selected={userThemePreset}
-          onSelect={selectTheme}
-        />
       </div>
-      <BottomNav />
-    </div>
+    </ScreenShell>
   );
 }

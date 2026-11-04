@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Bell, Check, ChevronRight, Coins, Lock, RefreshCw, Users } from "lucide-react";
+import { BookOpen, Bell, Check, ChevronRight, Coins, Lock, Users } from "lucide-react";
+import { PageHeader } from "./PageHeader";
+import { ScreenShell, usePublicTheme, type PublicThemeState } from "./ScreenShell";
+import { EmptyState, ErrorState, LoadingState, SectionHeader } from "./PublicPrimitives";
 import {
   fetchNotifications,
   fetchSeriesDetail,
@@ -30,6 +33,7 @@ export function SeriesScreen() {
   const [detail, setDetail] = useState<SeriesDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const themeState = usePublicTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -51,46 +55,55 @@ export function SeriesScreen() {
 
   if (error) {
     return (
-      <div className="min-h-dvh bg-[var(--survey-bg,#f7f8fb)] px-5 py-16 text-center">
-        <p className="text-sm text-[var(--app-danger)]">{error}</p>
-        <button type="button" className="btn btn-primary mt-4 px-6" onClick={() => setReloadKey((key) => key + 1)}>
-          <RefreshCw className="h-4 w-4" />
-          重试
-        </button>
-      </div>
+      <ScreenShell themeState={themeState}>
+        <div className="mx-auto max-w-xl px-5 py-12 lg:max-w-3xl">
+          <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+        </div>
+      </ScreenShell>
     );
   }
 
   if (slug) {
-    return <SeriesDetailScreen detail={detail} onReload={() => setReloadKey((key) => key + 1)} />;
+    return (
+      <SeriesDetailScreen
+        detail={detail}
+        themeState={themeState}
+        onReload={() => setReloadKey((key) => key + 1)}
+      />
+    );
   }
-  return <SeriesShelfScreen seriesList={seriesList} />;
+  return <SeriesShelfScreen seriesList={seriesList} themeState={themeState} />;
 }
 
-function SeriesShelfScreen({ seriesList }: { seriesList: SeriesListItemDto[] | null }) {
+function SeriesShelfScreen({
+  seriesList,
+  themeState,
+}: {
+  seriesList: SeriesListItemDto[] | null;
+  themeState: PublicThemeState;
+}) {
   return (
-    <div className="min-h-dvh bg-[var(--survey-bg,#f7f8fb)]">
-      <header className="mx-auto flex max-w-xl items-center justify-between px-5 pt-6">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-[var(--color-ink)]">
-          <BookOpen className="h-5 w-5 text-[var(--survey-primary)]" />
-          系列书架
-        </h1>
-        <a href="/me" className="text-xs font-semibold text-[var(--survey-primary)]">
-          我的 →
-        </a>
-      </header>
-      <main className="mx-auto max-w-xl px-5 pb-16 pt-4">
+    <ScreenShell themeState={themeState}>
+      <PageHeader
+        title="系列书架"
+        subtitle="追一部连载，按章节慢慢读"
+        titleIcon={<BookOpen className="h-4 w-4" />}
+        backHref="/me"
+        backLabel="我的"
+        wide={false}
+      />
+      <main className="mx-auto max-w-xl px-5 pb-16 pt-4 lg:max-w-3xl">
         {seriesList === null ? (
-          <p className="py-16 text-center text-sm text-[var(--color-muted)]">加载中…</p>
+          <LoadingState label="正在加载系列" rows={3} />
         ) : seriesList.length === 0 ? (
-          <p className="py-16 text-center text-sm text-[var(--color-muted)]">还没有连载作品</p>
+          <EmptyState icon={BookOpen} title="还没有连载作品" description="等第一部连载开坑，这里就会出现。" />
         ) : (
           <ul className="flex flex-col gap-3">
             {seriesList.map((series) => (
               <li key={series.id}>
                 <a
                   href={`/series/${series.slug}`}
-                  className="block rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg,#fff)] p-4 transition hover:shadow-md"
+                  className="survey-card block p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -115,11 +128,19 @@ function SeriesShelfScreen({ seriesList }: { seriesList: SeriesListItemDto[] | n
           </ul>
         )}
       </main>
-    </div>
+    </ScreenShell>
   );
 }
 
-function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | null; onReload: () => void }) {
+function SeriesDetailScreen({
+  detail,
+  themeState,
+  onReload,
+}: {
+  detail: SeriesDetailDto | null;
+  themeState: PublicThemeState;
+  onReload: () => void;
+}) {
   const [followBusy, setFollowBusy] = useState(false);
   const follow = useCallback(async () => {
     if (!detail || followBusy) return;
@@ -136,22 +157,27 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
 
   if (!detail) {
     return (
-      <div className="min-h-dvh bg-[var(--survey-bg,#f7f8fb)] px-5 py-16 text-center text-sm text-[var(--color-muted)]">
-        加载中…
-      </div>
+      <ScreenShell themeState={themeState}>
+        <div className="mx-auto max-w-xl px-5 py-12 lg:max-w-3xl">
+          <LoadingState label="正在加载连载详情" rows={4} />
+        </div>
+      </ScreenShell>
     );
   }
 
   const nextChapter = detail.chapters.find((chapter) => chapter.surveyId === detail.nextChapterId);
   return (
-    <div className="min-h-dvh bg-[var(--survey-bg,#f7f8fb)]">
-      <header className="mx-auto max-w-xl px-5 pt-6">
-        <a href="/series" className="text-xs font-semibold text-[var(--survey-primary)]">
-          ← 书架
-        </a>
-        <h1 className="mt-2 text-xl font-bold text-[var(--color-ink)]">{detail.title}</h1>
-        {detail.description ? <p className="mt-1.5 text-sm text-[var(--color-muted)]">{detail.description}</p> : null}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+    <ScreenShell themeState={themeState}>
+      <PageHeader
+        title={detail.title}
+        subtitle={detail.description ?? undefined}
+        titleIcon={<BookOpen className="h-4 w-4" />}
+        backHref="/series"
+        backLabel="书架"
+        wide={false}
+      />
+      <main className="mx-auto max-w-xl px-5 pb-16 pt-4 lg:max-w-3xl">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-primary px-5" disabled={followBusy} onClick={follow}>
             <Bell className="h-4 w-4" />
             {detail.following ? "已关注追更" : "关注追更"}
@@ -166,34 +192,32 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
             </a>
           ) : null}
         </div>
-      </header>
-      <main className="mx-auto max-w-xl px-5 pb-16 pt-5">
         <ol className="flex flex-col gap-2">
           {detail.chapters.map((chapter, index) => (
             <li key={chapter.surveyId}>
-              <div
-                role={chapter.locked ? undefined : "link"}
-                className={`flex items-center gap-3 rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg,#fff)] px-4 py-3 ${
-                  chapter.locked ? "opacity-60" : "cursor-pointer transition hover:shadow-md"
+              <a
+                href={chapter.locked ? undefined : `/s/${chapter.surveyId}`}
+                aria-disabled={chapter.locked || undefined}
+                className={`survey-card flex items-center gap-3 px-4 py-3 ${
+                  chapter.locked
+                    ? "pointer-events-none opacity-60"
+                    : "transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
                 }`}
-                onClick={() => {
-                  if (!chapter.locked) window.location.href = `/s/${chapter.surveyId}`;
-                }}
               >
                 <span
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
                     chapter.completed
                       ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                      : "bg-black/5 text-[var(--color-muted)]"
+                      : "bg-[var(--survey-bg)] text-[var(--survey-muted)]"
                   }`}
                 >
                   {chapter.completed ? <Check className="h-4 w-4" /> : chapter.order || index + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold text-[var(--color-ink)]">
+                  <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
                     {chapter.title}
                   </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-muted)]">
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--survey-muted)]">
                     {chapter.completed ? "已读完" : chapter.locked ? "需解锁" : "未开始"}
                     {chapter.coinPrice !== null && chapter.coinPrice > 0 ? (
                       <span className="inline-flex items-center gap-0.5">
@@ -202,16 +226,18 @@ function SeriesDetailScreen({ detail, onReload }: { detail: SeriesDetailDto | nu
                         {chapter.coinPrice}
                       </span>
                     ) : null}
-                    {chapter.contentRating === "r18" ? <span className="font-semibold text-red-600">18+</span> : null}
+                    {chapter.contentRating === "r18" ? (
+                      <span className="font-semibold text-[var(--app-danger)]">18+</span>
+                    ) : null}
                   </span>
                 </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
-              </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+              </a>
             </li>
           ))}
         </ol>
       </main>
-    </div>
+    </ScreenShell>
   );
 }
 
@@ -239,14 +265,18 @@ export function NotificationCenter() {
 
   if (items === null) return null;
   return (
-    <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--survey-muted)]">
-        <Bell className="h-3.5 w-3.5" />
-        通知
-        {unread > 0 ? (
-          <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{unread}</span>
-        ) : null}
-      </p>
+    <section className="survey-card p-4">
+      <SectionHeader
+        icon={Bell}
+        title="通知"
+        action={
+          unread > 0 ? (
+            <span className="rounded-full bg-[var(--app-danger)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+              {unread}
+            </span>
+          ) : undefined
+        }
+      />
       {items.length === 0 ? (
         <p className="mt-2 text-xs text-[var(--survey-muted)]">还没有通知。关注系列后，更新会出现在这里。</p>
       ) : (
