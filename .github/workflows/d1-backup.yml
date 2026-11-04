@@ -9,6 +9,10 @@ name: d1-backup
 # 与 deploy.yml 分开一个文件:备份的密钥(CLOUDFLARE_API_TOKEN + R2 凭据)
 # 与部署共享同一 token 但权限面不同,独立文件让失败/成功状态在 Actions
 # 列表里一眼可辨,坏了不会把部署也标红。
+#
+# 2026-11-04 事故:R2_BACKUP_BUCKET 这个 secret 从建工作流起就没配过,
+# 对象路径被拼成 /d1/... 被 wrangler 拒绝,备份连续红了一个月才被发现。
+# 现在:守卫步骤对桶名归一化、缺失即人话报错;桶不存在时幂等自动创建。
 
 on:
   schedule:
@@ -30,6 +34,19 @@ jobs:
       - name: Checkout (for wrangler config)
         uses: actions/checkout@v5
 
+      - name: Guard R2_BACKUP_BUCKET
+        env:
+          RAW_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+        run: |
+          # 去空白与首尾斜杠;缺失就用人话报错,不再把形状错误丢给 wrangler。
+          BUCKET="$(printf '%s' "$RAW_BUCKET" | tr -d '[:space:]' | sed -e 's|^/*||' -e 's|/*$||')"
+          if [ -z "$BUCKET" ]; then
+            echo "::error::R2_BACKUP_BUCKET 未配置——到 repo Settings → Secrets and variables → Actions 新增,值为 R2 备份桶名(见 docs/ops/ops-runbook.md)。现在的备份无法落盘。"
+            exit 1
+          fi
+          echo "bucket=$BUCKET" >> "$GITHUB_ENV"
+          echo "备份桶: $BUCKET"
+
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -42,6 +59,23 @@ jobs:
 
       - name: Install wrangler
         run: pnpm install --frozen-lockfile
+
+      - name: Ensure the backup bucket exists
+        run: |
+          # 幂等建桶:R2 桶默认私有、不开公开访问,符合 runbook「单独一个桶」。
+          # 「已存在」视作成功;其余失败(权限/配额)在这里就显式炸,不拖到上传。
+          if ! create_out="$(pnpm exec wrangler r2 bucket create "$bucket" 2>&1)"; then
+            echo "$create_out"
+            if echo "$create_out" | grep -qi "already exist"; then
+              echo "桶已存在,继续"
+            else
+              echo "::error::建桶失败(非「已存在」原因),检查 CLOUDFLARE_API_TOKEN 的 R2 编辑权限"
+              exit 1
+            fi
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Export D1 database
         run: |
@@ -56,7 +90,7 @@ jobs:
 
       - name: Upload to R2
         run: |
-          pnpm exec wrangler r2 object put "${{ secrets.R2_BACKUP_BUCKET }}/d1/d1-backup-${STAMP}.sql" --file "d1-backup-${STAMP}.sql" --content-type "application/sql"
+          pnpm exec wrangler r2 object put "${{ env.bucket }}/d1/d1-backup-${STAMP}.sql" --file "d1-backup-${STAMP}.sql" --content-type "application/sql"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -64,7 +98,7 @@ jobs:
 
       - name: Verify the object landed
         run: |
-          pnpm exec wrangler r2 object get "${{ secrets.R2_BACKUP_BUCKET }}/d1/d1-backup-${STAMP}.sql" --file /tmp/verify.sql
+          pnpm exec wrangler r2 object get "${{ env.bucket }}/d1/d1-backup-${STAMP}.sql" --file /tmp/verify.sql
           test -s /tmp/verify.sql
           grep -q "CREATE TABLE" /tmp/verify.sql
           echo "backup verified: $(wc -c < /tmp/verify.sql) bytes"

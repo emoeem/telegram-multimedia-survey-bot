@@ -12,9 +12,11 @@
 | ----------------------- | ---------------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`  | 与 deploy 共用;权限需包含 D1 Edit + R2 Edit          |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                   |
-| `R2_BACKUP_BUCKET`      | 备份桶名(需先在 R2 建好;建议单独一个桶,不开公开访问) |
+| `R2_BACKUP_BUCKET`      | 备份桶名;桶不存在时工作流自动创建(R2 桶默认私有,不开公开访问),未配置时守卫步骤直接报错 |
 
 配好后用 Actions 页面的 **Run workflow**(workflow_dispatch)手动跑一次,绿了才算启用。
+(2026-11-04 起工作流带守卫:`R2_BACKUP_BUCKET` 未配置会在导出前人话报错——
+此前 secret 一直缺失、备份连续失败一个月才被发现;桶缺失时会幂等自动创建。)
 
 **恢复流程**:R2 下载对应日期的 SQL → `wrangler d1 execute DB --remote --file <dump>.sql`(空库重放)或按表挑选重放。SQL 里有 `CREATE TABLE`,重放前确认目标库是空的。
 
