@@ -8,10 +8,10 @@
 
 **首次启用需要配置的 secrets**(GitHub 仓库 → Settings → Secrets and variables → Actions):
 
-| Secret                  | 值                                                   |
-| ----------------------- | ---------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | 与 deploy 共用;权限需包含 D1 Edit + R2 Edit          |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                   |
+| Secret                  | 值                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | 与 deploy 共用;权限需包含 D1 Edit + R2 Edit                                            |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                     |
 | `R2_BACKUP_BUCKET`      | 备份桶名;桶不存在时工作流自动创建(R2 桶默认私有,不开公开访问),未配置时守卫步骤直接报错 |
 
 配好后用 Actions 页面的 **Run workflow**(workflow_dispatch)手动跑一次,绿了才算启用。
