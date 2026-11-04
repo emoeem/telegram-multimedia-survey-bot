@@ -65,6 +65,11 @@ export interface SurveyMetaState {
 
 export type SaveState = "saved" | "dirty" | "saving" | "error";
 
+/** 批量文案替换（搜索替换面板）：字段与选项走同一条保存队列。 */
+export type TextReplacement =
+  | { kind: "field"; questionId: number; field: "title" | "description"; value: string }
+  | { kind: "option"; questionId: number; optionId: number; value: string };
+
 export function useSurveyEditor(data: EditorData) {
   const surveyId = data.survey.id;
   const [surveyMeta, setSurveyMeta] = useState(() => ({
@@ -483,6 +488,81 @@ export function useSurveyEditor(data: EditorData) {
     [pushOp, surveyId],
   );
 
+  /**
+   * 搜索替换的批量入口：一次撤销快照 + 按题合并的 PATCH。
+   *
+   * 不走逐条 queueQuestionPatch：那样每个字段都会 pushOp → recordHistory，
+   * 一次「替换全部」会塞进几十个撤销步骤；而走同一 setOps 批量追加时，
+   * 路径里的临时负数 id 仍由保存管线统一重映射（resolveOpReferences）。
+   */
+  const applyTextReplacements = useCallback(
+    (replacements: readonly TextReplacement[]) => {
+      if (!replacements.length) return;
+      const fieldsByQuestion = new Map<number, { title?: string; description?: string }>();
+      const optionChanges: Array<{ questionId: number; optionId: number; value: string }> = [];
+      for (const item of replacements) {
+        if (item.kind === "option") {
+          optionChanges.push({ questionId: item.questionId, optionId: item.optionId, value: item.value });
+          continue;
+        }
+        const entry = fieldsByQuestion.get(item.questionId) ?? {};
+        entry[item.field] = item.value;
+        fieldsByQuestion.set(item.questionId, entry);
+      }
+
+      recordHistory("批量替换");
+      setQuestions((current) =>
+        current.map((question) => {
+          const fields = fieldsByQuestion.get(question.id);
+          const optionValues = new Map(
+            optionChanges
+              .filter((change) => change.questionId === question.id)
+              .map((change) => [change.optionId, change.value]),
+          );
+          if (!fields && optionValues.size === 0) return question;
+          return {
+            ...question,
+            ...(fields?.title !== undefined ? { title: fields.title } : {}),
+            ...(fields?.description !== undefined ? { description: fields.description } : {}),
+            ...(optionValues.size
+              ? {
+                  options: question.options.map((option) =>
+                    optionValues.has(option.id) ? { ...option, label: optionValues.get(option.id)! } : option,
+                  ),
+                }
+              : {}),
+          };
+        }),
+      );
+
+      const nextOps: PendingOp[] = [];
+      for (const [questionId, fields] of fieldsByQuestion) {
+        nextOps.push({
+          key: opKeyRef.current++,
+          method: "PATCH",
+          path: `/api/admin/surveys/${surveyId}/questions/${questionId}`,
+          body: fields as Record<string, unknown>,
+          tempId: null,
+          label: "批量替换",
+        });
+      }
+      for (const change of optionChanges) {
+        nextOps.push({
+          key: opKeyRef.current++,
+          method: "PATCH",
+          path: `/api/admin/surveys/${surveyId}/options/${change.optionId}`,
+          body: { label: change.value },
+          tempId: null,
+          label: "批量替换",
+        });
+      }
+      if (!nextOps.length) return;
+      setOps((current) => [...current, ...nextOps]);
+      setSaveError(null);
+    },
+    [recordHistory, surveyId],
+  );
+
   const reorderQuestions = useCallback(
     (questionIds: number[]): boolean => {
       const currentIds = questions.map((question) => question.id);
@@ -651,6 +731,7 @@ export function useSurveyEditor(data: EditorData) {
       addOption,
       deleteOption,
       renameOption,
+      applyTextReplacements,
       reorderQuestions,
       save,
       saveState,
@@ -674,6 +755,7 @@ export function useSurveyEditor(data: EditorData) {
       addOption,
       deleteOption,
       renameOption,
+      applyTextReplacements,
       reorderQuestions,
       save,
       saveState,

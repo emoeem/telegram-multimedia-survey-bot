@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Copy, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Play, Trash2 } from "lucide-react";
 import type { EditableQuestion } from "../../../editor/useSurveyEditor";
 
 /**
@@ -11,6 +11,7 @@ export function QuickBar({
   question,
   editable,
   onDuplicate,
+  onPreview,
   onDelete,
   onMove,
   onToggleRequired,
@@ -18,6 +19,8 @@ export function QuickBar({
   question: EditableQuestion;
   editable: boolean;
   onDuplicate: () => void;
+  /** 从这道题开始本地预览（包含未保存修改）。 */
+  onPreview: () => void;
   onDelete: () => void;
   onMove: (direction: -1 | 1) => void;
   onToggleRequired: () => void;
@@ -41,6 +44,15 @@ export function QuickBar({
         onClick={onDuplicate}
       >
         <Copy className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="row-action"
+        title="从这道题开始预览"
+        aria-label="从这道题开始预览"
+        onClick={onPreview}
+      >
+        <Play className="h-3.5 w-3.5" />
       </button>
       <button
         type="button"

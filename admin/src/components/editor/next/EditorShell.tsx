@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBlocker, useNavigate } from "react-router";
-import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Undo2 } from "lucide-react";
+import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Search, Stethoscope, Undo2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -24,6 +24,10 @@ import { useDialogs } from "../../Dialogs";
 import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
 import { Canvas } from "./Canvas";
+import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { SearchReplaceDialog } from "./SearchReplaceDialog";
+import { collectDiagnostics, countDiagnostics } from "../../../editor/diagnostics";
+import { SurveyPreview } from "../SurveyPreview";
 import { FlowCanvas } from "./flow/FlowCanvas";
 import { connectCommand, disconnectCommand, type ConditionCommand } from "../../../editor/node-graph/commands";
 import { surveyToGraph } from "../../../editor/node-graph/to-graph";
@@ -52,6 +56,11 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // 体检 / 搜索替换 / 从当前题预览（2026-11）。三者都是只读或走既有 patch 队列，
+  // 不新增独立的保存通道。
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [previewAtIndex, setPreviewAtIndex] = useState<number | null>(null);
   // P3：scene 编辑从「页面跳转」改为壳内全屏浮层——选中即配置、不出现页面跳转。
   const [sceneOverlayId, setSceneOverlayId] = useState<number | null>(null);
   /**
@@ -135,21 +144,55 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   }, [editor]);
 
   useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(element?.closest("input, textarea, select, [contenteditable='true']"));
+    };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
       const key = event.key.toLowerCase();
+      const mod = event.ctrlKey || event.metaKey;
+      // Alt+↑/↓：在题目之间移动选中项（不抢输入框里的光标移动）。
+      if (event.altKey && !mod && selection.kind === "question" && !isTypingTarget(event.target)) {
+        if (key !== "arrowup" && key !== "arrowdown") return;
+        const index = editor.questions.findIndex((question) => question.id === selection.id);
+        if (index < 0) return;
+        const next = editor.questions[index + (key === "arrowup" ? -1 : 1)];
+        if (!next) return;
+        event.preventDefault();
+        setSelection({ kind: "question", id: next.id });
+        return;
+      }
+      if (!mod) return;
       if (key === "z") {
         event.preventDefault();
         if (event.shiftKey) editor.redo();
         else editor.undo();
-      } else if (key === "y") {
+        return;
+      }
+      if (key === "y") {
         event.preventDefault();
         editor.redo();
+        return;
+      }
+      if (key === "s") {
+        event.preventDefault();
+        void editor.save();
+        return;
+      }
+      if (key === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      // Ctrl/⌘+D：复制当前题（输入框内保留浏览器默认行为）。
+      if (key === "d" && selection.kind === "question" && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        void actions.duplicateQuestion(selection.id);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [editor]);
+  }, [editor, actions, selection]);
 
   // Keep the selection valid as questions are added / removed / reloaded.
   useEffect(() => {
@@ -164,6 +207,9 @@ export function EditorShellNext({ data }: { data: EditorData }) {
     () => buildEditorPreviewFlow(survey.id, editor.questions),
     [editor.questions, survey.id],
   );
+  // 体检是纯函数派生：每次题目/选项变化自动重算，打开面板时永远是最新状态。
+  const diagnostics = useMemo(() => collectDiagnostics(editor.questions), [editor.questions]);
+  const diagnosticCounts = useMemo(() => countDiagnostics(diagnostics), [diagnostics]);
   // 节点图视图数据（只读派生，见 node-graph/to-graph.ts）。
   const nodeGraph = useMemo(
     () =>
@@ -268,6 +314,14 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   // 稳定身份：下游 QuestionSummaryRow / PropertiesPanel 是 memo 组件。
   const selectQuestion = useCallback((questionId: number) => setSelection({ kind: "question", id: questionId }), []);
   const openSceneOverlay = useCallback((questionId: number) => setSceneOverlayId(questionId), []);
+  // 「从这道题预览」：用本地未保存快照从选中位置开始，不重新加载 iframe。
+  const previewFromQuestion = useCallback(
+    (questionId: number) => {
+      const index = editor.questions.findIndex((question) => question.id === questionId);
+      setPreviewAtIndex(index >= 0 ? index : 0);
+    },
+    [editor.questions],
+  );
 
   // 必答开关：本地立即生效 + 入队待保存（与旧壳批量必答同一条语义）。
   const toggleRequired = (questionId: number) => {
@@ -405,6 +459,30 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             <Redo2 className="h-4 w-4" />
           </button>
           <button
+            className="btn btn-sm btn-quiet"
+            title="搜索与替换（Ctrl+F）"
+            aria-label="搜索与替换"
+            onClick={() => setSearchOpen(true)}
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <button
+            className="btn btn-sm btn-quiet relative"
+            title={`问卷体检：${diagnosticCounts.errors} 个错误 / ${diagnosticCounts.warnings} 个警告`}
+            aria-label="问卷体检"
+            onClick={() => setDiagnosticsOpen(true)}
+          >
+            <Stethoscope className="h-4 w-4" />
+            {diagnosticCounts.errors + diagnosticCounts.warnings > 0 ? (
+              <span
+                className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: diagnosticCounts.errors > 0 ? "var(--app-danger)" : "var(--app-warning)" }}
+              >
+                {diagnosticCounts.errors + diagnosticCounts.warnings}
+              </span>
+            ) : null}
+          </button>
+          <button
             className="btn btn-sm editor-desktop-action"
             disabled={editor.saveState === "saving"}
             onClick={() => editor.save()}
@@ -536,6 +614,7 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                 onAddScene={() => void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId)}
                 onSelect={setSelection}
                 onMove={actions.moveQuestion}
+                onPreview={previewFromQuestion}
                 onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
                 onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
                 onToggleRequired={toggleRequired}
@@ -609,6 +688,35 @@ export function EditorShellNext({ data }: { data: EditorData }) {
           onClose={() => setPreviewOpen(false)}
         />
       ) : null}
+
+      {previewAtIndex !== null ? (
+        <SurveyPreview
+          title={editor.surveyMeta.title}
+          description={editor.surveyMeta.description}
+          questions={previewQuestions}
+          dirty={editor.saveState !== "saved"}
+          initialIndex={previewAtIndex}
+          onClose={() => setPreviewAtIndex(null)}
+        />
+      ) : null}
+
+      {searchOpen ? (
+        <SearchReplaceDialog
+          open
+          questions={editor.questions}
+          disabled={editingDisabled}
+          onClose={() => setSearchOpen(false)}
+          onSelectQuestion={selectQuestion}
+          onApply={editor.applyTextReplacements}
+        />
+      ) : null}
+
+      <DiagnosticsPanel
+        open={diagnosticsOpen}
+        issues={diagnostics}
+        onClose={() => setDiagnosticsOpen(false)}
+        onSelectQuestion={selectQuestion}
+      />
 
       {pickerOpen ? (
         <TypePickerSheet

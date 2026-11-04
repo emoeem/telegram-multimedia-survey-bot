@@ -18,6 +18,8 @@ interface SurveyPreviewProps {
   /** Renders as a static embedded pane instead of a modal overlay. */
   inline?: boolean;
   preset?: string | null;
+  /** 打开时从第几题开始（0-based）；缺省从头开始。 */
+  initialIndex?: number;
 }
 
 export function PreviewChoice({
@@ -213,6 +215,7 @@ export function SurveyPreview({
   onClose,
   inline = false,
   preset,
+  initialIndex = 0,
 }: SurveyPreviewProps) {
   const titleId = useId();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -240,12 +243,15 @@ export function SurveyPreview({
   // Reset when the preview is (re)opened, not when the question array changes:
   // autosave re-creates that array every couple of seconds, which used to throw
   // the reader back to question 1 and clear the simulated answers mid-run.
+  // initialIndex 只在打开时生效（「从这道题预览」），后续编辑不跳题。
   useEffect(() => {
     if (inline) return;
-    setCurrentIndex(0);
+    const max = Math.max(0, questions.length - 1);
+    setCurrentIndex(Math.min(Math.max(0, initialIndex), max));
     setAnswers({});
     setError(null);
-  }, [inline]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- questions.length 只用于夹取起点
+  }, [inline, initialIndex]);
 
   const currentQuestion = questions[currentIndex];
   const currentValue = currentQuestion ? (answers[currentQuestion.id] ?? "") : "";
@@ -300,7 +306,8 @@ export function SurveyPreview({
               问卷填写预览
             </h2>
             <p className="mt-0.5 text-xs" style={{ color: "var(--color-muted)" }}>
-              {dirty ? "包含尚未保存的本地修改" : "当前已保存版本"} · Telegram 实际填写时每次显示一题
+              {dirty ? "包含尚未保存的本地修改" : "当前已保存版本"}
+              {initialIndex > 0 ? ` · 从第 ${initialIndex + 1} 题开始` : ""} · Telegram 实际填写时每次显示一题
             </p>
           </div>
           <button type="button" className="btn btn-sm" onClick={onClose} autoFocus>

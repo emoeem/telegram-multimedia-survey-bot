@@ -29,6 +29,7 @@ export function Canvas({
   draggingType,
   onSelect,
   onMove,
+  onPreview,
   onDuplicate,
   onDelete,
   onToggleRequired,
@@ -44,6 +45,8 @@ export function Canvas({
   draggingType: string | null;
   onSelect: (selection: BuilderSelection) => void;
   onMove: (questionId: number, direction: -1 | 1) => void;
+  /** 从这道题开始本地预览（未保存修改也包含在内）。 */
+  onPreview: (questionId: number) => void;
   onDuplicate: (questionId: number) => void;
   onDelete: (questionId: number) => void;
   onToggleRequired: (questionId: number) => void;
@@ -115,6 +118,7 @@ export function Canvas({
                           question={question}
                           editable={editable}
                           onDuplicate={() => onDuplicate(question.id)}
+                          onPreview={() => onPreview(question.id)}
                           onDelete={() => onDelete(question.id)}
                           onMove={(direction) => onMove(question.id, direction)}
                           onToggleRequired={() => onToggleRequired(question.id)}
