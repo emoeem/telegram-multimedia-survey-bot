@@ -25,6 +25,7 @@ import type { ExportFormat } from "../lib/survey-export";
 const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; hint: string }> = [
   { value: "html", label: "HTML", hint: "打印视图，可直接印成 PDF" },
   { value: "markdown", label: "Markdown", hint: "贴进知识库或 GitHub" },
+  { value: "csv", label: "CSV", hint: "一行一道题，Excel / 表格批量校对" },
   { value: "json", label: "JSON", hint: "结构与导入器兼容，可再导回" },
 ];
 

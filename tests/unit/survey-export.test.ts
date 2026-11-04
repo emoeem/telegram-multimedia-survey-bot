@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildExportContent,
   buildExportFileName,
+  buildSurveyExportCsv,
   buildSurveyExportHtml,
   buildSurveyExportJson,
   buildSurveyExportMarkdown,
@@ -147,11 +148,35 @@ describe("buildSurveyExportJson", () => {
   });
 });
 
+describe("buildSurveyExportCsv", () => {
+  it("一行一道题，带 BOM、分页名与合并选项", () => {
+    const csv = buildSurveyExportCsv([survey]);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    const lines = csv.slice(1).split("\r\n");
+    expect(lines[0]).toBe("问卷,问卷ID,分页,题号,题型,题面,描述,必答,选项,校验,矩阵列");
+    expect(lines[1]).toContain("客户满意度调查,7,基本信息,1,单选,你的年龄段？");
+    expect(lines[1]).toContain("18-25 | 26-35");
+    expect(lines[2]).toContain("详细反馈,2,多行文本");
+  });
+
+  it("引号、逗号与换行按 CSV 规则转义", () => {
+    const csv = buildSurveyExportCsv([
+      {
+        id: 9,
+        title: "测试",
+        questions: [{ id: 1, type: "text", title: '他说："你好, 再见"\n第二行', order: 1, options: [] }],
+      },
+    ]);
+    expect(csv).toContain('"他说：""你好, 再见""\n第二行"');
+  });
+});
+
 describe("buildExportContent", () => {
   it("maps each format to its mime type and extension", () => {
     expect(buildExportContent("html", [survey]).extension).toBe("html");
     expect(buildExportContent("markdown", [survey]).mime).toBe("text/markdown");
     expect(buildExportContent("json", [survey]).mime).toBe("application/json");
+    expect(buildExportContent("csv", [survey]).mime).toBe("text/csv;charset=utf-8");
   });
 });
 

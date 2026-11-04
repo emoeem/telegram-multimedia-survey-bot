@@ -67,7 +67,7 @@ export interface ExportSurvey {
   pages?: ExportSurveyPage[];
 }
 
-export type ExportFormat = "html" | "markdown" | "json";
+export type ExportFormat = "html" | "markdown" | "json" | "csv";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -373,11 +373,55 @@ export function buildSurveyExportJson(surveys: ExportSurvey[], options: { genera
   );
 }
 
+/** CSV 单元格：含逗号/引号/换行时加引号，内部引号翻倍。 */
+function escapeCsvCell(value: unknown): string {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * CSV 导出：一行一道题，给编剧/校对拿去 Excel 或表格工具批量改文案。
+ * 带 UTF-8 BOM，避免 Excel 打开中文变成乱码；选项与矩阵列用 ` | ` 合并。
+ */
+export function buildSurveyExportCsv(surveys: ExportSurvey[]): string {
+  const rows: string[][] = [
+    ["问卷", "问卷ID", "分页", "题号", "题型", "题面", "描述", "必答", "选项", "校验", "矩阵列"],
+  ];
+  for (const survey of surveys) {
+    const pageTitles = new Map((survey.pages ?? []).map((page) => [String(page.id), page.title ?? ""]));
+    sortedQuestions(survey).forEach((question, index) => {
+      const pageId = question.pageId;
+      const pageLabel =
+        pageId === undefined || pageId === null ? "" : (pageTitles.get(String(pageId)) ?? String(pageId));
+      rows.push([
+        survey.title,
+        String(survey.id),
+        pageLabel,
+        String(index + 1),
+        formatQuestionType(question.type),
+        question.title,
+        question.description ?? "",
+        question.required ? "是" : "否",
+        [...(question.options ?? [])]
+          .sort((a, b) => a.order - b.order)
+          .map((option) => option.label)
+          .join(" | "),
+        describeValidation(question.validation).join(" · "),
+        (question.columns ?? []).join(" | "),
+      ]);
+    });
+  }
+  return `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n")}`;
+}
+
 export function buildExportContent(
   format: ExportFormat,
   surveys: ExportSurvey[],
   options: { generatedAt?: Date } = {},
 ): { content: string; mime: string; extension: string } {
+  if (format === "csv") {
+    return { content: buildSurveyExportCsv(surveys), mime: "text/csv;charset=utf-8", extension: "csv" };
+  }
   if (format === "json") {
     return { content: buildSurveyExportJson(surveys, options), mime: "application/json", extension: "json" };
   }
