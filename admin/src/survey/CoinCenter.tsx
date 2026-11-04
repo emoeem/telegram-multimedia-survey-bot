@@ -90,7 +90,13 @@ function CoinPageShell(props: { title: string; subtitle: string; embedded?: bool
         actions={
           <>
             <ThemeAction themeState={themeState} />
-            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+            <button
+              type="button"
+              aria-label="关闭"
+              title="关闭"
+              className="survey-icon-btn"
+              onClick={() => closeWebApp()}
+            >
               <X className="h-4 w-4" />
             </button>
           </>

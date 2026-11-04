@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  COMMANDS,
-  MOVED_TO_WEB_MESSAGE,
-  helpText,
-  menuFor,
-  parseCommand,
-  renameHint,
-} from "../../../src/bot/commands";
+import { COMMANDS, MOVED_TO_WEB_MESSAGE, helpText, menuFor, parseCommand, renameHint } from "../../../src/bot/commands";
 
 describe("命令解析", () => {
   it("剥离群里的 @机器人名 后缀", () => {

@@ -261,16 +261,16 @@ describeIf("/api/submit HTTP 契约", () => {
     expect(response!.status).toBe(200);
     expect(body.ok).toBe(true);
 
-    const asset = await env.DB
-      .prepare("SELECT asset_scope, storage_key, mime_type FROM media_assets ORDER BY id DESC LIMIT 1")
-      .first<{ asset_scope: string; storage_key: string; mime_type: string }>();
+    const asset = await env.DB.prepare(
+      "SELECT asset_scope, storage_key, mime_type FROM media_assets ORDER BY id DESC LIMIT 1",
+    ).first<{ asset_scope: string; storage_key: string; mime_type: string }>();
     expect(asset?.asset_scope).toBe("response"); // CHECK 白名单内的值
     expect(asset?.storage_key).toMatch(/^media:websubmit:/); // 身份靠键前缀区分
     expect(asset?.mime_type).toBe("image/png");
 
-    const ref = await env.DB
-      .prepare("SELECT ref_type, ref_key, asset_id FROM media_refs ORDER BY id DESC LIMIT 1")
-      .first<{ ref_type: string; ref_key: string; asset_id: number }>();
+    const ref = await env.DB.prepare(
+      "SELECT ref_type, ref_key, asset_id FROM media_refs ORDER BY id DESC LIMIT 1",
+    ).first<{ ref_type: string; ref_key: string; asset_id: number }>();
     expect(ref?.ref_type).toBe("web_submission");
     expect(ref?.ref_key).toBe(`websubmit:${body.id}:${ref?.asset_id}`);
   });

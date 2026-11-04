@@ -947,9 +947,7 @@ export function PlazaScreen() {
                 </div>
                 <span className="text-[11px] text-[var(--survey-muted)]">{content.trim().length}/500</span>
               </div>
-              {composerMessage ? (
-                <p className="mt-2 text-xs text-[var(--app-danger)]">{composerMessage}</p>
-              ) : null}
+              {composerMessage ? <p className="mt-2 text-xs text-[var(--app-danger)]">{composerMessage}</p> : null}
               <button
                 type="button"
                 disabled={submitting || imageBusy || (!imageAssetId && content.trim().length < 5)}
@@ -961,7 +959,6 @@ export function PlazaScreen() {
             </div>
           </div>
         ) : null}
-
       </div>
     </ScreenShell>
   );

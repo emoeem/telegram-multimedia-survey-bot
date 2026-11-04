@@ -83,7 +83,20 @@ describe("telegram media requests", () => {
     const adminCall = calls.find((body) => (body.scope as { type?: string } | undefined)?.type === "chat");
     expect(adminCall?.scope).toEqual({ type: "chat", chat_id: 42 });
     const names = (adminCall?.commands as Array<{ command: string }>).map((item) => item.command);
-    expect(names).toEqual(["start", "surveys", "me", "codes", "redeem", "help", "admin", "review", "users", "license", "release", "trial"]);
+    expect(names).toEqual([
+      "start",
+      "surveys",
+      "me",
+      "codes",
+      "redeem",
+      "help",
+      "admin",
+      "review",
+      "users",
+      "license",
+      "release",
+      "trial",
+    ]);
   });
 
   it("reads the bot username for direct survey links", async () => {

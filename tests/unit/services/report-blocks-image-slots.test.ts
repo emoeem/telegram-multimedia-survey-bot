@@ -33,10 +33,7 @@ describe("report block image src slots", () => {
   });
 
   it("applies the same rule to the hero avatar slot", () => {
-    const ok = renderHeroBlock(
-      { title: "t", thesis: "x", avatar: "data:image/png;base64,AAAA", tags: [] },
-      context,
-    );
+    const ok = renderHeroBlock({ title: "t", thesis: "x", avatar: "data:image/png;base64,AAAA", tags: [] }, context);
     expect(ok).toContain('src="data:image/png;base64,AAAA"');
     const evil = renderHeroBlock({ title: "t", thesis: "x", avatar: "javascript:alert(1)", tags: [] }, context);
     expect(evil).not.toContain("javascript:");

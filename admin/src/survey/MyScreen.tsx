@@ -350,7 +350,13 @@ export function MyScreen() {
         actions={
           <>
             <ThemeAction themeState={themeState} />
-            <button type="button" aria-label="关闭" title="关闭" className="survey-icon-btn" onClick={() => closeWebApp()}>
+            <button
+              type="button"
+              aria-label="关闭"
+              title="关闭"
+              className="survey-icon-btn"
+              onClick={() => closeWebApp()}
+            >
               <X className="h-4 w-4" />
             </button>
           </>
@@ -402,12 +408,7 @@ export function MyScreen() {
             <CoinCard />
 
             {/* 纸条聊天（0089）：个人中心的一等入口。 */}
-            <EntryRow
-              href="/notes"
-              icon={MailCheck}
-              title="纸条聊天"
-              subtitle="放一张纸条，抽到同路的人就开始私聊"
-            />
+            <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
 
             <section className="survey-card p-4">
               <SectionHeader

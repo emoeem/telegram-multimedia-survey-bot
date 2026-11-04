@@ -776,9 +776,7 @@ function SurveyListPage() {
   // navigation is always reachable. The failure branch used to be a dead end:
   // a single flaky request left the visitor with a red line and no retry, and
   // no way to reach the challenge or plaza tabs without reloading the WebView.
-  const shell = (content: React.ReactNode) => (
-    <ScreenShell themeState={themeState}>{content}</ScreenShell>
-  );
+  const shell = (content: React.ReactNode) => <ScreenShell themeState={themeState}>{content}</ScreenShell>;
   if (error) {
     return shell(
       <div className="mx-auto w-full max-w-[1200px] px-5 py-12">

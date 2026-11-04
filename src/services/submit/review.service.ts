@@ -62,7 +62,14 @@ export async function approveWebSubmission(
       if (photos.length >= 2) {
         await sendPhotoAlbum(env.BOT_TOKEN, channelId, photos, messageThreadId);
       } else if (photos.length === 1) {
-        await sendPhoto(env.BOT_TOKEN, channelId, photos[0]?.bytes ?? new Uint8Array(), undefined, undefined, messageThreadId);
+        await sendPhoto(
+          env.BOT_TOKEN,
+          channelId,
+          photos[0]?.bytes ?? new Uint8Array(),
+          undefined,
+          undefined,
+          messageThreadId,
+        );
       }
       const sent = await sendMessage(env.BOT_TOKEN, channelId, card, undefined, messageThreadId, "HTML");
       const payload = (await sent.json()) as { result?: { message_id?: number }; description?: string };
@@ -107,11 +114,7 @@ async function loadAttachmentPhotos(
   return photos;
 }
 
-export async function rejectWebSubmission(
-  db: D1Database,
-  id: number,
-  reason: string,
-): Promise<ReviewOutcome> {
+export async function rejectWebSubmission(db: D1Database, id: number, reason: string): Promise<ReviewOutcome> {
   const store = new WebSubmitStore(db);
   const row = await store.getSubmission(id);
   if (!row) return { ok: false, code: "not_found" };

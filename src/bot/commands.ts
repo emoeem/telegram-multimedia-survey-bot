@@ -139,7 +139,10 @@ export function parseCommand(raw: string | undefined): ParsedCommand | null {
  * @param scope  private = 私聊菜单；group = 群菜单
  * @param role   调用者身份；管理员菜单额外含 admin 命令，厂商部署再含 vendor 命令
  */
-export function menuFor(scope: CommandScope, role: CommandAudience = "public"): Array<{ command: string; description: string }> {
+export function menuFor(
+  scope: CommandScope,
+  role: CommandAudience = "public",
+): Array<{ command: string; description: string }> {
   return COMMANDS.filter((command) => {
     if (!command.scopes.includes(scope)) return false;
     if (command.audience === "public") return true;

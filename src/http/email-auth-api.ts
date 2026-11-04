@@ -19,7 +19,11 @@ import {
   verifyPassword,
 } from "../services/email-auth.service";
 import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
-import { EMAIL_DOMAIN_BLOCKED_MESSAGE, isBlockedEmailAddress, loadBlockedEmailDomainsSetting } from "../services/disposable-email.service";
+import {
+  EMAIL_DOMAIN_BLOCKED_MESSAGE,
+  isBlockedEmailAddress,
+  loadBlockedEmailDomainsSetting,
+} from "../services/disposable-email.service";
 import { claimParticipantKey } from "../services/identity-link.service";
 import { ensureEmailAccountUser } from "../services/identity-link.service";
 

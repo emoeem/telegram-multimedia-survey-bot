@@ -51,7 +51,12 @@ function isPrivateIpv6(ip: string): boolean {
   const normalized = ip.toLowerCase();
   if (normalized === "::" || normalized === "::1") return true; // unspecified, loopback
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local fc00::/7
-  if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) {
+  if (
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb")
+  ) {
     return true; // link-local fe80::/10
   }
   const mappedDotted = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);

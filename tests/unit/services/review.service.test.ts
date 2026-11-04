@@ -34,10 +34,14 @@ const describeIf = sqliteD1Available ? describe : describe.skip;
 async function makeDb(): Promise<D1Database> {
   const db = createSqliteD1(SCHEMA);
   await db
-    .prepare("INSERT INTO web_submissions (id, nickname, data, status, created_at, updated_at) VALUES (1, '小明', '{}', 'pending', 1000, 1000)")
+    .prepare(
+      "INSERT INTO web_submissions (id, nickname, data, status, created_at, updated_at) VALUES (1, '小明', '{}', 'pending', 1000, 1000)",
+    )
     .run();
   await db
-    .prepare("INSERT INTO web_submissions (id, nickname, data, status, created_at, updated_at) VALUES (2, '小红', '{}', 'pending', 1000, 1000)")
+    .prepare(
+      "INSERT INTO web_submissions (id, nickname, data, status, created_at, updated_at) VALUES (2, '小红', '{}', 'pending', 1000, 1000)",
+    )
     .run();
   return db;
 }

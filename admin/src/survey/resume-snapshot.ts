@@ -83,11 +83,7 @@ export function clearResumeSnapshot(surveyId: number): void {
  * 只在同一份答卷、且本地位置不早于服务端续玩点时提示：服务端更靠后说明
  * 本地快照已经过期，恢复它会把用户拉回旧位置。
  */
-export function shouldOfferResume(
-  snapshot: ResumeSnapshot | null,
-  responseId: number,
-  serverIndex: number,
-): boolean {
+export function shouldOfferResume(snapshot: ResumeSnapshot | null, responseId: number, serverIndex: number): boolean {
   if (!snapshot) return false;
   if (snapshot.responseId !== responseId) return false;
   if (snapshot.index < serverIndex) return false;

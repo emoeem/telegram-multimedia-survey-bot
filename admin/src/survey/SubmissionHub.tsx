@@ -155,46 +155,46 @@ export function SubmissionHub() {
           }
         />
         <main className="mx-auto max-w-xl lg:max-w-3xl">
-        {tab === "submit" ? (
-          <>
-            {/* 次级分段：两条投稿流水线的切换，视觉权重刻意低于顶栏页签。 */}
-            <div
-              className="mb-3 flex gap-1.5 rounded-full bg-[var(--survey-primary-soft)] p-1"
-              role="tablist"
-              aria-label="投稿方式"
-            >
-              {MODE_META.map((entry) => {
-                const isActive = entry.id === mode;
-                const ModeIcon = MODE_ICON[entry.id];
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setMode(entry.id)}
-                    className={`inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-[12.5px] font-semibold transition-colors ${
-                      isActive
-                        ? "bg-[var(--survey-card-bg)] text-[var(--survey-heading)] shadow-sm"
-                        : "text-[var(--survey-muted)]"
-                    }`}
-                  >
-                    <ModeIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {entry.label}
-                  </button>
-                );
-              })}
-            </div>
+          {tab === "submit" ? (
+            <>
+              {/* 次级分段：两条投稿流水线的切换，视觉权重刻意低于顶栏页签。 */}
+              <div
+                className="mb-3 flex gap-1.5 rounded-full bg-[var(--survey-primary-soft)] p-1"
+                role="tablist"
+                aria-label="投稿方式"
+              >
+                {MODE_META.map((entry) => {
+                  const isActive = entry.id === mode;
+                  const ModeIcon = MODE_ICON[entry.id];
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setMode(entry.id)}
+                      className={`inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-[12.5px] font-semibold transition-colors ${
+                        isActive
+                          ? "bg-[var(--survey-card-bg)] text-[var(--survey-heading)] shadow-sm"
+                          : "text-[var(--survey-muted)]"
+                      }`}
+                    >
+                      <ModeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {entry.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <Suspense fallback={<FormSkeleton />}>
+                {mode === "coins" ? <AccountTab embedded /> : null}
+                {mode === "direct" ? <AnonTab embedded /> : null}
+              </Suspense>
+            </>
+          ) : (
             <Suspense fallback={<FormSkeleton />}>
-              {mode === "coins" ? <AccountTab embedded /> : null}
-              {mode === "direct" ? <AnonTab embedded /> : null}
+              <InboxTab embedded />
             </Suspense>
-          </>
-        ) : (
-          <Suspense fallback={<FormSkeleton />}>
-            <InboxTab embedded />
-          </Suspense>
-        )}
+          )}
         </main>
       </div>
     </ScreenShell>

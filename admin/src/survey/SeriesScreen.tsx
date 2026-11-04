@@ -65,11 +65,7 @@ export function SeriesScreen() {
 
   if (slug) {
     return (
-      <SeriesDetailScreen
-        detail={detail}
-        themeState={themeState}
-        onReload={() => setReloadKey((key) => key + 1)}
-      />
+      <SeriesDetailScreen detail={detail} themeState={themeState} onReload={() => setReloadKey((key) => key + 1)} />
     );
   }
   return <SeriesShelfScreen seriesList={seriesList} themeState={themeState} />;

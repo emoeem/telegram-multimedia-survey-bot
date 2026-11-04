@@ -9,7 +9,11 @@ import { getParticipantLink, participantHashForKey } from "../../db/repositories
 import { canonicalizeHash } from "../../services/identity-link.service";
 import { RELAY_OBSCURED_GEO_KEYS, type ClientIdentity } from "../../services/client-identity.service";
 import { fail } from "../api-response";
-import { EMAIL_DOMAIN_BLOCKED_MESSAGE, isBlockedEmailAddress, loadBlockedEmailDomainsSetting } from "../../services/disposable-email.service";
+import {
+  EMAIL_DOMAIN_BLOCKED_MESSAGE,
+  isBlockedEmailAddress,
+  loadBlockedEmailDomainsSetting,
+} from "../../services/disposable-email.service";
 
 export const ANONYMOUS_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 

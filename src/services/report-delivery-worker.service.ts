@@ -12,10 +12,7 @@ import { getSurveyById } from "../db/repositories/survey.repository";
 import { prepareResultProfileForResponse } from "./result-visual.service";
 import { deserializeResultProfile } from "./result-engine.service";
 import { renderReportPdf } from "./report/pdf";
-import {
-  resolveReportProfileImagesDetailed,
-  type ReportImageWarning,
-} from "./report/report-images.service";
+import { resolveReportProfileImagesDetailed, type ReportImageWarning } from "./report/report-images.service";
 import { inspectImageStructure } from "./media/upload-validation.service";
 import {
   isReportDeliveryMessage,

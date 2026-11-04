@@ -1127,10 +1127,7 @@ export async function handleAdminMessage(ctx: BotContext, message: TelegramMessa
     return true;
   }
 
-  if (
-    ctx.licenseAdminEnabled === false &&
-    (text === "/license" || text === "/release")
-  ) {
+  if (ctx.licenseAdminEnabled === false && (text === "/license" || text === "/release")) {
     await replyMessage(ctx, message.chat.id, "此部署不是授权中心，无法发放或管理软件授权。");
     return true;
   }
@@ -1281,7 +1278,13 @@ export async function handleAdminCallback(ctx: BotContext, callback: TelegramCal
     const [idRaw, indexRaw] = rest.split(":");
     const id = Number(idRaw);
     const index = Number(indexRaw);
-    if (!Number.isSafeInteger(id) || id <= 0 || !Number.isInteger(index) || index < 0 || index >= WEB_SUBMIT_REJECT_REASONS.length) {
+    if (
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= WEB_SUBMIT_REJECT_REASONS.length
+    ) {
       await answerCallbackQuery(ctx.botToken, callback.id, "参数无效");
       return true;
     }
@@ -1846,10 +1849,7 @@ async function showWebSubmitRejectAsk(
     { text: `❌ ${label}`, callback_data: `admin:subreject:${id}:${index}` },
   ]);
   const replyMarkup: InlineKeyboardMarkup = {
-    inline_keyboard: [
-      ...reasonRows,
-      [{ text: "⬅️ 返回详情", callback_data: `admin:subview:${id}` }],
-    ],
+    inline_keyboard: [...reasonRows, [{ text: "⬅️ 返回详情", callback_data: `admin:subview:${id}` }]],
   };
   const text = `驳回投稿 #${id}：选一个理由，会原样转告投稿人。`;
   if (messageId !== undefined) {
@@ -1886,7 +1886,10 @@ async function sendWebSubmitAttachments(
   const assetIds = attachments
     .map((attachment) => attachment.mediaAssetId)
     .filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value > 0);
-  const assets = assetIds.length > 0 ? await getMediaAssetsByIds(ctx.db, assetIds) : new Map<number, { storageKey: string | null }>();
+  const assets =
+    assetIds.length > 0
+      ? await getMediaAssetsByIds(ctx.db, assetIds)
+      : new Map<number, { storageKey: string | null }>();
   const store = createMediaStore({ MEDIA: ctx.media, MEDIA_KV: ctx.mediaKv });
   const photos: Array<{ bytes: Uint8Array; caption?: string }> = [];
   let sent = 0;
@@ -1909,8 +1912,7 @@ async function sendWebSubmitAttachments(
     sent += 1;
     photos.push({
       bytes,
-      caption:
-        attachments.length > 1 ? `投稿 #${id} 附件 ${sent}/${attachments.length}` : `投稿 #${id} 的附件`,
+      caption: attachments.length > 1 ? `投稿 #${id} 附件 ${sent}/${attachments.length}` : `投稿 #${id} 的附件`,
     });
   }
   if (photos.length === 0) {

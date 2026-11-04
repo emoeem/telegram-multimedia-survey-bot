@@ -1165,7 +1165,11 @@ async function listSurveysForGroup(ctx: BotContext, chatId: number): Promise<voi
   const text =
     surveys.length === 0
       ? "当前没有已发布的问卷。"
-      : ["📋 已发布问卷", "", ...surveys.map((survey, index) => `${index + 1}. ${compactSurveyTitle(survey.title, 40)}`)].join("\n");
+      : [
+          "📋 已发布问卷",
+          "",
+          ...surveys.map((survey, index) => `${index + 1}. ${compactSurveyTitle(survey.title, 40)}`),
+        ].join("\n");
   await replyMessage(ctx, chatId, text, { inline_keyboard: rows });
 }
 
@@ -1834,8 +1838,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
   // 这里只保留**已在进行中的**草稿状态机：老用户手上还有没写完的草稿，/cancel、
   // /back、/save 需要继续可用，否则草稿会永远卡住。
   const builderState = await getBuilderState(ctx.builder, userId);
-  const builderStillActive =
-    builderOwnsNextMessage(builderState) || builderState?.step === "set_survey_access_code";
+  const builderStillActive = builderOwnsNextMessage(builderState) || builderState?.step === "set_survey_access_code";
   if (builderStillActive) {
     if (await handleBuilderMessage(ctx, message)) {
       return;

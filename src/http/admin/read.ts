@@ -572,9 +572,8 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const { items: responses, total: responseTotal } = responsePage;
     // 邮箱账号显示原始地址（合成 TG id 的用户查反查 email_accounts）：运营要靠
     // 它发现一次性邮箱域——2026-10-31 的 fldubai.com 三连注册就是从这里看出来的。
-    const emailAccount = user.telegramUserId >= 1_000_000_000_000
-      ? await getEmailAccountByUserId(env.DB, user.id)
-      : null;
+    const emailAccount =
+      user.telegramUserId >= 1_000_000_000_000 ? await getEmailAccountByUserId(env.DB, user.id) : null;
     return json({
       user: {
         id: user.id,

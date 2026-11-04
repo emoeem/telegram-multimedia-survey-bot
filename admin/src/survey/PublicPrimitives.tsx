@@ -53,9 +53,7 @@ export function EmptyState({
         <Icon className="h-6 w-6" aria-hidden="true" />
       </span>
       <p className="text-sm font-semibold text-[var(--survey-heading)]">{title}</p>
-      {description ? (
-        <p className="max-w-sm text-xs leading-5 text-[var(--survey-muted)]">{description}</p>
-      ) : null}
+      {description ? <p className="max-w-sm text-xs leading-5 text-[var(--survey-muted)]">{description}</p> : null}
       {action}
     </div>
   );
@@ -125,9 +123,7 @@ export function EntryRow({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-bold text-[var(--survey-heading)]">{title}</span>
-        {subtitle ? (
-          <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">{subtitle}</span>
-        ) : null}
+        {subtitle ? <span className="mt-0.5 block truncate text-xs text-[var(--survey-muted)]">{subtitle}</span> : null}
       </span>
       {trailing ?? <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />}
     </>
@@ -136,11 +132,7 @@ export function EntryRow({
     "survey-card group flex w-full items-center gap-3 px-4 py-3 text-left transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]";
   if (href) {
     return (
-      <a
-        href={href}
-        className={className}
-        {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
-      >
+      <a href={href} className={className} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
         {content}
       </a>
     );
