@@ -2403,6 +2403,57 @@ input[type="radio"] {
     gap: 10px;
   }
 
+  /* ---- 设置面板基础/高级分组（T5 2026-11-07）---------------------------
+   * 高级组默认收起：只切 [hidden] 可见性、字段保持挂载（金币解锁/显示模式
+   * 的本地态来自 initial props，条件卸载重挂会把开关打回旧值）。入口卡样式
+   * 与 .result-rules-entry 同族；内层 gap 与 .settings-panel 一致，展开时
+   * 间距和字段平铺时完全相同。 */
+  .settings-advanced-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--color-edge);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease;
+  }
+  .settings-advanced-toggle:hover {
+    border-color: var(--color-primary);
+  }
+  .settings-advanced-toggle-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .settings-advanced-toggle-label strong {
+    font-size: 12.5px;
+    color: var(--color-ink);
+  }
+  .settings-advanced-toggle-label small {
+    font-size: 11px;
+    color: var(--color-muted);
+  }
+  .settings-advanced-toggle-action {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+  .settings-advanced {
+    display: grid;
+    gap: 18px;
+  }
+  .settings-advanced[hidden] {
+    display: none;
+  }
+
   /* ---- Live preview (right column) ------------------------------------ */
   .preview-panel {
     display: flex;
