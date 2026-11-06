@@ -7,12 +7,18 @@ import type { BotContext } from "../../../src/bot/types";
 import type { SurveySessionNamespace } from "../../../src/services/session.service";
 import type { SurveyBuilderNamespace } from "../../../src/services/survey-builder.service";
 import { replyMessage, replyScreen, replyThreadId } from "../../../src/bot/reply";
+import { handleTelegramUpdate } from "../../../src/bot/router";
 
 /**
  * 论坛群（话题群）回复必须带回消息所在的 message_thread_id：不带的消息会落到
  * General 话题，该话题被关闭时 Telegram 直接返回 400 Bad Request: TOPIC_CLOSED，
  * 哪怕机器人权限完全正常。这里守住三件事：话题只发给本条 update 所在的会话、
  * 编辑既有消息时不受影响、以及 handler 层不得绕过 reply.ts 直接发送。
+ *
+ * 注意：测试体内禁止动态 import 重组件图。router.ts 静态引入 survey-handler.ts
+ * （实质拉起整应用模块图，首次加载约 2s），写在 it() 里会计入每个用例 5s 的
+ * vitest 默认超时窗口（vitest.config.ts 未覆盖 testTimeout），全量并发跑时
+ * CPU 争抢会把它推过 5s 线、造成偶发超时；放在文件顶部则计入收集阶段，无此窗口。
  */
 const GROUP_CHAT_ID = -1009876543210;
 
@@ -116,7 +122,6 @@ describe("router topic wiring", () => {
       exportQueue: {} as Queue,
     };
 
-    const { handleTelegramUpdate } = await import("../../../src/bot/router");
     await handleTelegramUpdate(
       {
         update_id: 21,
