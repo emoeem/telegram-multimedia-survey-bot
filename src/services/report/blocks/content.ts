@@ -1,8 +1,10 @@
-import type { ReportScore, ReportTextItem } from "../model";
+import type { ReportMediaMode, ReportScore, ReportTextItem } from "../model";
 
 export interface ContentBlockContext {
   escape(value: string): string;
   limit(value: string, length: number): string;
+  /** 渲染介质；缺省 print（分页 PNG/PDF 产物，行为与历史一致）。 */
+  mediaMode?: ReportMediaMode;
 }
 
 export function renderHeroBlock(
@@ -15,8 +17,12 @@ export function renderHeroBlock(
     input.avatar && (/^data:image\//i.test(input.avatar) || input.avatar.startsWith("/api/"))
       ? context.escape(input.avatar)
       : "";
+  // 首屏主视觉（往往是 LCP 元素）保持 eager 即时加载，两种介质都不挂
+  // loading="lazy"（理由同 report/web.ts renderHero 的注释）；弱网/省流量
+  // 的降级由 web 壳尾的 weakNetworkDegradeScript 兜底。decoding="async"
+  // 对打印产物零行为影响（PDF 侧按 load 事件等图，与解码调度无关）。
   const avatar = safeAvatarSrc
-    ? `<img class="hero-avatar" src="${safeAvatarSrc}" alt="用户图片" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div>`
+    ? `<img class="hero-avatar" src="${safeAvatarSrc}" alt="用户图片" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div>`
     : "";
   const tags = input.tags
     .slice(0, 4)

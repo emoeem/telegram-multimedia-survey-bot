@@ -141,5 +141,21 @@ cursor:pointer;
       <div class="report-watermark">更多问卷 @hnhgggfj_bot</div>
     </main>
   </div>
+  <script>
+  (function () {
+    try {
+      var connection = navigator.connection;
+      if (!connection) return;
+      var weak = Boolean(connection.saveData || (connection.effectiveType && connection.effectiveType !== "4g"));
+      if (!weak) return;
+      document.querySelectorAll("img").forEach(function (image) {
+        image.loading = "lazy";
+        image.decoding = "async";
+      });
+    } catch (error) {
+      /* 判定失败按正常网络处理，不降级。 */
+    }
+  })();
+  </script>
 </body>
 </html>
