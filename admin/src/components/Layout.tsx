@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import {
   ArrowLeft,
@@ -21,18 +21,32 @@ import {
   Sprout,
   Images,
   Inbox,
+  Search,
   Tags,
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { fetchAdminSession, fetchDeploymentInfo, fetchEnvironment } from "../api";
+import {
+  fetchAdminSession,
+  fetchDeploymentInfo,
+  fetchEnvironment,
+  type AdminMediaLibraryItem,
+  type ReportTemplateOption,
+  type SurveyListData,
+} from "../api";
+import { useApi } from "../hooks";
+// 问卷状态徽标文案（搜索面板命中列表用），来自纯模块 format.ts。
+import { STATUS_LABELS } from "../format";
 import { getTelegramInitData } from "../telegram";
+// ⌘K 全局搜索（T8）：匹配/分组/排序在纯模块 global-search.ts，这里只取数与交互。
+import { GLOBAL_SEARCH_POPULAR_TERMS, searchGlobalSearch, type GlobalSearchHit } from "../global-search";
 // 工作区数据源（2026-11-07 T2）：图标轨、tab 条与 Dashboard 功能地图共用
 // admin/src/workspaces.ts 的同一份 WORKSPACES——纯数据模块不依赖 lucide-react，
 // 图标以字符串键存储，在这里映射成组件；两层的完整说明见该模块头注释。
 import { WORKSPACES, tabNumberOf, type WorkspaceIconKey } from "../workspaces";
 import { TestBanner } from "./TestBanner";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { trapFocusWithin } from "./focus-trap";
 
 /** workspaces.ts 的图标键 → lucide 组件。Record 全键覆盖：加新键时这里漏了会直接 tsc 报错。 */
 const ICONS: Record<WorkspaceIconKey, LucideIcon> = {
@@ -106,6 +120,19 @@ export function Layout() {
   // Defaults to the full admin navigation: if the session probe fails we must
   // never lock a real admin out of pages only they can use.
   const [isCreator, setIsCreator] = useState(false);
+  // ⌘K 全局搜索面板（T8）：与分区浏览并列的「找功能」入口。
+  const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setSearchOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     fetchEnvironment().then(setEnvironment);
@@ -363,6 +390,19 @@ export function Layout() {
                   <strong className="truncate">{title}</strong>
                 </div>
               </div>
+              <button
+                type="button"
+                className="btn admin-search-trigger shrink-0"
+                onClick={() => setSearchOpen(true)}
+                aria-label="搜索问卷、模板与素材"
+                title="全局搜索（⌘K / Ctrl+K）"
+              >
+                <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="admin-search-trigger-label">搜索问卷、模板、素材…</span>
+                <kbd className="admin-search-kbd" aria-hidden="true">
+                  ⌘K
+                </kbd>
+              </button>
               {environment ? (
                 <span className="admin-env-pill hidden sm:inline-flex">
                   {environment === "production" ? "生产环境" : environment}
@@ -411,6 +451,196 @@ export function Layout() {
             <Outlet />
           </ErrorBoundary>
         </main>
+      </div>
+      {searchOpen ? <GlobalSearchPalette onClose={closeSearch} /> : null}
+    </div>
+  );
+}
+
+/**
+ * ⌘K 全局搜索面板（T8）：索引问卷标题 / 报告模板名 / 素材文件名三类。
+ *
+ * 数据源全部是既有列表接口，打开面板时一次性拉取、关闭即卸载（下次打开
+ * 重新拉取拿到新数据），前端内存过滤——零新增服务端查询、零 D1 行读增量
+ * （审计 3.2 成本红线）。分页上限即索引上限：问卷取服务端允许的 50 条、
+ * 素材取 100 条（都是最近更新的），超出部分属第一版已知取舍。
+ * 匹配/分组/排序在纯模块 global-search.ts；角色差异（creator 拉模板/素材
+ * 会 403）不需要特殊处理——对应组为空就不渲染。
+ */
+function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const surveys = useApi<SurveyListData>("/api/admin/surveys?page=1&pageSize=50");
+  const templates = useApi<{ templates: ReportTemplateOption[] }>("/api/admin/report-templates");
+  const media = useApi<{ items: AdminMediaLibraryItem[] }>("/api/admin/media-library?limit=100");
+
+  const result = useMemo(
+    () =>
+      searchGlobalSearch(
+        {
+          surveys: (surveys.data?.items ?? []).map((item) => ({
+            id: item.id,
+            title: item.title,
+            statusLabel: STATUS_LABELS[item.status],
+          })),
+          templates: templates.data?.templates ?? [],
+          media: media.data?.items ?? [],
+        },
+        query,
+      ),
+    [surveys.data, templates.data, media.data, query],
+  );
+  // 键盘上下选择走扁平 hits；组渲染需要「命中在扁平序列里的位置」。
+  const hitIndexes = useMemo(() => new Map(result.hits.map((hit, index) => [hit, index])), [result]);
+
+  useEffect(() => {
+    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      document.body.style.overflow = "";
+      restoreRef.current?.focus?.();
+    };
+  }, [onClose]);
+
+  // 关键词变了，选中项回到第一条；高亮项跟随滚动。
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+  useEffect(() => {
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, result]);
+
+  const openHit = (hit: GlobalSearchHit) => {
+    onClose();
+    navigate(hit.to);
+  };
+
+  const isLoading = surveys.loading || templates.loading || media.loading;
+  const loadFailed =
+    !isLoading && [surveys, templates, media].every((source) => source.error !== null && source.data === null);
+
+  return (
+    <div
+      className="admin-search-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="全局搜索"
+        className="admin-search-panel"
+        onKeyDown={(event) => {
+          trapFocusWithin(panelRef.current, event.nativeEvent);
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+            return;
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setActiveIndex((index) => Math.min(index + 1, Math.max(result.hits.length - 1, 0)));
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveIndex((index) => Math.max(index - 1, 0));
+            return;
+          }
+          if (event.key === "Enter") {
+            const hit = result.hits[activeIndex];
+            if (hit) {
+              event.preventDefault();
+              openHit(hit);
+            }
+          }
+        }}
+      >
+        <div className="admin-search-inputrow">
+          <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <input
+            autoFocus
+            type="text"
+            className="admin-search-input"
+            aria-label="搜索关键词"
+            placeholder="搜索问卷标题、模板名、素材文件名…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button type="button" className="admin-search-esc" onClick={onClose} aria-label="关闭搜索">
+            Esc
+          </button>
+        </div>
+        <div className="admin-search-body" ref={listRef}>
+          {query.trim() === "" ? (
+            <div className="admin-search-popular">
+              <p className="admin-search-popular-label">热门入口</p>
+              <div className="admin-search-chips">
+                {GLOBAL_SEARCH_POPULAR_TERMS.map((term) => (
+                  <button
+                    key={term.label}
+                    type="button"
+                    className="admin-search-chip"
+                    title={term.hint}
+                    onClick={() => {
+                      onClose();
+                      navigate(term.to);
+                    }}
+                  >
+                    {term.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : isLoading ? (
+            <div className="admin-search-hint">正在载入可搜索的数据…</div>
+          ) : loadFailed ? (
+            <div className="admin-search-hint">数据载入失败，请关闭后重试。</div>
+          ) : result.groups.length === 0 ? (
+            <div className="admin-search-hint">没有找到「{query.trim()}」相关内容</div>
+          ) : (
+            result.groups.map((group) => (
+              <section key={group.group}>
+                <h3 className="admin-search-group-label">{group.label}</h3>
+                {group.hits.map((hit) => {
+                  const index = hitIndexes.get(hit) ?? 0;
+                  const active = index === activeIndex;
+                  return (
+                    <button
+                      key={`${group.group}-${index}`}
+                      type="button"
+                      className={`admin-search-hit${active ? " is-active" : ""}`}
+                      data-active={active || undefined}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => openHit(hit)}
+                    >
+                      <span className="admin-search-hit-title">{hit.title}</span>
+                      {hit.meta ? <span className="admin-search-hit-meta">{hit.meta}</span> : null}
+                    </button>
+                  );
+                })}
+              </section>
+            ))
+          )}
+        </div>
+        <footer className="admin-search-footnote">↑↓ 选择 · Enter 打开 · Esc 关闭</footer>
       </div>
     </div>
   );
