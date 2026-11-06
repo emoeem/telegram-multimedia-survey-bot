@@ -5,6 +5,7 @@ import {
   Activity,
   Archive,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Clock,
   FileText,
@@ -21,6 +22,7 @@ import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../component
 import { StatCard } from "../components/StatCard";
 import { formatDateTime } from "../format";
 import { fetchDeploymentInfo, type DeploymentInfo, type PlanCapabilities } from "../api";
+import { buildFeatureMap, type FeatureMapCounts } from "../workspaces";
 
 const PLAN_TIER_LABELS: Record<NonNullable<PlanCapabilities["tier"]>, string> = {
   free: "Free 部署",
@@ -43,9 +45,24 @@ const PLAN_CAPABILITY_LABELS: Record<keyof Omit<PlanCapabilities, "tier">, strin
   rateLimitDO: "原子限流",
 };
 
-/** 部署能力面板：当前档位 + 每项付费能力，附 Free 部署的降级说明。 */
+/** 折叠面板 summary 的通用样式：去掉默认三角，保持 card-title 版式。 */
+const DETAILS_SUMMARY_CLASS = "card-title cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden";
+
+function summaryChevron(open: boolean) {
+  return (
+    <ChevronDown
+      className={`h-4 w-4 shrink-0 text-[var(--color-muted)] transition-transform${open ? " rotate-180" : ""}`}
+    />
+  );
+}
+
+/**
+ * 部署能力面板：当前档位 + 每项付费能力，附 Free 部署的降级说明。
+ * T2 做减法：默认折叠（details），档位留在 summary 上，能力不删除。
+ */
 function PlanCapabilityCard() {
   const [info, setInfo] = useState<DeploymentInfo | null>(null);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     void fetchDeploymentInfo().then(setInfo);
   }, []);
@@ -53,16 +70,19 @@ function PlanCapabilityCard() {
   const { plan, planFallbacks } = info;
   const capabilities = Object.entries(PLAN_CAPABILITY_LABELS) as Array<[keyof Omit<PlanCapabilities, "tier">, string]>;
   return (
-    <section className="mt-5 card">
-      <div className="card-title">
+    <details className="mt-5 card" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className={DETAILS_SUMMARY_CLASS}>
         <div>
           <h2>部署能力</h2>
           <p className="card-sub">按部署绑定的付费资源自动探测 · 免费部署自动降级，功能不缺失</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PLAN_TIER_TINTS[plan.tier]}`}>
-          {PLAN_TIER_LABELS[plan.tier]}
+        <span className="flex items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${PLAN_TIER_TINTS[plan.tier]}`}>
+            {PLAN_TIER_LABELS[plan.tier]}
+          </span>
+          {summaryChevron(open)}
         </span>
-      </div>
+      </summary>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {capabilities.map(([key, label]) => {
           const on = plan[key];
@@ -85,6 +105,69 @@ function PlanCapabilityCard() {
             </div>
           );
         })}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * 功能地图（2026-11-07 T2 重心视图）：编号工作区卡 → tab 芯片（一句话 hint）
+ * + 计数徽章。数据全部来自 workspaces.ts 的唯一数据源；徽章只读
+ * /api/admin/dashboard 的既有字段，零新增请求。编号与图标轨 tooltip、
+ * 工作区 tab 条互相指认——迷路时回这里。
+ */
+function FeatureMapSection({ counts }: { counts: FeatureMapCounts }) {
+  const map = buildFeatureMap(counts);
+  return (
+    <section className="card" aria-label="功能地图">
+      <div className="card-title">
+        <div>
+          <h2>功能地图</h2>
+          <p className="card-sub">全部功能按编号归入 {map.length} 个工作区 · 从任一芯片直达对应页面</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {map.map((workspace) => (
+          <div key={workspace.id} className="rounded-surface border border-[var(--color-edge)] p-3">
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--surface))] text-sm font-semibold text-[var(--color-primary)]">
+                {workspace.number}
+              </span>
+              <Link
+                to={workspace.entry}
+                title={workspace.hint}
+                className="min-w-0 truncate text-sm font-semibold hover:underline"
+              >
+                {workspace.label}
+              </Link>
+              {workspace.badges.length ? (
+                <span className="ml-auto flex shrink-0 gap-1.5">
+                  {workspace.badges.map((badge) => (
+                    <span
+                      key={badge.label}
+                      className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--color-muted)]"
+                    >
+                      {badge.label} {badge.value}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1.5 text-xs text-[var(--color-muted)]">{workspace.hint}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {workspace.tabs.map((tab) => (
+                <Link
+                  key={tab.to}
+                  to={tab.to}
+                  title={tab.hint}
+                  className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-[var(--color-ink)] transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+                >
+                  <span className="text-[var(--color-muted)]">{tab.number}</span> {tab.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -109,6 +192,9 @@ export function DashboardPage() {
   // Rendered in the header: it was tracked but never displayed, so "刷新" gave
   // no indication that anything had been refetched.
   const [now, setNow] = useState(() => new Date().toISOString());
+  // 报告交付队列默认折叠（T2 做减法）；EChart 在收起的 details 里会量到 0 宽，
+  // 所以图表内容只在首次展开后才挂载。
+  const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const { data, error, retry } = useApi<DashboardData>("/api/admin/dashboard");
 
   const handleRefresh = () => {
@@ -215,6 +301,8 @@ export function DashboardPage() {
           <p>查看问卷、答卷与报告交付的实时状态</p>
         </div>
       </div>
+      {/* 重心视图（T2）：功能地图置顶，编号入口一目了然。 */}
+      <FeatureMapSection counts={{ surveys: data.surveys, publishedSurveys: data.publishedSurveys }} />
       <section className="card">
         <div className="card-title">
           <div>
@@ -242,40 +330,51 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-5 card">
-        <div className="card-title">
+      {/* T2 做减法：交付队列默认折叠，摘要（共 N 份 · 待处理/失败）留在 summary 上；
+          展开后才挂载图表——收起的 details 里容器是 0 宽，ECharts 会画塌。 */}
+      <details className="mt-5 card" onToggle={(event) => setDeliveriesOpen(event.currentTarget.open)}>
+        <summary className={DETAILS_SUMMARY_CLASS}>
           <div>
             <h2>报告交付队列</h2>
-            <p className="card-sub">Telegram 频道自动归档 · 共 {deliveryTotal} 份</p>
+            <p className="card-sub">
+              Telegram 频道自动归档 · 共 {deliveryTotal} 份
+              {deliveries.pending > 0 ? ` · 待处理 ${deliveries.pending}` : ""}
+              {deliveries.failed > 0 ? ` · 失败 ${deliveries.failed}` : ""}
+            </p>
           </div>
-          <Link className="btn btn-sm" to="/reports">
-            查看全部
-          </Link>
-        </div>
-        <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
-              <StatCard
-                key={label}
-                label={label}
-                value={value}
-                icon={<Icon className="h-4 w-4" />}
-                tint={tint}
-                tone={label === "失败" && value > 0 ? "danger" : "default"}
-                to={`/reports?status=${status}`}
-                ariaLabel={`${label} ${value}，查看报告归档`}
-              />
-            ))}
+          <span className="flex items-center gap-2">
+            <Link className="btn btn-sm" to="/reports">
+              查看全部
+            </Link>
+            {summaryChevron(deliveriesOpen)}
+          </span>
+        </summary>
+        {deliveriesOpen ? (
+          <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
+                <StatCard
+                  key={label}
+                  label={label}
+                  value={value}
+                  icon={<Icon className="h-4 w-4" />}
+                  tint={tint}
+                  tone={label === "失败" && value > 0 ? "danger" : "default"}
+                  to={`/reports?status=${status}`}
+                  ariaLabel={`${label} ${value}，查看报告归档`}
+                />
+              ))}
+            </div>
+            <div className="rounded-surface border border-[var(--color-edge)] p-2">
+              {deliveryTotal > 0 ? (
+                <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
+              ) : (
+                <EmptyPanel text="暂无报告" />
+              )}
+            </div>
           </div>
-          <div className="rounded-surface border border-[var(--color-edge)] p-2">
-            {deliveryTotal > 0 ? (
-              <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
-            ) : (
-              <EmptyPanel text="暂无报告" />
-            )}
-          </div>
-        </div>
-      </section>
+        ) : null}
+      </details>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         {

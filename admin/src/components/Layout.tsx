@@ -27,96 +27,35 @@ import {
 } from "lucide-react";
 import { fetchAdminSession, fetchDeploymentInfo, fetchEnvironment } from "../api";
 import { getTelegramInitData } from "../telegram";
+// 工作区数据源（2026-11-07 T2）：图标轨、tab 条与 Dashboard 功能地图共用
+// admin/src/workspaces.ts 的同一份 WORKSPACES——纯数据模块不依赖 lucide-react，
+// 图标以字符串键存储，在这里映射成组件；两层的完整说明见该模块头注释。
+import { WORKSPACES, tabNumberOf, type WorkspaceIconKey } from "../workspaces";
 import { TestBanner } from "./TestBanner";
 import { ErrorBoundary } from "./ErrorBoundary";
 
-type NavItem = { to: string; icon: LucideIcon; label: string };
-
-/**
- * 工作区信息架构（2026-10-31，用户提案）：左侧常驻的 20+ 项全局导航在
- * 创作/操作时几乎全是噪音。改为两层：
- *
- *  - 全局图标轨（56px 常驻）：每个工作区一个图标，点击进入其着陆页；
- *  - 工作区子导航：进入工作区后，主区域顶部出现该工作区的横向 tab 条
- *    （如问卷工作区：列表|分类|导入|答卷动态|报告），其余工作区不可见——
- *    「点问卷这个分类，整个界面就不一样」。
- *
- * 路由不变，只是导航的组织方式变了；问卷详情子页（/surveys/:id/*）归属
- * 问卷工作区，子导航条继续显示，页内返回按钮负责上下层回退。
- */
-type Workspace = {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  /** 图标轨点击后的着陆页。 */
-  entry: string;
-  /** 工作区顶部 tab 条（含着陆页自身）。 */
-  tabs: NavItem[];
-  /** 一句话说明（图标轨 tooltip）。 */
-  hint: string;
+/** workspaces.ts 的图标键 → lucide 组件。Record 全键覆盖：加新键时这里漏了会直接 tsc 报错。 */
+const ICONS: Record<WorkspaceIconKey, LucideIcon> = {
+  badgeCheck: BadgeCheck,
+  clipboardList: ClipboardList,
+  coins: Coins,
+  contact: Contact,
+  fileUp: FileUp,
+  images: Images,
+  inbox: Inbox,
+  keyRound: KeyRound,
+  listChecks: ListChecks,
+  package: Package,
+  palette: Palette,
+  scrollText: ScrollText,
+  serverCog: ServerCog,
+  settings: Settings,
+  sprout: Sprout,
+  tags: Tags,
+  target: Target,
+  trash2: Trash2,
+  users: Users,
 };
-
-const WORKSPACES: Workspace[] = [
-  {
-    id: "surveys",
-    label: "问卷",
-    icon: ClipboardList,
-    entry: "/surveys",
-    hint: "创建与编辑问卷、查看答卷与报告",
-    tabs: [
-      { to: "/surveys", icon: ClipboardList, label: "问卷列表" },
-      { to: "/categories", icon: Tags, label: "分类" },
-      { to: "/imports", icon: FileUp, label: "导入" },
-      { to: "/responses", icon: ListChecks, label: "答卷动态" },
-      { to: "/reports", icon: Package, label: "报告" },
-    ],
-  },
-  {
-    id: "content",
-    label: "内容",
-    icon: Coins,
-    entry: "/coin-economy",
-    hint: "投稿、用户、模板与素材",
-    tabs: [
-      { to: "/coin-economy", icon: Coins, label: "金币经济" },
-      { to: "/web-submissions", icon: Inbox, label: "网页投稿" },
-      { to: "/users", icon: Users, label: "用户" },
-      { to: "/templates", icon: Palette, label: "模板" },
-      { to: "/cert-content", icon: BadgeCheck, label: "认证卡内容" },
-      { to: "/media-library", icon: Images, label: "素材库" },
-    ],
-  },
-  {
-    id: "community",
-    label: "社区",
-    icon: Sprout,
-    entry: "/plaza",
-    hint: "树洞、画廊与展示区",
-    tabs: [
-      { to: "/plaza", icon: Sprout, label: "树洞" },
-      { to: "/profile-gallery", icon: Contact, label: "个人画廊" },
-      { to: "/showcase", icon: Images, label: "展示区" },
-      // Renamed from 挑战任务: the footer's /trial link carries the same label,
-      // and the two point at different pages (this one is the 小游戏 admin, the
-      // footer one is the public 小游戏 page). The page title here is 小游戏管理.
-      { to: "/task-packs", icon: Target, label: "小游戏管理" },
-    ],
-  },
-  {
-    id: "system",
-    label: "系统",
-    icon: Settings,
-    entry: "/settings",
-    hint: "审计、回收站、授权与设置",
-    tabs: [
-      { to: "/audit", icon: ScrollText, label: "审计" },
-      { to: "/trash", icon: Trash2, label: "回收站" },
-      { to: "/licenses", icon: KeyRound, label: "授权" },
-      { to: "/control", icon: ServerCog, label: "控制中心" },
-      { to: "/settings", icon: Settings, label: "设置" },
-    ],
-  },
-];
 
 /** 沉浸创作态：整宽渲染，图标轨与子导航都隐藏（顶栏返回按钮负责退出）。 */
 const IMMERSIVE_PATH = /\/surveys\/\d+\/(editor|scene\/\d+)$/;
@@ -328,13 +267,13 @@ export function Layout() {
             aria-label="工作区"
           >
             {workspaces.map((workspace) => {
-              const Icon = workspace.icon;
+              const Icon = ICONS[workspace.icon];
               const active = activeWorkspaceId === workspace.id;
               return (
                 <Link
                   key={workspace.id}
                   to={workspace.entry}
-                  title={`${workspace.label} · ${workspace.hint}`}
+                  title={`${workspace.order} · ${workspace.label} · ${workspace.hint}`}
                   aria-label={workspace.label}
                   aria-current={active ? "page" : undefined}
                   className={`admin-rail-icon group relative flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors sm:justify-center sm:px-0 ${
@@ -467,7 +406,7 @@ export function Layout() {
           {activeWorkspace && !immersive ? (
             <nav className="admin-workspace-tabs" aria-label={`${activeWorkspace.label}工作区`}>
               {activeWorkspace.tabs.map((item) => {
-                const Icon = item.icon;
+                const Icon = ICONS[item.icon];
                 const active = isActivePath(item.to, location.pathname);
                 return (
                   <Link
@@ -477,6 +416,9 @@ export function Layout() {
                     className={`admin-workspace-tab${active ? " is-active" : ""}`}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {/* 稳定编号（取自 workspaces.ts 的 order，角色过滤不漂移）：
+                        与 Dashboard 功能地图互相指认，「去 1.4」口头可达。 */}
+                    <span className="opacity-60">{tabNumberOf(activeWorkspace, item)}</span>
                     {item.label}
                   </Link>
                 );
