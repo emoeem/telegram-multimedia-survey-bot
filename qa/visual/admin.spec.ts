@@ -21,11 +21,15 @@ const VIEWPORTS = [
 const THEMES = ["light", "dark"] as const;
 
 /**
- * DashboardPage 渲染的两条路径（/admin/ 与兜底的 /admin/analytics）：其环形图
- * 走懒 chunk + Suspense 骨架，固定等待下骨架/成图两态都可能被截到（间歇失败的
- * 根源）——等真正的图表组件挂载（.echarts-for-react 类只在真组件上，骨架没有）。
- * 同页的「更新于 HH:MM」是活时钟，截图时一并屏蔽（时:分笔画随运行时刻变化，
- * 恰好贴着 0.002 阈值，时而通过时而超）。
+ * DashboardPage 渲染的两条路径（/admin/ 与兜底的 /admin/analytics，App.tsx 的
+ * path:"*" 把后者重定向到总览）。T2 重心视图（2026-11-07）后，环形图收进默认
+ * 折叠的「报告交付队列」details，首次展开才挂载——收起态容器 0 宽，ECharts 在
+ * 里面会画塌，所以默认视图不再出现 .echarts-for-react，等它会永远超时（这正是
+ * 2026-11-07 第一轮 visual CI 的 8 条 TimeoutError）。改为等「功能地图」标题：
+ * 它只在 data 到位后随整页一次渲染（此前是 SkeletonPanel），数据未落地时截不到
+ * 真页，与旧等待防的「骨架/成图两态互截」是同一个目的。同页的「更新于 HH:MM」
+ * 是活时钟，截图时一并屏蔽（时:分笔画随运行时刻变化，恰好贴着 0.002 阈值，
+ * 时而通过时而超）。
  */
 const DASHBOARD_PATHS = new Set(["/admin/", "/admin/analytics"]);
 
@@ -357,7 +361,10 @@ for (const theme of THEMES) {
         await page.goto(path, { waitUntil: "domcontentloaded" });
         await expect(page.locator("h1, main").first()).toBeVisible();
         if (DASHBOARD_PATHS.has(path)) {
-          await page.waitForSelector(".echarts-for-react", { state: "attached", timeout: 15_000 });
+          // 旧断言等 .echarts-for-react 挂载；T2 后图表藏在默认折叠的 details 里，
+          // 默认视图不渲染（见 DASHBOARD_PATHS 注释）。「功能地图」标题只在 data
+          // 落地后出现，等它即可保证整页已渲染，骨架态不会混进截图。
+          await expect(page.getByRole("heading", { name: "功能地图" })).toBeVisible();
         }
         await page.waitForTimeout(250);
         if (path === "/admin/surveys/3/editor") {

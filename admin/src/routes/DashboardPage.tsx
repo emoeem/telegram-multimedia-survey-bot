@@ -331,7 +331,9 @@ export function DashboardPage() {
       </section>
 
       {/* T2 做减法：交付队列默认折叠，摘要（共 N 份 · 待处理/失败）留在 summary 上；
-          展开后才挂载图表——收起的 details 里容器是 0 宽，ECharts 会画塌。 */}
+          展开后才挂载图表——收起的 details 里容器是 0 宽，ECharts 会画塌。
+          「查看全部」不能放进 summary：summary 本身是交互元素（隐式 button 角色），
+          里面再嵌链接会被 axe 判为 nested-interactive（serious，a11y 门禁阻断）。 */}
       <details className="mt-5 card" onToggle={(event) => setDeliveriesOpen(event.currentTarget.open)}>
         <summary className={DETAILS_SUMMARY_CLASS}>
           <div>
@@ -342,35 +344,37 @@ export function DashboardPage() {
               {deliveries.failed > 0 ? ` · 失败 ${deliveries.failed}` : ""}
             </p>
           </div>
-          <span className="flex items-center gap-2">
-            <Link className="btn btn-sm" to="/reports">
-              查看全部
-            </Link>
-            {summaryChevron(deliveriesOpen)}
-          </span>
+          {summaryChevron(deliveriesOpen)}
         </summary>
         {deliveriesOpen ? (
-          <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
-                <StatCard
-                  key={label}
-                  label={label}
-                  value={value}
-                  icon={<Icon className="h-4 w-4" />}
-                  tint={tint}
-                  tone={label === "失败" && value > 0 ? "danger" : "default"}
-                  to={`/reports?status=${status}`}
-                  ariaLabel={`${label} ${value}，查看报告归档`}
-                />
-              ))}
+          <div className="mt-4">
+            <div className="flex justify-end">
+              <Link className="btn btn-sm" to="/reports">
+                查看全部
+              </Link>
             </div>
-            <div className="rounded-surface border border-[var(--color-edge)] p-2">
-              {deliveryTotal > 0 ? (
-                <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
-              ) : (
-                <EmptyPanel text="暂无报告" />
-              )}
+            <div className="mt-3 grid gap-5 lg:grid-cols-[1fr_260px] items-center">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {deliveryItems.map(({ label, value, status, icon: Icon, tint }) => (
+                  <StatCard
+                    key={label}
+                    label={label}
+                    value={value}
+                    icon={<Icon className="h-4 w-4" />}
+                    tint={tint}
+                    tone={label === "失败" && value > 0 ? "danger" : "default"}
+                    to={`/reports?status=${status}`}
+                    ariaLabel={`${label} ${value}，查看报告归档`}
+                  />
+                ))}
+              </div>
+              <div className="rounded-surface border border-[var(--color-edge)] p-2">
+                {deliveryTotal > 0 ? (
+                  <EChart option={deliveryDonut} style={{ height: 180 }} opts={{ renderer: "svg" }} />
+                ) : (
+                  <EmptyPanel text="暂无报告" />
+                )}
+              </div>
             </div>
           </div>
         ) : null}
