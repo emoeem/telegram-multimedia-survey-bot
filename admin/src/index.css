@@ -3183,26 +3183,7 @@ html[data-theme="foxgold"] body::before {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.24) transparent;
 }
-.admin-nav-group {
-  display: grid;
-  gap: 4px;
-}
-.admin-nav-label {
-  margin: 0 8px 2px;
-  color: #94a3b8;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
 .admin-nav a {
-  min-height: 40px;
-}
-/* 紧凑图标轨的「更多」触发器与面板条目：与导航项同高，触屏由下面
- * `@media (pointer: coarse)` 抬到 44。 */
-.admin-rail-more,
-.admin-rail-more-item {
   min-height: 40px;
 }
 
@@ -3220,50 +3201,6 @@ html[data-theme="foxgold"] body::before {
   .admin-sidebar {
     padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
   }
-}
-/* A collapsible group turns its label into a disclosure button. It keeps the
- * label's type scale, so a folded group still reads as a section header.
- * `margin-left:auto` on the caret parks it on the right edge of the sidebar. */
-.admin-nav-toggle {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 2px;
-  padding: 3px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #94a3b8;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-align: left;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    color 120ms var(--ui-ease),
-    background-color 120ms var(--ui-ease);
-}
-.admin-nav-toggle:hover {
-  color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.05);
-}
-.admin-nav-toggle:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-.admin-nav-caret {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  margin-left: auto;
-  opacity: 0.8;
-  transition: transform 160ms var(--ui-ease);
-}
-.admin-nav-group.is-collapsed .admin-nav-caret {
-  transform: rotate(-90deg);
 }
 /* Theme contrast overrides must come after daisyUI theme imports so their
  * palette variables cannot be overwritten by the generated theme layer. */
@@ -3313,13 +3250,7 @@ html[data-theme="foxgold"] .phone-note {
   main > header h1 {
     font-size: 20px;
   }
-  .admin-nav-label {
-    display: none;
-  }
   .admin-nav {
-    gap: 1px;
-  }
-  .admin-nav-group {
     gap: 1px;
   }
   .admin-nav a {
@@ -3343,11 +3274,6 @@ html[data-theme="foxgold"] .phone-note {
   }
   .tbl td {
     padding: 10px;
-  }
-}
-@media (min-width: 640px) and (max-width: 999px) {
-  .admin-nav-label {
-    display: none;
   }
 }
 @media (min-width: 1000px) {
@@ -5558,7 +5484,10 @@ button.admin-stat:focus-visible {
 .survey-float-header:focus {
   outline: none;
 }
-/* 顶部中央唤出把手：舞台上唯一常驻的 UI（半透明小胶囊，44px 触达热区）。 */
+/* 顶部中央唤出把手：舞台上唯一常驻的 UI（半透明小胶囊）。胶囊本体 44x24，
+ * 竖直热区由 ::after 补足 44px（T6 触控目标审查）——原注释宣称「44px 触达
+ * 热区」实际只有 24px 高；胶囊视觉尺寸不动（截图基线零差异），只是把
+ * 可点区域向上下各扩 10px。 */
 .stage-header-handle {
   position: fixed;
   top: max(6px, env(safe-area-inset-top));
@@ -5578,6 +5507,14 @@ button.admin-stat:focus-visible {
   opacity: 0.62;
   cursor: pointer;
   transition: opacity 0.2s ease;
+}
+.stage-header-handle::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  bottom: -10px;
 }
 .stage-header-handle:hover,
 .stage-header-handle:focus-visible {
@@ -5795,11 +5732,9 @@ button.admin-stat:focus-visible {
   .admin-nav a {
     min-height: 44px;
   }
-  .admin-nav-toggle {
-    min-height: 44px;
-  }
-  .admin-rail-more,
-  .admin-rail-more-item {
+  /* 工作区子导航 tab 条（T6 全设备适配审查）：默认 9px 内边距只撑出 ~35px，
+   * 触屏上横向 tab 的误触成本是「跳错页面」，抬到 44。 */
+  .admin-workspace-tab {
     min-height: 44px;
   }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Maximize2, RotateCw, X } from "lucide-react";
+import { IMMERSIVE_MIN_WIDTH } from "../../../src/survey/layout";
 
 /**
  * 「横屏优先」模式下的竖屏提示条（display=landscape 且手机竖屏时出现）。
@@ -11,7 +12,11 @@ import { Maximize2, RotateCw, X } from "lucide-react";
  * 可关闭：关掉后本次会话（sessionStorage，按问卷隔离）不再打扰；竖屏下
  * 布局本身仍然可用，只是场景图不会铺满高度。
  */
-const PORTRAIT_PHONE_QUERY = "(orientation: portrait) and (max-width: 900px)";
+// 提示窗口必须与 layout.ts 的裁决同口径（T6 全设备适配审查）：landscape 模式
+// 下宽度 ≥IMMERSIVE_MIN_WIDTH 的竖屏 resolveSurveyLayout 已返回 stage（场景
+// 铺满），再提示「横过来」就是谎报——旧值 900px 让 768–900 的竖屏看到多余
+// 提示条。0.02 抵消连续取值：恰好 768 整宽时已是舞台，不出提示。
+const PORTRAIT_PHONE_QUERY = `(orientation: portrait) and (max-width: ${IMMERSIVE_MIN_WIDTH - 0.02}px)`;
 
 function dismissedKey(surveyId: number): string {
   return `survey-landscape-hint-dismissed:${surveyId}`;
@@ -80,9 +85,11 @@ export function LandscapeHint({ surveyId }: { surveyId: number }) {
         <Maximize2 className="h-3.5 w-3.5" />
         全屏横屏
       </button>
+      {/* 视觉 22px 的关闭钮，热区用 ::after 扩到 ≥44px（T6 触控目标审查）：
+          提示条是窄条，放大按钮本体只会撑高整条；伪元素扩区不影响截图。 */}
       <button
         type="button"
-        className="shrink-0 rounded-full p-1 text-[var(--survey-muted)] hover:bg-[var(--surface-hover)]"
+        className="relative shrink-0 rounded-full p-1 text-[var(--survey-muted)] after:absolute after:-inset-3 after:content-[''] hover:bg-[var(--surface-hover)]"
         onClick={dismiss}
         aria-label="关闭横屏提示"
       >

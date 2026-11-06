@@ -44,8 +44,11 @@ function sectionTitle(kind: ReportSectionKind, section: ReportTemplateSection): 
 
 function renderHero(view: ReportViewModel, section: ReportTemplateSection): string {
   const reportLabel = view.meta.reportLabel ?? "个人结果";
+  // 头像是报告首屏的主视觉（往往就是 LCP 元素）：默认即时加载 + 异步解码，
+  // 不挂 loading="lazy"（懒加载首屏图只会拖慢 LCP）。弱网/省流量的降级由
+  // 页尾内联脚本按 shouldSkipPreload 同判据再兜底（见 buildResponsiveReportHtml）。
   const avatar = view.hero.avatar
-    ? `<img class="avatar" src="${escapeHtml(view.hero.avatar)}" alt="" loading="lazy" onerror="this.remove()" />`
+    ? `<img class="avatar" src="${escapeHtml(view.hero.avatar)}" alt="" decoding="async" onerror="this.remove()" />`
     : "";
   const tags = view.hero.tags.length
     ? `<div class="tags">${view.hero.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>`
@@ -194,13 +197,15 @@ function renderAnswers(view: ReportViewModel, section: ReportTemplateSection): s
 function renderGallery(view: ReportViewModel): string {
   const items = view.gallery.filter((item) => item.url !== view.hero.avatar);
   if (!items.length) return "";
+  // 非首屏（图集总在报告尾部）：静态 lazy + 异步解码——首屏渲染不与图集抢链路，
+  // 弱网/省流量下浏览器原生 lazy 本来就更晚取图，无需脚本再判。
   return `<section class="report-section"><h2>图片</h2>
     <div class="gallery">
       ${items
         .map(
           (item) => `
         <figure>
-          <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.caption ?? item.questionTitle ?? "图片")}" loading="lazy" onerror="this.closest('figure')?.classList.add('missing')" />
+          <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.caption ?? item.questionTitle ?? "图片")}" loading="lazy" decoding="async" onerror="this.closest('figure')?.classList.add('missing')" />
           ${item.caption ? `<figcaption>${escapeHtml(item.caption)}</figcaption>` : ""}
         </figure>`,
         )
@@ -359,6 +364,38 @@ function themePrintResetCss(): string {
   return `@media print{:root{--bg:#fff;--bg-secondary:#fff;--surface:#fff;--surface-elevated:#fff;--border:#dde3ea;--accent-soft:#f1f4f9}body{background:#fff}}`;
 }
 
+/**
+ * 弱网降级内联脚本（T6 报告端 N8 子项，纯表现层）。
+ *
+ * 判据与 admin/src/survey/media-preload.ts 的 shouldSkipPreload 完全同口径：
+ * `navigator.connection.saveData` 或 `effectiveType !== "4g"`（即 2G/3G）。
+ * 命中时把**所有**图片降为 `loading="lazy"`——主要是首屏头像（静态标记是
+ * eager，见 renderHero）：省流量/慢网下文字先渲染，图片进视口再取；
+ * 非首屏图集静态就是 lazy，脚本等于二次确认。正常网络脚本零操作，头像
+ * 保持高优先级即时加载。无 connection API（旧 WebView / 桌面）按正常网处理。
+ *
+ * 只写属性、try/catch 兜底，PDF 渲染（puppeteer setContent）与模板预览
+ * iframe 里同样安全。
+ */
+function weakNetworkDegradeScript(): string {
+  return `<script>
+  (function () {
+    try {
+      var connection = navigator.connection;
+      if (!connection) return;
+      var weak = Boolean(connection.saveData || (connection.effectiveType && connection.effectiveType !== "4g"));
+      if (!weak) return;
+      document.querySelectorAll("img").forEach(function (image) {
+        image.loading = "lazy";
+        image.decoding = "async";
+      });
+    } catch (error) {
+      /* 判定失败按正常网络处理，不降级。 */
+    }
+  })();
+  </script>`;
+}
+
 export function buildResponsiveReportHtml(
   view: ReportViewModel,
   meta: ResponsiveReportMeta = {},
@@ -407,6 +444,7 @@ export function buildResponsiveReportHtml(
     ${footer}
     ${watermark}
   </main>
+  ${weakNetworkDegradeScript()}
 </body>
 </html>`;
 }

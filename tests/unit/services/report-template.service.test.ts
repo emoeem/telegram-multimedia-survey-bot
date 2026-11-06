@@ -118,4 +118,34 @@ describe("report template system", () => {
     expect(html).toContain('data-report-layout="bento"');
     expect(html).toContain("bento-overview");
   });
+
+  // T6 全设备适配审查 · 报告端 N8 子项：图片加载分「首屏/非首屏」两档，
+  // 并带 shouldSkipPreload 同判据的弱网降级脚本（纯表现层）。
+  it("renders the hero avatar eager and the gallery lazy, both async-decoded, with the weak-network degrade script", () => {
+    const galleryView: ReportViewModel = {
+      ...view,
+      hero: { ...view.hero, avatar: "https://media.example/avatar.jpg" },
+      gallery: [{ url: "https://media.example/gallery-1.jpg", caption: "图一" }],
+    };
+    const html = buildResponsiveReportHtml(
+      galleryView,
+      {},
+      {
+        id: "classic",
+        name: "经典报告",
+        version: 1,
+        theme: "catppuccin-latte",
+        renderers: ["web", "pdf"] as const,
+        sections: [{ kind: "hero" }, { kind: "gallery" }],
+      },
+    );
+    // 首屏头像：默认即时加载（懒加载首屏图只会拖慢 LCP），异步解码。
+    expect(html).toContain('class="avatar" src="https://media.example/avatar.jpg" alt="" decoding="async"');
+    expect(html).not.toMatch(/class="avatar"[^>]*loading="lazy"/);
+    // 非首屏图集：静态 lazy + 异步解码。
+    expect(html).toContain('loading="lazy" decoding="async"');
+    // 弱网降级脚本与 media-preload.ts 的 shouldSkipPreload 同判据（saveData/2G/3G）。
+    expect(html).toContain('connection.saveData || (connection.effectiveType && connection.effectiveType !== "4g")');
+    expect(html).toContain('image.loading = "lazy"');
+  });
 });
