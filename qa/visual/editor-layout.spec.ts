@@ -5,9 +5,11 @@ import { scanA11y } from "./a11y";
 /**
  * Desktop layout regression for the survey editor with a large imported
  * survey (~135 questions). Guards the viewport-height chain
- * (shell → main → editor page → three columns) and the phone-shaped live
- * preview: no page-level scrollbar, no dead band under the workspace,
- * independent per-column scrolling, preview sync while switching questions.
+ * (shell → main → editor page → three columns): no page-level scrollbar,
+ * no dead band under the workspace, independent per-column scrolling,
+ * selection / search / preview still working at scale. The editor has a
+ * single three-column shell since 2026-11-07 (old EditableEditor /
+ * ?ui=legacy removed); the S9-era cases below keep their original shape.
  * Geometry-based on purpose — pixel snapshots of a live editor are too flaky.
  */
 
@@ -131,57 +133,6 @@ async function mockEditorApi(page: Page, editors: Record<string, unknown>) {
   );
 }
 
-interface Geometry {
-  docOverflowY: number;
-  docOverflowX: number;
-  columns: Array<{ name: string; height: number; top: number; scrollHeight: number; clientHeight: number }>;
-  pageBottom: number;
-  viewportHeight: number;
-  phone: { width: number; height: number; bottom: number };
-  previewBottom: number;
-}
-
-async function readGeometry(page: Page): Promise<Geometry> {
-  return page.evaluate(() => {
-    const box = (sel: string) => {
-      const el = document.querySelector(sel);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return {
-        top: r.top,
-        bottom: r.bottom,
-        height: r.height,
-        width: r.width,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-      };
-    };
-    const doc = document.documentElement;
-    const columns = [".editor-structure", ".editor-canvas", ".editor-preview"].map((sel) => {
-      const b = box(sel)!;
-      return {
-        name: sel,
-        height: Math.round(b.height),
-        top: Math.round(b.top),
-        scrollHeight: b.scrollHeight,
-        clientHeight: b.clientHeight,
-      };
-    });
-    const phone = box(".phone-frame")!;
-    const preview = box(".editor-preview")!;
-    const page_ = box(".editor-page")!;
-    return {
-      docOverflowY: doc.scrollHeight - doc.clientHeight,
-      docOverflowX: doc.scrollWidth - window.innerWidth,
-      columns,
-      pageBottom: Math.round(page_.bottom),
-      viewportHeight: window.innerHeight,
-      phone: { width: Math.round(phone.width), height: Math.round(phone.height), bottom: Math.round(phone.bottom) },
-      previewBottom: Math.round(preview.bottom),
-    };
-  });
-}
-
 for (const viewport of [
   { width: 1920, height: 1080 },
   { width: 1600, height: 900 },
@@ -189,7 +140,7 @@ for (const viewport of [
   test(`135-question editor fills the viewport at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
 
@@ -201,16 +152,12 @@ for (const viewport of [
     expect(g.pageBottom, "editor page bottom").toBeGreaterThanOrEqual(g.viewportHeight - 34);
     const heights = g.columns.map((c) => c.height);
     expect(Math.max(...heights) - Math.min(...heights), "column height mismatch").toBeLessThanOrEqual(2);
-    // 135 questions must scroll inside their own panels.
-    const structure = g.columns[0]!;
+    // 135 questions must scroll inside the canvas column; the material column
+    // is short by design and must not force page-level scrolling.
     const canvas = g.columns[1]!;
-    expect(structure.scrollHeight).toBeGreaterThan(structure.clientHeight);
     expect(canvas.scrollHeight).toBeGreaterThan(canvas.clientHeight);
-    // Phone preview keeps a portrait ratio and stays inside its column.
-    const ratio = g.phone.width / g.phone.height;
-    expect(ratio, "phone frame aspect ratio").toBeGreaterThan(0.42);
-    expect(ratio, "phone frame aspect ratio").toBeLessThan(0.52);
-    expect(g.phone.bottom, "phone frame inside preview column").toBeLessThanOrEqual(g.previewBottom + 2);
+    // The right column is the properties panel: first question selected by default.
+    await expect(page.locator("aside.editor-preview .q-editor")).toBeVisible();
 
     mkdirSync(SHOTS_DIR, { recursive: true });
     await page.screenshot({ path: `${SHOTS_DIR}/spec-${viewport.width}x${viewport.height}.png` });
@@ -220,33 +167,31 @@ for (const viewport of [
 test("question switching, search and preview sync survive 135 questions", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-  await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
 
-  // Jump to question 60 from the left tree; the canvas must scroll it into view
-  // and the phone preview must follow. The smooth scroll over ~4.5k px of
-  // summary rows takes a while, so poll instead of a fixed wait.
-  await page.locator(".tree-question", { hasText: "第60题：" }).first().click();
-  const active = page.locator('.block-item.is-active[data-block-id="1059"]');
+  // Jump to question 60 from the canvas; the row activates (quick bar) and the
+  // properties panel switches to the same question.
+  await page.locator(".editor-canvas .q-row", { hasText: "第60题：" }).first().click();
+  const active = page.locator('.editor-canvas .block-item[data-block-id="1059"]');
   await expect(active).toBeVisible();
-  const canvasBox = await page.locator(".editor-canvas").boundingBox();
-  expect(canvasBox).not.toBeNull();
-  await expect
-    .poll(async () => (await active.boundingBox())!.y, { timeout: 5_000, message: "active card scrolled into view" })
-    .toBeLessThanOrEqual(canvasBox!.y + canvasBox!.height);
-  expect((await active.boundingBox())!.y).toBeGreaterThanOrEqual(canvasBox!.y - 2);
-  await expect(page.locator(".phone-card-meta")).toContainText("第 60 / 135 题");
+  await expect(active.getByRole("toolbar")).toBeVisible();
+  await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 60 题");
 
-  // Phone "next" moves the selection and the editor follows.
-  await page.locator(".phone-btn", { hasText: "下一题" }).click();
-  await expect(page.locator('.block-item.is-active[data-block-id="1060"]')).toBeVisible();
-  await expect(page.locator(".phone-card-meta")).toContainText("第 61 / 135 题");
+  // Global search finds question 70 and jumps to it (selection = configuration).
+  await page.getByRole("button", { name: "搜索与替换" }).click();
+  const searchDialog = page.getByRole("dialog", { name: "搜索与替换" });
+  await searchDialog.getByPlaceholder("输入要查找的文字").fill("第70题");
+  await searchDialog.locator("li button", { hasText: "第70题：" }).first().click();
+  await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 70 题");
 
-  // Left list search narrows to the matching question and can be cleared.
-  await page.getByLabel("搜索题目").fill("第70题");
-  await expect(page.locator(".tree-question")).toHaveCount(1);
-  await page.getByLabel("搜索题目").fill("");
-  await expect(page.locator(".tree-question").first()).toBeVisible();
+  // Preview from the current question: local snapshot starting at question 70.
+  const active70 = page.locator('.editor-canvas .block-item[data-block-id="1069"]');
+  await active70.getByRole("toolbar").getByRole("button", { name: "从这道题开始预览" }).click();
+  await expect(page.getByText("第 70 / 135 题")).toBeVisible();
+  await expect(page.getByText("· 从第 70 题开始")).toBeVisible();
+  await page.getByRole("button", { name: "关闭" }).click();
+  await expect(page.getByText("第 70 / 135 题")).toBeHidden();
 
   // Resizing keeps the fit.
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -259,8 +204,8 @@ test("question switching, search and preview sync survive 135 questions", async 
 test("empty survey renders without overflow", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/122/editor": EMPTY });
-  await page.goto("/admin/surveys/122/editor?ui=legacy", { waitUntil: "networkidle" });
-  await expect(page.getByText("这份问卷还没有内容")).toBeVisible();
+  await page.goto("/admin/surveys/122/editor", { waitUntil: "networkidle" });
+  await expect(page.getByText(/这份问卷还没有内容/)).toBeVisible();
   const g = await readGeometry(page);
   expect(g.docOverflowY).toBeLessThanOrEqual(1);
   expect(g.docOverflowX).toBeLessThanOrEqual(1);
@@ -272,7 +217,7 @@ test("empty survey renders without overflow", async ({ page }) => {
 test("a few questions fill the columns without inner scroll", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockEditorApi(page, { "/api/admin/surveys/123/editor": FEW });
-  await page.goto("/admin/surveys/123/editor?ui=legacy", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/123/editor", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
   const g = await readGeometry(page);
   expect(g.docOverflowY).toBeLessThanOrEqual(1);
@@ -289,7 +234,7 @@ test("a few questions fill the columns without inner scroll", async ({ page }) =
 test("narrow viewport degrades to the stacked mobile layout", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-  await page.goto("/admin/surveys/121/editor?ui=legacy", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
   await page.waitForSelector(".editor-body");
   await expect(page.locator(".editor-preview")).toBeHidden();
   await expect(page.locator(".editor-mobile-bar")).toBeVisible();
@@ -299,7 +244,7 @@ test("narrow viewport degrades to the stacked mobile layout", async ({ page }) =
   expect(doc.overflowX).toBeLessThanOrEqual(1);
 });
 
-test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", async ({ page }) => {
+test("添加互动场景：POST 空 scene 题并打开壳内全屏浮层", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const builderPayload = editorPayload(1, buildQuestions(2));
   const scenePayload = {
@@ -323,8 +268,9 @@ test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", as
   };
   await mockEditorApi(page, { "/api/admin/surveys/1/editor": builderPayload });
 
-  // 后注册的精确路由优先于 mockEditorApi 的通配符：POST 之后 GET 返回带
-  // scene 题的编辑器数据，模拟「创建完跳到场景编辑器」的真实服务端状态。
+  // 后注册的精确路由优先于 mockEditorApi 的通配符：POST 之后浮层重新拉取
+  // 编辑器数据返回带 scene 题的 payload，模拟「创建完壳内浮层加载」的真实
+  // 服务端状态。
   let created = false;
   const posts: Array<Record<string, unknown>> = [];
   await page.route("**/api/admin/surveys/1/questions", (route) => {
@@ -345,12 +291,14 @@ test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", as
     }),
   );
 
-  await page.goto("/admin/surveys/1/editor?ui=legacy", { waitUntil: "networkidle" });
+  await page.goto("/admin/surveys/1/editor", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "添加互动场景" }).click();
 
   await expect.poll(() => posts.length).toBe(1);
   expect(posts[0]).toMatchObject({ type: "scene", title: "互动场景", required: true, pageId: null });
-  await expect(page).toHaveURL(/\/admin\/surveys\/1\/scene\/77$/);
+  // 不跳页：URL 停在编辑器，场景编辑器以壳内全屏浮层出现（SceneEditorPage 浮层形态）。
+  await expect(page).toHaveURL(/\/admin\/surveys\/1\/editor$/);
+  await expect(page.locator('[aria-label="互动场景编辑器"]')).toBeVisible();
   await expect(page.locator(".scene-editor")).toBeVisible();
   await expect(page.locator(".scene-editor-topbar")).toContainText("互动场景");
   // 空配置落在题目面板：提示先添加场景。
@@ -358,13 +306,13 @@ test("添加互动场景：POST 空 scene 题并跳转独立场景编辑器", as
 });
 
 // ---------------------------------------------------------------------------
-// P2 三栏画布外壳（?ui=next）：与旧壳共用 .editor-* 三栏 CSS，所以几何断言
-// 同型（三栏等高、无页面级滚动、无死带、大问卷栏内滚动）；差异在于右栏是
-// 属性面板（选中即配置），预览改为顶栏按钮的弹层，没有 phone-frame。
-// 新壳在 ?ui=next 之后的独立 chunk，不影响旧壳任何截图基线。
+// 三栏外壳交互用例（S9 时期沉淀）。旧壳删除后编辑器壳唯一，URL 不再携带
+// ?ui=next（参数已随 ?ui=legacy 分支一并失效）；几何断言与文件顶部同型：
+// 三栏等高、无页面级滚动、无死带、大问卷栏内滚动；右栏是属性面板（选中即
+// 配置），预览走顶栏按钮或画布快捷条，没有 phone-frame。
 // ---------------------------------------------------------------------------
 
-async function readNextGeometry(page: Page) {
+async function readGeometry(page: Page) {
   return page.evaluate(() => {
     const box = (sel: string) => {
       const el = document.querySelector(sel);
@@ -390,15 +338,15 @@ async function readNextGeometry(page: Page) {
   });
 }
 
-test.describe("P2 三栏外壳（?ui=next）", () => {
+test.describe("三栏外壳交互（S9 沉淀用例）", () => {
   test("135 题：三栏等高、无页面级滚动、画布内部滚动、右栏默认选中第一题", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
 
-    const g = await readNextGeometry(page);
+    const g = await readGeometry(page);
     expect(g.docOverflowY, "page-level vertical scrollbar").toBeLessThanOrEqual(1);
     expect(g.docOverflowX, "horizontal overflow").toBeLessThanOrEqual(1);
     expect(g.pageBottom, "editor page bottom").toBeGreaterThanOrEqual(g.viewportHeight - 34);
@@ -416,7 +364,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("选中即配置：点摘要卡 → 属性面板切题，快捷条出现且必答可切换", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
     await page.locator(".editor-canvas .q-row", { hasText: "第60题：" }).first().click();
@@ -440,7 +388,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("T5 基础↔专业切换：选中态与右栏属性面板保持（模式只改可见性）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
     // 选中第 60 题：画布激活卡 + 右栏属性面板同步（默认选中是第 1 题）。
@@ -475,7 +423,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("问卷设置入口：右栏切到设置面板，高级组默认收起、展开可达", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
     await page.locator(".editor-canvas [aria-pressed]", { hasText: "问卷设置" }).click();
@@ -495,7 +443,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("物料区添加题目：插入到画布并选中（待保存态）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
     const rows = page.locator(".editor-canvas .q-row");
@@ -509,10 +457,10 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("空问卷：空态文案 + 三栏等高 + 右栏设置面板", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/122/editor": EMPTY });
-    await page.goto("/admin/surveys/122/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/122/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await expect(page.getByText(/这份问卷还没有内容/)).toBeVisible();
-    const g = await readNextGeometry(page);
+    const g = await readGeometry(page);
     expect(g.docOverflowY).toBeLessThanOrEqual(1);
     expect(g.docOverflowX).toBeLessThanOrEqual(1);
     const heights = g.columns.map((column) => column.height);
@@ -523,18 +471,18 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("窄屏 900px：属性栏隐藏、手机操作栏可见、无横向溢出", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await expect(page.locator(".editor-preview")).toBeHidden();
     await expect(page.locator(".editor-mobile-bar")).toBeVisible();
-    const g = await readNextGeometry(page);
+    const g = await readGeometry(page);
     expect(g.docOverflowX).toBeLessThanOrEqual(1);
   });
 
   test("S4 拖拽：物料拖入画布产生一道新题（drop 才产生命令）", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     const rows = page.locator(".editor-canvas .q-row");
     await expect(rows).toHaveCount(135);
@@ -559,7 +507,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("S4 拖拽：画布内拖拽柄排序不改变题目数量", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
 
     const handles = page.locator('.editor-canvas [aria-label="拖动排序"]');
@@ -579,7 +527,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
   test("S9 a11y：新壳（基础模式）axe 无 serious/critical 违规", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
     await scanA11y(page, "editor next shell (basic) @ 1600x900");
@@ -589,7 +537,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
     await page.addInitScript(() => localStorage.setItem("admin:editor-mode", "pro"));
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     await page.waitForTimeout(300);
     await scanA11y(page, "editor next shell (pro) @ 1600x900");
@@ -604,7 +552,7 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
       if (method !== "GET" && path !== "/api/admin/session") writes.push(`${method} ${path}`);
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(BIG) });
     });
-    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.goto("/admin/surveys/121/editor", { waitUntil: "networkidle" });
     await page.waitForSelector(".editor-body");
     // 选中几道题、切设置页签、切回——纯导航不得触发保存。
     await page.locator(".editor-canvas .q-row").nth(3).click();

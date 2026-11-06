@@ -6,13 +6,14 @@ import { SURVEY_DISPLAY_MODE_LABELS } from "../../../../src/survey/display";
 /**
  * 设备预览：iframe 加载**真实** `/s/:id?preview=1`（不是另造一套 mock）。
  *
- * 为什么是 iframe 而不是复用右栏 LivePreview：
- *  - 右栏 mock 只渲染文本/选项，场景题（HotspotScene）根本不存在，而本次
+ * 为什么是 iframe 而不是组件级 mock：
+ *  - mock 只能渲染文本/选项，场景题（HotspotScene）根本不存在，而
  *    「PC 沉浸 / 手机横屏」的核心正是场景版式——mock 看不到就等于没验收；
  *  - 真实页面自动跟随显示模式与所有既有逻辑，不会出现两套布局漂移。
  *
- * 代价：iframe 显示的是**已保存**版本（未保存的编辑看不到）。右栏
- * LivePreview 继续承担「含未保存修改」的近似预览，两者分工，勿合并。
+ * 代价：iframe 显示的是**已保存**版本（未保存的编辑看不到）。「含未保存
+ * 修改」的近似走查用画布快捷条的「从当前题预览」（SurveyPreview 本地快照），
+ * 两者分工，勿合并。
  *
  * 服务端配合：`?preview=1` + 管理员会话可读草稿定义（handler 旁路，
  * 不写共享缓存）；预览页禁用最终提交，不会产生答卷。

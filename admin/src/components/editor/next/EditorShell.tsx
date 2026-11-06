@@ -16,7 +16,7 @@ import { StatusBadge } from "../../ui";
 import { DevicePreview } from "../DevicePreview";
 import { TypePickerSheet } from "../TypePickerSheet";
 import { EditableTitle } from "../EditableTitle";
-import type { BuilderSelection } from "../StructureTree";
+import type { BuilderSelection } from "../builder-selection";
 import { useSurveyEditor } from "../../../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../../../editor/previewModel";
 import { useEditorActions } from "../../../editor/editor-actions";
@@ -40,11 +40,11 @@ import { SceneEditorPage } from "../../../routes/SceneEditorPage";
 import { X } from "lucide-react";
 
 /**
- * P2 三栏画布外壳（S2）：左物料 / 中画布 / 右属性。只在 /surveys/:id/editor?ui=next
- * 时渲染，旧壳保持默认——视觉基线与既有行为都不受影响。
+ * 三栏画布外壳（S2）：左物料 / 中画布 / 右属性。P3/S10 起为编辑器默认界面，
+ * 2026-11-07 旧壳（EditableEditor / ?ui=legacy）承诺期满删除后成为唯一编辑壳。
  *
- * 状态与动作与旧壳完全共用：useSurveyEditor（待保存队列 + 快照撤销）与
- * useEditorActions（结构/媒体/发布动作）。本轮不引入命令日志（S5）。
+ * 状态与动作沿用同一套：useSurveyEditor（待保存队列 + 快照撤销）与
+ * useEditorActions（结构/媒体/发布动作）。
  */
 export function EditorShellNext({ data }: { data: EditorData }) {
   const editor = useSurveyEditor(data);
@@ -139,8 +139,8 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   // 交接到这里。挂载时问卷仍是空画布才应用——走 applyTemplate 的既有待保存
   // 队列（可撤销、自动保存），与物料区手动点模板是同一条通路；take「读即取
   // 走」，标记只消费一次，StrictMode 的 effect 双调用不会插两遍。只依赖
-  // survey.id：这是一次性的挂载交接，题目数变化不该重跑。旧壳（?ui=legacy）
-  // 不消费标记，60s TTL 后槽位自然失效。
+  // survey.id：这是一次性的挂载交接，题目数变化不该重跑。60s TTL 内未被
+  // 消费的槽位自然失效。
   useEffect(() => {
     const pending = takePendingTemplate(survey.id);
     if (!pending || data.questions.length > 0) return;
@@ -695,7 +695,8 @@ export function EditorShellNext({ data }: { data: EditorData }) {
 
       {previewOpen ? (
         // 全屏预览 = 真实页面的设备预览（含场景题、跟随显示模式）。
-        // 未保存修改的近似预览在右栏 LivePreview，两者分工见 DevicePreview 注释。
+        // 「含未保存修改」的近似走查走画布快捷条「从当前题预览」（SurveyPreview），
+        // 两者分工见 DevicePreview 注释。
         <DevicePreview
           surveyId={survey.id}
           title={editor.surveyMeta.title}

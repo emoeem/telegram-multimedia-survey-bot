@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import type { EditorData } from "../../../api";
 import type { useSurveyEditor } from "../../../editor/useSurveyEditor";
 import type { useEditorActions } from "../../../editor/editor-actions";
-import type { BuilderSelection } from "../StructureTree";
+import type { BuilderSelection } from "../builder-selection";
 import { QuestionCard } from "../QuestionCard";
 import { SurveySettingsPanel } from "../SurveySettingsPanel";
 import { LogicPanel } from "../LogicPanel";

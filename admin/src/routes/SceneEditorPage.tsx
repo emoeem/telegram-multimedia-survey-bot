@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useBlocker, useNavigate, useParams } from "react-router";
+import { useBlocker } from "react-router";
 import { ArrowLeft, Eye, ImagePlus, Plus, Save } from "lucide-react";
 import {
   attachLibraryMediaToQuestion,
@@ -76,20 +76,19 @@ function loadImageSize(url: string): Promise<{ width: number; height: number }> 
  * columns/speaker，diffOps 也只会发 {columns}，场景配置会被覆盖掉。
  * 这里直接读写题目 settings.scene，保存走既有 PATCH 端点（后端已白名单 scene）。
  *
- * 两种形态（P3）：独立路由页（旧壳与直达链接，useParams 取参）；编辑器壳内
- * 全屏浮层（新壳传 props——surveyId/sceneId/onExit，「选中即配置不跳页」）。
+ * 形态（P3 起）：编辑器壳内全屏浮层，surveyId/sceneId/onExit 由壳传入——
+ * 「选中即配置不跳页」。旧独立路由已随旧壳删除，/surveys/:id/scene/:qid
+ * 直达链由路由重定向回编辑器（App.tsx）。
  */
-export function SceneEditorPage(props?: {
-  surveyId?: number;
-  sceneId?: number;
-  /** 浮层形态的退出回调；缺省（独立路由）为导航回编辑器。 */
-  onExit?: () => void;
+export function SceneEditorPage({
+  surveyId,
+  sceneId: questionId,
+  onExit: exitEditor,
+}: {
+  surveyId: number;
+  sceneId: number;
+  onExit: () => void;
 }) {
-  const params = useParams();
-  const navigate = useNavigate();
-  const surveyId = props?.surveyId ?? Number(params.id);
-  const questionId = props?.sceneId ?? Number(params.qid);
-  const exitEditor = props?.onExit ?? (() => navigate(`/surveys/${surveyId}/editor`));
   const { confirm, toast } = useDialogs();
 
   const path =
