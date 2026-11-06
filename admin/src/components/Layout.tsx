@@ -70,27 +70,6 @@ function workspaceIdOf(pathname: string): string | null {
   return null;
 }
 
-// `sm`/`lg` are Tailwind's 640px/1000px boundaries; the icon rail lives between
-// them. Read the same numbers here so the disclosure button is only rendered
-// where its label is actually visible.
-/**
- * 「矮窗口」：nav 装不下时，把后两组收进「更多」面板。
- *
- * 不是按宽度定的——iPad 横屏是 1024 宽，早就进了 lg（带文字的完整侧栏），
- * 照样装不下：实测内容 777px、可视 570px，溢出 207px。所以判据是高度，
- * 两档阈值都是量出来的。条目数随角色与部署变化（完整管理端 19 项、未接入
- * 授权中心 17 项、创作者 3 项），下面是 17 项时的实测值——更多的项只会更早触发：
- *
- *  - 精细指针（鼠标，每行 40px）：内容 669px，900px 高可用 702px（余 33）、
- *    800px 高只剩 574px（溢出 95）—— 阈值取 860。
- *  - 粗指针（触屏，每行 44px）：内容 777px，加非 nav 部分约 198px 共 975px
- *    —— 阈值取 1000。
- *
- * 逗号分隔即「或」：两种条件任一成立就启用紧凑模式。
- */
-const COMPACT_NAV_QUERY =
-  "(min-width: 640px) and (max-height: 860px), (min-width: 640px) and (pointer: coarse) and (max-height: 1000px)";
-
 function isActivePath(itemPath: string, pathname: string): boolean {
   return itemPath === "/" ? pathname === "/" : pathname === itemPath || pathname.startsWith(`${itemPath}/`);
 }
