@@ -4,7 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDroppable } from "@dnd-kit/core";
 import { FilePlus2, GripVertical, MousePointerClick, Settings2 } from "lucide-react";
 import type { EditableQuestion } from "../../../editor/useSurveyEditor";
-import type { BuilderSelection } from "../StructureTree";
+import type { BuilderSelection } from "../builder-selection";
 import { EmptyPanel } from "../../ui";
 import { QuestionSummaryRow } from "../QuestionSummaryRow";
 import { QuickBar } from "./QuickBar";
@@ -71,7 +71,7 @@ export function Canvas({
     setEdgeBase(baseRef.current);
   }, []);
   // 不自建滚动容器：.editor-canvas 列本身就是滚动层（.editor-col overflow-y:auto），
-  // 与旧壳同构，editor-layout 的几何断言（栏内滚动）才能同时约束两套壳。
+  // editor-layout 的几何断言（栏内滚动）才能持续约束这套壳。
   return (
     <div>
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-edge)] px-3 py-2">

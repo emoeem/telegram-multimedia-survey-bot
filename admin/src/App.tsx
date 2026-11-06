@@ -14,7 +14,6 @@ const SurveysPage = lazy(() => import("./routes/SurveysPage").then((m) => ({ def
 const CategoriesPage = lazy(() => import("./routes/CategoriesPage").then((m) => ({ default: m.CategoriesPage })));
 const SurveyDetailPage = lazy(() => import("./routes/SurveyDetailPage").then((m) => ({ default: m.SurveyDetailPage })));
 const EditorPage = lazy(() => import("./routes/EditorPage").then((m) => ({ default: m.EditorPage })));
-const SceneEditorPage = lazy(() => import("./routes/SceneEditorPage").then((m) => ({ default: m.SceneEditorPage })));
 const ResponsesPage = lazy(() => import("./routes/ResponsesPage").then((m) => ({ default: m.ResponsesPage })));
 const ResponseDetailPage = lazy(() =>
   import("./routes/ResponseDetailPage").then((m) => ({ default: m.ResponseDetailPage })),
@@ -81,7 +80,9 @@ const router = createBrowserRouter(
         { path: "exports", element: <Navigate to="/surveys" replace /> },
         { path: "surveys/:id", element: lazyElement(<SurveyDetailPage />) },
         { path: "surveys/:id/editor", element: lazyElement(<EditorPage />) },
-        { path: "surveys/:id/scene/:qid", element: lazyElement(<SceneEditorPage />) },
+        // 场景编辑已并入编辑器壳内全屏浮层；这个 URL 只兜旧书签与外贴链接
+        // （旧壳跳页路径随 ?ui=legacy 删除），重定向回编辑器。
+        { path: "surveys/:id/scene/:qid", element: <Navigate to="../editor" replace /> },
         { path: "surveys/:id/responses", element: lazyElement(<ResponsesPage />) },
         { path: "surveys/:id/responses/:responseId", element: lazyElement(<ResponseDetailPage />) },
         { path: "surveys/:id/analytics", element: lazyElement(<AnalyticsPage />) },

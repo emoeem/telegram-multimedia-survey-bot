@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { ApiError, apiSend, apiUpload, type EditorData, type PublishResult } from "../api";
 import { useDialogs } from "../components/Dialogs";
 import type { useSurveyEditor } from "./useSurveyEditor";
@@ -9,8 +8,8 @@ import { defaultQuestionDraft, insertTemplate, type TemplateId } from "./templat
 type Editor = ReturnType<typeof useSurveyEditor>;
 
 /**
- * 编辑器动作集（S2 从旧壳 EditableEditor 原样搬出）：结构操作（复制/删除/分页/场景/发布）、
- * 六个媒体挂载动作、模板与默认题稿。旧壳与新壳共用同一份实现——
+ * 编辑器动作集（S2 从旧壳 EditableEditor 原样搬出，2026-11-07 旧壳删除后成为唯一实现）：
+ * 结构操作（复制/删除/分页/场景/发布）、六个媒体挂载动作、模板与默认题稿。
  * 删除的依赖感知级联、先保存再结构操作等语义只有一套，不会漂移。
  * 壳只负责选中态与弹层开关。
  *
@@ -21,7 +20,6 @@ type Editor = ReturnType<typeof useSurveyEditor>;
  */
 export function useEditorActions(data: EditorData, editor: Editor) {
   const { survey } = data;
-  const navigate = useNavigate();
   const { confirm } = useDialogs();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -29,9 +27,9 @@ export function useEditorActions(data: EditorData, editor: Editor) {
 
   // latest-ref：渲染后同步最新依赖，动作体在调用时才解引用，身份永不漂移。
   // （写入只能在 effect 里做——渲染期写 ref 会破坏并发渲染的一致性保证。）
-  const depsRef = useRef({ data, survey, editor, navigate, confirm });
+  const depsRef = useRef({ data, survey, editor, confirm });
   useEffect(() => {
-    depsRef.current = { data, survey, editor, navigate, confirm };
+    depsRef.current = { data, survey, editor, confirm };
   });
   const publishingRef = useRef(publishing);
   useEffect(() => {
@@ -72,22 +70,13 @@ export function useEditorActions(data: EditorData, editor: Editor) {
     }
   }, []);
 
-  // 场景题走独立编辑器：先把 builder 里的待保存修改落库，再跳转。
-  const openSceneEditor = useCallback(
-    async (questionId: number) => {
-      if (!(await flushDraft())) return;
-      const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
-      currentNavigate(`/surveys/${currentSurvey.id}/scene/${questionId}`);
-    },
-    [flushDraft],
-  );
-
   // 新建空 scene 题（settings 为空，场景配置在编辑器里写入）。
   // insertQuestionWithOptions 只为 matrix 持久化 settings，所以这里不传场景配置。
-  // openInShell：P3 新壳传「打开壳内浮层」回调（创建后不跳页）；旧壳缺省导航。
+  // 创建成功后经 openInShell 打开壳内全屏浮层（P3 起「选中即配置不跳页」；
+  // 旧壳的跳页路径随 ?ui=legacy 一并删除，/scene/:qid 直达链由路由重定向兜住）。
   const addSceneQuestion = useCallback(
-    async (pageId: number | null, openInShell?: (questionId: number) => void) => {
-      const { survey: currentSurvey, navigate: currentNavigate } = depsRef.current;
+    async (pageId: number | null, openInShell: (questionId: number) => void) => {
+      const { survey: currentSurvey } = depsRef.current;
       if (sceneBusyRef.current) return;
       if (!(await flushDraft())) return;
       setSceneBusy(true);
@@ -100,8 +89,7 @@ export function useEditorActions(data: EditorData, editor: Editor) {
           pageId,
         });
         if (!created?.id) throw new Error("创建互动场景题失败");
-        if (openInShell) openInShell(created.id);
-        else currentNavigate(`/surveys/${currentSurvey.id}/scene/${created.id}`);
+        openInShell(created.id);
       } catch (err) {
         setPublishError(err instanceof Error ? err.message : "创建互动场景题失败");
       } finally {
@@ -322,7 +310,6 @@ export function useEditorActions(data: EditorData, editor: Editor) {
       flushDraft,
       duplicateQuestion,
       duplicateOption,
-      openSceneEditor,
       addSceneQuestion,
       requestDeleteQuestion,
       applyTemplate,
@@ -346,7 +333,6 @@ export function useEditorActions(data: EditorData, editor: Editor) {
       flushDraft,
       duplicateQuestion,
       duplicateOption,
-      openSceneEditor,
       addSceneQuestion,
       requestDeleteQuestion,
       applyTemplate,

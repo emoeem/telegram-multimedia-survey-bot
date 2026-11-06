@@ -9,7 +9,7 @@
 > [`docs/reports/WORK_REPORT_2026-10-31_UI.md`](reports/WORK_REPORT_2026-10-31_UI.md)。
 >
 > **2026-10-29 交接（历史）**：编辑器 P2 收官 + P3 已切默认——三栏外壳成为编辑器默认界面，
-> 旧壳 `?ui=legacy` 只读兜底（保留两个版本周期后删除），场景编辑改为壳内全屏浮层；
+> 旧壳 `?ui=legacy` 兜底已按承诺保留两个版本周期并于 2026-11-07 删除，场景编辑改为壳内全屏浮层；
 > 场景媒体结构化（URL → `{assetId}`）读侧与写侧**均已上线**（写侧已在 staging 实测
 > 8 项清单全过后合入生产，见
 > [`docs/ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md`](ops/STAGING_D3_WRITE_SIDE_RUNBOOK.md) §5b；

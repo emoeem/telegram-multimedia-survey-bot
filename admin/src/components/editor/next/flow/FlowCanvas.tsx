@@ -14,7 +14,7 @@ import {
 } from "@xyflow/react";
 // RF 基础样式表：缺了它 __viewport 不是 absolute，整个画布退化为文档流布局。
 import "@xyflow/react/dist/style.css";
-import type { BuilderSelection } from "../../StructureTree";
+import type { BuilderSelection } from "../../builder-selection";
 import { layoutGraph } from "../../../../editor/node-graph/layout";
 import type { CanvasViewMode, GraphEdge, GraphNode } from "../../../../editor/node-graph/types";
 import { NODE_HEIGHT, NODE_WIDTH, type SurveyGraph } from "../../../../editor/node-graph/to-graph";

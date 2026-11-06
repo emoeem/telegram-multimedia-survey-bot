@@ -48,7 +48,7 @@ export const TYPE_GROUPS: Array<{ title: string; hint: string; types: Array<{ ty
   },
 ];
 
-/** 添加题目 / 互动内容的弹层（旧壳入口；新壳物料区直接内联同一份分组）。 */
+/** 添加题目 / 互动内容的弹层（画布「添加题目」与分支流程入口；物料区直接内联同一份分组）。 */
 export function TypePickerSheet({
   disabled,
   onClose,
