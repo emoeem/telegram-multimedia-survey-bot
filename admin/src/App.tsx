@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { Navigate, RouterProvider, createBrowserRouter } from "react-router";
+import { Navigate, RouterProvider, createBrowserRouter, useParams } from "react-router";
 import { Layout } from "./components/Layout";
 
 /**
@@ -63,6 +63,18 @@ function lazyElement(node: ReactNode) {
   return <Suspense fallback={<RouteFallback />}>{node}</Suspense>;
 }
 
+/**
+ * /surveys/:id/scene/:qid 兜底重定向：场景编辑已并入编辑器壳内全屏浮层，
+ * 这个 URL 只兜旧书签与外贴链接（旧壳跳页路径随 ?ui=legacy 删除）。
+ * 不能用相对 `to="../editor"`——react-router 的 `..` 以 match 为单位回退，
+ * 叶子 match 是整段 /surveys/:id/scene/:qid，会一路退到根再被 * 兜走；
+ * 参数必须经 useParams 展开成绝对路径。
+ */
+function SceneRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/surveys/${id}/editor`} replace />;
+}
+
 const router = createBrowserRouter(
   [
     // Login is a standalone surface: no admin navigation or page chrome.
@@ -80,9 +92,8 @@ const router = createBrowserRouter(
         { path: "exports", element: <Navigate to="/surveys" replace /> },
         { path: "surveys/:id", element: lazyElement(<SurveyDetailPage />) },
         { path: "surveys/:id/editor", element: lazyElement(<EditorPage />) },
-        // 场景编辑已并入编辑器壳内全屏浮层；这个 URL 只兜旧书签与外贴链接
-        // （旧壳跳页路径随 ?ui=legacy 删除），重定向回编辑器。
-        { path: "surveys/:id/scene/:qid", element: <Navigate to="../editor" replace /> },
+        // 场景编辑已并入编辑器壳内全屏浮层（见 SceneRedirect 注释）。
+        { path: "surveys/:id/scene/:qid", element: <SceneRedirect /> },
         { path: "surveys/:id/responses", element: lazyElement(<ResponsesPage />) },
         { path: "surveys/:id/responses/:responseId", element: lazyElement(<ResponseDetailPage />) },
         { path: "surveys/:id/analytics", element: lazyElement(<AnalyticsPage />) },
