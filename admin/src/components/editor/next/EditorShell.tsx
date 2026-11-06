@@ -20,6 +20,7 @@ import type { BuilderSelection } from "../StructureTree";
 import { useSurveyEditor } from "../../../editor/useSurveyEditor";
 import { buildEditorPreviewFlow } from "../../../editor/previewModel";
 import { useEditorActions } from "../../../editor/editor-actions";
+import { takePendingTemplate } from "../../../editor/pending-template";
 import { useDialogs } from "../../Dialogs";
 import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
@@ -133,6 +134,20 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       // 隐私模式写不进去不影响本次编辑
     }
   }, [editorMode]);
+
+  // T4 从模板开始：新建对话框选定的模板经 sessionStorage（pending-template）
+  // 交接到这里。挂载时问卷仍是空画布才应用——走 applyTemplate 的既有待保存
+  // 队列（可撤销、自动保存），与物料区手动点模板是同一条通路；take「读即取
+  // 走」，标记只消费一次，StrictMode 的 effect 双调用不会插两遍。只依赖
+  // survey.id：这是一次性的挂载交接，题目数变化不该重跑。旧壳（?ui=legacy）
+  // 不消费标记，60s TTL 后槽位自然失效。
+  useEffect(() => {
+    const pending = takePendingTemplate(survey.id);
+    if (!pending || data.questions.length > 0) return;
+    actions.applyTemplate(pending);
+    // data.questions 刻意取挂载时刻的闭包值（survey.id / applyTemplate 均稳定，
+    // 实际只跑一次）：这是挂载交接，后续题目变化与本次判定无关。
+  }, [survey.id, actions.applyTemplate]);
 
   useEffect(() => {
     // Autosave：与旧壳同一节奏——2 秒无操作后落库（保存中或出错时让位）。

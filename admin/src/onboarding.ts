@@ -46,7 +46,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   {
     number: "1",
     title: "新建问卷",
-    hint: "在「问卷列表」点「新建问卷」，填写标题即可创建。",
+    hint: "在「问卷列表」点「新建问卷」，选一套模板开始（或空白创建）。",
     to: "/surveys",
     cta: "去问卷列表",
   },
