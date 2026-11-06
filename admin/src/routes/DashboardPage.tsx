@@ -23,6 +23,7 @@ import { StatCard } from "../components/StatCard";
 import { formatDateTime } from "../format";
 import { fetchDeploymentInfo, type DeploymentInfo, type PlanCapabilities } from "../api";
 import { buildFeatureMap, type FeatureMapCounts } from "../workspaces";
+import { markOnboardingComplete, onboardingStepTarget, ONBOARDING_STEPS, shouldShowOnboarding } from "../onboarding";
 
 const PLAN_TIER_LABELS: Record<NonNullable<PlanCapabilities["tier"]>, string> = {
   free: "Free 部署",
@@ -168,6 +169,57 @@ function FeatureMapSection({ counts }: { counts: FeatureMapCounts }) {
             </div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * 新手引导浮层（2026-11-07 T3）：首次进入 admin 的四步入门（步骤数据与
+ * 状态机见 ../onboarding），只带路、不动任何问卷数据——没有「替你创建」
+ * 之类的按钮，编辑器里也不会弹出浮层（那边有静默自动保存，怕误触）。
+ * 挂在总览页而非 Layout 全局：总览是登录后的着陆页，四步读完即可；
+ * Playwright 截图环境经 shouldShowOnboarding 里的 webdriver 探测自动跳过。
+ */
+function OnboardingOverlay({ surveyId }: { surveyId: number | null }) {
+  // 只在挂载时读一次标记；完成/跳过后本组件卸载，重放走设置页入口。
+  const [open, setOpen] = useState(() => shouldShowOnboarding());
+  const [stepIndex, setStepIndex] = useState(0);
+  if (!open) return null;
+  const step = ONBOARDING_STEPS[stepIndex];
+  if (!step) return null;
+  const last = stepIndex >= ONBOARDING_STEPS.length - 1;
+  const finish = () => {
+    markOnboardingComplete();
+    setOpen(false);
+  };
+  return (
+    <section
+      aria-label="新手引导"
+      className="fixed inset-x-4 bottom-4 z-40 rounded-xl border border-[var(--color-edge)] bg-[var(--surface)] p-4 shadow-xl sm:inset-x-auto sm:right-6 sm:w-96"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2>新手引导</h2>
+          <p className="card-sub">
+            第 {step.number}/{ONBOARDING_STEPS.length} 步 · 只带路，不动你的数据
+          </p>
+        </div>
+        <button className="btn btn-sm shrink-0" onClick={finish} title="关闭并不再显示">
+          跳过
+        </button>
+      </div>
+      <div aria-live="polite" className="mt-2">
+        <p className="text-sm font-semibold">{step.title}</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">{step.hint}</p>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Link className="btn btn-sm btn-primary" to={onboardingStepTarget(step, surveyId)}>
+          {step.cta}
+        </Link>
+        <button className="btn btn-sm" onClick={last ? finish : () => setStepIndex(stepIndex + 1)}>
+          {last ? "完成" : "下一步"}
+        </button>
       </div>
     </section>
   );
@@ -516,6 +568,7 @@ export function DashboardPage() {
         </section>
       ) : null}
       <PlanCapabilityCard />
+      <OnboardingOverlay surveyId={data.recentSurveys?.[0]?.id ?? null} />
     </div>
   );
 }

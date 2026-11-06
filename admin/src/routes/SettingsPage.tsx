@@ -5,6 +5,7 @@ import { useApi } from "../hooks";
 import { ErrorPanel, SkeletonPanel } from "../components/ui";
 import { useDialogs } from "../components/Dialogs";
 import { applyTheme, getStoredTheme, THEME_OPTIONS, type AdminThemeId } from "../theme";
+import { ONBOARDING_STEPS, resetForReplay } from "../onboarding";
 
 function ThemeSwatch({
   themeId,
@@ -222,6 +223,30 @@ export function SettingsPage() {
               }}
             />
           ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-ink)]">新手引导</h2>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            「{ONBOARDING_STEPS.map((step) => step.title).join(" → ")}
+            」四步入门，随时可以再看一遍。重放后回到总览即会出现。
+          </p>
+        </div>
+        <div className="mt-4">
+          {/* 重放 = 清掉 localStorage 完成标记并直接回总览，让浮层立刻出现；
+              引导只带路不动数据（见 onboarding.ts），这里也一样零 API 调用。 */}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              resetForReplay();
+              navigate("/");
+            }}
+          >
+            重放新手引导
+          </button>
         </div>
       </section>
 
