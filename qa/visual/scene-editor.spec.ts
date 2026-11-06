@@ -4,7 +4,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { scanA11y } from "./a11y";
 
 /**
- * 场景编辑器（/admin/surveys/:id/scene/:qid）的交互回归。
+ * 场景编辑器（编辑器壳内全屏浮层）的交互回归。
+ *
+ * 2026-11-07 旧壳与独立路由删除：/surveys/:id/scene/:qid 重定向回编辑器，
+ * 场景编辑从壳内浮层进入（选中 scene 题 → 属性面板「编辑场景」）。
  *
  * 全部 /api/** 被 mock：编辑器读的是 GET /editor（草稿、0 答卷、editable），
  * 保存是 PATCH /questions/:qid，上传是 POST /questions/:qid/media。图片走
@@ -12,7 +15,7 @@ import { scanA11y } from "./a11y";
  *
  * 覆盖：拖拽新建 → 选图 → 保存 payload；移动/缩放/方向键；加场景/设起始/
  * scene 动作；上传后 baseUpdatedAt 刷新；只读；409 重新加载；axe；1440/390
- * 无横向溢出。
+ * 无横向溢出；旧书签重定向。
  */
 
 const SURVEY_ID = 1;
@@ -289,12 +292,21 @@ async function spotRect(page: Page, id: string) {
 async function openEditor(page: Page) {
   // 热点有 0.4s 淡入 + 脉冲；截图/断言等的是终态，不是动画首帧。
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto(`/admin/surveys/${SURVEY_ID}/scene/${QUESTION_ID}`, { waitUntil: "networkidle" });
+  // 场景编辑从编辑器壳内全屏浮层进入：问卷只有一道 scene 题（默认选中），
+  // 属性面板「编辑场景」打开浮层。
+  await page.goto(`/admin/surveys/${SURVEY_ID}/editor`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "编辑场景" }).click();
   await expect(page.locator(".scene-canvas")).toBeVisible();
   // 图片路由必须真的返回了 WebP，而不是 404 占位。
   await expect
     .poll(() => page.locator(".scene-canvas-image").evaluate((element) => (element as HTMLImageElement).naturalWidth))
     .toBeGreaterThan(0);
+}
+
+/** 关掉壳内浮层（「关闭」是壳层 chrome，「返回编辑器」是场景顶栏，等价）。 */
+async function closeOverlay(page: Page) {
+  await page.getByRole("button", { name: "关闭场景编辑器" }).click();
+  await expect(page.locator(".scene-editor")).toBeHidden();
 }
 
 function savedHotspots(patch: JsonRecord): JsonRecord[] {
@@ -317,7 +329,7 @@ test("拖拽新建热点 → 选图 → 保存写回完整场景配置", async (
   await page.screenshot({ path: `${ARTIFACTS}/editor-1440.png` });
 
   // 预览：复用参与者看到的 HotspotScene，Escape 关闭。
-  await page.getByRole("button", { name: "预览" }).click();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "预览" }).click();
   await expect(page.locator(".scene-editor-preview")).toBeVisible();
   await expect(page.locator(".scene-editor-preview .hotspot-spot")).toHaveCount(2);
   // 预览把配置里的公开 URL 映射回 admin URL，并渲染 scene.intro。
@@ -355,10 +367,10 @@ test("拖拽新建热点 → 选图 → 保存写回完整场景配置", async (
   await expect(page.locator(".scene-editor-image-row img")).toHaveAttribute("src", /\/api\/admin\/media\/903\/image$/);
 
   await page.getByLabel("弹层标题", { exact: true }).fill("台灯");
-  await expect(page.getByRole("button", { name: "保存" })).toBeEnabled();
+  await expect(page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" })).toBeEnabled();
   await expect(page.locator(".scene-editor-dirty")).toBeVisible();
 
-  await page.getByRole("button", { name: "保存" }).click();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" }).click();
   await expect.poll(() => state.patches.length).toBe(1);
   const patch = state.patches[0]!;
   expect(patch).toMatchObject({
@@ -382,7 +394,7 @@ test("拖拽新建热点 → 选图 → 保存写回完整场景配置", async (
 
   // 保存成功后基线更新：未保存标记消失，按钮回到禁用。
   await expect(page.locator(".scene-editor-dirty")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+  await expect(page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" })).toBeDisabled();
   await page.screenshot({ path: `${ARTIFACTS}/editor-saved.png` });
 });
 
@@ -434,7 +446,7 @@ test("拖动移动、角柄缩放与方向键微调都写回同一个矩形", as
   expect(resized.left).toBeCloseTo(moved.left, 1);
   expect(resized.top).toBeCloseTo(moved.top, 1);
 
-  await page.getByRole("button", { name: "保存" }).click();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" }).click();
   await expect.poll(() => state.patches.length).toBe(1);
   const h1 = savedHotspots(state.patches[0]!).find((hotspot) => hotspot.id === "h1")!;
   expect(h1.x).toBeCloseTo(resized.left / 100, 3);
@@ -470,8 +482,8 @@ test("新增场景、设起始、场景跳转动作一起保存", async ({ page 
   // select 的 label 文本包含 option 文案，不能用 exact 匹配。
   await page.getByRole("combobox", { name: /点击后/ }).selectOption("scene");
   await page.getByRole("combobox", { name: /目标场景/ }).selectOption("shelf");
-  await expect(page.getByRole("button", { name: "保存" })).toBeEnabled();
-  await page.getByRole("button", { name: "保存" }).click();
+  await expect(page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" })).toBeEnabled();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" }).click();
 
   await expect.poll(() => state.patches.length).toBe(1);
   const patch = state.patches[0]!;
@@ -516,7 +528,7 @@ test("上传图片会刷新 baseUpdatedAt，随后保存不再 409", async ({ pa
   await expect(page.locator(".scene-editor-media-picker")).toBeHidden();
 
   await page.getByLabel("名称", { exact: true }).fill("窗外（雨）");
-  await page.getByRole("button", { name: "保存" }).click();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" }).click();
   await expect.poll(() => state.patches.length).toBe(1);
   expect(state.patches[0]).toMatchObject({
     baseUpdatedAt: "2026-10-27T11:30:00Z",
@@ -528,12 +540,18 @@ test("上传图片会刷新 baseUpdatedAt，随后保存不再 409", async ({ pa
 test("只读：已发布或有答卷时禁用保存与拖拽并说明原因", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const state = await mockSceneApi(page);
-  state.status = "published";
-  state.editable = false;
   await openEditor(page);
 
+  // 只读浮层的可达路径：壳还开着时问卷被另一个窗口锁定——壳侧握着打开前
+  // 的快照（「编辑场景」仍可点），浮层自己重新拉取到的才是锁定后的数据。
+  state.status = "published";
+  state.editable = false;
+  await closeOverlay(page);
+  await page.getByRole("button", { name: "编辑场景" }).click();
+  await expect(page.locator(".scene-canvas")).toBeVisible();
+
   await expect(page.locator(".scene-editor-banner")).toContainText("不是草稿");
-  await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+  await expect(page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" })).toBeDisabled();
   await expect(page.locator(".scene-canvas")).toHaveAttribute("data-readonly", "true");
   await page.locator(".scene-editor-hotspot", { hasText: "窗外" }).click();
   await expect(page.getByLabel("名称", { exact: true })).toBeDisabled();
@@ -541,12 +559,13 @@ test("只读：已发布或有答卷时禁用保存与拖拽并说明原因", as
   await dragOnCanvas(page, [0.42, 0.7], [0.62, 0.92]);
   await expect(page.locator(".scene-canvas-spot")).toHaveCount(2);
 
-  // 换成「草稿但已有答卷」：原因文案跟着变。
+  // 换成「草稿但已有答卷」：原因文案跟着变（重开浮层重新拉取）。
   state.status = "draft";
   state.responseCount = 3;
-  await page.reload({ waitUntil: "networkidle" });
+  await closeOverlay(page);
+  await page.getByRole("button", { name: "编辑场景" }).click();
   await expect(page.locator(".scene-editor-banner")).toContainText("已有 3 份答卷");
-  await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+  await expect(page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" })).toBeDisabled();
   await page.screenshot({ path: `${ARTIFACTS}/editor-readonly.png` });
 });
 
@@ -557,7 +576,7 @@ test("409 冲突：确认后重新加载服务端版本并丢弃本地修改", a
 
   await page.getByLabel("场景标题", { exact: true }).fill("本地改了一半");
   state.conflictOnce = true;
-  await page.getByRole("button", { name: "保存" }).click();
+  await page.locator(".scene-editor-topbar").getByRole("button", { name: "保存" }).click();
   await expect.poll(() => state.patches.length).toBe(1);
   await expect(page.getByText("内容已被其他页面修改")).toBeVisible();
   await page.getByRole("button", { name: "重新加载" }).click();
@@ -578,8 +597,9 @@ test("1440 与 390 宽都没有横向溢出", async ({ page }) => {
   expect(wide.overflowX, "1440 横向溢出").toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${ARTIFACTS}/layout-1440.png`, fullPage: true });
 
+  // 独立路由已删除，窄屏断言在浮层内做：浮层 fixed inset-0，随视口响应式
+  // 收窄（.scene-editor-body 的堆叠断点是独立的媒体查询）。
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload({ waitUntil: "networkidle" });
   await expect(page.locator(".scene-canvas")).toBeVisible();
   const narrow = await page.evaluate(() => ({
     overflowX: document.documentElement.scrollWidth - window.innerWidth,
@@ -596,4 +616,13 @@ test("1440 与 390 宽都没有横向溢出", async ({ page }) => {
   await scanA11y(page, "场景编辑器 · 390");
   await page.screenshot({ path: `${ARTIFACTS}/layout-390.png`, fullPage: true });
   writeFileSync(`${ARTIFACTS}/state.json`, JSON.stringify({ editorRequests: state.editorRequests }, null, 2));
+});
+
+test("旧书签 /surveys/:id/scene/:qid 重定向回编辑器（独立路由已删除）", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockSceneApi(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/admin/surveys/${SURVEY_ID}/scene/${QUESTION_ID}`, { waitUntil: "networkidle" });
+  await expect(page).toHaveURL(new RegExp(`/admin/surveys/${SURVEY_ID}/editor$`));
+  await expect(page.locator(".editor-body")).toBeVisible();
 });
