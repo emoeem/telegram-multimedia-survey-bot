@@ -1,10 +1,18 @@
+import type { ReportMediaMode } from "../model";
+
 export interface StructuralBlockContext {
   escape(value: string): string;
+  /** 渲染介质；缺省 print（分页 PNG/PDF 产物，行为与历史一致）。 */
+  mediaMode?: ReportMediaMode;
 }
 
 export function renderFeaturedImageBlock(url: string | undefined, context: StructuralBlockContext): string {
   if (!url) return "";
-  return `<section class="section block block-featured"><div class="section-heading"><span>FEATURED IMAGE</span><h2>代表性照片</h2></div><img class="featured-image" src="${url}" alt="用户图片" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div></section>`;
+  // 非首屏配图：web 模式挂静态 lazy（打印产物用 load 事件等图，静态 lazy
+  // 会让视口外图片永不触发 load、PDF 生成挂起，故仅 web 挂）；decoding=
+  // "async" 两种介质都挂，对产物像素零影响。
+  const lazy = context.mediaMode === "web" ? ` loading="lazy"` : "";
+  return `<section class="section block block-featured"><div class="section-heading"><span>FEATURED IMAGE</span><h2>代表性照片</h2></div><img class="featured-image" src="${url}" alt="用户图片"${lazy} decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="media-fallback">图片暂时无法加载</div></section>`;
 }
 
 export function renderProfileBlock(

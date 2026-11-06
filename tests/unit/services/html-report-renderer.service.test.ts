@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { ResultProfileSnapshot } from "../../../src/result/schema";
 import {
   buildHtmlReport,
+  buildHtmlReportPages,
   buildReportViewModel,
+  buildResponsiveCompositionReport,
   selectReportLayout,
 } from "../../../src/services/html-report-renderer.service";
+import { renderFeaturedImageBlock } from "../../../src/services/report/blocks/structural";
 import { prepareReportContent } from "../../../src/services/report/composition/content";
+import { buildReportPdfDocument } from "../../../src/services/report/pdf";
 import { buildResponsiveReportHtml } from "../../../src/services/report/web";
 import { DEFAULT_REPORT_TEMPLATE, TRANSCRIPT_REPORT_TEMPLATE } from "../../../src/services/report/template";
 
@@ -371,5 +375,90 @@ describe("HTML report renderer", () => {
     expect(html).toContain(".bento-radar{grid-column:span 5");
     expect(html).toContain(".bento-bars{grid-column:span 7");
     expect(html).toContain(".bento-tags{grid-column:span 12");
+  });
+});
+
+describe("report media attributes (U2 mediaMode gating)", () => {
+  const avatar = "data:image/png;base64,AAAA";
+  const galleryImages = {
+    "result.images.avatar": avatar,
+    "result.images.1": "data:image/png;base64,BBBB",
+    "result.images.2": "data:image/png;base64,CCCC",
+    "result.images.3": "data:image/png;base64,DDDD",
+  };
+  const allImgTags = (html: string): string[] => html.match(/<img\b[^>]*>/g) ?? [];
+  const heroAvatarTag = (html: string): string | undefined =>
+    allImgTags(html).find((tag) => tag.includes('class="hero-avatar"'));
+
+  it("web composition document: gallery lazy, every img async-decoded, degrade script at shell tail", () => {
+    const view = buildReportViewModel(profile, galleryImages);
+    const html = buildResponsiveReportHtml(view, {}, DEFAULT_REPORT_TEMPLATE);
+    const imgs = allImgTags(html);
+    expect(imgs.length).toBeGreaterThan(1);
+    for (const tag of imgs) expect(tag, tag).toContain('decoding="async"');
+    // 图集（非首屏）静态 lazy；首屏 hero 头像保持 eager（LCP）。
+    expect(html).toContain('alt="" loading="lazy" decoding="async"');
+    expect(heroAvatarTag(html)).toBeDefined();
+    expect(heroAvatarTag(html)).not.toContain('loading="lazy"');
+    // 弱网降级脚本注入在壳尾（body 末尾，位于所有内容之后）。
+    expect(html).toContain("navigator.connection");
+    expect(html).toContain('image.loading = "lazy"');
+    expect(html.indexOf("navigator.connection")).toBeGreaterThan(html.lastIndexOf("<img"));
+  });
+
+  it("responsive composition builder defaults to print: no static lazy and no degrade script", () => {
+    const view = buildReportViewModel(profile, galleryImages);
+    const html = buildResponsiveCompositionReport(view, {}, DEFAULT_REPORT_TEMPLATE);
+    expect(html).not.toContain('loading="lazy"');
+    expect(html).not.toContain("navigator.connection");
+    const imgs = allImgTags(html);
+    expect(imgs.length).toBeGreaterThan(1);
+    for (const tag of imgs) expect(tag, tag).toContain('decoding="async"');
+    // 显式 web 选项与 buildResponsiveReportHtml 默认行为一致。
+    const web = buildResponsiveCompositionReport(view, {}, DEFAULT_REPORT_TEMPLATE, { mediaMode: "web" });
+    expect(web).toContain('alt="" loading="lazy" decoding="async"');
+    expect(web).toContain("navigator.connection");
+  });
+
+  it("paginated print document (PNG artifact pages): no lazy, decoding present, no degrade script", () => {
+    const planned = buildHtmlReportPages(profile, "report", galleryImages, { layout: "gallery" });
+    const pagesHtml = planned.pages.map((entry) => entry.html).join("");
+    expect(pagesHtml).toContain("block-gallery");
+    expect(pagesHtml).not.toContain('loading="lazy"');
+    expect(pagesHtml).not.toContain("navigator.connection");
+    const imgs = allImgTags(pagesHtml);
+    expect(imgs.length).toBeGreaterThan(1);
+    for (const tag of imgs) expect(tag, tag).toContain('decoding="async"');
+  });
+
+  it("print composition archive document keeps print semantics", () => {
+    const html = buildHtmlReport(profile, "report", galleryImages, { layout: "gallery" });
+    expect(html).toContain("block-gallery");
+    expect(html).not.toContain('loading="lazy"');
+    expect(html).not.toContain("navigator.connection");
+    const imgs = allImgTags(html);
+    expect(imgs.length).toBeGreaterThan(1);
+    for (const tag of imgs) expect(tag, tag).toContain('decoding="async"');
+  });
+
+  it("PDF responsive document (buildReportPdfDocument) never carries static lazy", () => {
+    const html = buildReportPdfDocument(profile, galleryImages, { surveyTitle: "问卷标题" });
+    expect(html).not.toContain('loading="lazy"');
+    expect(html).not.toContain("navigator.connection");
+    const imgs = allImgTags(html);
+    expect(imgs.length).toBeGreaterThan(1);
+    for (const tag of imgs) expect(tag, tag).toContain('decoding="async"');
+  });
+
+  it("featured-image slot follows the same web/print gate", () => {
+    const escape = (value: string): string => value;
+    const web = renderFeaturedImageBlock(avatar, { escape, mediaMode: "web" });
+    expect(web).toContain('class="featured-image"');
+    expect(web).toContain('loading="lazy"');
+    expect(web).toContain('decoding="async"');
+    const print = renderFeaturedImageBlock(avatar, { escape });
+    expect(print).toContain('class="featured-image"');
+    expect(print).not.toContain('loading="lazy"');
+    expect(print).toContain('decoding="async"');
   });
 });

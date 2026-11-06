@@ -1,4 +1,4 @@
-import type { ReportViewModel } from "./model";
+import type { ReportMediaMode, ReportViewModel } from "./model";
 import { buildResponsiveCompositionReport } from "../html-report-renderer.service";
 import { renderRadarSvg } from "./blocks/radar";
 import type { ChartColors } from "./charts";
@@ -365,7 +365,8 @@ function themePrintResetCss(): string {
 }
 
 /**
- * 弱网降级内联脚本（T6 报告端 N8 子项，纯表现层）。
+ * 弱网降级内联脚本（T6 报告端 N8 子项，纯表现层；U2 起导出给合成路径的
+ * web 壳复用，见 buildResponsiveCompositionReport）。
  *
  * 判据与 admin/src/survey/media-preload.ts 的 shouldSkipPreload 完全同口径：
  * `navigator.connection.saveData` 或 `effectiveType !== "4g"`（即 2G/3G）。
@@ -377,7 +378,7 @@ function themePrintResetCss(): string {
  * 只写属性、try/catch 兜底，PDF 渲染（puppeteer setContent）与模板预览
  * iframe 里同样安全。
  */
-function weakNetworkDegradeScript(): string {
+export function weakNetworkDegradeScript(): string {
   return `<script>
   (function () {
     try {
@@ -400,11 +401,18 @@ export function buildResponsiveReportHtml(
   view: ReportViewModel,
   meta: ResponsiveReportMeta = {},
   template: ReportTemplateSpec = DEFAULT_REPORT_TEMPLATE,
+  mediaMode: ReportMediaMode = "web",
 ): string {
   const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
   const theme = reportThemes[template.theme] ?? reportThemes["tokyo-night"];
   if (template.layout) {
-    return buildResponsiveCompositionReport(view, meta, template);
+    // 本函数是「网页报告」入口（report-api 页面 / admin 模板预览 / 视觉
+    // fixture 都走这里），缺省 web 模式；唯一需要 print 的是 PDF 归档
+    // （report/pdf.ts buildReportPdfDocument），显式传 "print" 以避开静态
+    // lazy（见 ResponsiveCompositionOptions 的说明）。mediaMode 只作用于
+    // 合成路径；下方段式路径的静态标记沿用 T6 交付（renderGallery 的
+    // lazy、壳尾脚本），不在 U2 范围内。
+    return buildResponsiveCompositionReport(view, meta, template, { mediaMode });
   }
   const colors: ChartColors = {
     accent: theme.colors.accent,

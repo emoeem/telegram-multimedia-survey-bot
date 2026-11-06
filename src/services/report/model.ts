@@ -70,6 +70,14 @@ export interface ReportViewModel {
 export type ReportReadingWidth = "compact" | "standard" | "wide" | "full";
 export type ReportPresentation = "editorial" | "card" | "bento-tile" | "quote" | "image" | "data";
 
+/**
+ * 渲染介质（U2）：同一个 block 渲染器同时服务「参与者打开的响应式网页」与
+ * 「PDF/PNG 产物」两条路径。web 模式才允许静态 `loading="lazy"`（打印产物用
+ * document.images 的 load/error 事件等待全部图片，视口外图片挂了 lazy 永远
+ * 不会触发 load，PDF 生成会挂起）；`decoding="async"` 两种介质都安全。
+ */
+export type ReportMediaMode = "web" | "print";
+
 /** Top-level composition blocks a template may choose and reorder. */
 export type ReportCompositionBlockKind =
   | "cover"

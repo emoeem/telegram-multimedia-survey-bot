@@ -11,6 +11,7 @@ import type {
   ReportAnswerItem,
   ReportArtifact,
   ReportGalleryItem,
+  ReportMediaMode,
   ReportPage,
   ReportPageBlock,
   ReportViewModel,
@@ -32,6 +33,9 @@ import { renderSelectedResponses } from "./report/blocks/answers";
 import { renderRadarSvg } from "./report/blocks/radar";
 import { renderMetadataBlock } from "./report/blocks/structural";
 import { sanitizeReportCss, type ReportTemplateSpec } from "./report/template";
+// 循环依赖（web.ts 也 import 本文件）仅限函数声明，ESM/bundler 提升后安全；
+// 两边都不在模块求值期调用对方。
+import { weakNetworkDegradeScript } from "./report/web";
 
 export type { ReportGalleryItem, ReportScore, ReportViewModel } from "./report/model";
 
@@ -343,6 +347,7 @@ function renderComposition(
   layout: ReportLayout,
   colors: { accent: string; text: string; muted: string; border: string },
   templateBlocks?: ReportTemplateSpec["blocks"],
+  mediaMode: ReportMediaMode = "print",
 ): { html: string; density: string } {
   const content = prepareReportContent(view);
   const composition = composeReport(view, content, layout, templateBlocks);
@@ -360,14 +365,14 @@ function renderComposition(
         ...(view.hero.avatar ? { avatar: view.hero.avatar } : {}),
         ...(primaryScore ? { primaryScore } : {}),
       },
-      { escape: escapeHtml, limit: limitText },
+      { escape: escapeHtml, limit: limitText, mediaMode },
     ),
     overview: renderOverview(view, colors),
-    featured: renderFeaturedInsightBlock(content.featuredInsight, { escape: escapeHtml, limit: limitText }),
-    analysis: renderEditorialAnalysisBlock(content.analysis, { escape: escapeHtml, limit: limitText }),
-    quotes: renderQuoteBlock(content.quotes, { escape: escapeHtml, limit: limitText }),
+    featured: renderFeaturedInsightBlock(content.featuredInsight, { escape: escapeHtml, limit: limitText, mediaMode }),
+    analysis: renderEditorialAnalysisBlock(content.analysis, { escape: escapeHtml, limit: limitText, mediaMode }),
+    quotes: renderQuoteBlock(content.quotes, { escape: escapeHtml, limit: limitText, mediaMode }),
     responses: renderSelectedResponses(content, { escape: escapeHtml }),
-    gallery: renderGalleryBlock(view.gallery, { heroUrl: view.hero.avatar, escape: escapeHtml }),
+    gallery: renderGalleryBlock(view.gallery, { heroUrl: view.hero.avatar, escape: escapeHtml, mediaMode }),
     transcript: renderFullTranscript(view, { escape: escapeHtml }),
     verdict: renderFinalVerdictBlock(content.verdict, primaryScore, { escape: escapeHtml, limit: limitText }),
   };
@@ -427,6 +432,17 @@ html .report-layout-gallery{--report-bg:#0a0a0c;--report-surface:#141417;--repor
 .report-layout-profile .hero{min-height:0;grid-template-columns:200px minmax(0,1fr) 200px;align-items:center;gap:34px;padding:44px 0;border-top:2px solid var(--report-accent);border-bottom:2px solid var(--report-accent)}.report-layout-profile .hero-avatar{position:static;width:160px;height:160px;border-radius:10px;border:2px solid var(--report-accent)}.report-layout-profile .hero h1{font-family:Georgia,"Noto Serif CJK SC",serif;letter-spacing:.04em;font-size:34px}.report-layout-profile .hero-score{border-left:2px solid var(--report-accent);padding-left:26px;text-align:left}.report-layout-profile .report-cover{min-height:56vh;border-top:2px solid var(--report-accent);border-bottom:2px solid var(--report-accent)}`;
 }
 
+export interface ResponsiveCompositionOptions {
+  /**
+   * 渲染介质（U2，缺省 print）：web=参与者打开的响应式页面，块级 <img>
+   * 挂静态 lazy（图集/配图）并在壳尾注入 weakNetworkDegradeScript；
+   * print=A4 PDF 归档（buildReportPdfDocument 经 setContent 后用
+   * document.images 的 load/error 事件等待全部图片，静态 lazy 会让视口外
+   * 图片永不触发 load、生成挂起），行为与历史一致。
+   */
+  mediaMode?: ReportMediaMode;
+}
+
 /**
  * Renders a template with a real layout through the composition engine for
  * the open Web (responsive) and the A4 PDF archive. Used by
@@ -436,10 +452,12 @@ export function buildResponsiveCompositionReport(
   view: ReportViewModel,
   meta: { surveyTitle?: string; completedAt?: string; reportId?: string; watermark?: string },
   template: ReportTemplateSpec,
+  options: ResponsiveCompositionOptions = {},
 ): string {
+  const mediaMode = options.mediaMode ?? "print";
   const layout = template.layout ?? selectReportLayout(view, template.layout ? { layout: template.layout } : {});
   const theme = reportThemes[template.theme];
-  const composition = renderComposition(view, layout, themeChartColors(template.theme), template.blocks);
+  const composition = renderComposition(view, layout, themeChartColors(template.theme), template.blocks, mediaMode);
   const title = view.hero.title || meta.surveyTitle || "问卷结果报告";
   const metaLine = [meta.surveyTitle, meta.completedAt, meta.reportId]
     .filter(Boolean)
@@ -493,6 +511,7 @@ export function buildResponsiveCompositionReport(
       ${watermark}
     </main>
   </div>
+  ${mediaMode === "web" ? weakNetworkDegradeScript() : ""}
 </body>
 </html>`;
 }
