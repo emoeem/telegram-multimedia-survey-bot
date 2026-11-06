@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ApiError, apiSend, generateResultPool } from "../../api";
 import { useApi } from "../../hooks";
 import type { SurveyMetaState } from "../../editor/useSurveyEditor";
@@ -17,6 +17,13 @@ import {
  * 设计的复合面板（双列 + sticky 预览），塞进 360px 右栏时内层网格硬下限会把
  * 配置列压成 0 宽（文字逐字竖排）。入口卡默认收起，点开才渲染面板；
  * 基础模式（proMode=false）展开后只显示引导，不渲染编辑器。
+ *
+ * T5（2026-11-07）：字段分「基础/高级」两组，重度功能默认收起。基础组
+ * （标题/描述/匿名/18+/重复填写）常开；高级组（报告模板/金币解锁/结局奖池/
+ * 显示模式）默认收起。高级组只切 `hidden` 可见性、字段保持挂载——金币解锁
+ * 与显示模式的本地态来自 initial props（保存后父级不回传新值），条件卸载
+ * 再重挂会把开关打回页面加载时的旧值。settings_json/condition_json 的读写
+ * 路径与数据形状零改动；「专业模式才渲染结果设计器本体」的 proMode 门槛不变。
  */
 export function SurveySettingsPanel({
   surveyId,
@@ -40,6 +47,11 @@ export function SurveySettingsPanel({
   onUpdate: (patch: Partial<SurveyMetaState>) => void;
 }) {
   const [rulesOpen, setRulesOpen] = useState(false);
+  /** 高级组默认收起（T5）：只切可见性、字段保持挂载，原因见组件头注释。 */
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // useId 而非静态 id：新壳窄屏会在中栏与右栏各挂一份设置面板（EditorShell
+  // 的 settingsPanel + PropertiesPanel），aria-controls 引用的 id 不能重复。
+  const advancedId = useId();
   return (
     <div className="settings-panel">
       <div>
@@ -47,6 +59,7 @@ export function SurveySettingsPanel({
         <div className="settings-panel-sub">标题、描述与填写规则会应用到整个问卷</div>
       </div>
 
+      {/* 基础组（T5）：标题/描述/填写规则等高频项，始终展开。 */}
       <label className="settings-field">
         <span className="q-label">标题</span>
         <input
@@ -74,38 +87,6 @@ export function SurveySettingsPanel({
           }}
         />
       </label>
-
-      <ReportTemplateSetting
-        value={meta.reportTemplateId}
-        disabled={disabled}
-        onChange={(value) => onUpdate({ reportTemplateId: value })}
-      />
-
-      <CoinAccessSetting surveyId={surveyId} initial={coinAccess} disabled={disabled} />
-
-      {rulesOpen && proMode ? (
-        <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
-      ) : (
-        <button
-          type="button"
-          className="result-rules-entry"
-          aria-expanded={rulesOpen && proMode}
-          onClick={() => setRulesOpen((open) => !open)}
-        >
-          <span className="result-rules-entry-icon" aria-hidden="true">
-            📊
-          </span>
-          <span className="result-rules-entry-text">
-            <strong>结果设计器</strong>
-            <small>{proMode ? "评分维度 · 分数区间 · 结果文案" : "评分与结果区间配置（专业模式可用）"}</small>
-          </span>
-          <span className="result-rules-entry-action">{rulesOpen ? "收起" : "打开"}</span>
-        </button>
-      )}
-
-      <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
-
-      <DisplayModeSetting surveyId={surveyId} initial={display} disabled={disabled} />
 
       <div className="settings-check">
         <div>
@@ -177,6 +158,56 @@ export function SurveySettingsPanel({
           />
         </label>
       ) : null}
+
+      {rulesOpen && proMode ? (
+        <ResultRulesPanel surveyId={surveyId} questions={questions} disabled={disabled} />
+      ) : (
+        <button
+          type="button"
+          className="result-rules-entry"
+          aria-expanded={rulesOpen && proMode}
+          onClick={() => setRulesOpen((open) => !open)}
+        >
+          <span className="result-rules-entry-icon" aria-hidden="true">
+            📊
+          </span>
+          <span className="result-rules-entry-text">
+            <strong>结果设计器</strong>
+            <small>{proMode ? "评分维度 · 分数区间 · 结果文案" : "评分与结果区间配置（专业模式可用）"}</small>
+          </span>
+          <span className="result-rules-entry-action">{rulesOpen ? "收起" : "打开"}</span>
+        </button>
+      )}
+
+      {/* 高级组（T5）：报告模板/金币解锁/结局奖池/显示模式等低频项，默认收起。
+          收起时用 hidden 而非条件卸载：金币解锁/显示模式的本地态来自 initial
+          props，卸载重挂会把开关打回旧值（见组件头注释）。 */}
+      <button
+        type="button"
+        className="settings-advanced-toggle"
+        aria-expanded={advancedOpen}
+        aria-controls={advancedId}
+        onClick={() => setAdvancedOpen((open) => !open)}
+      >
+        <span className="settings-advanced-toggle-label">
+          <strong>高级设置</strong>
+          <small>报告模板 · 金币解锁 · 结局奖池 · 显示模式</small>
+        </span>
+        <span className="settings-advanced-toggle-action">{advancedOpen ? "收起" : "展开"}</span>
+      </button>
+      <div id={advancedId} className="settings-advanced" hidden={!advancedOpen}>
+        <ReportTemplateSetting
+          value={meta.reportTemplateId}
+          disabled={disabled}
+          onChange={(value) => onUpdate({ reportTemplateId: value })}
+        />
+
+        <CoinAccessSetting surveyId={surveyId} initial={coinAccess} disabled={disabled} />
+
+        <ResultPoolGenerator surveyId={surveyId} disabled={disabled} />
+
+        <DisplayModeSetting surveyId={surveyId} initial={display} disabled={disabled} />
+      </div>
     </div>
   );
 }

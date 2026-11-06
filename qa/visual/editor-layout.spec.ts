@@ -437,7 +437,42 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await expect(activeRow.locator(".q-row-tag.is-req")).toBeVisible();
   });
 
-  test("问卷设置入口：右栏切到设置面板", async ({ page }) => {
+  test("T5 基础↔专业切换：选中态与右栏属性面板保持（模式只改可见性）", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
+    await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
+    await page.waitForSelector(".editor-body");
+
+    // 选中第 60 题：画布激活卡 + 右栏属性面板同步（默认选中是第 1 题）。
+    // 新壳画布没有 is-active 类：选中态 = aria-current 的摘要行 + 激活卡上的快捷条。
+    await page.locator(".editor-canvas .q-row", { hasText: "第60题：" }).first().click();
+    const activeRow = page.locator('.editor-canvas .block-item[data-block-id="1059"]');
+    await expect(activeRow.locator('.q-row[aria-current="true"]')).toBeVisible();
+    await expect(activeRow.getByRole("toolbar")).toBeVisible();
+    await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 60 题");
+
+    const modeGroup = page.getByRole("group", { name: "编辑模式" });
+    await expect(modeGroup.getByRole("button", { name: "基础" })).toHaveAttribute("aria-pressed", "true");
+
+    // 基础 → 专业：右栏出现属性/逻辑页签（模式确实切换），但选中的题与右栏内容不变。
+    await modeGroup.getByRole("button", { name: "专业" }).click();
+    await expect(modeGroup.getByRole("button", { name: "专业" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".editor-preview").getByRole("button", { name: "属性" })).toBeVisible();
+    await expect(activeRow.locator('.q-row[aria-current="true"]')).toBeVisible();
+    await expect(activeRow.getByRole("toolbar")).toBeVisible();
+    await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 60 题");
+
+    // 专业 → 基础：页签条收起，选中态与右栏内容依旧保持——切换只写 editorMode
+    // （admin:editor-mode 的 localStorage 持久化），选中态是独立 state。
+    await modeGroup.getByRole("button", { name: "基础" }).click();
+    await expect(modeGroup.getByRole("button", { name: "基础" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".editor-preview").getByRole("button", { name: "属性" })).toHaveCount(0);
+    await expect(activeRow.locator('.q-row[aria-current="true"]')).toBeVisible();
+    await expect(activeRow.getByRole("toolbar")).toBeVisible();
+    await expect(page.locator(".editor-preview .q-editor .q-index")).toHaveText("第 60 题");
+  });
+
+  test("问卷设置入口：右栏切到设置面板，高级组默认收起、展开可达", async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await mockEditorApi(page, { "/api/admin/surveys/121/editor": BIG });
     await page.goto("/admin/surveys/121/editor?ui=next", { waitUntil: "networkidle" });
@@ -446,6 +481,15 @@ test.describe("P2 三栏外壳（?ui=next）", () => {
     await page.locator(".editor-canvas [aria-pressed]", { hasText: "问卷设置" }).click();
     // ResultRulesPanel 也带 settings-panel 类，这里认主面板的标题。
     await expect(page.locator(".editor-preview .settings-panel-title", { hasText: "问卷设置" })).toBeVisible();
+    // T5 分组：基础组常开（标题可编辑），高级组默认收起。
+    await expect(page.locator(".editor-preview .settings-input").first()).toBeVisible();
+    await expect(page.locator(".editor-preview .settings-advanced-toggle")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator(".editor-preview .settings-advanced")).toBeHidden();
+    // 展开是纯可见性开关：字段保持挂载，金币解锁开关可达。
+    await page.locator(".editor-preview .settings-advanced-toggle").click();
+    await expect(page.locator(".editor-preview .settings-advanced-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".editor-preview .settings-advanced")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "金币解锁" })).toBeVisible();
   });
 
   test("物料区添加题目：插入到画布并选中（待保存态）", async ({ page }) => {
