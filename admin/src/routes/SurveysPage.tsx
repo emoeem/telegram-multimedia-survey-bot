@@ -21,6 +21,8 @@ import { EmptyPanel, ErrorPanel, Modal, SkeletonPanel, StatusBadge } from "../co
 import { STATUS_LABELS, formatDateTime } from "../format";
 import { downloadSurveyExport, printSurveyExport } from "../lib/survey-export-run";
 import type { ExportFormat } from "../lib/survey-export";
+import { TEMPLATE_OPTIONS, type TemplateId } from "../editor/templates";
+import { setPendingTemplate } from "../editor/pending-template";
 
 const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; hint: string }> = [
   { value: "html", label: "HTML", hint: "打印视图，可直接印成 PDF" },
@@ -72,6 +74,10 @@ export function SurveysPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  // 新建走「从模板开始」对话框（T4）：主入口是选一套模板带出骨架，空白
+  // 创建降为次按钮。选中的模板默认「问卷基础」，打开对话框即可直接确认。
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTemplate, setCreateTemplate] = useState<TemplateId>("survey");
   // 新建时的显示模式（默认 auto）：场景类问卷建议直接选「PC 沉浸」。
   const [createDisplay, setCreateDisplay] = useState<SurveyDisplayMode>("auto");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -201,7 +207,12 @@ export function SurveysPage() {
     setExportOpen(true);
   };
 
-  const createSurvey = async () => {
+  /**
+   * 创建问卷：POST 请求体与 T4 之前完全一致（模板只作用于前端编辑器状态，
+   * 不进数据库）。`templateId` 为 null = 空白创建；带模板时经 pending-template
+   * 把模板 id 交接给编辑器，EditorShell 挂载时一次性插入骨架。
+   */
+  const createSurvey = async (templateId: TemplateId | null) => {
     if (creating) return;
     setCreating(true);
     setCreateError(null);
@@ -211,6 +222,8 @@ export function SurveysPage() {
         display: createDisplay,
       });
       if (typeof result.id === "number") {
+        setPendingTemplate(result.id, templateId);
+        setCreateOpen(false);
         navigate(`/surveys/${result.id}/editor`);
         return;
       }
@@ -370,18 +383,11 @@ export function SurveysPage() {
               </option>
             ))}
           </select>
-          <button className="btn btn-primary" disabled={creating} onClick={createSurvey}>
-            {creating ? (
-              "创建中…"
-            ) : (
-              <>
-                <Plus className="h-4 w-4" />
-                新建问卷
-              </>
-            )}
+          <button className="btn btn-primary" disabled={creating} onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            新建问卷
           </button>
         </div>
-        {createError ? <div className="mb-3 text-sm text-[var(--app-danger)]">新建失败：{createError}</div> : null}
         {data ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--color-muted)]">
             <span>
@@ -684,6 +690,61 @@ export function SurveysPage() {
         ) : null}
         {exportNotice ? <p className="mt-3 text-sm text-[var(--app-success)]">{exportNotice}</p> : null}
         {exportProblem ? <p className="mt-3 text-sm text-[var(--app-danger)]">{exportProblem}</p> : null}
+      </Modal>
+
+      <Modal
+        open={createOpen}
+        onClose={() => {
+          if (!creating) setCreateOpen(false);
+        }}
+        title="新建问卷"
+        footer={
+          <>
+            <button className="btn btn-quiet" disabled={creating} onClick={() => setCreateOpen(false)}>
+              取消
+            </button>
+            <button className="btn btn-primary" disabled={creating} onClick={() => void createSurvey(createTemplate)}>
+              {creating ? "创建中…" : "从模板开始"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--color-muted)]">
+          选一套模板，创建后自动插入题目骨架（插完可撤销、可再改）；也可以空白创建，从空画布自由搭建。
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {TEMPLATE_OPTIONS.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className={`rounded-xl border p-3 text-left transition ${
+                createTemplate === template.id
+                  ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--surface))]"
+                  : "border-[var(--color-edge)] bg-[var(--surface)] hover:border-[var(--color-primary)]"
+              }`}
+              aria-pressed={createTemplate === template.id}
+              disabled={creating}
+              onClick={() => setCreateTemplate(template.id)}
+            >
+              <span className="block text-sm font-semibold text-[var(--color-ink)]">{template.title}</span>
+              <span className="mt-0.5 block text-xs text-[var(--color-muted)]">{template.desc}</span>
+            </button>
+          ))}
+          {/* 空白创建降为次选（调研 N6：参考产品先给模板，本仓此前新手先落空白画布）。
+              做成直达动作而非可选项：点它立即创建，不必先选中再确认。 */}
+          <button
+            type="button"
+            className="rounded-xl border border-dashed border-[var(--color-edge)] p-3 text-left transition hover:border-[var(--color-primary)]"
+            disabled={creating}
+            onClick={() => void createSurvey(null)}
+          >
+            <span className="block text-sm font-semibold text-[var(--color-muted)]">空白</span>
+            <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+              不插模板，从空画布自由搭建；模板以后可在编辑器「物料区 → 模板」随时补
+            </span>
+          </button>
+        </div>
+        {createError ? <p className="mt-3 text-sm text-[var(--app-danger)]">创建失败：{createError}</p> : null}
       </Modal>
     </div>
   );
