@@ -26,6 +26,13 @@ export const MESSAGE_BODY_MAX = 500;
 export const NOTE_GENDERS = new Set(["m", "f", "x"]);
 export const NOTE_AGE_BANDS = new Set(["18-24", "25-30", "31-40", "40+"]);
 
+/* 站内通知（T3 · 复用 0084 notifications 表，零迁移）：铃铛端点
+ * GET /api/me/notifications 对 kind 无白名单，新 kind 插行即见。 */
+const NOTE_DRAWN_TITLE = "你的纸条被抽中了";
+const NOTE_DRAWN_BODY = "有人抽中了你的纸条，去对话页回信吧";
+const NOTE_REPLY_TITLE = "收到新的回信";
+const NOTE_REPLY_BODY_MAX = 120;
+
 export type NoteStatus = "active" | "hidden" | "withdrawn" | "expired" | "removed";
 
 export interface NoteCard {
@@ -281,6 +288,8 @@ export async function drawNote(
     .prepare(`SELECT id FROM note_threads WHERE note_id = ? AND drawer_hash = ?`)
     .bind(candidate.id, drawerHash)
     .first<{ id: number }>();
+  // 抽中即通知纸条作者（T3）：非池空才走到这里，见 notifyNoteDrawn。
+  await notifyNoteDrawn(db, candidate.ownerHash, now);
   const balance = (await getCoinAccount(db, drawerHash))?.balance ?? 0;
   return {
     ok: true,
@@ -527,6 +536,50 @@ export async function unblockThread(db: D1Database, threadId: number, participan
   return Number(result.meta?.changes ?? 0) > 0;
 }
 
+/** 抽中通知（note_drawn）：离散事件，有意不折叠——「被抽中」每条都可带抽中
+ * 语义，写入量天然有界（抽取受每日免费额 + 金币限流，每抽至多 1 行）。
+ * best-effort：通知是增强，失败不回滚已生效的抽取（金币路径钱已扣）。 */
+async function notifyNoteDrawn(db: D1Database, ownerHash: string, at: string): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO notifications (participant_hash, kind, title, body, link, created_at)
+         VALUES (?, 'note_drawn', ?, ?, '/notes', ?)`,
+      )
+      .bind(ownerHash, NOTE_DRAWN_TITLE, NOTE_DRAWN_BODY, at)
+      .run();
+  } catch {
+    /* 铃铛少一条不影响主流程。 */
+  }
+}
+
+/** 回信通知（note_reply）：按参与者折叠——先刷新未读那条的 body/created_at
+ * （WHERE 前缀命中 idx_notifications_participant），changes=0 才 INSERT。
+ * 同一参与者至多 1 条未读回信通知，写放大被封顶；与 notifySeriesPublish 的
+ * 「每发布一行」不同量级，故折叠而非照抄。best-effort：失败不影响已落库的消息。 */
+async function notifyNoteReply(db: D1Database, peerHash: string, body: string, at: string): Promise<void> {
+  try {
+    const folded = await db
+      .prepare(
+        `UPDATE notifications SET body = ?, created_at = ?
+          WHERE participant_hash = ? AND kind = 'note_reply' AND read_at IS NULL AND link = '/notes'`,
+      )
+      .bind(body, at, peerHash)
+      .run();
+    if (Number(folded.meta?.changes ?? 0) === 0) {
+      await db
+        .prepare(
+          `INSERT INTO notifications (participant_hash, kind, title, body, link, created_at)
+           VALUES (?, 'note_reply', ?, ?, '/notes', ?)`,
+        )
+        .bind(peerHash, NOTE_REPLY_TITLE, body, at)
+        .run();
+    }
+  } catch {
+    /* 铃铛少一条不影响主流程。 */
+  }
+}
+
 export async function sendMessage(
   db: D1Database,
   threadId: number,
@@ -560,6 +613,8 @@ export async function sendMessage(
     .prepare(`UPDATE note_threads SET last_message_at = ?, message_count = message_count + 1 WHERE id = ?`)
     .bind(created, threadId)
     .run();
+  // 回信通知（T3）：发给会话对方并折叠，见 notifyNoteReply；纯图片消息用「[图片]」占位。
+  await notifyNoteReply(db, peerHash, text ? text.slice(0, NOTE_REPLY_BODY_MAX) : "[图片]", created);
   return {
     id: Number(insert.meta?.last_row_id ?? 0),
     mine: true,
