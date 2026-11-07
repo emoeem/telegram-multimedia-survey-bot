@@ -29,13 +29,21 @@ import { Coins, X, Zap } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { closeWebApp } from "./navigation";
-import { searchForTab, tabFromSearch, directEntryFromSearch, type SubmissionTab } from "./submission-tab";
-import { preloadSubmitForm } from "./submit-form-preload";
+import {
+  DEFAULT_SUBMISSION_TAB,
+  searchForTab,
+  tabFromSearch,
+  directEntryFromSearch,
+  visibleTabs,
+  type SubmissionTab,
+} from "./submission-tab";
+import { preloadSubmitForm, type SubmitFormDto } from "./submit-form-preload";
 import { FormSkeleton } from "./FormSkeleton";
 
 const AccountTab = lazy(() => import("./CoinCenter").then((m) => ({ default: m.SubmissionsScreen })));
 const AnonTab = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitScreen })));
 const InboxTab = lazy(() => import("./SubmitScreen").then((m) => ({ default: m.SubmitInboxScreen })));
+const GalleryTab = lazy(() => import("./GalleryWall").then((m) => ({ default: m.GalleryWall })));
 
 /** 「投稿」页签内的表单模式：本站流水线（发金币）或免登录直投。 */
 type FormMode = "coins" | "direct";
@@ -68,11 +76,17 @@ function syncUrl(tab: SubmissionTab): void {
 }
 
 export function SubmissionHub() {
-  const [tab, setTab] = useState<SubmissionTab>(() => tabFromSearch(window.location.search));
+  /* 乐观解析：表单（showcase 开关）还没加载完时先认 URL 里的 gallery，
+   * 开关确认关闭后由下方 effect 落回投稿页签——分享出去的墙上链接不该因为
+   * 首屏的加载顺序而丢页签。 */
+  const [tab, setTab] = useState<SubmissionTab>(() => tabFromSearch(window.location.search, true));
   /* 从 /submit 302 过来的旧链接（?tab=anon）直奔免登录表单；其余默认金币表单。 */
   const [mode, setMode] = useState<FormMode>(() =>
     directEntryFromSearch(window.location.search) ? "direct" : "coins",
   );
+  /* 投稿墙的开关由表单接口下发（showcaseEnabled，默认 false）；
+   * null = 还没加载完，页签先按关闭渲染，加载完再校正。 */
+  const [form, setForm] = useState<SubmitFormDto | null>(null);
 
   const select = useCallback((next: SubmissionTab) => {
     setTab(next);
@@ -85,24 +99,44 @@ export function SubmissionHub() {
   useEffect(() => {
     void import("./CoinCenter");
     void import("./SubmitScreen");
-    void preloadSubmitForm().catch(() => {
-      /* 预取失败不打断任何东西：SubmitScreen 挂载时还有一次真正的加载与重试。 */
-    });
+    void import("./GalleryWall");
+    preloadSubmitForm()
+      .then((dto) => {
+        setForm(dto);
+        /* 开关没开：URL 里带来的 gallery 落回投稿页签（并同步地址）。 */
+        if (!dto.showcaseEnabled) {
+          setTab((current) => {
+            if (current !== "gallery") return current;
+            const url = new URL(window.location.href);
+            url.searchParams.delete("tab");
+            window.history.replaceState(null, "", url.toString());
+            return DEFAULT_SUBMISSION_TAB;
+          });
+        }
+      })
+      .catch(() => {
+        /* 预取失败不打断任何东西：SubmitScreen 挂载时还有一次真正的加载与重试。 */
+      });
   }, []);
 
   /* 浏览器前进/后退也要跟上页签（replaceState 不产生条目，但用户可能是从
    * 一个带 ?tab= 的外部链接进来的，或者被别的脚本 pushState 过）。 */
   useEffect(() => {
     const onPop = () => {
-      setTab(tabFromSearch(window.location.search));
+      setTab(tabFromSearch(window.location.search, form?.showcaseEnabled ?? false));
       setMode(directEntryFromSearch(window.location.search) ? "direct" : "coins");
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [form?.showcaseEnabled]);
 
+  const showcaseEnabled = form?.showcaseEnabled ?? false;
   const subtitle =
-    tab === "inbox" ? "进度 · 评论 · 管理员留言" : (MODE_META.find((entry) => entry.id === mode)?.hint ?? "");
+    tab === "inbox"
+      ? "进度 · 评论 · 管理员留言"
+      : tab === "gallery"
+        ? "通过审核的投稿，在这里公开展示"
+        : (MODE_META.find((entry) => entry.id === mode)?.hint ?? "");
   const themeState = usePublicTheme();
 
   return (
@@ -132,7 +166,7 @@ export function SubmissionHub() {
           }
           tabs={
             <>
-              {(["submit", "inbox"] as const).map((entry) => {
+              {visibleTabs(showcaseEnabled).map((entry) => {
                 const isActive = entry === tab;
                 return (
                   <button
@@ -147,7 +181,7 @@ export function SubmissionHub() {
                         : "bg-[var(--survey-primary-soft)] text-[var(--survey-heading)]"
                     }`}
                   >
-                    {entry === "submit" ? "投稿" : "我的投稿"}
+                    {entry === "submit" ? "投稿" : entry === "inbox" ? "我的投稿" : "投稿墙"}
                   </button>
                 );
               })}
@@ -155,7 +189,17 @@ export function SubmissionHub() {
           }
         />
         <main className="mx-auto max-w-xl lg:max-w-3xl">
-          {tab === "submit" ? (
+          {/* 开关关闭时 gallery 不可达（页签不存在、URL 解析也回落），
+           * 这里再兜一层：开关翻转的瞬间旧状态不得渲染公开面。 */}
+          {tab === "gallery" && showcaseEnabled ? (
+            <Suspense fallback={<FormSkeleton />}>
+              <GalleryTab />
+            </Suspense>
+          ) : tab === "inbox" ? (
+            <Suspense fallback={<FormSkeleton />}>
+              <InboxTab embedded />
+            </Suspense>
+          ) : (
             <>
               {/* 次级分段：两条投稿流水线的切换，视觉权重刻意低于顶栏页签。 */}
               <div
@@ -190,10 +234,6 @@ export function SubmissionHub() {
                 {mode === "direct" ? <AnonTab embedded /> : null}
               </Suspense>
             </>
-          ) : (
-            <Suspense fallback={<FormSkeleton />}>
-              <InboxTab embedded />
-            </Suspense>
           )}
         </main>
       </div>

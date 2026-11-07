@@ -407,7 +407,12 @@ async function routeAdminApi(request: Request, env: Env): Promise<Response> {
   // 网页投稿（免登录投稿）的审核：带共享密钥转到投稿机器人 Worker 的
   // /api/admin/review/*。和金币投稿（/api/admin/submissions）是两套数据，
   // 路径刻意不同前缀，避免 startsWith 互相吃掉。
-  const webSubmissionResponse = await handleWebSubmissionAdmin(request, url, env, { isAdmin, fail, json });
+  const webSubmissionResponse = await handleWebSubmissionAdmin(request, url, env, {
+    isAdmin,
+    actorUserId: user.id,
+    fail,
+    json,
+  });
   if (webSubmissionResponse) return webSubmissionResponse;
 
   if (

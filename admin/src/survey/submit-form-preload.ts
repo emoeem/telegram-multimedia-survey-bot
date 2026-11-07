@@ -36,6 +36,10 @@ export interface SubmitFormDto {
   captchaUrl: string;
   inboxUrl: string;
   mainGroupUrl: string | null;
+  /** 投稿墙开关（showcase 双闸之一）：仅开启时投稿中心渲染「投稿墙」页签。 */
+  showcaseEnabled: boolean;
+  /** 公开展示的字段白名单（step id）；字段标签从 steps 里按 id 查。 */
+  showcaseFields: string[];
   steps: SubmitStep[];
 }
 

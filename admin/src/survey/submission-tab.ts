@@ -11,14 +11,26 @@
  * 只是「走本站流水线拿金币」还是「免登录直投」——对用户来说是同一个动作，
  * 三个页签反而像两个投稿中心。现在收成两个页签（投稿 / 我的投稿），「投稿」
  * 页签内部再用一个次级分段切金币/直投两种表单。
+ *
+ * 「投稿墙」（gallery）是后加的第三个页签：已发布投稿的公开展示面。它由
+ * showcaseEnabled 开关门控（默认关）——开关关闭时页签不存在，链接里带了
+ * `?tab=gallery` 也落回投稿页签，而不是渲染一个空的墙。
  */
 
-export type SubmissionTab = "submit" | "inbox";
+export type SubmissionTab = "submit" | "inbox" | "gallery";
 
-export const SUBMISSION_TABS: SubmissionTab[] = ["submit", "inbox"];
+export const SUBMISSION_TABS: SubmissionTab[] = ["submit", "inbox", "gallery"];
 
 /** 默认页签：投稿。绝大多数人进投稿中心就是为了投稿。 */
 export const DEFAULT_SUBMISSION_TAB: SubmissionTab = "submit";
+
+/**
+ * 实际渲染的页签集合：投稿墙仅在 showcase 开启时存在。
+ * 传 false（表单未加载完 / 加载失败 / 开关关闭）时与两页签模型完全一致。
+ */
+export function visibleTabs(showcaseEnabled: boolean): SubmissionTab[] {
+  return showcaseEnabled ? SUBMISSION_TABS : SUBMISSION_TABS.filter((tab) => tab !== "gallery");
+}
 
 /**
  * 从 location.search（或任何 `?a=b` 形式的串）解析页签。
@@ -27,10 +39,15 @@ export const DEFAULT_SUBMISSION_TAB: SubmissionTab = "submit";
  * 是「免登录直投」——页签层面归到投稿，是否展开直投表单由
  * {@link directEntryFromSearch} 决定。非法值一律回落到默认页签而不是报错：
  * `?tab=` 是给分享链接和旧地址用的，用户手改、上游拼错都不该让页面白掉。
+ *
+ * `gallery` 只在 showcase 开启时解析成功；showcaseEnabled 缺省 false（表单
+ * 还没加载完的乐观渲染期），带 gallery 的链接先落投稿页签、开关确认开启后
+ * 由调用方重解析。
  */
-export function tabFromSearch(search: string): SubmissionTab {
+export function tabFromSearch(search: string, showcaseEnabled = false): SubmissionTab {
   const raw = new URLSearchParams(search).get("tab")?.trim().toLowerCase();
   if (raw === "inbox") return "inbox";
+  if (raw === "gallery" && showcaseEnabled) return "gallery";
   return DEFAULT_SUBMISSION_TAB;
 }
 

@@ -32,6 +32,7 @@ import {
   loadWebSubmitFormSetting,
   type WebSubmitStep,
 } from "../../services/submit/form-config";
+import { writeAudit } from "./helpers";
 
 /** 本模块管辖的路径前缀。和 `/api/admin/submissions`(金币投稿)不冲突。 */
 export const WEB_SUBMISSION_PREFIX = "/api/admin/web-submissions";
@@ -47,6 +48,8 @@ const STATUSES = new Set<WebSubmissionStatus>(["pending", "published", "rejected
 
 export interface WebSubmissionAdminContext {
   isAdmin: boolean;
+  /** writeAudit 的操作者;routeAdminApi 侧从会话 user 传入。 */
+  actorUserId: number | null;
   fail: (status: number, code: string, message: string) => Response;
   json: (body: unknown) => Response;
 }
@@ -116,7 +119,7 @@ export async function handleWebSubmissionAdmin(
   }
 
   const suffix = url.pathname.slice(WEB_SUBMISSION_PREFIX.length);
-  const allowed = new Set(["/list", "/detail", "/count", "/approve", "/reject", "/reply", "/media"]);
+  const allowed = new Set(["/list", "/detail", "/count", "/approve", "/reject", "/reply", "/unpublish", "/media"]);
   if (!allowed.has(suffix)) return ctx.fail(404, "unknown_review_action", "未知的审核操作。");
 
   const store = new WebSubmitStore(env.DB);
@@ -226,6 +229,33 @@ export async function handleWebSubmissionAdmin(
       const row = await store.getSubmission(id);
       if (!row) return ctx.fail(404, "not_found", "找不到这条投稿");
       await store.addThreadMessage(id, "to_author", text);
+      return ctx.json({ ok: true, id });
+    }
+
+    if (suffix === "/unpublish" && request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as { id?: unknown } | null;
+      const id = parseId(String(body?.id ?? ""));
+      if (id === null) return ctx.fail(400, "invalid_id", "缺少投稿编号");
+      const row = await store.getSubmission(id);
+      if (!row) return ctx.fail(404, "not_found", "找不到这条投稿");
+      /* 公开 UGC 必须可处置(Apple UGC 1.2,与树洞下架同源):published 是
+       * 唯一的公开态,只有它能(且必须能)退回去。recalled = 已下架,重复下架
+       * 幂等报 already;其余状态本就不公开,直接拒绝而不是翻状态。 */
+      if (row.status === "recalled") return ctx.fail(409, "already_recalled", "这条投稿已经下架过了");
+      if (row.status !== "published") return ctx.fail(409, "not_published", "只有已发布的投稿可以下架");
+      // CAS published→recalled,与 approve/reject 共用 store.setStatus(防并发
+      // 双击);published_at 保留作历史(setStatus 非 published 分支只动 updated_at),
+      // 墙的戳探针按 COUNT 计数,下架即翻键。
+      const won = await store.setStatus(id, "recalled", ["published"]);
+      if (!won) return ctx.fail(409, "in_flight", "状态刚刚变化，请刷新后重试");
+      await writeAudit(env.DB, {
+        actorUserId: ctx.actorUserId,
+        action: "web_submission.unpublish",
+        entityType: "web_submission",
+        entityId: String(id),
+        before: { status: "published" },
+        after: { status: "recalled" },
+      });
       return ctx.json({ ok: true, id });
     }
 

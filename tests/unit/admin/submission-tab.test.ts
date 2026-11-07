@@ -10,6 +10,7 @@ import {
   searchForTab,
   tabForLegacySubmitPath,
   tabFromSearch,
+  visibleTabs,
 } from "../../../admin/src/survey/submission-tab";
 
 /**
@@ -32,6 +33,15 @@ describe("投稿中心页签解析", () => {
   it("认得两个合法页签", () => {
     expect(tabFromSearch("?tab=submit")).toBe("submit");
     expect(tabFromSearch("?tab=inbox")).toBe("inbox");
+  });
+
+  it("投稿墙页签只在 showcase 开启时解析（默认关闭 → 回落投稿页签）", () => {
+    expect(tabFromSearch("?tab=gallery")).toBe("submit");
+    expect(tabFromSearch("?tab=gallery", false)).toBe("submit");
+    expect(tabFromSearch("?tab=gallery", true)).toBe("gallery");
+    // 开关未知（表单未加载完）时宁可回落：公开面不乐观渲染。
+    expect(visibleTabs(false)).toEqual(["submit", "inbox"]);
+    expect(visibleTabs(true)).toEqual(["submit", "inbox", "gallery"]);
   });
 
   it("三页签时代的旧值归到投稿页签而不是报错", () => {
@@ -60,10 +70,12 @@ describe("投稿中心页签解析", () => {
     expect(searchForTab("inbox")).toBe("?tab=inbox");
   });
 
-  it("searchForTab 的输出能被 tabFromSearch 原样读回", () => {
+  it("searchForTab 的输出能被 tabFromSearch 原样读回（gallery 需开关开启）", () => {
     for (const tab of SUBMISSION_TABS) {
-      expect(tabFromSearch(searchForTab(tab))).toBe(tab);
+      expect(tabFromSearch(searchForTab(tab), tab === "gallery")).toBe(tab);
     }
+    // 开关关闭时 gallery 的地址必须回落而不是白屏/空墙。
+    expect(tabFromSearch(searchForTab("gallery"), false)).toBe(DEFAULT_SUBMISSION_TAB);
   });
 });
 
@@ -138,12 +150,15 @@ describe("合并后的路由结构", () => {
     expect(index).toMatch(/status:\s*302[^}]*Location:\s*`\/submissions\?tab=\$\{tab\}`/s);
   });
 
-  it("页签收成两个：金币/直投是投稿页签内的分段，不再是并列页签", () => {
-    /* 页签按钮只剩「投稿 / 我的投稿」；分段按钮（免登录直投）的 role 是
-     * tablist 但渲染在页签之外的容器里，靠 data-submission-hub 的两态钉住
-     * 页签数量。 */
-    expect(hub).toContain('(["submit", "inbox"] as const).map');
+  it("静态页签仍是投稿/我的投稿两个，投稿墙是开关门控的第三个页签", () => {
+    /* 页签集合来自 visibleTabs(showcaseEnabled)：默认两页签，投稿墙页签
+     * 「投稿墙」只在开关开启时存在。分段按钮（免登录直投）的 role 是 tablist
+     * 但渲染在页签之外的容器里。 */
+    expect(hub).toContain("visibleTabs(showcaseEnabled).map");
     expect(hub).toContain("免登录直投");
+    expect(hub).toContain("投稿墙");
     expect(hub).not.toContain('id: "account"');
+    /* 公开面必须双保险：开关关闭时内容层也不渲染（页签不可点 + 渲染闸）。 */
+    expect(hub).toMatch(/tab === "gallery" && showcaseEnabled \?/);
   });
 });
