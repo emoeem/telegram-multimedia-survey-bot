@@ -174,6 +174,19 @@ export function fetchTrialLeaderboard(packId: number, mode: TrialMode): Promise<
   return trialRequest(`/api/trial/leaderboard?packId=${packId}&mode=${mode}`);
 }
 
+export interface TrialGameTypeLeaderboardEntry extends TrialLeaderboardEntry {
+  /** 成绩所属的任务包（玩法总榜合并了该玩法的全部包），前端据此映射包名。 */
+  packId: number;
+}
+
+/** 玩法总榜：按 (gameType, mode) 分榜聚合该玩法全部任务包，每人单局最优。 */
+export function fetchTrialGameTypeLeaderboard(
+  gameType: string,
+  mode: TrialMode,
+): Promise<{ entries: TrialGameTypeLeaderboardEntry[] }> {
+  return trialRequest(`/api/trial/leaderboard?gameType=${encodeURIComponent(gameType)}&mode=${mode}`);
+}
+
 export function startTrialRun(input: TrialStartRequest): Promise<{ run: TrialRun; task: TrialTask }> {
   return trialRequest("/api/trial/runs", { method: "POST", body: JSON.stringify(input) });
 }

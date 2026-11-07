@@ -195,6 +195,71 @@ export interface LeaderboardEntry {
   mine: boolean;
 }
 
+/**
+ * 排行榜的原始行：与查看者无关，可以整体进 KV 戳式缓存。
+ *
+ * userId / participant_hash 仅用于服务端 mine 判定（见
+ * {@link isMineLeaderboardEntry}），出参前由 {@link toPublicLeaderboardEntry}
+ * 剥离——这两个标识符不离开服务端。
+ */
+export interface LeaderboardRawEntry {
+  runId: number;
+  packId: number;
+  userId: number | null;
+  participantHash: string;
+  displayName: string;
+  score: number;
+  floors: number;
+  completedTasks: number;
+  finishedAt: string;
+}
+
+/** 聚合榜（玩法总榜）的出参：在单包榜出参上多带 packId，前端据此映射包名。 */
+export interface GameTypeLeaderboardEntry extends LeaderboardEntry {
+  packId: number;
+}
+
+/** mine 判定（0082）：绑定用户按 user_id；绑定前的旧 hash 行也属于同一个人。 */
+export function isMineLeaderboardEntry(
+  entry: Pick<LeaderboardRawEntry, "userId" | "participantHash">,
+  identity: { participantHash?: string | null; participantDbUserId?: number | null },
+): boolean {
+  return identity.participantDbUserId != null
+    ? entry.userId === identity.participantDbUserId
+    : Boolean(identity.participantHash && entry.participantHash === identity.participantHash);
+}
+
+/** 出参投影：剥掉 userId / participant_hash，避免内部标识符进响应体。 */
+export function toPublicLeaderboardEntry(entry: LeaderboardRawEntry, mine: boolean): LeaderboardEntry {
+  return {
+    runId: entry.runId,
+    displayName: entry.displayName,
+    score: entry.score,
+    floors: entry.floors,
+    completedTasks: entry.completedTasks,
+    finishedAt: entry.finishedAt,
+    mine,
+  };
+}
+
+function mapLeaderboardRow(row: Record<string, unknown>): LeaderboardRawEntry {
+  const username = typeof row.username === "string" && row.username ? row.username : null;
+  const firstName = typeof row.first_name === "string" && row.first_name ? row.first_name : null;
+  return {
+    runId: Number(row.id),
+    packId: Number(row.pack_id),
+    userId: typeof row.user_id === "number" ? row.user_id : null,
+    participantHash: String(row.participant_hash ?? ""),
+    // Prefer the @handle; fall back to the real first name, then a neutral
+    // label — never a fake @ prefix on a first name.
+    displayName: username ? `@${username}` : (firstName ?? "玩家"),
+    score: Number(row.score ?? 0),
+    floors: Number(row.max_floor ?? 0) - Number(row.starting_floor ?? 0),
+    completedTasks: Number(row.completed_tasks ?? 0),
+    finishedAt: String(row.finished_at ?? ""),
+  };
+}
+
 /** Public leaderboard: completed runs ranked by score (desc) then time (asc).
  *  Anti-abuse: only Telegram-identified runs (user_id set) are ranked, and
  *  each player contributes only their single best run. Anonymous runs stay
@@ -205,15 +270,24 @@ export async function listTaskRunLeaderboard(
     packId: number;
     mode: TrialMode;
     limit?: number;
-    participantHash?: string;
+    participantHash?: string | null;
     participantDbUserId?: number | null;
   },
 ): Promise<LeaderboardEntry[]> {
+  const raw = await listTaskRunLeaderboardRaw(db, options);
+  return raw.map((entry) => toPublicLeaderboardEntry(entry, isMineLeaderboardEntry(entry, options)));
+}
+
+/** 单包榜的原始投影（{@link listTaskRunLeaderboard} 的可缓存形态，不带 mine）。 */
+export async function listTaskRunLeaderboardRaw(
+  db: D1Database,
+  options: { packId: number; mode: TrialMode; limit?: number },
+): Promise<LeaderboardRawEntry[]> {
   const limit = Math.min(50, Math.max(1, options.limit ?? 20));
   const { results } = await db
     .prepare(
-      `SELECT r.id, r.score, r.completed_tasks, r.finished_at, r.participant_hash,
-              r.max_floor, r.starting_floor,
+      `SELECT r.id, r.pack_id, r.score, r.completed_tasks, r.finished_at, r.participant_hash,
+              r.max_floor, r.starting_floor, r.user_id,
               u.username, u.first_name
        FROM task_runs r LEFT JOIN users u ON u.id = r.user_id
        WHERE r.pack_id = ? AND r.mode = ? AND r.status = 'completed' AND r.user_id IS NOT NULL
@@ -228,27 +302,88 @@ export async function listTaskRunLeaderboard(
     )
     .bind(options.packId, options.mode, limit)
     .all();
-  return ((results ?? []) as Record<string, unknown>[]).map((row) => {
-    const username = typeof row.username === "string" && row.username ? row.username : null;
-    const firstName = typeof row.first_name === "string" && row.first_name ? row.first_name : null;
-    const hash = String(row.participant_hash ?? "");
-    return {
-      runId: Number(row.id),
-      // Prefer the @handle; fall back to the real first name, then a neutral
-      // label — never a fake @ prefix on a first name.
-      displayName: username ? `@${username}` : (firstName ?? "玩家"),
-      score: Number(row.score ?? 0),
-      floors: Number(row.max_floor ?? 0) - Number(row.starting_floor ?? 0),
-      completedTasks: Number(row.completed_tasks ?? 0),
-      finishedAt: String(row.finished_at ?? ""),
-      // 按人判定「我的」（0082）：canonical hash 之外，绑定前的旧 hash 行也
-      // 属于同一个人——user_id 相同即本人。
-      mine:
-        options.participantDbUserId != null
-          ? Number(row.user_id ?? -1) === options.participantDbUserId
-          : Boolean(options.participantHash && hash === options.participantHash),
-    };
-  });
+  return ((results ?? []) as Record<string, unknown>[]).map(mapLeaderboardRow);
+}
+
+/**
+ * 玩法总榜（聚合视角）：该玩法**全部任务包**（含已停用的——成绩已经发生，
+ * 不因包下架消失）在同一 mode 下的合并分榜。
+ *
+ * Anti-abuse 与单包榜一致：只统计 Telegram 实名局（user_id NOT NULL），每人
+ * 只取单局最优 MAX(score)。刻意**不**复制单包榜的相关子查询——pack_id 过滤
+ * 下没有 user_id 前导索引可借（idx_task_runs_leaderboard 前导是 pack_id，
+ * 0045），子查询会把行读放大数倍；这里走 GROUP BY 单趟聚合。
+ *
+ * 明细列（completed_tasks/floors/finished_at/pack_id）依赖 SQLite 的文档化
+ * 行为：聚合查询里唯一一个 max() 的裸列取自取得最大值的那一行
+ * （sqlite.org/lang_select.html#bareagg），因此展示的是「最好的那一局」的
+ * 明细；同分并列时取哪一行由 SQLite 决定（分数相同，明细差异无感知）。
+ */
+export async function listGameTypeLeaderboard(
+  db: D1Database,
+  options: { gameType: string; mode: TrialMode; limit?: number },
+): Promise<LeaderboardRawEntry[]> {
+  const limit = Math.min(50, Math.max(1, options.limit ?? 20));
+  const { results } = await db
+    .prepare(
+      `SELECT r.id, r.pack_id, r.score, r.completed_tasks, r.finished_at, r.participant_hash,
+              r.max_floor, r.starting_floor, r.user_id,
+              u.username, u.first_name,
+              MAX(r.score) AS best_score
+       FROM task_runs r LEFT JOIN users u ON u.id = r.user_id
+       WHERE r.pack_id IN (SELECT id FROM task_packs WHERE game_type = ?)
+         AND r.mode = ? AND r.status = 'completed' AND r.user_id IS NOT NULL
+       GROUP BY r.user_id
+       ORDER BY best_score DESC, r.finished_at ASC
+       LIMIT ?`,
+    )
+    .bind(options.gameType, options.mode, limit)
+    .all();
+  return ((results ?? []) as Record<string, unknown>[]).map(mapLeaderboardRow);
+}
+
+/**
+ * 榜单戳：`count:maxUpdatedAt`，与 survey 公开目录的戳同构
+ * （src/http/survey/catalog.ts:200-209）。
+ *
+ * 新鲜度机制依赖 task_runs 的写入面：全 src 只有 task-run.repository.ts:122
+ * 的 INSERT（开局，status='active'，不进本谓词）与 :167 的 UPDATE
+ * （saveTaskRun 每次保存都盖 updated_at）——所以「先开局后完成」必然翻戳，
+ * COUNT 则兜住「一批旧局被删除/集合缩减」的情形。探针是
+ * idx_task_runs_leaderboard 上的索引范围扫描（pack_id/mode/status 前导），
+ * 比榜单查询便宜但**不是零**：戳式缓存省的是榜单 payload 读，不是探针。
+ */
+export async function loadTaskRunLeaderboardStamp(
+  db: D1Database,
+  options: { packId: number; mode: TrialMode },
+): Promise<string> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), '') AS stampUpdatedAt
+       FROM task_runs
+       WHERE pack_id = ? AND mode = ? AND status = 'completed'`,
+    )
+    .bind(options.packId, options.mode)
+    .first<{ n: number; stampUpdatedAt: string }>();
+  return `${Number(row?.n ?? 0)}:${row?.stampUpdatedAt ?? ""}`;
+}
+
+/** 玩法总榜的戳探针：谓词与 {@link listGameTypeLeaderboard} 一致
+ *  （gameType→pack 集合, mode, status='completed'）。 */
+export async function loadGameTypeLeaderboardStamp(
+  db: D1Database,
+  options: { gameType: string; mode: TrialMode },
+): Promise<string> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), '') AS stampUpdatedAt
+       FROM task_runs
+       WHERE pack_id IN (SELECT id FROM task_packs WHERE game_type = ?)
+         AND mode = ? AND status = 'completed'`,
+    )
+    .bind(options.gameType, options.mode)
+    .first<{ n: number; stampUpdatedAt: string }>();
+  return `${Number(row?.n ?? 0)}:${row?.stampUpdatedAt ?? ""}`;
 }
 
 export async function listTaskRunsByParticipant(
