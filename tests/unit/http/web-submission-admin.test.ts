@@ -64,6 +64,7 @@ function makeEnv(): Env {
 function ctx(isAdmin = true) {
   return {
     isAdmin,
+    actorUserId: 42 as number | null,
     fail: (status: number, code: string, message: string) => Response.json({ code, message }, { status }),
     json: (body: unknown) => Response.json(body),
   };

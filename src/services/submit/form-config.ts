@@ -51,6 +51,19 @@ export interface WebSubmitFormConfig {
   publishThreadId: string;
   /** 审核通过后可选推送的 Telegram 频道/群 chat_id;空 = 只标记状态不推送。 */
   publishChannelId: string;
+  /**
+   * 投稿墙（showcase）双闸之一：总开关。默认 false——公开面必须由运营显式
+   * 打开（默认不出网）。关闭时 /api/submit/gallery 恒为空集、投稿中心不渲染
+   * 「投稿墙」页签。
+   */
+  showcaseEnabled: boolean;
+  /**
+   * 双闸之二：公开展示的字段白名单（表单 step id）。空数组 = 不展示任何字段
+   * （等于没开）。merge 时与当前 steps 求交集：settings 里残留的旧 step id
+   * 不能把已下线的字段带出网；data 里 __ 开头的内部键（__nickname/__email）
+   * 不是 step id，永远在白名单外。
+   */
+  showcaseFields: string[];
   steps: WebSubmitStep[];
 }
 
@@ -133,6 +146,8 @@ export const DEFAULT_WEB_SUBMIT_FORM: WebSubmitFormConfig = {
   publishFooter: "",
   publishThreadId: "",
   publishChannelId: "",
+  showcaseEnabled: false,
+  showcaseFields: [],
   steps: DEFAULT_WEB_SUBMIT_STEPS,
 };
 
@@ -269,6 +284,18 @@ export function mergeWebSubmitForm(raw: string | null | undefined): {
     publishFooter: strOr(input.publishFooter, base.publishFooter),
     publishThreadId: strOr(input.publishThreadId, base.publishThreadId),
     publishChannelId: strOr(input.publishChannelId, base.publishChannelId),
+    showcaseEnabled: boolOr(input.showcaseEnabled, base.showcaseEnabled),
+    showcaseFields: (() => {
+      if (!Array.isArray(input.showcaseFields)) return base.showcaseFields;
+      const stepIds = new Set(steps.map((step) => step.id));
+      return [
+        ...new Set(
+          (input.showcaseFields as unknown[]).filter(
+            (item): item is string => typeof item === "string" && item.length > 0,
+          ),
+        ),
+      ].filter((id) => stepIds.has(id));
+    })(),
     steps,
   };
   return { config, problems };
@@ -287,6 +314,10 @@ export function submitFormSchema(config: WebSubmitFormConfig) {
     captchaUrl: "/api/submit/captcha",
     inboxUrl: "/submissions?tab=inbox",
     mainGroupUrl: config.mainGroupUrl,
+    /* 投稿墙开关:前端据此渲染「投稿墙」页签(仅开启时);字段标签仍从 steps
+     * 取,showcaseFields 只是白名单 id 列表,不含内容。 */
+    showcaseEnabled: config.showcaseEnabled,
+    showcaseFields: config.showcaseFields,
     steps: config.steps.map((step) => ({
       id: step.id,
       type: step.type,

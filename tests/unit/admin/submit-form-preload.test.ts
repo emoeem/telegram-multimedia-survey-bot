@@ -18,6 +18,8 @@ function makeForm(): SubmitFormDto {
     captchaUrl: "/api/submit/captcha",
     inboxUrl: "/submit/inbox",
     mainGroupUrl: null,
+    showcaseEnabled: false,
+    showcaseFields: [],
     steps: [],
   };
 }
