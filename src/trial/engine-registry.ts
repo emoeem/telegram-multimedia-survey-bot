@@ -47,6 +47,16 @@ export function gameTypeLabel(value: unknown): string {
   return found?.label ?? TOWER.label;
 }
 
+/**
+ * 全量标签映射（内置 tower + 全部已注册插件的展示名）。
+ *
+ * 这是展示名的**唯一源**：admin 端（TaskPacksPage）直接跨目录 import 这里，
+ * 不再自带第三副本；新玩法只需在 server-plugins.ts 登记一行，标签随 manifest.title 自动生效。
+ */
+export function gameTypeLabels(): Record<string, string> {
+  return Object.fromEntries(listGameTypes().map((type) => [type.id, type.label]));
+}
+
 /** 该玩法是否走插件引擎（非内置爬塔）。 */
 export function isPluginGameType(value: unknown): boolean {
   const id = String(value ?? "");

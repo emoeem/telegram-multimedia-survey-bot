@@ -1,8 +1,9 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GamePluginRegistry, gamePluginRegistry } from "../../../src/game-plugin/registry";
 import type { GamePluginServer } from "../../../src/game-plugin/types";
+import { gameTypeLabels, listGameTypes } from "../../../src/trial/engine-registry";
 // 副作用导入：一致性守卫要检查"真实注册后"的集合。
 import "../../../src/game-plugin/server-plugins";
 
@@ -101,22 +102,22 @@ describe("GamePluginRegistry", () => {
   });
 });
 
+const serverDir = "src/game-plugin/plugins";
+const clientDir = "admin/src/game-plugins/plugins";
+const pluginDirs = (root: string) =>
+  existsSync(root)
+    ? readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, "manifest.ts")))
+        .map((entry) => entry.name)
+        .sort()
+    : [];
+
 /**
  * 目录 / 注册一致性守卫：新增插件目录却忘了在 server-plugins.ts 登记时，
  * 玩家会看到一个打不开的玩法。这里把三方对齐：服务端注册、插件目录、
  * 客户端实现目录。
  */
 describe("插件注册一致性", () => {
-  const serverDir = "src/game-plugin/plugins";
-  const clientDir = "admin/src/game-plugins/plugins";
-  const pluginDirs = (root: string) =>
-    existsSync(root)
-      ? readdirSync(root, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, "manifest.ts")))
-          .map((entry) => entry.name)
-          .sort()
-      : [];
-
   it("服务端注册集合 === 插件目录集合", () => {
     const registered = gamePluginRegistry
       .list()
@@ -142,6 +143,53 @@ describe("插件注册一致性", () => {
       expect(plugin.manifest.id).toBe(dir);
       // 默认配置允许"未填内容"这类 error（新包就是空的），但不能崩。
       expect(() => gamePluginRegistry.validateConfig(dir, {})).not.toThrow();
+    }
+  });
+});
+
+/**
+ * 标签唯一源 + 依赖边守卫（零迁移）。
+ *
+ * - 展示名只存在于 src/trial/engine-registry.ts（tower 常量 + 插件 manifest.title）；
+ *   admin TaskPacksPage 曾自带第三副本（「新玩法在此补一行」），这里断言它不再回来。
+ * - TaskPacksPage 跨目录 import engine-registry，而 engine-registry 第 1 行副作用
+ *   导入 server-plugins，会把全部 engine 拉进 admin bundle——所以每个 engine.ts 的
+ *   import 边必须显式申报在白名单里：未来任一 engine 引入 server-only 依赖会在 CI
+ *   直接红，而不是等到 admin build 才炸。
+ */
+describe("标签唯一源与依赖边守卫", () => {
+  it("每个 gameType（含 tower）都有非空标签，且全量映射与清单同集", () => {
+    const types = listGameTypes();
+    expect(types.map((type) => type.id)).toContain("tower");
+    for (const type of types) {
+      expect(type.label.trim().length, `gameType ${type.id} 的标签为空`).toBeGreaterThan(0);
+    }
+    expect(Object.keys(gameTypeLabels()).sort()).toEqual(types.map((type) => type.id).sort());
+  });
+
+  it("admin TaskPacksPage 不再自带展示名第三副本（标签改从 engine-registry 跨目录导入）", () => {
+    const page = readFileSync(join("admin", "src", "routes", "TaskPacksPage.tsx"), "utf8");
+    expect(page).not.toContain("GAME_TYPE_LABELS");
+    expect(page).not.toContain("function gameTypeLabel");
+    expect(page).toContain('from "../../../src/trial/engine-registry"');
+  });
+
+  it("engine.ts 的 import 边必须显式申报（engine 会经由 engine-registry 进 admin bundle）", () => {
+    const allowlist: Record<string, readonly string[]> = {
+      draw: ["../../types", "./manifest"],
+      "flip-card": ["../../types", "./manifest"],
+      quest: ["../../types", "./manifest", "./content"],
+    };
+    const dirs = pluginDirs(serverDir);
+    // 新插件目录必须同时在这里申报依赖边：漏申报先在这里红，而不是 admin build 时才炸。
+    expect(Object.keys(allowlist).sort()).toEqual(dirs);
+    for (const [dir, allowed] of Object.entries(allowlist)) {
+      const source = readFileSync(join(serverDir, dir, "engine.ts"), "utf8");
+      const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
+      expect(
+        [...imports].sort(),
+        `${dir}/engine.ts 的 import 必须都在白名单（${allowed.join("、")}）内：engine 会经由 engine-registry 进 admin bundle，server-only 依赖会打断 admin build`,
+      ).toEqual([...allowed].sort());
     }
   });
 });

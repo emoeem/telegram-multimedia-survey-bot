@@ -1,5 +1,6 @@
 import { loadCoinConfig, coinDayKey } from "./coin/config.service";
 import { CoinLedgerError, getCoinAccount, runSpendBatch } from "./coin/ledger.service";
+import { NOTE_FILTER_REJECTED, NOTE_FILTER_REJECTED_MESSAGE, findBlockedWord } from "./note-content-filter.service";
 
 /**
  * 纸条聊天 · 核心服务（0089）。
@@ -24,6 +25,13 @@ export const MESSAGE_BODY_MAX = 500;
 
 export const NOTE_GENDERS = new Set(["m", "f", "x"]);
 export const NOTE_AGE_BANDS = new Set(["18-24", "25-30", "31-40", "40+"]);
+
+/* 站内通知（T3 · 复用 0084 notifications 表，零迁移）：铃铛端点
+ * GET /api/me/notifications 对 kind 无白名单，新 kind 插行即见。 */
+const NOTE_DRAWN_TITLE = "你的纸条被抽中了";
+const NOTE_DRAWN_BODY = "有人抽中了你的纸条，去对话页回信吧";
+const NOTE_REPLY_TITLE = "收到新的回信";
+const NOTE_REPLY_BODY_MAX = 120;
 
 export type NoteStatus = "active" | "hidden" | "withdrawn" | "expired" | "removed";
 
@@ -89,12 +97,18 @@ export function decideDrawKind(drawsToday: number): DrawQuotaDecision {
   return { kind: "coin", freeLeft: 0, costCoins: DRAW_COST_COINS };
 }
 
-/** 抽取池的 WHERE 片段：排除自己、非可抽状态、以及已经聊过的纸条。 */
+/** 抽取池的 WHERE 片段：排除自己、非可抽状态、已经聊过的纸条、以及双向拉黑
+ * 的对方（0094 拉黑任一方向即互不可抽）。 */
 export function drawPoolWhere(drawerHash: string, nowIso: string): { sql: string; params: string[] } {
   return {
     sql: `status = 'active' AND expires_at > ? AND owner_hash != ?
-          AND id NOT IN (SELECT note_id FROM note_threads WHERE drawer_hash = ?)`,
-    params: [nowIso, drawerHash, drawerHash],
+          AND id NOT IN (SELECT note_id FROM note_threads WHERE drawer_hash = ?)
+          AND NOT EXISTS (
+            SELECT 1 FROM note_block b
+             WHERE (b.blocker_hash = ? AND b.blocked_hash = notes.owner_hash)
+                OR (b.blocker_hash = notes.owner_hash AND b.blocked_hash = ?)
+          )`,
+    params: [nowIso, drawerHash, drawerHash, drawerHash, drawerHash],
   };
 }
 
@@ -131,6 +145,10 @@ export async function putNote(
   imageAssetId: number | null,
 ): Promise<NoteCard> {
   const clean = validateNoteDraft(draft);
+  // 发布前过滤（UGC 1.2 先审后投）：命中即在校验阶段拒绝，不写任何行。
+  if (findBlockedWord(clean.content)) {
+    throw noteError(NOTE_FILTER_REJECTED, NOTE_FILTER_REJECTED_MESSAGE);
+  }
   const created = nowIso();
   const expires = new Date(Date.now() + NOTE_TTL_DAYS * 86_400_000).toISOString();
   try {
@@ -270,6 +288,8 @@ export async function drawNote(
     .prepare(`SELECT id FROM note_threads WHERE note_id = ? AND drawer_hash = ?`)
     .bind(candidate.id, drawerHash)
     .first<{ id: number }>();
+  // 抽中即通知纸条作者（T3）：非池空才走到这里，见 notifyNoteDrawn。
+  await notifyNoteDrawn(db, candidate.ownerHash, now);
   const balance = (await getCoinAccount(db, drawerHash))?.balance ?? 0;
   return {
     ok: true,
@@ -344,6 +364,7 @@ export async function listThreads(db: D1Database, participantHash: string): Prom
       id: number;
       noteId: number;
       drawerHash: string;
+      ownerHash: string;
       noteStatus: NoteStatus;
       gender: string;
       ageBand: string;
@@ -356,10 +377,30 @@ export async function listThreads(db: D1Database, participantHash: string): Prom
     }>();
   const rows = result.results ?? [];
   if (rows.length === 0) return [];
+  // 拉黑读侧过滤（双向）：我拉黑对方 → 会话从我这里消失；对方拉黑我 → 同样
+  // 消失（发消息/看历史都没意义）。一次取出两条方向的行再在内存里判。
+  const blockRows = await db
+    .prepare(
+      `SELECT blocker_hash AS blockerHash, blocked_hash AS blockedHash FROM note_block
+        WHERE blocker_hash = ? OR blocked_hash = ?`,
+    )
+    .bind(participantHash, participantHash)
+    .all<{ blockerHash: string; blockedHash: string }>();
+  const blockedPeers = new Set<string>();
+  for (const block of blockRows.results ?? []) {
+    blockedPeers.add(block.blockerHash === participantHash ? block.blockedHash : block.blockerHash);
+  }
+  const visibleRows =
+    blockedPeers.size > 0
+      ? rows.filter((row) => {
+          const peerHash = row.drawerHash === participantHash ? row.ownerHash : row.drawerHash;
+          return !blockedPeers.has(peerHash);
+        })
+      : rows;
   const lastBodies = await db
     .prepare(
       `SELECT m.thread_id AS threadId, m.body FROM note_messages m
-        WHERE m.id IN (SELECT MAX(id) FROM note_messages GROUP BY thread_id)`,
+        WHERE m.id IN (SELECT MAX(id) FROM note_messages WHERE status = 'active' GROUP BY thread_id)`,
     )
     .all<{ threadId: number; body: string }>();
   const lastByThread = new Map((lastBodies.results ?? []).map((row) => [row.threadId, row.body]));
@@ -368,15 +409,15 @@ export async function listThreads(db: D1Database, participantHash: string): Prom
       `SELECT m.thread_id AS threadId, COUNT(*) AS n FROM note_messages m
          JOIN note_threads t ON t.id = m.thread_id
          JOIN notes n ON n.id = t.note_id
-        WHERE (t.drawer_hash = ?1 OR n.owner_hash = ?1) AND m.sender_hash != ?1
+        WHERE (t.drawer_hash = ? OR n.owner_hash = ?) AND m.sender_hash != ? AND m.status = 'active'
           AND m.id > COALESCE((SELECT last_read_message_id FROM note_thread_reads r
-                                WHERE r.thread_id = m.thread_id AND r.participant_hash = ?1), 0)
+                                WHERE r.thread_id = m.thread_id AND r.participant_hash = ?), 0)
         GROUP BY m.thread_id`,
     )
-    .bind(participantHash)
+    .bind(participantHash, participantHash, participantHash, participantHash)
     .all<{ threadId: number; n: number }>();
   const unreadByThread = new Map((unreadRows.results ?? []).map((row) => [row.threadId, Number(row.n)]));
-  return rows.map((row) => ({
+  return visibleRows.map((row) => ({
     id: row.id,
     noteId: row.noteId,
     role: row.drawerHash === participantHash ? "drawer" : "owner",
@@ -418,7 +459,7 @@ export async function listMessages(
   const result = await db
     .prepare(
       `SELECT id, sender_hash AS senderHash, body, image_asset_id AS imageAssetId, created_at AS createdAt
-         FROM note_messages WHERE thread_id = ? AND id > ? ORDER BY id ASC LIMIT 200`,
+         FROM note_messages WHERE thread_id = ? AND id > ? AND status = 'active' ORDER BY id ASC LIMIT 200`,
     )
     .bind(threadId, afterId)
     .all<{ id: number; senderHash: string; body: string; imageAssetId: number | null; createdAt: string }>();
@@ -446,6 +487,99 @@ export async function listMessages(
   };
 }
 
+/** 双向拉黑判定：任一方向存在拉黑行即 true。PK 前缀查询，同一对值绑四次
+ * （不用 ?N 编号占位符：node:sqlite 测试 harness 只支持匿名位置参数）。 */
+export async function isBlockedPair(db: D1Database, hashA: string, hashB: string): Promise<boolean> {
+  if (hashA === hashB) return false;
+  const row = await db
+    .prepare(
+      `SELECT 1 AS blocked FROM note_block
+        WHERE (blocker_hash = ? AND blocked_hash = ?) OR (blocker_hash = ? AND blocked_hash = ?)
+        LIMIT 1`,
+    )
+    .bind(hashA, hashB, hashB, hashA)
+    .first();
+  return row !== null;
+}
+
+/** 会话里「对方」的 hash。参与者校验失败返回 null（与 threadParticipant 同口径）。 */
+async function threadPeerHash(db: D1Database, threadId: number, participantHash: string): Promise<string | null> {
+  const participant = await threadParticipant(db, threadId, participantHash);
+  if (!participant) return null;
+  return participant.drawerHash === participantHash ? participant.ownerHash : participant.drawerHash;
+}
+
+/** 会话级拉黑（用户看不到裸 hash，入口是会话）：解析对方 hash 后写 note_block。
+ * 重复拉黑幂等（PK 冲突 DO NOTHING）。 */
+export async function blockThread(db: D1Database, threadId: number, participantHash: string): Promise<boolean> {
+  const peerHash = await threadPeerHash(db, threadId, participantHash);
+  if (!peerHash) throw noteError("not_participant", "会话不存在");
+  await db
+    .prepare(
+      `INSERT INTO note_block (blocker_hash, blocked_hash, created_at) VALUES (?, ?, ?)
+       ON CONFLICT(blocker_hash, blocked_hash) DO NOTHING`,
+    )
+    .bind(participantHash, peerHash, nowIso())
+    .run();
+  return true;
+}
+
+/** 解除拉黑：只删「我拉黑对方」那一行——对方拉黑我的行不归我管，
+ * 解除后是否恢复可见以 isBlockedPair（双向）为准。 */
+export async function unblockThread(db: D1Database, threadId: number, participantHash: string): Promise<boolean> {
+  const peerHash = await threadPeerHash(db, threadId, participantHash);
+  if (!peerHash) throw noteError("not_participant", "会话不存在");
+  const result = await db
+    .prepare(`DELETE FROM note_block WHERE blocker_hash = ? AND blocked_hash = ?`)
+    .bind(participantHash, peerHash)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+/** 抽中通知（note_drawn）：离散事件，有意不折叠——「被抽中」每条都可带抽中
+ * 语义，写入量天然有界（抽取受每日免费额 + 金币限流，每抽至多 1 行）。
+ * best-effort：通知是增强，失败不回滚已生效的抽取（金币路径钱已扣）。 */
+async function notifyNoteDrawn(db: D1Database, ownerHash: string, at: string): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO notifications (participant_hash, kind, title, body, link, created_at)
+         VALUES (?, 'note_drawn', ?, ?, '/notes', ?)`,
+      )
+      .bind(ownerHash, NOTE_DRAWN_TITLE, NOTE_DRAWN_BODY, at)
+      .run();
+  } catch {
+    /* 铃铛少一条不影响主流程。 */
+  }
+}
+
+/** 回信通知（note_reply）：按参与者折叠——先刷新未读那条的 body/created_at
+ * （WHERE 前缀命中 idx_notifications_participant），changes=0 才 INSERT。
+ * 同一参与者至多 1 条未读回信通知，写放大被封顶；与 notifySeriesPublish 的
+ * 「每发布一行」不同量级，故折叠而非照抄。best-effort：失败不影响已落库的消息。 */
+async function notifyNoteReply(db: D1Database, peerHash: string, body: string, at: string): Promise<void> {
+  try {
+    const folded = await db
+      .prepare(
+        `UPDATE notifications SET body = ?, created_at = ?
+          WHERE participant_hash = ? AND kind = 'note_reply' AND read_at IS NULL AND link = '/notes'`,
+      )
+      .bind(body, at, peerHash)
+      .run();
+    if (Number(folded.meta?.changes ?? 0) === 0) {
+      await db
+        .prepare(
+          `INSERT INTO notifications (participant_hash, kind, title, body, link, created_at)
+           VALUES (?, 'note_reply', ?, ?, '/notes', ?)`,
+        )
+        .bind(peerHash, NOTE_REPLY_TITLE, body, at)
+        .run();
+    }
+  } catch {
+    /* 铃铛少一条不影响主流程。 */
+  }
+}
+
 export async function sendMessage(
   db: D1Database,
   threadId: number,
@@ -456,9 +590,17 @@ export async function sendMessage(
   const participant = await threadParticipant(db, threadId, senderHash);
   if (!participant) throw noteError("not_participant", "会话不存在");
   if (participant.status !== "active") throw noteError("thread_closed", "这张纸条已下架，会话只读");
+  const peerHash = participant.drawerHash === senderHash ? participant.ownerHash : participant.drawerHash;
+  if (await isBlockedPair(db, senderHash, peerHash)) {
+    throw noteError("blocked", "你们已互相屏蔽，无法继续会话");
+  }
   const text = String(body ?? "").trim();
   if (!text && !imageAssetId) throw noteError("empty_message", "说点什么吧");
   if (text.length > MESSAGE_BODY_MAX) throw noteError("bad_field", `单条消息最多 ${MESSAGE_BODY_MAX} 字`);
+  // 与 putNote 同一发布前过滤：命中在校验阶段拒绝，不落行。
+  if (findBlockedWord(text)) {
+    throw noteError(NOTE_FILTER_REJECTED, NOTE_FILTER_REJECTED_MESSAGE);
+  }
   const created = nowIso();
   const insert = await db
     .prepare(
@@ -471,6 +613,8 @@ export async function sendMessage(
     .prepare(`UPDATE note_threads SET last_message_at = ?, message_count = message_count + 1 WHERE id = ?`)
     .bind(created, threadId)
     .run();
+  // 回信通知（T3）：发给会话对方并折叠，见 notifyNoteReply；纯图片消息用「[图片]」占位。
+  await notifyNoteReply(db, peerHash, text ? text.slice(0, NOTE_REPLY_BODY_MAX) : "[图片]", created);
   return {
     id: Number(insert.meta?.last_row_id ?? 0),
     mine: true,
@@ -510,6 +654,49 @@ export async function reportNote(
     .bind(count, hidden ? 1 : 0, noteId)
     .run();
   return { hidden, reportCount: count };
+}
+
+/** 举报会话消息：同一人对同一条消息只计一次（0094 UNIQUE 兜底，同人重复举报
+ * 幂等返回当前计数）。与 reportNote 不同——消息不设自动隐藏阈值，隐藏由管理端
+ * 复核处置（POST /api/note/admin/messages/:id/status）承担。 */
+export async function reportMessage(
+  db: D1Database,
+  threadId: number,
+  messageId: number,
+  reporterHash: string,
+  reason: string,
+): Promise<{ reportCount: number }> {
+  const participant = await threadParticipant(db, threadId, reporterHash);
+  if (!participant) throw noteError("not_participant", "会话不存在");
+  const message = await db
+    .prepare(`SELECT id FROM note_messages WHERE id = ? AND thread_id = ?`)
+    .bind(messageId, threadId)
+    .first<{ id: number }>();
+  if (!message) throw noteError("not_found", "消息不存在");
+  try {
+    await db
+      .prepare(
+        `INSERT INTO note_message_reports (message_id, thread_id, reporter_hash, reason, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .bind(messageId, threadId, reporterHash, String(reason ?? "").slice(0, 200), nowIso())
+      .run();
+  } catch (error) {
+    if (/UNIQUE constraint failed/i.test(String((error as Error)?.message ?? ""))) {
+      return { reportCount: await countMessageReports(db, messageId) };
+    }
+    throw error;
+  }
+  return { reportCount: await countMessageReports(db, messageId) };
+}
+
+/** 消息当前举报数。UNIQUE(message_id, reporter_hash) 索引以 message_id 为前缀，计数走它。 */
+async function countMessageReports(db: D1Database, messageId: number): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS n FROM note_message_reports WHERE message_id = ?`)
+    .bind(messageId)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
 }
 
 /** 每日维护：到期纸条下架。走 idx_notes_pool 前缀，行数 = 当日到期数。 */

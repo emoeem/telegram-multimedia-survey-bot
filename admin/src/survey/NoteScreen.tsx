@@ -22,14 +22,16 @@ import {
   type NoteMessageDto,
   type NoteThreadDto,
 } from "./note-api";
+import { NOTE_POLL_BASE_MS, nextPollInterval } from "./note-poll";
 
 /**
- * 纸条聊天（0089）——三页签：我的纸条 / 抽纸条 / 对话。
+ * 纸条聊天（0089）——页签：我的纸条 / 对话（抽纸条在抽奖中心 /gacha）。
  *
  * 额度观（用户点名的玩法）：每日 3 次免费抽取（服务端按参与者当日已抽次数
  * 判定），用完后每次 5 金币——余额不足时按钮直接给出「去签到」的去处，
- * 不让用户撞到报错才知道没钱。轮询只在对话屏打开时进行（15s 指针增量），
- * 离开页面即停，这是成本红线（docs/ops/COST-GUARDRAILS.md）。
+ * 不让用户撞到报错才知道没钱。轮询只在对话屏打开时进行（可见性感知退避，
+ * 无新消息 15s→30s→60s，见 note-poll.ts），离开页面/切后台即停，
+ * 这是成本红线（docs/ops/COST-GUARDRAILS.md）。
  */
 
 type Tab = "mine" | "chat";
@@ -367,19 +369,22 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastIdRef = useRef(0);
 
-  const poll = useCallback(async () => {
+  /** 拉增量消息；返回本轮是否拉到新消息（退避决策的输入）。 */
+  const poll = useCallback(async (): Promise<boolean> => {
     try {
       const result = await fetchNoteMessages(thread.id, lastIdRef.current);
       setPeerGone(result.peerGone);
-      if (result.messages.length > 0) {
-        lastIdRef.current = result.messages[result.messages.length - 1]!.id;
-        setMessages((current) => {
-          const seen = new Set(current.map((item) => item.id));
-          return [...current, ...result.messages.filter((item) => !seen.has(item.id))];
-        });
-      }
+      if (result.messages.length === 0) return false;
+      lastIdRef.current = result.messages[result.messages.length - 1]!.id;
+      setMessages((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        const fresh = result.messages.filter((item) => !seen.has(item.id));
+        return fresh.length > 0 ? [...current, ...fresh] : current;
+      });
+      return true;
     } catch {
-      /* 瞬时失败静默：下一轮 15s 会再拉。 */
+      /* 瞬时失败静默：下一轮退避后再拉。 */
+      return false;
     } finally {
       setLoading(false);
     }
@@ -389,10 +394,51 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
     lastIdRef.current = 0;
     setMessages([]);
     setLoading(true);
-    void poll();
-    // 成本红线：只在对话屏打开时 15s 轮询，离开即停。
-    const timer = window.setInterval(() => void poll(), 15_000);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let inFlight = false;
+    let timer: number | null = null;
+    let intervalMs = NOTE_POLL_BASE_MS;
+
+    const clearTimer = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    // 拉一次 → 决定下一档间隔 → 排程下一轮。隐藏时不再排程（挂起），
+    // 回到可见由 onVisibility 立即补拉一次再恢复。
+    const tick = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      const gotNew = await poll();
+      inFlight = false;
+      if (cancelled || document.hidden) return;
+      intervalMs = nextPollInterval(intervalMs, gotNew);
+      timer = window.setTimeout(() => {
+        timer = null;
+        void tick();
+      }, intervalMs);
+    };
+
+    // 成本红线：只在对话屏可见时轮询——隐藏即停，可见立即拉一次再从最快档起跳。
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimer();
+        return;
+      }
+      clearTimer();
+      intervalMs = NOTE_POLL_BASE_MS;
+      void tick();
+    };
+
+    void tick();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearTimer();
+    };
   }, [poll]);
 
   useEffect(() => {
@@ -668,7 +714,9 @@ export function NoteScreen() {
                 </button>
               ))}
             </div>
-            <div className="mt-4">{tab === "mine" ? <MineTab me={me} onReload={reload} /> : null}</div>
+            {/* 对话页签挂载 ChatTab：此前遗漏（页签可点但内容一直空白，
+                CoinCenter 抽中后的 /notes?thread=X&tab=chat 深链也落空）。 */}
+            <div className="mt-4">{tab === "mine" ? <MineTab me={me} onReload={reload} /> : <ChatTab />}</div>
           </>
         )}
       </main>

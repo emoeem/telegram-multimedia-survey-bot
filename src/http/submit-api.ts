@@ -20,6 +20,7 @@
  */
 import type { Env } from "../index";
 import { fail, json } from "./api-response";
+import { handleWebSubmitGallery, handleWebSubmitGalleryMedia } from "./submit-gallery";
 import {
   loadWebSubmitFormSetting,
   screenWebSubmission,
@@ -229,6 +230,18 @@ async function storeWebMedia(env: Env, picked: PickedFile): Promise<WebSubmitAtt
 /** 处理 /api/submit/*。返回 null 表示不是本模块的路径。 */
 export async function handleSubmitApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!isSubmitApiPath(url.pathname)) return null;
+
+  /* 投稿墙在 enabled 闸之前：enabled 只管「还能不能新投」，已经发布的公开
+   * 面随投稿通道一起关闭没有任何隐私收益，反而让运营关通道就得连墙一起下。
+   * 墙自身的隐私由 showcaseEnabled/showcaseFields 双闸管（submit-gallery.ts）。 */
+  if (url.pathname === "/api/submit/gallery") {
+    return handleWebSubmitGallery(request, env);
+  }
+  const galleryMediaMatch = url.pathname.match(/^\/api\/submit\/gallery\/media\/(\d+)$/);
+  if (galleryMediaMatch) {
+    if (request.method !== "GET") return new Response("Method Not Allowed", { status: 405 });
+    return handleWebSubmitGalleryMedia(env, galleryMediaMatch[1] ?? "");
+  }
 
   const config = await loadWebSubmitFormSetting(env.DB);
   if (!config.enabled) return jsonNoStore({ ok: false, error: "投稿未开放" }, 404);

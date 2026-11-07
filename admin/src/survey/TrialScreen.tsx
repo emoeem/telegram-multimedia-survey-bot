@@ -38,6 +38,7 @@ import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
 import {
   fetchTrialActiveRun,
+  fetchTrialGameTypeLeaderboard,
   fetchTrialHistory,
   fetchTrialLeaderboard,
   fetchTrialMe,
@@ -95,6 +96,10 @@ const GRADE_STYLE: Record<TrialGrade, { ring: string; badge: string }> = {
 
 type HomeTab = "home" | "runs" | "board";
 type Screen = "gate" | "home" | "shop" | "run" | "done";
+
+/** 榜单视角：单包榜（默认）或玩法总榜（该玩法全部任务包合并计分）。 */
+type BoardScope = { packId: number } | { gameType: string; label: string };
+type BoardEntry = TrialLeaderboardEntry & { packId?: number };
 
 const SHOP_PRICES: Record<string, number> = Object.fromEntries(
   TRIAL_SHOP_CONFIG.items.map((item) => [item.kind, item.price]),
@@ -166,8 +171,9 @@ export function TrialScreen() {
   const [historyError, setHistoryError] = useState<string | null>(null);
 
   const [boardPackId, setBoardPackId] = useState<number | null>(null);
+  const [boardScope, setBoardScope] = useState<BoardScope | null>(null);
   const [boardMode, setBoardMode] = useState<TrialMode>("normal");
-  const [boardEntries, setBoardEntries] = useState<TrialLeaderboardEntry[] | null>(null);
+  const [boardEntries, setBoardEntries] = useState<BoardEntry[] | null>(null);
   const [boardLoading, setBoardLoading] = useState(false);
   const [boardError, setBoardError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -511,11 +517,14 @@ export function TrialScreen() {
     }
   };
 
-  const loadBoard = async (targetPackId: number, targetMode: TrialMode) => {
+  const loadBoard = async (scope: BoardScope, targetMode: TrialMode) => {
     setBoardLoading(true);
     setBoardError(null);
     try {
-      const response = await fetchTrialLeaderboard(targetPackId, targetMode);
+      const response =
+        "packId" in scope
+          ? await fetchTrialLeaderboard(scope.packId, targetMode)
+          : await fetchTrialGameTypeLeaderboard(scope.gameType, targetMode);
       setBoardEntries(response.entries);
     } catch (error) {
       setBoardError(error instanceof Error ? error.message : "排行榜加载失败");
@@ -524,28 +533,52 @@ export function TrialScreen() {
     }
   };
 
+  // 玩法总榜入口：按当前选中的 mode 渲染对应分榜（normal 与 hell 不混榜）。
+  const openGameTypeBoard = (gameType: string, label: string) => {
+    const scope = { gameType, label };
+    setBoardScope(scope);
+    setBoardMode(mode);
+    setBoardEntries(null);
+    setActiveTab("board");
+    void loadBoard(scope, mode);
+  };
+
   const changeTab = (tab: HomeTab) => {
     setActiveTab(tab);
     if (tab === "runs" && history === null) void loadHistory();
     if (tab === "board") {
-      const targetPackId = boardPackId ?? packId ?? packs?.[0]?.id ?? null;
-      if (targetPackId) {
-        setBoardPackId(targetPackId);
-        if (boardEntries === null) void loadBoard(targetPackId, boardMode);
+      const scope =
+        boardScope ??
+        (() => {
+          const targetPackId = boardPackId ?? packId ?? packs?.[0]?.id ?? null;
+          return targetPackId ? ({ packId: targetPackId } as BoardScope) : null;
+        })();
+      if (scope) {
+        setBoardScope(scope);
+        if ("packId" in scope) setBoardPackId(scope.packId);
+        if (boardEntries === null) void loadBoard(scope, boardMode);
       }
     }
   };
 
   const changeBoardPack = (nextPackId: number) => {
+    const scope: BoardScope = { packId: nextPackId };
     setBoardPackId(nextPackId);
+    setBoardScope(scope);
     setBoardEntries(null);
-    void loadBoard(nextPackId, boardMode);
+    void loadBoard(scope, boardMode);
+  };
+
+  const backToPackBoard = () => {
+    const targetPackId = boardPackId ?? packId ?? packs?.[0]?.id ?? null;
+    if (!targetPackId) return;
+    changeBoardPack(targetPackId);
   };
 
   const changeBoardMode = (nextMode: TrialMode) => {
     setBoardMode(nextMode);
     setBoardEntries(null);
-    if (boardPackId) void loadBoard(boardPackId, nextMode);
+    if (boardScope) void loadBoard(boardScope, nextMode);
   };
 
   const choosePersona = (value: TrialPersona) => {
@@ -865,7 +898,17 @@ export function TrialScreen() {
           <div className="mt-2 space-y-3">
             {packGroups.map((group) => (
               <div key={group.type}>
-                <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">{group.label}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">{group.label}</p>
+                  <button
+                    type="button"
+                    onClick={() => openGameTypeBoard(group.type, group.label)}
+                    className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--survey-primary)] transition-opacity hover:opacity-80"
+                  >
+                    <Trophy className="h-3 w-3" aria-hidden="true" />
+                    玩法总榜
+                  </button>
+                </div>
                 <div className="mt-2 space-y-2">
                   {group.packs.map((pack) => (
                     <button
@@ -1149,23 +1192,46 @@ export function TrialScreen() {
 
   const renderBoardContent = () => {
     const targetPackId = boardPackId ?? packId ?? packs?.[0]?.id ?? null;
+    const isGameTypeBoard = boardScope !== null && "gameType" in boardScope;
+    const packNameOf = (packId: number) => packs?.find((pack) => pack.id === packId)?.name ?? `#${packId}`;
     return (
       <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-2xl">
         <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-          <p className="text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
-          <select
-            aria-label="任务包"
-            value={String(targetPackId ?? "")}
-            disabled={packs === null || packs.length === 0}
-            onChange={(event) => changeBoardPack(Number(event.target.value))}
-            className="select mt-2 w-full border-[var(--survey-card-border)] text-sm"
-          >
-            {packs?.map((pack) => (
-              <option key={pack.id} value={pack.id}>
-                {pack.name}
-              </option>
-            ))}
-          </select>
+          {isGameTypeBoard && boardScope && "gameType" in boardScope ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-[var(--survey-muted)]">玩法总榜</p>
+                <p className="mt-0.5 truncate text-sm font-bold text-[var(--survey-heading)]">
+                  {boardScope.label} · 全部任务包合并计分
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={backToPackBoard}
+                disabled={!targetPackId}
+                className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-3 py-1.5 text-[11px] font-semibold text-[var(--survey-muted)] disabled:opacity-40"
+              >
+                按任务包看
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
+              <select
+                aria-label="任务包"
+                value={String(targetPackId ?? "")}
+                disabled={packs === null || packs.length === 0}
+                onChange={(event) => changeBoardPack(Number(event.target.value))}
+                className="select mt-2 w-full border-[var(--survey-card-border)] text-sm"
+              >
+                {packs?.map((pack) => (
+                  <option key={pack.id} value={pack.id}>
+                    {pack.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-2">
             {MODE_OPTIONS.map((option) => (
               <button
@@ -1194,8 +1260,9 @@ export function TrialScreen() {
         ) : boardEntries === null ? (
           <button
             type="button"
-            onClick={() => targetPackId && void loadBoard(targetPackId, boardMode)}
-            className="text-sm font-medium text-[var(--survey-primary)]"
+            onClick={() => boardScope && void loadBoard(boardScope, boardMode)}
+            disabled={!boardScope}
+            className="text-sm font-medium text-[var(--survey-primary)] disabled:opacity-40"
           >
             加载排行榜
           </button>
@@ -1232,7 +1299,8 @@ export function TrialScreen() {
                       <span className="ml-1.5 text-[10px] font-semibold text-[var(--survey-primary)]">（我）</span>
                     ) : null}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
+                  <p className="mt-0.5 truncate text-[11px] text-[var(--survey-muted)]">
+                    {entry.packId != null ? `${packNameOf(entry.packId)} · ` : ""}
                     完成 {entry.completedTasks} 题 · 爬过 {entry.floors} 层 · {formatDayTime(entry.finishedAt)}
                   </p>
                 </div>
@@ -1246,6 +1314,7 @@ export function TrialScreen() {
         )}
         <p className="text-center text-[11px] text-[var(--survey-muted)]">
           只展示已完成并结算的挑战 · 每位玩家取最好一局
+          {isGameTypeBoard ? " · 玩法总榜合并该玩法全部任务包" : ""}
         </p>
       </main>
     );
@@ -1526,11 +1595,12 @@ export function TrialScreen() {
               onClick={() => {
                 setPackId(finishedRun.packId);
                 setBoardPackId(finishedRun.packId);
+                setBoardScope({ packId: finishedRun.packId });
                 setBoardMode(finishedRun.mode);
                 setBoardEntries(null);
                 setScreen("home");
                 setActiveTab("board");
-                void loadBoard(finishedRun.packId, finishedRun.mode);
+                void loadBoard({ packId: finishedRun.packId }, finishedRun.mode);
               }}
               className="inline-flex items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] py-2.5 text-sm font-semibold text-[var(--survey-body)]"
             >

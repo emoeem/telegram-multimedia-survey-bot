@@ -114,15 +114,16 @@ export const WORKSPACES: readonly Workspace[] = [
     label: "社区",
     icon: "sprout",
     entry: "/plaza",
-    hint: "树洞、画廊与展示区",
+    hint: "树洞、纸条、画廊与展示区",
     tabs: [
       { order: 1, to: "/plaza", label: "树洞", icon: "sprout", hint: "树洞帖子的审核与展示" },
-      { order: 2, to: "/profile-gallery", label: "个人画廊", icon: "contact", hint: "用户个人主页画廊" },
-      { order: 3, to: "/showcase", label: "展示区", icon: "images", hint: "精选内容的公开展示" },
+      { order: 2, to: "/notes", label: "纸条复核", icon: "inbox", hint: "被举报/隐藏纸条的复核与恢复" },
+      { order: 3, to: "/profile-gallery", label: "个人画廊", icon: "contact", hint: "用户个人主页画廊" },
+      { order: 4, to: "/showcase", label: "展示区", icon: "images", hint: "精选内容的公开展示" },
       // Renamed from 挑战任务: the footer's /trial link carries the same label,
       // and the two point at different pages (this one is the 小游戏 admin, the
       // footer one is the public 小游戏 page). The page title here is 小游戏管理.
-      { order: 4, to: "/task-packs", label: "小游戏管理", icon: "target", hint: "小游戏任务包配置" },
+      { order: 5, to: "/task-packs", label: "小游戏管理", icon: "target", hint: "小游戏任务包配置" },
     ],
   },
   {

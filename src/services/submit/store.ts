@@ -309,6 +309,24 @@ export class WebSubmitStore {
     return Number(row?.n ?? 0);
   }
 
+  /**
+   * 投稿墙:仅 published 行,按发布时间倒序。recalled/deleted 天然排除
+   * (status 等值过滤);published_at 为空的行理论上不存在(置 published 的
+   * CAS 同语句盖戳),排最后兜底。走 idx_web_submissions_status 索引。
+   */
+  async listPublished(limit = 100): Promise<WebSubmissionRow[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM web_submissions
+          WHERE status = 'published'
+          ORDER BY published_at DESC, id DESC
+          LIMIT ?`,
+      )
+      .bind(limit)
+      .all<Record<string, unknown>>();
+    return (result.results ?? []).map((row) => hydrate(row)!).filter(Boolean);
+  }
+
   // ---------- 限流 ----------
 
   async getRateLimit(key: string): Promise<number> {

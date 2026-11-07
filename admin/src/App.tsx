@@ -40,6 +40,7 @@ const PlazaPostsPage = lazy(() => import("./routes/PlazaPostsPage").then((m) => 
 const WebSubmissionsPage = lazy(() =>
   import("./routes/WebSubmissionsPage").then((m) => ({ default: m.WebSubmissionsPage })),
 );
+const NoteReviewPage = lazy(() => import("./routes/NoteReviewPage").then((m) => ({ default: m.NoteReviewPage })));
 const ProfileGalleryPage = lazy(() =>
   import("./routes/ProfileGalleryPage").then((m) => ({ default: m.ProfileGalleryPage })),
 );
@@ -102,6 +103,7 @@ const router = createBrowserRouter(
         { path: "templates", element: lazyElement(<TemplatesPage />) },
         { path: "cert-content", element: lazyElement(<CertContentPage />) },
         { path: "plaza", element: lazyElement(<PlazaPostsPage />) },
+        { path: "notes", element: lazyElement(<NoteReviewPage />) },
         { path: "web-submissions", element: lazyElement(<WebSubmissionsPage />) },
         { path: "profile-gallery", element: lazyElement(<ProfileGalleryPage />) },
         { path: "showcase", element: lazyElement(<ShowcasePage />) },

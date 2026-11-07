@@ -445,6 +445,8 @@ function DetailBlock({ id, onChanged }: { id: number; onChanged: () => void }) {
 export function WebSubmissionsPage() {
   const [filter, setFilter] = useState<StatusFilter>("pending");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [unpublishingId, setUnpublishingId] = useState<number | null>(null);
+  const { toast } = useDialogs();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ limit: "50" });
@@ -456,6 +458,30 @@ export function WebSubmissionsPage() {
   const counts = useApi<{ ok: boolean; pending: number; total: number }>("/api/admin/web-submissions/count");
 
   const items = data?.items ?? [];
+
+  /* 撤回下架：published 是唯一公开态（投稿墙），处置能力与公开能力必须成对
+   * （Apple UGC 1.2，同树洞下架 PlazaPostsPage 先例）。行级直操作，与树洞
+   * 下架同款交互。注意 recalled 目前是公开面的终态：approve 的 CAS 白名单
+   * 只有 pending/failed/publishing，重新公开没有一键路径（后端有意如此，
+   * 防止已处置内容一键复活）。 */
+  const unpublish = useCallback(
+    async (id: number) => {
+      setUnpublishingId(id);
+      try {
+        await apiSend("POST", "/api/admin/web-submissions/unpublish", { id });
+        toast({ message: `已下架投稿 #${id}`, variant: "success" });
+        retry();
+      } catch (actionError) {
+        toast({
+          message: actionError instanceof Error ? actionError.message : "下架失败",
+          variant: "error",
+        });
+      } finally {
+        setUnpublishingId(null);
+      }
+    },
+    [retry, toast],
+  );
 
   return (
     <div>
@@ -526,13 +552,25 @@ export function WebSubmissionsPage() {
                     {item.email ? ` · ${item.email}` : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-sm shrink-0"
-                  onClick={() => setExpanded(open ? null : item.id)}
-                >
-                  {open ? "收起" : "查看"}
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {item.status === "published" ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm shrink-0"
+                      disabled={unpublishingId === item.id}
+                      onClick={() => void unpublish(item.id)}
+                    >
+                      {unpublishingId === item.id ? "下架中…" : "撤回下架"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-sm shrink-0"
+                    onClick={() => setExpanded(open ? null : item.id)}
+                  >
+                    {open ? "收起" : "查看"}
+                  </button>
+                </div>
               </div>
               {open ? <DetailBlock id={item.id} onChanged={retry} /> : null}
             </article>

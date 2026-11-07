@@ -1203,6 +1203,56 @@ export function setPlazaCommentStatus(id: number, status: "published" | "removed
   return apiSend("POST", "/api/admin/plaza/comments/status", { id, status });
 }
 
+/**
+ * 纸条复核（/admin/notes）：只调 note-api 的既有管理端点，零新 API。
+ * 列表接口的 SELECT 不含 image_asset_id，V1 只展示文本与元数据；图片预览
+ * 等有需要时再加管理端媒体端点。
+ */
+export type NoteAdminView = "hidden" | "active" | "removed" | "expired" | "withdrawn";
+
+export interface NoteAdminSummary {
+  id: number;
+  gender: string;
+  ageBand: string;
+  region: string;
+  content: string;
+  status: NoteAdminView;
+  reportCount: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export function fetchAdminNotes(view: NoteAdminView): Promise<{ ok: boolean; notes: NoteAdminSummary[] }> {
+  return api<{ ok: boolean; notes: NoteAdminSummary[] }>(`/api/note/admin/notes?status=${view}`);
+}
+
+export function setAdminNoteStatus(id: number, status: "active" | "removed"): Promise<{ ok: boolean }> {
+  return apiSend("POST", `/api/note/admin/notes/${id}/status`, { status });
+}
+
+/**
+ * 会话消息复核（0094）：GET /api/note/admin/messages?reported=1 按消息聚合
+ * 举报数；POST /api/note/admin/messages/:id/status 在 active / hidden 间切换
+ * （hidden = 软删，服务端写 writeAudit）。
+ */
+export interface NoteAdminMessage {
+  id: number;
+  threadId: number;
+  body: string;
+  status: "active" | "hidden";
+  reportCount: number;
+  lastReportAt: string;
+  lastReason: string;
+}
+
+export function fetchAdminReportedMessages(): Promise<{ ok: boolean; messages: NoteAdminMessage[] }> {
+  return api<{ ok: boolean; messages: NoteAdminMessage[] }>("/api/note/admin/messages?reported=1");
+}
+
+export function setAdminMessageStatus(id: number, status: "active" | "hidden"): Promise<{ ok: boolean }> {
+  return apiSend("POST", `/api/note/admin/messages/${id}/status`, { status });
+}
+
 export type AdminTaskPersona = "any" | "male" | "female";
 export type AdminTaskMode = "any" | "normal" | "hell";
 
