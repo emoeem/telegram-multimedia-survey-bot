@@ -18,6 +18,9 @@ import { SchemaForm } from "../game-plugins/SchemaForm";
 import { loadClientPlugin } from "../game-plugins/loader";
 import { normalizeConfig, validateWithSchema } from "../../../src/game-plugin/props";
 import type { ConfigIssue, PropField } from "../../../src/game-plugin/types";
+// 玩法展示名的唯一源：tower 在 engine-registry 常量里，插件取 manifest.title，
+// 新玩法只需在 server-plugins.ts 登记一行，这里自动生效（勿在本地复制标签表）。
+import { gameTypeLabel, gameTypeLabels } from "../../../src/trial/engine-registry";
 import type { GamePluginClient } from "../game-plugins/types";
 
 const PERSONA_LABELS: Record<AdminTaskPersona, string> = {
@@ -31,15 +34,6 @@ const MODE_LABELS: Record<AdminTaskMode, string> = {
   normal: "普通",
   hell: "地狱",
 };
-
-/** 玩法类型展示名（与服务端 src/trial/engine-registry.ts 对齐；新玩法在此补一行）。 */
-const GAME_TYPE_LABELS: Record<string, string> = {
-  tower: "爬塔挑战",
-};
-
-function gameTypeLabel(value: string): string {
-  return GAME_TYPE_LABELS[value] ?? value;
-}
 
 interface EditableItem {
   key: number;
@@ -481,7 +475,7 @@ export function TaskPacksPage() {
               >
                 {(gameTypes.length
                   ? gameTypes
-                  : Object.entries(GAME_TYPE_LABELS).map(([id, label]) => ({ id, label, builtin: id === "tower" }))
+                  : Object.entries(gameTypeLabels()).map(([id, label]) => ({ id, label, builtin: id === "tower" }))
                 ).map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.label}
