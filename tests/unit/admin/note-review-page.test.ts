@@ -28,6 +28,23 @@ describe("纸条复核页（/admin/notes）接线", () => {
     expect(api).toContain("export function setAdminNoteStatus(");
   });
 
+  it("消息举报页签（0094）：api.ts 封装两个消息端点，页面渲染该页签", () => {
+    const api = readFileSync(join(adminSrc, "api.ts"), "utf8");
+    // GET /api/note/admin/messages?reported=1（adminListReportedMessages）
+    expect(api).toContain("/api/note/admin/messages?reported=1");
+    expect(api).toContain("export function fetchAdminReportedMessages(");
+    // POST /api/note/admin/messages/:id/status（adminSetMessageStatus）
+    expect(api).toContain("/api/note/admin/messages/${id}/status");
+    expect(api).toContain("export function setAdminMessageStatus(");
+
+    const page = readFileSync(join(adminSrc, "routes", "NoteReviewPage.tsx"), "utf8");
+    expect(page).toContain("消息举报");
+    expect(page).toContain("fetchAdminReportedMessages");
+    expect(page).toContain("setAdminMessageStatus");
+    // 软删文案：管理端隐藏是软删，会话内消息计数保持原值。
+    expect(page).toContain("保持原值");
+  });
+
   it("Layout.tsx 标题映射含「纸条复核」", () => {
     const layout = readFileSync(join(adminSrc, "components", "Layout.tsx"), "utf8");
     expect(layout).toContain('path.startsWith("/notes")');
