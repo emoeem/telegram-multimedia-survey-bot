@@ -22,8 +22,13 @@ import { createSqliteD1, sqliteD1Available } from "../../helpers/sqlite-d1";
  *     三者任一都换缓存键，翻键后首请求 miss 并重建缓存；
  *  ④ unpublish：CAS published→recalled 成功、二次调用 already 码、
  *     writeAudit 留痕；
- *  ⑤ 媒体校验：scope='response' + media:websubmit: 前缀 + media_refs 归属
- *     published 投稿三重全过才放行，未关联/挂错状态的资产一律 404。
+ *  ⑤ 媒体校验（双闸已开的前提下）：scope='response' + media:websubmit:
+ *     前缀 + media_refs 归属 published 投稿三重全过才放行，未关联/挂错
+ *     状态的资产一律 404；
+ *  ⑥ 字节面同闸：showcaseEnabled=false（默认态）或媒体步骤不在
+ *     showcaseFields 白名单里，媒体端点一律 404——assetId 全局自增可枚举，
+ *     字节不与墙投影同闸，直连 URL 就能绕过「媒体步骤没勾选，资产 id
+ *     不出网」的投影层约束。
  * 全部走真 SQLite：行为是 SQL 状态迁移与真实投影，mock 钉不住。
  */
 
@@ -161,6 +166,12 @@ async function galleryItems(env: Env): Promise<Record<string, unknown>[]> {
   const body = (await response!.json()) as { ok: boolean; items: Record<string, unknown>[] };
   expect(body.ok).toBe(true);
   return body.items;
+}
+
+/** 走完整路由取媒体字节（⑤ 资产校验与 ⑥ 字节面同闸共用）。 */
+async function fetchMedia(env: Env, assetId: number): Promise<Response> {
+  const url = new URL(`https://site.example/api/submit/gallery/media/${assetId}`);
+  return (await handleSubmitApiRequest(req(url.pathname), env, url))!;
 }
 
 function adminCtx() {
@@ -467,6 +478,12 @@ describeIf("④ unpublish：CAS published→recalled + writeAudit", () => {
 });
 
 describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () => {
+  /** 本组钉资产侧三重校验，前置把 showcase 双闸打开（媒体端点与墙投影
+   * 同闸；闸本身的边界在 ⑥ 组钉）。photos = 默认模板的媒体步骤 id。 */
+  async function openShowcase(env: Env, updatedAt = "2026-01-01T00:00:00.000Z"): Promise<void> {
+    await writeSettings(env, { enabled: true, showcaseEnabled: true, showcaseFields: ["title", "photos"] }, updatedAt);
+  }
+
   async function seedAsset(
     env: Env,
     overrides: { scope?: string; storageKey?: string; storageKind?: string } = {},
@@ -484,13 +501,9 @@ describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () =
     return Number(result.meta?.last_row_id ?? 0);
   }
 
-  async function fetchMedia(env: Env, assetId: number): Promise<Response> {
-    const url = new URL(`https://site.example/api/submit/gallery/media/${assetId}`);
-    return (await handleSubmitApiRequest(req(url.pathname), env, url))!;
-  }
-
   it("published 归属的 websubmit 资产放行并回字节", async () => {
     const env = makeEnv();
+    await openShowcase(env);
     const submissionId = await seedSubmission(env, { status: "published", publishedAt: 1000 });
     const assetId = await seedAsset(env);
     await upsertMediaRef(env.DB, {
@@ -506,6 +519,7 @@ describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () =
 
   it("未关联 media_refs 的资产拒绝；挂未发布投稿的资产拒绝", async () => {
     const env = makeEnv();
+    await openShowcase(env);
     const publishedId = await seedSubmission(env, { status: "published", publishedAt: 1000 });
     const pendingId = await seedSubmission(env, { status: "pending" });
 
@@ -531,6 +545,7 @@ describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () =
 
   it("scope 不是 response、或 storage_key 不是 media:websubmit: 前缀的资产拒绝", async () => {
     const env = makeEnv();
+    await openShowcase(env);
     const submissionId = await seedSubmission(env, { status: "published", publishedAt: 1000 });
 
     const wrongScope = await seedAsset(env, { scope: "survey" });
@@ -552,6 +567,7 @@ describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () =
 
   it("不存在的资产 404；非 GET 405；enabled=false 不影响墙与媒体（通道关闭≠公开面下线）", async () => {
     const env = makeEnv();
+    await openShowcase(env);
     expect((await fetchMedia(env, 9999)).status).toBe(404);
 
     const mediaUrl = new URL("https://site.example/api/submit/gallery/media/1");
@@ -561,6 +577,62 @@ describeIf("⑤ 媒体校验：scope + 前缀 + published 归属三重闸", () =
     await writeSettings(env, { enabled: false, showcaseEnabled: true, showcaseFields: ["title"] });
     await seedSubmission(env, { status: "published", publishedAt: 1000 });
     expect((await galleryItems(env)).length).toBe(1);
+  });
+});
+
+describeIf("⑥ 字节面同闸：showcase 双闸不过 → 媒体一律 404（assetId 可枚举，直连也得出不了网）", () => {
+  async function seedPublishedAttachment(env: Env): Promise<{ submissionId: number; assetId: number }> {
+    const submissionId = await seedSubmission(env, { status: "published", publishedAt: 1000 });
+    const result = await env.DB.prepare(
+      `INSERT INTO media_assets (asset_scope, media_type, storage_kind, storage_key, mime_type, file_name, created_at, updated_at)
+         VALUES ('response', 'photo', 'r2', 'media:websubmit:gate-1', 'image/png', 'pic.png', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    const assetId = Number(result.meta?.last_row_id ?? 0);
+    await upsertMediaRef(env.DB, {
+      refType: "web_submission",
+      refKey: `websubmit:${submissionId}:${assetId}`,
+      assetId,
+    });
+    return { submissionId, assetId };
+  }
+
+  it("showcaseEnabled=false（默认态无设置行 / 显式关闭）：published 归属的附件也 404；开闸后同一资产 200", async () => {
+    const env = makeEnv();
+    const { assetId } = await seedPublishedAttachment(env);
+
+    // 默认态：没有设置行 = showcaseEnabled false → 字节不出网。
+    expect((await fetchMedia(env, assetId)).status).toBe(404);
+
+    // 显式关闭：同样 404。
+    await writeSettings(env, { enabled: true, showcaseEnabled: false, showcaseFields: ["title", "photos"] });
+    expect((await fetchMedia(env, assetId)).status).toBe(404);
+
+    // 对照：同一资产、同一归属，总开关打开后放行——404 是闸拦的，不是
+    // 「资产/归属没插对」的假阳性。
+    await writeSettings(
+      env,
+      { enabled: true, showcaseEnabled: true, showcaseFields: ["title", "photos"] },
+      "2026-01-01T00:00:01.000Z",
+    );
+    const response = await fetchMedia(env, assetId);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("pngbytes");
+  });
+
+  it("媒体步骤不在 showcaseFields 白名单：字节同样 404（与墙上不投影 mediaAssetIds 同闸）；勾上后 200", async () => {
+    const env = makeEnv();
+    const { assetId } = await seedPublishedAttachment(env);
+
+    await writeSettings(env, { enabled: true, showcaseEnabled: true, showcaseFields: ["title"] });
+    expect((await fetchMedia(env, assetId)).status).toBe(404);
+
+    // 白名单勾上媒体步骤（settings 戳变）→ 同一资产放行。
+    await writeSettings(
+      env,
+      { enabled: true, showcaseEnabled: true, showcaseFields: ["title", "photos"] },
+      "2026-01-01T00:00:02.000Z",
+    );
+    expect((await fetchMedia(env, assetId)).status).toBe(200);
   });
 });
 

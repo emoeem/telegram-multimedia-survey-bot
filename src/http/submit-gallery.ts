@@ -6,12 +6,14 @@
  * GET /api/submit/gallery，把 published 行按运营配置的字段白名单投影出去，
  * 外加一条 /api/submit/gallery/media/:assetId 供墙上的附件取字节。
  *
- * 隐私双闸（两把锁都过才出网，默认不出网）：
+ * 隐私双闸（两把锁都过才出网，默认不出网）——墙投影与媒体字节端点都要过：
  *   1. system_settings web_submit_form 的 showcaseEnabled（默认 false）；
  *   2. showcaseFields 字段白名单（默认空数组）。白名单在 mergeWebSubmitForm
  *      里已与当前 steps 求过交集，settings 残留的旧 step id 带不出网；data
  *      里 __ 开头的内部键（__nickname/__email/__ip）不是 step id，永远在
- *      白名单外。
+ *      白名单外。媒体字节按同一把白名单锁放行：媒体步骤没勾选时投影层
+ *      不出 mediaAssetIds（projectGalleryItem），字节端点也一并 404——
+ *      assetId 是全局自增整数可枚举，字节不闸等于白名单被直连 URL 绕过。
  * 昵称额外一闸：署名方式选了「匿名投稿」的作者可能在表单里随手填过昵称
  * （SubmitScreen 的「选填」输入框），上墙按 TG 卡片同一套署名规则
  * （composeWebSubmissionText）投影——匿名不署名，「显示我的昵称」才带昵称，
@@ -168,7 +170,14 @@ export async function handleWebSubmitGallery(request: Request, env: Env): Promis
 /**
  * GET /api/submit/gallery/media/:assetId —— 墙上附件的公开取字节。
  *
- * 校验与广场个人资料的媒体先例（plaza-api.ts profileMediaMatch）同构，三重：
+ * 先过与墙投影同一套隐私双闸（模块头注释）：showcaseEnabled 关闭、或没有
+ * 任何媒体步骤在 showcaseFields 白名单里，一律 404——媒体步骤未勾选时
+ * projectGalleryItem 本就不投影 mediaAssetIds（墙上没有合法消费方），而
+ * assetId 全局自增可枚举，字节面不闸就成了「id 不出网、字节照样 200」的
+ * 直连口子。404 与本函数其余拒绝分支同形状，不向枚举者泄露资产存在性。
+ *
+ * 资产侧校验与广场个人资料的媒体先例（plaza-api.ts profileMediaMatch）
+ * 同构，三重：
  *   1. asset_scope = 'response'（投稿附件因 0017 的 CHECK 约束写这个 scope，
  *      submit-api.ts storeWebMedia 的注释）；
  *   2. storage_key 前缀 media:websubmit:（真正区分投稿附件的标记）；
@@ -182,6 +191,15 @@ export async function handleWebSubmitGallery(request: Request, env: Env): Promis
 export async function handleWebSubmitGalleryMedia(env: Env, assetIdRaw: string): Promise<Response> {
   const assetId = Number.parseInt(assetIdRaw, 10);
   if (!Number.isInteger(assetId) || assetId <= 0) return fail(404, "not_found", "附件不存在");
+
+  /* 双闸其二按「媒体步骤是否在白名单」判：与 projectGalleryItem 里
+   * showcaseSteps.find(type==='media') 的放行条件逐字对齐（showcaseFields
+   * 在 merge 层已与当前 steps 求过交集，这里无需再验 step 真实存在）。 */
+  const config = await loadWebSubmitFormSetting(env.DB);
+  const mediaWhitelisted = config.steps.some(
+    (step) => step.type === "media" && config.showcaseFields.includes(step.id),
+  );
+  if (!config.showcaseEnabled || !mediaWhitelisted) return fail(404, "not_found", "附件不存在");
 
   const asset = await getMediaAssetById(env.DB, assetId);
   if (!asset || asset.scope !== "response" || !asset.storageKey?.startsWith("media:websubmit:")) {
