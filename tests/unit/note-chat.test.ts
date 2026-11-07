@@ -18,6 +18,7 @@ import {
   withdrawNote,
   type NoteError,
 } from "../../src/services/note-chat.service";
+import { markNotificationsSeen } from "../../src/services/series-follow.service";
 import { findBlockedWord, isNoteContentAllowed } from "../../src/services/note-content-filter.service";
 
 describe("纸条聊天 · 纯规则", () => {
@@ -91,7 +92,7 @@ describe("纸条聊天 · 纯规则", () => {
  * DB 行为（0094 安全层）——用 sqlite-d1 harness 跑真迁移 + 真服务 SQL。
  * ------------------------------------------------------------------ */
 
-const NOTE_SCHEMA = ["0089_note_chat.sql", "0094_note_chat_safety.sql"]
+const NOTE_SCHEMA = ["0084_follows_notifications.sql", "0089_note_chat.sql", "0094_note_chat_safety.sql"]
   .map((file) => readFileSync(new URL(`../../db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
 
@@ -132,6 +133,25 @@ describe.skipIf(!sqliteD1Available)("纸条聊天 · DB 行为（0094 安全层�
     const draw = await drawNote(db, "hash_b", null, "note:test-1");
     expect(draw).toMatchObject({ ok: true, empty: false });
     return "threadId" in draw ? draw.threadId : 0;
+  }
+
+  /** 按 id 升序读全量通知（participant_hash 归一为 participantHash 便于断言）。 */
+  async function listNotificationRows(db: D1Database) {
+    const rows = await db
+      .prepare(
+        `SELECT id, participant_hash AS participantHash, kind, title, body, link, read_at AS readAt
+           FROM notifications ORDER BY id`,
+      )
+      .all<{
+        id: number;
+        participantHash: string;
+        kind: string;
+        title: string;
+        body: string;
+        link: string;
+        readAt: string | null;
+      }>();
+    return rows.results ?? [];
   }
 
   it("过滤命中 → 校验阶段拒绝（note_filter_rejected），notes 零新行", async () => {
@@ -269,5 +289,64 @@ describe.skipIf(!sqliteD1Available)("纸条聊天 · DB 行为（0094 安全层�
     // 会话里不存在的消息 id 拒绝。
     await expect(reportMessage(db, threadId, 99999, "hash_a", "")).rejects.toMatchObject({ code: "not_found" });
     expect(await countRows(db, "note_message_reports")).toBe(3);
+  });
+
+  it("站内通知：抽中为作者写一条 note_drawn；池空不写（T3）", async () => {
+    const db = makeDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    // A 下架 → B 的池子空（唯一候选没了）→ empty 且零通知。
+    await withdrawNote(db, "hash_a");
+    await expect(drawNote(db, "hash_b", null, "note:empty")).resolves.toMatchObject({ ok: true, empty: true });
+    expect(await countRows(db, "notifications")).toBe(0);
+
+    // A 重放 → B 抽中 → 作者 A 收到一条未读 note_drawn（离散事件，不折叠）。
+    await putNoteOk(db, "hash_a", "A 的新纸条");
+    await expect(drawNote(db, "hash_b", null, "note:hit")).resolves.toMatchObject({ ok: true, empty: false });
+    const rows = await listNotificationRows(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      participantHash: "hash_a",
+      kind: "note_drawn",
+      link: "/notes",
+      readAt: null,
+    });
+  });
+
+  it("站内通知：note_reply 折叠——未读只保一条（UPDATE 命中不新增行），已读后再来才 INSERT（T3）", async () => {
+    const db = makeDb();
+    const threadId = await makeThread(db);
+    // makeThread 的抽取会先给作者 A 落一条 note_drawn；以下断言只看 note_reply。
+    // B 连发两条：第二条折叠进同一条未读通知（body 刷成最新一条），不新增行。
+    await sendMessage(db, threadId, "hash_b", "第一条回信", null);
+    await sendMessage(db, threadId, "hash_b", "第二条回信", null);
+    let replies = (await listNotificationRows(db)).filter((row) => row.kind === "note_reply");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      participantHash: "hash_a",
+      body: "第二条回信",
+      link: "/notes",
+      readAt: null,
+    });
+
+    // A 已读（铃铛 seen）后再来一条：折叠 UPDATE 不命中（read_at 非空）→ 新 INSERT。
+    await markNotificationsSeen(db, "hash_a");
+    await sendMessage(db, threadId, "hash_b", "第三条回信", null);
+    replies = (await listNotificationRows(db)).filter((row) => row.kind === "note_reply");
+    expect(replies).toHaveLength(2);
+    expect(replies[0]?.readAt).not.toBeNull(); // 首条保持已读，不被复用折叠
+    expect(replies[1]).toMatchObject({
+      participantHash: "hash_a",
+      body: "第三条回信",
+      readAt: null,
+    });
+
+    // 反向：A 回信，B 有自己独立的一条，互不串。
+    await sendMessage(db, threadId, "hash_a", "收到啦", null);
+    const forB = (await listNotificationRows(db)).filter(
+      (row) => row.kind === "note_reply" && row.participantHash === "hash_b",
+    );
+    expect(forB).toHaveLength(1);
+    expect(forB[0]).toMatchObject({ body: "收到啦", readAt: null });
   });
 });
