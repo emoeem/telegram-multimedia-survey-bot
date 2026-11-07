@@ -7,13 +7,20 @@ import {
   createTaskRun,
   getActiveTaskRunByParticipant,
   getTaskRunById,
-  listTaskRunLeaderboard,
+  isMineLeaderboardEntry,
+  listGameTypeLeaderboard,
+  listTaskRunLeaderboardRaw,
   listTaskRunsByParticipant,
+  loadGameTypeLeaderboardStamp,
+  loadTaskRunLeaderboardStamp,
   mergeTaskRun,
   saveTaskRun,
+  toPublicLeaderboardEntry,
   toTrialRun,
+  type LeaderboardRawEntry,
   type TaskRunRecord,
 } from "../db/repositories/task-run.repository";
+import { readCachedJson, writeCachedJson } from "../services/kv-cache.service";
 import { evaluateAchievements, serializeUnlockedAchievements } from "../services/achievement.service";
 import type { TrialAction, TrialInventory, TrialRun, TrialTaskItem } from "../trial/engine";
 import {
@@ -33,6 +40,29 @@ import {
 } from "../trial/engine";
 import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../trial/engine-registry";
 import { applyPluginAction, loadActivePluginRun, pluginHistoryFields, startPluginRun } from "./trial-plugin-api";
+
+/**
+ * 榜单 KV 戳式缓存（与 survey 公开目录同构，见 src/http/survey/catalog.ts
+ * 的注释与先例）：两个榜单 payload（单包榜、玩法总榜）都与查看者无关
+ * （mine 在命中后按请求方身份重新计算），只随 task_runs 的完成情况变化，
+ * 所以把重复的 payload 读从 D1 行读预算里挪进 KV。
+ *
+ * 键 = `trial-leaderboard:<PROJECTION_VERSION>:<scope>:<mode>:<stamp>`。
+ * PROJECTION_VERSION 是**手工 bump** 的投影版本常量：键只含数据戳（stamp）
+ * 覆盖不了「载荷形状变化」——滚动期新代码会把旧投影构建的条目写进 KV，再被
+ * 新代码读回来（catalog.ts:59-66 记载的 theme.sprite / theme.audio.sfx 事故，
+ * survey 118）。载荷形状变化时必须 bump 这个常量。
+ *
+ * 成本声明：命中请求省的是榜单 payload 查询；戳探针（COUNT+MAX(updated_at)
+ * 的索引范围扫描）**每请求仍发生**——这是戳式缓存的新鲜度机制本身
+ * （catalog.ts:31-33 原话：探针花几百行，命中省掉的是 payload）。
+ */
+export const TRIAL_LEADERBOARD_CACHE_VERSION = "v1";
+export const TRIAL_LEADERBOARD_CACHE_TTL_SECONDS = 6 * 60 * 60;
+
+export function trialLeaderboardCacheKey(scope: string, mode: string, stamp: string): string {
+  return `trial-leaderboard:${TRIAL_LEADERBOARD_CACHE_VERSION}:${scope}:${mode}:${stamp}`;
+}
 
 /**
  * Public trial API for the web task system (/trial): pack discovery, the
@@ -84,19 +114,44 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
   }
 
   if (request.method === "GET" && url.pathname === "/api/trial/leaderboard") {
-    const packId = Number(url.searchParams.get("packId"));
     const mode = normalizeTrialMode(url.searchParams.get("mode")) ?? "normal";
-    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
     const participant = await resolveParticipant(request, env).catch(() => null);
     const participantHash = participant && !(participant instanceof Response) ? participant.participantHash : null;
     const participantDbUserId = participant && !(participant instanceof Response) ? participant.dbUserId : null;
-    const entries = await listTaskRunLeaderboard(env.DB, {
-      packId,
-      mode,
-      ...(participantHash ? { participantHash } : {}),
-      participantDbUserId,
-    });
-    return json({ entries });
+    const identity = { participantHash, participantDbUserId };
+    // 带上 mine 的出参：缓存里存的是与查看者无关的原始投影（含 user_id /
+    // participant_hash，仅服务端 mine 判定用），命中后按请求方身份重算 mine。
+    const serve = (raw: LeaderboardRawEntry[], withPack: boolean) =>
+      json({
+        entries: raw.map((entry) => ({
+          ...toPublicLeaderboardEntry(entry, isMineLeaderboardEntry(entry, identity)),
+          ...(withPack ? { packId: entry.packId } : {}),
+        })),
+      });
+    // 聚合视角（玩法总榜）：?gameType=… 分流；mode 缺省 normal，与单包榜一致。
+    // normal 与 hell 分数量纲不可比（地狱层难度不同），按 (gameType, mode)
+    // 分榜不混榜。
+    const gameTypeParam = url.searchParams.get("gameType");
+    if (gameTypeParam !== null) {
+      const gameType = normalizeGameType(gameTypeParam);
+      if (!gameType) return fail(400, "validation_failed", "无效的玩法");
+      const stamp = await loadGameTypeLeaderboardStamp(env.DB, { gameType, mode });
+      const cacheKey = trialLeaderboardCacheKey(`gametype:${gameType}`, mode, stamp);
+      const cached = await readCachedJson<LeaderboardRawEntry[]>(env.CACHE, cacheKey);
+      if (cached) return serve(cached, true);
+      const raw = await listGameTypeLeaderboard(env.DB, { gameType, mode });
+      await writeCachedJson(env.CACHE, cacheKey, raw, TRIAL_LEADERBOARD_CACHE_TTL_SECONDS);
+      return serve(raw, true);
+    }
+    const packId = Number(url.searchParams.get("packId"));
+    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
+    const stamp = await loadTaskRunLeaderboardStamp(env.DB, { packId, mode });
+    const cacheKey = trialLeaderboardCacheKey(`pack:${packId}`, mode, stamp);
+    const cached = await readCachedJson<LeaderboardRawEntry[]>(env.CACHE, cacheKey);
+    if (cached) return serve(cached, false);
+    const raw = await listTaskRunLeaderboardRaw(env.DB, { packId, mode });
+    await writeCachedJson(env.CACHE, cacheKey, raw, TRIAL_LEADERBOARD_CACHE_TTL_SECONDS);
+    return serve(raw, false);
   }
 
   if (request.method === "GET" && url.pathname === "/api/trial/runs/active") {
