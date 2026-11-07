@@ -1230,6 +1230,29 @@ export function setAdminNoteStatus(id: number, status: "active" | "removed"): Pr
   return apiSend("POST", `/api/note/admin/notes/${id}/status`, { status });
 }
 
+/**
+ * 会话消息复核（0094）：GET /api/note/admin/messages?reported=1 按消息聚合
+ * 举报数；POST /api/note/admin/messages/:id/status 在 active / hidden 间切换
+ * （hidden = 软删，服务端写 writeAudit）。
+ */
+export interface NoteAdminMessage {
+  id: number;
+  threadId: number;
+  body: string;
+  status: "active" | "hidden";
+  reportCount: number;
+  lastReportAt: string;
+  lastReason: string;
+}
+
+export function fetchAdminReportedMessages(): Promise<{ ok: boolean; messages: NoteAdminMessage[] }> {
+  return api<{ ok: boolean; messages: NoteAdminMessage[] }>("/api/note/admin/messages?reported=1");
+}
+
+export function setAdminMessageStatus(id: number, status: "active" | "hidden"): Promise<{ ok: boolean }> {
+  return apiSend("POST", `/api/note/admin/messages/${id}/status`, { status });
+}
+
 export type AdminTaskPersona = "any" | "male" | "female";
 export type AdminTaskMode = "any" | "normal" | "hell";
 

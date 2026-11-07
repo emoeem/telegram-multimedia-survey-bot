@@ -7,16 +7,21 @@ import {
   DRAW_COST_COINS,
   FREE_DRAWS_PER_DAY,
   REPORT_HIDE_THRESHOLD,
+  blockThread,
   drawNote,
   getMyActiveNote,
   listMessages,
   listThreads,
   putNote,
+  reportMessage,
   reportNote,
   sendMessage,
+  unblockThread,
   withdrawNote,
   type NoteError,
 } from "../services/note-chat.service";
+import { NOTE_FILTER_REJECTED } from "../services/note-content-filter.service";
+import { writeAudit } from "./admin/helpers";
 import { createMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
 import { createMediaStore } from "../services/media/temporary-media-store";
 import { verifyUploadContent } from "../services/media/upload-validation.service";
@@ -41,6 +46,10 @@ function isNoteError(error: unknown): error is NoteError {
 }
 
 function noteFail(error: NoteError): Response {
+  // 内容过滤命中 = 发布前拒绝（UGC 1.2），422 与 web 投稿校验同款
+  // （submit-api.ts / admin/web-submission.ts 先例）；拉黑 = 403 语义。
+  if (error.code === NOTE_FILTER_REJECTED) return fail(422, error.code, error.message);
+  if (error.code === "blocked") return fail(403, error.code, error.message);
   const status = error.code === "not_found" || error.code === "not_participant" ? 404 : 400;
   return fail(status, error.code, error.message);
 }
@@ -162,6 +171,41 @@ async function adminSetNoteStatus(env: Env, noteId: number, status: string): Pro
   }
 }
 
+/** 管理端：被举报的会话消息（?reported=1）。按消息聚合举报数，倒序取最近 50 条；
+ * 已 hidden 的也在列——复核页要能看到并恢复。 */
+async function adminListReportedMessages(env: Env, url: URL): Promise<Response> {
+  const reported = url.searchParams.get("reported");
+  if (reported !== null && reported !== "1") return fail(400, "bad_request", "仅支持 reported=1");
+  const result = await env.DB.prepare(
+    `SELECT m.id AS id, m.thread_id AS threadId, m.body, m.status,
+            COUNT(*) AS reportCount,
+            MAX(r.created_at) AS lastReportAt,
+            (SELECT r2.reason FROM note_message_reports r2 WHERE r2.message_id = m.id
+              ORDER BY r2.created_at DESC LIMIT 1) AS lastReason
+       FROM note_messages m
+       JOIN note_message_reports r ON r.message_id = m.id
+      GROUP BY m.id
+      ORDER BY lastReportAt DESC
+      LIMIT 50`,
+  ).all();
+  return json({ ok: true, messages: result.results ?? [] });
+}
+
+/** 管理端：消息处置（隐藏=软删 / 恢复）。写 writeAudit，处置可追溯。 */
+async function adminSetMessageStatus(env: Env, messageId: number, status: string): Promise<Response> {
+  if (!["active", "hidden"].includes(status)) return fail(400, "bad_request", "目标状态仅支持 active / hidden");
+  const result = await env.DB.prepare(`UPDATE note_messages SET status = ? WHERE id = ?`).bind(status, messageId).run();
+  if (Number(result.meta?.changes ?? 0) === 0) return fail(404, "not_found", "消息不存在");
+  await writeAudit(env.DB, {
+    actorUserId: null,
+    action: "note_message.status",
+    entityType: "note_message",
+    entityId: String(messageId),
+    after: { status },
+  });
+  return json({ ok: true });
+}
+
 export async function handleNoteApiRequest(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
 
@@ -194,6 +238,12 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
     if (request.method === "POST" && statusMatch) {
       const body = await readJsonBody(request);
       return adminSetNoteStatus(env, Number(statusMatch[1]), asString(body?.status));
+    }
+    if (request.method === "GET" && path === "/api/note/admin/messages") return adminListReportedMessages(env, url);
+    const messageStatusMatch = path.match(/^\/api\/note\/admin\/messages\/(\d+)\/status$/);
+    if (request.method === "POST" && messageStatusMatch) {
+      const body = await readJsonBody(request);
+      return adminSetMessageStatus(env, Number(messageStatusMatch[1]), asString(body?.status));
     }
     return fail(404, "not_found", "未知管理端点");
   }
@@ -280,6 +330,37 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
         return { ok: true, message };
       });
     }
+  }
+
+  /* ---- 会话级拉黑（0094）：入口是会话，按会话解析对方 hash；双向生效 ---- */
+  const blockMatch = path.match(/^\/api\/note\/threads\/(\d+)\/block$/);
+  if (blockMatch && (request.method === "POST" || request.method === "DELETE")) {
+    const limit = await checkAtomicRateLimit(env.DB, env.CACHE, "note-block", hash, 5, 3600);
+    if (!limit.allowed) return rateLimitResponse(limit.retryAfterSeconds);
+    return respond(async () => {
+      const threadId = Number(blockMatch[1]);
+      if (request.method === "POST") {
+        return { ok: true, blocked: await blockThread(env.DB, threadId, hash) };
+      }
+      return { ok: true, blocked: !(await unblockThread(env.DB, threadId, hash)) };
+    });
+  }
+
+  const messageReportMatch = path.match(/^\/api\/note\/threads\/(\d+)\/messages\/(\d+)\/report$/);
+  if (request.method === "POST" && messageReportMatch) {
+    const limit = await checkAtomicRateLimit(env.DB, env.CACHE, "note-msg-report", hash, 5, 3600);
+    if (!limit.allowed) return rateLimitResponse(limit.retryAfterSeconds);
+    const body = await readJsonBody(request);
+    return respond(async () => ({
+      ok: true,
+      ...(await reportMessage(
+        env.DB,
+        Number(messageReportMatch[1]),
+        Number(messageReportMatch[2]),
+        hash,
+        asString(body?.reason),
+      )),
+    }));
   }
 
   const reportMatch = path.match(/^\/api\/note\/(\d+)\/report$/);
