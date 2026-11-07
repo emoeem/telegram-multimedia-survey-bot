@@ -1,6 +1,24 @@
 # 项目交接文档（给下一位开发者 / AI）
 
-> **2026-10-31 最新交接**：后台信息架构工作区化（56px 图标轨 + 工作区子导航，
+> **2026-11-06 交接（最新）：AI 自主研发批次（T1–T8 + U1–U2）**——分支
+> `ai/autonomous-development` 串并行完成 10 个任务（提交 `2255bce` → `1661978` 共 16 个，
+> 含 4 批 CI 字体环境视觉基线重生成）：reply 测试稳定性修复（静态引入 router 消除并发 5s 超时）、
+> Dashboard 功能地图 + 工作区编号导航、新手引导（四步入门 + 设置页重放）、新建问卷从模板开始、
+> 问卷设置面板基础/高级分组、全设备适配修复（触控 44px / 横屏提示 / 报告端弱网降级）、
+> admin/README 与根 README 文档去漂移、⌘K 全局搜索、删除旧编辑器壳（`?ui=legacy` 兜底下线，
+> `/surveys/:id/scene/:qid` 改壳内浮层重定向）、报告合成路径 `<img>` lazy/decoding 补齐。
+> **CI：PR #2 已合并进 main（2026-11-06 23:53 UTC，merge commit `ed4c888`），checks / tg-archive /
+> visual 三 job 全绿；合并后 main 的 deploy 与 production-smoke 工作流均成功（生产已部署）**
+> （以上为本会话经 `gh pr view 2` / `gh run list --branch main` 实测核实）。
+> 遗留风险：4 个已记录未修问题（引导进度不持久、搜索 Esc 触控目标约 22px、引导 CTA 管理员
+> 视角错配、⌘K 命中列表读屏语义缺失，见报告 §六）；d1-backup 工作流持续红（R2_BACKUP_BUCKET
+> secret 从未配置，属账号级人工操作，代码侧守卫已就绪）；审计
+> [`audits/COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md`](audits/COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md)
+> （本批首次入库）的阶段 1B 安全、1C/1D 幂等与索引、3A 指标基线等批次仍待做。
+> 完整执行记录见
+> [`reports/WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md`](reports/WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md)。
+>
+> **2026-10-31 交接**：后台信息架构工作区化（56px 图标轨 + 工作区子导航，
 > 编辑器沉浸态；见 [`releases/RELEASE_2026-10-31.md`](releases/RELEASE_2026-10-31.md)）——
 > 管理壳全变，admin.spec 80 张基线已按 CI 字体环境重建；编辑器节点图
 > （列表/节点图双形态，`?canvas=graph`）与结果设计器折叠入口同日上线；
