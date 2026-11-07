@@ -62,29 +62,33 @@
 最新：`RELEASE_2026-10-31.md`（归档图片灰块根因修复 + 盖章可配置/烧录 +
 后台信息架构工作区化 + 25 页走查）。
 
-### `reports/` — 报告（5 份）
+### `reports/` — 报告（10 份）
 
-| 文档                                                                   | 内容                                                               |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| [`WORK_REPORT_2026-10-31_UI.md`](reports/WORK_REPORT_2026-10-31_UI.md) | 后台信息架构工作区化 + 右栏修复 + 25 页走查的交付报告              |
-| [`UI-AUDIT-2026-10-31.md`](reports/UI-AUDIT-2026-10-31.md)             | 全后台 25 页双宽度走查：前后对比、发现分级、跳转断点清单           |
-| [`WORK_REPORT_2026-10-31.md`](reports/WORK_REPORT_2026-10-31.md)       | 归档灰块根因 / 盖章强化 / 巡检 / changtu 分析的交付报告            |
-| [`WORK_REPORT_2026-10-30.md`](reports/WORK_REPORT_2026-10-30.md)       | 二轮优化的交付报告：quest 生态端到端断点、视觉基线方法论、门禁实测 |
-| [`WORK_REPORT_2026-10-29.md`](reports/WORK_REPORT_2026-10-29.md)       | 发布链路加固的交付报告：结论表、门禁实测、已知限制、下一步建议     |
-| [`PROJECT_REPORT.md`](reports/PROJECT_REPORT.md)                       | 项目完成情况报告（2026-08-23，历史基线）                           |
-| [`round-p1.md`](reports/round-p1.md)                                   | P1 功能增强的一轮交付报告                                          |
+| 文档                                                                                         | 内容                                                                                  |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md`](reports/WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md) | AI 自主研发批次（T1–T8 + U1–U2）执行记录：任务清单、提交、CI 结论、调研采纳、已知问题 |
+| [`EDITOR_GAP_ANALYSIS_2026-11-04.md`](reports/EDITOR_GAP_ANALYSIS_2026-11-04.md)             | 编辑器对标 LetsGal Studio 的功能差距分析与已补齐项                                    |
+| [`WORK_REPORT_2026-10-31_UI.md`](reports/WORK_REPORT_2026-10-31_UI.md)                       | 后台信息架构工作区化 + 右栏修复 + 25 页走查的交付报告                                 |
+| [`UI-AUDIT-2026-10-31.md`](reports/UI-AUDIT-2026-10-31.md)                                   | 全后台 25 页双宽度走查：前后对比、发现分级、跳转断点清单                              |
+| [`WORK_REPORT_2026-10-31.md`](reports/WORK_REPORT_2026-10-31.md)                             | 归档灰块根因 / 盖章强化 / 巡检 / changtu 分析的交付报告                               |
+| [`WORK_REPORT_2026-10-30_ROUND3.md`](reports/WORK_REPORT_2026-10-30_ROUND3.md)               | 三轮交付：答题页沉浸式重设计 + 统一节点编辑器                                         |
+| [`WORK_REPORT_2026-10-30.md`](reports/WORK_REPORT_2026-10-30.md)                             | 二轮优化的交付报告：quest 生态端到端断点、视觉基线方法论、门禁实测                    |
+| [`WORK_REPORT_2026-10-29.md`](reports/WORK_REPORT_2026-10-29.md)                             | 发布链路加固的交付报告：结论表、门禁实测、已知限制、下一步建议                        |
+| [`PROJECT_REPORT.md`](reports/PROJECT_REPORT.md)                                             | 项目完成情况报告（2026-08-23，历史基线）                                              |
+| [`round-p1.md`](reports/round-p1.md)                                                         | P1 功能增强的一轮交付报告                                                             |
 
-### `audits/` — 审计与专项记录（7 份 + 截图目录）
+### `audits/` — 审计与专项记录（8 份 + 截图目录）
 
-| 文档                                                                          | 内容                                                     |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [`CODE_AUDIT_2026-09-27.md`](audits/CODE_AUDIT_2026-09-27.md)                 | 全量代码审计（P0–P2；多数已修复，未修项见路线图）        |
-| [`PLATFORM_2_0_AUDIT.md`](audits/PLATFORM_2_0_AUDIT.md)                       | 平台 2.0 产品审计                                        |
-| [`ADMIN_UI_2_AUDIT.md`](audits/ADMIN_UI_2_AUDIT.md)                           | Admin UI 2.0 现状审计                                    |
-| [`UIUX-AUDIT-2026-10-22.md`](audits/UIUX-AUDIT-2026-10-22.md)                 | UI/UX 审计（分批评方案，B 批已实施）                     |
-| [`ui-audit-2026-10.md`](audits/ui-audit-2026-10.md)                           | 首页/认证页视觉审计（截图在 `ui-audit-2026-10-assets/`） |
-| [`PERF_E2E_OPTIMIZATION_2026-10.md`](audits/PERF_E2E_OPTIMIZATION_2026-10.md) | 性能与 E2E 优化记录                                      |
-| [`UI_REWORK_PROGRESS_2026-10.md`](audits/UI_REWORK_PROGRESS_2026-10.md)       | 界面改造进度台账                                         |
+| 文档                                                                                                      | 内容                                                     |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`CODE_AUDIT_2026-09-27.md`](audits/CODE_AUDIT_2026-09-27.md)                                             | 全量代码审计（P0–P2；多数已修复，未修项见路线图）        |
+| [`PLATFORM_2_0_AUDIT.md`](audits/PLATFORM_2_0_AUDIT.md)                                                   | 平台 2.0 产品审计                                        |
+| [`ADMIN_UI_2_AUDIT.md`](audits/ADMIN_UI_2_AUDIT.md)                                                       | Admin UI 2.0 现状审计                                    |
+| [`UIUX-AUDIT-2026-10-22.md`](audits/UIUX-AUDIT-2026-10-22.md)                                             | UI/UX 审计（分批评方案，B 批已实施）                     |
+| [`ui-audit-2026-10.md`](audits/ui-audit-2026-10.md)                                                       | 首页/认证页视觉审计（截图在 `ui-audit-2026-10-assets/`） |
+| [`PERF_E2E_OPTIMIZATION_2026-10.md`](audits/PERF_E2E_OPTIMIZATION_2026-10.md)                             | 性能与 E2E 优化记录                                      |
+| [`UI_REWORK_PROGRESS_2026-10.md`](audits/UI_REWORK_PROGRESS_2026-10.md)                                   | 界面改造进度台账                                         |
+| [`COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md`](audits/COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md) | 全项目 Bug、安全、数据完整性、性能与功能增强实施计划     |
 
 ### `archive/` — 历史留档（20 份，只读）
 
