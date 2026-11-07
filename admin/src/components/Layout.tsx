@@ -206,6 +206,7 @@ export function Layout() {
     if (path.startsWith("/templates")) return "报告模板";
     if (path.startsWith("/web-submissions")) return "网页投稿审核";
     if (path.startsWith("/plaza")) return "树洞";
+    if (path.startsWith("/notes")) return "纸条复核";
     if (path.startsWith("/profile-gallery")) return "个人画廊";
     if (path.startsWith("/showcase")) return "展示区";
     if (path.startsWith("/task-packs")) return "小游戏管理";
