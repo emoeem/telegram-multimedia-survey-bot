@@ -49,7 +49,22 @@
 - `task_runs.state_json` 存信封 `{kind:"plugin", plugin, state, grade?}`；
   step/total 映射到 current_floor/max_floor，score 直接写 score——排行榜、
   历史列表、进度条都不必知道玩法。
-- `src/trial/engine-registry.ts`：玩法清单 = 内置 `tower` + 注册表里的插件。
+- `src/trial/engine-registry.ts`：玩法清单 = 内置 `tower` + 注册表里的插件；
+  **展示名也只此一份**——`gameTypeLabel` 是玩家端（`trial-api.ts:94`）与管理端
+  （TaskPacksPage 兜底展示）的唯一源，2026-11-07 第二批消灭了第三副本；配套
+  engine 依赖边白名单守卫（`tests/unit/game-plugin/registry.test.ts`）：每个插件
+  目录显式申报 import 边，新插件未申报 CI 即红（守卫只扫顶层静态 import，
+  传递边/动态 import 不覆盖——新插件加依赖时先申报）。
+- **排行榜（2026-11-07 第二批）**：`GET /api/trial/leaderboard`
+  （`src/http/trial-api.ts:116`），KV 戳式缓存，键
+  `trial-leaderboard:<投影版本>:<scope>:<mode>:<stamp>`（`trial-api.ts:50,64`）——
+  改榜单出参形状必须同步升 `TRIAL_LEADERBOARD_CACHE_VERSION`；命中请求零榜单
+  payload 查询，戳探针（COUNT + MAX(updated_at)）每请求仍发生。按
+  gameType×mode 分榜，另有聚合总榜；聚合明细列取 SQLite 唯一 `max()` 裸列
+  行为（同分并列取哪局由 SQLite 决定，测试已钉住），pack 集合不过滤 enabled
+  （停用包历史成绩留在总榜）。迁移
+  [`0095_task_packs_game_type_index.sql`](../../db/migrations/0095_task_packs_game_type_index.sql)
+  仅加 `idx_task_packs_game_type` 索引。
 - `src/http/admin/write.ts`：任务包写入走 `registry.validateConfig` 归一化，error 即 400。
 - `src/http/survey/answers.ts`：插件局的评级取信封里的 `grade`（爬塔实时算）。
 

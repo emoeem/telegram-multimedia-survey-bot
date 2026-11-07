@@ -109,6 +109,30 @@ withdrawn / removed`）。
   后端强制）；撤回即停展示；已被抽走的内容按授权条款保留必要审计；
   报告类内容只公开展示版本，绝不含其他答题者数据。
 
+### 投稿墙（showcase 公开面，2026-11-07 第二批新增）
+
+- **它是什么**：`GET /api/submit/gallery` 公开只读无鉴权
+  （`src/http/submit-gallery.ts:147`），把 `published` 投稿按字段白名单投影出去；
+  附件字节走 `GET /api/submit/gallery/media/:assetId`。用户端在投稿中心的
+  「画廊」页签（`admin/src/survey/SubmissionHub.tsx:192-194`，开关关闭时页签
+  不存在、URL 直达也回落投稿页）。
+- **隐私双闸（两把锁都过才出网，默认不出网）**：
+  1. `system_settings.web_submit_form.showcaseEnabled`，默认 **false**
+     （`src/services/submit/form-config.ts:149`）；
+  2. 投影字段白名单 `showcaseFields`——媒体步骤没被勾选，附件 id 与字节都不出网
+     （媒体端点同样要求两闸全过，否则一律 404 且不泄露资产存在性，
+     `submit-gallery.ts:202`）。
+- **运营开关**：经 system_settings 直接配置（暂无管理端设置 UI）；
+  `GET /api/submit/form` 把开关下发给前端，切换即时生效（设置戳进缓存键）。
+  **默认保持关闭**——投稿表单告知文案对公开展示的覆盖经运营确认前不得放开。
+- **署名投影**：匿名 → 不出昵称；「显示我的昵称」→ 昵称；自定义署名 → 署名文本
+  （与 TG 卡片同一套 composeWebSubmissionText 规则），匿名投稿者填过的昵称
+  不会因上墙泄露。
+- **缓存与时效**：墙列表走 KV 戳式缓存，键 = 设置戳 : count : maxPublishedAt :
+  maxUpdatedAt + 全表 MAX(updated_at)（防同秒「下架→发布」翻回旧 payload）；
+  管理端下架（recall）后即时下墙；`recalled` 无一键重新公开路径（有意防已处置
+  内容复活）。
+
 ## 8. 动画与交互（需求 10.x）
 
 - 全部纯 CSS（`admin/src/index.css` 的 `coin-*` 命名空间），无新依赖。
