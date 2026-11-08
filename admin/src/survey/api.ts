@@ -1,5 +1,5 @@
 import { getTelegramInitData } from "../telegram";
-import { safeGet, safeSet } from "./storage";
+import { safeGet, safeSessionGet, safeSessionSet, safeSet } from "./storage";
 import { surveyDeviceHeaders } from "./deviceInfo";
 import { sessionParticipantToken } from "./participant-token";
 import type { SurveySfxCue, SurveyTheme } from "../../../src/survey/theme";
@@ -849,14 +849,17 @@ export const coinApi = {
   unlockables: () => coinRequest<{ unlocks: CoinUnlockDto[] }>("/api/coins/unlocks"),
 };
 
-/** 供解锁门使用的幂等键：每 (用户, 问卷) 一次随机生成、保存在 sessionStorage。 */
+/** 供解锁门使用的幂等键：每 (用户, 问卷) 一次随机生成、保存在 sessionStorage。
+ * 读写走 ./storage 的 safeSession*（try/catch 吞掉 PrivacyError，语义同原来的
+ * 裸 window.sessionStorage + 外层 try；且 root 单测工程经本文件把 ./storage
+ * 拉进 WebWorker lib 编译时，裸 window 引用无法过 typecheck）。 */
 export function coinUnlockKey(surveyId: number): string {
   const storageKey = `coin-unlock-key:${surveyId}`;
   try {
-    const existing = window.sessionStorage.getItem(storageKey);
+    const existing = safeSessionGet(storageKey);
     if (existing) return existing;
     const generated = `web-${crypto.randomUUID()}`;
-    window.sessionStorage.setItem(storageKey, generated);
+    safeSessionSet(storageKey, generated);
     return generated;
   } catch {
     return `web-${crypto.randomUUID()}`;

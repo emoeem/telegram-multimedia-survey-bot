@@ -109,6 +109,28 @@ function safeQuery(): string {
 let browserInfoCache: string | null = null;
 
 /**
+ * Minimal structural browser globals so this file typechecks under both
+ * tsconfigs that compile it: the admin app (DOM lib) and the root project's
+ * unit tests, which pull it in via survey/api.ts with only WebWorker lib
+ * where `window`/`document` are undeclared (same treatment as ./storage).
+ * Runtime behavior is unchanged in a browser — the same globals, reached
+ * through globalThis; the optional fields only degrade (""/0/null) in
+ * non-DOM contexts where the old bare access would have thrown.
+ */
+const browserScope = globalThis as unknown as {
+  window?: {
+    screen?: { width?: number; height?: number; colorDepth?: number; availWidth?: number; availHeight?: number };
+    innerWidth?: number;
+    innerHeight?: number;
+    devicePixelRatio?: number;
+  };
+  document?: {
+    referrer?: string;
+    createElement(tag: string): { getContext(kind: string): unknown } | null;
+  };
+};
+
+/**
  * Compact, human-readable browser/device description for the admin.
  *
  * Computed once per session: the WebGL probe creates a canvas + GL context and
@@ -118,7 +140,7 @@ let browserInfoCache: string | null = null;
  */
 export function getBrowserInfo(): string {
   if (browserInfoCache !== null) return browserInfoCache;
-  const nav = navigator as Navigator & {
+  const nav = navigator as unknown as Navigator & {
     userAgentData?: { platform?: string; mobile?: boolean };
     hardwareConcurrency?: number;
     maxTouchPoints?: number;
@@ -132,12 +154,14 @@ export function getBrowserInfo(): string {
     };
     doNotTrack?: string | null;
     cookieEnabled?: boolean;
+    plugins?: { length: number };
   };
+  const win = browserScope.window;
   const webgl = ((): { vendor: string; renderer: string; version: string; extensions: number } | null => {
     try {
-      const canvas = document.createElement("canvas");
-      const gl = (canvas.getContext("webgl") ||
-        canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+      const canvas = browserScope.document?.createElement("canvas");
+      const gl = (canvas?.getContext("webgl") ||
+        canvas?.getContext("experimental-webgl")) as WebGLRenderingContext | null;
       if (!gl) return null;
       const debug = gl.getExtension("WEBGL_debug_renderer_info");
       return {
@@ -155,16 +179,16 @@ export function getBrowserInfo(): string {
     ua: navigator.userAgent,
     platform: nav.userAgentData?.platform ?? navigator.platform ?? "",
     mobile: nav.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
-    screen: `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`,
-    screenAvailable: `${window.screen.availWidth}x${window.screen.availHeight}`,
-    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    screen: `${win?.screen?.width}x${win?.screen?.height}x${win?.screen?.colorDepth}`,
+    screenAvailable: `${win?.screen?.availWidth}x${win?.screen?.availHeight}`,
+    viewport: `${win?.innerWidth}x${win?.innerHeight}`,
     language: navigator.language,
     languages: navigator.languages ?? [],
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
     cores: nav.hardwareConcurrency ?? 0,
     memory: nav.deviceMemory ?? 0,
-    dpr: window.devicePixelRatio || 1,
-    touch: "ontouchstart" in window || (nav.maxTouchPoints ?? 0) > 0,
+    dpr: win?.devicePixelRatio || 1,
+    touch: "ontouchstart" in (win ?? {}) || (nav.maxTouchPoints ?? 0) > 0,
     touchPoints: nav.maxTouchPoints ?? 0,
     connection: nav.connection?.effectiveType ?? "",
     connectionType: nav.connection?.type ?? "",
@@ -173,11 +197,11 @@ export function getBrowserInfo(): string {
     saveData: nav.connection?.saveData ?? false,
     online: navigator.onLine,
     doNotTrack: nav.doNotTrack ?? "",
-    cookiesEnabled: navigator.cookieEnabled,
-    plugins: navigator.plugins?.length ?? 0,
+    cookiesEnabled: nav.cookieEnabled,
+    plugins: nav.plugins?.length ?? 0,
     webgl,
     navigationType: navigation?.type ?? "",
-    referrer: document.referrer.slice(0, 500) || "",
+    referrer: browserScope.document?.referrer?.slice(0, 500) || "",
     url: safeUrl(),
     query: safeQuery(),
   });
