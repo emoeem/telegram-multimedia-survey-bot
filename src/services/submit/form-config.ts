@@ -174,6 +174,55 @@ export async function loadWebSubmitFormSetting(db: D1Database): Promise<WebSubmi
   return config;
 }
 
+/**
+ * 投稿墙双闸的运营写入口：把 showcaseEnabled / showcaseFields 合并进
+ * system_settings 的 web_submit_form 原文并 UPSERT。showcaseFields 提前校验
+ * 必须是当前 steps 里真实存在的 step id（mergeWebSubmitForm 还会再求一次交集，
+ * 这里拦掉拼错，给调用方一个明确的 400 而不是静默丢弃）。updated_at 随行更新
+ * ——gallery 的 KV 戳式缓存把它算进缓存键，改完下一请求即生效。
+ */
+export async function saveWebSubmitShowcaseSetting(
+  db: D1Database,
+  actorUserId: number | null,
+  patch: { showcaseEnabled?: boolean; showcaseFields?: string[] },
+): Promise<WebSubmitFormConfig> {
+  const current = await loadWebSubmitFormSetting(db);
+  if (patch.showcaseFields) {
+    const known = new Set(current.steps.map((step) => step.id));
+    const unknown = patch.showcaseFields.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      throw new WebSubmitConfigError(`未知的 step id: ${unknown.join(", ")}`);
+    }
+  }
+  let raw: Record<string, unknown> = {};
+  const existing = await getSystemSetting(db, WEB_SUBMIT_FORM_SETTING_KEY);
+  if (existing && existing.trim()) {
+    try {
+      const parsed = JSON.parse(existing) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        raw = parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* 原文损坏时按空对象起底，mergeWebSubmitForm 的回落语义保持一致 */
+    }
+  }
+  if (patch.showcaseEnabled !== undefined) raw.showcaseEnabled = patch.showcaseEnabled;
+  if (patch.showcaseFields !== undefined) raw.showcaseFields = patch.showcaseFields;
+  const timestamp = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO system_settings (key, value, updated_by, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_by = excluded.updated_by,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(WEB_SUBMIT_FORM_SETTING_KEY, JSON.stringify(raw), actorUserId, timestamp)
+    .run();
+  return loadWebSubmitFormSetting(db);
+}
+
 const STEP_TYPES = new Set<WebSubmitStepType>(["text", "choice", "media"]);
 
 /** 校验模板结构;返回错误文案列表,空数组 = 合法。 */

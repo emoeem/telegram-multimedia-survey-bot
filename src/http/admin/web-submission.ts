@@ -27,9 +27,11 @@ import { approveWebSubmission, rejectWebSubmission } from "../../services/submit
 import { createMediaStore } from "../../services/media/temporary-media-store";
 import {
   DEFAULT_WEB_SUBMIT_FORM,
+  WebSubmitConfigError,
   attachmentsOf,
   composeWebSubmissionText,
   loadWebSubmitFormSetting,
+  saveWebSubmitShowcaseSetting,
   type WebSubmitStep,
 } from "../../services/submit/form-config";
 import { writeAudit } from "./helpers";
@@ -119,7 +121,17 @@ export async function handleWebSubmissionAdmin(
   }
 
   const suffix = url.pathname.slice(WEB_SUBMISSION_PREFIX.length);
-  const allowed = new Set(["/list", "/detail", "/count", "/approve", "/reject", "/reply", "/unpublish", "/media"]);
+  const allowed = new Set([
+    "/list",
+    "/detail",
+    "/count",
+    "/approve",
+    "/reject",
+    "/reply",
+    "/unpublish",
+    "/media",
+    "/form-config",
+  ]);
   if (!allowed.has(suffix)) return ctx.fail(404, "unknown_review_action", "未知的审核操作。");
 
   const store = new WebSubmitStore(env.DB);
@@ -130,6 +142,58 @@ export async function handleWebSubmissionAdmin(
       const pending = await store.countForReview("pending");
       const total = await store.countForReview();
       return ctx.json({ ok: true, pending, total });
+    }
+
+    /* 投稿墙双闸的读与写：showcaseEnabled / showcaseFields 落在
+     * system_settings.web_submit_form，此前没有任何运营入口（只能改库）。
+     * 写入走 saveWebSubmitShowcaseSetting（UPSERT + 审计），updated_at 翻转
+     * gallery 的 KV 戳，下一请求即生效。 */
+    if (suffix === "/form-config" && request.method === "GET") {
+      return ctx.json({
+        ok: true,
+        showcaseEnabled: config.showcaseEnabled,
+        showcaseFields: config.showcaseFields,
+        steps: config.steps.map((step) => ({ id: step.id, label: step.label })),
+      });
+    }
+
+    if (suffix === "/form-config" && request.method === "POST") {
+      const body = (await request.json().catch(() => null)) as {
+        showcaseEnabled?: unknown;
+        showcaseFields?: unknown;
+      } | null;
+      if (!body) return ctx.fail(400, "invalid_body", "请求体必须是 JSON 对象。");
+      const patch: { showcaseEnabled?: boolean; showcaseFields?: string[] } = {};
+      if (body.showcaseEnabled !== undefined) {
+        if (typeof body.showcaseEnabled !== "boolean") {
+          return ctx.fail(400, "validation_failed", "showcaseEnabled 必须是布尔值。");
+        }
+        patch.showcaseEnabled = body.showcaseEnabled;
+      }
+      if (body.showcaseFields !== undefined) {
+        if (!Array.isArray(body.showcaseFields) || body.showcaseFields.some((id) => typeof id !== "string")) {
+          return ctx.fail(400, "validation_failed", "showcaseFields 必须是字符串数组。");
+        }
+        patch.showcaseFields = [...new Set(body.showcaseFields as string[])];
+      }
+      if (patch.showcaseEnabled === undefined && patch.showcaseFields === undefined) {
+        return ctx.fail(400, "validation_failed", "没有可更新的投稿墙配置。");
+      }
+      try {
+        const next = await saveWebSubmitShowcaseSetting(env.DB, ctx.actorUserId, patch);
+        await writeAudit(env.DB, {
+          actorUserId: ctx.actorUserId,
+          action: "web_submit_form.update",
+          entityType: "settings",
+          after: { showcaseEnabled: next.showcaseEnabled, showcaseFields: next.showcaseFields },
+        });
+        return ctx.json({ ok: true, showcaseEnabled: next.showcaseEnabled, showcaseFields: next.showcaseFields });
+      } catch (error) {
+        if (error instanceof WebSubmitConfigError) {
+          return ctx.fail(400, "validation_failed", error.message);
+        }
+        throw error;
+      }
     }
 
     if (suffix === "/list" && request.method === "GET") {
