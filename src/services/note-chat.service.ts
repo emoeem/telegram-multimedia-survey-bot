@@ -1,5 +1,7 @@
+import { sendMessage as sendTelegramMessage } from "../bot/telegram";
 import { loadCoinConfig, coinDayKey } from "./coin/config.service";
 import { CoinLedgerError, getCoinAccount, runSpendBatch } from "./coin/ledger.service";
+import { telegramUserIdForHash } from "./identity-link.service";
 import { NOTE_FILTER_REJECTED, NOTE_FILTER_REJECTED_MESSAGE, findBlockedWord } from "./note-content-filter.service";
 
 /**
@@ -32,6 +34,60 @@ const NOTE_DRAWN_TITLE = "你的纸条被抽中了";
 const NOTE_DRAWN_BODY = "有人抽中了你的纸条，去对话页回信吧";
 const NOTE_REPLY_TITLE = "收到新的回信";
 const NOTE_REPLY_BODY_MAX = 120;
+
+/* TG DM（T2 · G4 可发现性）：铃铛之外对「绑定 TG 的接收方」私聊补一条，
+ * 文案复用 plaza-notify.service.ts 的版式（首行动机 + 引用摘要 + 深链），
+ * 摘要同款 120 字截断。深链 /notes?thread=X&tab=chat 与 CoinCenter 抽中后的
+ * 跳转链接同构（admin/src/survey/CoinCenter.tsx）。 */
+export const NOTE_DM_SNIPPET_MAX = 120;
+
+/** DM 上下文（HTTP 层透传）：BOT_TOKEN 是 Env secret（src/index.ts），
+ * 缺省（本地 dev 未配）时整个 DM 通道关闭；origin 经 resolvePublicOrigin
+ * 解析（plaza-api.ts 先例），threadId 由服务内部补上。 */
+export interface NoteDmOptions {
+  botToken: string;
+  origin: string;
+}
+
+/** DM 深链（纯函数，单测锚点）：thread 存在即落 chat 页签（note-tab.ts）。 */
+export function noteThreadDeepLink(origin: string, threadId: number): string {
+  return `${origin.replace(/\/+$/, "")}/notes?thread=${threadId}&tab=chat`;
+}
+
+/** 被抽中 DM 文案（纯函数，单测锚点）：含 /notes?thread=X&tab=chat 深链。 */
+export function noteDrawnDmText(origin: string, threadId: number): string {
+  return ["💌 你的纸条被抽中了", "", NOTE_DRAWN_BODY, "", noteThreadDeepLink(origin, threadId)].join("\n");
+}
+
+/** 回信 DM 文案（纯函数，单测锚点）：摘要超长截断为 120 字 + 「…」。 */
+export function noteReplyDmText(body: string, origin: string, threadId: number): string {
+  const snippet = body.length > NOTE_DM_SNIPPET_MAX ? `${body.slice(0, NOTE_DM_SNIPPET_MAX)}…` : body;
+  return ["💌 收到新的回信", "", `「${snippet}」`, "", noteThreadDeepLink(origin, threadId)].join("\n");
+}
+
+interface NoteDmContext extends NoteDmOptions {
+  participantHash: string;
+  threadId: number;
+  kind: "note_drawn" | "note_reply";
+  body?: string;
+}
+
+/** DM 兜底：接收方解析不到 TG 身份（未认领的 web 匿名 / email / 未知前缀）
+ * 静默跳过；发送失败 console.warn 不抛（plaza-notify.service.ts 先例）——
+ * DM 是增强，任何失败都不能影响已生效的抽取/消息。 */
+async function dispatchNoteDm(db: D1Database, dm: NoteDmContext): Promise<void> {
+  try {
+    const chatId = await telegramUserIdForHash(db, dm.participantHash);
+    if (chatId === null) return;
+    const text =
+      dm.kind === "note_drawn"
+        ? noteDrawnDmText(dm.origin, dm.threadId)
+        : noteReplyDmText(dm.body ?? "", dm.origin, dm.threadId);
+    await sendTelegramMessage(dm.botToken, chatId, text);
+  } catch (error) {
+    console.warn("Note DM failed", { kind: dm.kind, threadId: dm.threadId, error });
+  }
+}
 
 export type NoteStatus = "active" | "hidden" | "withdrawn" | "expired" | "removed";
 
@@ -215,6 +271,7 @@ export async function drawNote(
   drawerHash: string,
   userId: number | null,
   idempotencyKey: string,
+  dm?: NoteDmOptions,
 ): Promise<DrawResult> {
   // 需先放入 1 张纸条才能抽取（玩法规则，也保证回信有人收）。
   const mine = await getMyActiveNote(db, drawerHash);
@@ -288,8 +345,9 @@ export async function drawNote(
     .prepare(`SELECT id FROM note_threads WHERE note_id = ? AND drawer_hash = ?`)
     .bind(candidate.id, drawerHash)
     .first<{ id: number }>();
-  // 抽中即通知纸条作者（T3）：非池空才走到这里，见 notifyNoteDrawn。
-  await notifyNoteDrawn(db, candidate.ownerHash, now);
+  // 抽中即通知纸条作者（T3）：非池空才走到这里，见 notifyNoteDrawn；
+  // 带 DM 上下文时再对绑定 TG 的作者私聊一条（T2），收件人是作者本人。
+  await notifyNoteDrawn(db, candidate.ownerHash, now, dm ? { ...dm, threadId: thread?.id ?? 0 } : undefined);
   const balance = (await getCoinAccount(db, drawerHash))?.balance ?? 0;
   return {
     ok: true,
@@ -538,8 +596,15 @@ export async function unblockThread(db: D1Database, threadId: number, participan
 
 /** 抽中通知（note_drawn）：离散事件，有意不折叠——「被抽中」每条都可带抽中
  * 语义，写入量天然有界（抽取受每日免费额 + 金币限流，每抽至多 1 行）。
- * best-effort：通知是增强，失败不回滚已生效的抽取（金币路径钱已扣）。 */
-async function notifyNoteDrawn(db: D1Database, ownerHash: string, at: string): Promise<void> {
+ * best-effort：通知是增强，失败不回滚已生效的抽取（金币路径钱已扣）。
+ * dm（T2 · 可选）：收件人是纸条作者 ownerHash——不是抽取者；解析不到
+ * TG 身份（匿名/email）时静默跳过。 */
+async function notifyNoteDrawn(
+  db: D1Database,
+  ownerHash: string,
+  at: string,
+  dm?: NoteDmOptions & { threadId: number },
+): Promise<void> {
   try {
     await db
       .prepare(
@@ -551,13 +616,30 @@ async function notifyNoteDrawn(db: D1Database, ownerHash: string, at: string): P
   } catch {
     /* 铃铛少一条不影响主流程。 */
   }
+  if (dm?.botToken) {
+    await dispatchNoteDm(db, {
+      participantHash: ownerHash,
+      botToken: dm.botToken,
+      origin: dm.origin,
+      threadId: dm.threadId,
+      kind: "note_drawn",
+    });
+  }
 }
 
 /** 回信通知（note_reply）：按参与者折叠——先刷新未读那条的 body/created_at
  * （WHERE 前缀命中 idx_notifications_participant），changes=0 才 INSERT。
  * 同一参与者至多 1 条未读回信通知，写放大被封顶；与 notifySeriesPublish 的
- * 「每发布一行」不同量级，故折叠而非照抄。best-effort：失败不影响已落库的消息。 */
-async function notifyNoteReply(db: D1Database, peerHash: string, body: string, at: string): Promise<void> {
+ * 「每发布一行」不同量级，故折叠而非照抄。best-effort：失败不影响已落库的消息。
+ * dm（T2 · 可选）：收件人是会话对方 peerHash——不是发消息者；解析不到 TG
+ * 身份（匿名/email）时静默跳过。 */
+async function notifyNoteReply(
+  db: D1Database,
+  peerHash: string,
+  body: string,
+  at: string,
+  dm?: NoteDmOptions & { threadId: number },
+): Promise<void> {
   try {
     const folded = await db
       .prepare(
@@ -578,6 +660,16 @@ async function notifyNoteReply(db: D1Database, peerHash: string, body: string, a
   } catch {
     /* 铃铛少一条不影响主流程。 */
   }
+  if (dm?.botToken) {
+    await dispatchNoteDm(db, {
+      participantHash: peerHash,
+      botToken: dm.botToken,
+      origin: dm.origin,
+      threadId: dm.threadId,
+      kind: "note_reply",
+      body,
+    });
+  }
 }
 
 export async function sendMessage(
@@ -586,6 +678,7 @@ export async function sendMessage(
   senderHash: string,
   body: string,
   imageAssetId: number | null,
+  dm?: NoteDmOptions,
 ): Promise<ChatMessage> {
   const participant = await threadParticipant(db, threadId, senderHash);
   if (!participant) throw noteError("not_participant", "会话不存在");
@@ -614,7 +707,14 @@ export async function sendMessage(
     .bind(created, threadId)
     .run();
   // 回信通知（T3）：发给会话对方并折叠，见 notifyNoteReply；纯图片消息用「[图片]」占位。
-  await notifyNoteReply(db, peerHash, text ? text.slice(0, NOTE_REPLY_BODY_MAX) : "[图片]", created);
+  // 带 DM 上下文时再对绑定 TG 的对方私聊一条（T2），收件人是对方本人。
+  await notifyNoteReply(
+    db,
+    peerHash,
+    text ? text.slice(0, NOTE_REPLY_BODY_MAX) : "[图片]",
+    created,
+    dm ? { ...dm, threadId } : undefined,
+  );
   return {
     id: Number(insert.meta?.last_row_id ?? 0),
     mine: true,

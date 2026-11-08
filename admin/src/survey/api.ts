@@ -352,9 +352,29 @@ export function fetchNotifications(): Promise<{ items: NotificationDto[]; unread
   return request<{ items: NotificationDto[]; unread: number }>("/api/me/notifications", undefined, { retries: 1 });
 }
 
-export function markNotificationsSeen(): Promise<{ ok: boolean; marked: number }> {
-  return request<{ ok: boolean; marked: number }>("/api/me/notifications/seen", { method: "POST" });
+/**
+ * 未读数角标（T2 · G4）：单条 COUNT，服务端另有 60s KV 边缘缓存兜底。
+ * 消费方是 BottomNav —— 零轮询约束（禁 setInterval/setTimeout），只允许
+ * 挂载、pathname 导航变化、visibilitychange 回前台、POST seen 之后拉取。
+ */
+export function fetchUnreadCount(): Promise<{ unread: number }> {
+  return request<{ unread: number }>("/api/me/notifications/unread-count", undefined, { retries: 1 });
 }
+
+export function markNotificationsSeen(): Promise<{ ok: boolean; marked: number }> {
+  return request<{ ok: boolean; marked: number }>("/api/me/notifications/seen", { method: "POST" }).then((result) => {
+    // seen 成功即广播：BottomNav 角标监听此事件立即重拉（事件驱动，非轮询）；
+    // 服务端在 seen 处理中失效 unread-count 的 60s 缓存，重拉不会拿到旧值。
+    // 本文件同时被 root 单测工程（WebWorker lib，无 window 声明）编译，
+    // 经 globalThis 结构化取 EventTarget（storage.ts 同款做法）。
+    const events = globalThis as unknown as { dispatchEvent?: (event: Event) => void };
+    events.dispatchEvent?.(new CustomEvent(NOTIFICATIONS_SEEN_EVENT));
+    return result;
+  });
+}
+
+/** BottomNav 角标监听的 seen 广播事件名（api.ts 派发、BottomNav.tsx 消费）。 */
+export const NOTIFICATIONS_SEEN_EVENT = "me:notifications-seen";
 
 // ---- 个人画像（0085）----
 

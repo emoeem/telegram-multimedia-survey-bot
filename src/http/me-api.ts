@@ -11,7 +11,12 @@ import { getSurveyById } from "../db/repositories/survey.repository";
 import { getResultProfileByResponseId } from "../db/repositories/result-profile.repository";
 import { revokeReportShare, upsertReportShare } from "../services/report-share.service";
 import { hashesFor } from "../services/identity-link.service";
-import { listNotifications, markNotificationsSeen } from "../services/series-follow.service";
+import {
+  countUnread,
+  listNotifications,
+  markNotificationsSeen,
+  notificationUnreadCacheKey,
+} from "../services/series-follow.service";
 import { getActiveProfileShareFor, revokeProfileShare, upsertProfileShare } from "../services/profile-share.service";
 import { ANONYMOUS_KEY_PATTERN } from "./survey/participant";
 import { participantHashForKey } from "../db/repositories/participant-link.repository";
@@ -254,6 +259,34 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
     return json({ ageVerifiedAt: attestation?.ageVerifiedAt ?? null });
   }
 
+  // 站内通知未读数（T2 · G4 角标）：单条 COUNT + 60s KV 边缘缓存（键含 hash，
+  // 不同参与者互不可见）。客户端严禁定时轮询——BottomNav 只允许在挂载、
+  // pathname 导航变化、visibilitychange 回前台、POST seen 之后拉取（约束写在
+  // admin/src/survey/BottomNav.tsx），这里的 60s 缓存就是给「回前台拉一次」
+  // 的请求频率兜底；seen 端点会用同一把键失效缓存，角标不会被旧值顶住。
+  if (request.method === "GET" && url.pathname === "/api/me/notifications/unread-count") {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    const cacheKey = notificationUnreadCacheKey(participant.participantHash);
+    if (env.CACHE) {
+      try {
+        const cached = await env.CACHE.get(cacheKey);
+        if (cached !== null) return json({ unread: Number(cached) });
+      } catch {
+        // 缓存读失败按未命中处理。
+      }
+    }
+    const unread = await countUnread(env.DB, participant.participantHash);
+    if (env.CACHE) {
+      try {
+        await env.CACHE.put(cacheKey, String(unread), { expirationTtl: 60 });
+      } catch {
+        // 缓存写失败只影响接下来 60s 的重复拉取。
+      }
+    }
+    return json({ unread });
+  }
+
   // 站内通知（0084）：连载更新、召回入口。未读数常驻「我的」页红点。
   if (request.method === "GET" && url.pathname === "/api/me/notifications") {
     const participant = await resolveParticipant(request, env);
@@ -265,6 +298,11 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
     const marked = await markNotificationsSeen(env.DB, participant.participantHash);
+    // seen 成功后角标会立即重拉（api.ts 派发 me:notifications-seen 事件），
+    // 先失效 60s 边缘缓存，否则重拉拿到的还是旧值、角标最长 60s 不清零。
+    if (env.CACHE) {
+      await env.CACHE.delete(notificationUnreadCacheKey(participant.participantHash)).catch(() => undefined);
+    }
     return json({ ok: true, marked });
   }
 

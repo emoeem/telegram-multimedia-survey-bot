@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck, ClipboardList, Images, Sparkles, Sprout, UserRound } from "lucide-react";
+import { fetchUnreadCount, NOTIFICATIONS_SEEN_EVENT } from "./api";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof Sprout;
   pathStartsWith: string[];
+  /** 未读角标（T2 · G4）：目前只有「我的」入口挂站内通知未读数。 */
+  badge?: "notifications";
 };
 
 const ITEMS: NavItem[] = [
@@ -17,7 +20,7 @@ const ITEMS: NavItem[] = [
    * 用户只能靠记住 URL 才进得去，观感上就是「没并进来」。放进全局导航后，
    * 它和问卷、挑战、广场、展示、我的一样是一等入口。 */
   { href: "/cert/", label: "认证卡", icon: BadgeCheck, pathStartsWith: ["/cert"] },
-  { href: "/me", label: "我的", icon: UserRound, pathStartsWith: ["/me"] },
+  { href: "/me", label: "我的", icon: UserRound, pathStartsWith: ["/me"], badge: "notifications" },
 ];
 
 function isActive(item: NavItem, path: string): boolean {
@@ -41,6 +44,44 @@ export function BottomNav() {
     () => typeof window === "undefined" || !window.matchMedia("(min-width: 1000px)").matches,
   );
   const [scrolledAway, setScrolledAway] = useState(false);
+  // 未读角标（T2 · G4）：站内通知未读数常驻「我的」入口。成本红线——严禁
+  // 定时轮询（本文件不出现任何定时器调用），只在四个离散事件上拉取：
+  // ① 挂载（应用按 pathname 整页路由、导航即整页重载，重挂载天然覆盖 pathname
+  //    导航变化）；
+  // ② popstate 且 pathname 变化（回退/前进等同文档历史导航）；
+  // ③ visibilitychange 回前台（离开期间可能积了新通知）；
+  // ④ POST /api/me/notifications/seen 成功后 api.ts 派发的
+  //    me:notifications-seen 事件（打开通知页清零后角标立即跟随）。
+  // 请求频控由服务端 60s KV 边缘缓存兜底（GET /api/me/notifications/unread-count）。
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let lastPath = window.location.pathname;
+    const refresh = () => {
+      // 瞬时失败保留旧值（不清零误报「没有未读」），下一次离散事件再校正。
+      fetchUnreadCount()
+        .then((data) => setUnread(data.unread))
+        .catch(() => undefined);
+    };
+    refresh();
+    const onPop = () => {
+      if (window.location.pathname === lastPath) return;
+      lastPath = window.location.pathname;
+      refresh();
+    };
+    const onVisibility = () => {
+      if (document.hidden) return;
+      lastPath = window.location.pathname;
+      refresh();
+    };
+    window.addEventListener("popstate", onPop);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(NOTIFICATIONS_SEEN_EVENT, refresh);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(NOTIFICATIONS_SEEN_EVENT, refresh);
+    };
+  }, []);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1000px)");
     const sync = () => setMobile(!mq.matches);
@@ -92,11 +133,20 @@ export function BottomNav() {
               aria-current={active ? "page" : undefined}
             >
               <span
-                className={`grid h-9 w-9 place-items-center rounded-xl transition-[background-color,transform] duration-[var(--fx-dur-fast)] ease-[var(--fx-ease)] lg:h-7 lg:w-7 ${
+                className={`relative grid h-9 w-9 place-items-center rounded-xl transition-[background-color,transform] duration-[var(--fx-dur-fast)] ease-[var(--fx-ease)] lg:h-7 lg:w-7 ${
                   active ? "bg-[var(--survey-primary-soft)] scale-110 lg:scale-100" : ""
                 }`}
               >
                 <Icon className="h-5 w-5 lg:h-4 lg:w-4" strokeWidth={active ? 2.5 : 2} />
+                {/* 未读角标：>99 收敛为 99+，避免撑破 44px 触达框。 */}
+                {item.badge === "notifications" && unread > 0 ? (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--app-danger)] px-1 text-[9px] font-bold leading-none text-white"
+                    aria-label={`${unread} 条未读通知`}
+                  >
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                ) : null}
               </span>
               <span className="transition-[transform] duration-[var(--fx-dur-fast)] ease-[var(--fx-ease)]">
                 {item.label}

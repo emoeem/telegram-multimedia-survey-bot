@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createSqliteD1, sqliteD1Available } from "../helpers/sqlite-d1";
 import {
@@ -10,6 +10,8 @@ import {
   isBlockedPair,
   listMessages,
   listThreads,
+  noteDrawnDmText,
+  noteReplyDmText,
   putNote,
   reportMessage,
   sendMessage,
@@ -20,6 +22,11 @@ import {
 } from "../../src/services/note-chat.service";
 import { markNotificationsSeen } from "../../src/services/series-follow.service";
 import { findBlockedWord, isNoteContentAllowed } from "../../src/services/note-content-filter.service";
+
+/* T2 · 纸条 DM：bot/telegram 打桩——服务内部经 sendMessage 私聊，
+ * mock 只在 dm 上下文传入时被触达（存量用例不传 dm，行为不变）。 */
+const telegramMocks = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+vi.mock("../../src/bot/telegram", () => ({ sendMessage: telegramMocks.sendMessage }));
 
 describe("纸条聊天 · 纯规则", () => {
   describe("decideDrawKind（免费额 → 金币）", () => {
@@ -86,6 +93,22 @@ describe("纸条聊天 · 纯规则", () => {
       expect(isNoteContentAllowed("")).toBe(true);
     });
   });
+
+  describe("DM 文案（T2 · 纯函数）", () => {
+    it("被抽中文案含 /notes?thread=X&tab=chat 深链，origin 尾斜杠被剥掉", () => {
+      const text = noteDrawnDmText("https://o.test/", 42);
+      expect(text).toContain("https://o.test/notes?thread=42&tab=chat");
+      expect(text).toContain("你的纸条被抽中了");
+    });
+    it("回信摘要 ≤120 字原样引用；超长截断为 120 字 + …，深链同构", () => {
+      const short = noteReplyDmText("你好呀", "https://o.test", 7);
+      expect(short).toContain("「你好呀」");
+      expect(short).toContain("https://o.test/notes?thread=7&tab=chat");
+      const long = noteReplyDmText("字".repeat(121), "https://o.test", 7);
+      expect(long).toContain(`「${"字".repeat(120)}…」`);
+      expect(long).not.toContain("字".repeat(121));
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -111,10 +134,31 @@ CREATE TABLE IF NOT EXISTS coin_accounts (
 );
 `;
 
+// T2 · DM 反查的收件人侧：user_ 直查 users、web_ 经 participant_links（0001/0044
+// 最小 DDL）；不传 dm 的存量用例碰不到这两张表。
+const IDENTITY_DDL = `
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_user_id INTEGER NOT NULL UNIQUE,
+  username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  language_code TEXT,
+  system_role TEXT NOT NULL DEFAULT 'participant',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS participant_links (
+  participant_key TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  linked_at TEXT NOT NULL
+);
+`;
+
 describe.skipIf(!sqliteD1Available)("纸条聊天 · DB 行为（0094 安全层）", () => {
   function makeDb(): D1Database {
     // D1 默认开外键，迁移整体一次执行（与 wrangler d1 migrations apply 同语义）。
-    return createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}`);
+    return createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}\n${IDENTITY_DDL}`);
   }
 
   async function putNoteOk(db: D1Database, ownerHash: string, content: string): Promise<void> {
@@ -348,5 +392,120 @@ describe.skipIf(!sqliteD1Available)("纸条聊天 · DB 行为（0094 安全层�
     );
     expect(forB).toHaveLength(1);
     expect(forB[0]).toMatchObject({ body: "收到啦", readAt: null });
+  });
+
+  /* ---------------- T2 · TG DM（收件人=接收方反查） ---------------- */
+
+  function seedUser(db: D1Database, id: number, telegramUserId: number): Promise<void> {
+    return db
+      .prepare(
+        `INSERT INTO users (id, telegram_user_id, created_at, updated_at) VALUES (?, ?, '2026-11-08T00:00:00Z', '2026-11-08T00:00:00Z')`,
+      )
+      .bind(id, telegramUserId)
+      .run()
+      .then(() => undefined);
+  }
+
+  function seedParticipantLink(db: D1Database, key: string, userId: number): Promise<void> {
+    return db
+      .prepare(
+        `INSERT INTO participant_links (participant_key, user_id, linked_at) VALUES (?, ?, '2026-11-08T00:00:00Z')`,
+      )
+      .bind(key, userId)
+      .run()
+      .then(() => undefined);
+  }
+
+  it("被抽中 DM：user_ 作者直查 users，收件人是作者本人而非抽取者（T2）", async () => {
+    telegramMocks.sendMessage.mockClear();
+    telegramMocks.sendMessage.mockResolvedValue(new Response("{}"));
+    const db = makeDb();
+    await seedUser(db, 1, 700); // 作者 A = user_1 → TG 700
+    await putNoteOk(db, "user_1", "A 的纸条");
+    await putNoteOk(db, "web_drawer", "抽中者的纸条");
+    const draw = await drawNote(db, "web_drawer", null, "note:dm-drawn", {
+      botToken: "TOKEN",
+      origin: "https://o.test",
+    });
+    expect(draw).toMatchObject({ ok: true, empty: false });
+    const threadId = "threadId" in draw ? draw.threadId : 0;
+    expect(telegramMocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith(
+      "TOKEN",
+      700,
+      expect.stringContaining(`https://o.test/notes?thread=${threadId}&tab=chat`),
+    );
+  });
+
+  it("被抽中 DM：web_ 作者经 participant_links 反查；未认领/email 作者静默跳过（T2）", async () => {
+    telegramMocks.sendMessage.mockClear();
+    telegramMocks.sendMessage.mockResolvedValue(new Response("{}"));
+    const db = makeDb();
+    await seedUser(db, 3, 703);
+    await seedParticipantLink(db, "key1", 3); // 作者 web_key1 已认领 → TG 703
+    await putNoteOk(db, "web_key1", "已认领作者的纸条");
+    await putNoteOk(db, "user_1", "抽中者的纸条");
+    await drawNote(db, "user_1", null, "note:dm-web", { botToken: "TOKEN", origin: "https://o.test" });
+    expect(telegramMocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("TOKEN", 703, expect.stringContaining("/notes?thread="));
+
+    // 未认领的 web_ 作者：解析不到 TG，静默跳过（不抛错）。
+    // 同一张纸条可被不同抽取者再抽（thread 唯一键是 note_id+drawer_hash），
+    // 旧纸条要一并撤掉，池子里只剩 web_ghost 一张，抽取目标才确定。
+    telegramMocks.sendMessage.mockClear();
+    await withdrawNote(db, "user_1");
+    await withdrawNote(db, "web_key1");
+    await putNoteOk(db, "web_ghost", "未认领作者的纸条");
+    await putNoteOk(db, "user_9", "再抽一次的纸条");
+    const second = await drawNote(db, "user_9", null, "note:dm-ghost", {
+      botToken: "TOKEN",
+      origin: "https://o.test",
+    });
+    expect(second).toMatchObject({ ok: true, empty: false });
+    expect(telegramMocks.sendMessage).not.toHaveBeenCalled();
+
+    // email_ 作者：最小集不发 DM（deferred），同样静默。
+    // 同理清空其余纸条，池子里只剩 email_5 一张。
+    telegramMocks.sendMessage.mockClear();
+    await withdrawNote(db, "user_9");
+    await withdrawNote(db, "web_ghost");
+    await putNoteOk(db, "email_5", "email 作者的纸条");
+    await putNoteOk(db, "user_10", "第三次抽取者的纸条");
+    const third = await drawNote(db, "user_10", null, "note:dm-email", {
+      botToken: "TOKEN",
+      origin: "https://o.test",
+    });
+    expect(third).toMatchObject({ ok: true, empty: false });
+    expect(telegramMocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("回信 DM：收件人是会话对方；发送失败不抛、抽取/消息照常（T2）", async () => {
+    telegramMocks.sendMessage.mockClear();
+    telegramMocks.sendMessage.mockResolvedValue(new Response("{}"));
+    const db = makeDb();
+    await seedUser(db, 1, 700);
+    await seedUser(db, 2, 702);
+    await putNoteOk(db, "user_1", "A 的纸条");
+    await putNoteOk(db, "user_2", "B 的纸条");
+    const draw = await drawNote(db, "user_2", null, "note:dm-thread", { botToken: "TOKEN", origin: "https://o.test" });
+    const threadId = draw && "threadId" in draw ? draw.threadId : 0;
+    telegramMocks.sendMessage.mockClear();
+
+    // B 回信 → 对方（作者 A=user_1，TG 700）收到 DM，摘要是消息原文；
+    // 抽取时的被抽中 DM 已 mockClear，这里只应有回信这一条。
+    await sendMessage(db, threadId, "user_2", "一条会话消息", null, { botToken: "TOKEN", origin: "https://o.test" });
+    expect(telegramMocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(telegramMocks.sendMessage).toHaveBeenCalledWith("TOKEN", 700, expect.stringContaining("「一条会话消息」"));
+
+    // 发送失败：console.warn 不抛，消息照常返回（DM 是增强）。
+    telegramMocks.sendMessage.mockClear();
+    telegramMocks.sendMessage.mockRejectedValue(new Error("telegram down"));
+    const sent = await sendMessage(db, threadId, "user_2", "第二条消息", null, {
+      botToken: "TOKEN",
+      origin: "https://o.test",
+    });
+    expect(sent).toMatchObject({ mine: true, body: "第二条消息" });
+    const row = await db.prepare(`SELECT COUNT(*) AS n FROM note_messages`).first<{ n: number }>();
+    expect(Number(row?.n ?? 0)).toBe(2);
   });
 });

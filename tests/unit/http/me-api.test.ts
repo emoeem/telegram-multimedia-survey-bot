@@ -56,8 +56,23 @@ function makeDb(routes: Array<[RegExp, unknown]>): D1Database {
   } as unknown as D1Database;
 }
 
-function makeEnv(routes: Array<[RegExp, unknown]>): Env {
-  return { DB: makeDb(routes) } as unknown as Env;
+function makeEnv(routes: Array<[RegExp, unknown]>, cache?: ReturnType<typeof makeCache>): Env {
+  return { DB: makeDb(routes), CACHE: cache } as unknown as Env;
+}
+
+/** KV（CACHE binding）打桩：unread-count 的 60s 边缘缓存读写走这里。 */
+function makeCache() {
+  const store = new Map<string, string>();
+  return {
+    store,
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    put: vi.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    delete: vi.fn(async (key: string) => {
+      store.delete(key);
+    }),
+  };
 }
 
 const TELEGRAM_PARTICIPANT = {
@@ -128,6 +143,54 @@ describe("me overview API", () => {
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({ ok: true, marked: 1 });
     expect(mocks.markAchievementsSeen).toHaveBeenCalledWith(env.DB, "tg_700");
+  });
+
+  /* ---- T2 · 未读角标端点（单条 COUNT + 60s KV 边缘缓存） ---- */
+
+  const UNREAD_ROUTE: Array<[RegExp, unknown]> = [
+    [/FROM notifications WHERE participant_hash = \? AND read_at IS NULL/, { n: 5 }],
+  ];
+
+  it("unread-count 返回单条 COUNT 并预热 60s KV 缓存（键含 hash）", async () => {
+    const cache = makeCache();
+    const env = makeEnv(UNREAD_ROUTE, cache);
+    const response = await handleMeApiRequest(
+      new Request("https://example.test/api/me/notifications/unread-count"),
+      env,
+      new URL("https://example.test/api/me/notifications/unread-count"),
+    );
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ unread: 5 });
+    expect(cache.put).toHaveBeenCalledWith("notif:unread:v1:tg_700", "5", { expirationTtl: 60 });
+  });
+
+  it("unread-count 缓存命中短路：不再打 DB，put 也不再发生", async () => {
+    const cache = makeCache();
+    cache.store.set("notif:unread:v1:tg_700", "2"); // 旧于 DB 的 5，命中即回
+    const env = makeEnv(UNREAD_ROUTE, cache);
+    const response = await handleMeApiRequest(
+      new Request("https://example.test/api/me/notifications/unread-count"),
+      env,
+      new URL("https://example.test/api/me/notifications/unread-count"),
+    );
+    await expect(response?.json()).resolves.toEqual({ unread: 2 });
+    expect(cache.put).not.toHaveBeenCalled();
+    expect(cache.get).toHaveBeenCalledWith("notif:unread:v1:tg_700");
+  });
+
+  it("seen 清未读后失效 unread-count 缓存，角标重拉不会拿到旧值", async () => {
+    const cache = makeCache();
+    cache.store.set("notif:unread:v1:tg_700", "5");
+    const env = makeEnv([], cache);
+    const response = await handleMeApiRequest(
+      new Request("https://example.test/api/me/notifications/seen", { method: "POST" }),
+      env,
+      new URL("https://example.test/api/me/notifications/seen"),
+    );
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ ok: true, marked: 0 });
+    expect(cache.delete).toHaveBeenCalledWith("notif:unread:v1:tg_700");
+    expect(cache.store.has("notif:unread:v1:tg_700")).toBe(false);
   });
 
   it("creates the showcase draft from the published profile", async () => {
