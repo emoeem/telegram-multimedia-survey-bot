@@ -1,5 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CornerDownLeft, EyeOff, ImagePlus, Loader2, Send, Sparkles, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Ban,
+  CornerDownLeft,
+  EyeOff,
+  Flag,
+  ImagePlus,
+  Loader2,
+  MoreHorizontal,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, usePublicTheme } from "./ScreenShell";
 import { ErrorState, LoadingState } from "./PublicPrimitives";
@@ -7,13 +20,16 @@ import { SURVEY_CARD } from "./ui";
 import { useDialogs } from "../components/Dialogs";
 import {
   noteImageUrl,
+  blockThreadPartner,
   drawNote,
   fetchNoteMe,
   fetchNoteMessages,
   fetchNoteThreads,
   putNote,
   reportNote,
+  reportThreadMessage,
   sendNoteMessage,
+  unblockThreadPartner,
   uploadNoteImage,
   withdrawMyNote,
   NoteApiError,
@@ -22,6 +38,7 @@ import {
   type NoteMessageDto,
   type NoteThreadDto,
 } from "./note-api";
+import { REPORT_REASON_MAX, chatInputGate, validateReportReason } from "./note-chat-actions";
 import { NOTE_POLL_BASE_MS, nextPollInterval } from "./note-poll";
 
 /**
@@ -358,7 +375,59 @@ function MineTab({ me, onReload }: { me: NoteMeDto; onReload: () => void }) {
 
 /* ---------------- 对话 ---------------- */
 
-function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => void }) {
+/** 会话内动作菜单（0094 举报/拉黑的用户端入口）：点击遮罩关闭，
+ * 样式对齐 MineTab 的预览弹层（fixed 遮罩 + CARD 面板）。 */
+function ChatActionSheet({
+  title,
+  actions,
+  onClose,
+}: {
+  title: string;
+  actions: { label: string; icon?: ReactNode; danger?: boolean; disabled?: boolean; onClick: () => void }[];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-5 sm:items-center"
+      role="dialog"
+      aria-label={title}
+      onClick={onClose}
+    >
+      <div
+        className={`${CARD} w-full max-w-sm p-2 shadow-2xl`}
+        role="presentation"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="max-w-full truncate px-3 pb-1 pt-2 text-[11px] text-[var(--survey-muted)]">{title}</p>
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            disabled={action.disabled}
+            className={`flex w-full items-center gap-2 rounded-[var(--survey-button-radius)] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[var(--survey-bg)] disabled:opacity-50 ${
+              action.danger ? "text-[var(--app-danger)]" : "text-[var(--survey-body)]"
+            }`}
+            onClick={action.onClick}
+          >
+            {action.icon}
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChatView({
+  thread,
+  onBack,
+  onUnblocked,
+}: {
+  thread: NoteThreadDto;
+  onBack: () => void;
+  onUnblocked: () => void;
+}) {
+  const dialogs = useDialogs();
   const [messages, setMessages] = useState<NoteMessageDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [peerGone, setPeerGone] = useState(thread.noteStatus !== "active");
@@ -366,8 +435,41 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
   const [imageAssetId, setImageAssetId] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 拉黑态本地判定：服务端不回传 blocked（零迁移），而 listThreads 读侧双向
+  // 过滤已把被拉黑会话挡在列表外（note-chat.service.ts）——能打开本会话说明
+  // 当前未拉黑，之后的置位/复位都由本会话内的操作驱动。
+  const [blocked, setBlocked] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [headerMenu, setHeaderMenu] = useState(false);
+  const [messageMenu, setMessageMenu] = useState<{ id: number; body: string } | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ id: number; body: string } | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportError, setReportError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastIdRef = useRef(0);
+  const pressTimerRef = useRef<number | null>(null);
+
+  /** 长按（450ms）对方消息 → 消息菜单；桌面端右键同入口（onContextMenu）。 */
+  const clearPress = useCallback(() => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearPress, [clearPress]);
+
+  const startPress = useCallback(
+    (message: NoteMessageDto) => {
+      if (message.mine || blocked) return;
+      clearPress();
+      pressTimerRef.current = window.setTimeout(() => {
+        pressTimerRef.current = null;
+        setMessageMenu({ id: message.id, body: message.body });
+      }, 450);
+    },
+    [blocked, clearPress],
+  );
 
   /** 拉增量消息；返回本轮是否拉到新消息（退避决策的输入）。 */
   const poll = useCallback(async (): Promise<boolean> => {
@@ -463,6 +565,83 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
     }
   };
 
+  /* 拉黑对方：确认弹层 → POST 成功即置本地 blocked。POST 语义是 blockThread
+     幂等恒 true（仅 not_participant 抛错），blocked 返回值不作判定依据；
+     会话从列表消失由 listThreads 读侧双向过滤在返回列表时兑现。 */
+  const blockPartner = async () => {
+    const ok = await dialogs.confirm({
+      title: "拉黑对方",
+      message: "拉黑后这个会话会从你的会话列表消失，对方也无法再给你发消息。确定拉黑？",
+      confirmLabel: "拉黑",
+      variant: "danger",
+    });
+    if (!ok) return;
+    setActionBusy(true);
+    try {
+      await blockThreadPartner(thread.id);
+      setBlocked(true);
+      dialogs.toast({ message: "已拉黑对方", variant: "success" });
+    } catch (err) {
+      dialogs.toast({
+        message: err instanceof NoteApiError ? err.message : "操作失败，请重试",
+        variant: "error",
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  /* 解除拉黑：DELETE 成功即视为已解除（返回 blocked 仅用于反馈文案，不作状态
+     判定），并让会话列表按服务端双向过滤重新拉取。 */
+  const unblockPartner = async () => {
+    setActionBusy(true);
+    try {
+      await unblockThreadPartner(thread.id);
+      setBlocked(false);
+      onUnblocked();
+      dialogs.toast({ message: "已解除拉黑", variant: "success" });
+    } catch (err) {
+      dialogs.toast({
+        message: err instanceof NoteApiError ? err.message : "操作失败，请重试",
+        variant: "error",
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const openReport = (target: { id: number; body: string }) => {
+    setReportReason("");
+    setReportError(null);
+    setReportTarget(target);
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget || actionBusy) return;
+    const problem = validateReportReason(reportReason);
+    if (problem === "empty") {
+      setReportError("请填写举报理由");
+      return;
+    }
+    if (problem === "too_long") {
+      setReportError(`理由不超过 ${REPORT_REASON_MAX} 字`);
+      return;
+    }
+    setActionBusy(true);
+    setReportError(null);
+    try {
+      await reportThreadMessage(thread.id, reportTarget.id, reportReason.trim());
+      setReportTarget(null);
+      setReportReason("");
+      dialogs.toast({ message: "已提交举报，我们会尽快复核", variant: "success" });
+    } catch (err) {
+      setReportError(err instanceof NoteApiError ? err.message : "提交失败，请重试");
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const gate = chatInputGate({ blocked, peerGone });
   const peerLabel = thread.role === "drawer" ? "纸条主人" : "抽中你的人";
 
   return (
@@ -480,6 +659,14 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
               : "匿名纸条"}
           </p>
         </div>
+        <button
+          type="button"
+          className="survey-icon-btn h-8 w-8 shrink-0"
+          aria-label="会话操作"
+          onClick={() => setHeaderMenu(true)}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
       </div>
 
       {/* 对方的原纸条，聊天的锚点 */}
@@ -511,8 +698,22 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
                 className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-6 ${
                   message.mine
                     ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                    : "border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)]"
+                    : "border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] text-[var(--survey-body)] select-none"
                 }`}
+                /* 对方消息可长按（移动端）/右键（桌面）呼出「举报此消息 / 拉黑对方」；
+                   自己的消息与已拉黑态不响应。 */
+                onPointerDown={message.mine ? undefined : () => startPress(message)}
+                onPointerUp={message.mine ? undefined : clearPress}
+                onPointerLeave={message.mine ? undefined : clearPress}
+                onPointerCancel={message.mine ? undefined : clearPress}
+                onContextMenu={
+                  message.mine
+                    ? undefined
+                    : (event) => {
+                        event.preventDefault();
+                        if (!blocked) setMessageMenu({ id: message.id, body: message.body });
+                      }
+                }
               >
                 {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
                 {message.imageAssetId ? (
@@ -531,9 +732,24 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
       </div>
 
       <div className="sticky bottom-20 lg:bottom-2">
-        {peerGone ? (
+        {gate.readonly ? (
           <div className={`${CARD} px-4 py-3 text-center text-xs text-[var(--survey-muted)]`}>
-            这张纸条已下架，会话只读。
+            <p>{gate.reason === "blocked" ? "已拉黑对方，会话只读。" : "这张纸条已下架，会话只读。"}</p>
+            {gate.unblockable ? (
+              <button
+                type="button"
+                className={`${BTN_GHOST} mt-2 text-xs`}
+                disabled={actionBusy}
+                onClick={() => void unblockPartner()}
+              >
+                {actionBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                解除拉黑
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className={`${CARD} flex items-end gap-2 p-2`}>
@@ -587,6 +803,125 @@ function ChatView({ thread, onBack }: { thread: NoteThreadDto; onBack: () => voi
         )}
         {error ? <p className="mt-1 text-center text-xs text-[var(--app-danger)]">{error}</p> : null}
       </div>
+
+      {/* 头部「⋯」：会话级动作（拉黑/解除拉黑）。 */}
+      {headerMenu ? (
+        <ChatActionSheet
+          title="会话操作"
+          onClose={() => setHeaderMenu(false)}
+          actions={
+            blocked
+              ? [
+                  {
+                    label: "解除拉黑对方",
+                    icon: <ShieldCheck className="h-4 w-4" aria-hidden="true" />,
+                    disabled: actionBusy,
+                    onClick: () => {
+                      setHeaderMenu(false);
+                      void unblockPartner();
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: "拉黑对方",
+                    icon: <Ban className="h-4 w-4" aria-hidden="true" />,
+                    danger: true,
+                    disabled: actionBusy,
+                    onClick: () => {
+                      setHeaderMenu(false);
+                      void blockPartner();
+                    },
+                  },
+                ]
+          }
+        />
+      ) : null}
+
+      {/* 长按对方消息：举报单条 + 会话级拉黑。 */}
+      {messageMenu ? (
+        <ChatActionSheet
+          title={messageMenu.body ? `消息：${messageMenu.body.slice(0, 40)}` : "对方的消息"}
+          onClose={() => setMessageMenu(null)}
+          actions={[
+            {
+              label: "举报此消息",
+              icon: <Flag className="h-4 w-4" aria-hidden="true" />,
+              disabled: actionBusy,
+              onClick: () => {
+                const target = messageMenu;
+                setMessageMenu(null);
+                if (target) openReport(target);
+              },
+            },
+            {
+              label: "拉黑对方",
+              icon: <Ban className="h-4 w-4" aria-hidden="true" />,
+              danger: true,
+              disabled: actionBusy,
+              onClick: () => {
+                setMessageMenu(null);
+                void blockPartner();
+              },
+            },
+          ]}
+        />
+      ) : null}
+
+      {/* 举报理由弹层：必填、≤200 字（与服务端截断口径一致）。 */}
+      {reportTarget ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5"
+          role="dialog"
+          aria-label="举报此消息"
+        >
+          <div className={`${CARD} w-full max-w-sm p-5 shadow-2xl`}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-sm font-bold text-[var(--survey-heading)]">举报此消息</h3>
+              <button
+                type="button"
+                aria-label="关闭举报"
+                className="survey-icon-btn h-8 w-8"
+                disabled={actionBusy}
+                onClick={() => setReportTarget(null)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {reportTarget.body ? (
+              <p className="mt-2 line-clamp-3 rounded-xl bg-[var(--survey-bg)] px-3 py-2 text-xs leading-5 text-[var(--survey-muted)]">
+                {reportTarget.body}
+              </p>
+            ) : null}
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs font-semibold text-[var(--survey-muted)]">举报理由（必填）</p>
+              <span className="text-[11px] tabular-nums text-[var(--survey-muted)]">
+                {reportReason.trim().length}/{REPORT_REASON_MAX}
+              </span>
+            </div>
+            <textarea
+              value={reportReason}
+              rows={3}
+              maxLength={REPORT_REASON_MAX}
+              onChange={(event) => {
+                setReportReason(event.target.value);
+                setReportError(null);
+              }}
+              placeholder="说说这条消息的问题…"
+              className="mt-1.5 w-full resize-none rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-3 text-sm leading-6 text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)]"
+            />
+            {reportError ? <p className="mt-1 text-xs text-[var(--app-danger)]">{reportError}</p> : null}
+            <button
+              type="button"
+              className={`${BTN_PRIMARY} mt-3 w-full`}
+              disabled={actionBusy}
+              onClick={() => void submitReport()}
+            >
+              {actionBusy ? "提交中…" : "提交举报"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -614,7 +949,19 @@ function ChatTab() {
 
   if (openThreadId !== null) {
     if (!threads) return <p className="py-10 text-center text-sm text-[var(--survey-muted)]">加载中…</p>;
-    if (openThread) return <ChatView thread={openThread} onBack={() => setOpenThreadId(null)} />;
+    if (openThread)
+      return (
+        <ChatView
+          thread={openThread}
+          onBack={() => {
+            // 返回列表即重拉：拉黑后 listThreads 读侧双向过滤会让会话消失，
+            // 解除拉黑后恢复可见（ChatView 解除时也经 onUnblocked 触发同一 reload）。
+            setOpenThreadId(null);
+            reload();
+          }}
+          onUnblocked={reload}
+        />
+      );
   }
 
   return (

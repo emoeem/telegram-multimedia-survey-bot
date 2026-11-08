@@ -12,9 +12,26 @@ interface TelegramWebApp {
 
 const TELEGRAM_BRIDGE_URL = "https://telegram.org/js/telegram-web-app.js";
 
+/**
+ * Minimal structural browser globals so this file typechecks under both
+ * tsconfigs that compile it: the admin app (DOM lib) and the root project's
+ * unit tests, which pull it in via survey/note-api.ts with only WebWorker lib
+ * where `window`/`document` are undeclared (same treatment as
+ * survey/storage.ts). Runtime behavior is unchanged — the same globals,
+ * reached through globalThis.
+ */
+const bridgeScope = globalThis as unknown as {
+  window?: { Telegram?: { WebApp?: TelegramWebApp } };
+  document?: {
+    querySelector(selectors: string): unknown;
+    createElement(tag: string): { src?: string; async?: boolean };
+    head: { appendChild(child: unknown): unknown };
+  };
+};
+
 /** Shared with navigation.ts so "close the mini app" has one implementation. */
 export function currentWebApp(): TelegramWebApp | undefined {
-  return (window as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp;
+  return bridgeScope.window?.Telegram?.WebApp;
 }
 
 /** Reads initData lazily so a bridge script that arrives after the module
@@ -33,11 +50,12 @@ export function getTelegramInitData(): string {
  */
 export async function waitForTelegramWebApp(timeoutMs = 2500): Promise<void> {
   if (currentWebApp()) return;
-  if (!document.querySelector(`script[src="${TELEGRAM_BRIDGE_URL}"]`)) {
-    const script = document.createElement("script");
+  const doc = bridgeScope.document;
+  if (doc && !doc.querySelector(`script[src="${TELEGRAM_BRIDGE_URL}"]`)) {
+    const script = doc.createElement("script");
     script.src = TELEGRAM_BRIDGE_URL;
     script.async = true;
-    document.head.appendChild(script);
+    doc.head.appendChild(script);
   }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

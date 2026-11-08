@@ -149,6 +149,33 @@ export function reportNote(
   return request(`/api/note/${noteId}/report`, { method: "POST", body: JSON.stringify({ reason }) });
 }
 
+/** 举报会话里的单条消息（0094）：同一人对同一条消息服务端只计一次（UNIQUE 兜底），
+ * 消息不设自动隐藏阈值，隐藏走管理端复核处置。限流 5 次/小时。 */
+export function reportThreadMessage(
+  threadId: number,
+  messageId: number,
+  reason: string,
+): Promise<{ ok: true; reportCount: number }> {
+  return request(`/api/note/threads/${threadId}/messages/${messageId}/report`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** 拉黑会话对方（入口是会话，服务端按会话解析对方 hash、双向生效）。
+ * POST 语义：blockThread 幂等且恒返回 true（仅 not_participant 抛错），
+ * 客户端成功即置本地 blocked 态，不依赖返回值。限流 5 次/小时。 */
+export function blockThreadPartner(threadId: number): Promise<{ ok: true; blocked: boolean }> {
+  return request(`/api/note/threads/${threadId}/block`, { method: "POST" });
+}
+
+/** 解除拉黑：DELETE 只删「我拉黑对方」那行，返回 blocked = !(变更数 > 0)
+ * （本来没拉黑、或对方拉黑我的行不归我删时也为 true）——仅用于反馈文案，
+ * 客户端成功即视为已解除并 reload 会话列表。限流 5 次/小时。 */
+export function unblockThreadPartner(threadId: number): Promise<{ ok: true; blocked: boolean }> {
+  return request(`/api/note/threads/${threadId}/block`, { method: "DELETE" });
+}
+
 export function uploadNoteImage(file: File): Promise<{ ok: true; assetId: number }> {
   const form = new FormData();
   form.append("file", file);
