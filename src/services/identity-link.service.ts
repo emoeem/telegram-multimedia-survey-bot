@@ -212,6 +212,53 @@ export async function countLinkedSources(db: D1Database, canonicalHash: string):
 }
 
 /**
+ * hash → Telegram 私聊 id 反查（T2 · 纸条 DM 用，零迁移）。
+ *
+ * 站内通知的接收方是 participant_hash（纸条作者 / 会话对方），DM 却只能发给
+ * telegram_user_id。按 0082 的 hash 语义逐前缀解析：
+ * - `user_{id}`：前缀即 users.id，直查 users（0001，telegram_user_id NOT NULL
+ *   UNIQUE）。其中邮件注册合成的 user 行（telegram_user_id = 10^12+accountId，
+ *   见 ensureEmailAccountUser）不是真私聊 id，一并排除——与「email 身份不发
+ *   DM」同一口径，省掉一次注定失败的 Telegram API 调用；
+ * - `web_{key}`：拆出 participant_key 查 participant_links JOIN users（0044，
+ *   bot 深链认领时 upsertParticipantLink 写入）；
+ * - `email_*` 与未知前缀：最小集不发 DM，不查询直接返回 null（deferred：
+ *   email 身份的 canonical user 行已由 user_ 分支的合成 id 排除覆盖）。
+ *
+ * 三分支是复审 P1-1 的防错锚点：DM 收件人必须是「接收方」绑定的 TG，而不是
+ * 当前请求者。
+ */
+const SYNTHETIC_TG_ID_FLOOR = 1_000_000_000_000;
+
+export async function telegramUserIdForHash(db: D1Database, hash: string): Promise<number | null> {
+  if (hash.startsWith("user_")) {
+    const userId = Number(hash.slice("user_".length));
+    if (!Number.isInteger(userId) || userId <= 0) return null;
+    const row = await db
+      .prepare("SELECT telegram_user_id AS tid FROM users WHERE id = ? AND telegram_user_id < ? LIMIT 1")
+      .bind(userId, SYNTHETIC_TG_ID_FLOOR)
+      .first<{ tid: number }>();
+    const tid = Number(row?.tid ?? 0);
+    return tid > 0 ? tid : null;
+  }
+  if (hash.startsWith("web_")) {
+    const key = hash.slice("web_".length);
+    if (!key) return null;
+    const row = await db
+      .prepare(
+        `SELECT u.telegram_user_id AS tid
+           FROM participant_links pl JOIN users u ON u.id = pl.user_id
+          WHERE pl.participant_key = ? AND u.telegram_user_id < ? LIMIT 1`,
+      )
+      .bind(key, SYNTHETIC_TG_ID_FLOOR)
+      .first<{ tid: number }>();
+    const tid = Number(row?.tid ?? 0);
+    return tid > 0 ? tid : null;
+  }
+  return null;
+}
+
+/**
  * 金币合并：把 source 账户的余额整笔搬进 canonical，作为一笔幂等 merge 交易。
  *
  * - 流水不搬：coin_transactions 是 append-only 事实源，两边的历史流水保持原位，

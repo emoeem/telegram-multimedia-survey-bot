@@ -53,6 +53,25 @@ export async function listNotifications(db: D1Database, participantHash: string,
   return { items: rows.results ?? [], unread: Number(unread?.n ?? 0) };
 }
 
+/**
+ * 未读数角标（T2 · G4）：单条 COUNT，供 GET /api/me/notifications/unread-count
+ * 使用。与 listNotifications 的搭车 COUNT 同口径，但列表端点要取 30 条明细，
+ * 角标只需要这个数——客户端零轮询约束（BottomNav 只在挂载/导航/回前台/seen
+ * 后拉取），频控由 me-api 侧 60s KV 边缘缓存兜底，缓存键从这里出（两端共享，
+ * seen 端点用同一把键失效）。
+ */
+export function notificationUnreadCacheKey(participantHash: string): string {
+  return `notif:unread:v1:${participantHash}`;
+}
+
+export async function countUnread(db: D1Database, participantHash: string): Promise<number> {
+  const unread = await db
+    .prepare("SELECT COUNT(*) AS n FROM notifications WHERE participant_hash = ? AND read_at IS NULL")
+    .bind(participantHash)
+    .first<{ n: number }>();
+  return Number(unread?.n ?? 0);
+}
+
 export async function markNotificationsSeen(db: D1Database, participantHash: string): Promise<number> {
   const result = await db
     .prepare("UPDATE notifications SET read_at = ? WHERE participant_hash = ? AND read_at IS NULL")

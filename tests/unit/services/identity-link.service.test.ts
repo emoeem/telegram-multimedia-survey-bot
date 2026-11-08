@@ -10,6 +10,7 @@ import {
   hashSetFor,
   linkHash,
   mergeCoinAccount,
+  telegramUserIdForHash,
   unlinkHash,
 } from "../../../src/services/identity-link.service";
 import { getCoinAccount } from "../../../src/services/coin/ledger.service";
@@ -34,6 +35,22 @@ const SCHEMA = [
     participant_hash TEXT PRIMARY KEY,
     age_verified_at TEXT,
     updated_at TEXT NOT NULL
+  );
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_user_id INTEGER NOT NULL UNIQUE,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    language_code TEXT,
+    system_role TEXT NOT NULL DEFAULT 'participant',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE participant_links (
+    participant_key TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    linked_at TEXT NOT NULL
   );`,
 ].join("\n");
 
@@ -190,5 +207,48 @@ describe("HASH_SET_SQL", () => {
       )
       .all("user_7", "user_7") as Array<{ participant_hash: string }>;
     expect(rows.map((row) => row.participant_hash).sort()).toEqual(["user_7", "web_old"]);
+  });
+});
+
+/**
+ * hash → TG 反查（T2 · 纸条 DM 收件人）。三分支是复审 P1-1 的防错锚点：
+ * DM 必须发给「接收方」绑定的 TG（user_ 直查 users / web_ 经 participant_links），
+ * 而不是当前请求者；email_* 与未知前缀最小集不发 DM。
+ */
+describe("telegramUserIdForHash", () => {
+  async function seedUser(id: number, telegramUserId: number): Promise<void> {
+    db.sqlite
+      .prepare(
+        `INSERT INTO users (id, telegram_user_id, created_at, updated_at) VALUES (?, ?, '2026-11-08T00:00:00Z', '2026-11-08T00:00:00Z')`,
+      )
+      .run(id, telegramUserId);
+  }
+
+  it("user_ 分支：直查 users 拿真实 telegram_user_id；合成段（email 注册）排除", async () => {
+    await seedUser(7, 700);
+    await expect(telegramUserIdForHash(db, "user_7")).resolves.toBe(700);
+    // ensureEmailAccountUser 的合成段（10^12+accountId）不是真私聊 id，不发 DM。
+    await seedUser(8, 1_000_000_000_000 + 8);
+    await expect(telegramUserIdForHash(db, "user_8")).resolves.toBeNull();
+    // 不存在的 user 行与非法 id 同样返回 null。
+    await expect(telegramUserIdForHash(db, "user_999")).resolves.toBeNull();
+    await expect(telegramUserIdForHash(db, "user_abc")).resolves.toBeNull();
+  });
+
+  it("web_ 分支：拆 participant_key 查 participant_links JOIN users；未认领为 null", async () => {
+    await seedUser(7, 700);
+    db.sqlite
+      .prepare(
+        `INSERT INTO participant_links (participant_key, user_id, linked_at) VALUES ('key1', 7, '2026-11-08T00:00:00Z')`,
+      )
+      .run();
+    await expect(telegramUserIdForHash(db, "web_key1")).resolves.toBe(700);
+    // 深链认领前的匿名浏览器 key：没有 participant_links 行，静默跳过 DM。
+    await expect(telegramUserIdForHash(db, "web_ghost")).resolves.toBeNull();
+  });
+
+  it("email_ 与未知前缀：不查询直接 null（deferred，最小集不发 DM）", async () => {
+    await expect(telegramUserIdForHash(db, "email_5")).resolves.toBeNull();
+    await expect(telegramUserIdForHash(db, "tg_700")).resolves.toBeNull();
   });
 });

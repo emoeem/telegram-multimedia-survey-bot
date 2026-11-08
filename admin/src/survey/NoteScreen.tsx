@@ -40,6 +40,7 @@ import {
 } from "./note-api";
 import { REPORT_REASON_MAX, chatInputGate, validateReportReason } from "./note-chat-actions";
 import { NOTE_POLL_BASE_MS, nextPollInterval } from "./note-poll";
+import { initialNoteTab, threadIdFromSearch, type NoteTab } from "./note-tab";
 
 /**
  * 纸条聊天（0089）——页签：我的纸条 / 对话（抽纸条在抽奖中心 /gacha）。
@@ -51,7 +52,7 @@ import { NOTE_POLL_BASE_MS, nextPollInterval } from "./note-poll";
  * 这是成本红线（docs/ops/COST-GUARDRAILS.md）。
  */
 
-type Tab = "mine" | "chat";
+type Tab = NoteTab;
 
 const GENDERS = [
   { id: "m", label: "男生" },
@@ -928,11 +929,8 @@ function ChatView({
 
 function ChatTab() {
   const [threads, setThreads] = useState<NoteThreadDto[] | null>(null);
-  const [openThreadId, setOpenThreadId] = useState<number | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const raw = Number(params.get("thread"));
-    return Number.isInteger(raw) && raw > 0 ? raw : null;
-  });
+  // 深链会话 id 解析走 note-tab.ts 纯函数（与 initialNoteTab 同口径）。
+  const [openThreadId, setOpenThreadId] = useState<number | null>(() => threadIdFromSearch(window.location.search));
 
   const reload = useCallback(() => {
     void fetchNoteThreads()
@@ -1015,9 +1013,9 @@ function ChatTab() {
 export function NoteScreen() {
   const [me, setMe] = useState<NoteMeDto | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<Tab>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "chat" ? "chat" : "mine",
-  );
+  // 深链修正（T2）：?thread= 存在即落 chat——此前页签默认 mine，CoinCenter
+  // 抽中后的 /notes?thread=X 深链会落在「我的纸条」页。
+  const [tab, setTab] = useState<Tab>(() => initialNoteTab(window.location.search));
 
   const reload = useCallback(() => {
     void fetchNoteMe()
@@ -1061,8 +1059,8 @@ export function NoteScreen() {
                 </button>
               ))}
             </div>
-            {/* 对话页签挂载 ChatTab：此前遗漏（页签可点但内容一直空白，
-                CoinCenter 抽中后的 /notes?thread=X&tab=chat 深链也落空）。 */}
+            {/* 对话页签挂载 ChatTab（此前遗漏过：页签可点但内容空白）；
+                深链落 chat 的推导见 note-tab.ts（?thread= 存在即落 chat）。 */}
             <div className="mt-4">{tab === "mine" ? <MineTab me={me} onReload={reload} /> : <ChatTab />}</div>
           </>
         )}

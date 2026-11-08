@@ -18,8 +18,10 @@ import {
   sendMessage,
   unblockThread,
   withdrawNote,
+  type NoteDmOptions,
   type NoteError,
 } from "../services/note-chat.service";
+import { resolvePublicOrigin } from "../services/public-origin.service";
 import { NOTE_FILTER_REJECTED } from "../services/note-content-filter.service";
 import { writeAudit } from "./admin/helpers";
 import { createMediaAsset, getMediaAssetById } from "../db/repositories/media.repository";
@@ -75,6 +77,14 @@ function asString(value: unknown): string {
 
 function asAssetId(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** DM 上下文（T2 · 纸条被抽中/回信私聊）：BOT_TOKEN 是 Env secret
+ * （src/index.ts），未配置（本地 dev）时返回 undefined——整个 DM 通道关闭，
+ * 站内铃铛照常。origin 与 plaza-api.ts:356 同源解析（PUBLIC_ORIGIN 优先，
+ * 深链不落在 SNI 受限的 workers.dev 域名上）。 */
+function noteDmOptions(env: Env, url: URL): NoteDmOptions | undefined {
+  return env.BOT_TOKEN ? { botToken: env.BOT_TOKEN, origin: resolvePublicOrigin(env, url.origin) } : undefined;
 }
 
 /** 这张图是否属于「我」可见的纸条上下文（我是纸条主人 / 抽中者 / 会话参与者）。 */
@@ -301,7 +311,7 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
     const body = await readJsonBody(request);
     const idem = asString(body?.idempotencyKey);
     return respond(async () => {
-      const result = await drawNote(env.DB, hash, participant.dbUserId ?? null, idem);
+      const result = await drawNote(env.DB, hash, participant.dbUserId ?? null, idem, noteDmOptions(env, url));
       return { ...result };
     });
   }
@@ -326,7 +336,14 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
       if (!limit.allowed) return rateLimitResponse(limit.retryAfterSeconds);
       const body = await readJsonBody(request);
       return respond(async () => {
-        const message = await sendMessage(env.DB, threadId, hash, asString(body?.body), asAssetId(body?.imageAssetId));
+        const message = await sendMessage(
+          env.DB,
+          threadId,
+          hash,
+          asString(body?.body),
+          asAssetId(body?.imageAssetId),
+          noteDmOptions(env, url),
+        );
         return { ok: true, message };
       });
     }
