@@ -469,8 +469,10 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
     const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
     const view = url.searchParams.get("view") === "published" ? "published" : "all";
-    const { items, total } = await listPlazaPosts(env.DB, { limit, offset, view });
-    return json({ items, total, limit, offset });
+    // 被举报筛选（0096）：reported=1 只出 report_count > 0 的帖子，配合状态处置复核。
+    const reportedOnly = url.searchParams.get("reported") === "1";
+    const { items, total } = await listPlazaPosts(env.DB, { limit, offset, view, reportedOnly });
+    return json({ items, total, limit, offset, reportedOnly });
   }
 
   const adminPostCommentsMatch = url.pathname.match(/^\/api\/admin\/plaza\/posts\/(\d+)\/comments$/);

@@ -163,6 +163,29 @@ export function createTrialShare(runId: number): Promise<{ post: { id: number; k
   });
 }
 
+/** 举报树洞帖子 / 评论（0096）：同一登录用户对同一对象服务端只计一次
+ * （UNIQUE(post_id|comment_id, reporter_user_id) 兜底），达到阈值自动下架。
+ * 限流 5 次/小时，理由必填、≤200 字（NoteScreen 举报弹层同口径）。 */
+export function reportPlazaPost(
+  postId: number,
+  reason: string,
+): Promise<{ ok: true; hidden: boolean; reportCount: number }> {
+  return plazaRequest(`/api/plaza/posts/${postId}/report`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function reportPlazaComment(
+  commentId: number,
+  reason: string,
+): Promise<{ ok: true; hidden: boolean; reportCount: number }> {
+  return plazaRequest(`/api/plaza/comments/${commentId}/report`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function ownerDisplayName(owner: { username: string | null; firstName?: string | null } | null): string {
   if (!owner) return "匿名";
   return owner.username ? `@${owner.username}` : owner.firstName || "用户";

@@ -14,6 +14,8 @@ export interface PlazaPostRecord {
   createdAt: string;
   deletedAt: string | null;
   commentCount: number;
+  /** 被举报次数（0096）：达阈值服务层自动下架，管理端按 >0 筛选复核。 */
+  reportCount: number;
   owner: {
     telegramUserId: number;
     username: string | null;
@@ -22,7 +24,7 @@ export interface PlazaPostRecord {
 }
 
 const POST_COLUMNS = `p.id, p.user_id, p.content, p.anonymous, p.status, p.created_at,
-    p.kind, p.payload_json, p.image_asset_id, p.topic, p.deleted_at,
+    p.kind, p.payload_json, p.image_asset_id, p.topic, p.deleted_at, p.report_count,
     (SELECT COUNT(*) FROM plaza_post_comments c WHERE c.post_id = p.id AND c.status = 'published') AS comment_count,
     u.telegram_user_id AS owner_telegram_user_id, u.username AS owner_username, u.first_name AS owner_first_name`;
 
@@ -52,6 +54,7 @@ function mapPlazaPostRow(row: PlazaPostRow): PlazaPostRecord {
     createdAt: String(row.created_at),
     deletedAt: row.deleted_at === null || row.deleted_at === undefined ? null : String(row.deleted_at),
     commentCount: Number(row.comment_count ?? 0),
+    reportCount: Number(row.report_count ?? 0),
     owner:
       ownerTelegramUserId === null || ownerTelegramUserId === undefined
         ? null
@@ -106,6 +109,7 @@ export async function createPlazaPost(db: D1Database, input: CreatePlazaPostInpu
     status: "published",
     createdAt: now,
     commentCount: 0,
+    reportCount: 0,
     deletedAt: null,
     owner: null,
   };
@@ -122,6 +126,10 @@ export interface PlazaPostListOptions {
    * r18 过滤（0080）：公开流默认只出全年龄内容；传 true（管理端）才放开。
    */
   includeRestricted?: boolean;
+  /**
+   * 被举报筛选（0096，管理端）：只返回 report_count > 0 的帖子。
+   */
+  reportedOnly?: boolean;
 }
 
 export interface PlazaPostListPage {
@@ -135,6 +143,7 @@ export async function listPlazaPosts(db: D1Database, options: PlazaPostListOptio
   conditions.push("p.deleted_at IS NULL");
   if (options.view === "published") conditions.push("p.status = 'published'");
   if (!options.includeRestricted) conditions.push("p.content_rating = 'all'");
+  if (options.reportedOnly) conditions.push("p.report_count > 0");
   if (options.topic) {
     conditions.push("p.topic = ?");
     binds.push(options.topic);

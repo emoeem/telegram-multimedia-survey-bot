@@ -90,7 +90,39 @@ describe("admin plaza post endpoints", () => {
     expect(body.total).toBe(1);
     expect(body.items[0]?.content).toBe("今天也想被听见。");
     expect((body.items[0]?.owner as Record<string, unknown>)?.username).toBe("rose");
-    expect(mocks.listPlazaPosts).toHaveBeenCalledWith(expect.anything(), { limit: 20, offset: 0, view: "all" });
+    expect(mocks.listPlazaPosts).toHaveBeenCalledWith(expect.anything(), {
+      limit: 20,
+      offset: 0,
+      view: "all",
+      reportedOnly: false,
+    });
+  });
+
+  it("reported=1 只拉被举报的帖子（0096 复核筛选）", async () => {
+    mocks.listPlazaPosts.mockResolvedValue({ items: [{ ...POST, reportCount: 3 }], total: 1 });
+    const response = await handleAdminApi(
+      apiRequest("/api/admin/plaza/posts?view=all&reported=1&offset=0&limit=20", { userId: "111" }),
+      makeEnv(),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.listPlazaPosts).toHaveBeenCalledWith(expect.anything(), {
+      limit: 20,
+      offset: 0,
+      view: "all",
+      reportedOnly: true,
+    });
+    const body = (await response.json()) as { items: Array<Record<string, unknown>>; reportedOnly: boolean };
+    expect(body.reportedOnly).toBe(true);
+    expect(body.items[0]?.reportCount).toBe(3);
+
+    // reported=0 / 缺省都不筛选：筛选是显式开关，不是任意真值。
+    await handleAdminApi(apiRequest("/api/admin/plaza/posts?reported=0", { userId: "111" }), makeEnv());
+    expect(mocks.listPlazaPosts).toHaveBeenLastCalledWith(expect.anything(), {
+      limit: 20,
+      offset: 0,
+      view: "all",
+      reportedOnly: false,
+    });
   });
 
   it("removes and restores posts by status toggle", async () => {
