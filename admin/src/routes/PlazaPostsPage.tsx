@@ -89,6 +89,9 @@ function PostRow({
           <p className="text-xs text-[var(--color-muted)]">
             {formatDateTime(post.createdAt)} · {post.status === "published" ? "展示中" : "已下架"} · 💬{" "}
             {post.commentCount}
+            {post.reportCount > 0 ? (
+              <span className="ml-2 font-semibold text-[var(--app-danger)]">🚩 {post.reportCount} 次举报</span>
+            ) : null}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -160,6 +163,11 @@ function PostRow({
                       <span className="ml-2 font-normal text-[var(--color-muted-soft)]">
                         {formatDateTime(comment.createdAt)}
                       </span>
+                      {comment.reportCount > 0 ? (
+                        <span className="ml-2 font-semibold text-[var(--app-danger)]">
+                          🚩 {comment.reportCount} 次举报
+                        </span>
+                      ) : null}
                     </p>
                     <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[var(--color-muted)]">
                       {comment.content}
@@ -184,7 +192,7 @@ function PostRow({
 }
 
 export function PlazaPostsPage() {
-  const [view, setView] = useState<"all" | "published">("all");
+  const [view, setView] = useState<"all" | "published" | "reported">("all");
   const [page, setPage] = useState(0);
   const pageSize = 20;
   const { toast } = useDialogs();
@@ -193,7 +201,9 @@ export function PlazaPostsPage() {
     total: number;
     limit: number;
     offset: number;
-  }>(`/api/admin/plaza/posts?view=${view}&offset=${page * pageSize}&limit=${pageSize}`);
+  }>(
+    `/api/admin/plaza/posts?view=${view === "reported" ? "all" : view}&${view === "reported" ? "reported=1&" : ""}offset=${page * pageSize}&limit=${pageSize}`,
+  );
 
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const toggle = async (post: PlazaPostSummary) => {
@@ -225,7 +235,7 @@ export function PlazaPostsPage() {
         title="树洞"
         actions={
           <div className="flex gap-2">
-            {(["all", "published"] as const).map((option) => (
+            {(["all", "published", "reported"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -235,7 +245,7 @@ export function PlazaPostsPage() {
                 }}
                 className={view === option ? "btn btn-sm" : "btn btn-sm"}
               >
-                {option === "all" ? "全部" : "展示中"}
+                {option === "all" ? "全部" : option === "published" ? "展示中" : "被举报"}
               </button>
             ))}
           </div>
@@ -246,7 +256,13 @@ export function PlazaPostsPage() {
       ) : !data ? (
         <SkeletonPanel lines={6} />
       ) : data.items.length === 0 ? (
-        <EmptyPanel text="还没有树洞内容。用户在机器人里投稿、晒挑战结局后会出现在这里。" />
+        <EmptyPanel
+          text={
+            view === "reported"
+              ? "没有待复核的举报。用户举报达到阈值的内容会自动下架并出现在这里。"
+              : "还没有树洞内容。用户在机器人里投稿、晒挑战结局后会出现在这里。"
+          }
+        />
       ) : (
         <>
           <div className="flex flex-col gap-3">

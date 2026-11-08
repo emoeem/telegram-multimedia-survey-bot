@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ChevronDown,
   EyeOff,
+  Flag,
   ImagePlus,
   MessageCircle,
   Pencil,
@@ -20,6 +21,8 @@ import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { EmptyState, EntryRow, ErrorState, LoadingState } from "./PublicPrimitives";
 import { closeWebApp } from "./navigation";
+import { REPORT_REASON_MAX, validateReportReason } from "./note-chat-actions";
+import { useDialogs } from "../components/Dialogs";
 import {
   createPlazaPost,
   createPlazaComment,
@@ -29,6 +32,8 @@ import {
   fetchPlazaProfile,
   fetchPlazaTopics,
   ownerDisplayName,
+  reportPlazaComment,
+  reportPlazaPost,
   uploadPlazaImage,
   type PlazaCommentItem,
   type PlazaPostItem,
@@ -42,6 +47,13 @@ type Tab = "treehole" | "profiles";
 
 const PAGE_SIZE = 10;
 
+/** 举报目标（0096）：帖子与评论共用一个理由弹层，excerpt 只作弹层里引用展示。 */
+interface PlazaReportTarget {
+  kind: "post" | "comment";
+  id: number;
+  excerpt: string;
+}
+
 function formatDay(iso: string): string {
   return iso.slice(0, 10);
 }
@@ -53,7 +65,15 @@ const TRIAL_GRADE_CHIP: Record<string, string> = {
   C: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
 };
 
-function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTopic: (topic: string) => void }) {
+function TreeHolePost({
+  post,
+  onSelectTopic,
+  onReport,
+}: {
+  post: PlazaPostItem;
+  onSelectTopic: (topic: string) => void;
+  onReport: (target: PlazaReportTarget) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comments, setComments] = useState<PlazaCommentItem[] | null>(null);
@@ -169,16 +189,34 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
         <p className="min-w-0 truncate text-xs text-[var(--survey-muted)]">
           —— {post.anonymous ? "匿名" : ownerDisplayName(post.owner)} · {formatDay(post.createdAt)}
         </p>
-        <button
-          type="button"
-          onClick={() => void toggleComments()}
-          aria-expanded={open}
-          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--survey-muted)]"
-        >
-          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-          {total}
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            aria-label="举报此帖"
+            title="举报"
+            onClick={() =>
+              onReport({
+                kind: "post",
+                id: post.id,
+                excerpt: post.content.slice(0, 120),
+              })
+            }
+            className="flex items-center gap-1 text-xs font-semibold text-[var(--survey-muted)]"
+          >
+            <Flag className="h-3.5 w-3.5" aria-hidden="true" />
+            举报
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleComments()}
+            aria-expanded={open}
+            className="flex items-center gap-1 text-xs font-semibold text-[var(--survey-muted)]"
+          >
+            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            {total}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {open ? (
@@ -191,9 +229,26 @@ function TreeHolePost({ post, onSelectTopic }: { post: PlazaPostItem; onSelectTo
           ) : (
             comments.map((comment) => (
               <div key={comment.id} className="rounded-xl bg-[var(--survey-bg)] px-3 py-2.5">
-                <p className="text-xs font-semibold text-[var(--survey-heading)]">
-                  {ownerDisplayName(comment.owner)} · {formatDay(comment.createdAt)}
-                </p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-xs font-semibold text-[var(--survey-heading)]">
+                    {ownerDisplayName(comment.owner)} · {formatDay(comment.createdAt)}
+                  </p>
+                  <button
+                    type="button"
+                    aria-label="举报此评论"
+                    title="举报"
+                    onClick={() =>
+                      onReport({
+                        kind: "comment",
+                        id: comment.id,
+                        excerpt: comment.content.slice(0, 120),
+                      })
+                    }
+                    className="shrink-0 text-[var(--survey-muted)]"
+                  >
+                    <Flag className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                </div>
                 <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-[var(--survey-body)]">
                   {comment.content}
                 </p>
@@ -604,6 +659,13 @@ export function PlazaScreen() {
   const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [topics, setTopics] = useState<PlazaTopic[]>([]);
 
+  // 举报（0096）：帖子与评论共用一个理由弹层；理由必填、≤200 字，与服务端截断同口径。
+  const dialogs = useDialogs();
+  const [reportTarget, setReportTarget] = useState<PlazaReportTarget | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
   const posts = usePlazaFeed(reloadKey, tab === "treehole", topicFilter);
   const profiles = useProfileFeed(reloadKey, tab === "profiles");
 
@@ -623,6 +685,41 @@ export function PlazaScreen() {
   const openComposer = () => {
     setComposerMessage(null);
     setComposerOpen(true);
+  };
+
+  const openReport = (target: PlazaReportTarget) => {
+    setReportReason("");
+    setReportError(null);
+    setReportTarget(target);
+  };
+
+  const submitReport = async () => {
+    if (!reportTarget || reportBusy) return;
+    const problem = validateReportReason(reportReason);
+    if (problem === "empty") {
+      setReportError("请填写举报理由");
+      return;
+    }
+    if (problem === "too_long") {
+      setReportError(`理由不超过 ${REPORT_REASON_MAX} 字`);
+      return;
+    }
+    setReportBusy(true);
+    setReportError(null);
+    try {
+      if (reportTarget.kind === "post") {
+        await reportPlazaPost(reportTarget.id, reportReason.trim());
+      } else {
+        await reportPlazaComment(reportTarget.id, reportReason.trim());
+      }
+      setReportTarget(null);
+      setReportReason("");
+      dialogs.toast({ message: "已提交举报，我们会尽快复核", variant: "success" });
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "提交失败，请重试");
+    } finally {
+      setReportBusy(false);
+    }
   };
 
   const selectImage = async (file: File | null) => {
@@ -814,7 +911,7 @@ export function PlazaScreen() {
           ) : tab === "treehole" ? (
             <div className="flex flex-col gap-3">
               {posts.items.map((post) => (
-                <TreeHolePost key={post.id} post={post} onSelectTopic={setTopicFilter} />
+                <TreeHolePost key={post.id} post={post} onSelectTopic={setTopicFilter} onReport={openReport} />
               ))}
             </div>
           ) : (
@@ -955,6 +1052,63 @@ export function PlazaScreen() {
                 className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
               >
                 {submitting ? "发布中…" : "发布到树洞广场"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* 举报理由弹层（0096）：必填、≤200 字（与服务端截断口径一致）。 */}
+        {reportTarget ? (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5"
+            role="dialog"
+            aria-label={reportTarget.kind === "post" ? "举报此帖" : "举报此评论"}
+          >
+            <div className="w-full max-w-sm rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-5 shadow-2xl">
+              <div className="flex items-start justify-between">
+                <h3 className="text-sm font-bold text-[var(--survey-heading)]">
+                  {reportTarget.kind === "post" ? "举报此帖" : "举报此评论"}
+                </h3>
+                <button
+                  type="button"
+                  aria-label="关闭举报"
+                  className="survey-icon-btn h-8 w-8"
+                  disabled={reportBusy}
+                  onClick={() => setReportTarget(null)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {reportTarget.excerpt ? (
+                <p className="mt-2 line-clamp-3 rounded-xl bg-[var(--survey-bg)] px-3 py-2 text-xs leading-5 text-[var(--survey-muted)]">
+                  {reportTarget.excerpt}
+                </p>
+              ) : null}
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs font-semibold text-[var(--survey-muted)]">举报理由（必填）</p>
+                <span className="text-[11px] tabular-nums text-[var(--survey-muted)]">
+                  {reportReason.trim().length}/{REPORT_REASON_MAX}
+                </span>
+              </div>
+              <textarea
+                value={reportReason}
+                rows={3}
+                maxLength={REPORT_REASON_MAX}
+                onChange={(event) => {
+                  setReportReason(event.target.value);
+                  setReportError(null);
+                }}
+                placeholder="说说这条内容的问题…"
+                className="mt-1.5 w-full resize-none rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-3 text-sm leading-6 text-[var(--survey-body)] outline-none focus:border-[var(--survey-primary)]"
+              />
+              {reportError ? <p className="mt-1 text-xs text-[var(--app-danger)]">{reportError}</p> : null}
+              <button
+                type="button"
+                disabled={reportBusy}
+                onClick={() => void submitReport()}
+                className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
+              >
+                {reportBusy ? "提交中…" : "提交举报"}
               </button>
             </div>
           </div>

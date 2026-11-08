@@ -5,6 +5,8 @@ export interface PlazaCommentRecord {
   content: string;
   status: "published" | "removed";
   createdAt: string;
+  /** 被举报次数（0096）：达阈值服务层自动下架，管理端可见用于复核。 */
+  reportCount: number;
   /** Anonymous comments must never expose the commenter, even to the author. */
   anonymous: boolean;
   owner: {
@@ -14,7 +16,7 @@ export interface PlazaCommentRecord {
   } | null;
 }
 
-const COMMENT_COLUMNS = `c.id, c.post_id, c.user_id, c.content, c.status, c.anonymous, c.created_at,
+const COMMENT_COLUMNS = `c.id, c.post_id, c.user_id, c.content, c.status, c.anonymous, c.created_at, c.report_count,
     u.telegram_user_id AS owner_telegram_user_id, u.username AS owner_username, u.first_name AS owner_first_name`;
 
 type PlazaCommentRow = Record<string, unknown>;
@@ -30,6 +32,7 @@ function mapCommentRow(row: PlazaCommentRow): PlazaCommentRecord {
     content: String(row.content),
     status: row.status === "removed" ? "removed" : "published",
     createdAt: String(row.created_at),
+    reportCount: Number(row.report_count ?? 0),
     anonymous,
     owner:
       anonymous || ownerTelegramUserId === null || ownerTelegramUserId === undefined
@@ -70,6 +73,7 @@ export async function createPlazaComment(
     content: input.content,
     status: "published",
     createdAt: now,
+    reportCount: 0,
     anonymous,
     owner: null,
   };

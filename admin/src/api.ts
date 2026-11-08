@@ -1134,6 +1134,8 @@ export interface PlazaPostSummary {
   status: "published" | "removed";
   createdAt: string;
   commentCount: number;
+  /** 被举报次数（0096）：达 3 次服务端自动下架，>0 可在「被举报」筛选里复核。 */
+  reportCount: number;
   owner: {
     telegramUserId: number;
     username: string | null;
@@ -1159,8 +1161,18 @@ export function fetchAdminTrash(): Promise<{ items: TrashItem[]; retentionDays: 
   return api<{ items: TrashItem[]; retentionDays: number }>("/api/admin/trash?limit=100");
 }
 
-export function fetchPlazaPosts(view: "all" | "published", offset: number, limit = 20): Promise<PlazaPostListData> {
-  const query = new URLSearchParams({ view, offset: String(offset), limit: String(limit) });
+/** view="reported"（0096）：服务端 reported=1 只出 report_count > 0 的帖子。 */
+export function fetchPlazaPosts(
+  view: "all" | "published" | "reported",
+  offset: number,
+  limit = 20,
+): Promise<PlazaPostListData> {
+  const query = new URLSearchParams({
+    view: view === "reported" ? "all" : view,
+    offset: String(offset),
+    limit: String(limit),
+    ...(view === "reported" ? { reported: "1" } : {}),
+  });
   return api<PlazaPostListData>(`/api/admin/plaza/posts?${query}`);
 }
 
@@ -1183,6 +1195,8 @@ export interface PlazaCommentSummary {
   content: string;
   status: "published" | "removed";
   createdAt: string;
+  /** 被举报次数（0096）：在帖子的评论面板里提示复核。 */
+  reportCount: number;
   owner: {
     telegramUserId: number;
     username: string | null;

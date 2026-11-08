@@ -18,6 +18,7 @@ import { buildTrialShare } from "../services/trial-share.service";
 import { isPlazaImageAsset, plazaImageUrl, storePlazaPostImage } from "../services/plaza-media.service";
 import { PLAZA_TOPIC_MAX_LENGTH, resolvePlazaTopic } from "../services/plaza-topic.service";
 import { checkRateLimit } from "../services/rate-limit.service";
+import { reportPlazaComment, reportPlazaPost } from "../services/plaza-report.service";
 import { evaluateAchievements, serializeUnlockedAchievements } from "../services/achievement.service";
 import { loadSystemSettings } from "../services/system-settings.service";
 import { resolveSubmissionBotUrl } from "../services/contact-links.service";
@@ -384,6 +385,62 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
       },
       201,
     );
+  }
+
+  // 举报（0096）：与广场写路径同口径——无 dbUserId 一律 401 identity_required
+  // （服务层以 users.id 去重，同一登录用户的多套参与者身份不会重复计数）；
+  // KV 限流 5 次/时，键用 String(dbUserId)（"plaza-comment" 同款先例）。
+  const postReportMatch = url.pathname.match(/^\/api\/plaza\/posts\/(\d+)\/report$/);
+  if (request.method === "POST" && postReportMatch) {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再举报");
+    }
+    if (!env.CACHE) return fail(503, "unavailable", "当前部署未启用举报功能");
+    const limit = await checkRateLimit(env.CACHE, "plaza-post-report", String(participant.dbUserId), 5, 3600);
+    if (!limit.allowed) {
+      return Response.json(
+        { code: "rate_limited", message: `举报太频繁啦，请 ${Math.ceil(limit.retryAfterSeconds / 60)} 分钟后再来` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as { reason?: unknown } | null;
+    const outcome = await reportPlazaPost(
+      env.DB,
+      Number(postReportMatch[1]),
+      participant.dbUserId,
+      typeof body?.reason === "string" ? body.reason : "",
+    );
+    // 已下架 / 已删除的目标 404：公开流只展示 published，被下架内容本就不可见。
+    if (!outcome) return fail(404, "not_found", "树洞内容不存在");
+    return json({ ok: true, ...outcome });
+  }
+
+  const commentReportMatch = url.pathname.match(/^\/api\/plaza\/comments\/(\d+)\/report$/);
+  if (request.method === "POST" && commentReportMatch) {
+    const participant = await resolveParticipant(request, env);
+    if (participant instanceof Response) return participant;
+    if (!participant.dbUserId) {
+      return fail(401, "identity_required", "请先注册或登录后再举报");
+    }
+    if (!env.CACHE) return fail(503, "unavailable", "当前部署未启用举报功能");
+    const limit = await checkRateLimit(env.CACHE, "plaza-comment-report", String(participant.dbUserId), 5, 3600);
+    if (!limit.allowed) {
+      return Response.json(
+        { code: "rate_limited", message: `举报太频繁啦，请 ${Math.ceil(limit.retryAfterSeconds / 60)} 分钟后再来` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as { reason?: unknown } | null;
+    const outcome = await reportPlazaComment(
+      env.DB,
+      Number(commentReportMatch[1]),
+      participant.dbUserId,
+      typeof body?.reason === "string" ? body.reason : "",
+    );
+    if (!outcome) return fail(404, "not_found", "评论不存在");
+    return json({ ok: true, ...outcome });
   }
 
   if (request.method === "POST" && url.pathname === "/api/plaza/trial-shares") {

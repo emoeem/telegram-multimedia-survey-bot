@@ -38,7 +38,8 @@ CREATE TABLE plaza_posts (
   image_asset_id INTEGER,
   topic TEXT,
   content_rating TEXT NOT NULL DEFAULT 'all',
-  deleted_at TEXT
+  deleted_at TEXT,
+  report_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE plaza_post_comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
