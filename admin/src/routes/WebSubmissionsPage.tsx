@@ -442,6 +442,103 @@ function DetailBlock({ id, onChanged }: { id: number; onChanged: () => void }) {
   );
 }
 
+interface WallConfig {
+  ok: boolean;
+  showcaseEnabled: boolean;
+  showcaseFields: string[];
+  steps: { id: string; label: string }[];
+}
+
+/* 投稿墙公开开关（showcase 双闸之一）。字段白名单默认关掉 contact（投稿者
+ * 联系方式不公开），其余字段全部进墙，管理员可在这里逐字段收窄。开关与
+ * 白名单都落在 system_settings.web_submit_form，gallery 的 KV 戳含设置行
+ * updated_at，改完下一请求即生效。 */
+function WallSettingsCard() {
+  const { data, error, retry } = useApi<WallConfig>("/api/admin/web-submissions/form-config");
+  const [saving, setSaving] = useState(false);
+  const { toast } = useDialogs();
+
+  const apply = useCallback(
+    async (patch: { showcaseEnabled?: boolean; showcaseFields?: string[] }) => {
+      setSaving(true);
+      try {
+        await apiSend("POST", "/api/admin/web-submissions/form-config", patch);
+        retry();
+        toast({ message: "投稿墙配置已更新", variant: "success" });
+      } catch (actionError) {
+        toast({
+          message: actionError instanceof Error ? actionError.message : "保存失败",
+          variant: "error",
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [retry, toast],
+  );
+
+  /* 配置条不阻塞审核主流程：加载失败就不渲染这一块。 */
+  if (error || !data) return null;
+
+  return (
+    <section className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--surface-muted)] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[14px] font-semibold">投稿墙</p>
+          <p className="mt-0.5 max-w-[46rem] text-[12px] text-[var(--color-muted)]">
+            开启后，「通过」的免登录投稿会出现在公开投稿墙（<code>/submissions</code>）。 隐私双闸：总开关 +
+            字段白名单；首次开启默认公开除联系方式（contact）外的 全部字段，之后每个字段可单独收窄，改完即时生效。
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={data.showcaseEnabled}
+          disabled={saving}
+          className={data.showcaseEnabled ? "btn btn-primary btn-sm" : "btn btn-sm"}
+          onClick={() => {
+            /* 首次开启时白名单还是空的（双闸会让墙空白）：随开关一起下发
+             * 默认白名单 = 全部字段除 contact（投稿者联系方式不公开）。 */
+            const defaultFields =
+              !data.showcaseEnabled && data.showcaseFields.length === 0
+                ? data.steps.filter((step) => step.id !== "contact").map((step) => step.id)
+                : undefined;
+            void apply({
+              showcaseEnabled: !data.showcaseEnabled,
+              ...(defaultFields ? { showcaseFields: defaultFields } : {}),
+            });
+          }}
+        >
+          {data.showcaseEnabled ? "公开中 · 点击关闭" : "已关闭 · 点击开启"}
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {data.steps.map((step) => {
+          const on = data.showcaseFields.includes(step.id);
+          return (
+            <button
+              key={step.id}
+              type="button"
+              disabled={saving}
+              title={on ? "公开中，点击从投稿墙收起该字段" : "未公开，点击把该字段加入投稿墙"}
+              className={on ? "btn btn-primary btn-sm" : "btn btn-sm"}
+              onClick={() => {
+                const next = on
+                  ? data.showcaseFields.filter((id) => id !== step.id)
+                  : [...data.showcaseFields, step.id];
+                void apply({ showcaseFields: next });
+              }}
+            >
+              {on ? "✓ " : ""}
+              {step.label || step.id}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function WebSubmissionsPage() {
   const [filter, setFilter] = useState<StatusFilter>("pending");
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -505,6 +602,8 @@ export function WebSubmissionsPage() {
         免登录投稿（<code>/submit</code>）。审核逻辑和 Telegram 审核群共用同一套：
         在这里点「通过」，群里那张卡片会失效，不会重复发布。
       </p>
+
+      <WallSettingsCard />
 
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map((entry) => (
