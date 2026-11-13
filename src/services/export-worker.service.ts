@@ -1,4 +1,11 @@
-import { getExportJobById, updateExportJob } from "../db/repositories/export.repository";
+import {
+  claimExportJob,
+  completeExportJobDelivery,
+  completeRecordedExportJob,
+  getExportJobById,
+  markExportJobSending,
+  updateExportJob,
+} from "../db/repositories/export.repository";
 import { buildCsv, serializeExport } from "./export.service";
 import type { SurveyExportJobMessage } from "./export-queue.service";
 import { processResultVisualMessage, type ResultVisualWorkerEnvironment } from "./result-visual-worker.service";
@@ -174,27 +181,58 @@ function exportFileMetadata(
   return { fileName: `survey-${surveyId}.csv`, contentType: "text/csv" };
 }
 
-export async function processExportMessage(env: ExportWorkerEnvironment, body: unknown): Promise<void> {
+/** 从 Telegram sendDocument 响应里取 message_id；解析失败返回 null（记账是护栏，不能因为它把已成功的发送当失败）。 */
+async function extractTelegramMessageId(response: Response): Promise<number | null> {
+  try {
+    const payload = (await response.json()) as { result?: { message_id?: unknown } };
+    const messageId = payload.result?.message_id;
+    return typeof messageId === "number" ? messageId : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function processExportMessage(
+  env: ExportWorkerEnvironment,
+  body: unknown,
+  opts: { redelivered?: boolean } = {},
+): Promise<void> {
   if (!isExportJobMessage(body)) {
     console.error("Invalid export queue message", body);
     return;
   }
 
-  // A `completed` job is the only terminal no-op. `pending`/`running`/`failed`
-  // are all re-attemptable: a Worker killed mid-export left the row `running`
-  // and the queue redelivers the message, so treating `running` as re-runnable
-  // is what prevents the job from being stuck forever. Errors are re-thrown so
-  // the caller decides retry-vs-terminal from the message attempt count.
   const job = await getExportJobById(env.DB, body.jobId);
-  if (!job || job.status === "completed") return;
+  if (!job) return;
+  // 幂等护栏：completed 是终态，重复投递一律跳过（有无记账都跳过）。
+  if (job.status === "completed") return;
+  if (job.status === "sending" && job.r2Key) {
+    // 上一任已经把 message_id 记账成功、但没来得及置终态：发送已发生过，只补
+    // completed，不重复发送。正常情况下记账与置终态在同一个 D1 batch 里，
+    // 到不了这个分支；它是给旧数据/异常半途留的护栏。
+    await completeRecordedExportJob(env.DB, job.id);
+    return;
+  }
+  // 原子认领：拿不到（另一个消费者先占了 pending/failed）就跳过，消息按已
+  // 处理 ack。redelivered（队列重投）时接管 running/sending——那是死消费者
+  // 的遗留，不放行会永久卡死（见 claimExportJob 注释）。
+  if (!(await claimExportJob(env.DB, job.id, opts.redelivered === true))) return;
 
-  await updateExportJob(env.DB, job.id, { status: "running" });
   const { rows } = await getExportRows(env.DB, body.surveyId);
   const csv = buildCsv(rows);
   const content = serializeExport(body.format, csv, rows);
   const metadata = exportFileMetadata(body.surveyId, body.format);
-  await sendDocument(env.BOT_TOKEN, body.chatId, metadata.fileName, content, metadata.contentType);
-  await updateExportJob(env.DB, job.id, { status: "completed" });
+  // 发送前把状态推进到明确的发送阶段并落库：此刻另一个消费者再标记会拿到 0
+  // 并放弃发送。渲染重复无害（只读），发送重复才是要拦的外部副作用。
+  if (!(await markExportJobSending(env.DB, job.id))) return;
+  const response = await sendDocument(env.BOT_TOKEN, body.chatId, metadata.fileName, content, metadata.contentType);
+  // Telegram 没有幂等键，做不到绝对 exactly-once；这里是把重复窗口压到最小
+  // 的护栏：发送成功后先把 message_id 记账、再置 completed（同一个 batch），
+  // 之后到来的重复投递看到 completed / sending+已记账 就直接跳过发送。
+  // 真正无法消除的窗口只有「Telegram 已送达但响应丢失 / 进程在发送后、batch
+  // 前死亡」。
+  const messageId = await extractTelegramMessageId(response);
+  await completeExportJobDelivery(env.DB, job.id, messageId === null ? null : `tg:${body.chatId}:${messageId}`);
 }
 
 export async function handleExportQueue(
@@ -367,7 +405,8 @@ export async function handleExportQueue(
       }
     } else {
       try {
-        await processExportMessage(env, message.body);
+        // attempts > 0 = 队列重投：允许接管上一个死消费者遗留的 running/sending。
+        await processExportMessage(env, message.body, { redelivered: message.attempts > 0 });
         message.ack();
       } catch (error) {
         const jobId = (message.body as SurveyExportJobMessage).jobId;
@@ -375,8 +414,11 @@ export async function handleExportQueue(
         const terminal = message.attempts >= 3;
         const detail = error instanceof Error ? error.message : "导出文件生成失败";
         console.error("Survey export queue job failed", { jobId, attempts: message.attempts, terminal, error: detail });
+        // 可重试时退回 pending（而不是留在 running）：认领只接受 pending/failed，
+        // 留在 running 会让下一次投递拿不到认领而永久卡死。此时发送从未成功
+        // （成功路径在同一个 batch 里记账+置终态），清掉 r2_key 记账无副作用。
         await updateExportJob(env.DB, jobId, {
-          status: terminal ? "failed" : "running",
+          status: terminal ? "failed" : "pending",
           errorMessage: terminal ? detail.slice(0, 500) : null,
         });
         if (terminal) {

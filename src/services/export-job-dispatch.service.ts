@@ -213,9 +213,10 @@ export async function runExportJobInline(
       return;
     }
     // 兜底分支：survey 导出（csv/zip）。失败即终态——内联路径没有重试。
+    // redelivered 恒为 false：内联没有队列重投，不接管他人持有的 running/sending 行。
     try {
       const { processExportMessage } = await import("./export-worker.service");
-      await processExportMessage(env as never, body);
+      await processExportMessage(env as never, body, { redelivered: false });
     } catch (error) {
       const detail = error instanceof Error ? error.message : "导出文件生成失败";
       const job = body as { jobId?: unknown; chatId?: unknown };

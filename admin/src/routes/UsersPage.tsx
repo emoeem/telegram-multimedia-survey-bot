@@ -89,7 +89,8 @@ export function UsersPage() {
       setDetail(null);
     }
     // The helper deliberately reads the latest state on each navigation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // （规则启用后这处 disable 成了死注释：openDetail 只引用稳定的
+    // setState/retry，规则不再要求把它列进依赖。）
   }, [requestedUser]);
 
   const addTag = async (userId: number) => {

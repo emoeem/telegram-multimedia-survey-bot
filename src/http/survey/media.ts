@@ -365,6 +365,7 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
   // uploads are protected by the active-content rejection above and by the
   // serve-side downgrade in `buildMediaResponse`, and their declared type is
   // kept so legitimate documents (docx/xlsx/...) are not mislabeled.
+  let storedMime = mimeType;
   if (questionType !== "file") {
     // verifyImageUpload additionally structurally-parses declared images: the
     // magic prefix alone once accepted a "PNG" that was 8 magic bytes followed
@@ -373,11 +374,16 @@ export async function handleSurveyMediaUpload(request: Request, env: Env, survey
     if (!validation.ok) {
       return fail(400, "invalid_media_type", validation.reason ?? "文件内容无效");
     }
+    // 入库与响应统一用检测出的规范 MIME：声明值可能是别名（image/jpg）或
+    // 平台变体（audio/x-wav），精确匹配放行后存储侧不再沿用用户声明。
+    // detected 为 null 时回退声明值——本分支里检测失败即拒绝，理论上不可
+    // 达，保守兜底。
+    storedMime = validation.detected?.mime ?? mimeType;
   }
   const asset = await storeTemporaryMedia(env.DB, temporaryStore(env), {
     responseId: response.id,
     bytes,
-    mimeType,
+    mimeType: storedMime,
     fileName: file.name || null,
     mediaType: policy.mediaType,
     ttlSeconds: settings.mediaTtlSeconds,

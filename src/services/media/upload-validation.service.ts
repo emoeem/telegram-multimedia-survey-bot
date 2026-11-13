@@ -12,6 +12,10 @@ import { imageSize } from "image-size";
  *
  * The rule is deliberately conservative:
  *   * a known signature that disagrees with the declared kind is rejected;
+ *   * when the signature identifies a single format, the declared MIME must
+ *     equal the detected one or be one of its documented aliases (see
+ *     EXACT_MIME_ALIASES) — family-level agreement alone used to let a PNG
+ *     through as image/jpeg;
  *   * an image/video/audio upload with no recognizable signature is rejected;
  *   * an unrecognized document stays allowed (plain text, exotic formats)
  *     unless it carries a signature for a *different* media family.
@@ -161,6 +165,53 @@ function familyForMime(mime: string): MediaFamily {
 }
 
 /**
+ * Magic-number 可识别格式的精确 MIME 放行表（key = `detectContent` 的
+ * `format`，value = 该格式全部等价的声明 MIME）。
+ *
+ * 此前校验只比较 detected.family 与声明 family：PNG 冒充 image/jpeg、MP3
+ * 冒充 audio/ogg 这类同 family 错配照样入库，而存储与响应沿用的还是用户
+ * 声明的 MIME —— 后续一切按 MIME 做的渲染/转码决策都建立在错误标签上。
+ * 现在声明的完整 MIME 必须与检测 MIME 一致，或属于同格式的等价别名
+ * （image/jpg ↔ image/jpeg、audio/x-wav ↔ audio/wav 这类浏览器/平台的
+ * 历史写法），才放行。
+ *
+ * 刻意不进表、维持 family 级检查的 detected 输出：
+ *   * zip/rar/7z —— 容器/归档格式：docx/xlsx/jar/apk 本身就是 zip，声明
+ *     MIME（如 OOXML 系）与 application/zip 不同是合法的，精确匹配会误杀
+ *     正常文档上传；
+ *   * text —— `looksTextual` 启发式而非魔数签名，声明为任意 document MIME
+ *     的纯文本（json/csv/md）都合法，不能按 text/plain 精确卡死；
+ *   * detected === null —— 无法识别，维持既有策略（媒体类拒、文档类放）。
+ */
+const EXACT_MIME_ALIASES: Record<string, readonly string[]> = {
+  jpeg: ["image/jpeg", "image/jpg", "image/pipeg"],
+  png: ["image/png", "image/x-png"],
+  gif: ["image/gif"],
+  webp: ["image/webp"],
+  avif: ["image/avif"],
+  heic: ["image/heic", "image/heif"],
+  bmp: ["image/bmp", "image/x-bmp", "image/x-ms-bmp"],
+  tiff: ["image/tiff"],
+  webm: ["video/webm"],
+  mov: ["video/quicktime"],
+  mp4: ["video/mp4"],
+  m4a: ["audio/mp4", "audio/x-m4a", "audio/m4a"],
+  ogg: ["audio/ogg", "application/ogg"],
+  wav: ["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"],
+  flac: ["audio/flac", "audio/x-flac"],
+  mp3: ["audio/mpeg", "audio/mp3", "audio/x-mpeg"],
+  aac: ["audio/aac"],
+  pdf: ["application/pdf", "application/x-pdf"],
+  rtf: ["application/rtf", "text/rtf"],
+};
+
+/** 声明 MIME 的可比形式：小写并去掉 `;codecs=...` 之类的参数。 */
+function baseMime(mime: string): string {
+  const [base] = mime.split(";");
+  return (base ?? "").trim().toLowerCase();
+}
+
+/**
  * Verifies that `bytes` are consistent with the declared MIME type.
  *
  * Returns `ok: false` with a user-facing Chinese reason when the content is
@@ -183,6 +234,19 @@ export function verifyUploadContent(bytes: Uint8Array, declaredMime: string): Up
   }
 
   if (detected.family === declaredFamily) {
+    // family 通过后还要过精确门：魔数可识别的单格式文件，声明 MIME 必须与
+    // 检测 MIME 一致或是等价别名，否则同 family 错配（PNG 冒充 image/jpeg、
+    // MP3 冒充 audio/ogg、WebM 冒充 video/mp4）也会像以前那样入库。不在表
+    // 中的 detected 输出（容器格式/启发式 text）维持 family 级检查，见
+    // EXACT_MIME_ALIASES 的注释。
+    const allowed = EXACT_MIME_ALIASES[detected.format];
+    if (allowed && !allowed.includes(baseMime(declaredMime))) {
+      return {
+        ok: false,
+        detected,
+        reason: `文件内容与声明的类型不符（实际为 ${detected.format}）`,
+      };
+    }
     return { ok: true, detected };
   }
 

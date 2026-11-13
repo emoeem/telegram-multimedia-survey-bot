@@ -122,16 +122,20 @@ async function handleNoteMediaUpload(request: Request, env: Env): Promise<Respon
   const bytes = new Uint8Array(await file.arrayBuffer());
   const verified = verifyUploadContent(bytes, mimeType);
   if (!verified.ok) return fail(400, "bad_image", verified.reason ?? "图片内容无法识别");
+  // 与答卷媒体上传（http/survey/media.ts）/树洞配图同一规则：放行后入库与
+  // 存储统一用检测出的规范 MIME（声明值可能是 image/jpg 这类别名）。图片声明
+  // 在上面的校验里 detected 为 null 即拒绝，回退声明值只是保守兜底。
+  const storedMime = verified.detected?.mime ?? mimeType;
   const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   const storageKey = `${NOTE_IMAGE_STORAGE_PREFIX}${crypto.randomUUID()}`;
-  await store.put({ storageKey, bytes, contentType: mimeType });
+  await store.put({ storageKey, bytes, contentType: storedMime });
   const asset = await createMediaAsset(env.DB, {
     scope: "response",
     mediaType: "photo",
     storageKind: store.kind,
     storageKey,
     expiresAt: null,
-    mimeType,
+    mimeType: storedMime,
     fileName: file.name || null,
     fileSize: bytes.byteLength,
   });
@@ -201,6 +205,51 @@ async function adminListReportedMessages(env: Env, url: URL): Promise<Response> 
   return json({ ok: true, messages: result.results ?? [] });
 }
 
+/** 管理端：会话级拉黑列表（0094 note_block，跨会话的用户对数据）。最近 50
+ * 条 + 每对之间现存会话数（评估解除影响用）；total 供页面「共 N 条」计数。
+ * hash 直接展示，与 admin/read.ts 答复列表的 participantKey 同口径——
+ * note 的 participant_hash（TG/email/web 三形态）无法经 participant_links
+ * （键是原始 web key，非 hash）反查 users，不伪造身份列。 */
+async function adminListBlocks(env: Env): Promise<Response> {
+  const [list, total] = await Promise.all([
+    env.DB.prepare(
+      `SELECT b.blocker_hash AS blockerHash, b.blocked_hash AS blockedHash, b.created_at AS createdAt,
+              (SELECT COUNT(*) FROM note_threads t JOIN notes n ON n.id = t.note_id
+               WHERE (t.drawer_hash = b.blocker_hash AND n.owner_hash = b.blocked_hash)
+                  OR (t.drawer_hash = b.blocked_hash AND n.owner_hash = b.blocker_hash)) AS threadCount
+         FROM note_block b
+        ORDER BY b.created_at DESC
+        LIMIT 50`,
+    ).all(),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM note_block`).first<{ n: number }>(),
+  ]);
+  return json({ ok: true, total: Number(total?.n ?? 0), blocks: list.results ?? [] });
+}
+
+/** 管理端：解除拉黑（按 hash 对精确删行）。note_block 无 id 列（PK 即 hash
+ * 对），零迁移；先 SELECT 行留审计证据（拉黑何时立的），再删行、写
+ * writeAudit——与 adminSetMessageStatus 同款，处置可追溯。 */
+async function adminRemoveBlock(env: Env, blockerHash: string, blockedHash: string): Promise<Response> {
+  if (!blockerHash || !blockedHash) return fail(400, "bad_request", "缺少 blockerHash / blockedHash");
+  const row = await env.DB.prepare(
+    `SELECT created_at AS createdAt FROM note_block WHERE blocker_hash = ? AND blocked_hash = ?`,
+  )
+    .bind(blockerHash, blockedHash)
+    .first<{ createdAt: string }>();
+  if (!row) return fail(404, "not_found", "拉黑记录不存在");
+  await env.DB.prepare(`DELETE FROM note_block WHERE blocker_hash = ? AND blocked_hash = ?`)
+    .bind(blockerHash, blockedHash)
+    .run();
+  await writeAudit(env.DB, {
+    actorUserId: null,
+    action: "note_block.remove",
+    entityType: "note_block",
+    entityId: `${blockerHash}->${blockedHash}`,
+    before: { blockerHash, blockedHash, createdAt: row.createdAt },
+  });
+  return json({ ok: true });
+}
+
 /** 管理端：消息处置（隐藏=软删 / 恢复）。写 writeAudit，处置可追溯。 */
 async function adminSetMessageStatus(env: Env, messageId: number, status: string): Promise<Response> {
   if (!["active", "hidden"].includes(status)) return fail(400, "bad_request", "目标状态仅支持 active / hidden");
@@ -250,6 +299,11 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
       return adminSetNoteStatus(env, Number(statusMatch[1]), asString(body?.status));
     }
     if (request.method === "GET" && path === "/api/note/admin/messages") return adminListReportedMessages(env, url);
+    if (request.method === "GET" && path === "/api/note/admin/blocks") return adminListBlocks(env);
+    if (request.method === "POST" && path === "/api/note/admin/blocks/unblock") {
+      const body = await readJsonBody(request);
+      return adminRemoveBlock(env, asString(body?.blockerHash).trim(), asString(body?.blockedHash).trim());
+    }
     const messageStatusMatch = path.match(/^\/api\/note\/admin\/messages\/(\d+)\/status$/);
     if (request.method === "POST" && messageStatusMatch) {
       const body = await readJsonBody(request);

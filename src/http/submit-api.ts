@@ -142,6 +142,8 @@ interface PickedFile {
   kind: "photo" | "video" | "document";
   file: File;
   name: string | null;
+  /** photo 过魔数+结构校验后由校验器给出的规范 MIME；video/document 不做内容检测，恒为 null。 */
+  detectedMime: string | null;
 }
 
 /** 校验上传的文件并归一(移植 collectFiles + 主站的魔数校验)。 */
@@ -182,14 +184,17 @@ async function collectFiles(
     }
     /* 内联渲染的 photo 必须真的图:魔数校验(顺带拒绝 svg 这类文本冒充的
      * 图片)。视频/文档以 attachment 方式下发,不校验内容类型。 */
+    let detectedMime: string | null = null;
     if (kind === "photo") {
       const verdict = verifyUploadContent(new Uint8Array(await file.arrayBuffer()), type);
       if (!verdict.ok) {
         errors[mediaStep.id] = `${mediaStep.label ?? "附件"}：图片内容与格式不符`;
         return { files, errors, stepId: mediaStep.id };
       }
+      // 校验通过才有规范 MIME；photo 声明在上面已经拒掉 detected=null。
+      detectedMime = verdict.detected?.mime ?? null;
     }
-    files.push({ kind, file, name: typeof file.name === "string" ? file.name : null });
+    files.push({ kind, file, name: typeof file.name === "string" ? file.name : null, detectedMime });
   }
   return { files, errors, stepId: mediaStep.id };
 }
@@ -199,8 +204,13 @@ async function storeWebMedia(env: Env, picked: PickedFile): Promise<WebSubmitAtt
   const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   const bytes = new Uint8Array(await picked.file.arrayBuffer());
   const mimeType = picked.file.type || "application/octet-stream";
+  // 与答卷媒体上传（http/survey/media.ts）同一规则：photo 已过魔数+结构校验，
+  // 入库/存储/响应统一用检测出的规范 MIME（声明值可能是 image/jpg 这类别名）。
+  // video/document 不做内容检测，保持声明值——文档字节的 zip 魔数对应的
+  // application/zip 会抹掉 docx/xlsx 的真实类型，与答卷 file 题的取舍一致。
+  const storedMime = picked.detectedMime ?? mimeType;
   const storageKey = `media:websubmit:${crypto.randomUUID()}`;
-  await store.put({ storageKey, bytes, contentType: mimeType });
+  await store.put({ storageKey, bytes, contentType: storedMime });
   const asset = await createMediaAsset(env.DB, {
     /* scope 为什么不是 "web_submission"：media_assets.asset_scope 上有 CHECK
      * 约束（0017 引入），而 D1 迁移是原子批处理，重建父表放宽 CHECK 会级联
@@ -211,7 +221,7 @@ async function storeWebMedia(env: Env, picked: PickedFile): Promise<WebSubmitAtt
      * 的是 storage_key 的 media:websubmit: 前缀。 */
     scope: "response",
     mediaType: picked.kind === "photo" ? "photo" : picked.kind === "video" ? "video" : "document",
-    mimeType,
+    mimeType: storedMime,
     fileName: picked.name ?? null,
     fileSize: bytes.byteLength,
     storageKind: store.kind,
@@ -222,7 +232,7 @@ async function storeWebMedia(env: Env, picked: PickedFile): Promise<WebSubmitAtt
     kind: picked.kind === "document" ? "document" : picked.kind,
     name: picked.name ?? null,
     mediaAssetId: asset.id,
-    mimeType,
+    mimeType: storedMime,
     fileSize: bytes.byteLength,
   };
 }

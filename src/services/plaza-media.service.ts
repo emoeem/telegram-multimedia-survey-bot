@@ -46,10 +46,15 @@ export async function storePlazaPostImage(
   // 声明的 MIME 不可信：字节签名必须真的是图片，否则一张 HTML 会被当成图片存下来。
   const verified = verifyUploadContent(bytes, mimeType);
   if (!verified.ok) return { error: verified.reason ?? "图片内容无法识别" };
+  // 与答卷媒体上传（http/survey/media.ts）同一规则：放行后入库/存储统一用
+  // 检测出的规范 MIME——声明值可能是别名（image/jpg），serve 端会把存储值
+  // 原样回显成 Content-Type。图片声明在上面的校验里 detected 为 null 即拒绝，
+  // 回退声明值只是保守兜底（理论不可达）。
+  const storedMime = verified.detected?.mime ?? mimeType;
 
   const store = createMediaStore({ MEDIA: env.MEDIA, MEDIA_KV: env.MEDIA_KV });
   const storageKey = `${PLAZA_IMAGE_STORAGE_PREFIX}${crypto.randomUUID()}`;
-  await store.put({ storageKey, bytes, contentType: mimeType });
+  await store.put({ storageKey, bytes, contentType: storedMime });
   const asset = await createMediaAsset(env.DB, {
     scope: "response",
     mediaType: "photo",
@@ -57,7 +62,7 @@ export async function storePlazaPostImage(
     storageKey,
     // 没有过期时间：临时媒体的清理任务（按 expires_at）不会扫到它。
     expiresAt: null,
-    mimeType,
+    mimeType: storedMime,
     fileName: file.name || null,
     fileSize: bytes.byteLength,
   });

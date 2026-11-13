@@ -1,0 +1,24 @@
+-- export_jobs · sending 阶段超时回收的时间基准（0097）
+--
+-- 批一引入 sending 阶段值（running → sending → completed/failed）后留下一个
+-- 维护盲区：database-maintenance 只清理 completed/failed（按 completed_at/
+-- created_at 的 retention），卡死的 sending 行（消费者渲染完、占住发送位后
+-- 死亡，且队列重投丢失）既不会被回收也不会被清理，永远留在表里。回收需要
+-- 「进入 sending 的时刻」，而 0005 的表结构没有任何状态变迁时间列——
+-- created_at 是任务创建时间，导出任务可能在 pending/running 上合法停留
+-- 远超发送窗口（渲染大 CSV 是 running 的事），拿它近似会把刚进 sending 的
+-- 健康行误判成卡死。
+--
+-- 本迁移只加一列：sending_at TEXT —— markExportJobSending（running → sending
+-- 的原子占位）写入，正常链路几十秒内就会被 completeExportJobDelivery 覆盖为
+-- 终态。维护扫描按 COALESCE(sending_at, created_at) 计时（迁移前已存在的
+-- sending 遗留行没有 sending_at，回退 created_at，与 result-visual /
+-- image-generator 恢复服务对 started_at 空值的口径一致）。超时阈值取 30
+-- 分钟，参照同两张 job 表恢复服务的 staleProcessingMs（stale 30 分钟先例）；
+-- sending 的健康窗口只是文件上传 + 记账 batch 的秒级，30 分钟余量充足。
+--
+-- 回滚（加列，可增量应用）：
+--   SQLite 3.35+ 支持 DROP COLUMN；老版本需要重建表，线上 D1 版本支持前者：
+--   ALTER TABLE export_jobs DROP COLUMN sending_at;
+
+ALTER TABLE export_jobs ADD COLUMN sending_at TEXT;

@@ -136,10 +136,17 @@ export async function storeSurveyAdminMedia(
   if (!validation.ok) {
     throw new Error(validation.reason ?? "文件内容无效，请重新选择");
   }
+  // 与答卷媒体上传（http/survey/media.ts）同一规则：检测出媒体类精确签名
+  // （image/video/audio）时入库/存储用检测 MIME——声明值可能是 image/jpg 这类
+  // 别名。document 家族的检测输出（zip/text——docx 的字节就是 zip）不能覆盖
+  // 声明值，否则合法文档会被错标成 application/zip；与答卷 file 题保留声明
+  // MIME 的取舍一致。
+  const storedMime =
+    validation.detected && validation.detected.family !== "document" ? validation.detected.mime : mimeType;
   const { asset } = await storeDeduplicatedMedia(db, store, {
     bytes,
-    mimeType,
-    mediaType: surveyMediaTypeForMime(mimeType),
+    mimeType: storedMime,
+    mediaType: surveyMediaTypeForMime(storedMime),
     fileName: file.name || null,
   });
   return asset;

@@ -23,6 +23,8 @@ export interface DatabaseMaintenanceSummary {
   expiredGeneratorJobs: number;
   expiredReportResults: number;
   expiredExportJobs: number;
+  /** 0097：卡死在 sending 的导出任务被回收为终态的行数（已记账补 completed + 未记账置 failed）。 */
+  reclaimedSendingExportJobs: number;
   expiredAuditLogs: number;
   expiredTelegramDedupRows: number;
   expiredRateLimitRows: number;
@@ -33,6 +35,14 @@ export interface DatabaseMaintenanceSummary {
 }
 
 const DAY = 86_400_000;
+
+/**
+ * export_jobs 卡死 sending 的回收阈值（0097）：与 result-visual /
+ * image-generator 恢复服务的 staleProcessingMs（30 分钟）同口径。sending 的
+ * 健康窗口只有文件上传 + 记账 batch 的秒级；阈值太短会误杀正在发送的行，
+ * 太长则卡死行白占表。见 runDatabaseMaintenance 内的回收步骤注释。
+ */
+const STALE_SENDING_MS = 30 * 60_000;
 
 /**
  * How many orphan media rows a single daily run may delete. The sweep is
@@ -522,6 +532,7 @@ export async function runDatabaseMaintenance(
     expiredGeneratorJobs: 0,
     expiredReportResults: 0,
     expiredExportJobs: 0,
+    reclaimedSendingExportJobs: 0,
     expiredAuditLogs: 0,
     expiredTelegramDedupRows: 0,
     expiredRateLimitRows: 0,
@@ -659,6 +670,48 @@ export async function runDatabaseMaintenance(
           )
           .bind(jobBefore, jobBefore),
       );
+    },
+    async () => {
+      // 批一引入 sending 阶段后留下的维护盲区：上面这类 retention 只清理
+      // completed/failed，卡死的 sending 行（消费者渲染完、占住发送位后死亡，
+      // 且队列重投丢失）永远不会回收。这里按进入 sending 的时刻（0097 的
+      // sending_at；迁移前的遗留行没有该列，回退 created_at，与 result-visual
+      // / image-generator 恢复服务对 started_at 空值的口径一致）把超时行补成
+      // 终态，随后的 retention 才有机会接管。
+      // 阈值参照相邻状态回收的既有先例（result-visual / image-generator
+      // 恢复服务的 staleProcessingMs = 30 分钟）：sending 的健康窗口只是
+      // 文件上传 + 记账 batch 的秒级，30 分钟余量充足，又不会在正常发送的
+      // 一两秒内误杀。
+      const sendingCutoff = new Date(now - STALE_SENDING_MS).toISOString();
+      const reclaimTimestamp = new Date(now).toISOString();
+      // r2_key 已记账（tg:<chatId>:<messageId>）= 文件已经送达用户，只是上一任
+      // 没来得及走完收尾 batch——补 completed（与 completeRecordedExportJob 的
+      // 护栏同语义：只补终态，绝不重复发送），置 failed 会与「用户已收到文件」
+      // 的事实矛盾。
+      const recorded = await changes(
+        scoped
+          .prepare(
+            `UPDATE export_jobs
+       SET status = 'completed', completed_at = ?
+     WHERE status = 'sending' AND r2_key IS NOT NULL
+       AND COALESCE(sending_at, created_at) < ?`,
+          )
+          .bind(reclaimTimestamp, sendingCutoff),
+      );
+      // 未记账 = 发送没有送达（进程在上传中死亡 / 占位后从未真正发送）——
+      // 置 failed 交给 retention；若队列重投随后到达，claimExportJob 对
+      // redelivered 消息仍放行 failed，不会造成任务永久丢失。
+      const unrecorded = await changes(
+        scoped
+          .prepare(
+            `UPDATE export_jobs
+       SET status = 'failed', error_message = '导出投递超时', completed_at = ?
+     WHERE status = 'sending' AND r2_key IS NULL
+       AND COALESCE(sending_at, created_at) < ?`,
+          )
+          .bind(reclaimTimestamp, sendingCutoff),
+      );
+      summary.reclaimedSendingExportJobs = recorded + unrecorded;
     },
     async () => {
       summary.expiredExportJobs = await changes(
