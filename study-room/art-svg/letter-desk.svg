@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+  <!-- 雨夜书房 · 桌上的信（letter-desk）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#241a2e"/>
+      <stop offset="0.5" stop-color="#1e1628"/>
+      <stop offset="1" stop-color="#14101e"/>
+    </linearGradient>
+    <linearGradient id="deskTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4d3826"/>
+      <stop offset="0.6" stop-color="#3a2a1c"/>
+      <stop offset="1" stop-color="#2c2016"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4e8d0"/>
+      <stop offset="1" stop-color="#e3d1ad"/>
+    </linearGradient>
+    <radialGradient id="lampFall" cx="0.22" cy="0.1" r="0.9">
+      <stop offset="0" stop-color="#f7dcae" stop-opacity="0.75"/>
+      <stop offset="0.45" stop-color="#eebd82" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#eebd82" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="tea" cx="0.5" cy="0.4" r="0.6">
+      <stop offset="0" stop-color="#c98d4e"/>
+      <stop offset="1" stop-color="#8a5f38"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.85">
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050308" stop-opacity="0.6"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="11" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="1600" fill="url(#bg)"/>
+  <!-- 背景暗处：雨窗冷蓝轮廓 -->
+  <g opacity="0.55">
+    <rect x="80" y="120" width="300" height="420" fill="#0d1a30"/>
+    <rect x="80" y="120" width="300" height="420" fill="none" stroke="#20182a" stroke-width="14"/>
+    <line x1="230" y1="120" x2="230" y2="540" stroke="#20182a" stroke-width="10"/>
+    <ellipse cx="230" cy="330" rx="60" ry="90" fill="#e8b878" opacity="0.16" filter="url(#soft)"/>
+  </g>
+
+  <!-- 桌面 -->
+  <path d="M0 520 L1200 460 L1200 1600 L0 1600 Z" fill="url(#deskTop)"/>
+  <path d="M0 520 L1200 460 L1200 500 L0 560 Z" fill="#6a5138" opacity="0.5"/>
+  <g stroke="#2c2016" stroke-width="3" opacity="0.5">
+    <path d="M60 800 q300 -30 560 -14 t580 -10" fill="none"/>
+    <path d="M0 1120 q340 -40 640 -20 t560 -12" fill="none"/>
+    <path d="M40 1380 q300 -26 600 -16 t560 -8" fill="none"/>
+  </g>
+
+  <!-- 台灯暖光斜照 -->
+  <rect width="1200" height="1600" fill="url(#lampFall)"/>
+
+  <!-- 摊开的信 -->
+  <g transform="rotate(-3 600 900)">
+    <rect x="330" y="640" width="560" height="760" rx="6" fill="url(#paper)"/>
+    <rect x="330" y="640" width="560" height="760" rx="6" fill="none" stroke="#c9b48c" stroke-width="3" stroke-opacity="0.8"/>
+    <path d="M330 648 L890 640" stroke="#fff6de" stroke-width="6" stroke-opacity="0.7"/>
+    <!-- 页缘微卷 -->
+    <path d="M884 646 q22 8 16 34" stroke="#c9b48c" stroke-width="5" fill="none" stroke-opacity="0.7"/>
+    <!-- 模糊墨线（不可读） -->
+    <g stroke="#5a4a66" stroke-width="7" stroke-linecap="round" opacity="0.5" filter="url(#soft6)">
+      <path d="M400 760 q160 -8 330 -4"/>
+      <path d="M402 830 q170 -8 340 -4"/>
+      <path d="M404 900 q150 -8 260 -4"/>
+    </g>
+    <!-- 第三行末尾水渍墨晕 -->
+    <ellipse cx="680" cy="906" rx="34" ry="22" fill="#3a2c4a" opacity="0.45" filter="url(#soft)"/>
+    <ellipse cx="688" cy="910" rx="16" ry="10" fill="#241a30" opacity="0.5"/>
+    <!-- 空白下半页 -->
+    <g stroke="#5a4a66" stroke-width="3" opacity="0.14" stroke-linecap="round">
+      <path d="M404 990 q160 -6 320 -2"/><path d="M404 1060 q160 -6 320 -2"/>
+    </g>
+  </g>
+
+  <!-- 黄铜蘸水笔 -->
+  <g transform="rotate(24 330 1240)">
+    <rect x="180" y="1210" width="300" height="16" rx="8" fill="#c9a45a"/>
+    <rect x="180" y="1210" width="300" height="6" rx="3" fill="#e8c78e" opacity="0.8"/>
+    <path d="M480 1210 L560 1218 L480 1226 Z" fill="#8a5f38"/>
+    <path d="M540 1214 L576 1218 L544 1224 Z" fill="#5a4a66" opacity="0.8"/>
+    <rect x="150" y="1206" width="34" height="24" rx="10" fill="#a4763e"/>
+  </g>
+
+  <!-- 火漆信封 -->
+  <g transform="rotate(6 380 1450)">
+    <rect x="180" y="1380" width="380" height="220" rx="6" fill="#ecdcb8"/>
+    <rect x="180" y="1380" width="380" height="220" rx="6" fill="none" stroke="#c9b48c" stroke-width="3"/>
+    <path d="M180 1380 L370 1490 L560 1380" fill="none" stroke="#c9b48c" stroke-width="3"/>
+    <ellipse cx="540" cy="1396" rx="30" ry="32" fill="#7a2e22"/>
+    <ellipse cx="540" cy="1396" rx="20" ry="21" fill="#8f3a2b"/>
+    <path d="M528 1386 q12 -8 24 0 M528 1406 q12 8 24 0" stroke="#5f1f16" stroke-width="4" fill="none"/>
+  </g>
+
+  <!-- 凉掉的茶 -->
+  <g>
+    <ellipse cx="920" cy="1380" rx="86" ry="26" fill="#000000" opacity="0.3" filter="url(#soft)"/>
+    <path d="M850 1250 L990 1250 L968 1408 L872 1408 Z" fill="#e8ddc2"/>
+    <path d="M850 1250 L990 1250 L982 1300 L858 1300 Z" fill="#f4ecd4"/>
+    <ellipse cx="920" cy="1250" rx="70" ry="18" fill="url(#tea)"/>
+    <ellipse cx="920" cy="1250" rx="70" ry="18" fill="none" stroke="#fff6de" stroke-width="4" stroke-opacity="0.5"/>
+    <path d="M990 1280 q60 6 40 52 q-12 26 -44 24" fill="none" stroke="#e8ddc2" stroke-width="14"/>
+    <!-- 茶面残热一缕 -->
+    <path d="M918 1216 q10 -22 -2 -44 q-10 -18 4 -38" stroke="#f7dcae" stroke-width="5" fill="none" opacity="0.28" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 尘光 -->
+  <g fill="#f7dcae">
+    <circle cx="360" cy="700" r="2.2" opacity="0.3"/><circle cx="430" cy="640" r="1.6" opacity="0.22"/><circle cx="300" cy="780" r="1.5" opacity="0.18"/><circle cx="520" cy="600" r="1.8" opacity="0.2"/>
+  </g>
+
+  <rect width="1200" height="1600" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="1600" fill="url(#vignette)"/>
+</svg>

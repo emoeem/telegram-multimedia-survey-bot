@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+  <!-- 雨夜书房 · 未寄出的信（unmailed-letter）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#201828"/>
+      <stop offset="1" stop-color="#120e1c"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2e6cc"/>
+      <stop offset="1" stop-color="#ddc9a2"/>
+    </linearGradient>
+    <linearGradient id="paper2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecdcb8"/>
+      <stop offset="1" stop-color="#d4bf94"/>
+    </linearGradient>
+    <radialGradient id="candleFall" cx="0.3" cy="0.15" r="0.95">
+      <stop offset="0" stop-color="#f7dcae" stop-opacity="0.7"/>
+      <stop offset="0.5" stop-color="#eebd82" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#eebd82" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.85">
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050308" stop-opacity="0.6"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="51" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+    <g id="seal">
+      <ellipse cx="0" cy="0" rx="30" ry="33" fill="#7a2e22"/>
+      <ellipse cx="0" cy="0" rx="21" ry="23" fill="#8f3a2b"/>
+      <path d="M-10 -12 q10 -9 20 0 M-10 12 q10 9 20 0" stroke="#5f1f16" stroke-width="5" fill="none"/>
+      <circle cx="-11" cy="0" r="4.5" fill="#5f1f16"/>
+      <circle cx="11" cy="0" r="4.5" fill="#5f1f16"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="1600" fill="url(#bg)"/>
+
+  <!-- 背景剪影：留声机喇叭 -->
+  <g opacity="0.5">
+    <path d="M760 620 C660 590, 560 500, 515 380 C490 315, 512 262, 572 245 C625 230, 675 258, 690 315 C718 420, 780 530, 860 610 Z" fill="#0d0a10"/>
+    <ellipse cx="590" cy="312" rx="78" ry="66" fill="#0d0a10"/>
+  </g>
+
+  <!-- 桌面 -->
+  <path d="M0 760 L1200 700 L1200 1600 L0 1600 Z" fill="#33241a"/>
+  <path d="M0 760 L1200 700 L1200 745 L0 810 Z" fill="#5f4732" opacity="0.55"/>
+  <g stroke="#241a12" stroke-width="3" opacity="0.5">
+    <path d="M30 1050 q320 -30 600 -16 t570 -12" fill="none"/>
+    <path d="M0 1350 q340 -30 620 -18 t580 -10" fill="none"/>
+  </g>
+  <rect width="1200" height="1600" fill="url(#candleFall)"/>
+
+  <!-- 一摞旧信（七八封，微错落） -->
+  <g>
+    <ellipse cx="580" cy="1490" rx="380" ry="46" fill="#000000" opacity="0.4" filter="url(#soft)"/>
+    <!-- 底层 -->
+    <g transform="rotate(2 580 1400)"><rect x="270" y="1352" width="620" height="88" rx="6" fill="url(#paper2)"/></g>
+    <g transform="rotate(-2 580 1310)"><rect x="256" y="1266" width="640" height="86" rx="6" fill="url(#paper)"/><use href="#seal" transform="translate(830 1308)"/></g>
+    <g transform="rotate(3 580 1225)"><rect x="284" y="1182" width="600" height="84" rx="6" fill="url(#paper2)"/><use href="#seal" transform="translate(330 1222)"/></g>
+    <g transform="rotate(-3 580 1140)"><rect x="264" y="1098" width="628" height="84" rx="6" fill="url(#paper)"/><use href="#seal" transform="translate(842 1140)"/></g>
+    <g transform="rotate(1.5 580 1055)"><rect x="276" y="1014" width="608" height="82" rx="6" fill="url(#paper2)"/><use href="#seal" transform="translate(336 1054)"/></g>
+    <g transform="rotate(-2 580 972)"><rect x="262" y="930" width="624" height="82" rx="6" fill="url(#paper)"/><use href="#seal" transform="translate(836 970)"/></g>
+    <g transform="rotate(2.5 580 890)"><rect x="272" y="848" width="616" height="82" rx="6" fill="url(#paper2)"/><use href="#seal" transform="translate(326 888)"/></g>
+    <!-- 最上面一封（地址被水汽晕开） -->
+    <g transform="rotate(-1.5 580 805)">
+      <rect x="268" y="760" width="620" height="86" rx="6" fill="url(#paper)"/>
+      <rect x="268" y="760" width="620" height="86" rx="6" fill="none" stroke="#c9b48c" stroke-width="3" stroke-opacity="0.8"/>
+      <!-- 收信地址：晕开的墨迹 -->
+      <ellipse cx="480" cy="802" rx="120" ry="24" fill="#4a3c5a" opacity="0.35" filter="url(#soft)"/>
+      <ellipse cx="510" cy="804" rx="60" ry="14" fill="#2c2340" opacity="0.4" filter="url(#soft6)"/>
+      <g stroke="#5a4a66" stroke-width="4" stroke-linecap="round" opacity="0.25" filter="url(#soft6)">
+        <path d="M330 796 q60 -6 110 -4"/>
+      </g>
+      <!-- 右下火漆 -->
+      <use href="#seal" transform="translate(826 828)"/>
+      <!-- 页缘微卷泛黄 -->
+      <path d="M882 766 q20 10 14 38" stroke="#b89d6e" stroke-width="5" fill="none" stroke-opacity="0.8"/>
+    </g>
+  </g>
+
+  <!-- 尘光 -->
+  <g fill="#f7dcae">
+    <circle cx="330" cy="730" r="2.2" opacity="0.3"/><circle cx="420" cy="660" r="1.7" opacity="0.24"/><circle cx="640" cy="700" r="1.5" opacity="0.2"/><circle cx="760" cy="740" r="1.8" opacity="0.22"/>
+  </g>
+
+  <rect width="1200" height="1600" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="1600" fill="url(#vignette)"/>
+</svg>

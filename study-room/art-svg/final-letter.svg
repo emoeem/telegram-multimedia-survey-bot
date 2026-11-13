@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+  <!-- 雨夜书房 · 最后一封信（final-letter，收束热点）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1526"/>
+      <stop offset="1" stop-color="#100c1a"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4e8d0"/>
+      <stop offset="1" stop-color="#e3d1ad"/>
+    </linearGradient>
+    <linearGradient id="rainLight" x1="0" y1="0" x2="1" y2="0.3">
+      <stop offset="0" stop-color="#9db8dc" stop-opacity="0.5"/>
+      <stop offset="0.5" stop-color="#9db8dc" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#9db8dc" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="candleGlow" cx="0.72" cy="0.62" r="0.6">
+      <stop offset="0" stop-color="#f7dcae" stop-opacity="0.75"/>
+      <stop offset="0.5" stop-color="#eebd82" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#eebd82" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.85">
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#04030a" stop-opacity="0.62"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="81" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="1600" fill="url(#bg)"/>
+
+  <!-- 左侧冷蓝雨窗光 -->
+  <g opacity="0.8">
+    <rect x="60" y="140" width="240" height="520" fill="#0d1a30"/>
+    <rect x="60" y="140" width="240" height="520" fill="none" stroke="#1c1628" stroke-width="14"/>
+    <line x1="180" y1="140" x2="180" y2="660" stroke="#1c1628" stroke-width="10"/>
+    <ellipse cx="180" cy="400" rx="70" ry="120" fill="#e8b878" opacity="0.14" filter="url(#soft)"/>
+    <rect x="0" y="0" width="500" height="1600" fill="url(#rainLight)"/>
+  </g>
+
+  <!-- 暗色木面（桌面） -->
+  <path d="M0 900 L1200 840 L1200 1600 L0 1600 Z" fill="#2c2016"/>
+  <path d="M0 900 L1200 840 L1200 884 L0 948 Z" fill="#4d3826" opacity="0.5"/>
+  <g stroke="#1a120c" stroke-width="3" opacity="0.55">
+    <path d="M20 1180 q320 -28 620 -16 t560 -10" fill="none"/>
+    <path d="M0 1430 q340 -26 640 -16 t560 -10" fill="none"/>
+  </g>
+  <ellipse cx="880" cy="1180" rx="330" ry="300" fill="url(#candleGlow)" filter="url(#soft)"/>
+
+  <!-- 摊开立起的信 -->
+  <g transform="rotate(-2 620 700)">
+    <rect x="330" y="330" width="580" height="740" rx="6" fill="url(#paper)"/>
+    <rect x="330" y="330" width="580" height="740" rx="6" fill="none" stroke="#c9b48c" stroke-width="3" stroke-opacity="0.8"/>
+    <path d="M330 338 L910 330" stroke="#fff6de" stroke-width="6" stroke-opacity="0.7"/>
+    <!-- 寥寥几行模糊墨线 -->
+    <g stroke="#5a4a66" stroke-width="7" stroke-linecap="round" opacity="0.5" filter="url(#soft6)">
+      <path d="M400 470 q150 -8 310 -4"/>
+      <path d="M402 540 q150 -8 310 -4"/>
+      <path d="M404 610 q110 -8 210 -4"/>
+    </g>
+    <!-- 收信人一栏：空着等名字 -->
+    <g stroke="#5a4a66" stroke-width="3" opacity="0.3">
+      <path d="M404 960 q90 -4 170 -2"/>
+    </g>
+    <path d="M600 950 q90 -2 190 2" stroke="#8a7898" stroke-width="3" stroke-opacity="0.2" stroke-dasharray="10 8" fill="none"/>
+    <text x="404" y="936" font-family="Georgia, serif" font-size="30" fill="#5a4a66" opacity="0.5" font-style="italic">To —</text>
+    <!-- 纸缘微卷 -->
+    <path d="M904 336 q22 10 16 40" stroke="#c9b48c" stroke-width="5" fill="none" stroke-opacity="0.7"/>
+    <path d="M336 1064 q-18 -8 -14 -36" stroke="#c9b48c" stroke-width="5" fill="none" stroke-opacity="0.6"/>
+  </g>
+
+  <!-- 黄铜钥匙 -->
+  <g transform="rotate(-10 880 1250)">
+    <circle cx="850" cy="1230" r="30" fill="none" stroke="#c9a45a" stroke-width="12"/>
+    <circle cx="850" cy="1230" r="30" fill="none" stroke="#e8c78e" stroke-width="3" stroke-opacity="0.7"/>
+    <rect x="876" y="1222" width="100" height="15" rx="7" fill="#c9a45a"/>
+    <rect x="952" y="1235" width="13" height="24" rx="5" fill="#a4763e"/>
+    <rect x="928" y="1235" width="11" height="20" rx="5" fill="#a4763e"/>
+  </g>
+
+  <!-- 熄灭的蜡烛 -->
+  <g>
+    <ellipse cx="330" cy="1330" rx="110" ry="26" fill="#000000" opacity="0.35" filter="url(#soft)"/>
+    <path d="M300 1200 L360 1200 L352 1330 L308 1330 Z" fill="#e8ddc2"/>
+    <path d="M300 1200 L360 1200 L356 1230 L304 1230 Z" fill="#f4ecd4"/>
+    <!-- 蜡泪 -->
+    <path d="M312 1230 q-6 40 -10 74 q-2 14 8 16" stroke="#f4ecd4" stroke-width="9" fill="none" stroke-linecap="round"/>
+    <!-- 灯芯与一缕余烟 -->
+    <line x1="330" y1="1198" x2="330" y2="1184" stroke="#1a120c" stroke-width="5" stroke-linecap="round"/>
+    <path d="M330 1178 q-8 -30 6 -56 q10 -20 -2 -40" stroke="#9a92a8" stroke-width="6" fill="none" opacity="0.28" filter="url(#soft6)"/>
+    <path d="M330 1180 q10 -26 -2 -50" stroke="#cfc8dc" stroke-width="3" fill="none" opacity="0.2" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 尘光 -->
+  <g fill="#f7dcae">
+    <circle cx="760" cy="1050" r="2.2" opacity="0.3"/><circle cx="840" cy="990" r="1.7" opacity="0.24"/><circle cx="950" cy="1100" r="1.5" opacity="0.2"/><circle cx="700" cy="1180" r="1.8" opacity="0.22"/><circle cx="920" cy="1240" r="1.4" opacity="0.16"/>
+  </g>
+
+  <rect width="1200" height="1600" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="1600" fill="url(#vignette)"/>
+</svg>

@@ -1,0 +1,389 @@
+{
+  "schema_version": 1,
+  "survey": {
+    "title": "雨夜书房 · 雨停之前",
+    "description": "一幅画，四个驻点，一夜的时间。点击画面里发亮的区域走进去看——雨夜、旧信、旋律、秘密，四条线索都藏在这间书房里；你走过的每一处都会记下来。",
+    "anonymous": 0,
+    "pages": [{ "id": "p1", "title": "雨夜书房", "description": null }],
+    "questions": [
+      {
+        "id": "q-scene",
+        "type": "scene",
+        "title": "走进这幅画",
+        "description": "下面是一间书房，也是一幅画。点击发亮的区域查看细节；有些区域会带你走到房间的另一个角落。雨夜、旧信、旋律、秘密——四条线索都从这里开始。",
+        "required": true,
+        "order": 0,
+        "page_id": "p1",
+        "options": [],
+        "media": [
+          {
+            "url": "kv://study-room/panorama",
+            "alt": "雨夜书房全景：左侧高窗挂满雨痕，窗外长街亮着路灯；中央书桌台灯亮着，摊着一封写到一半的信；右侧书架顶到天花板，第三层的书摆得不太齐，唱机立在小几上，猫睡在地毯上。"
+          },
+          {
+            "url": "kv://study-room/letter-desk",
+            "alt": "书桌特写：一封写到第三行的信，钢笔搁在旁边，火漆封着的信封压着信纸一角。"
+          },
+          {
+            "url": "kv://study-room/rain-street",
+            "alt": "窗外雨夜的长街：路灯把雨丝照成细线，屋檐下亮着一小片暖光，街上没有人。"
+          },
+          {
+            "url": "kv://study-room/glass-rain",
+            "alt": "窗玻璃特写：水痕在玻璃上分岔汇合，一道长长的水线正滑下去，映着街灯的暖黄。"
+          },
+          {
+            "url": "kv://study-room/record-spinning",
+            "alt": "留声机特写：唱片转到一半停在转盘上，唱针抬起，黄铜喇叭映着烛光。"
+          },
+          {
+            "url": "kv://study-room/unmailed-letter",
+            "alt": "一摞封着火漆的旧信特写：同一个字母的火漆印，最上面一封的收信地址被水泡得模糊。"
+          },
+          {
+            "url": "kv://study-room/ticket-book",
+            "alt": "摊开的旧书特写：书页间夹着一张被雨洇开日期的火车票和一朵压干的白色小花。"
+          },
+          {
+            "url": "kv://study-room/hidden-open",
+            "alt": "暗格内部特写：按年份排好的信、一张唱片和一枚黄铜钥匙，最上面一封信的墨迹未干。"
+          },
+          {
+            "url": "kv://study-room/final-letter",
+            "alt": "摊开的最后一封信特写：几行钢笔字，收信人一栏空着等名字，窗外雨光落在纸上。"
+          }
+        ],
+        "settings": {
+          "scene": {
+            "version": 1,
+            "start": "room",
+            "scenes": {
+              "room": {
+                "id": "room",
+                "title": "书房全景",
+                "intro": "今晚你回到这间房。雨还没停，台灯亮着，一切都和昨天一样——除了桌上那封没写完的信。",
+                "image": "kv://study-room/panorama",
+                "width": 1600,
+                "height": 1000,
+                "alt": "书房全景驻点：整间雨夜书房，窗、书桌、留声机与书架都在画面里。",
+                "hotspots": [
+                  {
+                    "id": "window-door",
+                    "x": 0.04,
+                    "y": 0.1,
+                    "w": 0.28,
+                    "h": 0.55,
+                    "label": "窗",
+                    "meta": "01",
+                    "action": { "kind": "scene", "sceneId": "window" }
+                  },
+                  {
+                    "id": "letter-desk",
+                    "x": 0.43,
+                    "y": 0.52,
+                    "w": 0.17,
+                    "h": 0.26,
+                    "label": "桌上的信",
+                    "meta": "02",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/letter-desk",
+                      "title": "写到一半的信",
+                      "caption": "信纸只有一页，抬头写了，正文停在第三行——墨迹在那里洇开一小片，像被什么忽然打断。",
+                      "note": "今晚的雨，和那年一样大。"
+                    }
+                  },
+                  {
+                    "id": "melody-door",
+                    "x": 0.6,
+                    "y": 0.4,
+                    "w": 0.15,
+                    "h": 0.32,
+                    "label": "留声机",
+                    "meta": "03",
+                    "action": { "kind": "scene", "sceneId": "melody" }
+                  },
+                  {
+                    "id": "shelf-door",
+                    "x": 0.78,
+                    "y": 0.12,
+                    "w": 0.18,
+                    "h": 0.56,
+                    "label": "书架",
+                    "meta": "04",
+                    "action": { "kind": "scene", "sceneId": "shelf" }
+                  }
+                ]
+              },
+              "window": {
+                "id": "window",
+                "title": "窗前 · 雨还在下",
+                "intro": "你走到窗前。玻璃上的水痕把街灯拉成长线，雨点在檐上敲出一种很熟的节奏。",
+                "image": "kv://study-room/panorama",
+                "width": 1600,
+                "height": 1000,
+                "alt": "窗前驻点：高窗布满雨痕，窗外是雨夜长街与一盏暖黄路灯，室内台灯与书架隐在暗处。",
+                "hotspots": [
+                  {
+                    "id": "rain-street",
+                    "x": 0.055,
+                    "y": 0.13,
+                    "w": 0.25,
+                    "h": 0.47,
+                    "label": "雨中的街",
+                    "meta": "05",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/rain-street",
+                      "title": "雨中的长街",
+                      "caption": "街很空。路灯把雨丝照成一根根细线，只有屋檐下亮着一小片暖光，像有人刚离开不久。",
+                      "note": "他在这样的雨里，走了七年。"
+                    }
+                  },
+                  {
+                    "id": "glass-rain",
+                    "x": 0.07,
+                    "y": 0.63,
+                    "w": 0.21,
+                    "h": 0.28,
+                    "label": "玻璃上的雨痕",
+                    "meta": "06",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/glass-rain",
+                      "title": "玻璃上的雨痕",
+                      "caption": "水痕在玻璃上分岔、汇合，又滑下去。有一道特别长，你看了很久，直到分不清那是水还是别的什么。",
+                      "note": "雨把每一条路，都写成同一个方向。"
+                    }
+                  },
+                  {
+                    "id": "rhythm-door",
+                    "x": 0.315,
+                    "y": 0.14,
+                    "w": 0.075,
+                    "h": 0.48,
+                    "label": "雨的节拍",
+                    "meta": "07",
+                    "action": { "kind": "scene", "sceneId": "melody" }
+                  }
+                ]
+              },
+              "melody": {
+                "id": "melody",
+                "title": "唱机旁 · 没有名字的曲子",
+                "intro": "唱针落下，雨声退后了半步。唱机旁也摞着信，和桌上那封是同一种纸。",
+                "image": "kv://study-room/panorama",
+                "width": 1600,
+                "height": 1000,
+                "alt": "唱机驻点：小几上的黄铜留声机，转盘上的唱片停在一首歌中途，旁边摞着火漆封口的旧信。",
+                "hotspots": [
+                  {
+                    "id": "record-spinning",
+                    "x": 0.6,
+                    "y": 0.46,
+                    "w": 0.09,
+                    "h": 0.16,
+                    "label": "转动的唱片",
+                    "meta": "08",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/record-spinning",
+                      "title": "第七圈",
+                      "caption": "唱片在转。曲子进行到一半就停在那里——不是放完了，是有人在中途抬起了唱针。纹路里还留着那半句旋律。",
+                      "note": "这支曲子没有名字，因为你还没回来。"
+                    }
+                  },
+                  {
+                    "id": "unmailed-letter",
+                    "x": 0.7,
+                    "y": 0.58,
+                    "w": 0.09,
+                    "h": 0.15,
+                    "label": "唱机旁的信",
+                    "meta": "09",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/unmailed-letter",
+                      "title": "没有寄出的一摞",
+                      "caption": "七八封信摞在一起，封着同一种火漆，火漆上是同一个字母。每一封的收信地址都被雨汽泡得模糊。",
+                      "note": "寄不出去的信，只好读给留声机听。"
+                    }
+                  },
+                  {
+                    "id": "score-note",
+                    "x": 0.66,
+                    "y": 0.34,
+                    "w": 0.075,
+                    "h": 0.11,
+                    "label": "谱上的暗号",
+                    "meta": "10",
+                    "action": { "kind": "scene", "sceneId": "shelf" }
+                  }
+                ]
+              },
+              "shelf": {
+                "id": "shelf",
+                "title": "书架深处 · 第三层",
+                "intro": "第三层的书摆得不太齐。有一本薄薄的旧书，书脊比别的褪色得多。",
+                "image": "kv://study-room/panorama",
+                "width": 1600,
+                "height": 1000,
+                "alt": "书架驻点：右侧深色书架顶到天花板，第三层有一本褪色的薄书，侧板近右缘处有一道透出微光的细缝。",
+                "hotspots": [
+                  {
+                    "id": "ticket-book",
+                    "x": 0.795,
+                    "y": 0.3,
+                    "w": 0.1,
+                    "h": 0.17,
+                    "label": "夹着车票的旧书",
+                    "meta": "11",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/ticket-book",
+                      "title": "一本没读完的书",
+                      "caption": "书页间夹着一张去海边的火车票，和一朵压干的白色小花。票上的日期被雨洇开了，只看得出是很多年前的一个七月。",
+                      "note": "说好一起去的海，后来只剩一张票。"
+                    }
+                  },
+                  {
+                    "id": "shelf-return",
+                    "x": 0.74,
+                    "y": 0.76,
+                    "w": 0.14,
+                    "h": 0.15,
+                    "label": "把书放回去",
+                    "meta": "12",
+                    "action": { "kind": "scene", "sceneId": "room" }
+                  },
+                  {
+                    "id": "closet-door",
+                    "x": 0.9,
+                    "y": 0.28,
+                    "w": 0.06,
+                    "h": 0.26,
+                    "label": "书脊后的细缝",
+                    "meta": "13",
+                    "action": { "kind": "scene", "sceneId": "closet" }
+                  }
+                ]
+              },
+              "closet": {
+                "id": "closet",
+                "title": "暗格 · 终章",
+                "intro": "细缝后面是一格暗格。它开着——你确定昨夜它还是关着的。里面没有金银，只有纸。",
+                "image": "kv://study-room/panorama",
+                "width": 1600,
+                "height": 1000,
+                "alt": "终章驻点：书架侧板的暗格开着，透出一线暖光；房间还是原来那间，只是雨声轻了。",
+                "hotspots": [
+                  {
+                    "id": "closet-return",
+                    "x": 0.4,
+                    "y": 0.82,
+                    "w": 0.18,
+                    "h": 0.12,
+                    "label": "把暗格轻轻带上",
+                    "meta": "14",
+                    "action": { "kind": "scene", "sceneId": "room" }
+                  },
+                  {
+                    "id": "hidden-open",
+                    "x": 0.87,
+                    "y": 0.28,
+                    "w": 0.1,
+                    "h": 0.32,
+                    "label": "暗格深处",
+                    "meta": "15",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/hidden-open",
+                      "title": "暗格里的这些年",
+                      "caption": "格子不深，刚好放下一排按年份排好的信、一张唱片和一枚黄铜钥匙。最早的一封已经黄脆，最晚的一封——墨迹是新的。",
+                      "note": "每一年的雨夜，这里都添一句没说完的话。"
+                    }
+                  },
+                  {
+                    "id": "final-letter",
+                    "x": 0.755,
+                    "y": 0.3,
+                    "w": 0.1,
+                    "h": 0.3,
+                    "label": "最后一封信",
+                    "meta": "16",
+                    "action": {
+                      "kind": "image",
+                      "src": "kv://study-room/final-letter",
+                      "title": "最后一封信",
+                      "caption": "信只有几行：雨停之前，把暗格打开；曲子放到第七圈就停下，等有人接着听完；海边的票根，还在第三层那本书里。收信人一栏——写的是今夜推门进来的人。",
+                      "note": "雨停了。这间书房从今晚起，不再上锁。"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "q-farewell",
+        "type": "long_text",
+        "title": "离开之前",
+        "description": "雨快停了。走之前，留一句话给这间书房——给那封信、那支曲子，或者那个暗格（可以不填）。",
+        "required": false,
+        "order": 1,
+        "page_id": "p1",
+        "options": [],
+        "media": [],
+        "validation": { "max_length": 500 }
+      }
+    ]
+  },
+  "mediaMeta": {
+    "study-room/panorama": {
+      "width": 1600,
+      "height": 1000,
+      "alt": "雨夜书房全景：左侧高窗挂满雨痕，窗外长街亮着路灯；中央书桌台灯亮着，摊着一封写到一半的信；右侧书架顶到天花板，第三层的书摆得不太齐，唱机立在小几上，猫睡在地毯上。"
+    },
+    "study-room/letter-desk": {
+      "width": 1200,
+      "height": 1600,
+      "alt": "书桌特写：一封写到第三行的信，钢笔搁在旁边，火漆封着的信封压着信纸一角。"
+    },
+    "study-room/rain-street": {
+      "width": 1200,
+      "height": 900,
+      "alt": "窗外雨夜的长街：路灯把雨丝照成细线，屋檐下亮着一小片暖光，街上没有人。"
+    },
+    "study-room/glass-rain": {
+      "width": 1200,
+      "height": 1600,
+      "alt": "窗玻璃特写：水痕在玻璃上分岔汇合，一道长长的水线正滑下去，映着街灯的暖黄。"
+    },
+    "study-room/record-spinning": {
+      "width": 1200,
+      "height": 900,
+      "alt": "留声机特写：唱片转到一半停在转盘上，唱针抬起，黄铜喇叭映着烛光。"
+    },
+    "study-room/unmailed-letter": {
+      "width": 1200,
+      "height": 1600,
+      "alt": "一摞封着火漆的旧信特写：同一个字母的火漆印，最上面一封的收信地址被水泡得模糊。"
+    },
+    "study-room/ticket-book": {
+      "width": 1200,
+      "height": 900,
+      "alt": "摊开的旧书特写：书页间夹着一张被雨洇开日期的火车票和一朵压干的白色小花。"
+    },
+    "study-room/hidden-open": {
+      "width": 1200,
+      "height": 900,
+      "alt": "暗格内部特写：按年份排好的信、一张唱片和一枚黄铜钥匙，最上面一封信的墨迹未干。"
+    },
+    "study-room/final-letter": {
+      "width": 1200,
+      "height": 1600,
+      "alt": "摊开的最后一封信特写：几行钢笔字，收信人一栏空着等名字，窗外雨光落在纸上。"
+    }
+  }
+}

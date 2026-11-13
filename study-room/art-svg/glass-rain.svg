@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+  <!-- 雨夜书房 · 玻璃上的雨痕（glass-rain）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a1424"/>
+      <stop offset="0.6" stop-color="#122340"/>
+      <stop offset="1" stop-color="#0c1a30"/>
+    </linearGradient>
+    <radialGradient id="lampBokeh" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd98f" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#e8b878" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#e8b878" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.85">
+      <stop offset="0.45" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#04060c" stop-opacity="0.62"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="31" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.8  0 0 0 0 0.85  0 0 0 0 0.9  0 0 0 0.07 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="1600" fill="url(#night)"/>
+
+  <!-- 玻璃后景：模糊路灯光斑与远屋剪影 -->
+  <g>
+    <g opacity="0.5" filter="url(#soft)">
+      <rect x="0" y="520" width="260" height="360" fill="#0d1828"/>
+      <rect x="880" y="470" width="320" height="410" fill="#0d1828"/>
+      <path d="M300 620 l70 -80 70 80 Z" fill="#0d1828"/>
+    </g>
+    <ellipse cx="360" cy="760" rx="180" ry="200" fill="url(#lampBokeh)" filter="url(#soft)"/>
+    <ellipse cx="360" cy="760" rx="70" ry="82" fill="#ffd98f" opacity="0.5" filter="url(#soft)"/>
+    <ellipse cx="920" cy="620" rx="60" ry="66" fill="#e8b878" opacity="0.28" filter="url(#soft)"/>
+    <ellipse cx="180" cy="300" rx="44" ry="50" fill="#e8b878" opacity="0.2" filter="url(#soft)"/>
+  </g>
+
+  <!-- 主水痕：一道长线分岔汇合滑落 -->
+  <g stroke-linecap="round" fill="none">
+    <path d="M620 60 C600 220, 650 380, 615 540 C590 680, 640 830, 608 980 C580 1120, 630 1300, 600 1470" stroke="#dfeaf6" stroke-opacity="0.5" stroke-width="13"/>
+    <path d="M620 60 C600 220, 650 380, 615 540 C590 680, 640 830, 608 980 C580 1120, 630 1300, 600 1470" stroke="#f2f8fd" stroke-opacity="0.4" stroke-width="5"/>
+    <!-- 分岔支流 -->
+    <path d="M618 200 C660 260, 640 330, 668 400" stroke="#dfeaf6" stroke-opacity="0.3" stroke-width="6"/>
+    <path d="M612 480 C570 540, 590 610, 556 680" stroke="#dfeaf6" stroke-opacity="0.28" stroke-width="5"/>
+    <path d="M610 900 C655 960, 635 1030, 662 1100" stroke="#dfeaf6" stroke-opacity="0.26" stroke-width="5"/>
+    <path d="M602 1240 C560 1300, 580 1370, 552 1440" stroke="#dfeaf6" stroke-opacity="0.24" stroke-width="4"/>
+    <!-- 水痕里的暖光反光 -->
+    <path d="M616 300 C606 360, 630 420, 618 470" stroke="#ffd98f" stroke-opacity="0.5" stroke-width="7"/>
+    <path d="M607 1040 C598 1100, 622 1160, 610 1210" stroke="#ffd98f" stroke-opacity="0.4" stroke-width="6"/>
+  </g>
+
+  <!-- 次要水痕 -->
+  <g stroke="#dfeaf6" stroke-linecap="round" fill="none">
+    <path d="M240 90 C230 300, 252 520, 236 760 C226 940, 246 1180, 232 1420" stroke-opacity="0.22" stroke-width="6"/>
+    <path d="M900 70 C912 260, 888 470, 906 680 C916 850, 894 1080, 908 1300" stroke-opacity="0.2" stroke-width="5"/>
+    <path d="M440 40 C434 180, 452 320, 440 470" stroke-opacity="0.16" stroke-width="4"/>
+    <path d="M760 90 C768 240, 750 380, 764 540" stroke-opacity="0.18" stroke-width="4"/>
+    <path d="M1050 120 C1044 320, 1060 520, 1046 740" stroke-opacity="0.15" stroke-width="4"/>
+  </g>
+
+  <!-- 悬而未落的水珠 -->
+  <g fill="#f2f8fd">
+    <ellipse cx="606" cy="1500" rx="10" ry="14" opacity="0.55"/>
+    <ellipse cx="606" cy="1496" rx="4" ry="6" opacity="0.8" cx2="606"/>
+    <ellipse cx="236" cy="480" rx="6" ry="9" opacity="0.4"/>
+    <ellipse cx="764" cy="560" rx="5" ry="8" opacity="0.35"/>
+  </g>
+
+  <!-- 细密小水珠 -->
+  <g fill="#cfe0f2" opacity="0.22">
+    <circle cx="200" cy="200" r="3"/><circle cx="320" cy="160" r="2.5"/><circle cx="520" cy="120" r="3"/><circle cx="840" cy="200" r="2.5"/><circle cx="980" cy="140" r="3"/><circle cx="1120" cy="260" r="2.5"/><circle cx="280" cy="900" r="3"/><circle cx="500" cy="1040" r="2.5"/><circle cx="700" cy="1120" r="3"/><circle cx="960" cy="1180" r="2.5"/><circle cx="1120" cy="980" r="3"/><circle cx="160" cy="1300" r="2.5"/><circle cx="420" cy="1480" r="3"/><circle cx="860" cy="1440" r="2.5"/>
+  </g>
+
+  <!-- 深色木窗框（左上与右下角） -->
+  <g>
+    <rect x="0" y="0" width="120" height="1600" fill="#241a12"/>
+    <rect x="0" y="0" width="120" height="1600" fill="none" stroke="#3a2a1c" stroke-width="10"/>
+    <rect x="100" y="0" width="14" height="1600" fill="#4d3826" opacity="0.6"/>
+    <rect x="1080" y="0" width="120" height="1600" fill="#241a12"/>
+    <rect x="1080" y="0" width="120" height="1600" fill="none" stroke="#3a2a1c" stroke-width="10"/>
+    <rect x="1086" y="0" width="14" height="1600" fill="#4d3826" opacity="0.6"/>
+  </g>
+
+  <rect width="1200" height="1600" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="1600" fill="url(#vignette)"/>
+</svg>

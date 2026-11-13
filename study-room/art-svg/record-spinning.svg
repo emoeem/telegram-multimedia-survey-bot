@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <!-- 雨夜书房 · 转动的唱片（record-spinning）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e1628"/>
+      <stop offset="1" stop-color="#120e1c"/>
+    </linearGradient>
+    <linearGradient id="woodBase" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4d3826"/>
+      <stop offset="1" stop-color="#2c2016"/>
+    </linearGradient>
+    <radialGradient id="hornGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffdf9f" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffdf9f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.45" cy="0.5" r="0.85">
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050308" stop-opacity="0.62"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="41" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg)"/>
+
+  <!-- 背景虚化：窗的冷蓝 -->
+  <g opacity="0.5" filter="url(#soft)">
+    <rect x="60" y="120" width="330" height="420" fill="#12233f"/>
+    <ellipse cx="420" cy="300" rx="70" ry="80" fill="#e8b878" opacity="0.25"/>
+  </g>
+  <ellipse cx="620" cy="360" rx="440" ry="330" fill="url(#hornGlow)" filter="url(#soft)"/>
+
+  <!-- 木质底座 -->
+  <g>
+    <ellipse cx="620" cy="820" rx="360" ry="46" fill="#000000" opacity="0.4" filter="url(#soft)"/>
+    <rect x="360" y="620" width="520" height="190" rx="18" fill="url(#woodBase)"/>
+    <rect x="360" y="620" width="520" height="26" rx="12" fill="#5f4732"/>
+    <g stroke="#2c2016" stroke-width="3" opacity="0.5">
+      <path d="M380 700 q180 -12 470 -6" fill="none"/>
+      <path d="M380 760 q200 -12 480 -6" fill="none"/>
+    </g>
+    <!-- 黄铜铭牌（无文字，仅凹槽） -->
+    <rect x="560" y="740" width="120" height="30" rx="8" fill="#a4763e"/>
+    <rect x="560" y="740" width="120" height="30" rx="8" fill="none" stroke="#e8c78e" stroke-width="2" stroke-opacity="0.5"/>
+  </g>
+
+  <!-- 转盘与唱片 -->
+  <g>
+    <ellipse cx="620" cy="580" rx="270" ry="86" fill="#1a120c"/>
+    <ellipse cx="620" cy="568" rx="270" ry="86" fill="#241a12"/>
+    <!-- 唱片（椭圆透视） -->
+    <ellipse cx="620" cy="560" rx="248" ry="76" fill="#0d0d12"/>
+    <ellipse cx="620" cy="560" rx="248" ry="76" fill="none" stroke="#2a2a34" stroke-width="3"/>
+    <!-- 细密纹理 -->
+    <g fill="none" stroke="#3a3a46" stroke-opacity="0.5">
+      <ellipse cx="620" cy="560" rx="230" ry="70" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="210" ry="64" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="190" ry="58" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="170" ry="52" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="150" ry="46" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="130" ry="40" stroke-width="1"/>
+      <ellipse cx="620" cy="560" rx="110" ry="34" stroke-width="1"/>
+    </g>
+    <!-- 一线烛光反光 -->
+    <path d="M420 545 q200 -34 400 -4" stroke="#f7dcae" stroke-opacity="0.3" stroke-width="5" fill="none" filter="url(#soft6)"/>
+    <path d="M480 585 q160 22 320 2" stroke="#8fa8c8" stroke-opacity="0.18" stroke-width="3" fill="none"/>
+    <!-- 唱片中心 -->
+    <ellipse cx="620" cy="560" rx="40" ry="12" fill="#e8ddc2"/>
+    <ellipse cx="620" cy="560" rx="8" ry="3" fill="#14141c"/>
+    <!-- 唱针臂（微微抬起） -->
+    <g>
+      <ellipse cx="836" cy="500" rx="26" ry="12" fill="#c9a45a"/>
+      <ellipse cx="836" cy="496" rx="26" ry="12" fill="#e0c37e"/>
+      <path d="M820 500 L700 548" stroke="#c9a45a" stroke-width="12" stroke-linecap="round"/>
+      <path d="M820 497 L706 545" stroke="#e8c78e" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+      <path d="M706 545 L684 566" stroke="#a4763e" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="684" cy="568" r="5" fill="#e8ddc2"/>
+    </g>
+  </g>
+
+  <!-- 黄铜喇叭 -->
+  <g>
+    <path d="M560 560 C470 540, 380 470, 340 380 C320 330, 336 288, 382 274 C424 262, 462 284, 474 328 C496 408, 544 500, 610 556 Z" fill="#b8865a"/>
+    <path d="M382 274 C352 284, 336 318, 348 356 C364 408, 420 480, 496 530" stroke="#e8c78e" stroke-width="6" fill="none" stroke-opacity="0.55"/>
+    <path d="M560 560 C500 530, 440 470, 404 402" stroke="#8a5f38" stroke-width="5" fill="none" stroke-opacity="0.6"/>
+    <ellipse cx="398" cy="330" rx="64" ry="56" fill="#d4a574"/>
+    <ellipse cx="398" cy="330" rx="64" ry="56" fill="none" stroke="#e8c78e" stroke-width="4" stroke-opacity="0.6"/>
+    <ellipse cx="398" cy="330" rx="44" ry="38" fill="#1a120c"/>
+    <ellipse cx="398" cy="330" rx="44" ry="38" fill="none" stroke="#0a0a0e" stroke-width="6"/>
+    <!-- 喇叭口的烛光反光 -->
+    <path d="M368 306 q26 -14 54 -4" stroke="#ffe9bd" stroke-width="6" stroke-opacity="0.6" fill="none" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 谱纸一角 -->
+  <g transform="rotate(-6 240 760)">
+    <rect x="120" y="700" width="220" height="150" rx="4" fill="#e8d8b8"/>
+    <g stroke="#6a5a7a" stroke-width="4" opacity="0.4"><path d="M140 730 l180 -6"/><path d="M142 756 l176 -6"/><path d="M144 782 l172 -6"/><path d="M146 808 l168 -6"/></g>
+    <circle cx="320" cy="726" r="4" fill="#5a4a66" opacity="0.5"/>
+  </g>
+
+  <rect width="1200" height="900" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="900" fill="url(#vignette)"/>
+</svg>

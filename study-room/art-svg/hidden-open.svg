@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <!-- 雨夜书房 · 暗格深处（hidden-open）。同套美术系统。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1220"/>
+      <stop offset="1" stop-color="#100c18"/>
+    </linearGradient>
+    <linearGradient id="shelf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a2a1c"/>
+      <stop offset="1" stop-color="#221810"/>
+    </linearGradient>
+    <linearGradient id="cavity" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#170f0a"/>
+      <stop offset="1" stop-color="#0f0a06"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecdcb8"/>
+      <stop offset="1" stop-color="#d4bf94"/>
+    </linearGradient>
+    <radialGradient id="slitGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe9bd" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#ffe9bd" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.48" r="0.85">
+      <stop offset="0.42" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#040308" stop-opacity="0.66"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="soft6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="71" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg)"/>
+
+  <!-- 深色书架侧板（占据画面） -->
+  <g>
+    <rect x="0" y="0" width="1200" height="900" fill="url(#shelf)"/>
+    <g stroke="#160f0a" stroke-width="4" opacity="0.7">
+      <path d="M0 120 q300 -14 600 -8 t600 -4" fill="none"/>
+      <path d="M0 300 q340 -16 660 -8 t540 -6" fill="none"/>
+      <path d="M0 720 q300 -12 600 -6 t600 -4" fill="none"/>
+    </g>
+    <rect x="0" y="0" width="1200" height="900" fill="#1a120c" opacity="0.25"/>
+  </g>
+
+  <!-- 打开的暗格（格子） -->
+  <g>
+    <ellipse cx="600" cy="470" rx="420" ry="290" fill="url(#cavity)"/>
+    <rect x="240" y="230" width="720" height="460" rx="10" fill="url(#cavity)"/>
+    <!-- 暗格内壁木纹 -->
+    <g stroke="#241812" stroke-width="3" opacity="0.8">
+      <path d="M260 300 q320 -10 660 -6" fill="none"/>
+      <path d="M260 380 q320 -10 660 -6" fill="none"/>
+      <path d="M260 460 q320 -10 660 -6" fill="none"/>
+      <path d="M260 540 q320 -10 660 -6" fill="none"/>
+      <path d="M260 620 q320 -10 660 -6" fill="none"/>
+    </g>
+    <!-- 暗格口沿（板厚） -->
+    <rect x="228" y="218" width="744" height="20" rx="6" fill="#4d3826"/>
+    <rect x="228" y="682" width="744" height="20" rx="6" fill="#3a2a1c"/>
+    <rect x="228" y="218" width="20" height="484" rx="6" fill="#4d3826"/>
+    <rect x="952" y="218" width="20" height="484" rx="6" fill="#3a2a1c"/>
+    <!-- 缝隙透出的暖光 -->
+    <rect x="248" y="240" width="16" height="440" fill="url(#slitGlow)" filter="url(#soft)"/>
+    <ellipse cx="600" cy="460" rx="330" ry="220" fill="#f7dcae" opacity="0.1" filter="url(#soft)"/>
+  </g>
+
+  <!-- 格内：按序立着的泛黄信封 -->
+  <g>
+    <g transform="rotate(-2 400 520)">
+      <rect x="330" y="420" width="130" height="180" rx="5" fill="url(#paper)"/>
+      <g stroke="#5a4a66" stroke-width="3.4" stroke-linecap="round" opacity="0.5" filter="url(#soft6)"><path d="M350 460 q44 -4 90 -2"/><path d="M352 496 q46 -4 92 -2"/></g>
+      <path d="M330 420 L395 470 L460 420" fill="none" stroke="#b89d6e" stroke-width="3"/>
+    </g>
+    <g transform="rotate(1.5 500 512)">
+      <rect x="448" y="412" width="126" height="186" rx="5" fill="#e3d1ad"/>
+      <g stroke="#5a4a66" stroke-width="3.2" stroke-linecap="round" opacity="0.45" filter="url(#soft6)"><path d="M468 452 q42 -4 86 -2"/></g>
+      <path d="M448 412 L511 460 L574 412" fill="none" stroke="#b89d6e" stroke-width="3"/>
+    </g>
+    <g transform="rotate(-1 596 508)">
+      <rect x="556" y="406" width="124" height="190" rx="5" fill="url(#paper)"/>
+      <!-- 最上面一封：墨迹未干微微发亮 -->
+      <g stroke="#2c2340" stroke-width="4" stroke-linecap="round" filter="url(#soft6)"><path d="M578 448 q40 -4 82 -2"/></g>
+      <path d="M578 448 q40 -4 82 -2" stroke="#8f7ab0" stroke-width="2" stroke-opacity="0.5" fill="none"/>
+      <path d="M556 406 L618 456 L680 406" fill="none" stroke="#b89d6e" stroke-width="3"/>
+    </g>
+    <g transform="rotate(2 692 514)">
+      <rect x="668" y="416" width="122" height="184" rx="5" fill="#e3d1ad"/>
+      <path d="M668 416 L729 464 L790 416" fill="none" stroke="#b89d6e" stroke-width="3"/>
+    </g>
+  </g>
+
+  <!-- 黑色唱片 -->
+  <g>
+    <ellipse cx="600" cy="646" rx="90" ry="26" fill="#0d0d12"/>
+    <ellipse cx="600" cy="640" rx="90" ry="26" fill="#14141c"/>
+    <g fill="none" stroke="#3a3a46" stroke-opacity="0.5">
+      <ellipse cx="600" cy="640" rx="78" ry="22" stroke-width="1"/>
+      <ellipse cx="600" cy="640" rx="62" ry="17" stroke-width="1"/>
+      <ellipse cx="600" cy="640" rx="46" ry="13" stroke-width="1"/>
+    </g>
+    <ellipse cx="600" cy="640" rx="16" ry="5" fill="#e8ddc2"/>
+    <path d="M520 630 q80 -16 160 -2" stroke="#f7dcae" stroke-opacity="0.3" stroke-width="3" fill="none" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 黄铜小钥匙 -->
+  <g transform="rotate(-18 790 640)">
+    <circle cx="760" cy="626" r="26" fill="none" stroke="#c9a45a" stroke-width="10"/>
+    <circle cx="760" cy="626" r="26" fill="none" stroke="#e8c78e" stroke-width="3" stroke-opacity="0.7"/>
+    <rect x="782" y="618" width="86" height="14" rx="6" fill="#c9a45a"/>
+    <rect x="852" y="630" width="12" height="22" rx="4" fill="#a4763e"/>
+    <rect x="830" y="630" width="10" height="18" rx="4" fill="#a4763e"/>
+  </g>
+
+  <!-- 暗格外：书架暗影与一格书脊 -->
+  <g>
+    <rect x="120" y="40" width="240" height="140" fill="#241a12"/>
+    <rect x="140" y="60" width="34" height="110" fill="#2e3a2a"/><rect x="180" y="52" width="40" height="118" fill="#5c2420"/><rect x="226" y="64" width="30" height="106" fill="#31425a"/><rect x="262" y="56" width="36" height="114" fill="#54301f"/>
+    <rect x="900" y="90" width="240" height="130" fill="#241a12"/>
+    <rect x="920" y="110" width="36" height="100" fill="#3a2a3f"/><rect x="962" y="102" width="32" height="108" fill="#59451f"/><rect x="1000" y="112" width="40" height="98" fill="#2f3f33"/><rect x="1046" y="104" width="34" height="106" fill="#523024"/>
+    <rect x="120" y="730" width="960" height="120" fill="#1c130c"/>
+  </g>
+
+  <rect width="1200" height="900" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1200" height="900" fill="url(#vignette)"/>
+</svg>

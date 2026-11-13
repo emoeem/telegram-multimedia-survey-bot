@@ -1,0 +1,245 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <!-- 雨夜书房 · 全景（panorama）。成套美术系统：深蓝夜色 vs 琥珀暖光，水彩质感由噪点+柔光近似。 -->
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1526"/>
+      <stop offset="0.55" stop-color="#241a2e"/>
+      <stop offset="1" stop-color="#2e2130"/>
+    </linearGradient>
+    <linearGradient id="nightGlass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a1424"/>
+      <stop offset="0.6" stop-color="#122340"/>
+      <stop offset="1" stop-color="#1a3050"/>
+    </linearGradient>
+    <radialGradient id="lampGlow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#f7dcae" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#eebd82" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#eebd82" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="streetLampGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd98f" stop-opacity="0.9"/>
+      <stop offset="0.4" stop-color="#e8b878" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#e8b878" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pendantGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe9bd" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#e8b878" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#e8b878" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="woodDark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a2a1c"/>
+      <stop offset="1" stop-color="#241a12"/>
+    </linearGradient>
+    <linearGradient id="woodMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4d3826"/>
+      <stop offset="1" stop-color="#31241a"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2e6cc"/>
+      <stop offset="1" stop-color="#e3d1ad"/>
+    </linearGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.46" r="0.85">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#050308" stop-opacity="0.55"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="soft6" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.85  0 0 0 0 0.75  0 0 0 0.06 0"/>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+    <g id="raindrops">
+      <line x1="0" y1="0" x2="0" y2="26" stroke="#cfe0f2" stroke-opacity="0.35" stroke-width="1.6" stroke-linecap="round"/>
+      <line x1="14" y1="30" x2="14" y2="64" stroke="#cfe0f2" stroke-opacity="0.22" stroke-width="1.3" stroke-linecap="round"/>
+      <line x1="7" y1="76" x2="7" y2="98" stroke="#cfe0f2" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="22" y1="10" x2="22" y2="38" stroke="#cfe0f2" stroke-opacity="0.18" stroke-width="1.1" stroke-linecap="round"/>
+      <line x1="30" y1="52" x2="30" y2="88" stroke="#cfe0f2" stroke-opacity="0.26" stroke-width="1.4" stroke-linecap="round"/>
+    </g>
+    <pattern id="rainGlass" width="120" height="140" patternUnits="userSpaceOnUse">
+      <use href="#raindrops"/>
+    </pattern>
+  </defs>
+
+  <!-- 墙面 -->
+  <rect width="1600" height="1000" fill="url(#wall)"/>
+
+  <!-- 左：高大提拉窗 -->
+  <g>
+    <rect x="120" y="90" width="380" height="760" rx="8" fill="#0a1424"/>
+    <rect x="132" y="102" width="356" height="736" fill="url(#nightGlass)"/>
+    <!-- 窗外路灯与光晕 -->
+    <ellipse cx="310" cy="430" rx="90" ry="150" fill="url(#streetLampGlow)" filter="url(#soft)"/>
+    <rect x="298" y="380" width="5" height="120" fill="#1c1c1c"/>
+    <ellipse cx="300" cy="372" rx="26" ry="14" fill="#ffd98f" opacity="0.95" filter="url(#soft6)"/>
+    <ellipse cx="300" cy="372" rx="12" ry="7" fill="#fff2d0"/>
+    <!-- 雨丝（玻璃上） -->
+    <rect x="132" y="102" width="356" height="736" fill="url(#rainGlass)"/>
+    <!-- 窗棂 -->
+    <rect x="128" y="98" width="364" height="744" fill="none" stroke="url(#woodMid)" stroke-width="16"/>
+    <rect x="128" y="98" width="364" height="744" fill="none" stroke="#5f4732" stroke-width="3" stroke-opacity="0.5"/>
+    <line x1="310" y1="98" x2="310" y2="842" stroke="url(#woodMid)" stroke-width="12"/>
+    <line x1="128" y1="470" x2="492" y2="470" stroke="url(#woodMid)" stroke-width="12"/>
+    <!-- 窗台 -->
+    <rect x="104" y="836" width="404" height="26" rx="6" fill="url(#woodDark)"/>
+    <rect x="104" y="830" width="404" height="8" fill="#5f4732" opacity="0.4"/>
+    <!-- 主水痕 -->
+    <path d="M205 110 C200 240, 214 420, 203 560 C198 650, 210 740, 206 830" stroke="#dfeaf6" stroke-opacity="0.35" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M395 110 C399 260, 388 430, 396 600 C400 700, 392 780, 395 830" stroke="#dfeaf6" stroke-opacity="0.22" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- 右：书架 -->
+  <g>
+    <rect x="1150" y="70" width="410" height="830" fill="url(#woodDark)"/>
+    <rect x="1150" y="70" width="410" height="830" fill="none" stroke="#160f0a" stroke-width="6" stroke-opacity="0.8"/>
+    <!-- 四层隔板 -->
+    <g>
+      <rect x="1172" y="196" width="366" height="14" fill="url(#woodMid)"/>
+      <rect x="1172" y="356" width="366" height="14" fill="url(#woodMid)"/>
+      <rect x="1172" y="516" width="366" height="14" fill="url(#woodMid)"/>
+      <rect x="1172" y="676" width="366" height="14" fill="url(#woodMid)"/>
+    </g>
+    <!-- 第一层书脊 -->
+    <g>
+      <rect x="1184" y="120" width="26" height="76" fill="#54301f"/><rect x="1214" y="126" width="20" height="70" fill="#2e3a2a"/><rect x="1238" y="118" width="30" height="78" fill="#5c2420"/><rect x="1272" y="130" width="18" height="66" fill="#31425a"/><rect x="1294" y="122" width="26" height="74" fill="#54401f"/><rect x="1324" y="128" width="22" height="68" fill="#3a2a3f"/><rect x="1350" y="120" width="28" height="76" fill="#59451f"/><rect x="1382" y="132" width="18" height="64" fill="#2f3f33"/><rect x="1404" y="124" width="26" height="72" fill="#523024"/><rect x="1434" y="128" width="22" height="68" fill="#38404d"/><rect x="1460" y="120" width="26" height="76" fill="#573424"/>
+    </g>
+    <!-- 第二层书脊 -->
+    <g>
+      <rect x="1184" y="280" width="24" height="76" fill="#2f3f33"/><rect x="1212" y="286" width="28" height="70" fill="#54401f"/><rect x="1244" y="280" width="20" height="76" fill="#5c2420"/><rect x="1268" y="292" width="26" height="64" fill="#31425a"/><rect x="1298" y="282" width="22" height="74" fill="#3a2a3f"/><rect x="1324" y="288" width="26" height="68" fill="#54301f"/><rect x="1354" y="280" width="20" height="76" fill="#38404d"/><rect x="1378" y="292" width="28" height="64" fill="#59451f"/>
+    </g>
+    <!-- 第三层：褪色的薄书 -->
+    <g>
+      <rect x="1184" y="440" width="24" height="76" fill="#3a2a3f"/><rect x="1212" y="446" width="26" height="70" fill="#54301f"/><rect x="1242" y="440" width="20" height="76" fill="#31425a"/><rect x="1266" y="452" width="24" height="64" fill="#5c2420"/>
+      <rect x="1296" y="446" width="16" height="70" fill="#b8a888"/><rect x="1296" y="446" width="16" height="70" fill="none" stroke="#e8ddc2" stroke-width="1.5" stroke-opacity="0.7"/>
+      <rect x="1318" y="440" width="26" height="76" fill="#38404d"/><rect x="1348" y="448" width="20" height="68" fill="#54401f"/>
+    </g>
+    <!-- 第四、五层堆书与盒匣 -->
+    <g>
+      <rect x="1184" y="600" width="60" height="76" fill="#2e2620"/><rect x="1184" y="600" width="60" height="76" fill="none" stroke="#5f4732" stroke-width="2" stroke-opacity="0.6"/><rect x="1254" y="612" width="40" height="64" fill="#43301f"/><rect x="1304" y="606" width="34" height="70" fill="#2f3f33"/>
+    </g>
+    <g>
+      <rect x="1184" y="742" width="52" height="80" rx="6" fill="#3a2c1e"/><rect x="1248" y="756" width="38" height="66" rx="4" fill="#2c241c"/>
+    </g>
+    <!-- 书架右缘暗缝（暗格微光） -->
+    <rect x="1538" y="528" width="7" height="176" fill="#f7dcae" opacity="0.55" filter="url(#soft6)"/>
+    <rect x="1540" y="530" width="3" height="172" fill="#ffe9bd" opacity="0.85"/>
+  </g>
+
+  <!-- 中景：写字台 -->
+  <g>
+    <ellipse cx="820" cy="905" rx="420" ry="40" fill="#000000" opacity="0.35" filter="url(#soft)"/>
+    <rect x="560" y="640" width="520" height="34" rx="8" fill="url(#woodMid)"/>
+    <rect x="588" y="674" width="30" height="240" fill="url(#woodDark)"/>
+    <rect x="1022" y="674" width="30" height="240" fill="url(#woodDark)"/>
+    <rect x="700" y="674" width="240" height="200" fill="url(#woodDark)" opacity="0.9"/>
+    <rect x="712" y="688" width="216" height="60" rx="4" fill="none" stroke="#5f4732" stroke-width="2" stroke-opacity="0.5"/>
+    <circle cx="816" cy="718" r="5" fill="#b8865a"/>
+    <rect x="712" y="796" width="216" height="60" rx="4" fill="none" stroke="#5f4732" stroke-width="2" stroke-opacity="0.5"/>
+    <circle cx="816" cy="826" r="5" fill="#b8865a"/>
+    <!-- 台面 -->
+    <rect x="548" y="628" width="544" height="20" rx="6" fill="#4d3826"/>
+    <rect x="548" y="628" width="544" height="6" rx="3" fill="#6a5138" opacity="0.7"/>
+  </g>
+
+  <!-- 绿罩台灯 + 光晕 -->
+  <g>
+    <ellipse cx="700" cy="330" rx="230" ry="260" fill="url(#lampGlow)" filter="url(#soft)"/>
+    <rect x="742" y="500" width="10" height="140" fill="#1f3a30"/>
+    <rect x="726" y="628" width="42" height="12" rx="6" fill="#2e4a3f"/>
+    <path d="M676 420 C676 380, 690 356, 747 356 C804 356, 818 380, 818 420 L812 424 C780 410, 714 410, 682 424 Z" fill="#2e4a3f"/>
+    <path d="M676 420 L818 420" stroke="#87b8a2" stroke-width="3" stroke-opacity="0.6"/>
+    <ellipse cx="747" cy="424" rx="66" ry="12" fill="#f7dcae" opacity="0.85" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 摊开的信 + 蘸水笔 -->
+  <g>
+    <path d="M770 596 L920 588 L928 640 L778 650 Z" fill="url(#paper)"/>
+    <path d="M770 596 L920 588 L921 596 L771 605 Z" fill="#fff6de" opacity="0.6"/>
+    <g stroke="#5a4a66" stroke-width="2.4" stroke-linecap="round" opacity="0.5">
+      <path d="M790 612 q28 -3 56 -2"/>
+      <path d="M792 622 q30 -3 58 -2"/>
+      <path d="M794 632 q22 -3 34 -2"/>
+    </g>
+    <ellipse cx="880" cy="636" rx="9" ry="6" fill="#3a2c4a" opacity="0.5" filter="url(#soft6)"/>
+    <path d="M900 642 L952 626 L958 634 L906 650 Z" fill="#c9a45a"/>
+    <circle cx="954" cy="629" r="4" fill="#e8d8b8"/>
+  </g>
+
+  <!-- 小圆几 + 留声机 -->
+  <g>
+    <ellipse cx="1080" cy="900" rx="150" ry="24" fill="#000000" opacity="0.3" filter="url(#soft)"/>
+    <rect x="1030" y="600" width="120" height="16" rx="8" fill="url(#woodMid)"/>
+    <rect x="1074" y="616" width="14" height="270" fill="url(#woodDark)"/>
+    <ellipse cx="1081" cy="890" rx="60" ry="12" fill="url(#woodDark)"/>
+    <!-- 留声机 -->
+    <ellipse cx="1090" cy="588" rx="58" ry="14" fill="#1a120c"/>
+    <ellipse cx="1090" cy="584" rx="58" ry="14" fill="#241a12"/>
+    <ellipse cx="1090" cy="584" rx="42" ry="9" fill="#0d0d10"/>
+    <ellipse cx="1090" cy="584" rx="41" ry="8.5" fill="#14141c"/>
+    <ellipse cx="1090" cy="584" rx="28" ry="6" fill="#0a0a0e"/>
+    <ellipse cx="1090" cy="581" rx="8" ry="2.4" fill="#c9a45a"/>
+    <rect x="1086" y="540" width="7" height="44" fill="#c9a45a"/>
+    <circle cx="1089" cy="538" r="5" fill="#e0c37e"/>
+    <!-- 黄铜喇叭 -->
+    <path d="M1062 548 C1020 520, 986 470, 986 424 C986 396, 1002 380, 1024 380 C1042 380, 1054 392, 1058 412 C1064 448, 1076 500, 1090 540 Z" fill="#b8865a"/>
+    <path d="M1024 380 C1010 386, 1000 400, 1000 418 C1000 446, 1016 492, 1050 528" stroke="#e8c78e" stroke-width="4" fill="none" stroke-opacity="0.55"/>
+    <ellipse cx="1010" cy="404" rx="26" ry="20" fill="#d4a574"/>
+    <ellipse cx="1010" cy="404" rx="17" ry="13" fill="#1a120c"/>
+    <!-- 谱纸 + 信堆 -->
+    <path d="M1120 596 L1198 590 L1204 622 L1124 630 Z" fill="url(#paper)"/>
+    <g stroke="#6a5a7a" stroke-width="2" opacity="0.45"><path d="M1130 604 l60 -4"/><path d="M1132 612 l56 -4"/></g>
+    <g>
+      <rect x="1140" y="556" width="52" height="36" rx="3" fill="url(#paper)" transform="rotate(-4 1166 574)"/>
+      <circle cx="1184" cy="566" r="9" fill="#7a2e22" transform="rotate(-4 1184 566)"/>
+    </g>
+  </g>
+
+  <!-- 前景：地毯与黑猫 -->
+  <g>
+    <ellipse cx="820" cy="965" rx="560" ry="90" fill="#3d1f22"/>
+    <ellipse cx="820" cy="958" rx="500" ry="70" fill="#4a262b"/>
+    <ellipse cx="820" cy="958" rx="440" ry="58" fill="none" stroke="#6a3a3f" stroke-width="5" stroke-opacity="0.6"/>
+    <ellipse cx="820" cy="958" rx="330" ry="42" fill="none" stroke="#6a3a3f" stroke-width="3" stroke-opacity="0.4"/>
+    <!-- 熟睡的黑猫 -->
+    <g>
+      <ellipse cx="740" cy="922" rx="88" ry="34" fill="#141216"/>
+      <circle cx="668" cy="902" r="30" fill="#141216"/>
+      <path d="M646 880 L652 858 L664 874 Z" fill="#141216"/>
+      <path d="M676 872 L688 856 L692 876 Z" fill="#141216"/>
+      <path d="M626 936 q-18 8 -26 -2" stroke="#141216" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <path d="M652 904 a4 3 0 1 0 0.1 0" fill="#e8b878"/><path d="M678 904 a4 3 0 1 0 0.1 0" fill="#e8b878"/>
+    </g>
+    <!-- 软垫 -->
+    <ellipse cx="742" cy="950" rx="120" ry="26" fill="#5f3a2e"/>
+    <ellipse cx="742" cy="944" rx="110" ry="20" fill="#6f4736" opacity="0.8"/>
+  </g>
+
+  <!-- 天花板吊灯 -->
+  <g>
+    <line x1="880" y1="0" x2="880" y2="130" stroke="#1c1712" stroke-width="5"/>
+    <ellipse cx="880" cy="185" rx="120" ry="130" fill="url(#pendantGlow)" filter="url(#soft)"/>
+    <path d="M838 168 q42 -26 84 0 q-8 30 -42 32 q-34 -2 -42 -32 Z" fill="#b8865a"/>
+    <ellipse cx="880" cy="172" rx="34" ry="12" fill="#ffe9bd" opacity="0.9" filter="url(#soft6)"/>
+  </g>
+
+  <!-- 尘光 -->
+  <g fill="#f7dcae">
+    <circle cx="742" cy="500" r="2.4" opacity="0.3"/><circle cx="790" cy="470" r="1.8" opacity="0.25"/><circle cx="700" cy="545" r="1.6" opacity="0.2"/><circle cx="880" cy="260" r="2" opacity="0.22"/><circle cx="930" cy="310" r="1.6" opacity="0.18"/><circle cx="835" cy="380" r="1.4" opacity="0.16"/><circle cx="1005" cy="470" r="1.7" opacity="0.2"/><circle cx="1060" cy="420" r="1.3" opacity="0.15"/>
+  </g>
+
+  <!-- 墙面挂画与钟（叙事细节） -->
+  <g>
+    <rect x="620" y="180" width="120" height="150" fill="url(#woodDark)"/>
+    <rect x="632" y="192" width="96" height="126" fill="#182338"/>
+    <path d="M632 300 l30 -40 22 22 18 -26 26 44 Z" fill="#2a3c58"/>
+    <circle cx="660" cy="230" r="14" fill="#e8b878" opacity="0.5"/>
+  </g>
+
+  <!-- 水彩噪点 + 暗角 -->
+  <rect width="1600" height="1000" filter="url(#grain)" opacity="0.5" fill="transparent"/>
+  <rect width="1600" height="1000" fill="url(#vignette)"/>
+</svg>
