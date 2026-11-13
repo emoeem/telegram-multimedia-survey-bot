@@ -233,6 +233,7 @@ describe("report delivery worker", () => {
 
   it("schedules a retry with backoff on retryable failure", async () => {
     mocks.renderReportPdf.mockRejectedValue(new Error("Telegram timeout"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const env = makeEnv();
 
     await processReportDeliveryMessage(env, { kind: "report_delivery", deliveryId: "response_42_v1" });
@@ -243,6 +244,10 @@ describe("report delivery worker", () => {
       expect.objectContaining({ retryable: true, nextRetryAt: expect.any(String) }),
     );
     expect(mocks.sendMessage).not.toHaveBeenCalled();
+    // 失败行与其它队列 handler 对齐：terminal=false 表示还会重试。
+    const failedLine = errorSpy.mock.calls.find(([label]) => label === "Report delivery failed");
+    expect(failedLine![1]).toMatchObject({ attempts: 1, retryable: true, terminal: false });
+    errorSpy.mockRestore();
   });
 
   it("marks terminal failures and notifies admins", async () => {
@@ -251,6 +256,7 @@ describe("report delivery worker", () => {
       attempts: 4,
     });
     mocks.renderReportPdf.mockRejectedValue(new Error("REPORT_CHANNEL_ID 未配置或无效"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const env = makeEnv();
 
     await processReportDeliveryMessage(env, { kind: "report_delivery", deliveryId: "response_42_v1" });
@@ -261,5 +267,14 @@ describe("report delivery worker", () => {
       expect.objectContaining({ retryable: false, nextRetryAt: null }),
     );
     expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+    // attempts 烧到上限时即使原始错误可重试也进终态——terminal 必须与
+    // failReportDelivery 的判定一致，否则运维会把终态当可重试。
+    const failedLine = errorSpy.mock.calls.find(([label]) => label === "Report delivery failed");
+    expect(failedLine![1]).toMatchObject({
+      attempts: 5,
+      retryable: false,
+      terminal: true,
+    });
+    errorSpy.mockRestore();
   });
 });

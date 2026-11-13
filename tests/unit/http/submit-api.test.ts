@@ -275,6 +275,39 @@ describeIf("/api/submit HTTP 契约", () => {
     expect(ref?.ref_key).toBe(`websubmit:${body.id}:${ref?.asset_id}`);
   });
 
+  it("POST /submit 带图 MIME 规范化:声明 image/jpg(别名)的 JPEG 落库为检测 MIME image/jpeg", async () => {
+    // 与答卷媒体上传（media.ts）同一规则：放行后入库/存储/响应统一用检测
+    // MIME，声明值可能是 image/jpg 这类浏览器别名，serve 端会原样回显。
+    const env = makeEnv();
+    await env.DB.prepare("INSERT INTO system_settings (key, value) VALUES ('web_submit_form', ?)")
+      .bind(JSON.stringify({ captcha: false, minFillSeconds: 0 }))
+      .run();
+    const issued = await issueFormToken(SECRET, { captcha: false, now: Math.floor(Date.now() / 1000) - 10 });
+
+    // JPEG 魔数（SOI + JFIF APP0 头）：verifyUploadContent 按 SOI 识别为 jpeg。
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+    const form = new FormData();
+    form.set("step:category", "图片分享");
+    form.set("step:title", "一张图");
+    form.set("step:body", "看图");
+    form.set("step:author", "匿名投稿");
+    form.set("nickname", "小明");
+    form.set("token", issued.token);
+    form.append("file:photos", new File([jpeg], "photo.jpg", { type: "image/jpg" }));
+
+    const response = await handleSubmitApiRequest(
+      req("/api/submit", { method: "POST", body: form }),
+      env,
+      new URL("https://site.example/api/submit"),
+    );
+    expect(response!.status).toBe(200);
+
+    const asset = await env.DB.prepare("SELECT mime_type FROM media_assets ORDER BY id DESC LIMIT 1").first<{
+      mime_type: string;
+    }>();
+    expect(asset?.mime_type).toBe("image/jpeg");
+  });
+
   it("蜜罐被填 → 400;字段缺必填 → 422 且错误带字段名", async () => {
     const env = makeEnv();
     await env.DB.prepare("INSERT INTO system_settings (key, value) VALUES ('web_submit_form', ?)")
