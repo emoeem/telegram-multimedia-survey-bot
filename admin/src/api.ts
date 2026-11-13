@@ -110,6 +110,11 @@ export function retryReportPublication(
   return apiSend("POST", `/api/admin/surveys/${surveyId}/responses/${responseId}/report-publication/retry`, {});
 }
 
+/** 手动重发报告投递（任务中心「后台任务」卡片组的重试入口，复用既有端点与审计）。 */
+export function retryReportDelivery(id: number): Promise<{ ok: boolean }> {
+  return apiSend("POST", `/api/admin/report-deliveries/${id}/retry`, {});
+}
+
 /** 内容分级（0080）：单卷设置（管理员可双向，创作者只能 all→r18）。 */
 export function setSurveyRating(surveyId: number, rating: "all" | "r18"): Promise<{ updatedAt: string }> {
   return apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { contentRating: rating });
@@ -281,6 +286,45 @@ export interface PublicationCertShareView {
   name: string;
   chatId: string;
   source: "settings" | "env" | "archive";
+}
+
+/**
+ * 任务中心（GET /api/control/jobs）：四类既有任务表的失败/积压聚合。
+ *
+ * kind 与服务端 job-overview.repository 的口径一致；`delivery` 是唯一有
+ * 人工重试端点的类型（retryReportDelivery），其余三类前端入口置灰。
+ */
+export interface JobFailureView {
+  kind: "delivery" | "image_generator" | "render" | "export";
+  id: number;
+  status: string;
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  happenedAt: string;
+  responseId: number | null;
+  surveyId: number | null;
+  surveyTitle: string | null;
+  generatorId: number | null;
+  resultProfileId: number | null;
+  chatId: number | null;
+  format: string | null;
+}
+
+export interface JobOverviewView {
+  counts: {
+    deliveries: { status: string; count: number }[];
+    imageGeneratorJobs: { status: string; count: number }[];
+    renderJobs: { status: string; count: number }[];
+    exportJobs: { status: string; count: number }[];
+  };
+  backlog: {
+    deliveries: number;
+    imageGeneratorJobs: number;
+    renderJobs: number;
+    exportJobs: number;
+  };
+  recentFailures: JobFailureView[];
 }
 
 export interface DeploymentInfo {
@@ -1265,6 +1309,27 @@ export function fetchAdminReportedMessages(): Promise<{ ok: boolean; messages: N
 
 export function setAdminMessageStatus(id: number, status: "active" | "hidden"): Promise<{ ok: boolean }> {
   return apiSend("POST", `/api/note/admin/messages/${id}/status`, { status });
+}
+
+/**
+ * 会话级拉黑管理（0094 note_block）：GET /api/note/admin/blocks 列出跨会话
+ * 拉黑对（最近 50 条，带每对现存会话数与 total）；POST
+ * /api/note/admin/blocks/unblock 按 hash 对精确解除（服务端写 writeAudit，
+ * action=note_block.remove）。
+ */
+export interface NoteAdminBlock {
+  blockerHash: string;
+  blockedHash: string;
+  createdAt: string;
+  threadCount: number;
+}
+
+export function fetchAdminNoteBlocks(): Promise<{ ok: boolean; total: number; blocks: NoteAdminBlock[] }> {
+  return api<{ ok: boolean; total: number; blocks: NoteAdminBlock[] }>("/api/note/admin/blocks");
+}
+
+export function setAdminNoteUnblock(blockerHash: string, blockedHash: string): Promise<{ ok: boolean }> {
+  return apiSend("POST", "/api/note/admin/blocks/unblock", { blockerHash, blockedHash });
 }
 
 export type AdminTaskPersona = "any" | "male" | "female";

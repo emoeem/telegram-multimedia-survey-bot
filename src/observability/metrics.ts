@@ -412,7 +412,9 @@ export async function withRequestMetrics<TEnv extends ObservabilityEnvLike>(
     console.error("Request failed before response", { requestId, route, error });
     throw error;
   } finally {
-    if (route === "/telegram/webhook") collector.recordBotUpdate();
+    // botUpdates 不在这里按路由名自动记录：403（伪造 webhook）/400（解析失败）
+    // 的探测流量会被算成 bot 处理过的 update，指标失真。记录点在 router.ts 的
+    // secret 校验通过之后——botUpdates 的语义是「通过校验的 Telegram 调用」。
     // Successful static asset requests are not interesting for the D1 budget
     // and would otherwise emit one log line per JS/CSS/image byte served.
     const skipLog = status < 400 && isStaticAssetPath(url.pathname);

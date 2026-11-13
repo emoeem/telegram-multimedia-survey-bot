@@ -116,9 +116,12 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // cleanup 里读 ref.current 会被 exhaustive-deps 判为「很可能已变」：
+    // timersRef 是同一个 Map 实例（从不替换），拷成本地变量语义完全一致。
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((t) => clearTimeout(t));
-      timersRef.current.clear();
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
       // A pending dialog would otherwise hang its caller forever when the
       // provider unmounts (route change, HMR).
       dialogsRef.current.forEach((item) => {

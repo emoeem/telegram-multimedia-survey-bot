@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,7 +9,11 @@ import {
   onboardingStepTarget,
   ONBOARDING_COMPLETE_KEY,
   ONBOARDING_STEPS,
+  ONBOARDING_STEP_KEY,
+  pickFirstMyDraft,
+  readOnboardingStep,
   resetForReplay,
+  saveOnboardingStep,
   shouldShowOnboarding,
 } from "../../../admin/src/onboarding";
 
@@ -145,5 +152,121 @@ describe("步骤定义与目标路由", () => {
     const first = ONBOARDING_STEPS[0]!;
     expect(onboardingStepTarget(first, null)).toBe("/surveys");
     expect(onboardingStepTarget(first, 3)).toBe("/surveys");
+  });
+});
+
+describe("步骤进度持久化（ONBOARDING_STEP_KEY，批一报告已知问题 #1）", () => {
+  it("写入已到达步后读回同一步：刷新/重进不再从第一步重来", () => {
+    const store = installMemoryStorage();
+    saveOnboardingStep(2);
+    expect(store.get(ONBOARDING_STEP_KEY)).toBe("2");
+    expect(readOnboardingStep()).toBe(2);
+    saveOnboardingStep(3);
+    expect(readOnboardingStep()).toBe(3);
+  });
+
+  it("无进度（首次访问 / node 环境）回第 0 步", () => {
+    installMemoryStorage();
+    expect(readOnboardingStep()).toBe(0);
+  });
+
+  it("无效与越界值一律回 0：引导只从合法步骤继续", () => {
+    const store = installMemoryStorage();
+    for (const invalid of ["abc", "", "-1", "4", "10", "1.5"]) {
+      store.set(ONBOARDING_STEP_KEY, invalid);
+      expect(readOnboardingStep()).toBe(0);
+    }
+    // 边界：最后一步（下标 3）合法
+    store.set(ONBOARDING_STEP_KEY, "3");
+    expect(readOnboardingStep()).toBe(3);
+  });
+
+  it("localStorage 抛错/缺席时静默降级：读回 0、写入不抛错", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("SecurityError");
+      },
+      setItem: () => {
+        throw new Error("SecurityError");
+      },
+      removeItem: () => {
+        throw new Error("SecurityError");
+      },
+    });
+    expect(readOnboardingStep()).toBe(0);
+    expect(() => saveOnboardingStep(2)).not.toThrow();
+    // 完全缺席（不注入 stub）同样是合法状态
+    vi.unstubAllGlobals();
+    expect(readOnboardingStep()).toBe(0);
+    expect(() => saveOnboardingStep(2)).not.toThrow();
+  });
+
+  it("完成/跳过清掉进度：完成标记与步骤键一起收敛", () => {
+    const store = installMemoryStorage();
+    saveOnboardingStep(2);
+    markOnboardingComplete();
+    expect(store.has(ONBOARDING_STEP_KEY)).toBe(false);
+    expect(readOnboardingStep()).toBe(0);
+    expect(shouldShowOnboarding()).toBe(false);
+  });
+
+  it("重放清掉旧进度：重放是重新走一遍，必须从第一步开始", () => {
+    const store = installMemoryStorage();
+    saveOnboardingStep(3);
+    markOnboardingComplete();
+    resetForReplay();
+    expect(store.has(ONBOARDING_STEP_KEY)).toBe(false);
+    expect(store.has(ONBOARDING_COMPLETE_KEY)).toBe(false);
+    expect(readOnboardingStep()).toBe(0);
+    expect(shouldShowOnboarding()).toBe(true);
+  });
+
+  it("浮层接线（DashboardPage 源码，同 lazy-routes 的静态锚点惯例）：初始步读持久层、CTA 点击同步写当前步、进度在离开前落盘", () => {
+    const source = readFileSync(join(process.cwd(), "admin", "src", "routes", "DashboardPage.tsx"), "utf8");
+    // 初始步从持久层继续，而不是写死 0
+    expect(source).toContain("useState(() => readOnboardingStep())");
+    // CTA（<Link>）离开总览前先把已到达步写进 ONBOARDING_STEP_KEY
+    expect(source).toContain("onClick={() => saveOnboardingStep(stepIndex)}");
+    // 「下一步」推进同样落盘（浮层随时可能因导航卸载）
+    expect(source).toContain("saveOnboardingStep(stepIndex + 1)");
+    // 落点来自「第一个我的草稿」，不再用 dashboard recentSurveys[0] 解析 :id
+    expect(source).toContain("pickFirstMyDraft");
+    expect(source).not.toContain("recentSurveys?.[0]?.id");
+  });
+});
+
+describe("步骤 2/3 落点：第一个我的草稿（批一报告已知问题 #3）", () => {
+  it("按 ownerId 过滤出当前用户的草稿，取第一条", () => {
+    const drafts = [
+      { id: 11, ownerId: 2 },
+      { id: 7, ownerId: 1 },
+      { id: 3, ownerId: 1 },
+    ];
+    expect(pickFirstMyDraft(drafts, 1)).toBe(7);
+    expect(pickFirstMyDraft(drafts, 2)).toBe(11);
+  });
+
+  it("列表里没有我的草稿 → null，调用方经 onboardingStepTarget 兜底 /surveys", () => {
+    const drafts = [{ id: 11, ownerId: 2 }];
+    const draftId = pickFirstMyDraft(drafts, 1);
+    expect(draftId).toBeNull();
+    expect(onboardingStepTarget(ONBOARDING_STEPS[1]!, draftId)).toBe("/surveys");
+    // 空列表（还没创建过问卷）同样兜底
+    expect(onboardingStepTarget(ONBOARDING_STEPS[1]!, pickFirstMyDraft([], 1))).toBe("/surveys");
+  });
+
+  it("session userId 读不到（null/undefined）不猜归属：返回 null 而不是拿别人的草稿", () => {
+    const drafts = [{ id: 11, ownerId: 2 }];
+    expect(pickFirstMyDraft(drafts, null)).toBeNull();
+    expect(pickFirstMyDraft(drafts, undefined)).toBeNull();
+  });
+
+  it("拿到我的草稿后，步骤 2/3 落到「我的」编辑器而不是最近问卷", () => {
+    const drafts = [
+      { id: 42, ownerId: 9 },
+      { id: 8, ownerId: 1 },
+    ];
+    const target = onboardingStepTarget(ONBOARDING_STEPS[2]!, pickFirstMyDraft(drafts, 1));
+    expect(target).toBe("/surveys/8/editor");
   });
 });

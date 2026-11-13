@@ -39,7 +39,15 @@ import { useApi } from "../hooks";
 import { STATUS_LABELS } from "../format";
 import { getTelegramInitData } from "../telegram";
 // ⌘K 全局搜索（T8）：匹配/分组/排序在纯模块 global-search.ts，这里只取数与交互。
-import { GLOBAL_SEARCH_POPULAR_TERMS, searchGlobalSearch, type GlobalSearchHit } from "../global-search";
+// 读屏语义锚点（G6）：listbox id/label 与 option id 生成同源于该纯模块。
+import {
+  GLOBAL_SEARCH_LISTBOX_ID,
+  GLOBAL_SEARCH_LISTBOX_LABEL,
+  GLOBAL_SEARCH_POPULAR_TERMS,
+  globalSearchOptionId,
+  searchGlobalSearch,
+  type GlobalSearchHit,
+} from "../global-search";
 // 工作区数据源（2026-11-07 T2）：图标轨、tab 条与 Dashboard 功能地图共用
 // admin/src/workspaces.ts 的同一份 WORKSPACES——纯数据模块不依赖 lucide-react，
 // 图标以字符串键存储，在这里映射成组件；两层的完整说明见该模块头注释。
@@ -533,6 +541,14 @@ function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
   const loadFailed =
     !isLoading && [surveys, templates, media].every((source) => source.error !== null && source.data === null);
 
+  // 读屏语义（G6）：有命中时容器是 listbox，aria-activedescendant 指向键盘
+  // 高亮项；焦点留在输入框（combobox 模式），AT 经输入框上的
+  // aria-activedescendant 播报当前选项。无命中/空态不是列表，不挂 listbox
+  // 语义（listbox 的合法子元素只有 option/group）。
+  const hasHits = result.hits.length > 0;
+  const activeIndexSafe = hasHits ? Math.min(activeIndex, result.hits.length - 1) : 0;
+  const activeDescendant = hasHits ? globalSearchOptionId(activeIndexSafe) : undefined;
+
   return (
     <div
       className="admin-search-overlay"
@@ -566,7 +582,7 @@ function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
             return;
           }
           if (event.key === "Enter") {
-            const hit = result.hits[activeIndex];
+            const hit = result.hits[activeIndexSafe];
             if (hit) {
               event.preventDefault();
               openHit(hit);
@@ -581,6 +597,11 @@ function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
             type="text"
             className="admin-search-input"
             aria-label="搜索关键词"
+            role="combobox"
+            aria-expanded={hasHits}
+            aria-controls={GLOBAL_SEARCH_LISTBOX_ID}
+            aria-autocomplete="list"
+            aria-activedescendant={activeDescendant}
             placeholder="搜索问卷标题、模板名、素材文件名…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -589,7 +610,14 @@ function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
             Esc
           </button>
         </div>
-        <div className="admin-search-body" ref={listRef}>
+        <div
+          className="admin-search-body"
+          ref={listRef}
+          id={GLOBAL_SEARCH_LISTBOX_ID}
+          role={hasHits ? "listbox" : undefined}
+          aria-label={hasHits ? GLOBAL_SEARCH_LISTBOX_LABEL : undefined}
+          aria-activedescendant={activeDescendant}
+        >
           {query.trim() === "" ? (
             <div className="admin-search-popular">
               <p className="admin-search-popular-label">热门入口</p>
@@ -618,15 +646,22 @@ function GlobalSearchPalette({ onClose }: { onClose: () => void }) {
             <div className="admin-search-hint">没有找到「{query.trim()}」相关内容</div>
           ) : (
             result.groups.map((group) => (
-              <section key={group.group}>
-                <h3 className="admin-search-group-label">{group.label}</h3>
+              // listbox 的合法子元素是 option/group：分组用 role=group + 标题
+              // id 挂 aria-labelledby，选项归属经 group 仍被 listbox 拥有。
+              <section key={group.group} role="group" aria-labelledby={`admin-search-group-${group.group}`}>
+                <h3 className="admin-search-group-label" id={`admin-search-group-${group.group}`}>
+                  {group.label}
+                </h3>
                 {group.hits.map((hit) => {
                   const index = hitIndexes.get(hit) ?? 0;
-                  const active = index === activeIndex;
+                  const active = index === activeIndexSafe;
                   return (
                     <button
                       key={`${group.group}-${index}`}
                       type="button"
+                      role="option"
+                      id={globalSearchOptionId(index)}
+                      aria-selected={active}
                       className={`admin-search-hit${active ? " is-active" : ""}`}
                       data-active={active || undefined}
                       onMouseEnter={() => setActiveIndex(index)}

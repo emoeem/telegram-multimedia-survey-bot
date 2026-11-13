@@ -160,6 +160,9 @@ describe("withRequestMetrics", () => {
       new Request("https://example.test/telegram/webhook", { method: "POST" }),
       {},
       async (_env, metrics) => {
+        // botUpdates 由调用方（router 的 secret 校验之后）显式记录；这里模拟
+        // 校验通过的合法调用。伪造请求（403）不调用它，botUpdates 保持 0。
+        metrics.recordBotUpdate();
         metrics.recordDuplicateUpdate();
         return Response.json({ ok: true, duplicate: true });
       },
@@ -168,6 +171,23 @@ describe("withRequestMetrics", () => {
     const parsed = JSON.parse((log.mock.calls[0] as [string, string])[1]) as Record<string, unknown>;
     expect(parsed.botUpdates).toBe(1);
     expect(parsed.duplicateUpdates).toBe(1);
+    log.mockRestore();
+  });
+
+  it("does not count a rejected webhook as a bot update", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await withRequestMetrics(
+      new Request("https://example.test/telegram/webhook", { method: "POST" }),
+      {},
+      async () => new Response("Unauthorized", { status: 403 }),
+    );
+
+    // 回归护栏：wrapper 不得按路由名自动记 botUpdates，否则探测流量会混进
+    // 「bot 处理过的 update」。记录点只在 router 的 secret 校验通过之后。
+    const parsed = JSON.parse((log.mock.calls[0] as [string, string])[1]) as Record<string, unknown>;
+    expect(parsed.status).toBe(403);
+    expect(parsed.botUpdates).toBe(0);
     log.mockRestore();
   });
 

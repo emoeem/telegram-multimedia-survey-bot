@@ -21,9 +21,23 @@ import type { DashboardData } from "../api";
 import { EmptyPanel, ErrorPanel, SkeletonPanel, StatusBadge } from "../components/ui";
 import { StatCard } from "../components/StatCard";
 import { formatDateTime } from "../format";
-import { fetchDeploymentInfo, type DeploymentInfo, type PlanCapabilities } from "../api";
+import {
+  fetchAdminSession,
+  fetchDeploymentInfo,
+  type DeploymentInfo,
+  type PlanCapabilities,
+  type SurveyListData,
+} from "../api";
 import { buildFeatureMap, type FeatureMapCounts } from "../workspaces";
-import { markOnboardingComplete, onboardingStepTarget, ONBOARDING_STEPS, shouldShowOnboarding } from "../onboarding";
+import {
+  markOnboardingComplete,
+  onboardingStepTarget,
+  ONBOARDING_STEPS,
+  pickFirstMyDraft,
+  readOnboardingStep,
+  saveOnboardingStep,
+  shouldShowOnboarding,
+} from "../onboarding";
 
 const PLAN_TIER_LABELS: Record<NonNullable<PlanCapabilities["tier"]>, string> = {
   free: "Free 部署",
@@ -180,11 +194,28 @@ function FeatureMapSection({ counts }: { counts: FeatureMapCounts }) {
  * 之类的按钮，编辑器里也不会弹出浮层（那边有静默自动保存，怕误触）。
  * 挂在总览页而非 Layout 全局：总览是登录后的着陆页，四步读完即可；
  * Playwright 截图环境经 shouldShowOnboarding 里的 webdriver 探测自动跳过。
+ *
+ * 步骤 2/3 的落点（2026-11-14 G5）：不再是 data.recentSurveys[0]——那是
+ * 「最近问卷」，管理员视角下可能是他人或已发布问卷（批一报告已知问题
+ * #3）；改为拉草稿列表接口按 session userId 过滤出「第一个我的草稿」，
+ * 没有草稿（还没创建过）时经 onboardingStepTarget 兜底回 /surveys。
  */
-function OnboardingOverlay({ surveyId }: { surveyId: number | null }) {
+function OnboardingOverlay() {
   // 只在挂载时读一次标记；完成/跳过后本组件卸载，重放走设置页入口。
   const [open, setOpen] = useState(() => shouldShowOnboarding());
-  const [stepIndex, setStepIndex] = useState(0);
+  // 从持久层继续：点 CTA 离开总览、刷新或重进后停在离开时的那一步
+  // （ONBOARDING_STEP_KEY），无效/越界值 readOnboardingStep 内部回 0。
+  const [stepIndex, setStepIndex] = useState(() => readOnboardingStep());
+  // 「我的草稿」需要知道当前登录用户是谁；session 探测失败保持 null，
+  // pickFirstMyDraft 不猜归属、落点走 /surveys 兜底。
+  const [myUserId, setMyUserId] = useState<number | null>(null);
+  // 草稿列表只在引导展示期间拉取（open 关掉后 path=null，useApi 跳过请求）；
+  // status=draft 直取草稿，pageSize=50 突破 dashboard recentSurveys 的 LIMIT 5 窗口。
+  const drafts = useApi<SurveyListData>(open ? "/api/admin/surveys?status=draft&page=1&pageSize=50" : null);
+  useEffect(() => {
+    if (!open) return;
+    void fetchAdminSession().then((info) => setMyUserId(info?.userId ?? null));
+  }, [open]);
   if (!open) return null;
   const step = ONBOARDING_STEPS[stepIndex];
   if (!step) return null;
@@ -193,6 +224,9 @@ function OnboardingOverlay({ surveyId }: { surveyId: number | null }) {
     markOnboardingComplete();
     setOpen(false);
   };
+  // 进度落盘必须发生在导航离开前：CTA（<Link>）与「下一步」都会让浮层
+  // 卸载或推进，离开那一刻先把已到达步写进 ONBOARDING_STEP_KEY。
+  const draftSurveyId = pickFirstMyDraft(drafts.data?.items ?? [], myUserId);
   return (
     <section
       aria-label="新手引导"
@@ -214,10 +248,25 @@ function OnboardingOverlay({ surveyId }: { surveyId: number | null }) {
         <p className="mt-1 text-sm text-[var(--color-muted)]">{step.hint}</p>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Link className="btn btn-sm btn-primary" to={onboardingStepTarget(step, surveyId)}>
+        <Link
+          className="btn btn-sm btn-primary"
+          to={onboardingStepTarget(step, draftSurveyId)}
+          onClick={() => saveOnboardingStep(stepIndex)}
+          data-testid="onboarding-cta"
+        >
           {step.cta}
         </Link>
-        <button className="btn btn-sm" onClick={last ? finish : () => setStepIndex(stepIndex + 1)}>
+        <button
+          className="btn btn-sm"
+          onClick={
+            last
+              ? finish
+              : () => {
+                  setStepIndex(stepIndex + 1);
+                  saveOnboardingStep(stepIndex + 1);
+                }
+          }
+        >
           {last ? "完成" : "下一步"}
         </button>
       </div>
@@ -568,7 +617,7 @@ export function DashboardPage() {
         </section>
       ) : null}
       <PlanCapabilityCard />
-      <OnboardingOverlay surveyId={data.recentSurveys?.[0]?.id ?? null} />
+      <OnboardingOverlay />
     </div>
   );
 }

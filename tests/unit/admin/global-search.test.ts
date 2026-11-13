@@ -1,8 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
   GLOBAL_SEARCH_LIMIT_PER_GROUP,
+  GLOBAL_SEARCH_LISTBOX_ID,
+  GLOBAL_SEARCH_LISTBOX_LABEL,
   GLOBAL_SEARCH_POPULAR_TERMS,
+  globalSearchOptionId,
   normalizeSearchText,
   searchGlobalSearch,
   type GlobalSearchSources,
@@ -213,5 +219,35 @@ describe("空态与热门词", () => {
       expect(term.to).toMatch(/^\//);
       expect(term.hint.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("读屏语义锚点（G6，批三报告已知问题 #4）", () => {
+  it("listbox 容器的 id 与 aria-label 是稳定非空字符串", () => {
+    expect(GLOBAL_SEARCH_LISTBOX_ID.length).toBeGreaterThan(0);
+    expect(GLOBAL_SEARCH_LISTBOX_LABEL.length).toBeGreaterThan(0);
+  });
+
+  it("option id 按扁平 hits 下标生成且互不重复：aria-activedescendant 指到哪条，读屏就读哪条", () => {
+    const ids = [0, 1, 2, 7].map(globalSearchOptionId);
+    expect(new Set(ids).size).toBe(ids.length);
+    // 键盘高亮第 3 条（下标 2）时，容器的 aria-activedescendant 与该选项 id 同源
+    expect(globalSearchOptionId(2)).toBe(ids[2]);
+  });
+
+  it("面板接线（Layout.tsx 源码，同 lazy-routes 的静态锚点惯例）：容器 listbox + 选项 option + activedescendant 跟随键盘高亮", () => {
+    const layout = readFileSync(join(process.cwd(), "admin", "src", "components", "Layout.tsx"), "utf8");
+    // 命中容器挂 listbox 语义，aria-label 来自纯模块常量
+    expect(layout).toContain('role={hasHits ? "listbox" : undefined}');
+    expect(layout).toContain("aria-label={hasHits ? GLOBAL_SEARCH_LISTBOX_LABEL : undefined}");
+    // 容器与聚焦的输入框（combobox 模式）都指向当前高亮项
+    expect(layout.match(/aria-activedescendant=\{activeDescendant\}/g)?.length).toBe(2);
+    // 每个命中项是 option，选中态跟随 activeIndexSafe
+    expect(layout).toContain('role="option"');
+    expect(layout).toContain("aria-selected={active}");
+    expect(layout).toContain("id={globalSearchOptionId(index)}");
+    // 输入框经 aria-controls 关联 listbox，高亮随键盘（ArrowUp/Down → activeIndexSafe）移动
+    expect(layout).toContain("aria-controls={GLOBAL_SEARCH_LISTBOX_ID}");
+    expect(layout).toContain("const activeDescendant = hasHits ? globalSearchOptionId(activeIndexSafe) : undefined;");
   });
 });

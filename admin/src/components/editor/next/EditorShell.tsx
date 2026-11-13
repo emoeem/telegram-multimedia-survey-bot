@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useNavigate } from "react-router";
-import { ArrowLeft, Eye, Plus, Redo2, Rocket, Save, Search, Stethoscope, Undo2 } from "lucide-react";
+import { ArrowLeft, Eye, Flag, Plus, Redo2, Rocket, Save, Search, Stethoscope, Undo2 } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -26,6 +26,8 @@ import { formatDateTime } from "../../../format";
 import { MaterialPanel } from "./MaterialPanel";
 import { Canvas } from "./Canvas";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { BatchActionBar } from "./BatchActionBar";
+import { FlagOverviewPanel } from "./FlagOverviewPanel";
 import { SearchReplaceDialog } from "./SearchReplaceDialog";
 import { collectDiagnostics, countDiagnostics } from "../../../editor/diagnostics";
 import { SurveyPreview } from "../SurveyPreview";
@@ -64,6 +66,19 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   const [previewAtIndex, setPreviewAtIndex] = useState<number | null>(null);
   // P3：scene 编辑从「页面跳转」改为壳内全屏浮层——选中即配置、不出现页面跳转。
   const [sceneOverlayId, setSceneOverlayId] = useState<number | null>(null);
+  /**
+   * G7a「在此后插入」：结构树行内 + 按钮记录锚点题，随后弹出的题型选择
+   * （与「添加题目」同一个 TypePickerSheet / 同一份默认稿）把新题落在锚点
+   * 之后。null = 普通追加路径。
+   */
+  const [insertAfterId, setInsertAfterId] = useState<number | null>(null);
+  // G7c flag/变量总览（只读抽屉）。
+  const [flagOverviewOpen, setFlagOverviewOpen] = useState(false);
+  /**
+   * G7b 结构树多选：勾选集合驱动批量操作条（必答/选填、移动分页）。
+   * 与单选 selection 并存：普通点击回到单选并清空勾选，两种模式互斥。
+   */
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<number>>(() => new Set());
   /**
    * 中栏画布形态（A4，2026-10-30）：list=现有卡片流（默认），graph=统一节点图。
    * 铁律「新旧并存、验收前不切默认」：localStorage 记忆 + URL ?canvas=graph
@@ -145,9 +160,10 @@ export function EditorShellNext({ data }: { data: EditorData }) {
     const pending = takePendingTemplate(survey.id);
     if (!pending || data.questions.length > 0) return;
     actions.applyTemplate(pending);
-    // data.questions 刻意取挂载时刻的闭包值（survey.id / applyTemplate 均稳定，
-    // 实际只跑一次）：这是挂载交接，后续题目变化与本次判定无关。
-  }, [survey.id, actions.applyTemplate]);
+    // 依赖补全（exhaustive-deps）：actions 与 data.questions.length 虽列入，
+    // 仍是「只跑一次」语义——takePendingTemplate 读即取走，任何后续重跑
+    // 都拿不到 pending，直接早退；不影响挂载交接行为。
+  }, [survey.id, actions, data.questions.length]);
 
   useEffect(() => {
     // Autosave：与旧壳同一节奏——2 秒无操作后落库（保存中或出错时让位）。
@@ -216,6 +232,65 @@ export function EditorShellNext({ data }: { data: EditorData }) {
       setSelection(editor.questions.length ? { kind: "question", id: editor.questions[0]!.id } : { kind: "settings" });
     }
   }, [editor.questions, selection]);
+
+  // ---- G7b 结构树多选 ----
+  // questions 走 latest-ref：行激活/勾选回调身份保持稳定（QuestionSummaryRow
+  // 是 memo 组件，editor.questions 每次键击都是新数组，不能进 useCallback 依赖）。
+  const questionsRef = useRef(editor.questions);
+  useEffect(() => {
+    questionsRef.current = editor.questions;
+  });
+  // shift 区间选择的锚点行（上次勾选/点击的题）。
+  const lastCheckedRef = useRef<number | null>(null);
+  useEffect(() => {
+    // 题目被删/重载后修剪勾选集合：updater 无变化时返回原引用，避免多余渲染。
+    setCheckedIds((current) => {
+      if (!current.size) return current;
+      const ids = new Set(editor.questions.map((question) => question.id));
+      const next = new Set([...current].filter((id) => ids.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [editor.questions]);
+
+  /** 行激活统一入口：普通点击=单选并清空批量；ctrl/⌘=切换勾选；shift=区间勾选。 */
+  const handleRowActivate = useCallback((questionId: number, event?: React.MouseEvent) => {
+    const questions = questionsRef.current;
+    if (event && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      const toIndex = questions.findIndex((question) => question.id === questionId);
+      if (toIndex < 0) return;
+      const anchorId = event.shiftKey ? lastCheckedRef.current : null;
+      const fromIndex = anchorId === null ? toIndex : questions.findIndex((question) => question.id === anchorId);
+      setCheckedIds((current) => {
+        const next = new Set(current);
+        if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+          const [lo, hi] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
+          for (let index = lo; index <= hi; index++) next.add(questions[index]!.id);
+        } else if (next.has(questionId)) {
+          next.delete(questionId);
+        } else {
+          next.add(questionId);
+        }
+        return next;
+      });
+      lastCheckedRef.current = questionId;
+      return;
+    }
+    lastCheckedRef.current = questionId;
+    setSelection({ kind: "question", id: questionId });
+    setCheckedIds((current) => (current.size ? new Set<number>() : current));
+  }, []);
+
+  /** hover 工具条勾选框：只改勾选集合，不动单选 selection。 */
+  const toggleChecked = useCallback((questionId: number) => {
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (next.has(questionId)) next.delete(questionId);
+      else next.add(questionId);
+      return next;
+    });
+    lastCheckedRef.current = questionId;
+  }, []);
 
   const editingDisabled = editor.saveState === "saving" || Boolean(editor.saveError?.stale);
   const previewQuestions = useMemo(
@@ -316,16 +391,35 @@ export function EditorShellNext({ data }: { data: EditorData }) {
   );
   /** 分支挂起时选题型：创建新题并接上 source 的默认跳转；普通选型走原路径。 */
   const addQuestionAndBranch = (type: string) => {
-    if (branchSource === null) {
+    if (branchSource === null && insertAfterId === null) {
       addDefaultQuestion(type);
       return;
     }
-    const tempId = actions.addQuestionOfType(type);
-    applyConditionCommand(connectCommand({ source: `q${branchSource}`, target: `q${tempId}` }, editor.questions));
-    setSelection({ kind: "question", id: tempId });
-    setBranchSource(null);
     setPickerOpen(false);
+    if (branchSource !== null) {
+      const tempId = actions.addQuestionOfType(type);
+      applyConditionCommand(connectCommand({ source: `q${branchSource}`, target: `q${tempId}` }, editor.questions));
+      setSelection({ kind: "question", id: tempId });
+      setBranchSource(null);
+      return;
+    }
+    // G7a「在此后插入」：锚点后落位（默认稿与「添加题目」同一份）；锚点
+    // 已被删时 insertQuestionAfter 返回 null，回退为普通追加，不丢题。
+    const anchorId = insertAfterId!;
+    setInsertAfterId(null);
+    const tempId = actions.insertQuestionAfter(anchorId, type);
+    if (tempId !== null) {
+      setSelection({ kind: "question", id: tempId });
+      return;
+    }
+    setSelection({ kind: "question", id: actions.addQuestionOfType(type) });
   };
+  /** 行内「在此后插入」入口：记锚点、复用与「添加题目」相同的题型选择。 */
+  const startInsertAfter = useCallback((questionId: number) => {
+    setInsertAfterId(questionId);
+    setBranchSource(null);
+    setPickerOpen(true);
+  }, []);
   // 稳定身份：下游 QuestionSummaryRow / PropertiesPanel 是 memo 组件。
   const selectQuestion = useCallback((questionId: number) => setSelection({ kind: "question", id: questionId }), []);
   const openSceneOverlay = useCallback((questionId: number) => setSceneOverlayId(questionId), []);
@@ -482,6 +576,15 @@ export function EditorShellNext({ data }: { data: EditorData }) {
             <Search className="h-4 w-4" />
           </button>
           <button
+            className="btn btn-sm btn-quiet"
+            title="flag / 变量总览"
+            aria-label="flag / 变量总览"
+            data-testid="flag-overview-open"
+            onClick={() => setFlagOverviewOpen(true)}
+          >
+            <Flag className="h-4 w-4" />
+          </button>
+          <button
             className="btn btn-sm btn-quiet relative"
             title={`问卷体检：${diagnosticCounts.errors} 个错误 / ${diagnosticCounts.warnings} 个警告`}
             aria-label="问卷体检"
@@ -633,6 +736,26 @@ export function EditorShellNext({ data }: { data: EditorData }) {
                 onDuplicate={(questionId) => void actions.duplicateQuestion(questionId)}
                 onDelete={(questionId) => void actions.requestDeleteQuestion(questionId)}
                 onToggleRequired={toggleRequired}
+                onInsertAfter={startInsertAfter}
+                checkedIds={checkedIds}
+                onToggleChecked={toggleChecked}
+                onRowActivate={handleRowActivate}
+                batchBar={
+                  checkedIds.size > 0 ? (
+                    <BatchActionBar
+                      count={checkedIds.size}
+                      pages={data.pages.map((page) => ({ id: page.id, title: page.title, order: page.order }))}
+                      disabled={editingDisabled}
+                      onSetRequired={(required) => {
+                        actions.batchSetRequired([...checkedIds], required);
+                      }}
+                      onMoveToPage={(pageId) => {
+                        actions.batchMoveToPage([...checkedIds], pageId);
+                      }}
+                      onClear={() => setCheckedIds(new Set())}
+                    />
+                  ) : undefined
+                }
                 settingsPanel={
                   narrowEditor ? (
                     <SurveySettingsPanel
@@ -734,14 +857,28 @@ export function EditorShellNext({ data }: { data: EditorData }) {
         onSelectQuestion={selectQuestion}
       />
 
+      <FlagOverviewPanel
+        open={flagOverviewOpen}
+        questions={editor.questions}
+        onClose={() => setFlagOverviewOpen(false)}
+        onSelectQuestion={selectQuestion}
+      />
+
       {pickerOpen ? (
         <TypePickerSheet
           disabled={editingDisabled}
-          onClose={() => setPickerOpen(false)}
+          // 关闭即丢弃挂起意图（分支锚点 / 在此后插入锚点）：否则下次普通
+          // 「添加题目」会被残留锚点误导向插入或接分支。
+          onClose={() => {
+            setPickerOpen(false);
+            setInsertAfterId(null);
+            setBranchSource(null);
+          }}
           onPick={(type) => addQuestionAndBranch(type)}
           onScene={() => {
             setPickerOpen(false);
             setBranchSource(null);
+            setInsertAfterId(null);
             void actions.addSceneQuestion(selectedQuestion?.pageId ?? null, setSceneOverlayId);
           }}
         />

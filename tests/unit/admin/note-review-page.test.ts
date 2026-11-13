@@ -50,4 +50,23 @@ describe("纸条复核页（/admin/notes）接线", () => {
     expect(layout).toContain('path.startsWith("/notes")');
     expect(layout).toContain("纸条复核");
   });
+
+  it("拉黑管理页签（0094 note_block）：api.ts 封装列表/解除端点，页面渲染该页签", () => {
+    const api = readFileSync(join(adminSrc, "api.ts"), "utf8");
+    // GET /api/note/admin/blocks（adminListBlocks）+ POST unblock（adminRemoveBlock）
+    expect(api).toContain("/api/note/admin/blocks");
+    expect(api).toContain("export function fetchAdminNoteBlocks(");
+    expect(api).toContain("export function setAdminNoteUnblock(");
+
+    const page = readFileSync(join(adminSrc, "routes", "NoteReviewPage.tsx"), "utf8");
+    expect(page).toContain("拉黑管理");
+    expect(page).toContain("fetchAdminNoteBlocks");
+    expect(page).toContain("setAdminNoteUnblock");
+    // 解除动作带 data-testid（交互新增标注纪律）。
+    expect(page).toContain('data-testid="note-admin-unblock"');
+
+    // 社区工作区联动：workspaces.ts 的 /notes tab hint 提及拉黑管理。
+    const workspaces = readFileSync(join(adminSrc, "workspaces.ts"), "utf8");
+    expect(workspaces).toContain("跨会话拉黑管理");
+  });
 });

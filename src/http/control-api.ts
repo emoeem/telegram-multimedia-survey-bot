@@ -34,6 +34,7 @@ import { isCertShareDisabled, resolveCertShareChannel } from "./cert-share";
 import { resolveReportChannel } from "../services/report-delivery.service";
 import { saveSystemSetting } from "../services/system-settings.service";
 import { resolvePublicOrigin } from "../services/public-origin.service";
+import { getJobOverview } from "../db/repositories/job-overview.repository";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const text = (v: unknown, name: string, min = 1, max = 256) => {
@@ -425,6 +426,16 @@ export async function handleControlApiRequest(
         isDefault: b.isDefault === true,
       });
       return target ? json({ ok: true, target }, 201) : json({ ok: false, error: "target_create_failed" }, 500);
+    }
+
+    if (url.pathname === "/api/control/jobs" && request.method === "GET") {
+      // 任务中心聚合视图（审查第四阶段 E）：四张既有任务表的失败/积压计数与
+      // 最近失败明细，只读、零迁移。非 vendor 数据（客户实例同样有投递/渲染/
+      // 导出任务），所以只要求 admin，不做 isLicenseCenter 限制；鉴权由上方
+      // 统一的 isAdmin 门禁（403）完成。GET 无写入，无审计可记。
+      const limitRaw = Number(url.searchParams.get("limit") ?? 20);
+      const limit = Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(50, limitRaw) : 20;
+      return json({ ok: true, ...(await getJobOverview(env.DB, limit)) });
     }
 
     if (url.pathname === "/api/control/runner/tasks/claim" && request.method === "POST") {

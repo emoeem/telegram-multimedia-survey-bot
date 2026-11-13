@@ -241,7 +241,7 @@ import { HotspotScene } from "./HotspotScene";
 import { LandscapeHint } from "./LandscapeHint";
 import { StageLayout } from "./StageLayout";
 import { useViewportSize } from "./useViewportSize";
-import { resolveSurveyLayout } from "../../../src/survey/layout";
+import { resolveSurveyLayout, type ViewportSize } from "../../../src/survey/layout";
 import { GamePlayer, type GameAnswerValue } from "./GamePlayer";
 import { PluginGamePlay } from "./PluginGamePlay";
 import { hasClientPlugin } from "../game-plugins/loader";
@@ -2246,11 +2246,6 @@ function AccessScreen({
 }
 
 export function SurveyApp() {
-  // 视口尺寸供布局契约裁决（src/survey/layout.ts）。必须放在组件**最顶部**：
-  // 下面有十几个按 pathname / screen.kind 的提前 return，把 hook 放在它们之后
-  // 会让「加载中」与「已加载」两次渲染的 hook 数量不同，React 直接抛 #310
-  // （Rendered more hooks than during the previous render），整页白屏。
-  const viewportSize = useViewportSize();
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
   if (window.location.pathname === "/series" || window.location.pathname.startsWith("/series/")) {
     return (
@@ -2336,6 +2331,64 @@ export function SurveyApp() {
       </LazyScreen>
     );
   }
+  // 剩余路径（/survey/:id 与根路径）交给问卷运行器。分发必须停在早退之后：
+  // runner 里的几十个 hook 若与本组件同体，会落在这些早退 return 之后，
+  // 两次渲染 hook 数量不同，React 直接抛 #310（rules-of-hooks 违规）。
+  return <SurveyRunner />;
+}
+
+/**
+ * "会弹起软键盘的控件"——底部操作条要不要让位，只取决于这件事。
+ *
+ * 曾经这里写成 `target instanceof HTMLInputElement`，于是**复选框**也算"正在
+ * 输入"：点了最后一题的「公开发布」复选框，操作条就滑走（`translate-y-full`），
+ * 而复选框不会自己失焦，所以「提交问卷」再也回不来——用户填完了却找不到提交
+ * 按钮。发布弹窗把焦点还给复选框，使这条路径每次必现。
+ *
+ * 因此按 input 的 `type` 排除非输入型控件；textarea / select / contenteditable
+ * 仍然算"输入中"。纯函数（只读 DOM 类型），放模块级——组件体内每渲染重建会让
+ * handleInputFocus 的 useCallback 依赖数组没法写（exhaustive-deps）。
+ */
+const NON_TYPING_INPUT_TYPES = new Set([
+  "checkbox",
+  "radio",
+  "button",
+  "submit",
+  "reset",
+  "file",
+  "range",
+  "color",
+  "image",
+]);
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  if (target instanceof HTMLInputElement) return !NON_TYPING_INPUT_TYPES.has(target.type);
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
+/**
+ * VN 对话层激活判定：主题开启 vn + 当前是 note 节点 + 非舞台版式。
+ * 渲染区的 vnDialogActive（filling 分支内）与 idle 隐匿 effect 的 gate
+ * （hooks 区、早退之前）共用这一个函数，避免两处判定漂移——effect gate
+ * 只能在 hooks 区复算（question 依赖的 screen/index/viewport 在那里可得），
+ * 而渲染区拿不到同一变量，唯一不漂移的办法就是同一个纯函数。
+ */
+function resolveVnDialogActive(survey: SurveyDto, index: number, viewport: ViewportSize): boolean {
+  if (survey.theme?.vn !== true) return false;
+  const question = survey.questions[index];
+  if (!question || question.type !== "note") return false;
+  return resolveSurveyLayout({ display: survey.display ?? "auto", questionType: question.type, viewport }) !== "stage";
+}
+
+function SurveyRunner() {
+  // 视口尺寸供布局契约裁决（src/survey/layout.ts）。必须放在组件**最顶部**：
+  // 下面有十几个按 screen.kind 的提前 return，把 hook 放在它们之后会让
+  // 「加载中」与「已加载」两次渲染的 hook 数量不同，React 直接抛 #310
+  // （Rendered more hooks than during the previous render），整页白屏。
+  // （2026-11 从 SurveyApp 下沉到 runner：只有问卷页消费它，路由分发分支
+  // 不再为此订阅 viewport 变化。）
+  const viewportSize = useViewportSize();
   const surveyId = useMemo(() => surveyIdFromPath(), []);
   const { toast, confirm } = useDialogs();
 
@@ -2427,34 +2480,6 @@ export function SurveyApp() {
     return () => window.removeEventListener("pagehide", flushOnHide);
   }, [saveQueue]);
 
-  /**
-   * "会弹起软键盘的控件"——底部操作条要不要让位，只取决于这件事。
-   *
-   * 曾经这里写成 `target instanceof HTMLInputElement`，于是**复选框**也算"正在
-   * 输入"：点了最后一题的「公开发布」复选框，操作条就滑走（`translate-y-full`），
-   * 而复选框不会自己失焦，所以「提交问卷」再也回不来——用户填完了却找不到提交
-   * 按钮。发布弹窗把焦点还给复选框，使这条路径每次必现。
-   *
-   * 因此按 input 的 `type` 排除非输入型控件；textarea / select / contenteditable
-   * 仍然算"输入中"。
-   */
-  const NON_TYPING_INPUT_TYPES = new Set([
-    "checkbox",
-    "radio",
-    "button",
-    "submit",
-    "reset",
-    "file",
-    "range",
-    "color",
-    "image",
-  ]);
-  const isEditableTarget = (target: EventTarget | null): boolean => {
-    if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-    if (target instanceof HTMLInputElement) return !NON_TYPING_INPUT_TYPES.has(target.type);
-    return target instanceof HTMLElement && target.isContentEditable;
-  };
-
   const handleInputFocus = useCallback((event: FocusEvent) => {
     if (!isEditableTarget(event.target)) return;
     setInputFocused(true);
@@ -2479,15 +2504,20 @@ export function SurveyApp() {
    * 底部浮出；VN 对话页再叠加「4 秒无操作收起」。软键盘让位（navHidden）
    * 语义不变，三者取并集。
    *
-   * 裁决所需的 layout/vnMode 等值在本组件后半段才可计算（早退分支在前），
-   * 所以这里经 ref 镜像读取——effect 每次渲染重建监听，成本是 4 个
-   * add/removeEventListener，换来打字机逐字动画期间视为「有操作」（idle
-   * 计时器随渲染重置），不需要额外的心跳。
+   * VN 段的裁决键（vnDialogGate）在下方 useMemo 复算：早退分支在前，
+   * 渲染区的 vnDialogActive 变量到这里还不可用，但 screen/index/viewport
+   * 已经可得，经 resolveVnDialogActive 复算出同一结果。
    */
   const bottomBarModeRef = useRef<"plain" | "vn" | "off">("off");
   const lastScrollYRef = useRef(0);
   const [scrollNavHidden, setScrollNavHidden] = useState(false);
   const [idleNavHidden, setIdleNavHidden] = useState(false);
+  // VN 态裁决键：早退分支在前，渲染区的 vnDialogActive 到这里还不可用；
+  // 在 hooks 区按同一纯函数复算（与 3318 的 bottomBarMode 裁决同源、不漂移）。
+  const vnDialogGate = useMemo(
+    () => (screen.kind === "filling" ? resolveVnDialogActive(screen.survey, index, viewportSize) : false),
+    [screen, index, viewportSize],
+  );
   // 沉浸舞台的顶部信息条（2026-10-30 重设计）。stageLayout 在下方早退分支之后
   // 才可计算，hook 必须无条件调用——经镜像 ref 读取（与 bottomBarModeRef 同模式）。
   const stageLayoutRef = useRef(false);
@@ -2512,8 +2542,13 @@ export function SurveyApp() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+  // VN idle 隐匿：进入 vn 态时启动 4 秒计时，任何输入事件重置；离开 vn 态
+  // （含 stage/off）清掉隐藏标志。gate 取 vn 态本身而非每渲染重跑——旧实现
+  // 无依赖数组 + effect 体直接 setState，exhaustive-deps 禁止这种「无限链」
+  // 写法；以 gate 为键的等价语义是「vn 态切换时重新裁决」，输入事件本身
+  // 就会 wake，不再依赖与事件无关的数据往返渲染来重置计时器。
   useEffect(() => {
-    if (bottomBarModeRef.current !== "vn") {
+    if (!vnDialogGate) {
       setIdleNavHidden(false);
       return undefined;
     }
@@ -2529,7 +2564,7 @@ export function SurveyApp() {
       window.clearTimeout(timer);
       for (const event of events) window.removeEventListener(event, wake);
     };
-  });
+  }, [vnDialogGate]);
 
   useEffect(() => {
     if (!Number.isFinite(surveyId)) return;
@@ -2900,6 +2935,9 @@ export function SurveyApp() {
     saveQueue,
     screen,
     stageCurrent,
+    // toast 来自 useDialogs 的稳定 useCallback（[] 依赖），列入不会让本回调
+    // 在弹窗状态变化时重建——之前漏列只是侥幸没炸。
+    toast,
   ]);
 
   /** 保存失败横幅上的手动重试：重发全部失败条目，成功即撤下横幅。 */

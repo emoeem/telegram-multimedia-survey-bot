@@ -140,14 +140,18 @@ export function reportDeliveryStatusTimestamp(): string {
  * whose backoff window has elapsed. Attempts past the cap are marked failed.
  * Deliveries stuck in "delivering" (worker died after claiming) are rolled
  * back to pending so the next pass re-enqueues them.
+ *
+ * 终态打标的条数是这里的回答不了的运维问题（「报告归档今天死了几单」）——
+ * 此前两条 UPDATE 的 changes 数被直接丢弃，cron 日志里只剩 requeued。现在
+ * terminalFailed 单独返回，由 cron.ts 输出 ERROR 行。
  */
 export async function retryPendingReportDeliveries(
   db: D1Database,
   sender: ExportJobSender,
   now = new Date(),
-): Promise<{ requeued: number }> {
+): Promise<{ requeued: number; terminalFailed: number }> {
   const timestamp = now.toISOString();
-  await db
+  const expiredPending = await db
     .prepare(
       `UPDATE report_deliveries
        SET status = 'failed', updated_at = ?
@@ -162,18 +166,30 @@ export async function retryPendingReportDeliveries(
   // A claim is only valid while the worker is alive; anything still
   // "delivering" after 10 minutes died mid-flight and is reclaimable.
   // Deliveries that already burned through the attempt cap are failed
-  // instead so a poison row cannot loop forever.
-  const staleDelivering = await db
+  // instead so a poison row cannot loop forever. 两条 UPDATE 代替原来的一条
+  // CASE：终态失败与回收必须分开计数，CASE 的 changes 数拆不开这两种结局。
+  const staleBefore = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const staleTerminal = await db
     .prepare(
       `UPDATE report_deliveries
-       SET status = CASE WHEN attempts >= ? THEN 'failed' ELSE 'pending' END,
-           updated_at = ?
+       SET status = 'failed', updated_at = ?
+       WHERE status = 'delivering'
+         AND attempts >= ?
+         AND updated_at < ?`,
+    )
+    .bind(timestamp, REPORT_DELIVERY_MAX_ATTEMPTS, staleBefore)
+    .run();
+  const staleReclaim = await db
+    .prepare(
+      `UPDATE report_deliveries
+       SET status = 'pending', updated_at = ?
        WHERE status = 'delivering'
          AND updated_at < ?`,
     )
-    .bind(REPORT_DELIVERY_MAX_ATTEMPTS, timestamp, new Date(now.getTime() - 10 * 60 * 1000).toISOString())
+    .bind(timestamp, staleBefore)
     .run();
-  const reclaimed = staleDelivering.meta?.changes ?? 0;
+  const terminalFailed = (expiredPending.meta?.changes ?? 0) + (staleTerminal.meta?.changes ?? 0);
+  const reclaimed = staleReclaim.meta?.changes ?? 0;
 
   const rows = await db
     .prepare(
@@ -191,5 +207,5 @@ export async function retryPendingReportDeliveries(
   for (const row of deliveries) {
     await sender.send({ kind: "report_delivery", deliveryId: row.deliveryId } satisfies ReportDeliveryMessage);
   }
-  return { requeued: deliveries.length + reclaimed };
+  return { requeued: deliveries.length + reclaimed, terminalFailed };
 }

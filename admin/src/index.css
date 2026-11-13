@@ -1668,6 +1668,18 @@ input[type="radio"] {
     background: color-mix(in srgb, var(--app-danger) 14%, var(--surface));
     color: var(--app-danger);
   }
+  /* G7b 批量多选勾选框（结构树行 hover 工具条内）：只定外观，不动行内布局。 */
+  .row-check {
+    width: 14px;
+    height: 14px;
+    margin: 0 4px;
+    cursor: pointer;
+    accent-color: var(--color-primary);
+  }
+  .row-check:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
 
   /* ---- Question editor (center column) -------------------------------- */
   .q-editor {
@@ -3991,6 +4003,14 @@ button.admin-stat:focus-visible {
   }
   .admin-search-hit {
     min-height: 44px;
+  }
+  /* Esc 关闭按钮：默认 ~22px 高，触屏上够不到 T6 的 44px 纪律（批三报告
+     已知问题 #2）。只在此媒体查询里抬 min 尺寸，桌面 (pointer: fine) 的
+     布局与像素不动；遮罩点击是整屏热区，本就满足 44px。 */
+  .admin-search-esc {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 10px;
   }
 }
 @media (max-width: 639px) {

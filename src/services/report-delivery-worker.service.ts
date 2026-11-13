@@ -183,6 +183,10 @@ export async function processReportDeliveryMessage(env: ReportDeliveryWorkerEnvi
       responseId: delivery.responseId,
       attempts,
       retryable,
+      // 与 failReportDelivery 的判定保持一致：retryable 是原始错误形态，
+      // 终态还要看次数——attempts 烧完时原始可重试的错误同样进入终态。
+      // 字段名对齐其余五类队列 handler 的 console.error 行（terminal）。
+      terminal: !retryable || attempts >= REPORT_DELIVERY_MAX_ATTEMPTS,
       error: errorMessage,
     });
     if (!retryable || attempts >= REPORT_DELIVERY_MAX_ATTEMPTS) {

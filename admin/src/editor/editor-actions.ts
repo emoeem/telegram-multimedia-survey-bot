@@ -139,6 +139,39 @@ export function useEditorActions(data: EditorData, editor: Editor) {
     [],
   );
 
+  /**
+   * 「在此后插入」（G7a）：在 anchorId 之后插入该题型的默认稿（默认稿与
+   * 「添加题目」同一份 defaultQuestionDraft）。返回临时 id，anchor 不存在
+   * （已删除）时返回 null，壳侧回退为普通追加。
+   */
+  const insertQuestionAfter = useCallback(
+    (anchorId: number, type: string): number | null =>
+      depsRef.current.editor.insertQuestionAfter(anchorId, defaultQuestionDraft(type)),
+    [],
+  );
+
+  /**
+   * 批量设必答/选填（G7b）：整批一条撤销快照 + 按题 PATCH，走
+   * applyBatchQuestionUpdates 的同一条待保存队列；note 题由计划函数跳过。
+   * 返回实际入队的题数。
+   */
+  const batchSetRequired = useCallback(
+    (questionIds: readonly number[], required: boolean): number =>
+      depsRef.current.editor.applyBatchQuestionUpdates(
+        questionIds,
+        { required },
+        required ? "批量设为必答" : "批量设为选填",
+      ),
+    [],
+  );
+
+  /** 批量移动分页（G7b）：pageId=null 表示移出所有分页。返回实际入队的题数。 */
+  const batchMoveToPage = useCallback(
+    (questionIds: readonly number[], pageId: number | null): number =>
+      depsRef.current.editor.applyBatchQuestionUpdates(questionIds, { pageId }, "批量移动分页"),
+    [],
+  );
+
   const attachQuestionMedia = useCallback(
     async (questionId: number, file: File): Promise<boolean> => {
       const { survey: currentSurvey, editor: current } = depsRef.current;
@@ -314,6 +347,9 @@ export function useEditorActions(data: EditorData, editor: Editor) {
       requestDeleteQuestion,
       applyTemplate,
       addQuestionOfType,
+      insertQuestionAfter,
+      batchSetRequired,
+      batchMoveToPage,
       attachQuestionMedia,
       attachQuestionMediaFromLibrary,
       removeQuestionMedia,
@@ -337,6 +373,9 @@ export function useEditorActions(data: EditorData, editor: Editor) {
       requestDeleteQuestion,
       applyTemplate,
       addQuestionOfType,
+      insertQuestionAfter,
+      batchSetRequired,
+      batchMoveToPage,
       attachQuestionMedia,
       attachQuestionMediaFromLibrary,
       removeQuestionMedia,

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiSend, type EditorData, type EditorQuestion, type WriteResult } from "../api";
 import { reorderByQuestionIds } from "./questionOrder";
+import { insertQuestionAfter as insertQuestionAfterInList, questionCreateBody } from "./question-insert";
+import { planBatchQuestionUpdates, type BatchQuestionPatch } from "./batch-edit";
 import { buildOpsFromDiff, cloneSnapshot, type EditorSnapshot } from "./diffOps";
 import { canMergePendingPatch, shouldCoalesceHistory } from "./coalesce";
+import type { QuestionInsertDraft } from "./question-insert";
 
 // Phase 2.2 editing model: every mutation appends an operation to a queue with
 // a temporary negative id; 保存 flushes the queue sequentially against the
@@ -379,25 +382,119 @@ export function useSurveyEditor(data: EditorData) {
       pushOp({
         method: "POST",
         path: `/api/admin/surveys/${surveyId}/questions`,
-        body: {
-          type: draft.type,
-          title: draft.title,
-          required: true,
-          ...(draft.options?.length ? { options: draft.options } : {}),
-          ...(draft.settings
-            ? { settings: draft.settings }
-            : draft.type === "matrix" && draft.columns?.length
-              ? { settings: { columns: draft.columns } }
-              : draft.type === "game" && draft.gamePackId
-                ? { settings: { game: { packId: draft.gamePackId } } }
-                : {}),
-        },
+        body: questionCreateBody(draft, null),
         tempId,
         label: "新增题目",
       });
       return tempId;
     },
     [pushOp, surveyId],
+  );
+
+  /**
+   * 「在此后插入」（G7a）：在 anchorId 之后插入一道新题，而不是追加到末尾。
+   * 新题继承锚点的分页；一次插入 = 一步撤销（单次 recordHistory + 整批入队）。
+   *
+   * op 是两条一批：POST create（tempId）→ POST reorder（全量新顺序，含
+   * tempId）。创建端点只会追加到末尾（editor.ts 的 order = existing.length），
+   * 真正落位靠 reorder；save 管线按序执行时 idMap 已把 reorder body 里的
+   * tempId 重映射成真实 id（resolveOpReferences 的 questionIds 分支）。
+   * 此前队列里挂着的旧 reorder 一并丢弃——它只是现有全量的一个排列，
+   * 这里给出的新全量序（含新题）即最终语义。
+   */
+  const insertQuestionAfter = useCallback(
+    (anchorId: number, draft: QuestionInsertDraft): number | null => {
+      const anchor = questions.find((question) => question.id === anchorId);
+      if (!anchor) return null;
+      const tempId = tempIdRef.current--;
+      const inserted: EditableQuestion = {
+        id: tempId,
+        type: draft.type,
+        title: draft.title,
+        description: null,
+        required: true,
+        order: 0,
+        pageId: anchor.pageId,
+        columns: draft.columns ?? [],
+        gamePackId: draft.gamePackId ?? null,
+        validation: null,
+        condition: null,
+        media: [],
+        options: (draft.options ?? []).map((option, index) => ({
+          id: tempIdRef.current--,
+          label: option.label,
+          order: index,
+          media: [],
+        })),
+      };
+      const nextQuestions = insertQuestionAfterInList(questions, anchorId, inserted);
+      // 不可达：anchor 上面已在同一个 questions 数组里确认存在；仅满足 TS 判空。
+      if (!nextQuestions) return null;
+      recordHistory("在此后插入");
+      setQuestions(nextQuestions);
+      setOps((current) => [
+        ...current.filter((op) => op.path !== `/api/admin/surveys/${surveyId}/questions/reorder`),
+        {
+          key: opKeyRef.current++,
+          method: "POST",
+          path: `/api/admin/surveys/${surveyId}/questions`,
+          body: questionCreateBody(draft, anchor.pageId),
+          tempId,
+          label: "在此后插入",
+        },
+        {
+          key: opKeyRef.current++,
+          method: "POST",
+          path: `/api/admin/surveys/${surveyId}/questions/reorder`,
+          body: { questionIds: nextQuestions.map((question) => question.id) },
+          tempId: null,
+          label: "在此后插入",
+        },
+      ]);
+      setSaveError(null);
+      return tempId;
+    },
+    [questions, recordHistory, surveyId],
+  );
+
+  /**
+   * 结构树多选批量（G7b）：批量必答/选填、批量移动分页。
+   * 与 applyTextReplacements 同一条路：一次 recordHistory（整批一步撤销）+
+   * 一次 setOps 追加按题 PATCH；计划由 planBatchQuestionUpdates 生成，只对
+   * 真正要改的题发请求。返回实际入队的题数（0 = 没有需要变更的题）。
+   */
+  const applyBatchQuestionUpdates = useCallback(
+    (questionIds: readonly number[], patch: BatchQuestionPatch, label: string): number => {
+      const updates = planBatchQuestionUpdates(questions, questionIds, patch);
+      if (!updates.length) return 0;
+      recordHistory(label);
+      const bodyById = new Map(updates.map((update) => [update.id, update.body]));
+      setQuestions((current) =>
+        current.map((question) => {
+          const body = bodyById.get(question.id);
+          if (!body) return question;
+          return {
+            ...question,
+            ...(body.required !== undefined ? { required: body.required as boolean } : {}),
+            ...(body.pageId !== undefined ? { pageId: body.pageId as number | null } : {}),
+          };
+        }),
+      );
+      setOps((current) => [
+        ...current,
+        ...updates.map((update) => ({
+          key: opKeyRef.current++,
+          method: "PATCH" as const,
+          path: `/api/admin/surveys/${surveyId}/questions/${update.id}`,
+          body: update.body,
+          tempId: null,
+          label,
+        })),
+      ]);
+      setSaveError(null);
+      return updates.length;
+    },
+    [questions, recordHistory, surveyId],
   );
 
   const deleteQuestion = useCallback(
@@ -727,6 +824,8 @@ export function useSurveyEditor(data: EditorData) {
       patchQuestionLocal,
       queueQuestionPatch,
       addQuestion,
+      insertQuestionAfter,
+      applyBatchQuestionUpdates,
       deleteQuestion,
       addOption,
       deleteOption,
@@ -751,6 +850,8 @@ export function useSurveyEditor(data: EditorData) {
       patchQuestionLocal,
       queueQuestionPatch,
       addQuestion,
+      insertQuestionAfter,
+      applyBatchQuestionUpdates,
       deleteQuestion,
       addOption,
       deleteOption,

@@ -91,4 +91,19 @@ describe("buildOpsFromDiff", () => {
     expect(meta?.method).toBe("PATCH");
     expect(meta?.body).toMatchObject({ anonymous: true });
   });
+
+  it("emits pageId in question PATCH when page assignment differs (G7b 批量移动分页的撤销重建)", () => {
+    const moved: EditorSnapshot = {
+      ...baseline,
+      questions: [{ ...baseline.questions[0]!, pageId: 7 }],
+    };
+    const ops = buildOpsFromDiff(baseline, moved, 5, ids());
+    const patch = ops.find((op) => op.label === "题目修改");
+    expect(patch?.body).toEqual({ pageId: 7 });
+
+    // 撤销方向同样成立：基线在分页 7、目标回到不分页时，重放队列要能把
+    // pageId 写回 null（服务端 PATCH 接受 null）。
+    const back = buildOpsFromDiff(moved, baseline, 5, ids());
+    expect(back.find((op) => op.label === "题目修改")?.body).toEqual({ pageId: null });
+  });
 });

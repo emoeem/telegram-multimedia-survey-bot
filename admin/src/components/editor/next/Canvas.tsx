@@ -33,6 +33,11 @@ export function Canvas({
   onDuplicate,
   onDelete,
   onToggleRequired,
+  onInsertAfter,
+  checkedIds,
+  onToggleChecked,
+  onRowActivate,
+  batchBar,
   settingsPanel,
 }: {
   questions: EditableQuestion[];
@@ -50,6 +55,18 @@ export function Canvas({
   onDuplicate: (questionId: number) => void;
   onDelete: (questionId: number) => void;
   onToggleRequired: (questionId: number) => void;
+  /** 在这道题后插入新题（G7a）：壳侧弹题型选择后按锚点落位。 */
+  onInsertAfter: (questionId: number) => void;
+  /**
+   * 结构树多选（G7b）：勾选集合与切换回调。checkedIds 为 undefined 时
+   * 批量多选整体不渲染（保持既有单选形态，DOM 不多出复选框）。
+   */
+  checkedIds?: ReadonlySet<number>;
+  onToggleChecked?: (questionId: number) => void;
+  /** 行激活（点击/回车）统一入口：壳侧处理 ctrl/⌘/shift 修饰键多选。 */
+  onRowActivate?: (questionId: number, event?: React.MouseEvent) => void;
+  /** 批量操作条（勾选 ≥1 题时由壳传入；空选择传 undefined 保持零 DOM 增量）。 */
+  batchBar?: React.ReactNode;
   /**
    * 移动端设置入口（2026-10-31）：≤999px 时右栏 display:none，「问卷设置」
    * 在手机上原本不可达（提示指向一个看不见的面板）。壳侧窄屏条件渲染
@@ -129,8 +146,11 @@ export function Canvas({
                         index={index}
                         editable={editable}
                         active={active}
-                        onOpen={onSelectQuestion}
+                        checked={checkedIds?.has(question.id)}
+                        onOpen={onRowActivate ?? onSelectQuestion}
                         onMove={onMove}
+                        onInsertAfter={onInsertAfter}
+                        onToggleChecked={onToggleChecked}
                       />
                     </div>
                   </SortableBlock>
@@ -143,6 +163,7 @@ export function Canvas({
               text={draggingType ? "松手即把该题型加到问卷末尾" : "这份问卷还没有内容，从左侧物料区拖入或点选一个题型"}
             />
           ) : null}
+          {batchBar ? <div className="mt-3">{batchBar}</div> : null}
           {edgeBase ? (
             <LogicLayer questions={questions} selectedId={activeId} base={edgeBase} onSelect={onSelectQuestion} />
           ) : null}

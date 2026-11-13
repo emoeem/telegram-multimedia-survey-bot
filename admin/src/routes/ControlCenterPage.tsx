@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   CheckCircle2,
@@ -20,8 +20,11 @@ import {
 import {
   api,
   apiSend,
+  retryReportDelivery,
   type DeploymentTaskView,
   type DeploymentView,
+  type JobFailureView,
+  type JobOverviewView,
   type PublicationArchiveView,
   type PublicationCertShareView,
   type PublicationTargetView,
@@ -53,6 +56,54 @@ const taskStatusLabel: Record<DeploymentTaskView["status"], string> = {
   succeeded: "成功",
   failed: "失败",
 };
+
+/** 任务中心的四类既有任务；`delivery` 是唯一有人工重试端点的类型。 */
+const jobKindLabel: Record<JobFailureView["kind"], string> = {
+  delivery: "报告投递",
+  image_generator: "图片生成",
+  render: "结果渲染",
+  export: "导出",
+};
+const jobKindBadgeClass: Record<JobFailureView["kind"], string> = {
+  delivery: "badge-info",
+  image_generator: "badge-warning",
+  render: "badge-primary",
+  export: "badge-ghost",
+};
+/** 四张任务表的状态标签；同名的排在前面的更常用（failed 优先于别处同名）。 */
+const jobStatusLabel: Record<string, string> = {
+  failed: "失败",
+  pending: "重试中",
+  delivering: "投递中",
+  delivered: "已送达",
+  queued: "排队",
+  processing: "处理中",
+  completed: "成功",
+  running: "运行中",
+  sending: "发送中",
+};
+
+function jobStatusBadgeClass(status: string): string {
+  if (status === "failed") return "badge-error";
+  if (status === "pending" || status === "processing" || status === "running" || status === "delivering")
+    return "badge-warning";
+  if (status === "completed" || status === "delivered") return "badge-success";
+  return "badge-info";
+}
+
+/** 每类任务的人读定位行：投递看答卷/问卷，图片看生成器，渲染看结果档案，导出看问卷。 */
+function jobContextText(row: JobFailureView): string {
+  switch (row.kind) {
+    case "delivery":
+      return `答卷 #${row.responseId ?? "?"}${row.surveyTitle ? ` ·《${row.surveyTitle}》` : ""}`;
+    case "image_generator":
+      return `生成器 #${row.generatorId ?? "?"} · Chat ${row.chatId ?? "?"}`;
+    case "render":
+      return `结果档案 #${row.resultProfileId ?? "?"}${row.chatId ? ` · Chat ${row.chatId}` : ""}`;
+    case "export":
+      return `问卷 #${row.surveyId ?? "?"} · ${row.format ?? "?"}`;
+  }
+}
 
 /** 归档频道 ID 的来源：系统设置 → KV 缓存（/set_report_channel）→ 环境变量。 */
 const archiveSourceLabel: Record<PublicationArchiveView["source"], string> = {
@@ -134,11 +185,15 @@ export function ControlCenterPage() {
   const [threadId, setThreadId] = useState("");
   const [targetEnabled, setTargetEnabled] = useState(true);
   const [targetDefault, setTargetDefault] = useState(false);
+  // 任务中心（审查第四阶段 E）：四类既有任务表的失败/积压聚合。明细只展示
+  // 最近失败行，积压计数在卡片头部常驻，是「有没有东西卡住」的一眼信号。
+  const [jobs, setJobs] = useState<JobOverviewView | null>(null);
+  const [jobKindFilter, setJobKindFilter] = useState<"all" | JobFailureView["kind"]>("all");
 
   const load = async () => {
     setError(null);
     try {
-      const [d, t] = await Promise.all([
+      const [d, t, j] = await Promise.all([
         api<{ items: DeploymentView[] }>("/api/control/deployments"),
         api<{
           items: PublicationTargetView[];
@@ -146,12 +201,14 @@ export function ControlCenterPage() {
           certShare: PublicationCertShareView | null;
           certShareDisabled?: boolean;
         }>("/api/control/publication-targets"),
+        api<JobOverviewView>("/api/control/jobs"),
       ]);
       setDeployments(d.items);
       setTargets(t.items);
       setArchive(t.archive ?? null);
       setCertShare(t.certShare ?? null);
       setCertShareDisabled(!!t.certShareDisabled);
+      setJobs(j);
       if (selected) setSelected(d.items.find((item) => item.id === selected.id) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -167,24 +224,34 @@ export function ControlCenterPage() {
     }
   };
 
+  // load / selected 是普通值（每渲染新引用），直接列进依赖会把「挂载加载一次」
+  // 变成「selected 每次刷新都全量重拉」。经渲染期同步的 ref 镜像读取，effect
+  // 键保持原来的 id/status——行为与旧依赖数组完全一致（exhaustive-deps 合规）。
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+
   useEffect(() => {
-    void load();
+    void loadRef.current();
   }, []);
 
   useEffect(() => {
-    if (selected) void loadTasks(selected);
+    const current = selectedRef.current;
+    if (current) void loadTasks(current);
     else setTasks([]);
   }, [selected?.id]);
 
   useEffect(() => {
-    if (!selected || !["pending", "deploying"].includes(selected.status)) return;
+    const current = selectedRef.current;
+    if (!current || !["pending", "deploying"].includes(current.status)) return;
     const timer = window.setInterval(async () => {
       try {
-        const fresh = await api<{ deployment: DeploymentView }>(`/api/control/deployments/${selected.id}`);
+        const fresh = await api<{ deployment: DeploymentView }>(`/api/control/deployments/${current.id}`);
         setSelected(fresh.deployment);
-        const taskData = await api<{ items: DeploymentTaskView[] }>(`/api/control/deployments/${selected.id}/tasks`);
+        const taskData = await api<{ items: DeploymentTaskView[] }>(`/api/control/deployments/${current.id}/tasks`);
         setTasks(taskData.items);
-        if (fresh.deployment.status === "online" || fresh.deployment.status === "failed") await load();
+        if (fresh.deployment.status === "online" || fresh.deployment.status === "failed") await loadRef.current();
       } catch {
         // The normal page error state is left untouched during background polling.
       }
@@ -235,6 +302,29 @@ export function ControlCenterPage() {
       targets: (targets ?? []).filter((t) => t.enabled).length,
     };
   }, [deployments, targets]);
+
+  // 失败明细按类型筛选；服务端已限定最近 N 条失败，这里只做展示过滤。
+  const failedJobs = useMemo(() => {
+    const rows = jobs?.recentFailures ?? [];
+    return jobKindFilter === "all" ? rows : rows.filter((row) => row.kind === jobKindFilter);
+  }, [jobs, jobKindFilter]);
+
+  const backlogItems = useMemo(() => {
+    if (!jobs) return [];
+    return [
+      { key: "deliveries", label: "报告投递", count: jobs.backlog.deliveries },
+      { key: "imageGeneratorJobs", label: "图片生成", count: jobs.backlog.imageGeneratorJobs },
+      { key: "renderJobs", label: "结果渲染", count: jobs.backlog.renderJobs },
+      { key: "exportJobs", label: "导出", count: jobs.backlog.exportJobs },
+    ];
+  }, [jobs]);
+
+  // 重试复用既有端点 POST /api/admin/report-deliveries/:id/retry（自带归属
+  // 校验与 report.retry 审计）；act() 完成后会整体 load()，任务列表一并刷新。
+  const retryJobDelivery = (row: JobFailureView) =>
+    void act(async () => {
+      await retryReportDelivery(row.id);
+    });
 
   const resetDeployForm = () => {
     setProvisionResult(null);
@@ -488,6 +578,93 @@ export function ControlCenterPage() {
         ) : (
           <div className="empty py-8">从上方选择 Worker</div>
         )}
+      </section>
+
+      <section className="card">
+        <div className="card-title">
+          <div>
+            <h2>后台任务</h2>
+            <p className="card-sub">
+              报告投递、图片生成、结果渲染与导出任务的失败与积压一览（最近失败明细）。
+              人工重试只对报告投递开放——复用既有重试端点；其余类型暂无端点，入口置灰。
+            </p>
+          </div>
+          <select
+            className="select select-sm"
+            data-testid="jobs-kind-filter"
+            value={jobKindFilter}
+            onChange={(e) => setJobKindFilter(e.target.value as typeof jobKindFilter)}
+          >
+            <option value="all">全部类型</option>
+            {Object.keys(jobKindLabel).map((kind) => (
+              <option key={kind} value={kind}>
+                {jobKindLabel[kind as JobFailureView["kind"]]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2" data-testid="jobs-backlog">
+          {backlogItems.map(({ key, label, count }) => (
+            <span
+              key={key}
+              data-testid={`jobs-backlog-${key}`}
+              className={`badge badge-sm ${count > 0 ? "badge-warning" : "badge-ghost"}`}
+            >
+              {label}积压 {count}
+            </span>
+          ))}
+        </div>
+        <div className="mt-4 space-y-2">
+          {failedJobs.map((row) => (
+            <div
+              key={`${row.kind}-${row.id}`}
+              data-testid={`job-${row.kind}-${row.id}`}
+              className="rounded-xl border border-[var(--color-edge)] bg-[var(--surface-muted)] p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`badge badge-sm ${jobKindBadgeClass[row.kind]}`}>{jobKindLabel[row.kind]}</span>
+                <span className="font-medium">#{row.id}</span>
+                <span className={`badge badge-sm ${jobStatusBadgeClass(row.status)}`}>
+                  {jobStatusLabel[row.status] ?? row.status}
+                </span>
+                {row.attempts > 0 ? <span className="text-xs opacity-60">已尝试 {row.attempts} 次</span> : null}
+                <span className="ml-auto text-xs opacity-50">{formatDateTime(row.happenedAt)}</span>
+              </div>
+              <div className="mt-1 text-sm opacity-70">{jobContextText(row)}</div>
+              {row.error ? (
+                <details className="mt-2" data-testid={`job-error-details-${row.kind}-${row.id}`}>
+                  <summary className="cursor-pointer text-sm text-[var(--app-danger)]">错误详情</summary>
+                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-base-200 p-2 text-xs whitespace-pre-wrap">
+                    {row.error}
+                  </pre>
+                </details>
+              ) : null}
+              <div className="mt-2 flex gap-2">
+                {row.kind === "delivery" ? (
+                  <button
+                    className="btn btn-xs"
+                    data-testid={`job-retry-${row.kind}-${row.id}`}
+                    disabled={busy}
+                    title="重新入队该报告投递（复用既有重试端点，写入 report.retry 审计）"
+                    onClick={() => retryJobDelivery(row)}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    重试投递
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-xs"
+                    disabled
+                    title="该任务类型暂无人工重试端点，队列恢复流程（stale 扫描）会自动接管"
+                  >
+                    重试不可用
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {!failedJobs.length ? <div className="empty py-8">{jobs ? "当前没有失败任务" : "任务数据加载中"}</div> : null}
+        </div>
       </section>
 
       <section className="card">

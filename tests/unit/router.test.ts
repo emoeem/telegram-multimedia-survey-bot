@@ -181,4 +181,33 @@ describe("handleTelegramUpdate", () => {
     expect(String(url)).toContain("/answerCallbackQuery");
     expect(JSON.parse(String((init as RequestInit).body)).text).toBe("请在私聊里使用本机器人");
   });
+
+  it("silently ignores update kinds the router does not implement", async () => {
+    // Telegram 会持续送来 bot 未实现的 update 种类（my_chat_member、
+    // edited_message、chat_member…）。安全降级 = 不抛错、不注册用户、不发任何
+    // API 请求，让 webhook 照常 complete 并回 200 —— 否则每条未知 update 都
+    // 会 500 触发 Telegram 重发，把整条更新流堵死。
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext();
+    const prepare = vi.fn(() => {
+      throw new Error("unknown update kinds must not touch the database");
+    });
+    ctx.db = { prepare } as unknown as D1Database;
+
+    // TelegramUpdate 类型只建模了已实现的三种字段，但线上 wire format 更宽 ——
+    // parseTelegramUpdate 会把任何带 update_id 的对象放行进来，所以这里的
+    // cast 不是妥协，而是被测行为本身：超出的字段必须被容忍。
+    const unhandledKinds = [
+      { update_id: 6, my_chat_member: { chat: { id: 42 }, from: { id: 99 }, date: 1 } },
+      { update_id: 7, edited_message: { message_id: 2, chat: { id: 42 }, from: { id: 99 }, text: "edited" } },
+    ] as unknown as Parameters<typeof handleTelegramUpdate>[0][];
+
+    for (const update of unhandledKinds) {
+      await expect(handleTelegramUpdate(update, ctx)).resolves.toBeUndefined();
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
 });

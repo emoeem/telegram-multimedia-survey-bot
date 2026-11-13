@@ -96,6 +96,9 @@ function questionPatch(base: DiffQuestion, target: DiffQuestion): Record<string,
   if (base.description !== target.description) patch.description = target.description ?? "";
   if (base.required !== target.required) patch.required = target.required;
   if (base.type !== target.type) patch.type = target.type;
+  // pageId 也要进 diff（G7b 批量移动分页 + 既有「分页设置」都走这条重建）：
+  // 撤销重建的 op 队列若漏掉 pageId，保存后库里会留着已撤销的分页归属。
+  if (base.pageId !== target.pageId) patch.pageId = target.pageId;
   if (JSON.stringify(base.columns) !== JSON.stringify(target.columns)) {
     patch.settings = { columns: target.columns };
   }

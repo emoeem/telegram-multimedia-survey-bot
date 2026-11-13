@@ -146,8 +146,10 @@ describe("合并后的路由结构", () => {
   });
 
   it("服务端对旧路径返回 302 相对地址", () => {
-    const index = readFileSync(join(process.cwd(), "src", "index.ts"), "utf8");
-    expect(index).toMatch(/status:\s*302[^}]*Location:\s*`\/submissions\?tab=\$\{tab\}`/s);
+    /* 302 分支随 index.ts 拆分搬进 src/http/router.ts（backlog 2026-11-14 §D），
+     * 锚点跟着代码搬家，钉的仍是同一段实现。 */
+    const router = readFileSync(join(process.cwd(), "src", "http", "router.ts"), "utf8");
+    expect(router).toMatch(/status:\s*302[^}]*Location:\s*`\/submissions\?tab=\$\{tab\}`/s);
   });
 
   it("静态页签仍是投稿/我的投稿两个，投稿墙是开关门控的第三个页签", () => {

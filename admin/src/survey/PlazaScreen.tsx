@@ -637,10 +637,17 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
 }
 
 export function PlazaScreen() {
+  // 路由分发必须先于任何 hook：profile 详情页与主广场是两棵组件树，若
+  // 在这个早退 return 之后再调用 hooks，「是详情页」与「是广场页」两次
+  // 渲染的 hook 数量不同，React 直接抛 #310（rules-of-hooks 违规）。
   const profileRoute = window.location.pathname.match(/^\/plaza\/profile\/(\d+)$/);
   if (profileRoute) {
     return <ProfileDetailScreen profileId={Number(profileRoute[1])} />;
   }
+  return <PlazaFeedScreen />;
+}
+
+function PlazaFeedScreen() {
   const [tab, setTab] = useState<Tab>(() =>
     new URLSearchParams(window.location.search).get("tab") === "treehole" ? "treehole" : "profiles",
   );

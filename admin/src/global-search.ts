@@ -81,6 +81,23 @@ export const GLOBAL_SEARCH_GROUP_LABELS: Record<GlobalSearchGroup, string> = {
 /** 每组最多展示的命中数：面板一屏可读，更多结果引导用户精化关键词。 */
 export const GLOBAL_SEARCH_LIMIT_PER_GROUP = 5;
 
+/**
+ * ⌘K 命中列表的读屏语义锚点（2026-11-14 G6，批三报告已知问题 #4）：
+ * activeIndex 过去只以视觉类名（.is-active）表达，屏幕阅读器感知不到
+ * 键盘高亮。Layout 面板的接线契约——命中容器 role="listbox"、
+ * aria-label 用 LABEL、aria-activedescendant 指向当前高亮项的
+ * globalSearchOptionId(index)，命中项自身 role="option"——常量与 id
+ * 生成收拢在本纯模块，防回退断言锁在 global-search.test.ts。
+ */
+export const GLOBAL_SEARCH_LISTBOX_ID = "admin-search-listbox";
+export const GLOBAL_SEARCH_LISTBOX_LABEL = "搜索结果列表";
+
+/** 命中项的 option id（扁平 hits 下标）：容器 aria-activedescendant 与
+ * 选项 id 必须由同一函数生成，键盘高亮 ↔ 读屏感知才不会错位。 */
+export function globalSearchOptionId(index: number): string {
+  return `admin-search-option-${index}`;
+}
+
 export interface GlobalSearchPopularTerm {
   label: string;
   /** 点击直达的页面（与 workspaces.ts 里同名 tab 的路由一致）。 */

@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { STALE_CLAIM_MS } from "../../src/services/update-dedup.service";
+
 const mocks = vi.hoisted(() => ({
   handleTelegramUpdate: vi.fn(async () => undefined),
-  claim: vi.fn(async () => true),
-  complete: vi.fn(async () => undefined),
-  release: vi.fn(async () => undefined),
+  // 带上 updateId 参数：并发用例里会换成有状态的状态机实现（见 createDedupSim）；
+  // complete/release 用 Promise<void> 对齐真实 UpdateDedupStore 的签名。
+  claim: vi.fn(async (_updateId: number) => true),
+  complete: vi.fn((_updateId: number) => Promise.resolve()),
+  release: vi.fn((_updateId: number) => Promise.resolve()),
   checkDeploymentLicense: vi.fn(async () => ({ allowed: true })),
   sendCustomerHeartbeat: vi.fn(async () => undefined),
-  retryPendingReportDeliveries: vi.fn(async () => ({ requeued: 0 })),
+  retryPendingReportDeliveries: vi.fn(async () => ({ requeued: 0, terminalFailed: 0 })),
   recoverStaleResultVisualJobs: vi.fn(async () => ({ requeued: 0, failed: 0 })),
   recoverStaleImageGeneratorJobs: vi.fn(async () => ({ requeued: 0, failed: 0 })),
   migrateDataUrlCoversToKv: vi.fn(async () => 0),
@@ -105,6 +109,51 @@ function webhookRequest(body: unknown, secret = "webhook-secret"): Request {
   });
 }
 
+interface DedupSimRow {
+  status: "processing" | "done";
+  receivedAt: number;
+}
+
+/**
+ * Webhook 级去重状态机：与 update-dedup.service.test.ts 的 fake db 同一套
+ * claim → complete / release 语义，但用宏任务错峰让并发请求先全部在途，再按
+ * 到达顺序原子应用 —— 模拟 D1 的语句级原子性。若真实实现把「查状态 + 写状态」
+ * 拆成可交错的步骤，并发重放的「恰好一次」就会在这里被打破。
+ */
+function createDedupSim() {
+  const rows = new Map<number, DedupSimRow>();
+  const claim = vi.fn(async (updateId: number) => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const staleCutoff = Date.now() - STALE_CLAIM_MS;
+    const existing = rows.get(updateId);
+    if (!existing) {
+      rows.set(updateId, { status: "processing", receivedAt: Date.now() });
+      return true;
+    }
+    if (existing.status !== "done" && existing.receivedAt <= staleCutoff) {
+      existing.status = "processing";
+      existing.receivedAt = Date.now();
+      return true;
+    }
+    return false;
+  });
+  const complete = vi.fn(async (updateId: number) => {
+    const existing = rows.get(updateId);
+    if (existing && existing.status !== "done") existing.status = "done";
+  });
+  const release = vi.fn(async (updateId: number) => {
+    const existing = rows.get(updateId);
+    if (existing && existing.status !== "done") rows.delete(updateId);
+  });
+  return { claim, complete, release, rows };
+}
+
+function wireDedupSim(sim: ReturnType<typeof createDedupSim>): void {
+  mocks.claim.mockImplementation(sim.claim);
+  mocks.complete.mockImplementation(sim.complete);
+  mocks.release.mockImplementation(sim.release);
+}
+
 describe("telegram webhook idempotency wiring", () => {
   it("escapes ampersands before quotes in meta attributes", () => {
     expect(escapeMetaAttribute('A &copy; "quote"')).toBe("A &amp;copy; &quot;quote&quot;");
@@ -122,6 +171,7 @@ describe("telegram webhook idempotency wiring", () => {
 
   it("claims, handles and completes a message update once", async () => {
     const env = createEnv();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await worker.fetch(
       webhookRequest({ update_id: 5001, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } }),
       env as never,
@@ -134,6 +184,10 @@ describe("telegram webhook idempotency wiring", () => {
     expect((mocks.handleTelegramUpdate.mock.calls[0] as unknown[])[1]).toMatchObject({ licenseServerUrl: null });
     expect(mocks.complete).toHaveBeenCalledWith(5001);
     expect(mocks.release).not.toHaveBeenCalled();
+    // botUpdates 只统计通过 secret 校验的调用（记录点在 router 的校验之后）。
+    const metricsLine = logSpy.mock.calls.find(([label]) => label === "request_metrics");
+    expect(JSON.parse(metricsLine![1] as string)).toMatchObject({ route: "/telegram/webhook", botUpdates: 1 });
+    logSpy.mockRestore();
   });
 
   it("pins bot links to PUBLIC_ORIGIN instead of the hostname the webhook arrived on", async () => {
@@ -200,6 +254,31 @@ describe("telegram webhook idempotency wiring", () => {
     expect(mocks.recoverStaleResultVisualJobs).toHaveBeenCalledOnce();
     expect(mocks.recoverStaleImageGeneratorJobs).toHaveBeenCalledOnce();
     expect(mocks.migrateDataUrlCoversToKv).toHaveBeenCalledOnce();
+  });
+
+  it("emits a report_delivery_terminal ERROR line when deliveries burn out", async () => {
+    const env = createEnv();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.retryPendingReportDeliveries.mockResolvedValueOnce({ requeued: 0, terminalFailed: 2 });
+
+    await worker.scheduled({ cron: "*/30 * * * *" } as ScheduledEvent, env as never);
+
+    // 终态失败单独成行：30 分钟一次的 info 行里捞不到它，告警过滤器只认这条。
+    const terminalCall = errorSpy.mock.calls.find(([label]) => label === "report_delivery_terminal");
+    expect(terminalCall).toBeTruthy();
+    expect(JSON.parse(terminalCall![1] as string)).toMatchObject({ type: "report_delivery_terminal", count: 2 });
+    errorSpy.mockRestore();
+  });
+
+  it("keeps terminal-free cron runs quiet about report delivery terminations", async () => {
+    const env = createEnv();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await worker.scheduled({ cron: "*/30 * * * *" } as ScheduledEvent, env as never);
+
+    // 无终态失败时不输出占位零行：全零字段会让真实回归看起来像坏掉的仪表。
+    expect(errorSpy.mock.calls.find(([label]) => label === "report_delivery_terminal")).toBeUndefined();
+    errorSpy.mockRestore();
   });
 
   it("rate-limits email registration after five attempts for the same email", async () => {
@@ -321,6 +400,7 @@ describe("telegram webhook idempotency wiring", () => {
 
   it("rejects a webhook with the wrong secret", async () => {
     const env = createEnv();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await worker.fetch(
       webhookRequest(
         { update_id: 5004, message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" } },
@@ -331,5 +411,140 @@ describe("telegram webhook idempotency wiring", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.claim).not.toHaveBeenCalled();
+    // 伪造流量不算 botUpdates（失真修正）；它由 request_metrics 的 403 行回答。
+    const metricsLine = logSpy.mock.calls.find(([label]) => label === "request_metrics");
+    expect(JSON.parse(metricsLine![1] as string)).toMatchObject({
+      route: "/telegram/webhook",
+      status: 403,
+      botUpdates: 0,
+    });
+    logSpy.mockRestore();
+  });
+
+  it("secret 校验先于 body 解析：错误 secret 下的畸形 JSON 也只回 403", async () => {
+    const env = createEnv();
+    // router.ts 的顺序是 secret 检查 → 自愈/license → request.json()。若顺序
+    // 颠倒，下面的畸形 body 会先在解析处炸成 400 —— 403 就是顺序的证明。
+    const response = await worker.fetch(
+      new Request("https://example.test/telegram/webhook", {
+        method: "POST",
+        headers: { "X-Telegram-Bot-Api-Secret-Token": "nope", "Content-Type": "application/json" },
+        body: "not-json{",
+      }),
+      env as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.handleTelegramUpdate).not.toHaveBeenCalled();
+    expect(mocks.complete).not.toHaveBeenCalled();
+  });
+
+  it("缺少 secret 头直接 403，解析与业务完全不触碰", async () => {
+    const env = createEnv();
+    const response = await worker.fetch(
+      new Request("https://example.test/telegram/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          update_id: 6200,
+          message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" },
+        }),
+      }),
+      env as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.handleTelegramUpdate).not.toHaveBeenCalled();
+    expect(mocks.complete).not.toHaveBeenCalled();
+  });
+
+  it("未知 update 类型安全降级：照常认领并 complete，不阻断后续更新", async () => {
+    // Telegram 会持续送来 router 未实现的 update 种类（my_chat_member、
+    // edited_message 等）。parse 只要 update_id 就放行，去重照常
+    // claim → handle → complete 并回 200 让 Telegram 停止重发 —— 单条未知
+    // update 既不能 500 触发重发风暴，也不能把整条更新流卡死。
+    const env = createEnv();
+    const response = await worker.fetch(
+      webhookRequest({ update_id: 6300, my_chat_member: { chat: { id: 2 }, from: { id: 3 }, date: 1 } }),
+      env as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(mocks.claim).toHaveBeenCalledWith(6300);
+    expect(mocks.handleTelegramUpdate).toHaveBeenCalledOnce();
+    expect(mocks.complete).toHaveBeenCalledWith(6300);
+    expect(mocks.release).not.toHaveBeenCalled();
+  });
+
+  describe("并发重放与 done 行拦截（状态机模拟）", () => {
+    afterEach(() => {
+      // vi.clearAllMocks 不清 implementation：这里的状态机 mock 若不恢复，
+      // 会带着旧 map 泄漏进后续用例。
+      mocks.claim.mockImplementation(async () => true);
+      mocks.complete.mockImplementation(async () => undefined);
+      mocks.release.mockImplementation(async () => undefined);
+    });
+
+    it("并发 2/5/10 次投递同一 update_id，只有一次业务副作用", async () => {
+      for (const concurrency of [2, 5, 10]) {
+        const sim = createDedupSim();
+        wireDedupSim(sim);
+        mocks.handleTelegramUpdate.mockClear();
+        mocks.complete.mockClear();
+        mocks.release.mockClear();
+
+        const responses = await Promise.all(
+          Array.from({ length: concurrency }, () =>
+            worker.fetch(
+              webhookRequest({
+                update_id: 6000 + concurrency,
+                message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" },
+              }),
+              createEnv() as never,
+            ),
+          ),
+        );
+
+        // 全部 200；恰好一个「已处理」响应，其余都是「重复跳过」
+        const bodies = (await Promise.all(responses.map((response) => response.json()))) as {
+          duplicate?: boolean;
+        }[];
+        expect(responses.every((response) => response.status === 200)).toBe(true);
+        expect(bodies.filter((body) => body.duplicate === true)).toHaveLength(concurrency - 1);
+        expect(bodies.filter((body) => body.duplicate === undefined)).toHaveLength(1);
+
+        // 业务副作用只发生一次，记账也只发生一次，行最终为 done
+        expect(mocks.handleTelegramUpdate).toHaveBeenCalledTimes(1);
+        expect(mocks.complete).toHaveBeenCalledTimes(1);
+        expect(mocks.release).not.toHaveBeenCalled();
+        expect(sim.rows.get(6000 + concurrency)?.status).toBe("done");
+      }
+    });
+
+    it("处理成功后的重复投递零业务副作用（done 行拦截完整生命周期）", async () => {
+      const sim = createDedupSim();
+      wireDedupSim(sim);
+      const env = createEnv();
+      const body = {
+        update_id: 6100,
+        message: { message_id: 1, chat: { id: 2 }, from: { id: 3 }, text: "hi" },
+      };
+
+      // 第一次投递：完整走 claim → handle → complete，行置为 done
+      const first = await worker.fetch(webhookRequest(body), env as never);
+      expect(await first.json()).toEqual({ ok: true });
+      expect(mocks.handleTelegramUpdate).toHaveBeenCalledOnce();
+      expect(sim.rows.get(6100)?.status).toBe("done");
+
+      // Telegram 在 ack 丢失后的重发：done 行拦截，业务与记账都不再发生
+      const second = await worker.fetch(webhookRequest(body), env as never);
+      expect(await second.json()).toEqual({ ok: true, duplicate: true });
+      expect(mocks.handleTelegramUpdate).toHaveBeenCalledOnce();
+      expect(mocks.complete).toHaveBeenCalledTimes(1);
+      expect(mocks.release).not.toHaveBeenCalled();
+    });
   });
 });

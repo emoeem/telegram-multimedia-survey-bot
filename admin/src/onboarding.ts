@@ -4,9 +4,14 @@
  *
  * 「只讲不改」是本模块的硬边界：引导只告诉用户每一步去哪个页面、找哪个
  * 入口，绝不代替用户创建或修改任何问卷文档——所以这里只有步骤数据与
- * 完成标记的读写，零 API 调用；浮层也只挂在总览页（DashboardPage）而不
- * 进编辑器：编辑器有 2 秒静默自动保存（EditorShell），任何浮层出现在
- * 那里都可能误触保存队列或挡住画布。
+ * 完成标记/步骤进度的读写，零 API 调用；浮层也只挂在总览页
+ * （DashboardPage）而不进编辑器：编辑器有 2 秒静默自动保存
+ * （EditorShell），任何浮层出现在那里都可能误触保存队列或挡住画布。
+ *
+ * 步骤进度（2026-11-14 G5）：点步骤 CTA（<Link>）离开总览后浮层卸载，
+ * 进度若只存在组件 state 里，回来就从第一步重显——所以「已到达步」落在
+ * ONBOARDING_STEP_KEY，CTA 点击 / 前进时同步写，刷新或重进后从已到达的
+ * 步继续；完成或重放时一并清掉，重放永远从第一步开始。
  *
  * 纯逻辑模块、零 import（对齐 workspaces.ts / publish-choice.ts 的仓内
  * 约定）：根目录的 vitest/tsc 会把 tests/unit/admin 的用例连进程序编译，
@@ -76,6 +81,13 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
 /** 完成标记的 localStorage 键：沿用 admin:editor-mode 的 `admin:` 前缀约定。 */
 export const ONBOARDING_COMPLETE_KEY = "admin:onboarding-complete";
 
+/**
+ * 已到达步（0 基下标）的 localStorage 键：批一报告已知问题 #1 的修法——
+ * 点 CTA 离开总览后浮层卸载、完成标记未写，回来必须还停在离开时的那一步，
+ * 而不是从第一步重显。
+ */
+export const ONBOARDING_STEP_KEY = "admin:onboarding-step";
+
 const COMPLETE_VALUE = "1";
 
 /**
@@ -126,6 +138,35 @@ export function onboardingStepTarget(step: OnboardingStep, surveyId: number | nu
   return step.to.replace(":id", String(surveyId));
 }
 
+/** 草稿列表条目里落点需要的最小形状（SurveySummary 的子集）。 */
+export interface OnboardingDraftRef {
+  id: number;
+  ownerId: number;
+}
+
+/**
+ * 「第一个我的草稿」的 id（步骤 2/3 的落点来源，2026-11-14 G5）：
+ * 按 ownerId 过滤出当前登录用户自己的草稿再取第一条。批一报告已知问题
+ * #3 的修法——过去用 data.recentSurveys[0].id 解析 :id，管理员视角下
+ * 「最近问卷」可能是他人或已发布问卷，CTA 与普通用户看到的页面能力不符；
+ * 现在改从草稿列表接口（creator 由服务端按 owner 过滤，管理员再按
+ * session userId 过滤）取「我的」第一份。
+ *
+ * myUserId 读不到（session 探测失败）时不猜归属，返回 null——调用方走
+ * onboardingStepTarget 的无问卷兜底（/surveys，那里同时是新建入口），
+ * 宁可少带路一步，也不把管理员带进别人的编辑器。
+ */
+export function pickFirstMyDraft(
+  drafts: readonly OnboardingDraftRef[],
+  myUserId: number | null | undefined,
+): number | null {
+  if (myUserId === null || myUserId === undefined) return null;
+  for (const draft of drafts) {
+    if (draft.ownerId === myUserId) return draft.id;
+  }
+  return null;
+}
+
 /**
  * 是否该显示引导：完成标记不存在（或读不到）即显示。
  * localStorage 不可用（隐私模式 / 被策略禁用 / node 环境）时静默降级为
@@ -146,7 +187,10 @@ export function shouldShowOnboarding(): boolean {
 /** 标记完成（最后一步「完成」或「跳过」都走这里）；写不进去就当本次会话没记住。 */
 export function markOnboardingComplete(): void {
   try {
-    onboardingStorage()?.setItem?.(ONBOARDING_COMPLETE_KEY, COMPLETE_VALUE);
+    const storage = onboardingStorage();
+    storage?.setItem?.(ONBOARDING_COMPLETE_KEY, COMPLETE_VALUE);
+    // 进度随完成一起清：下次引导（重放）必须从第一步开始，不能带着旧进度
+    storage?.removeItem?.(ONBOARDING_STEP_KEY);
   } catch {
     // 隐私模式写不进去不影响本次引导（与 EditorShell 的 admin:editor-mode 同一先例）
   }
@@ -155,8 +199,39 @@ export function markOnboardingComplete(): void {
 /** 重放：清掉完成标记，下次 shouldShowOnboarding() 再显示（设置页入口）。 */
 export function resetForReplay(): void {
   try {
-    onboardingStorage()?.removeItem?.(ONBOARDING_COMPLETE_KEY);
+    const storage = onboardingStorage();
+    storage?.removeItem?.(ONBOARDING_COMPLETE_KEY);
+    // 旧进度一并清：重放是「重新走一遍入门」，不是「接着上次继续」
+    storage?.removeItem?.(ONBOARDING_STEP_KEY);
   } catch {
     // 读不到自然也删不了；下次访问仍按未完成处理，行为一致
+  }
+}
+
+/**
+ * 读已到达步（0 基下标）：无效、越界或读不到一律回 0（第一步），保证
+ * 浮层永远从合法步骤继续；值是 saveOnboardingStep 写入的字符串化下标。
+ */
+export function readOnboardingStep(): number {
+  try {
+    const raw = onboardingStorage()?.getItem?.(ONBOARDING_STEP_KEY);
+    const index = raw === null || raw === undefined ? Number.NaN : Number(raw);
+    if (!Number.isInteger(index) || index < 0 || index >= ONBOARDING_STEPS.length) return 0;
+    return index;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 同步写入已到达步：CTA 点击与「下一步」都要调——浮层随时可能因导航离开
+ * 总览而卸载，进度只能在离开那一刻已经落盘（批一报告已知问题 #1）。
+ * 写不进去就静默降级为本次会话不记，与完成标记同一纪律。
+ */
+export function saveOnboardingStep(stepIndex: number): void {
+  try {
+    onboardingStorage()?.setItem?.(ONBOARDING_STEP_KEY, String(stepIndex));
+  } catch {
+    // 隐私模式写不进去不影响本次引导
   }
 }
