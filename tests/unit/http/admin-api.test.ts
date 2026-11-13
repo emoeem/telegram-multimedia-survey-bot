@@ -1844,3 +1844,59 @@ describe("vendor-only console isolation", () => {
     expect(await vendor.json()).toMatchObject({ role: "vendor", licenseCenter: true });
   });
 });
+
+describe("handleAdminApi error response hygiene", () => {
+  // 审计 1B 的最后一道线：兜底 500 只许给通用文案 + requestId，D1/KV 的原始
+  // 报错（含 SQL 片段、绑定值、部署密钥）必须被 describeDatabaseError 挡在响应外。
+  it("500 响应不回显 SQL、密钥或堆栈，只给通用文案", async () => {
+    const leakedSecret = "whsec_DO_NOT_LEAK_9f3b";
+    const failingDb = {
+      prepare: vi.fn(() => {
+        throw new Error(
+          `D1_ERROR: no such table: users [statement: SELECT password_hash FROM users WHERE token = '${leakedSecret}']`,
+        );
+      }),
+    } as unknown as D1Database;
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // dev 身份放行到第一个真实 DB 查询（creator-trial 探测）在那里引爆。
+      repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+      const response = await handleAdminApi(apiRequest("/api/admin/session", { userId: "222" }), makeEnv(failingDb));
+      expect(response.status).toBe(500);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(body.code).toBe("internal_error");
+      // 响应体只允许这三个键，杜绝堆栈或错误对象被序列化出去。
+      expect(Object.keys(body).sort()).toEqual(["code", "message", "requestId"]);
+      expect(typeof body.requestId).toBe("string");
+      const text = JSON.stringify(body);
+      expect(text).not.toContain(leakedSecret);
+      expect(text).not.toContain("SELECT password_hash");
+      expect(text).not.toContain("D1_ERROR");
+      expect(text).not.toContain("admin/index.ts");
+      expect(body.message).toBe("服务器暂时无法处理请求，请稍后重试。");
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+
+  it("D1 容量错误走专用 503 文案，同样不回显原始报错", async () => {
+    const failingDb = {
+      prepare: vi.fn(() => {
+        throw new Error("Error Code: 7500: exceeded d1 daily row limit");
+      }),
+    } as unknown as D1Database;
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      repositoryMocks.getUserByTelegramId.mockResolvedValue(OWNER);
+      const response = await handleAdminApi(apiRequest("/api/admin/session", { userId: "222" }), makeEnv(failingDb));
+      expect(response.status).toBe(503);
+      const body = (await response.json()) as { code: string; message: string };
+      expect(body.code).toBe("database_capacity");
+      expect(body.message).toContain("额度已用尽");
+      expect(JSON.stringify(body)).not.toContain("7500");
+    } finally {
+      consoleSpy.mockRestore();
+    }
+  });
+});
