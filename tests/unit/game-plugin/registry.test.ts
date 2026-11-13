@@ -179,6 +179,9 @@ describe("标签唯一源与依赖边守卫", () => {
       draw: ["../../types", "./manifest"],
       "flip-card": ["../../types", "./manifest"],
       quest: ["../../types", "./manifest", "./content"],
+      guess: ["../../types", "./manifest"],
+      "memory-chain": ["../../types", "./manifest"],
+      "high-low": ["../../types", "./manifest"],
     };
     const dirs = pluginDirs(serverDir);
     // 新插件目录必须同时在这里申报依赖边：漏申报先在这里红，而不是 admin build 时才炸。

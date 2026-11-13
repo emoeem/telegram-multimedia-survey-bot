@@ -2,6 +2,9 @@ import { registerGamePlugins } from "./registry";
 import { flipCardPlugin } from "./plugins/flip-card/engine";
 import { drawPlugin } from "./plugins/draw/engine";
 import { questPlugin } from "./plugins/quest/engine";
+import { guessPlugin } from "./plugins/guess/engine";
+import { memoryChainPlugin } from "./plugins/memory-chain/engine";
+import { highLowPlugin } from "./plugins/high-low/engine";
 
 /**
  * 服务端插件注册表——新增玩法时**唯一需要改动的文件**（加一行）。
@@ -13,3 +16,6 @@ import { questPlugin } from "./plugins/quest/engine";
 registerGamePlugins(flipCardPlugin);
 registerGamePlugins(drawPlugin);
 registerGamePlugins(questPlugin);
+registerGamePlugins(guessPlugin);
+registerGamePlugins(memoryChainPlugin);
+registerGamePlugins(highLowPlugin);

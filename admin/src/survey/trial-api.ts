@@ -1,4 +1,5 @@
 import { identityHeaders, type UnlockedAchievement } from "./api";
+import type { GameRunView } from "../../../src/game-plugin/types";
 
 export type TrialPersona = "male" | "female";
 export type TrialMode = "normal" | "hell";
@@ -87,12 +88,21 @@ export interface TrialRun {
   boosted: boolean;
   coinRerolls?: number;
   startingFloor?: number;
+  // 插件玩法局的摘要字段：服务端 pluginRunSummary 只给这些、不给
+  // phase/coins/inventory（爬塔字段在此场景下是 undefined，别拿来比较）。
+  plugin?: string;
+  pluginTitle?: string;
+  step?: number;
+  total?: number;
 }
 
 export interface TrialHistoryItem extends TrialRun {
   startedAt: string;
   finishedAt: string | null;
   grade: TrialGrade | null;
+  // plugin 字段直接继承 TrialRun：服务端（trial-api.ts 的 pluginFields 展开处）
+  // 只在 truthy 时才带 plugin 键，历史条目运行时是 string | undefined，
+  // 再声明 `plugin?: string | null` 会与父接口的 `plugin?: string` 冲突（TS2430）。
 }
 
 export interface TrialLeaderboardEntry {
@@ -162,7 +172,14 @@ export function fetchTrialMe(): Promise<TrialMe> {
   return trialRequest("/api/trial/me");
 }
 
-export function fetchTrialActiveRun(): Promise<{ run: TrialRun | null; task: TrialTask | null }> {
+export function fetchTrialActiveRun(): Promise<{
+  run: TrialRun | null;
+  task: TrialTask | null;
+  /** 插件玩法局才有：服务端算好的当帧视图；爬塔局没有此字段。 */
+  view?: GameRunView | null;
+  packMissing?: boolean;
+  packEnabled?: boolean;
+}> {
   return trialRequest("/api/trial/runs/active");
 }
 
@@ -187,7 +204,12 @@ export function fetchTrialGameTypeLeaderboard(
   return trialRequest(`/api/trial/leaderboard?gameType=${encodeURIComponent(gameType)}&mode=${mode}`);
 }
 
-export function startTrialRun(input: TrialStartRequest): Promise<{ run: TrialRun; task: TrialTask }> {
+export function startTrialRun(input: TrialStartRequest): Promise<{
+  run: TrialRun;
+  task: TrialTask | null;
+  /** 插件玩法局才有：开局首帧视图；爬塔局没有此字段。 */
+  view?: GameRunView | null;
+}> {
   return trialRequest("/api/trial/runs", { method: "POST", body: JSON.stringify(input) });
 }
 

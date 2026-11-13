@@ -36,6 +36,7 @@ import { createTrialShare } from "./plaza-api";
 import { submissionTargetFromUrl } from "./submission-target";
 import { BottomNav } from "./BottomNav";
 import { closeWebApp } from "./navigation";
+import { PluginGamePlay } from "./PluginGamePlay";
 import {
   fetchTrialActiveRun,
   fetchTrialGameTypeLeaderboard,
@@ -62,6 +63,7 @@ import {
   type TrialTask,
 } from "./trial-api";
 import type { UnlockedAchievement } from "./api";
+import type { GameRunView } from "../../../src/game-plugin/types";
 
 const AGREEMENT_KEY = "trialAdultAgreement:v1";
 
@@ -95,7 +97,12 @@ const GRADE_STYLE: Record<TrialGrade, { ring: string; badge: string }> = {
 };
 
 type HomeTab = "home" | "runs" | "board";
-type Screen = "gate" | "home" | "shop" | "run" | "done";
+type Screen = "gate" | "home" | "shop" | "run" | "done" | "plugin";
+
+/** 插件玩法局在首页「进行中」卡片的挂点：run 是摘要 + 开局/恢复时的当帧视图。 */
+type ActivePluginRun = { run: TrialRun; view: GameRunView };
+/** 插件玩法宿主屏的挂点：交给 PluginGamePlay 的最小身份信息。 */
+type PluginPlayTarget = { packId: number; pluginId: string; title: string };
 
 /** 榜单视角：单包榜（默认）或玩法总榜（该玩法全部任务包合并计分）。 */
 type BoardScope = { packId: number } | { gameType: string; label: string };
@@ -150,6 +157,11 @@ export function TrialScreen() {
   const [activeTask, setActiveTask] = useState<TrialTask | null>(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [busyActive, setBusyActive] = useState(false);
+  // 插件玩法（game_type 非 tower）的局：服务端返回 {run(摘要), view}，
+  // 与爬塔的 run(完整字段) 不同型，走独立的挂点与屏，绝不塞进爬塔渲染。
+  const [activePlugin, setActivePlugin] = useState<ActivePluginRun | null>(null);
+  const [pluginPlay, setPluginPlay] = useState<PluginPlayTarget | null>(null);
+  const [pluginFinished, setPluginFinished] = useState(false);
 
   const [run, setRun] = useState<TrialRun | null>(null);
   const [task, setTask] = useState<TrialTask | null>(null);
@@ -224,9 +236,12 @@ export function TrialScreen() {
       const response = await fetchTrialActiveRun();
       setActiveRun(response.run);
       setActiveTask(response.task);
+      // 有 view 即插件局（爬塔局不带 view）；此时 run 是摘要，没有 phase 等爬塔字段。
+      setActivePlugin(response.run && response.view ? { run: response.run, view: response.view } : null);
     } catch {
       setActiveRun(null);
       setActiveTask(null);
+      setActivePlugin(null);
     } finally {
       setActiveLoading(false);
     }
@@ -256,16 +271,19 @@ export function TrialScreen() {
   }, [refreshHome]);
 
   const selectedPack = packs?.find((pack) => pack.id === packId) ?? null;
+  // 服务端 normalizeGameType 保证非 tower 的 game_type 一定是已注册插件。
+  const selectedPackIsPlugin = selectedPack !== null && selectedPack.gameType !== "tower";
   // 小游戏区按玩法分组：组顺序跟 packs 顺序（服务端已按 sort_order 排好），
   // 组标题取注册表的玩法名，未来新增玩法自动多一组。
   const packGroups = useMemo(() => {
     if (!packs) return [];
-    const groups: { type: string; label: string; packs: TrialPack[] }[] = [];
+    const groups: { type: string; label: string; description: string; packs: TrialPack[] }[] = [];
     for (const pack of packs) {
-      const label = pack.gameLabel || gameTypes.find((gt) => gt.id === pack.gameType)?.label || pack.gameType;
+      const meta = gameTypes.find((gt) => gt.id === pack.gameType);
+      const label = pack.gameLabel || meta?.label || pack.gameType;
       let group = groups.find((g) => g.type === pack.gameType);
       if (!group) {
-        group = { type: pack.gameType, label, packs: [] };
+        group = { type: pack.gameType, label, description: meta?.description ?? "", packs: [] };
         groups.push(group);
       }
       group.packs.push(pack);
@@ -302,6 +320,9 @@ export function TrialScreen() {
       setNotice("请选择你的身份（公 / 母）");
       return;
     }
+    // 服务端 normalizeGameType 保证 game_type 非 tower 即已注册插件。
+    const targetPack = packs?.find((pack) => pack.id === effective.packId) ?? null;
+    const isPluginPack = targetPack !== null && targetPack.gameType !== "tower";
     setStarting(true);
     setNotice(null);
     void requestNotificationPermission();
@@ -313,6 +334,14 @@ export function TrialScreen() {
         startingFloor: effective.startFloor,
       });
       lastConfigRef.current = effective;
+      if (isPluginPack) {
+        // 插件玩法没有开局商店与楼层语义：直接进插件宿主屏（PluginGamePlay
+        // 自带 18+ 门禁与进行中恢复），绝不把摘要 run 当爬塔渲染。
+        setPluginPlay({ packId: effective.packId, pluginId: targetPack.gameType, title: targetPack.name });
+        setPluginFinished(false);
+        setScreen("plugin");
+        return;
+      }
       setRun(response.run);
       setTask(response.task);
       setEarnedFlash(null);
@@ -324,6 +353,18 @@ export function TrialScreen() {
         try {
           const active = await fetchTrialActiveRun();
           if (active.run) {
+            // 撞上 run_active 恢复的可能是别的玩法（插件局），先分型再进屏。
+            if (active.view) {
+              setActivePlugin({ run: active.run, view: active.view });
+              setPluginPlay({
+                packId: active.run.packId,
+                pluginId: active.run.plugin ?? "",
+                title: active.run.packName,
+              });
+              setPluginFinished(false);
+              setScreen("plugin");
+              return;
+            }
             lastConfigRef.current = {
               packId: active.run.packId,
               persona: active.run.persona,
@@ -350,6 +391,17 @@ export function TrialScreen() {
     if (!activeRun) return;
     setBusyActive(true);
     try {
+      if (activePlugin) {
+        // 插件局：进插件宿主屏接着玩；摘要 run 没有 phase/coins 等爬塔字段。
+        setPluginPlay({
+          packId: activeRun.packId,
+          pluginId: activePlugin.run.plugin ?? "",
+          title: activeRun.packName,
+        });
+        setPluginFinished(false);
+        setScreen("plugin");
+        return;
+      }
       lastConfigRef.current = {
         packId: activeRun.packId,
         persona: activeRun.persona,
@@ -805,11 +857,17 @@ export function TrialScreen() {
         <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-bold text-[var(--survey-heading)]">进行中 · {activeRun.packName}</p>
+              <p className="text-sm font-bold text-[var(--survey-heading)]">
+                进行中 · {activePlugin?.run.pluginTitle ?? activeRun.packName}
+              </p>
               <p className="mt-0.5 text-xs text-[var(--survey-muted)]">
-                {activeRun.phase === "shop"
-                  ? "还在开局商店，挑好道具就能出发"
-                  : `第 ${activeRun.currentFloor}/${activeRun.maxFloor} 层 · 积分 ${activeRun.score}`}
+                {activePlugin
+                  ? `进度 ${activePlugin.run.step ?? activePlugin.run.currentFloor}/${
+                      activePlugin.run.total ?? activePlugin.run.maxFloor
+                    } 步 · 积分 ${activeRun.score}`
+                  : activeRun.phase === "shop"
+                    ? "还在开局商店，挑好道具就能出发"
+                    : `第 ${activeRun.currentFloor}/${activeRun.maxFloor} 层 · 积分 ${activeRun.score}`}
               </p>
             </div>
             <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
@@ -823,7 +881,7 @@ export function TrialScreen() {
               onClick={() => void resumeRun()}
               className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
             >
-              {activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
+              {activePlugin ? "继续小游戏" : activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
             </button>
             <button
               type="button"
@@ -909,6 +967,9 @@ export function TrialScreen() {
                     玩法总榜
                   </button>
                 </div>
+                {group.description ? (
+                  <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">{group.description}</p>
+                ) : null}
                 <div className="mt-2 space-y-2">
                   {group.packs.map((pack) => (
                     <button
@@ -924,7 +985,7 @@ export function TrialScreen() {
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
                         <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
-                          {pack.normalFloors}/{pack.hellFloors} 层
+                          {pack.gameType === "tower" ? `${pack.normalFloors}/${pack.hellFloors} 层` : "即开即玩"}
                         </span>
                       </div>
                       <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
@@ -938,7 +999,7 @@ export function TrialScreen() {
           </div>
         )}
 
-        {selectedPack ? (
+        {selectedPack && !selectedPackIsPlugin ? (
           <>
             <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">起始层（1–{floorCount}）</p>
             <select
@@ -983,11 +1044,19 @@ export function TrialScreen() {
           onClick={() => void startGame()}
           className="mt-5 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
         >
-          {starting ? "正在开局…" : persona ? `以「${personaLabel(persona)} · ${modeLabel(mode)}」开始` : "先选择身份"}
+          {starting
+            ? "正在开局…"
+            : !persona
+              ? "先选择身份"
+              : selectedPackIsPlugin
+                ? "开始小游戏"
+                : `以「${personaLabel(persona)} · ${modeLabel(mode)}」开始`}
         </button>
-        <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
-          开局获得随机金币，可在商店买跳过券 / 加倍券 / 护盾 · 进度自动云端保存
-        </p>
+        {selectedPackIsPlugin ? null : (
+          <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
+            开局获得随机金币，可在商店买跳过券 / 加倍券 / 护盾 · 进度自动云端保存
+          </p>
+        )}
       </section>
     </main>
   );
@@ -1180,8 +1249,11 @@ export function TrialScreen() {
               </div>
               <p className="mt-1.5 text-xs leading-5 text-[var(--survey-muted)]">
                 {personaLabel(item.persona)} · {modeLabel(item.mode)} ·{" "}
-                {item.status === "completed" ? "到达" : "止步于"}第 {item.currentFloor} 层 · 积分 {item.score} ·{" "}
-                {formatDayTime(item.startedAt)}
+                {/* 插件局（服务端把 step/total 写进 currentFloor/maxFloor）没有「层」语义。 */}
+                {item.plugin
+                  ? `进度 ${item.currentFloor}/${item.maxFloor} 步`
+                  : `${item.status === "completed" ? "到达" : "止步于"}第 ${item.currentFloor} 层`}{" "}
+                · 积分 {item.score} · {formatDayTime(item.startedAt)}
               </p>
             </article>
           ))}
@@ -1646,6 +1718,54 @@ export function TrialScreen() {
     />
   );
 
+  // 插件玩法宿主屏：骨架与爬塔 run 屏一致，玩法本身交给 PluginGamePlay
+  // （它自带 18+ 门禁、进行中局恢复与服务端权威结算）。返回按钮由
+  // renderHeader 的 showBack 提供，落到 goHome()。
+  const renderPluginPlay = () =>
+    pluginPlay ? (
+      <>
+        {renderHeader(pluginPlay.title, "插件玩法 · 自动保存", true)}
+        <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-2xl">
+          {notice ? (
+            <div className="rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-2.5 text-[13px] font-medium text-[var(--survey-primary)]">
+              {notice}
+            </div>
+          ) : null}
+          {pluginFinished ? (
+            <button
+              type="button"
+              onClick={() => {
+                setPluginFinished(false);
+                setPluginPlay(null);
+                goHome();
+              }}
+              className="w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)]"
+            >
+              完成，返回大厅
+            </button>
+          ) : null}
+          <PluginGamePlay
+            packId={pluginPlay.packId}
+            pluginId={pluginPlay.pluginId}
+            // /trial 场景没有答卷字段可回填，value 恒为 undefined（prop 必传）。
+            value={undefined}
+            persona={persona ?? run?.persona ?? "male"}
+            mode={mode}
+            onResult={(next) => {
+              // completed=true 表示这一局已由服务端结算入榜；之后首页的
+              // 「进行中」卡片靠 refreshHome 清掉，历史记录热更新。
+              if (next.completed) {
+                setNotice("本局已完成，成绩已计入排行");
+                setPluginFinished(true);
+                void refreshHome();
+                if (history !== null) void loadHistory();
+              }
+            }}
+          />
+        </main>
+      </>
+    ) : null;
+
   if (screen === "gate") {
     return (
       <div
@@ -1667,6 +1787,19 @@ export function TrialScreen() {
         style={{ ...themeVars.vars, ...themeVars.background }}
       >
         {renderRun()}
+        {renderThemePicker()}
+      </div>
+    );
+  }
+
+  if (screen === "plugin") {
+    return (
+      <div
+        className="survey-glow min-h-dvh"
+        data-theme={resolvedPreset ?? undefined}
+        style={{ ...themeVars.vars, ...themeVars.background }}
+      >
+        {renderPluginPlay()}
         {renderThemePicker()}
       </div>
     );
