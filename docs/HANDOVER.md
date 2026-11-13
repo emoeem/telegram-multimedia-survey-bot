@@ -1,6 +1,22 @@
 # 项目交接文档（给下一位开发者 / AI）
 
-> **2026-11-08 交接（最新）：AI 自主研发第三批 · 体验与安全收尾（G1/G4/G3）+ 投稿墙上岗**——
+> **2026-11-14 交接（最新）：深夜额度三批次 + 《雨夜书房》作品包**——工作区改动
+> **未 commit / 未 push**，逐项明细见 [`docs/releases/RELEASE_2026-11-14.md`](releases/RELEASE_2026-11-14.md)。
+> 要点：① 三个新小游戏插件（guess/memory-chain/high-low，服务端权威计分）+ `/trial` 插件玩法
+> 全链路接线（原「开局即死局」修复）；② 外部审查 P1 落地：导出原子认领 + sending 记账、恢复
+> 扫描覆盖 queued、MIME 精确匹配（后扩展到全部存储点）、production-smoke 根因修复（unread-count
+> 补进 spec 端点模型，@production 8/8 本地实跑绿）；③ G5+G6 体验债清账、G7 编辑器三件套、
+> `src/index.ts` 1118→38 行拆分（queue consumer 出口保留）、后台任务中心（/api/control/jobs）；
+> ④ 审计 1A/1B/1C/3A 收尾：安全矩阵 18 用例无漏洞、D1 EXPLAIN 37 条基线（无缺失索引，
+> `docs/audits/D1_EXPLAIN_BASELINE_2026-11-14.md`）、webhook 并发 9 用例、可观测性 4 缺口；
+> react-hooks 双规则 error 化并清零 93 处违规；⑤ 《雨夜书房》作品包（`study-room/`）：5 场景/16
+> 热点/9 插画（生图 API 账号不可用 code 3706，改手作 SVG→Chromium 栅格化）+ 12s ffmpeg 氛围
+> 短片，落库脚本门禁全绿。**门禁终态：typecheck / vitest 1931 / admin build / lint / lint:admin /
+> format:check 全绿（基线从 1808→1931）。** 遗留（账号侧，用户手工）：R2_BACKUP_BUCKET secret
+>
+> - token 权限、`wrangler d1 migrations list DB --remote` 复核、push 后 CI Visual baseline 重生成。
+>
+> **2026-11-08 交接：AI 自主研发第三批 · 体验与安全收尾（G1/G4/G3）+ 投稿墙上岗**——
 > 分支 `ai/autonomous-dev-batch3`（基线 main@`d8a44a9`）经 cherry-pick 合入 main 四个提交
 > （`8f08c14` → `a1796e8`，本地 typecheck + 全量 1808 例单测全绿后合入，main CI/deploy 均 success）：
 > **G1 纸条安全最后一公里**——会话内「举报此消息」（理由弹层）+「拉黑/解除拉黑对方」完整动线，
@@ -18,9 +34,11 @@
 > **CI：四个提交各自首轮 CI 全绿；合并由主会话 cherry-pick（分支与 main 存在 rebase SHA 分叉），
 > 合并后 main 的 typecheck + 1808 例单测本地全绿，CI/deploy 监控确认。**
 > 遗留风险（如实）：
-> ① **生产 D1 迁移未应用**——0094/0095/0096 均未在远端执行，纸条举报/拉黑、排行榜索引、
-> 树洞举报的上线路径需要 `pnpm run migrate:remote`（账号级凭据，主会话无 wrangler 登录态；
-> 均为纯新增表/索引的增量迁移，但 G2 备份未配，应用前建议先 `wrangler d1 export`）；
+> ① **生产 D1 迁移 0094/0095/0096（注记 2026-11-13，修正原「未应用」结论）**——2026-11-08 部署日志
+> （Actions run 42486583573）显示 `wrangler d1 migrations apply DB --remote` 返回
+> `No migrations to apply`，三迁移大概率已随部署应用，无需再手动 `pnpm run migrate:remote`；
+> 待只读复核 `pnpm exec wrangler d1 migrations list DB --remote` 后移除本注记
+> （均为纯新增表/索引的增量迁移）；
 > ② 投稿墙公开页当前无 18+ 年龄门（首页问卷目录有），平台含成人内容，是否补门属产品决策；
 > ③ **G5+G6 体验债未落地**——实施员未过门禁自行回退，随批四重做（引导持久化/落点、
 > ⌘K a11y/触控，任务规格已在本报告存档）；G7 编辑器效率三缺口同批四；
