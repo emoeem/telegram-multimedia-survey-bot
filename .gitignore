@@ -52,3 +52,10 @@ tools/survey-tool/dist/
 
 # gitguard 本地工作流状态（activation 快照，机器本地产物，不入库）
 .gitflow/
+
+# 本机运行时产物（工具缓存 / wrangler 临时 HOME / hook 状态 / 录屏产物），
+# 曾经误提交过 .npm、.wrangler-home 与 admin/**/.mimosa，2026-11-13 起显式排除
+.npm/
+.wrangler-home/
+**/.mimosa/
+.video_agent/

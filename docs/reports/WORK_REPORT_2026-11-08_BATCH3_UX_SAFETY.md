@@ -36,7 +36,7 @@
 ## 四、生产部署状态
 
 - main `a1796e8`：CI/deploy 监控确认中（本报告写于 CI 窗口）。
-- **迁移缺口**：0094/0095/0096 未在远端 D1 应用（主会话无 wrangler 登录态）。上线路径：`pnpm run migrate:remote`；G2（D1 备份）用户暂缓，应用前建议 `wrangler d1 export` 手工备份一次。三者均为纯新增表/索引增量迁移。
+- **迁移缺口（注记 2026-11-13，修正原「未应用」结论）**：2026-11-08 部署日志（Actions run 42486583573）显示 `wrangler d1 migrations apply DB --remote` 返回 `No migrations to apply`，0094/0095/0096 三迁移大概率已随部署应用，无需再手动 `pnpm run migrate:remote`；待只读复核 `pnpm exec wrangler d1 migrations list DB --remote` 后移除本注记。三者均为纯新增表/索引增量迁移。
 - 投稿墙：已在生产开启（白名单=分类/标题/正文/图片/署名方式/署名；contact 关闭），公开墙实测渲染正常。
 
 ## 五、延期与后续（批四候选）

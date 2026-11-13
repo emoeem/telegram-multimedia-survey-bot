@@ -254,6 +254,12 @@ async function installRoutes(page: Page): Promise<string[]> {
   await page.route("**/api/survey/participant-link/**", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify({ linked: false }) }),
   );
+  // BottomNav 挂载即拉未读数（G4 角标，零轮询只在挂载/回前台/seen 后拉）。
+  // 响应形状与服务端一致（{ unread: number }）；不 mock 的话 `**/api/**`
+  // 兜底 abort 会把它记进 aborted，所有用例在「未预期接口调用」上红。
+  await page.route("**/api/me/notifications/unread-count", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ unread: 0 }) }),
+  );
   await page.route(`**/api/survey/${SURVEY_ID}`, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(definition) }),
   );

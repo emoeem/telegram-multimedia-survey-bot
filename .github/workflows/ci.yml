@@ -28,6 +28,8 @@ jobs:
         run: pnpm test
       - name: Lint
         run: pnpm lint
+      - name: Lint admin
+        run: pnpm lint:admin
       - name: Format check
         run: pnpm format:check
       - name: Admin build
