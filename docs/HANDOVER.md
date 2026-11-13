@@ -8,7 +8,7 @@
 > 补进 spec 端点模型，@production 8/8 本地实跑绿）；③ G5+G6 体验债清账、G7 编辑器三件套、
 > `src/index.ts` 1118→38 行拆分（queue consumer 出口保留）、后台任务中心（/api/control/jobs）；
 > ④ 审计 1A/1B/1C/3A 收尾：安全矩阵 18 用例无漏洞、D1 EXPLAIN 37 条基线（无缺失索引，
-> `docs/audits/D1_EXPLAIN_BASELINE_2026-11-14.md`）、webhook 并发 9 用例、可观测性 4 缺口；
+> `docs/audits/D1_EXPLAIN_AUDIT_2026-11-14.md`）、webhook 并发 9 用例、可观测性 4 缺口；
 > react-hooks 双规则 error 化并清零 93 处违规；⑤ 《雨夜书房》作品包（`study-room/`）：5 场景/16
 > 热点/9 插画（生图 API 账号不可用 code 3706，改手作 SVG→Chromium 栅格化）+ 12s ffmpeg 氛围
 > 短片，落库脚本门禁全绿。**门禁终态：typecheck / vitest 1931 / admin build / lint / lint:admin /

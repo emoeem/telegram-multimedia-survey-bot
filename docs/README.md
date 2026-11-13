@@ -9,11 +9,12 @@
 
 ## 一、从这里开始（3 份）
 
-| 文档                                                             | 什么时候看                                                                                |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`HANDOVER.md`](HANDOVER.md)                                     | **接手项目第一步。** 现状、已完成的里程碑、最容易踩的坑、接手检查清单                     |
-| [`UPGRADE_ROADMAP_2026-10-28.md`](UPGRADE_ROADMAP_2026-10-28.md) | **后面还要做什么。** 唯一执行计划（阶段 A–F，带 ✅/☐ 勾选状态）——想知道"还欠什么"只看这份 |
-| [`FEATURE-OVERVIEW.md`](FEATURE-OVERVIEW.md)                     | 产品有什么功能、每个功能对应哪些文档与代码                                                |
+| 文档                                                                       | 什么时候看                                                                                |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [`HANDOVER.md`](HANDOVER.md)                                               | **接手项目第一步。** 现状、已完成的里程碑、最容易踩的坑、接手检查清单                     |
+| [`UPGRADE_ROADMAP_2026-10-28.md`](UPGRADE_ROADMAP_2026-10-28.md)           | **后面还要做什么。** 唯一执行计划（阶段 A–F，带 ✅/☐ 勾选状态）——想知道"还欠什么"只看这份 |
+| [`OPTIMIZATION_BACKLOG_2026-11-14.md`](OPTIMIZATION_BACKLOG_2026-11-14.md) | 2026-11-14 批次的任务书与执行回填（含账目：已做/证伪不做/账号侧待用户）                   |
+| [`FEATURE-OVERVIEW.md`](FEATURE-OVERVIEW.md)                               | 产品有什么功能、每个功能对应哪些文档与代码                                                |
 
 ## 二、分类目录
 
@@ -55,40 +56,43 @@
 | [`EMAIL_DELIVERABILITY.md`](guides/EMAIL_DELIVERABILITY.md)             | 邮件送达率（发信域、SPF/DKIM）        |
 | [`WEB_VIEW_ARCHIVE_MVP.md`](guides/WEB_VIEW_ARCHIVE_MVP.md)             | `tg-archive` 网页版归档的最小实现设计 |
 
-### `releases/` — 更新记录（14 份）
+### `releases/` — 更新记录（15 份）
 
 每次上线的对外说明，命名 `RELEASE_YYYY-MM-DD[_主题].md`。格式固定：元信息表
 （部署版本 ID / 线上入口 / 迁移 / 测试数）+ 分章正文。**新的一份按最近一份的骨架写。**
-最新：`RELEASE_2026-10-31.md`（归档图片灰块根因修复 + 盖章可配置/烧录 +
-后台信息架构工作区化 + 25 页走查）。
+最新：`RELEASE_2026-11-14.md`（小游戏矩阵 6 玩法 + /trial 插件玩法修复 + 导出/恢复可靠性
+加固 + 后台任务中心与黑名单管理页 + 《雨夜书房》作品包；迁移 0097 已随部署应用）。次新：`RELEASE_2026-10-31.md`。
 
-### `reports/` — 报告（10 份）
+### `reports/` — 报告（11 份）
 
-| 文档                                                                                         | 内容                                                                                  |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md`](reports/WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md) | AI 自主研发批次（T1–T8 + U1–U2）执行记录：任务清单、提交、CI 结论、调研采纳、已知问题 |
-| [`EDITOR_GAP_ANALYSIS_2026-11-04.md`](reports/EDITOR_GAP_ANALYSIS_2026-11-04.md)             | 编辑器对标 LetsGal Studio 的功能差距分析与已补齐项                                    |
-| [`WORK_REPORT_2026-10-31_UI.md`](reports/WORK_REPORT_2026-10-31_UI.md)                       | 后台信息架构工作区化 + 右栏修复 + 25 页走查的交付报告                                 |
-| [`UI-AUDIT-2026-10-31.md`](reports/UI-AUDIT-2026-10-31.md)                                   | 全后台 25 页双宽度走查：前后对比、发现分级、跳转断点清单                              |
-| [`WORK_REPORT_2026-10-31.md`](reports/WORK_REPORT_2026-10-31.md)                             | 归档灰块根因 / 盖章强化 / 巡检 / changtu 分析的交付报告                               |
-| [`WORK_REPORT_2026-10-30_ROUND3.md`](reports/WORK_REPORT_2026-10-30_ROUND3.md)               | 三轮交付：答题页沉浸式重设计 + 统一节点编辑器                                         |
-| [`WORK_REPORT_2026-10-30.md`](reports/WORK_REPORT_2026-10-30.md)                             | 二轮优化的交付报告：quest 生态端到端断点、视觉基线方法论、门禁实测                    |
-| [`WORK_REPORT_2026-10-29.md`](reports/WORK_REPORT_2026-10-29.md)                             | 发布链路加固的交付报告：结论表、门禁实测、已知限制、下一步建议                        |
-| [`PROJECT_REPORT.md`](reports/PROJECT_REPORT.md)                                             | 项目完成情况报告（2026-08-23，历史基线）                                              |
-| [`round-p1.md`](reports/round-p1.md)                                                         | P1 功能增强的一轮交付报告                                                             |
+| 文档                                                                                         | 内容                                                                                    |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`WORK_REPORT_2026-11-14.md`](reports/WORK_REPORT_2026-11-14.md)                             | 深夜三批次 + 推送与 CI 链路修复的执行记录：任务清单、提交、审计产出、已知问题与建议队列 |
+| [`WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md`](reports/WORK_REPORT_2026-11-06_AI_AUTONOMOUS.md) | AI 自主研发批次（T1–T8 + U1–U2）执行记录：任务清单、提交、CI 结论、调研采纳、已知问题   |
+| [`EDITOR_GAP_ANALYSIS_2026-11-04.md`](reports/EDITOR_GAP_ANALYSIS_2026-11-04.md)             | 编辑器对标 LetsGal Studio 的功能差距分析与已补齐项                                      |
+| [`WORK_REPORT_2026-10-31_UI.md`](reports/WORK_REPORT_2026-10-31_UI.md)                       | 后台信息架构工作区化 + 右栏修复 + 25 页走查的交付报告                                   |
+| [`UI-AUDIT-2026-10-31.md`](reports/UI-AUDIT-2026-10-31.md)                                   | 全后台 25 页双宽度走查：前后对比、发现分级、跳转断点清单                                |
+| [`WORK_REPORT_2026-10-31.md`](reports/WORK_REPORT_2026-10-31.md)                             | 归档灰块根因 / 盖章强化 / 巡检 / changtu 分析的交付报告                                 |
+| [`WORK_REPORT_2026-10-30_ROUND3.md`](reports/WORK_REPORT_2026-10-30_ROUND3.md)               | 三轮交付：答题页沉浸式重设计 + 统一节点编辑器                                           |
+| [`WORK_REPORT_2026-10-30.md`](reports/WORK_REPORT_2026-10-30.md)                             | 二轮优化的交付报告：quest 生态端到端断点、视觉基线方法论、门禁实测                      |
+| [`WORK_REPORT_2026-10-29.md`](reports/WORK_REPORT_2026-10-29.md)                             | 发布链路加固的交付报告：结论表、门禁实测、已知限制、下一步建议                          |
+| [`PROJECT_REPORT.md`](reports/PROJECT_REPORT.md)                                             | 项目完成情况报告（2026-08-23，历史基线）                                                |
+| [`round-p1.md`](reports/round-p1.md)                                                         | P1 功能增强的一轮交付报告                                                               |
 
-### `audits/` — 审计与专项记录（8 份 + 截图目录）
+### `audits/` — 审计与专项记录（10 份 + 截图目录）
 
-| 文档                                                                                                      | 内容                                                     |
-| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [`CODE_AUDIT_2026-09-27.md`](audits/CODE_AUDIT_2026-09-27.md)                                             | 全量代码审计（P0–P2；多数已修复，未修项见路线图）        |
-| [`PLATFORM_2_0_AUDIT.md`](audits/PLATFORM_2_0_AUDIT.md)                                                   | 平台 2.0 产品审计                                        |
-| [`ADMIN_UI_2_AUDIT.md`](audits/ADMIN_UI_2_AUDIT.md)                                                       | Admin UI 2.0 现状审计                                    |
-| [`UIUX-AUDIT-2026-10-22.md`](audits/UIUX-AUDIT-2026-10-22.md)                                             | UI/UX 审计（分批评方案，B 批已实施）                     |
-| [`ui-audit-2026-10.md`](audits/ui-audit-2026-10.md)                                                       | 首页/认证页视觉审计（截图在 `ui-audit-2026-10-assets/`） |
-| [`PERF_E2E_OPTIMIZATION_2026-10.md`](audits/PERF_E2E_OPTIMIZATION_2026-10.md)                             | 性能与 E2E 优化记录                                      |
-| [`UI_REWORK_PROGRESS_2026-10.md`](audits/UI_REWORK_PROGRESS_2026-10.md)                                   | 界面改造进度台账                                         |
-| [`COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md`](audits/COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md) | 全项目 Bug、安全、数据完整性、性能与功能增强实施计划     |
+| 文档                                                                                                      | 内容                                                         |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [`D1_EXPLAIN_AUDIT_2026-11-14.md`](audits/D1_EXPLAIN_AUDIT_2026-11-14.md)                                 | 37 条热路径 SQL 的 EXPLAIN 基线：无缺失索引判定与救援实验    |
+| [`OBSERVABILITY_AUDIT_2026-11-14.md`](audits/OBSERVABILITY_AUDIT_2026-11-14.md)                           | 可观测性基线：指标清单 + 4 个补齐缺口（限流归因/投递终态等） |
+| [`CODE_AUDIT_2026-09-27.md`](audits/CODE_AUDIT_2026-09-27.md)                                             | 全量代码审计（P0–P2；多数已修复，未修项见路线图）            |
+| [`PLATFORM_2_0_AUDIT.md`](audits/PLATFORM_2_0_AUDIT.md)                                                   | 平台 2.0 产品审计                                            |
+| [`ADMIN_UI_2_AUDIT.md`](audits/ADMIN_UI_2_AUDIT.md)                                                       | Admin UI 2.0 现状审计                                        |
+| [`UIUX-AUDIT-2026-10-22.md`](audits/UIUX-AUDIT-2026-10-22.md)                                             | UI/UX 审计（分批评方案，B 批已实施）                         |
+| [`ui-audit-2026-10.md`](audits/ui-audit-2026-10.md)                                                       | 首页/认证页视觉审计（截图在 `ui-audit-2026-10-assets/`）     |
+| [`PERF_E2E_OPTIMIZATION_2026-10.md`](audits/PERF_E2E_OPTIMIZATION_2026-10.md)                             | 性能与 E2E 优化记录                                          |
+| [`UI_REWORK_PROGRESS_2026-10.md`](audits/UI_REWORK_PROGRESS_2026-10.md)                                   | 界面改造进度台账                                             |
+| [`COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md`](audits/COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md) | 全项目 Bug、安全、数据完整性、性能与功能增强实施计划         |
 
 ### `archive/` — 历史留档（20 份，只读）
 

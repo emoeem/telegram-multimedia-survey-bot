@@ -1,5 +1,12 @@
 # 可观测性基线 · 2026-11-14
 
+| 项       | 值                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 状态     | 已完成（4 个缺口补齐，已有覆盖候选如实标「无缺口」并给查询方式）                                                                                                                 |
+| 日期     | 2026-11-14                                                                                                                                                                       |
+| 适用版本 | git `abb1ce5`（零新依赖、零配置变更）                                                                                                                                            |
+| 相关     | 审计总纲 [COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md](COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md) §3A；[WORK_REPORT_2026-11-14.md](../reports/WORK_REPORT_2026-11-14.md) |
+
 > 版本：2026-11-14 · 范围：审计 [COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md](COMPREHENSIVE_OPTIMIZATION_AUDIT_2026-11-06.md) §3A 的可观测性部分，最小落地，**不引入任何新平台依赖**（仍是 `console.log/error/warn` 结构化行 + Cloudflare 原生日志）。
 > 方法：先盘点 `src/observability/` 全部文件与全部使用点（`src/index.ts` → `src/http/router.ts` / `src/cron.ts` / `src/http/guard.ts`），以「运维能在 Cloudflare dashboard / 日志里回答的问题」为标准挑缺口；每条补齐带复现用例，已有覆盖的候选如实标「无缺口」并给出查询方式，不硬造工作。
 
