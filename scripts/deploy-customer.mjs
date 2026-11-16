@@ -1137,7 +1137,9 @@ async function updateDeployment(args, values) {
       await writeJson(manifestPath, {
         ...manifest,
         appVersion: APP_VERSION,
-        plan: manifest.plan ?? plan,
+        // update 分支没有本地 plan 变量（那是全新部署路径的）：老 manifest 若
+        // 不含 plan 字段，这里会 ReferenceError 把已成功的部署误报成失败。
+        plan: normalizePlan(manifest.plan),
         updatedAt: new Date().toISOString(),
         surveyCodePepperConfigured: true,
         ...(consoleOrigins.length > 0 ? { consoleOrigins } : {}),
