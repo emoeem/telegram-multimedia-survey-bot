@@ -24,7 +24,10 @@ print_rows_read() { # file — 从 wrangler --json 输出提取每条语句的 m
 }
 
 run_sql() { # label, sql
-  local label="$1" sql="$2" file="$DIR/$label.json"
+  # bash 5 对同一 local 语句里的变量先展开后赋值，必须逐行声明。
+  local label="$1"
+  local sql="$2"
+  local file="$DIR/$label.json"
   echo "===== PROBE $label ====="
   if pnpm exec wrangler d1 execute "$DB" --remote --command "$sql" --json >"$file" 2>"$DIR/$label.err"; then
     cat "$file"
