@@ -37,7 +37,10 @@ const rows = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='index' 
 const entries = rows
   .map((r) => ({
     name: r.name,
-    sql: String(r.sql).replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s/i, (m, unique) => `CREATE ${unique ?? ""}INDEX IF NOT EXISTS `),
+    sql: String(r.sql).replace(
+      /^CREATE\s+(UNIQUE\s+)?INDEX\s/i,
+      (m, unique) => `CREATE ${unique ?? ""}INDEX IF NOT EXISTS `,
+    ),
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -64,4 +67,6 @@ const lines = [
   "",
 ];
 await fs.writeFile(path.join(MIGRATIONS_DIR, TARGET_NAME), lines.join("\n"), "utf8");
-console.log(`generated ${TARGET_NAME}: ${entries.length} indexes from ${files.length} migration files (executed schema)`);
+console.log(
+  `generated ${TARGET_NAME}: ${entries.length} indexes from ${files.length} migration files (executed schema)`,
+);
