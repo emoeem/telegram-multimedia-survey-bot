@@ -43,6 +43,26 @@ const text = (v: unknown, name: string, min = 1, max = 256) => {
   if (s.length < min || s.length > max) throw new Error(name + " 长度无效");
   return s;
 };
+/**
+ * 心跳捎带的维护健康快照（控制台「维护」列的数据源）。字段与
+ * MaintenanceHealth（customer 侧 maintenance-state.service）对齐；不合格
+ * 返回 null，绝不因为健康数据形状问题挡掉心跳。
+ */
+function parseMaintenanceHealth(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const at = typeof v.at === "string" && v.at.length > 0 && v.at.length <= 40 ? v.at : null;
+  const rowsRead = Number(v.rowsRead);
+  if (!at || !Number.isFinite(rowsRead) || rowsRead < 0 || rowsRead > 1e12) return null;
+  const orphanAssets = Number(v.orphanAssets);
+  return {
+    at,
+    rowsRead: Math.floor(rowsRead),
+    truncated: v.truncated === true,
+    parked: v.parked === true,
+    orphanAssets: Number.isFinite(orphanAssets) && orphanAssets >= 0 ? Math.floor(orphanAssets) : 0,
+  };
+}
 async function body(request: Request): Promise<Record<string, unknown>> {
   const value = await request.json().catch(() => null);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("请求必须是 JSON 对象");
@@ -485,16 +505,23 @@ export async function handleControlApiRequest(
       if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(workerName)) {
         return json({ ok: false, error: "invalid_worker_name" }, 400);
       }
+      // 客户实例每日维护的健康快照（2026-11-16 额度事故后加）：随心跳每 30
+      // 分钟捎带一次，进 metadata 给控制台的「维护」列。形状不合格就丢弃——
+      // 健康数据是可观测性输入，绝不能因为它挡掉心跳本身。
+      const lastMaintenance = parseMaintenanceHealth(b.lastMaintenance);
+      const heartbeatMetadata: Record<string, unknown> = {
+        ...(b.metadata && typeof b.metadata === "object" && !Array.isArray(b.metadata)
+          ? (b.metadata as Record<string, unknown>)
+          : {}),
+        ...(lastMaintenance ? { lastMaintenance } : {}),
+      };
       const deployment = await upsertCustomerDeployment(env.DB, {
         licenseId: a.license.id,
         installationId: a.installationId,
         workerName,
         workerUrl: typeof b.workerUrl === "string" ? b.workerUrl.trim() : null,
         currentVersion: a.appVersion,
-        metadata:
-          b.metadata && typeof b.metadata === "object" && !Array.isArray(b.metadata)
-            ? (b.metadata as Record<string, unknown>)
-            : null,
+        metadata: heartbeatMetadata,
       });
       // The instance reports the secret that signs its read-only tokens. Kept
       // encrypted; the vendor console never sees it, only tokens minted from it.

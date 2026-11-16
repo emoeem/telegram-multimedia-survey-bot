@@ -133,6 +133,70 @@ function StatusBadge({ status }: { status: DeploymentView["status"] }) {
   return <span className={`badge ${cls} badge-sm`}>{statusLabel[status]}</span>;
 }
 
+/**
+ * 每日维护健康（心跳 metadata.lastMaintenance 捎带，2026-11-16 客户侧额度事故
+ * 后加：vendor 此前对客户实例的维护状态完全盲）。null = 该实例还没上报过
+ * （旧版本代码 / 心跳未到），渲染为「未知」而不是故障。
+ */
+interface MaintenanceHealth {
+  at: string;
+  rowsRead: number;
+  truncated: boolean;
+  parked: boolean;
+  orphanAssets: number;
+}
+
+function parseMaintenanceHealth(metadataJson: string | null): MaintenanceHealth | null {
+  if (!metadataJson) return null;
+  try {
+    const meta = JSON.parse(metadataJson) as { lastMaintenance?: unknown };
+    const v = meta.lastMaintenance;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+    const r = v as Record<string, unknown>;
+    if (typeof r.at !== "string" || !Number.isFinite(Number(r.rowsRead))) return null;
+    return {
+      at: r.at,
+      rowsRead: Number(r.rowsRead),
+      truncated: r.truncated === true,
+      parked: r.parked === true,
+      orphanAssets: Number.isFinite(Number(r.orphanAssets)) ? Number(r.orphanAssets) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function MaintenanceBadge({ health }: { health: MaintenanceHealth | null }) {
+  if (!health) {
+    return <span className="badge badge-ghost badge-sm">未知</span>;
+  }
+  if (health.parked) {
+    return (
+      <span className="badge badge-error badge-sm" title={`维护已停车（${formatDateTime(health.at)}）：清理完全暂停`}>
+        停车
+      </span>
+    );
+  }
+  if (health.truncated) {
+    return (
+      <span
+        className="badge badge-warning badge-sm"
+        title={`${formatDateTime(health.at)} 读取 ${health.rowsRead.toLocaleString()} 行后被预算截断`}
+      >
+        截断
+      </span>
+    );
+  }
+  return (
+    <span
+      className="badge badge-success badge-sm"
+      title={`${formatDateTime(health.at)} 读取 ${health.rowsRead.toLocaleString()} 行，正常完成`}
+    >
+      正常
+    </span>
+  );
+}
+
 function TaskBadge({ status }: { status: DeploymentTaskView["status"] }) {
   const cls =
     status === "succeeded"
@@ -476,6 +540,7 @@ export function ControlCenterPage() {
                 <th>Worker</th>
                 <th>授权</th>
                 <th>状态</th>
+                <th>维护</th>
                 <th>版本</th>
                 <th>最后在线</th>
                 <th />
@@ -495,6 +560,9 @@ export function ControlCenterPage() {
                   </td>
                   <td data-label="状态">
                     <StatusBadge status={d.status} />
+                  </td>
+                  <td data-label="维护">
+                    <MaintenanceBadge health={parseMaintenanceHealth(d.metadataJson)} />
                   </td>
                   <td className="text-sm" data-label="版本">
                     {d.currentVersion ?? "—"}

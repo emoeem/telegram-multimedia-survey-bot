@@ -1,4 +1,5 @@
 import { telegramUpdateDedupCutoff } from "./update-dedup.service";
+import { loadSweepCursor, saveLastMaintenanceHealth, saveSweepCursor } from "./maintenance-state.service";
 import { upsertMediaRef } from "../db/repositories/media.repository";
 import { parseMediaRef } from "../survey/media-ref";
 
@@ -32,6 +33,14 @@ export interface DatabaseMaintenanceSummary {
   rowsRead: number;
   /** True when the run stopped early to stay inside MAINTENANCE_ROWS_READ_BUDGET. */
   truncated: boolean;
+  /**
+   * True when the run did nothing at all because required indexes could not be
+   * ensured (schema drift)。清理完全停摆，比截断更严重——cron 会因此给管理员
+   * 发单独的 DM（truncated 保持 false，两路告警互不吞）。
+   */
+  parked: boolean;
+  /** parked 时的缺失索引清单（其余情况为空数组），供停车 DM 直出原因。 */
+  parkedMissingIndexes: string[];
 }
 
 const DAY = 86_400_000;
@@ -62,6 +71,8 @@ const EMPTY_MAINTENANCE_SUMMARY: DatabaseMaintenanceSummary = {
   expiredRateLimitRows: 0,
   rowsRead: 0,
   truncated: false,
+  parked: false,
+  parkedMissingIndexes: [],
 };
 
 /**
@@ -362,17 +373,19 @@ async function missingMaintenanceIndexes(db: D1Database): Promise<string[]> {
 }
 
 /**
- * Ensure every index this run depends on. Returns false only on hard failures
- * (schema drift: a column is missing, or a non-"no such table" error) — that
- * is when running would full-scan, so the whole run parks and the next daily
- * run retries. An index whose TABLE is absent (a migration that has not been
- * applied yet, e.g. telegram_update_dedup before 0052) is tolerated: the
- * matching step has its own try/catch and skips itself.
+ * Ensure every index this run depends on. Returns the indexes still missing on
+ * a hard failure (schema drift: a column is missing, or a non-"no such table"
+ * error) — that is when running would full-scan, so the whole run parks and
+ * the next daily run retries; the caller turns the list into the admin DM.
+ * An index whose TABLE is absent (a migration that has not been applied yet,
+ * e.g. telegram_update_dedup before 0052) is tolerated: the matching step has
+ * its own try/catch and skips itself.
  */
-async function ensureMaintenanceIndexes(db: D1Database): Promise<boolean> {
+async function ensureMaintenanceIndexes(db: D1Database): Promise<string[]> {
+  const empty: string[] = [];
   try {
     const missing = await missingMaintenanceIndexes(db);
-    if (missing.length === 0) return true;
+    if (missing.length === 0) return empty;
     console.info("Creating maintenance indexes that are missing", { missing });
     const uncreateable = new Set<string>();
     for (const index of MAINTENANCE_INDEXES) {
@@ -394,12 +407,12 @@ async function ensureMaintenanceIndexes(db: D1Database): Promise<boolean> {
     const stillMissing = (await missingMaintenanceIndexes(db)).filter((name) => !uncreateable.has(name));
     if (stillMissing.length > 0) {
       console.warn("Maintenance stays parked: required indexes are still missing", { stillMissing });
-      return false;
+      return stillMissing;
     }
-    return true;
+    return empty;
   } catch (error) {
     console.warn("Maintenance stays parked: could not ensure indexes", error);
-    return false;
+    return ["<ensure failed>"];
   }
 }
 
@@ -595,10 +608,13 @@ async function findOrphanMediaCandidates(
   db: D1Database,
   before: string,
   shouldStop: () => boolean,
-): Promise<{ ids: number[]; completed: boolean }> {
+  initialWindowStart = 0,
+): Promise<{ ids: number[]; completed: boolean; nextWindowStart: number }> {
   const maxId = await maxRowId(db, "media_assets");
+  // 游标越过表尾（表收缩过/游标过期）时从头扫，避免永久跳过前缀。
+  const start = initialWindowStart > 0 && initialWindowStart < maxId ? initialWindowStart : 0;
   const ids = new Set<number>();
-  let windowStart = 0;
+  let windowStart = start;
   while (ids.size < ORPHAN_MEDIA_BATCH_SIZE && windowStart < maxId && !shouldStop()) {
     const windowEnd = Math.min(windowStart + ORPHAN_CANDIDATE_WINDOW_ROWS, maxId);
     const result = await db
@@ -641,7 +657,7 @@ async function findOrphanMediaCandidates(
     }
     windowStart = windowEnd;
   }
-  return { ids: [...ids], completed: windowStart >= maxId };
+  return { ids: [...ids], completed: windowStart >= maxId, nextWindowStart: windowStart };
 }
 
 /**
@@ -657,12 +673,22 @@ async function deleteOrphanMediaAssets(
   before: string,
   shouldStop: () => boolean,
   store: OrphanBlobStore | null,
-): Promise<{ deleted: number; scansComplete: boolean }> {
+  initialWindowStart = 0,
+): Promise<{ deleted: number; scansComplete: boolean; candidateCompleted: boolean; nextWindowStart: number }> {
   // 预算已耗尽（前面步骤烧完）时直接停：候选扫描与两道 JSON 保护扫描都不可
-  // 靠，本步什么都不删。
-  if (shouldStop()) return { deleted: 0, scansComplete: false };
-  const candidates = await findOrphanMediaCandidates(db, before, shouldStop);
-  if (candidates.ids.length === 0) return { deleted: 0, scansComplete: candidates.completed };
+  // 靠，本步什么都不删；游标保持原值，下一轮从同一位置继续。
+  if (shouldStop()) {
+    return { deleted: 0, scansComplete: false, candidateCompleted: false, nextWindowStart: initialWindowStart };
+  }
+  const candidates = await findOrphanMediaCandidates(db, before, shouldStop, initialWindowStart);
+  if (candidates.ids.length === 0) {
+    return {
+      deleted: 0,
+      scansComplete: candidates.completed,
+      candidateCompleted: candidates.completed,
+      nextWindowStart: candidates.nextWindowStart,
+    };
+  }
   const answerScan = await loadAnswerJsonMediaIds(db, shouldStop);
   const settingsScan = await loadSurveySettingsMediaIds(db, shouldStop);
   const scansComplete = candidates.completed && answerScan.completed && settingsScan.completed;
@@ -673,7 +699,12 @@ async function deleteOrphanMediaAssets(
     console.warn("Orphan sweep skipped: a protective scan was truncated by the read budget", {
       candidates: candidates.ids.length,
     });
-    return { deleted: 0, scansComplete: false };
+    return {
+      deleted: 0,
+      scansComplete: false,
+      candidateCompleted: candidates.completed,
+      nextWindowStart: candidates.nextWindowStart,
+    };
   }
   const referencedInJson = new Set<number>([...answerScan.ids, ...settingsScan.ids]);
   let deleted = 0;
@@ -696,7 +727,12 @@ async function deleteOrphanMediaAssets(
       .first();
     if (!stillUsed) await store.delete(storageKey).catch(() => undefined);
   }
-  return { deleted, scansComplete: true };
+  return {
+    deleted,
+    scansComplete: true,
+    candidateCompleted: candidates.completed,
+    nextWindowStart: candidates.nextWindowStart,
+  };
 }
 
 /** 孤儿清扫需要的 blob 删除能力（与 TieredMediaStore.delete 同语义）。 */
@@ -768,16 +804,38 @@ export async function runDatabaseMaintenance(
 
   const budget: ReadBudget = { rowsRead: 0, exceeded: false };
   const scoped = withReadBudget(db, budget);
+  // 孤儿候选扫描的续扫游标（上一轮被预算截断时停在哪）。settings 读写各 1 行，
+  // 经 scoped 计入预算。
+  const sweepCursor = await loadSweepCursor(scoped, now);
 
   // 先自愈全部前置索引，再跑任何步骤：一个缺失的 retention 索引会让对应
   // DELETE 退化成全表扫描——2026-09-14 与 2026-11-16 两次事故的共同根因。
   // 索引建不出来（schema 漂移）时整轮停车：宁可暂停清理，也不烧额度。
-  // 缺表（迁移未跑）由 ensure 内部容错；停车只写日志，不打扰管理员。
-  if (!(await ensureMaintenanceIndexes(scoped))) {
+  // 缺表（迁移未跑）由 ensure 内部容错；停车时 cron 给管理员发单独的 DM
+  // （parked 路径，与预算截断的 truncated 告警互不吞）。
+  const missingIndexes = await ensureMaintenanceIndexes(scoped);
+  if (missingIndexes.length > 0) {
     console.warn("Database maintenance parked: required indexes could not be ensured", {
+      missing: missingIndexes,
       rowsRead: budget.rowsRead,
     });
-    return { ...EMPTY_MAINTENANCE_SUMMARY, rowsRead: budget.rowsRead };
+    try {
+      await saveLastMaintenanceHealth(db, {
+        at: new Date(now).toISOString(),
+        rowsRead: budget.rowsRead,
+        truncated: false,
+        parked: true,
+        orphanAssets: 0,
+      });
+    } catch (error) {
+      console.warn("Saving parked maintenance health snapshot failed", error);
+    }
+    return {
+      ...EMPTY_MAINTENANCE_SUMMARY,
+      rowsRead: budget.rowsRead,
+      parked: true,
+      parkedMissingIndexes: missingIndexes,
+    };
   }
 
   const summary: DatabaseMaintenanceSummary = {
@@ -805,6 +863,8 @@ export async function runDatabaseMaintenance(
     expiredRateLimitRows: 0,
     rowsRead: 0,
     truncated: false,
+    parked: false,
+    parkedMissingIndexes: [],
   };
 
   // Cheapest and most valuable first, so a run that gets cut short by the read
@@ -1062,8 +1122,12 @@ export async function runDatabaseMaintenance(
     async () => {
       // 索引已在 run 开头统一自愈（ensureMaintenanceIndexes），这里直接跑。
       summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded);
-      const sweep = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store);
+      const sweep = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store, sweepCursor);
       summary.orphanAssets = sweep.deleted;
+      // 游标持久化：候选扫描被截断就记续扫点（下一轮从上次窗口继续），扫完
+      // 重置 0（下一轮从头全覆盖）。游标只影响候选扫描的起点，JSON 保护扫描
+      // 每轮都全量跑，正确性不受游标影响。
+      await saveSweepCursor(db, sweep.nextWindowStart, !sweep.candidateCompleted);
     },
   ];
 
@@ -1074,8 +1138,23 @@ export async function runDatabaseMaintenance(
 
   summary.rowsRead = budget.rowsRead;
   summary.truncated = budget.exceeded;
+  summary.parked = false;
+  summary.parkedMissingIndexes = [];
   if (summary.truncated) {
     console.warn("Database maintenance stopped early: read budget exhausted", summary);
+  }
+  // 维护健康快照：客户实例由下一次心跳捎带给 license center（vendor 后台
+  // 可见）。写入失败不影响清理结果——快照是可观测性数据，不是账本。
+  try {
+    await saveLastMaintenanceHealth(db, {
+      at: new Date(now).toISOString(),
+      rowsRead: summary.rowsRead,
+      truncated: summary.truncated,
+      parked: false,
+      orphanAssets: summary.orphanAssets,
+    });
+  } catch (error) {
+    console.warn("Saving maintenance health snapshot failed", error);
   }
   return summary;
 }

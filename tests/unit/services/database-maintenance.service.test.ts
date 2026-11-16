@@ -20,6 +20,8 @@ interface FakeDbOptions {
   maxRowId?: number;
   /** 按 SQL 关键字覆盖 rows_read——用于只在特定语句上烧预算的用例。 */
   rowsReadByKeyword?: Array<[string, number]>;
+  /** system_settings 现有键值（游标/健康快照读取走 .first()）。 */
+  settings?: Record<string, string>;
 }
 
 // 默认表尾 id 恰好等于一个扫描窗口宽：MAX(id) 探针 + 单窗口语句，扫描必然
@@ -30,6 +32,7 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
   const statements: string[] = [];
   const deleted: number[] = [];
   const runBinds: unknown[][] = [];
+  const allBinds: unknown[][] = [];
   const presentIndexes = new Set(options.indexes ?? []);
   const rowsReadFor = (sql: string): number => {
     for (const [keyword, rows] of options.rowsReadByKeyword ?? []) {
@@ -44,6 +47,7 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
       const statement = {
         bind: vi.fn((...args: unknown[]) => {
           bound = args;
+          allBinds.push([...bound]);
           return statement;
         }),
         all: vi.fn(async () => {
@@ -85,11 +89,19 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
           }
           return { meta: { changes: 1, rows_read: rowsReadFor(sql) } };
         }),
+        // system_settings 的读取走 .first()（游标/健康快照）。
+        first: vi.fn(async () => {
+          if (sql.includes("system_settings")) {
+            const key = String(bound[0] ?? "");
+            return options.settings?.[key] !== undefined ? { value: options.settings[key] } : null;
+          }
+          return null;
+        }),
       };
       return statement;
     }),
   } as unknown as D1Database;
-  return { db, statements, deleted, runBinds };
+  return { db, statements, deleted, runBinds, allBinds };
 }
 
 describe("database maintenance", () => {
@@ -195,13 +207,26 @@ describe("database maintenance", () => {
   // If the indexes cannot be created the whole run must stay parked — not just
   // the sweep. An unindexed retention DELETE is exactly the 2026-09-14 /
   // 2026-11-16 failure mode; running any step against a missing index is what
-  // burned the account's daily budget.
+  // burned the account's daily budget. 停车还要写健康快照（心跳捎带给 vendor）
+  // 并带上缺失清单供停车 DM 直出原因。
   it("parks the whole run (not just the sweep) when required indexes cannot be created", async () => {
-    const { db, statements } = createMaintenanceDb({ indexes: [], indexCreationIsNoop: true, candidates: [31] });
+    const { db, statements, runBinds } = createMaintenanceDb({
+      indexes: [],
+      indexCreationIsNoop: true,
+      candidates: [31],
+    });
     const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
     expect(summary.orphanAssets).toBe(0);
+    expect(summary.parked).toBe(true);
+    expect(summary.parkedMissingIndexes.length).toBeGreaterThan(0);
     expect(statements.some((sql) => sql.includes("FROM media_assets m"))).toBe(false);
     expect(statements.some((sql) => sql.includes("DELETE FROM survey_responses"))).toBe(false);
+    // 停车也要落健康快照：客户实例的心跳才能把 parked 状态带给 vendor。
+    expect(runBinds.some((binds) => binds[0] === "maintenance_last_summary")).toBe(true);
+    const snapshot = JSON.parse(String(runBinds.find((binds) => binds[0] === "maintenance_last_summary")?.[1])) as {
+      parked: boolean;
+    };
+    expect(snapshot.parked).toBe(true);
   });
 
   // The 2026-09-14 outage happened because one run could spend the account's
@@ -258,6 +283,55 @@ describe("database maintenance", () => {
     expect(deleted).toEqual([23]);
     // 窗口谓词是「每条语句有界」的实现载体，必须真实出现在扫描 SQL 里。
     expect(statements.some((sql) => sql.includes("FROM answers") && sql.includes("id > ? AND id <= ?"))).toBe(true);
+  });
+
+  // 断点续扫：候选扫描被预算截断时把窗口起点持久化，下一轮从续扫点继续；
+  // 扫描完成（或从未跑扫描）则重置为 0，下一轮从头全覆盖。游标只影响候选
+  // 扫描起点，正确性（JSON 保护扫描全量 + 截断不删）不受影响。
+  it("persists a resume cursor when the candidate scan is truncated and resumes from it next run", async () => {
+    const truncatedRun = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [23],
+      maxRowId: 45_000,
+      rowsReadByKeyword: [["FROM media_assets m", MAINTENANCE_ROWS_READ_BUDGET + 1]],
+    });
+    const summary = await runDatabaseMaintenance(truncatedRun.db, Date.parse("2026-08-19T00:00:00.000Z"));
+    expect(summary.truncated).toBe(true);
+    const cursorBind = truncatedRun.runBinds.find((binds) => binds[0] === "maintenance_sweep_cursor");
+    expect(cursorBind).toBeDefined();
+    const cursor = JSON.parse(String(cursorBind?.[1])) as { windowStart: number };
+    // 第一条候选语句只扫了 [0, 5000]，续扫点应为 5000。
+    expect(cursor.windowStart).toBe(5_000);
+
+    const resumedRun = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [23],
+      maxRowId: 45_000,
+      settings: {
+        maintenance_sweep_cursor: JSON.stringify({ windowStart: 5_000, savedAt: new Date().toISOString() }),
+      },
+    });
+    await runDatabaseMaintenance(resumedRun.db, Date.parse("2026-08-19T00:00:00.000Z"));
+    // 续扫轮的第一条候选语句必须从 [5000, 10000] 开始，而不是从头重扫。
+    const resumedFirstCandidate = resumedRun.allBinds.find((binds) => binds[0] === 5_000 && binds[1] === 10_000);
+    expect(resumedFirstCandidate).toBeDefined();
+  });
+
+  // 扫描完成（未截断）时游标必须重置为 0：孤儿可能出现在任何位置，完成的
+  // 轮次下一轮要回到全覆盖。
+  it("resets the sweep cursor to zero when the candidate scan completes", async () => {
+    const { db, runBinds } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [23],
+      maxRowId: 45_000,
+      settings: {
+        maintenance_sweep_cursor: JSON.stringify({ windowStart: 5_000, savedAt: new Date().toISOString() }),
+      },
+    });
+    const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
+    expect(summary.parked).toBe(false);
+    const cursorBind = runBinds.find((binds) => binds[0] === "maintenance_sweep_cursor");
+    expect(cursorBind?.[1]).toBe("0");
   });
 
   // 阶段 D 双读：syncWeakMediaRefs 必须同时登记 URL 字符串引用（既有数据）

@@ -1,7 +1,10 @@
 import { callLicenseCenter, checkDeploymentLicense } from "./license-client.service";
+import { loadLastMaintenanceHealth } from "./maintenance-state.service";
 
 export interface CustomerControlEnv {
   CACHE: KVNamespace;
+  /** 每日维护状态的读取源（system_settings 表；与游标/健康快照同一存储）。 */
+  DB: D1Database;
   LICENSE_SERVER_URL?: string;
   LICENSE_CENTER?: Fetcher;
   LICENSE_KEY?: string;
@@ -18,6 +21,10 @@ export async function sendCustomerHeartbeat(env: CustomerControlEnv): Promise<vo
   const license = await checkDeploymentLicense(env);
   if (!license.allowed) return;
   if (!env.LICENSE_KEY || !env.INSTALLATION_ID || !env.APP_VERSION || !env.WORKER_NAME) return;
+  // 每日维护的健康快照（rowsRead/truncated/parked）随心跳捎带：vendor 后台
+  // 借此看见每个客户实例的维护状态——2026-11-16 客户侧维护烧掉 13.5M 行时
+  // vendor 完全盲，只能靠恰好是管理员的 Telegram DM 才知道。读取失败不挡心跳。
+  const lastMaintenance = env.DB ? await loadLastMaintenanceHealth(env.DB).catch(() => null) : null;
   // Same transport as the license check: a same-account instance must not
   // `fetch()` the center's workers.dev URL (Cloudflare error 1042 → 404).
   const response = await callLicenseCenter(env, "/api/control/customer/heartbeat", {
@@ -35,6 +42,7 @@ export async function sendCustomerHeartbeat(env: CustomerControlEnv): Promise<vo
       // and overwrites.
       ...(env.REMOTE_ACCESS_SECRET ? { remoteAccessSecret: env.REMOTE_ACCESS_SECRET } : {}),
       metadata: { role: "customer-worker" },
+      ...(lastMaintenance ? { lastMaintenance } : {}),
     }),
   });
   if (!response.ok) throw new Error("客户 Worker 心跳上报失败：" + response.status);

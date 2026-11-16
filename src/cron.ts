@@ -1,6 +1,6 @@
 import type { Env } from "./env";
 import { parseAdminIds } from "./core/admin-ids";
-import { notifyMaintenanceBudgetExhausted } from "./http/guard";
+import { notifyMaintenanceBudgetExhausted, notifyMaintenanceParked } from "./http/guard";
 import { sendMessage } from "./bot/telegram";
 import { migrateDataUrlCoversToKv } from "./services/cover-storage.service";
 import { sendCreatorTrialExpiryReminders } from "./services/creator-trial-reminder.service";
@@ -106,6 +106,11 @@ export async function cron(event: ScheduledEvent, env: Env): Promise<void> {
     );
     if (maintenanceSummary.truncated) {
       await notifyMaintenanceBudgetExhausted(env, maintenanceSummary.rowsRead);
+    }
+    // 停车（索引建不出来）与预算截断是两条独立的告警：停车时清理完全没跑，
+    // 表持续膨胀，且 truncated=false 不会触发上面那条。
+    if (maintenanceSummary.parked) {
+      await notifyMaintenanceParked(env, maintenanceSummary.parkedMissingIndexes);
     }
   } catch (error) {
     console.error("Database maintenance failed", error);

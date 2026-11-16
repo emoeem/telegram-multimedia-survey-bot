@@ -27,6 +27,23 @@ export async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: numbe
 }
 
 /**
+ * 索引自愈失败 = 维护整轮停车，清理永久停摆、表无限膨胀——比预算截断更
+ * 严重，且 truncated 告警不会触发（parked 时 truncated=false），必须单独
+ * 通知。缺失索引清单直接给到管理员，附带 0098 对账迁移这条现成出路。
+ */
+export async function notifyMaintenanceParked(env: Env, missingIndexes: string[]): Promise<void> {
+  try {
+    const deployment = env.WORKER_NAME?.trim() || env.ENVIRONMENT || "unknown";
+    const message =
+      `🚨 [${deployment}] 数据库维护已停车：前置索引无法创建（${missingIndexes.join("、")}）。\n` +
+      `清理已完全暂停，表会持续膨胀。请检查迁移是否全部应用（0098 对账迁移可一次性修复索引漂移）；修复前每日维护不会执行。`;
+    await Promise.all(parseAdminIds(env.ADMIN_IDS).map((chatId) => sendMessage(env.BOT_TOKEN, chatId, message)));
+  } catch (error) {
+    console.warn("Maintenance parked notice failed", error);
+  }
+}
+
+/**
  * 结构化限流命中行。request_metrics 只能回答「哪个路径出了 429」，回答不了
  * 「是哪个维度挡的」——per-email / per-ip / per-domain 三道限制的命中占比才是
  * 判断攻击形态的依据（比如 per-domain 突增 = 新的一次性邮箱域在批量注册）。
