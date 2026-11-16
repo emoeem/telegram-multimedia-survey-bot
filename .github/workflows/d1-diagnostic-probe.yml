@@ -1,7 +1,9 @@
 name: d1-diagnostic-probe
 
 # 临时诊断工作流：定位 2026-11-16 维护告警（13,555,791 行读取）的元凶语句。
-# 只读 SQL 且全部有界（纪律见 scripts/d1-diagnostic-probe.sh 头注释）。
+# 主库 telegram-survey-db 已取证（全库 ~26MB，最大表 6 万行，13.5M 不可能
+# 出自它），告警消息又不带部署标识（guard.ts 的已知缺陷），所以对 staging
+# + 三个客户部署逐库跑同一套有界只读探针（纪律见脚本头注释）。
 # 结论落档后，本文件与该脚本一并删除。仅手动触发，不挂任何 push。
 
 on:
@@ -16,6 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        db:
+          - telegram-survey-staging-db
+          - survey-111-f6e0a1e2-db
+          - survey-customer-398ffcf3-db
+          - survey-customer-f4a560c5-db
     steps:
       - uses: actions/checkout@v5
 
@@ -35,4 +45,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bash scripts/d1-diagnostic-probe.sh
+        run: bash scripts/d1-diagnostic-probe.sh "${{ matrix.db }}"
