@@ -1,0 +1,38 @@
+name: d1-diagnostic-probe
+
+# 临时诊断工作流：定位 2026-11-16 维护告警（13,555,791 行读取）的元凶语句。
+# 只读 SQL 且全部有界（纪律见 scripts/d1-diagnostic-probe.sh 头注释）。
+# 结论落档后，本文件与该脚本一并删除。仅手动触发，不挂任何 push。
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: d1-diagnostic-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run read-only probes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bash scripts/d1-diagnostic-probe.sh
