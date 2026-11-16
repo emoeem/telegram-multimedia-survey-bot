@@ -36,6 +36,34 @@ export interface DatabaseMaintenanceSummary {
 
 const DAY = 86_400_000;
 
+/** 零值汇总——索引自愈失败停车时返回它（与正常路径的字段形状完全一致）。 */
+const EMPTY_MAINTENANCE_SUMMARY: DatabaseMaintenanceSummary = {
+  expiredResponses: 0,
+  expiredNotes: 0,
+  expiredSurveyDrafts: 0,
+  expiredDeletedSurveys: 0,
+  expiredDeletedShowcasePeople: 0,
+  expiredDeletedShowcaseItems: 0,
+  expiredDeletedPlazaPosts: 0,
+  expiredDeletedReportTemplates: 0,
+  expiredTemplateDrafts: 0,
+  expiredGeneratorDrafts: 0,
+  expiredPreviewAssets: 0,
+  expiredGeneratedAssets: 0,
+  orphanAssets: 0,
+  mediaRefsSynced: 0,
+  expiredRenderJobs: 0,
+  expiredGeneratorJobs: 0,
+  expiredReportResults: 0,
+  expiredExportJobs: 0,
+  reclaimedSendingExportJobs: 0,
+  expiredAuditLogs: 0,
+  expiredTelegramDedupRows: 0,
+  expiredRateLimitRows: 0,
+  rowsRead: 0,
+  truncated: false,
+};
+
 /**
  * export_jobs 卡死 sending 的回收阈值（0097）：与 result-visual /
  * image-generator 恢复服务的 staleProcessingMs（30 分钟）同口径。sending 的
@@ -108,6 +136,132 @@ function withReadBudget(db: D1Database, budget: ReadBudget): D1Database {
     exec: (query: string) => db.exec(query),
   } as unknown as D1Database;
 }
+
+/**
+ * Retention indexes every step in this file depends on, using the exact SQL
+ * from their canonical migrations (0020 / 0052 / 0055 / 0074 / 0089 / 0091 /
+ * 0017 / 0004).
+ *
+ * The 2026-11-16 alert (13,555,791 rows read against the 500K budget) proved
+ * the deploy-order lesson of 2026-09-14 generalizes: a run can reach
+ * production before its migration does, and ONE unindexed retention DELETE
+ * then full-scans a whole table every day. Until now only the orphan sweep
+ * self-ensured its indexes; a missing idx_responses_status_updated or
+ * idx_audit_logs_created_at silently turned that step into a full scan. The
+ * maintenance job now guarantees every index it depends on before running.
+ */
+export const RETENTION_INDEXES = [
+  // 0020_maintenance_and_template_assets.sql
+  {
+    name: "idx_render_jobs_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_render_jobs_retention ON render_jobs(status, completed_at, created_at)",
+  },
+  {
+    name: "idx_image_generator_jobs_retention",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_image_generator_jobs_retention ON image_generator_jobs(status, completed_at, created_at)",
+  },
+  {
+    name: "idx_export_jobs_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_export_jobs_retention ON export_jobs(status, completed_at, created_at)",
+  },
+  {
+    name: "idx_surveys_draft_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_surveys_draft_retention ON surveys(status, updated_at)",
+  },
+  {
+    name: "idx_visual_templates_draft_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_visual_templates_draft_retention ON visual_templates(status, updated_at)",
+  },
+  {
+    name: "idx_image_generators_draft_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_image_generators_draft_retention ON image_generators(status, updated_at)",
+  },
+  {
+    name: "idx_report_results_retention",
+    create: "CREATE INDEX IF NOT EXISTS idx_report_results_retention ON report_results(created_at, id)",
+  },
+  // 0055_audit_indexes.sql
+  {
+    name: "idx_responses_status_updated",
+    create: "CREATE INDEX IF NOT EXISTS idx_responses_status_updated ON survey_responses(status, updated_at)",
+  },
+  {
+    name: "idx_audit_logs_created_at",
+    create: "CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)",
+  },
+  {
+    name: "idx_image_generator_jobs_report_result",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_image_generator_jobs_report_result ON image_generator_jobs(report_result_id)",
+  },
+  {
+    name: "idx_image_generator_jobs_generator",
+    create: "CREATE INDEX IF NOT EXISTS idx_image_generator_jobs_generator ON image_generator_jobs(generator_id)",
+  },
+  {
+    name: "idx_render_jobs_template",
+    create: "CREATE INDEX IF NOT EXISTS idx_render_jobs_template ON render_jobs(template_id)",
+  },
+  {
+    name: "idx_image_generators_template",
+    create: "CREATE INDEX IF NOT EXISTS idx_image_generators_template ON image_generators(template_id)",
+  },
+  // 0052_telegram_idempotency_and_query_indexes.sql
+  {
+    name: "idx_telegram_update_dedup_received_at",
+    create: "CREATE INDEX IF NOT EXISTS idx_telegram_update_dedup_received_at ON telegram_update_dedup(received_at)",
+  },
+  {
+    name: "idx_rate_limits_window_start",
+    create: "CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON rate_limits(window_start)",
+  },
+  // 0074_soft_delete.sql（partial index，逐字取自迁移）
+  {
+    name: "idx_surveys_deleted_at",
+    create: "CREATE INDEX IF NOT EXISTS idx_surveys_deleted_at ON surveys(deleted_at, id) WHERE deleted_at IS NOT NULL",
+  },
+  {
+    name: "idx_showcase_persons_deleted_at",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_showcase_persons_deleted_at ON showcase_persons(deleted_at, id) WHERE deleted_at IS NOT NULL",
+  },
+  {
+    name: "idx_showcase_items_deleted_at",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_showcase_items_deleted_at ON showcase_items(deleted_at, id) WHERE deleted_at IS NOT NULL",
+  },
+  {
+    name: "idx_plaza_posts_deleted_at",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_plaza_posts_deleted_at ON plaza_posts(deleted_at, id) WHERE deleted_at IS NOT NULL",
+  },
+  {
+    name: "idx_report_templates_deleted_at",
+    create:
+      "CREATE INDEX IF NOT EXISTS idx_report_templates_deleted_at ON report_templates(deleted_at, id) WHERE deleted_at IS NOT NULL",
+  },
+  // 0089_note_chat.sql
+  {
+    name: "idx_notes_pool",
+    create: "CREATE INDEX IF NOT EXISTS idx_notes_pool ON notes(status, expires_at, id)",
+  },
+  // 0091_media_library.sql
+  {
+    name: "idx_media_refs_asset",
+    create: "CREATE INDEX IF NOT EXISTS idx_media_refs_asset ON media_refs(asset_id)",
+  },
+  // 0017_media_asset_scopes.sql
+  {
+    name: "idx_media_assets_scope",
+    create: "CREATE INDEX IF NOT EXISTS idx_media_assets_scope ON media_assets(asset_scope, id)",
+  },
+  // 0004_responses_answers.sql
+  {
+    name: "idx_responses_survey_id",
+    create: "CREATE INDEX IF NOT EXISTS idx_responses_survey_id ON survey_responses(survey_id)",
+  },
+] as const;
 
 /**
  * Read-path indexes the sweep needs, using the exact SQL from migration 0051.
@@ -191,8 +345,13 @@ export const ORPHAN_SWEEP_INDEXES = [
   },
 ] as const;
 
-async function missingOrphanSweepIndexes(db: D1Database): Promise<string[]> {
-  const names = ORPHAN_SWEEP_INDEXES.map((index) => index.name);
+/** 本次维护全部前置索引（retention 步骤 + 孤儿清扫），run 开始前统一自愈。 */
+export const MAINTENANCE_INDEXES = [...RETENTION_INDEXES, ...ORPHAN_SWEEP_INDEXES] as Array<
+  (typeof RETENTION_INDEXES)[number] | (typeof ORPHAN_SWEEP_INDEXES)[number]
+>;
+
+async function missingMaintenanceIndexes(db: D1Database): Promise<string[]> {
+  const names = MAINTENANCE_INDEXES.map((index) => index.name);
   const placeholders = names.map(() => "?").join(", ");
   const result = await db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (${placeholders})`)
@@ -202,23 +361,44 @@ async function missingOrphanSweepIndexes(db: D1Database): Promise<string[]> {
   return names.filter((name) => !found.has(name));
 }
 
-async function ensureOrphanSweepIndexes(db: D1Database): Promise<boolean> {
+/**
+ * Ensure every index this run depends on. Returns false only on hard failures
+ * (schema drift: a column is missing, or a non-"no such table" error) — that
+ * is when running would full-scan, so the whole run parks and the next daily
+ * run retries. An index whose TABLE is absent (a migration that has not been
+ * applied yet, e.g. telegram_update_dedup before 0052) is tolerated: the
+ * matching step has its own try/catch and skips itself.
+ */
+async function ensureMaintenanceIndexes(db: D1Database): Promise<boolean> {
   try {
-    const missing = await missingOrphanSweepIndexes(db);
+    const missing = await missingMaintenanceIndexes(db);
     if (missing.length === 0) return true;
-    console.info("Creating read-path indexes for the orphan media sweep", { missing });
-    for (const index of ORPHAN_SWEEP_INDEXES) {
+    console.info("Creating maintenance indexes that are missing", { missing });
+    const uncreateable = new Set<string>();
+    for (const index of MAINTENANCE_INDEXES) {
       if (!missing.includes(index.name)) continue;
-      await db.prepare(index.create).run();
+      try {
+        await db.prepare(index.create).run();
+      } catch (error) {
+        if (/no such table/i.test(String(error))) {
+          console.warn("Maintenance index skipped: its table is missing (migration not applied yet)", {
+            index: index.name,
+          });
+          uncreateable.add(index.name);
+          continue;
+        }
+        uncreateable.add(index.name);
+        console.warn("Failed to create maintenance index", { index: index.name, error: String(error) });
+      }
     }
-    const stillMissing = await missingOrphanSweepIndexes(db);
+    const stillMissing = (await missingMaintenanceIndexes(db)).filter((name) => !uncreateable.has(name));
     if (stillMissing.length > 0) {
-      console.warn("Orphan media sweep stays parked: read-path indexes are still missing", { stillMissing });
+      console.warn("Maintenance stays parked: required indexes are still missing", { stillMissing });
       return false;
     }
     return true;
   } catch (error) {
-    console.warn("Orphan media sweep stays parked: could not ensure read-path indexes", error);
+    console.warn("Maintenance stays parked: could not ensure indexes", error);
     return false;
   }
 }
@@ -280,91 +460,153 @@ function collectSurveySettingsMediaIds(raw: string | null): Set<number> {
 }
 
 /**
+ * Fixed rowid windows for the JSON scans.
+ *
+ * 旧实现按「命中行」翻页（`id > lastId AND LIKE ... LIMIT 2000`）：页与页之
+ * 间的扫描跨度取决于命中的稀疏程度——命中稀疏时，一条语句就能从头扫到表尾，
+ * 读预算只能在语句结束后才生效，13,555,791 行的告警正属于这个量级。改为按
+ * rowid 固定窗口分页后，每条语句的读取上限恒为 JSON_SCAN_WINDOW_ROWS 行，
+ * 读预算在窗口之间可以真正拦住扫描。
+ */
+const JSON_SCAN_WINDOW_ROWS = 20_000;
+
+/** MAX(id) 走 rowid，O(1)。经 withReadBudget 包装，会计入预算。 */
+async function maxRowId(db: D1Database, table: string): Promise<number> {
+  const result = await db.prepare(`SELECT MAX(id) AS max_id FROM ${table}`).all<{ max_id: number | null }>();
+  return Number(result.results?.[0]?.max_id ?? 0);
+}
+
+/**
+ * Bounded windowed scan over a JSON column. `table` / `column` / `likeFilter`
+ * are internal constants only (never user input) — identifiers cannot be
+ * bound, so they are interpolated here deliberately.
+ *
+ * Returns `completed: false` when the read budget stopped the scan midway.
+ * Callers MUST treat a partial result as unsafe for deletion: media referenced
+ * in unscanned rows would be misjudged as orphaned (see deleteOrphanMediaAssets).
+ */
+async function scanJsonRows(
+  db: D1Database,
+  table: string,
+  column: string,
+  likeFilter: string,
+  shouldStop: () => boolean,
+  onRow: (row: { id: number; value: string | null }) => void | Promise<void>,
+): Promise<{ completed: boolean }> {
+  const maxId = await maxRowId(db, table);
+  let windowStart = 0;
+  while (windowStart < maxId && !shouldStop()) {
+    const windowEnd = Math.min(windowStart + JSON_SCAN_WINDOW_ROWS, maxId);
+    const result = await db
+      .prepare(
+        `SELECT id, ${column} AS value FROM ${table}
+          WHERE id > ? AND id <= ?
+            AND ${column} IS NOT NULL
+            AND ${likeFilter}`,
+      )
+      .bind(windowStart, windowEnd)
+      .all<{ id: number; value: string | null }>();
+    for (const row of result.results ?? []) {
+      await onRow(row);
+    }
+    windowStart = windowEnd;
+  }
+  return { completed: windowStart >= maxId };
+}
+
+/**
  * Media ids that answers still reference inside their JSON payload.
  * `answers.json_value` has always been written as `{"mediaAssetId": N}`; the
  * regex also catches older or nested spellings so the scan stays strictly
  * safer than the per-row LIKE probes it replaces.
- *
- * Paged by `id` and stopped by `shouldStop` so the daily read budget can cut
- * the scan off between pages instead of after a single unbounded statement.
  */
-const JSON_SCAN_PAGE_SIZE = 2000;
-
-async function loadAnswerJsonMediaIds(db: D1Database, shouldStop: () => boolean): Promise<Set<number>> {
+async function loadAnswerJsonMediaIds(
+  db: D1Database,
+  shouldStop: () => boolean,
+): Promise<{
+  ids: Set<number>;
+  completed: boolean;
+}> {
   const ids = new Set<number>();
-  let lastId = 0;
-  while (!shouldStop()) {
-    const result = await db
-      .prepare(
-        `SELECT id, json_value FROM answers
-          WHERE id > ?
-            AND json_value IS NOT NULL
-            AND json_value LIKE '%"mediaAssetId"%'
-          ORDER BY id ASC
-          LIMIT ?`,
-      )
-      .bind(lastId, JSON_SCAN_PAGE_SIZE)
-      .all<{ id: number; json_value: string | null }>();
-    const rows = result.results ?? [];
-    for (const row of rows) {
-      lastId = row.id;
-      for (const id of collectIds(row.json_value?.matchAll(/"mediaAssetId"\s*:\s*(\d+)/g) ?? [])) {
+  const { completed } = await scanJsonRows(
+    db,
+    "answers",
+    "json_value",
+    `json_value LIKE '%"mediaAssetId"%'`,
+    shouldStop,
+    (row) => {
+      for (const id of collectIds(String(row.value ?? "").matchAll(/"mediaAssetId"\s*:\s*(\d+)/g) ?? [])) {
         ids.add(id);
       }
-    }
-    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
-  }
-  return ids;
+    },
+  );
+  return { ids, completed };
 }
 
 /** Media ids embedded in survey settings (URL strings and structured `{"assetId":n}`). */
-async function loadSurveySettingsMediaIds(db: D1Database, shouldStop: () => boolean): Promise<Set<number>> {
+async function loadSurveySettingsMediaIds(
+  db: D1Database,
+  shouldStop: () => boolean,
+): Promise<{
+  ids: Set<number>;
+  completed: boolean;
+}> {
   const ids = new Set<number>();
-  let lastId = 0;
-  while (!shouldStop()) {
-    const result = await db
-      .prepare(
-        `SELECT id, settings_json FROM surveys
-          WHERE id > ?
-            AND settings_json IS NOT NULL
-            AND (settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')
-          ORDER BY id ASC
-          LIMIT ?`,
-      )
-      .bind(lastId, JSON_SCAN_PAGE_SIZE)
-      .all<{ id: number; settings_json: string | null }>();
-    const rows = result.results ?? [];
-    for (const row of rows) {
-      lastId = row.id;
+  const { completed } = await scanJsonRows(
+    db,
+    "surveys",
+    "settings_json",
+    `(settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')`,
+    shouldStop,
+    (row) => {
       // Dual-read transition (阶段 D): the regex matches both `/api/survey/media/12`
       // and relative `media/12` spellings; collectSurveySettingsMediaIds adds the
       // structured `{"assetId":n}` objects. Over-matching only keeps a row alive,
       // which is the safe direction.
-      for (const id of collectSurveySettingsMediaIds(row.settings_json ?? null)) {
+      for (const id of collectSurveySettingsMediaIds(row.value ?? null)) {
         ids.add(id);
       }
-    }
-    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
-  }
-  return ids;
+    },
+  );
+  return { ids, completed };
 }
 
 /**
- * Candidate orphan media rows, oldest first and bounded.
+ * Candidate orphan media rows, bounded twice over.
  *
- * The previous implementation asked SQLite to evaluate eleven `NOT EXISTS`
+ * The original implementation asked SQLite to evaluate fifteen `NOT EXISTS`
  * probes for every media row in one statement. Since several referencing
  * columns were unindexed, that meant repeated full table scans: a single run
  * read ~5.3M rows and burned the entire daily D1 rows-read budget on
- * 2026-09-14. The candidate query now only uses indexed columns, and the two
- * unindexed JSON fallbacks are resolved with one scan each.
+ * 2026-09-14. The probes are all indexed now, but the statement itself still
+ * had no upper bound on rows scanned — on a database with hundreds of
+ * thousands of old media rows it re-probes every one of them, daily, and the
+ * read budget cannot stop a single statement. The scan therefore walks
+ * fixed-width rowid windows (each capped at ORPHAN_CANDIDATE_WINDOW_ROWS
+ * rows plus their probes), and the read budget cuts it off between windows.
+ *
+ * Ordering is `id ASC` (≈ creation order) instead of `created_at ASC`: the
+ * id-window predicate is what bounds each statement, and drain order within
+ * a daily batch of 100 rows is not load-bearing.
  */
-async function findOrphanMediaCandidates(db: D1Database, before: string): Promise<number[]> {
-  const result = await db
-    .prepare(
-      `SELECT m.id
+const ORPHAN_CANDIDATE_WINDOW_ROWS = 5_000;
+
+async function findOrphanMediaCandidates(
+  db: D1Database,
+  before: string,
+  shouldStop: () => boolean,
+): Promise<{ ids: number[]; completed: boolean }> {
+  const maxId = await maxRowId(db, "media_assets");
+  const ids = new Set<number>();
+  let windowStart = 0;
+  while (ids.size < ORPHAN_MEDIA_BATCH_SIZE && windowStart < maxId && !shouldStop()) {
+    const windowEnd = Math.min(windowStart + ORPHAN_CANDIDATE_WINDOW_ROWS, maxId);
+    const result = await db
+      .prepare(
+        `SELECT m.id
          FROM media_assets m
-        WHERE m.created_at < ?
+        WHERE m.id > ? AND m.id <= ?
+          AND m.created_at < ?
           AND NOT EXISTS (SELECT 1 FROM question_media qm WHERE qm.media_asset_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM option_media om WHERE om.media_asset_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM answer_media am WHERE am.media_asset_id = m.id)
@@ -388,12 +630,18 @@ async function findOrphanMediaCandidates(db: D1Database, before: string): Promis
           AND NOT EXISTS (SELECT 1 FROM showcase_items si
                            WHERE si.cover_media_id = m.id OR si.media_asset_id = m.id)
           AND NOT EXISTS (SELECT 1 FROM media_refs mr WHERE mr.asset_id = m.id)
-        ORDER BY m.created_at ASC, m.id ASC
+        ORDER BY m.id ASC
         LIMIT ?`,
-    )
-    .bind(before, ORPHAN_MEDIA_BATCH_SIZE)
-    .all<{ id: number }>();
-  return (result.results ?? []).map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+      )
+      .bind(windowStart, windowEnd, before, ORPHAN_MEDIA_BATCH_SIZE - ids.size)
+      .all<{ id: number }>();
+    for (const row of result.results ?? []) {
+      const id = Number(row.id);
+      if (Number.isInteger(id) && id > 0) ids.add(id);
+    }
+    windowStart = windowEnd;
+  }
+  return { ids: [...ids], completed: windowStart >= maxId };
 }
 
 /**
@@ -409,15 +657,27 @@ async function deleteOrphanMediaAssets(
   before: string,
   shouldStop: () => boolean,
   store: OrphanBlobStore | null,
-): Promise<number> {
-  const candidates = await findOrphanMediaCandidates(db, before);
-  if (candidates.length === 0) return 0;
-  const referencedInJson = new Set<number>([
-    ...(await loadAnswerJsonMediaIds(db, shouldStop)),
-    ...(await loadSurveySettingsMediaIds(db, shouldStop)),
-  ]);
+): Promise<{ deleted: number; scansComplete: boolean }> {
+  // 预算已耗尽（前面步骤烧完）时直接停：候选扫描与两道 JSON 保护扫描都不可
+  // 靠，本步什么都不删。
+  if (shouldStop()) return { deleted: 0, scansComplete: false };
+  const candidates = await findOrphanMediaCandidates(db, before, shouldStop);
+  if (candidates.ids.length === 0) return { deleted: 0, scansComplete: candidates.completed };
+  const answerScan = await loadAnswerJsonMediaIds(db, shouldStop);
+  const settingsScan = await loadSurveySettingsMediaIds(db, shouldStop);
+  const scansComplete = candidates.completed && answerScan.completed && settingsScan.completed;
+  if (!scansComplete) {
+    // 修复 2026-11-16 发现的数据丢失窗口：旧实现在预算耗尽后仍会拿「不完整的
+    // 引用集合」去删候选——答案 JSON 里还引用着的素材会被误当孤儿删掉。扫描
+    // 不完整 = 本轮不删，清扫是幂等的，下一个完整运行会接着做。
+    console.warn("Orphan sweep skipped: a protective scan was truncated by the read budget", {
+      candidates: candidates.ids.length,
+    });
+    return { deleted: 0, scansComplete: false };
+  }
+  const referencedInJson = new Set<number>([...answerScan.ids, ...settingsScan.ids]);
   let deleted = 0;
-  for (const id of candidates) {
+  for (const id of candidates.ids) {
     if (referencedInJson.has(id)) continue;
     // 先取 storage_key：删行之后就查不到了。
     const row = store
@@ -436,7 +696,7 @@ async function deleteOrphanMediaAssets(
       .first();
     if (!stillUsed) await store.delete(storageKey).catch(() => undefined);
   }
-  return deleted;
+  return { deleted, scansComplete: true };
 }
 
 /** 孤儿清扫需要的 blob 删除能力（与 TieredMediaStore.delete 同语义）。 */
@@ -458,23 +718,14 @@ export interface OrphanBlobStore {
  */
 export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolean): Promise<number> {
   let synced = 0;
-  let lastId = 0;
-  while (!shouldStop()) {
-    const result = await db
-      .prepare(
-        `SELECT id, settings_json FROM surveys
-          WHERE id > ?
-            AND settings_json IS NOT NULL
-            AND (settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')
-          ORDER BY id ASC
-          LIMIT ?`,
-      )
-      .bind(lastId, JSON_SCAN_PAGE_SIZE)
-      .all<{ id: number; settings_json: string | null }>();
-    const rows = result.results ?? [];
-    for (const row of rows) {
-      lastId = row.id;
-      const assetIds = collectSurveySettingsMediaIds(row.settings_json ?? null);
+  const { completed } = await scanJsonRows(
+    db,
+    "surveys",
+    "settings_json",
+    `(settings_json LIKE '%media/%' OR settings_json LIKE '%"assetId"%')`,
+    shouldStop,
+    async (row) => {
+      const assetIds = collectSurveySettingsMediaIds(row.value ?? null);
       await db
         .prepare("DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE ?")
         .bind(`survey:${row.id}:%`)
@@ -487,8 +738,12 @@ export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolea
         });
         synced += 1;
       }
-    }
-    if (rows.length < JSON_SCAN_PAGE_SIZE) break;
+    },
+  );
+  if (!completed) {
+    // 部分同步是安全的：只重建已处理问卷的登记行，未处理问卷保留旧引用
+    // （旧引用只会过度保护，不会漏保护），孤儿清扫的 NOT EXISTS 探针不受影响。
+    console.warn("Weak media ref sync truncated by the read budget", { synced });
   }
   return synced;
 }
@@ -513,6 +768,18 @@ export async function runDatabaseMaintenance(
 
   const budget: ReadBudget = { rowsRead: 0, exceeded: false };
   const scoped = withReadBudget(db, budget);
+
+  // 先自愈全部前置索引，再跑任何步骤：一个缺失的 retention 索引会让对应
+  // DELETE 退化成全表扫描——2026-09-14 与 2026-11-16 两次事故的共同根因。
+  // 索引建不出来（schema 漂移）时整轮停车：宁可暂停清理，也不烧额度。
+  // 缺表（迁移未跑）由 ensure 内部容错；停车只写日志，不打扰管理员。
+  if (!(await ensureMaintenanceIndexes(scoped))) {
+    console.warn("Database maintenance parked: required indexes could not be ensured", {
+      rowsRead: budget.rowsRead,
+    });
+    return { ...EMPTY_MAINTENANCE_SUMMARY, rowsRead: budget.rowsRead };
+  }
+
   const summary: DatabaseMaintenanceSummary = {
     expiredResponses: 0,
     expiredNotes: 0,
@@ -793,10 +1060,10 @@ export async function runDatabaseMaintenance(
       );
     },
     async () => {
-      if (await ensureOrphanSweepIndexes(scoped)) {
-        summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded);
-        summary.orphanAssets = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store);
-      }
+      // 索引已在 run 开头统一自愈（ensureMaintenanceIndexes），这里直接跑。
+      summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded);
+      const sweep = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store);
+      summary.orphanAssets = sweep.deleted;
     },
   ];
 

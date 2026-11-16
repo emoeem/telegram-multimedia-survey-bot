@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  MAINTENANCE_INDEXES,
   MAINTENANCE_ROWS_READ_BUDGET,
   ORPHAN_SWEEP_INDEXES,
   runDatabaseMaintenance,
@@ -15,13 +16,27 @@ interface FakeDbOptions {
   answerJson?: string[];
   surveySettings?: string[];
   rowsReadPerStatement?: number;
+  /** MAX(id) 探针返回的表尾 id（默认一个窗口宽，保证单窗口语义）。 */
+  maxRowId?: number;
+  /** 按 SQL 关键字覆盖 rows_read——用于只在特定语句上烧预算的用例。 */
+  rowsReadByKeyword?: Array<[string, number]>;
 }
+
+// 默认表尾 id 恰好等于一个扫描窗口宽：MAX(id) 探针 + 单窗口语句，扫描必然
+// "完成"，既有用例的语义与旧实现一致。
+const DEFAULT_MAX_ROW_ID = 20_000;
 
 function createMaintenanceDb(options: FakeDbOptions = {}) {
   const statements: string[] = [];
   const deleted: number[] = [];
   const runBinds: unknown[][] = [];
   const presentIndexes = new Set(options.indexes ?? []);
+  const rowsReadFor = (sql: string): number => {
+    for (const [keyword, rows] of options.rowsReadByKeyword ?? []) {
+      if (sql.includes(keyword)) return rows;
+    }
+    return options.rowsReadPerStatement ?? 0;
+  };
   const db = {
     prepare: vi.fn((sql: string) => {
       statements.push(sql);
@@ -32,21 +47,26 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
           return statement;
         }),
         all: vi.fn(async () => {
-          const meta = { changes: 0, rows_read: options.rowsReadPerStatement ?? 0 };
+          const meta = { changes: 0, rows_read: rowsReadFor(sql) };
           if (sql.includes("sqlite_master")) {
             return { results: [...presentIndexes].map((name) => ({ name })), meta };
+          }
+          // MAX(id) 探针必须先于表名匹配：`SELECT MAX(id) ... FROM answers`
+          // 同时包含两者。
+          if (sql.includes("MAX(id)")) {
+            return { results: [{ max_id: options.maxRowId ?? DEFAULT_MAX_ROW_ID }], meta };
           }
           if (sql.includes("FROM media_assets m")) {
             return { results: (options.candidates ?? []).map((id) => ({ id })), meta };
           }
           if (sql.includes("FROM answers")) {
-            return { results: (options.answerJson ?? []).map((json_value) => ({ json_value })), meta };
+            return { results: (options.answerJson ?? []).map((value) => ({ value })), meta };
           }
           if (sql.includes("FROM surveys")) {
             return {
-              results: (options.surveySettings ?? []).map((settings_json, index) => ({
+              results: (options.surveySettings ?? []).map((value, index) => ({
                 id: index + 1,
-                settings_json,
+                value,
               })),
               meta,
             };
@@ -63,7 +83,7 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
           if (createdName && !options.indexCreationIsNoop) {
             presentIndexes.add(createdName);
           }
-          return { meta: { changes: 1, rows_read: options.rowsReadPerStatement ?? 0 } };
+          return { meta: { changes: 1, rows_read: rowsReadFor(sql) } };
         }),
       };
       return statement;
@@ -167,18 +187,21 @@ describe("database maintenance", () => {
     const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
     expect(summary.orphanAssets).toBe(1);
     expect(statements.filter((sql) => sql.startsWith("CREATE INDEX IF NOT EXISTS"))).toHaveLength(
-      ORPHAN_SWEEP_INDEXES.length,
+      MAINTENANCE_INDEXES.length,
     );
     expect(statements.some((sql) => sql.includes("FROM media_assets m"))).toBe(true);
   });
 
-  // If the indexes cannot be created the sweep must stay parked: running it
-  // against unindexed columns is what exhausted the daily D1 budget.
-  it("skips the orphan sweep when the read-path indexes cannot be created", async () => {
+  // If the indexes cannot be created the whole run must stay parked — not just
+  // the sweep. An unindexed retention DELETE is exactly the 2026-09-14 /
+  // 2026-11-16 failure mode; running any step against a missing index is what
+  // burned the account's daily budget.
+  it("parks the whole run (not just the sweep) when required indexes cannot be created", async () => {
     const { db, statements } = createMaintenanceDb({ indexes: [], indexCreationIsNoop: true, candidates: [31] });
     const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
     expect(summary.orphanAssets).toBe(0);
     expect(statements.some((sql) => sql.includes("FROM media_assets m"))).toBe(false);
+    expect(statements.some((sql) => sql.includes("DELETE FROM survey_responses"))).toBe(false);
   });
 
   // The 2026-09-14 outage happened because one run could spend the account's
@@ -194,6 +217,47 @@ describe("database maintenance", () => {
     expect(summary.truncated).toBe(true);
     expect(summary.rowsRead).toBeGreaterThan(MAINTENANCE_ROWS_READ_BUDGET);
     expect(statements.some((sql) => sql.includes("FROM media_assets m"))).toBe(false);
+  });
+
+  // 2026-11-16 发现的数据丢失窗口：预算耗尽后保护扫描返回不完整引用集，旧实现
+  // 仍照常删除候选——答案 JSON 里还引用着的素材会被误当孤儿删掉。扫描不完整
+  // = 本轮一个都不删，等下一个完整运行。
+  it("never deletes candidates when a protective scan is truncated by the read budget", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { db, deleted } = createMaintenanceDb({
+        indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+        candidates: [21, 22, 23],
+        answerJson: ['{"mediaAssetId":21}'],
+        maxRowId: 60_000,
+        rowsReadByKeyword: [["FROM answers", MAINTENANCE_ROWS_READ_BUDGET + 1]],
+      });
+      const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
+      expect(summary.orphanAssets).toBe(0);
+      expect(deleted).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Orphan sweep skipped: a protective scan was truncated by the read budget",
+        expect.objectContaining({ candidates: [21, 22, 23].length }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // 大表跨窗口：MAX(id) 超过一个窗口宽时扫描必须逐窗推进并在表尾收口，
+  // 命中行在窗口间不重复计数（Set 去重），删除语义与单窗口完全一致。
+  it("sweeps across rowid windows on large tables and still deletes only true orphans", async () => {
+    const { db, deleted, statements } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [23],
+      answerJson: ['{"mediaAssetId":21}', '{"mediaAssetId":22}'],
+      maxRowId: 45_000,
+    });
+    const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"));
+    expect(summary.orphanAssets).toBe(1);
+    expect(deleted).toEqual([23]);
+    // 窗口谓词是「每条语句有界」的实现载体，必须真实出现在扫描 SQL 里。
+    expect(statements.some((sql) => sql.includes("FROM answers") && sql.includes("id > ? AND id <= ?"))).toBe(true);
   });
 
   // 阶段 D 双读：syncWeakMediaRefs 必须同时登记 URL 字符串引用（既有数据）

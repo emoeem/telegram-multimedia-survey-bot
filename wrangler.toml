@@ -23,6 +23,8 @@ fallthrough = false
 
 [vars]
 ENVIRONMENT = "production"
+# 告警 DM 等运维消息用它自证来源（src/http/guard.ts）；与客户部署的 WORKER_NAME 同名约定。
+WORKER_NAME = "telegram-multimedia-survey-bot"
 APP_VERSION = "0.3.0"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"

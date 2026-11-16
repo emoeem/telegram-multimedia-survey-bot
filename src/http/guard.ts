@@ -14,8 +14,11 @@ import { createPreferredRateLimiter } from "../services/rate-limit.service";
  */
 export async function notifyMaintenanceBudgetExhausted(env: Env, rowsRead: number): Promise<void> {
   try {
+    // 告警必须能自证来源：多部署（vendor / staging / 各客户实例）共用这条
+    // 文案，2026-11-16 的告警就因为不带部署标识，排查要先排除一遍所有库。
+    const deployment = env.WORKER_NAME?.trim() || env.ENVIRONMENT || "unknown";
     const message =
-      `⚠️ 数据库维护任务读取了 ${rowsRead.toLocaleString("en-US")} 行，已提前停止本次清理。\n` +
+      `⚠️ [${deployment}] 数据库维护任务读取了 ${rowsRead.toLocaleString("en-US")} 行，已提前停止本次清理。\n` +
       `常见原因是新加的清理查询缺少索引。请先确认再让它继续跑，避免再次耗尽当天 D1 额度。`;
     await Promise.all(parseAdminIds(env.ADMIN_IDS).map((chatId) => sendMessage(env.BOT_TOKEN, chatId, message)));
   } catch (error) {

@@ -12,6 +12,7 @@ fallthrough = false
 
 [vars]
 ENVIRONMENT = "staging"
+WORKER_NAME = "telegram-multimedia-survey-bot-staging"
 APP_VERSION = "0.3.0-staging"
 LICENSE_ENFORCEMENT = "disabled"
 LICENSE_GRACE_SECONDS = "86400"
