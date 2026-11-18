@@ -927,7 +927,12 @@ function SurveyListPage() {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1200px] px-5 pb-12 pt-8">
+      {/* overflow-x-clip（B2 出血修复）：≤720px 的全局窄屏规则把 main 内边距强制成
+          14px（index.css:3530 !important），而分类 tab 条的 -mx-5 是 -20px——两侧各
+          多出血 6px，390 视口下 documentElement.scrollWidth=396，页面横向轻晃。
+          ≥721px 时 px-5(20px) 与 -mx-5 恰好抵消，tab 条本就不越出 main 边界，
+          clip 不裁任何东西，桌面布局不变；tab 条自身的横向滚动也不受影响。 */}
+      <main className="mx-auto w-full max-w-[1200px] overflow-x-clip px-5 pb-12 pt-8">
         <section id="surveys" className="scroll-mt-24" aria-labelledby="survey-hall-heading">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">

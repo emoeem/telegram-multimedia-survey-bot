@@ -32,6 +32,7 @@ import { makeThumbnailFile, prepareImageForPublish } from "../lib/image-publish"
 import {
   coinApi,
   coinUnlockKey,
+  fetchMyReports,
   type CoinChallengeDto,
   type CoinOverview,
   type CoinTransactionDto,
@@ -39,6 +40,7 @@ import {
   type GachaPoolDetail,
   type GachaPoolDto,
   type GachaPullResult,
+  type MyReportItem,
   type SubmissionDto,
 } from "./api";
 
@@ -1017,6 +1019,26 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  /* 本人报告列表（null = 还没拉到/拉取失败）：投稿「我的答卷报告」时用它
+     生成可选列表，替代纯手填答卷编号（B2 死路修复——编号只能去别处翻，手填
+     还容易错）。拉取失败不阻塞投稿，回落手填。 */
+  const [myReports, setMyReports] = useState<MyReportItem[] | null>(null);
+
+  useEffect(() => {
+    // 只在真的要投答卷报告时才取一次报告列表；已有数据不重复拉。
+    if (type !== "survey_report" || myReports !== null) return;
+    let cancelled = false;
+    fetchMyReports()
+      .then((data) => {
+        if (!cancelled) setMyReports(data.reports);
+      })
+      .catch(() => {
+        if (!cancelled) setMyReports([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, myReports]);
 
   const reload = useCallback(() => {
     coinApi
@@ -1183,7 +1205,44 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
               />
             </label>
           ) : null}
-          {type === "survey_report" || type === "profile_card" ? (
+          {type === "survey_report" ? (
+            <label className="block">
+              <span className="coin-field-label">答卷编号</span>
+              {/* 从本人报告列表直接选（B2 死路修复）：旧实现只能手填数字编号，
+                 用户得先去「我的」翻编号再抄回来。列表没拉到或为空时回落手填。 */}
+              {myReports !== null && myReports.length > 0 ? (
+                <select
+                  className="coin-input"
+                  onChange={(event) => setResponseId(event.target.value)}
+                  value={responseId}
+                >
+                  <option value="">从我的报告里选一份…</option>
+                  {myReports.map((report) => (
+                    <option key={report.responseId} value={String(report.responseId)}>
+                      #{report.responseId} · {report.title}
+                      {report.completedAt ? `（${report.completedAt.slice(0, 10)} 完成）` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {/* 手填兜底：报告列表不可用 / 想投列表之外的编号时仍可手填。 */}
+              <input
+                className={`coin-input${myReports !== null && myReports.length > 0 ? " mt-2" : ""}`}
+                onChange={(event) => setResponseId(event.target.value)}
+                placeholder={
+                  myReports !== null && myReports.length > 0
+                    ? "或手填答卷编号，例如 123"
+                    : "答卷编号（在「我的答卷」里可查看），例如 123"
+                }
+                type="number"
+                value={responseId}
+              />
+              <span className="mt-1 block text-[11px] text-[var(--survey-muted)]">
+                公开的是你本人的答卷报告；其他答题者的内容不会被公开。
+              </span>
+            </label>
+          ) : null}
+          {type === "profile_card" ? (
             <label className="block">
               <span className="coin-field-label">答卷编号（在「我的答卷」里可查看）</span>
               <input

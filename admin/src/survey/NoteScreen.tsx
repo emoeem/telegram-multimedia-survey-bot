@@ -7,6 +7,7 @@ import {
   ImagePlus,
   Loader2,
   MoreHorizontal,
+  MoreVertical,
   Send,
   ShieldCheck,
   Sparkles,
@@ -694,7 +695,7 @@ function ChatView({
           <p className="py-8 text-center text-sm text-[var(--survey-muted)]">还没有人说话，打个招呼吧</p>
         ) : (
           messages.map((message) => (
-            <div key={message.id} className={message.mine ? "flex justify-end" : "flex justify-start"}>
+            <div key={message.id} className={`flex items-end gap-1 ${message.mine ? "justify-end" : "justify-start"}`}>
               <div
                 className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-6 ${
                   message.mine
@@ -726,6 +727,20 @@ function ChatView({
                   />
                 ) : null}
               </div>
+              {/* 可见菜单按钮（B2 死路修复）：举报/拉黑此前只藏在长按 450ms / 桌面
+                 右键里，基本无法被发现。点它与长按、右键开同一个消息菜单
+                 （messageMenu），三个入口共用一套「举报此消息 / 拉黑对方」。 */}
+              {!message.mine && !blocked ? (
+                <button
+                  type="button"
+                  className="survey-icon-btn h-7 w-7 shrink-0"
+                  aria-label="消息操作（举报 / 拉黑）"
+                  title="举报 / 拉黑"
+                  onClick={() => setMessageMenu({ id: message.id, body: message.body })}
+                >
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
           ))
         )}

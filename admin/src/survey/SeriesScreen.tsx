@@ -10,6 +10,7 @@ import {
   markNotificationsSeen,
   toggleSeriesFollow,
   type NotificationDto,
+  type SeriesChapterDto,
   type SeriesDetailDto,
   type SeriesListItemDto,
 } from "./api";
@@ -129,6 +130,37 @@ function SeriesShelfScreen({
   );
 }
 
+/** 章节卡主体：解锁（<a> 跳填写页）与锁定（<button> 展开引导）两分支共用。 */
+function ChapterCardBody({ chapter, index }: { chapter: SeriesChapterDto; index: number }) {
+  return (
+    <>
+      <span
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
+          chapter.completed
+            ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+            : "bg-[var(--survey-bg)] text-[var(--survey-muted)]"
+        }`}
+      >
+        {chapter.completed ? <Check className="h-4 w-4" /> : chapter.order || index + 1}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">{chapter.title}</span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--survey-muted)]">
+          {chapter.completed ? "已读完" : chapter.locked ? "需解锁" : "未开始"}
+          {chapter.coinPrice !== null && chapter.coinPrice > 0 ? (
+            <span className="inline-flex items-center gap-0.5">
+              <Lock className="h-3 w-3" />
+              <Coins className="h-3 w-3" aria-hidden="true" />
+              {chapter.coinPrice}
+            </span>
+          ) : null}
+          {chapter.contentRating === "r18" ? <span className="font-semibold text-[var(--app-danger)]">18+</span> : null}
+        </span>
+      </span>
+    </>
+  );
+}
+
 function SeriesDetailScreen({
   detail,
   themeState,
@@ -139,6 +171,8 @@ function SeriesDetailScreen({
   onReload: () => void;
 }) {
   const [followBusy, setFollowBusy] = useState(false);
+  /* 锁定章节的解锁引导展开态：记录当前展开引导的 chapter.surveyId（null = 全部收起）。 */
+  const [unlockHintId, setUnlockHintId] = useState<number | null>(null);
   const follow = useCallback(async () => {
     if (!detail || followBusy) return;
     setFollowBusy(true);
@@ -192,44 +226,52 @@ function SeriesDetailScreen({
         <ol className="flex flex-col gap-2">
           {detail.chapters.map((chapter, index) => (
             <li key={chapter.surveyId}>
-              <a
-                href={chapter.locked ? undefined : `/s/${chapter.surveyId}`}
-                aria-disabled={chapter.locked || undefined}
-                className={`survey-card flex items-center gap-3 px-4 py-3 ${
-                  chapter.locked
-                    ? "pointer-events-none opacity-60"
-                    : "transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
-                }`}
-              >
-                <span
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                    chapter.completed
-                      ? "bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
-                      : "bg-[var(--survey-bg)] text-[var(--survey-muted)]"
-                  }`}
+              {chapter.locked ? (
+                <>
+                  {/* 锁定章节（B2 死路修复）：旧实现 href=undefined + pointer-events-none，
+                     显示「需解锁+🔒N金币」却点不动，用户卡住。现在点击展开解锁引导——
+                     金币门就长在本章填写页（/s/{id} 的 CoinGateScreen），进页确认即可。 */}
+                  <button
+                    type="button"
+                    aria-expanded={unlockHintId === chapter.surveyId}
+                    className="survey-card flex w-full items-center gap-3 px-4 py-3 text-left opacity-80"
+                    onClick={() => setUnlockHintId(unlockHintId === chapter.surveyId ? null : chapter.surveyId)}
+                  >
+                    <ChapterCardBody chapter={chapter} index={index} />
+                    <Lock className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+                  </button>
+                  {unlockHintId === chapter.surveyId ? (
+                    <div className="survey-card mt-2 p-3">
+                      <p className="text-[12px] leading-5 text-[var(--survey-body)]">
+                        {chapter.coinPrice !== null && chapter.coinPrice > 0
+                          ? `本章需 ${chapter.coinPrice} 金币解锁：点「去本章解锁」进入填写页，页面会弹出金币解锁面板，确认后立即放行（解锁后可永久填写）。`
+                          : "本章可免费领取：点「去本章解锁」进入填写页，按提示领取后即可填写。"}
+                        {chapter.coinPrice !== null && chapter.coinPrice > 0
+                          ? "金币不够时，先去金币中心签到或做任务。"
+                          : ""}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <a className="btn btn-primary px-4 text-xs" href={`/s/${chapter.surveyId}`}>
+                          <Lock className="h-3.5 w-3.5" />
+                          去本章解锁
+                        </a>
+                        <a className="btn px-4 text-xs" href="/coins">
+                          <Coins className="h-3.5 w-3.5" />
+                          金币中心
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <a
+                  href={`/s/${chapter.surveyId}`}
+                  className="survey-card flex items-center gap-3 px-4 py-3 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
                 >
-                  {chapter.completed ? <Check className="h-4 w-4" /> : chapter.order || index + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
-                    {chapter.title}
-                  </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--survey-muted)]">
-                    {chapter.completed ? "已读完" : chapter.locked ? "需解锁" : "未开始"}
-                    {chapter.coinPrice !== null && chapter.coinPrice > 0 ? (
-                      <span className="inline-flex items-center gap-0.5">
-                        <Lock className="h-3 w-3" />
-                        <Coins className="h-3 w-3" aria-hidden="true" />
-                        {chapter.coinPrice}
-                      </span>
-                    ) : null}
-                    {chapter.contentRating === "r18" ? (
-                      <span className="font-semibold text-[var(--app-danger)]">18+</span>
-                    ) : null}
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-              </a>
+                  <ChapterCardBody chapter={chapter} index={index} />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+                </a>
+              )}
             </li>
           ))}
         </ol>

@@ -15,6 +15,7 @@ import { PageHeader } from "./PageHeader";
 import { prepareImageForPublish } from "../lib/image-publish";
 import { preloadSubmitForm, resetSubmitFormPreload, type SubmitFormDto } from "./submit-form-preload";
 import { FormSkeleton } from "./FormSkeleton";
+import { submitReplyRequest, SUBMIT_REPLY_MAX } from "./submit-reply";
 import { SURVEY_CARD, SURVEY_CHIP, SURVEY_INPUT, SURVEY_PAGE, SURVEY_PRIMARY_BTN } from "./ui";
 
 const VIEWER_KEY = "webSubmitViewer";
@@ -547,6 +548,12 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
   const [items, setItems] = useState<InboxItemDto[] | null>(null);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Record<number, string>>({});
+  /* 回复评论：旧实现是 window.prompt——Telegram WebView 里被禁用（返回 null 且
+   * 不提示），点了按钮输入就凭空消失。改成行内展开的输入框：展开哪条评论 +
+   * 草稿内容放在这里，输入不丢，空文本不发请求（判定见 submit-reply.ts）。 */
+  const [replyTarget, setReplyTarget] = useState<{ submissionId: number; messageId: number } | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!viewer) {
@@ -568,7 +575,7 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
   }, [load]);
 
   const post = useCallback(
-    async (path: string, payload: Record<string, unknown>) => {
+    async (path: string, payload: object): Promise<boolean> => {
       setError("");
       try {
         const response = await fetch(path, {
@@ -579,8 +586,10 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
         const data = (await response.json()) as { ok: boolean; error?: string };
         if (!data.ok) throw new Error(data.error ?? "操作失败");
         await load();
+        return true;
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
+        return false;
       }
     },
     [load, viewer],
@@ -663,22 +672,63 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
                       </p>
                       <p className="mt-1 text-[var(--survey-heading)]">{comment.text}</p>
                       {!comment.isMine ? (
-                        <button
-                          className="mt-1 text-[12px] font-medium text-[var(--survey-primary)]"
-                          onClick={() => {
-                            const text = window.prompt("回复这条评论（会以「作者回复」公开出现在评论区）：");
-                            if (text && text.trim()) {
-                              void post("/api/submit/reply", {
-                                submissionId: item.id,
-                                commentMessageId: comment.messageId,
-                                text: text.trim(),
-                              });
-                            }
-                          }}
-                          type="button"
-                        >
-                          ↩️ 回复这条评论
-                        </button>
+                        replyTarget?.submissionId === item.id && replyTarget.messageId === comment.messageId ? (
+                          /* 行内回复框（见 replyTarget 的注释）：不用 prompt/弹窗，
+                             键盘遮挡问题与下方管理员留言输入同一条路。 */
+                          <div className="mt-1 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] p-2">
+                            <textarea
+                              autoFocus
+                              className={`${INPUT} min-h-[44px]`}
+                              maxLength={SUBMIT_REPLY_MAX}
+                              onChange={(event) => setReplyDraft(event.target.value)}
+                              placeholder="回复这条评论（会以「作者回复」公开出现在评论区）…"
+                              value={replyDraft}
+                            />
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                className={`${BTN} px-3 py-1.5`}
+                                disabled={replyBusy || !replyDraft.trim()}
+                                onClick={() => {
+                                  const request = submitReplyRequest(replyDraft, item.id, comment.messageId);
+                                  if (!request || replyBusy) return;
+                                  setReplyBusy(true);
+                                  void post("/api/submit/reply", request).then((ok) => {
+                                    setReplyBusy(false);
+                                    // 失败时保留草稿，用户可直接重发（错误横幅在列表顶部）。
+                                    if (ok) {
+                                      setReplyDraft("");
+                                      setReplyTarget(null);
+                                    }
+                                  });
+                                }}
+                                type="button"
+                              >
+                                {replyBusy ? "发送中…" : "发送回复"}
+                              </button>
+                              <button
+                                className="px-2 py-1.5 text-[12px] text-[var(--survey-muted)]"
+                                onClick={() => {
+                                  setReplyTarget(null);
+                                  setReplyDraft("");
+                                }}
+                                type="button"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            className="mt-1 text-[12px] font-medium text-[var(--survey-primary)]"
+                            onClick={() => {
+                              setReplyTarget({ submissionId: item.id, messageId: comment.messageId });
+                              setReplyDraft("");
+                            }}
+                            type="button"
+                          >
+                            ↩️ 回复这条评论
+                          </button>
+                        )
                       ) : null}
                     </div>
                   ))

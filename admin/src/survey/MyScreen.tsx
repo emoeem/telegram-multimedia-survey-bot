@@ -120,37 +120,52 @@ function ReportList() {
     };
   }, []);
 
-  // 没有报告（或接口不可用）时不占版面：数据总览里的「已完成问卷」已经说了数量。
-  if (!reports || reports.length === 0) return null;
+  // 还在加载不占版面；没有报告时渲染空态而不是整块消失（B2 死路修复）：
+  // 欢迎卡承诺「报告都在『我的』里」，新用户第一次进来这里必须有话可说。
+  if (!reports) return null;
 
   return (
     <section className="survey-card p-4">
-      <SectionHeader icon={FileCheck2} title="我的报告" count={reports.length} />
-      <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
-        {reports.map((report) => (
-          <li key={report.responseId} className="flex items-center gap-2 py-2.5">
-            <a href={report.reportUrl} className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
-                  {report.title}
+      <SectionHeader icon={FileCheck2} title="我的报告" count={reports.length > 0 ? reports.length : undefined} />
+      {reports.length === 0 ? (
+        <div className="py-3 text-center">
+          <p className="text-[13px] leading-6 text-[var(--survey-muted)]">
+            还没有报告。填完一份问卷，报告就会出现在这里。
+          </p>
+          <a
+            href="/s"
+            className="mt-3 inline-flex rounded-full border border-[var(--survey-card-border)] px-4 py-1.5 text-[12px] font-semibold text-[var(--survey-primary)]"
+          >
+            去答题 →
+          </a>
+        </div>
+      ) : (
+        <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
+          {reports.map((report) => (
+            <li key={report.responseId} className="flex items-center gap-2 py-2.5">
+              <a href={report.reportUrl} className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
+                    {report.title}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                    {report.completedAt ? `${report.completedAt.slice(0, 10)} 完成` : "已完成"}
+                  </span>
                 </span>
-                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
-                  {report.completedAt ? `${report.completedAt.slice(0, 10)} 完成` : "已完成"}
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-            </a>
-            <a
-              href={report.pdfUrl}
-              download
-              className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
-            >
-              下载 PDF
-            </a>
-            <ReportShareButton responseId={report.responseId} />
-          </li>
-        ))}
-      </ul>
+                <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+              </a>
+              <a
+                href={report.pdfUrl}
+                download
+                className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary)]"
+              >
+                下载 PDF
+              </a>
+              <ReportShareButton responseId={report.responseId} />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
