@@ -20,6 +20,7 @@ import {
 import {
   api,
   apiSend,
+  retryControlJob,
   retryReportDelivery,
   type DeploymentTaskView,
   type DeploymentView,
@@ -57,7 +58,7 @@ const taskStatusLabel: Record<DeploymentTaskView["status"], string> = {
   failed: "失败",
 };
 
-/** 任务中心的四类既有任务；`delivery` 是唯一有人工重试端点的类型。 */
+/** 任务中心的四类既有任务；四类都有人工重试入口（通宵批次 B6 收口，此前只有投递可重试）。 */
 const jobKindLabel: Record<JobFailureView["kind"], string> = {
   delivery: "报告投递",
   image_generator: "图片生成",
@@ -383,11 +384,15 @@ export function ControlCenterPage() {
     ];
   }, [jobs]);
 
-  // 重试复用既有端点 POST /api/admin/report-deliveries/:id/retry（自带归属
-  // 校验与 report.retry 审计）；act() 完成后会整体 load()，任务列表一并刷新。
-  const retryJobDelivery = (row: JobFailureView) =>
+  // 重试：报告投递复用既有端点 POST /api/admin/report-deliveries/:id/retry
+  // （自带归属校验与 report.retry 审计）；图片生成/结果渲染/导出走
+  // POST /api/control/jobs/:kind/:id/retry（终态校验 + 幂等，重复点击不会重复
+  // 投递）。act() 完成后会整体 load()，任务列表一并刷新——重试成功后任务
+  // 离开失败明细（回到排队/待处理）。
+  const retryJob = (row: JobFailureView) =>
     void act(async () => {
-      await retryReportDelivery(row.id);
+      if (row.kind === "delivery") await retryReportDelivery(row.id);
+      else await retryControlJob(row.kind, row.id);
     });
 
   const resetDeployForm = () => {
@@ -654,7 +659,8 @@ export function ControlCenterPage() {
             <h2>后台任务</h2>
             <p className="card-sub">
               报告投递、图片生成、结果渲染与导出任务的失败与积压一览（最近失败明细）。
-              人工重试只对报告投递开放——复用既有重试端点；其余类型暂无端点，入口置灰。
+              人工重试：报告投递走既有重试端点；图片生成/结果渲染/导出走 /api/control/jobs/:kind/:id/retry（仅 failed
+              终态，服务端幂等）。
             </p>
           </div>
           <select
@@ -708,23 +714,23 @@ export function ControlCenterPage() {
                 </details>
               ) : null}
               <div className="mt-2 flex gap-2">
-                {row.kind === "delivery" ? (
+                {row.kind === "delivery" || row.status === "failed" ? (
                   <button
                     className="btn btn-xs"
                     data-testid={`job-retry-${row.kind}-${row.id}`}
                     disabled={busy}
-                    title="重新入队该报告投递（复用既有重试端点，写入 report.retry 审计）"
-                    onClick={() => retryJobDelivery(row)}
+                    title={
+                      row.kind === "delivery"
+                        ? "重新入队该报告投递（复用既有重试端点，写入 report.retry 审计）"
+                        : "重新入队该失败任务（服务端终态校验 + 幂等，重复点击不会重复投递）"
+                    }
+                    onClick={() => retryJob(row)}
                   >
                     <RefreshCw className="h-3 w-3" />
-                    重试投递
+                    {row.kind === "delivery" ? "重试投递" : "重试任务"}
                   </button>
                 ) : (
-                  <button
-                    className="btn btn-xs"
-                    disabled
-                    title="该任务类型暂无人工重试端点，队列恢复流程（stale 扫描）会自动接管"
-                  >
+                  <button className="btn btn-xs" disabled title="只有失败终态任务可人工重试">
                     重试不可用
                   </button>
                 )}

@@ -115,6 +115,19 @@ export function retryReportDelivery(id: number): Promise<{ ok: boolean }> {
   return apiSend("POST", `/api/admin/report-deliveries/${id}/retry`, {});
 }
 
+/**
+ * 人工重试三类终态（failed）任务：图片生成 / 结果渲染 / 导出（通宵批次 B6
+ * 收口——此前这三类前端入口置灰，failed 只能等 30 分钟一次的恢复 cron）。
+ * 仅 failed 终态可重试，服务端幂等：条件 UPDATE 抢占，重复点击不会重复投递、
+ * 不会产生重复产物。报告投递仍走 retryReportDelivery（带归属校验的既有端点）。
+ */
+export function retryControlJob(
+  kind: Exclude<JobFailureView["kind"], "delivery">,
+  id: number,
+): Promise<{ ok: boolean; status: string }> {
+  return apiSend("POST", `/api/control/jobs/${kind}/${id}/retry`, {});
+}
+
 /** 内容分级（0080）：单卷设置（管理员可双向，创作者只能 all→r18）。 */
 export function setSurveyRating(surveyId: number, rating: "all" | "r18"): Promise<{ updatedAt: string }> {
   return apiSend("PATCH", `/api/admin/surveys/${surveyId}`, { contentRating: rating });
@@ -291,8 +304,9 @@ export interface PublicationCertShareView {
 /**
  * 任务中心（GET /api/control/jobs）：四类既有任务表的失败/积压聚合。
  *
- * kind 与服务端 job-overview.repository 的口径一致；`delivery` 是唯一有
- * 人工重试端点的类型（retryReportDelivery），其余三类前端入口置灰。
+ * kind 与服务端 job-overview.repository 的口径一致；四类都有人工重试入口：
+ * `delivery` 走 retryReportDelivery（既有归属校验端点），其余三类走
+ * retryControlJob（POST /api/control/jobs/:kind/:id/retry，仅 failed 终态）。
  */
 export interface JobFailureView {
   kind: "delivery" | "image_generator" | "render" | "export";

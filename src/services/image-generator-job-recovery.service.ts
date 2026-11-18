@@ -125,3 +125,43 @@ export async function recoverStaleImageGeneratorJobs(
   }
   return { requeued, failed };
 }
+
+export type ImageGeneratorRetryResult =
+  { outcome: "requeued"; status: "queued" } | { outcome: "not_found" } | { outcome: "not_retryable"; status: string };
+
+/**
+ * 人工重试一条 failed 的图片生成任务(控制台 POST
+ * /api/control/jobs/image_generator/:id/retry,通宵批次 B6;此前 failed 只能
+ * 等 30 分钟一次的恢复 cron——而恢复扫描只回收 processing/queued 卡死的行,
+ * 对 failed 终态行从不回头)。语义与上面的恢复扫描一致:条件 UPDATE 抢占
+ * (WHERE status='failed',两个并发重试只有一个赢),赢者经同一 sender 重投
+ * 一条队列消息——与 recoverStaleImageGeneratorJobs 走完全相同的投递路径,
+ * 不新造调度。attempts 不重置:恢复扫描的终态口径(attempts>=3 不再自动
+ * 投递)不被人工重试绕过,一次重试只多给一次认领机会,不会形成无限自动重试。
+ */
+export async function retryFailedImageGeneratorJob(
+  db: D1Database,
+  sender: ExportJobSender,
+  id: number,
+): Promise<ImageGeneratorRetryResult> {
+  const update = await db
+    .prepare(
+      `UPDATE image_generator_jobs
+       SET status = 'queued', error_message = NULL, completed_at = NULL
+       WHERE id = ? AND status = 'failed'`,
+    )
+    .bind(id)
+    .run();
+  if (update.meta?.changes) {
+    // 直接 await 不吞错:行已回 queued,投递失败时端点如实给 503;丢掉的队列
+    // 消息由上面 queued 扫描的 10 分钟阈值兜底重投(见 staleQueuedMs 注释)。
+    await sender.send({ kind: "image_generator", jobId: id } satisfies ImageGeneratorJobMessage);
+    return { outcome: "requeued", status: "queued" };
+  }
+  const job = await db
+    .prepare("SELECT status FROM image_generator_jobs WHERE id = ? LIMIT 1")
+    .bind(id)
+    .first<{ status: string }>();
+  if (!job) return { outcome: "not_found" };
+  return { outcome: "not_retryable", status: job.status };
+}

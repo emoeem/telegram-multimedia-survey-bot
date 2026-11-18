@@ -133,3 +133,44 @@ export async function recoverStaleResultVisualJobs(
   }
   return { requeued, failed };
 }
+
+export type ResultVisualRetryResult =
+  { outcome: "requeued"; status: "queued" } | { outcome: "not_found" } | { outcome: "not_retryable"; status: string };
+
+/**
+ * 人工重试一条 failed 的结果渲染任务(控制台 POST
+ * /api/control/jobs/render/:id/retry,通宵批次 B6)。语义与上面的恢复扫描
+ * 一致:条件 UPDATE 抢占(WHERE status='failed'),赢者经同一 sender 重投一条
+ * 队列消息,不新造调度;attempts 不重置(理由同图片生成重试)。
+ *
+ * 两个已知偏差如实说明:
+ *   1. started_at 不清空——与 releaseRenderJobForRetry 重入队同款:重入队行
+ *      按旧 started_at/created_at 会被 queued 扫描立即视为超时,代价只是每轮
+ *      一条被认领仲裁(WHERE status='queued')拦下的重复消息,无害;
+ *   2. 同档案+模板+版本已有活跃(queued/processing)行时,重入队会撞
+ *      idx_render_jobs_active 部分唯一索引(0035)——错误上抛,由端点转 409。
+ */
+export async function retryFailedResultVisualJob(
+  db: D1Database,
+  sender: ExportJobSender,
+  id: number,
+): Promise<ResultVisualRetryResult> {
+  const update = await db
+    .prepare(
+      `UPDATE render_jobs
+       SET status = 'queued', error_code = NULL, error_message = NULL, completed_at = NULL
+       WHERE id = ? AND status = 'failed'`,
+    )
+    .bind(id)
+    .run();
+  if (update.meta?.changes) {
+    await sender.send({ kind: "result_visual", jobId: id } satisfies ResultVisualJobMessage);
+    return { outcome: "requeued", status: "queued" };
+  }
+  const job = await db
+    .prepare("SELECT status FROM render_jobs WHERE id = ? LIMIT 1")
+    .bind(id)
+    .first<{ status: string }>();
+  if (!job) return { outcome: "not_found" };
+  return { outcome: "not_retryable", status: job.status };
+}

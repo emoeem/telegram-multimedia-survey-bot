@@ -35,6 +35,16 @@ import { resolveReportChannel } from "../services/report-delivery.service";
 import { saveSystemSetting } from "../services/system-settings.service";
 import { resolvePublicOrigin } from "../services/public-origin.service";
 import { getJobOverview } from "../db/repositories/job-overview.repository";
+import { createExportJobSender } from "../services/export-job-dispatch.service";
+import {
+  retryFailedImageGeneratorJob,
+  type ImageGeneratorRetryResult,
+} from "../services/image-generator-job-recovery.service";
+import {
+  retryFailedResultVisualJob,
+  type ResultVisualRetryResult,
+} from "../services/result-visual-job-recovery.service";
+import { retryFailedExportJob, type ExportJobRetryResult } from "../services/export-queue.service";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const text = (v: unknown, name: string, min = 1, max = 256) => {
@@ -99,6 +109,12 @@ export async function handleControlApiRequest(
     CACHE?: KVNamespace | null;
     REPORT_CHANNEL_ID?: string | null;
     PUBLIC_ORIGIN?: string;
+    // 任务人工重试(POST /api/control/jobs/:kind/:id/retry)重投队列消息用的
+    // 字段,原样透传给 createExportJobSender(与 cron 恢复扫描同一发送器)。
+    BOT_TOKEN?: string;
+    EXPORT_QUEUE?: unknown;
+    SELF?: Fetcher;
+    WEBHOOK_SECRET?: string;
   },
   auth: { isAdmin: boolean; userId: number | null },
 ): Promise<Response | null> {
@@ -456,6 +472,82 @@ export async function handleControlApiRequest(
       const limitRaw = Number(url.searchParams.get("limit") ?? 20);
       const limit = Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(50, limitRaw) : 20;
       return json({ ok: true, ...(await getJobOverview(env.DB, limit)) });
+    }
+
+    const jobRetryMatch = url.pathname.match(/^\/api\/control\/jobs\/([a-z_]+)\/(\d+)\/retry$/);
+    if (jobRetryMatch && request.method === "POST") {
+      // 人工重试三类终态（failed）任务（通宵批次 B6 / 已知待办 3）：图片生成、
+      // 结果渲染、导出。此前只有报告投递有重试端点，这三类 failed 只能等 30
+      // 分钟一次的恢复 cron 兜底。调度语义完全复用既有恢复路径：条件 UPDATE
+      // 抢占（WHERE status='failed'，并发重试只有一个赢）+ createExportJobSender
+      // 重投队列消息——与 cron 的 recoverStale* 恢复扫描同一条投递链路，不新造
+      // 调度。报告投递不在此白名单：它有带归属校验与审计的既有端点
+      // （POST /api/admin/report-deliveries/:id/retry）。鉴权由上方统一的
+      // isAdmin 门禁（403）完成；实际回队成功才记审计。
+      const kind = jobRetryMatch[1];
+      const jobId = Number(jobRetryMatch[2]);
+      if (kind !== "image_generator" && kind !== "render" && kind !== "export")
+        return json({ ok: false, error: "unknown_job_kind" }, 404);
+      const sender = createExportJobSender({
+        DB: env.DB,
+        BOT_TOKEN: env.BOT_TOKEN ?? "",
+        EXPORT_QUEUE: env.EXPORT_QUEUE,
+        // exactOptionalPropertyTypes：可选字段只在真有值时传。
+        ...(env.SELF ? { SELF: env.SELF } : {}),
+        ...(env.WEBHOOK_SECRET ? { WEBHOOK_SECRET: env.WEBHOOK_SECRET } : {}),
+      });
+      let result: ImageGeneratorRetryResult | ResultVisualRetryResult | ExportJobRetryResult;
+      try {
+        result =
+          kind === "image_generator"
+            ? await retryFailedImageGeneratorJob(env.DB, sender, jobId)
+            : kind === "render"
+              ? await retryFailedResultVisualJob(env.DB, sender, jobId)
+              : await retryFailedExportJob(env.DB, sender, jobId);
+      } catch (error) {
+        // 渲染类重入队可能撞 idx_render_jobs_active 部分唯一索引（0035，同
+        // 档案+模板已有活跃任务）——转 409 让管理员先看活跃任务；其余投递
+        // 失败时行已回队，恢复扫描会兜底重投，如实给 503。
+        if (/UNIQUE constraint failed/i.test(error instanceof Error ? error.message : String(error)))
+          return json(
+            {
+              ok: false,
+              error: "render_job_conflict",
+              message: "同一结果档案与模板已有排队/处理中的渲染任务，等它出结果即可，无需重试旧的失败行",
+            },
+            409,
+          );
+        console.error("Job retry enqueue failed", { kind, jobId, error });
+        return json(
+          { ok: false, error: "enqueue_failed", message: "任务已回到队列，但队列投递失败；恢复扫描会在下一轮自动重投" },
+          503,
+        );
+      }
+      if (result.outcome === "not_found") return json({ ok: false, error: "job_not_found" }, 404);
+      if (result.outcome === "target_unresolvable")
+        return json(
+          { ok: false, error: "export_target_unresolvable", message: "无法解析导出接收人（原请求人不存在），无法重试" },
+          409,
+        );
+      if (result.outcome === "not_retryable")
+        // 非终态一律 4xx：重试只对 failed 终态有意义；重复点击不会重复投递、
+        // 不会产生重复产物（条件 UPDATE 抢占保证）。
+        return json(
+          { ok: false, error: "job_not_retryable", message: `任务当前状态为 ${result.status}，只有失败终态可人工重试` },
+          409,
+        );
+      try {
+        await createAuditLog(env.DB, {
+          actorUserId: auth.userId,
+          action: "job.manual_retry",
+          entityType: `${kind}_job`,
+          entityId: String(jobId),
+          after: { kind, jobId, status: result.status },
+        });
+      } catch (error) {
+        console.error("Job retry audit log failed", error);
+      }
+      return json({ ok: true, status: result.status });
     }
 
     if (url.pathname === "/api/control/runner/tasks/claim" && request.method === "POST") {

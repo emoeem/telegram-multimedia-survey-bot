@@ -182,8 +182,9 @@ function ReportList() {
 }
 
 /**
- * 个人画像（Wrapped，0085）：跨问卷足迹的可分享公开页。创建幂等——
- * 同一个人的画像永远只有一个链接，重新生成只是刷新快照。
+ * 答卷足迹（Wrapped，0085）：跨问卷足迹的可分享公开页。创建幂等——
+ * 同一个人的足迹页永远只有一个链接，重新生成只是刷新快照。
+ * （B5 命名合一：卡片名不再与「档案」口径撞车——答卷公开档案统一叫「答卷档案」。）
  */
 function ProfileShareCard() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -222,7 +223,7 @@ function ProfileShareCard() {
   };
   return (
     <section className="survey-card p-4">
-      <SectionHeader icon={UserRound} title="个人画像" />
+      <SectionHeader icon={UserRound} title="答卷足迹" />
       <p className="mt-1 text-xs text-[var(--survey-muted)]">
         把你的答卷足迹（完成卷数、结局收集、成就）做成一张可分享的公开页。只含聚合数字，不含任何答案。
       </p>
@@ -265,7 +266,7 @@ function ProfileShareCard() {
           disabled={busy}
           onClick={act}
         >
-          {busy ? "生成中…" : "生成我的个人画像"}
+          {busy ? "生成中…" : "生成我的答卷足迹"}
         </button>
       )}
     </section>
@@ -314,7 +315,7 @@ function ReportShareButton({ responseId }: { responseId: number }) {
 }
 
 /**
- * 「我的」个人中心（/me）：当前参与者身份下的答卷、资料卡、徽章、挑战数据与
+ * 「我的」个人中心（/me）：当前参与者身份下的答卷、答卷档案、徽章、挑战数据与
  * 外观设置的统一入口。
  */
 export function MyScreen() {
@@ -347,7 +348,7 @@ export function MyScreen() {
     };
   }, [retryKey]);
 
-  /** 用当前资料卡生成展示页草稿；展示区是策展空间，公开与否归管理员。 */
+  /** 用当前答卷档案提交展示区草稿；展示区是策展空间，公开与否归管理员。 */
   const generateShowcase = async () => {
     setShowcaseBusy(true);
     setShowcaseError(null);
@@ -370,7 +371,7 @@ export function MyScreen() {
       <PageHeader
         helpKey="me"
         title="我的"
-        subtitle="你的答卷、资料卡与挑战记录"
+        subtitle="你的答卷、档案与挑战记录"
         titleIcon={<UserRound className="h-4 w-4" />}
         backHref={null}
         wide={false}
@@ -412,7 +413,7 @@ export function MyScreen() {
                 </p>
                 <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
                   {overview.identity.telegram
-                    ? "答卷、挑战与资料卡都会归属到这个身份"
+                    ? "答卷、挑战与档案都会归属到这个身份"
                     : overview.identity.email
                       ? "已注册登录，答卷与进度都归属这个账号；绑定 Telegram 后成绩可上榜"
                       : "注册或登录（邮箱即可）后答卷进度才能找回"}
@@ -437,18 +438,12 @@ export function MyScreen() {
             {/* 纸条聊天（0089）：个人中心的一等入口。 */}
             <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
 
-            <section className="survey-card p-4">
-              <SectionHeader
-                icon={BookOpen}
-                title="系列书架"
-                action={
-                  <a href="/series" className="text-[11px] font-semibold text-[var(--survey-primary)]">
-                    去追更 →
-                  </a>
-                }
-              />
-              <NotificationCenter />
-            </section>
+            {/* 动态与通知（B5）：纸条配对、审核结果、连载更新等全站动态，与书架无关——
+                独立成卡，不再嵌在「系列书架」卡片里渲染。 */}
+            <NotificationCenter />
+
+            {/* 系列书架入口保留原位：分组重排不动入口取舍。 */}
+            <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
 
             <ProfileShareCard />
 
@@ -474,14 +469,15 @@ export function MyScreen() {
               </div>
             </section>
 
-            {/* 我的资料卡 */}
+            {/* 我的答卷档案（B5 命名合一）：答卷公开档案统一叫「答卷档案」，
+                与广场页签、档案详情页同一口径。 */}
             <section className="survey-card p-4">
-              <SectionHeader icon={Link2} title="我的资料卡" />
+              <SectionHeader icon={Link2} title="我的答卷档案" />
               {overview.myProfile ? (
                 <a href={`/plaza/profile/${overview.myProfile.responseId}`} className="mt-2.5 flex items-center gap-2">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-bold text-[var(--survey-heading)]">
-                      {overview.myProfile.heading ?? "未命名资料卡"}
+                      {overview.myProfile.heading ?? "未命名答卷档案"}
                     </span>
                     <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
                       已发布于 {(overview.myProfile.publishedAt || "").slice(0, 10)} · 点击查看
@@ -494,11 +490,11 @@ export function MyScreen() {
                   href={`/s/${overview.profileSurveyId}`}
                   className="mt-3 block rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-center text-[13px] font-semibold text-[var(--survey-primary-content)]"
                 >
-                  填写个人资料问卷，生成我的资料卡
+                  填写答卷档案问卷，生成我的答卷档案
                 </a>
               ) : (
                 <p className="mt-2 text-[13px] text-[var(--survey-muted)]">
-                  资料卡功能还未开放，先去逛逛
+                  答卷档案功能还未开放，先去逛逛
                   <a className="text-[var(--survey-primary)] underline" href="/plaza">
                     广场
                   </a>
@@ -508,19 +504,30 @@ export function MyScreen() {
 
               {overview.myProfile ? (
                 <div className="mt-3 border-t border-[var(--survey-card-border)] pt-3">
-                  <SectionHeader icon={Images} title="展示页" />
+                  {/* 展示区（B5 命名合一）：与 screen-help.ts 的 showcase intro 同一叫法。 */}
+                  <SectionHeader icon={Images} title="展示区" />
                   {overview.showcase?.published ? (
                     <a href={`/showcase?p=${overview.showcase.personId}`} className="mt-2 flex items-center gap-2">
                       <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">我的展示页</span>
-                        <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">已公开 · 点击查看</span>
+                        <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                          已在展示区公开
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">点击查看</span>
                       </span>
                       <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
                     </a>
                   ) : overview.showcase ? (
-                    <p className="mt-2 text-[12px] leading-5 text-[var(--survey-muted)]">
-                      展示页已生成（#{overview.showcase.personId}），管理员审核通过后就会公开。
-                    </p>
+                    <a href="/showcase" className="mt-2 flex items-center gap-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                          已提交展示区
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                          管理员审核通过后就会公开 · 去展示区逛逛
+                        </span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+                    </a>
                   ) : (
                     <button
                       type="button"
@@ -528,7 +535,7 @@ export function MyScreen() {
                       onClick={() => void generateShowcase()}
                       className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-[13px] font-semibold text-[var(--survey-body)] transition hover:bg-[var(--survey-primary-soft)] disabled:opacity-60"
                     >
-                      {showcaseBusy ? "生成中…" : "把我的资料卡生成展示页"}
+                      {showcaseBusy ? "生成中…" : "把我的答卷档案提交到展示区"}
                     </button>
                   )}
                   {showcaseError ? (
