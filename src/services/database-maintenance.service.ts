@@ -91,6 +91,12 @@ const STALE_SENDING_MS = 30 * 60_000;
 const ORPHAN_MEDIA_BATCH_SIZE = 100;
 
 /**
+ * 孤儿清扫批量化（B8）的单语句 IN 分块尺寸：候选批 ≤ 100 行，绑定参数上限
+ * 100 留余量（media.repository.ts 的 MEDIA_ID_BATCH_SIZE 同款口径）。
+ */
+const ORPHAN_MEDIA_CHUNK_SIZE = 90;
+
+/**
  * Ceiling for a single daily maintenance run.
  *
  * D1 meters the free tier at 5,000,000 rows read per day for the whole
@@ -707,25 +713,59 @@ async function deleteOrphanMediaAssets(
     };
   }
   const referencedInJson = new Set<number>([...answerScan.ids, ...settingsScan.ids]);
+  // JSON 保护扫描之外的候选才是本次要删的集合（≤ ORPHAN_MEDIA_BATCH_SIZE 行）。
+  const doomedIds = candidates.ids.filter((id) => !referencedInJson.has(id));
+  // B8 批量化（审计 N+1 清单 database-maintenance.service.ts:410）：旧实现每
+  // 候选 3 次往返（SELECT storage_key → DELETE → 复用检查）。现在三步集合化
+  // （键预取 → IN 批删 → IN 复用检查），按 90/批分块（D1 单语句绑定参数上限
+  // 100，media.repository.ts 的 MEDIA_ID_BATCH_SIZE 同款口径）。IN 列表本身
+  // 以候选批为上界，批量化不改变「单轮至多删 ORPHAN_MEDIA_BATCH_SIZE 行」的
+  // 预算语义。全部走 .run/.all（withReadBudget 记账），旧行里的 .first() 探针
+  // 是不计账的——批量化顺带把记账补齐。
+  //
+  // 时序语义差异（与审计第六节的批量化方案一致）：复用检查从「删完本行立刻
+  // 查」变为「本批删完后统一查」——对共享 storage_key（media:blob:<sha256>
+  // 内容寻址去重）的多候选行，两种时序的终态相同：整批删完仍有行引用的键
+  // 保留 blob，无人引用的键删对象。并发窗口内被第三者抢先删掉的候选行，其
+  // 键若已无引用，本批也会 store.delete 一次——对象可能已被删除，catch 吞掉
+  // 即可（与逐行版 best-effort 相同）；键仍有引用则照常保留，复用保护不变。
+  const keysByDoomedId = new Map<number, string>();
+  if (store && doomedIds.length > 0) {
+    for (let start = 0; start < doomedIds.length; start += ORPHAN_MEDIA_CHUNK_SIZE) {
+      const ids = doomedIds.slice(start, start + ORPHAN_MEDIA_CHUNK_SIZE);
+      const keyRows = await db
+        .prepare(`SELECT id, storage_key storageKey FROM media_assets WHERE id IN (${ids.map(() => "?").join(", ")})`)
+        .bind(...ids)
+        .all<{ id: number; storageKey: string | null }>();
+      for (const row of keyRows.results ?? []) {
+        if (row.storageKey) keysByDoomedId.set(Number(row.id), row.storageKey);
+      }
+    }
+  }
   let deleted = 0;
-  for (const id of candidates.ids) {
-    if (referencedInJson.has(id)) continue;
-    // 先取 storage_key：删行之后就查不到了。
-    const row = store
-      ? await db
-          .prepare("SELECT storage_key storageKey FROM media_assets WHERE id = ? LIMIT 1")
-          .bind(id)
-          .first<{ storageKey: string | null }>()
-      : null;
-    const storageKey = row?.storageKey ?? null;
-    if ((await changes(db.prepare("DELETE FROM media_assets WHERE id = ?").bind(id))) === 0) continue;
-    deleted += 1;
-    if (!store || !storageKey) continue;
-    const stillUsed = await db
-      .prepare("SELECT 1 FROM media_assets WHERE storage_key = ? LIMIT 1")
-      .bind(storageKey)
-      .first();
-    if (!stillUsed) await store.delete(storageKey).catch(() => undefined);
+  for (let start = 0; start < doomedIds.length; start += ORPHAN_MEDIA_CHUNK_SIZE) {
+    const ids = doomedIds.slice(start, start + ORPHAN_MEDIA_CHUNK_SIZE);
+    deleted += await changes(
+      db.prepare(`DELETE FROM media_assets WHERE id IN (${ids.map(() => "?").join(", ")})`).bind(...ids),
+    );
+  }
+  if (store && keysByDoomedId.size > 0) {
+    // 删行之后再查复用：键仍被任何 asset 行引用（别的候选/非候选行）就保留。
+    const keys = [...new Set(keysByDoomedId.values())];
+    const stillUsed = new Set<string>();
+    for (let start = 0; start < keys.length; start += ORPHAN_MEDIA_CHUNK_SIZE) {
+      const chunk = keys.slice(start, start + ORPHAN_MEDIA_CHUNK_SIZE);
+      const usedRows = await db
+        .prepare(
+          `SELECT DISTINCT storage_key storageKey FROM media_assets WHERE storage_key IN (${chunk.map(() => "?").join(", ")})`,
+        )
+        .bind(...chunk)
+        .all<{ storageKey: string }>();
+      for (const row of usedRows.results ?? []) stillUsed.add(row.storageKey);
+    }
+    for (const key of keys) {
+      if (!stillUsed.has(key)) await store.delete(key).catch(() => undefined);
+    }
   }
   return {
     deleted,

@@ -234,15 +234,21 @@ export async function withdrawNote(db: D1Database, ownerHash: string): Promise<b
   return Number(result.meta?.changes ?? 0) > 0;
 }
 
-async function countDrawsToday(db: D1Database, drawerHash: string, timezoneOffsetMinutes: number): Promise<number> {
-  const day = coinDayKey(Date.now(), timezoneOffsetMinutes);
-  // note_draws.created_at 是 UTC ISO；本地日的零点要先换算回 UTC 时刻再比较
-  // （东八区的"今天 0 点"= 昨天 16:00Z）。直接拿 day 拼 T00:00:00Z 会把
-  // 本地日界错当成 UTC 日界，导致当天抽取永远数不到、免费额永远用不完。
-  const cutoff = new Date(Date.parse(day + "T00:00:00Z") - timezoneOffsetMinutes * 60_000).toISOString();
+/** 免费额日界（纯函数，单测锚点）：本地日零点换算回 UTC 时刻。
+ * note_draws.created_at 是 UTC ISO；本地日的零点要先换算回 UTC 时刻再比较
+ * （东八区的"今天 0 点"= 昨天 16:00Z）。直接拿 day 拼 T00:00:00Z 会把
+ * 本地日界错当成 UTC 日界，导致当天抽取永远数不到、免费额永远用不完。
+ * drawNote 的原子占用守卫（insertFreeDrawAtomically）与当日计数共用同一
+ * 时刻切分，避免读判写之间跨日界的口径漂移。 */
+export function drawDayCutoffIso(nowMs: number, timezoneOffsetMinutes: number): string {
+  const day = coinDayKey(nowMs, timezoneOffsetMinutes);
+  return new Date(Date.parse(day + "T00:00:00Z") - timezoneOffsetMinutes * 60_000).toISOString();
+}
+
+async function countDrawsToday(db: D1Database, drawerHash: string, cutoffIso: string): Promise<number> {
   const row = await db
     .prepare(`SELECT COUNT(*) AS n FROM note_draws WHERE drawer_hash = ? AND created_at >= ?`)
-    .bind(drawerHash, cutoff)
+    .bind(drawerHash, cutoffIso)
     .first<{ n: number }>();
   return Number(row?.n ?? 0);
 }
@@ -265,7 +271,45 @@ export interface DrawHit {
 export type DrawResult = DrawOutcome | DrawHit;
 
 /**
- * 抽纸条。先挑后付：池空不扣任何东西；免费额够走免费，否则原子扣金币。
+ * 免费额原子占用（B8 · 并发收口）：把「当日已抽次数 < 免费额」的判定下推进
+ * 插入语句本体——`INSERT ... SELECT ... WHERE (SELECT COUNT(*) ...) < N` 的
+ * 条件与插入同语句求值，D1 对写事务的串行化保证并发双请求最多把免费额吃到
+ * 上限（旧的读-判-写两段式会被并发双吃）。守卫未生效（changes=0）说明额度
+ * 已被并发用尽，调用方转金币路径。
+ * 会话行与抽取行同 batch、以 EXISTS(本次 free 抽取行) 为前提接续——两行
+ * 同生共死（真 D1 batch 是事务），不会留下「有抽取没会话」的孤儿。
+ */
+async function insertFreeDrawAtomically(
+  db: D1Database,
+  drawerHash: string,
+  noteId: number,
+  now: string,
+  cutoffIso: string,
+): Promise<boolean> {
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO note_draws (drawer_hash, note_id, kind, created_at)
+         SELECT ?, ?, 'free', ?
+         WHERE (SELECT COUNT(*) FROM note_draws WHERE drawer_hash = ? AND created_at >= ?) < ?`,
+      )
+      .bind(drawerHash, noteId, now, drawerHash, cutoffIso, FREE_DRAWS_PER_DAY),
+    db
+      .prepare(
+        `INSERT INTO note_threads (note_id, drawer_hash, status, created_at)
+         SELECT ?, ?, 'active', ?
+         WHERE EXISTS (SELECT 1 FROM note_draws
+                        WHERE drawer_hash = ? AND note_id = ? AND kind = 'free' AND created_at = ?)
+         ON CONFLICT(note_id, drawer_hash) DO NOTHING`,
+      )
+      .bind(noteId, drawerHash, now, drawerHash, noteId, now),
+  ]);
+  return Number(results[0]?.meta?.changes ?? 0) > 0;
+}
+
+/**
+ * 抽纸条。先挑后付：池空不扣任何东西；免费额够走免费（占用原子，见
+ * insertFreeDrawAtomically），否则原子扣金币。
  * 幂等键由客户端带来（防双击双扣），格式 `note:<uuid>` 由 HTTP 层校验；
  * 入账前再重组为参与者作用域账本键 `note:<drawerHash>:<uuid>`（对齐
  * checkin.service.ts / challenge.service.ts 的既有前缀模式）——
@@ -315,28 +359,25 @@ export async function drawNote(
   if (!candidate) return { ok: true, empty: true };
 
   const cfg = await loadCoinConfig(db);
-  const drawsToday = await countDrawsToday(db, drawerHash, cfg.timezoneOffsetMinutes);
+  const cutoffIso = drawDayCutoffIso(Date.now(), cfg.timezoneOffsetMinutes);
+  const drawsToday = await countDrawsToday(db, drawerHash, cutoffIso);
   const decision = decideDrawKind(drawsToday);
 
-  const insertDraw = (kind: "free" | "coin") => ({
-    sql: `INSERT INTO note_draws (drawer_hash, note_id, kind, created_at) VALUES (?, ?, ?, ?)`,
-    params: [drawerHash, candidate.id, kind, now],
-  });
-  const insertThread = {
-    sql: `INSERT INTO note_threads (note_id, drawer_hash, status, created_at) VALUES (?, ?, 'active', ?)
-          ON CONFLICT(note_id, drawer_hash) DO NOTHING`,
-    params: [candidate.id, drawerHash, now],
-  };
+  // 最终生效的抽取种类：免费占用失败转金币时，回执的 kind/freeLeft 必须按
+  // 金币口径返回（客户端按它展示扣费），不能沿用预判的 free。
+  let appliedKind: "free" | "coin" = decision.kind;
+  let appliedFreeLeft = decision.freeLeft;
 
-  if (decision.kind === "free") {
-    await db.batch([
-      db.prepare(insertDraw("free").sql).bind(...insertDraw("free").params),
-      db.prepare(insertThread.sql).bind(...insertThread.params),
-    ]);
-  } else {
+  // 金币路径（免费额不足/并发被用尽的共用出口）：扣费由 runSpendBatch 的
+  // 守卫流水原子完成；抽取行以「本次扣款确实生效」（charged 守卫）为前提，
+  // 会话行再以「本次抽取行确实落库」为前提（EXISTS 同人同纸条同刻的 coin
+  // 行）——三层递进，余额在预检后、batch 前被并发抽干时三行都不生效，
+  // 不会留下「有会话没扣款」的孤儿（B8 修正的旧隐患）。
+  // 返回非空 DrawHit = 真并发双提交输家的幂等回放，调用方必须直接返回它。
+  const chargeCoinDraw = async (costCoins: number): Promise<DrawHit | null> => {
     const account = await getCoinAccount(db, drawerHash);
-    if ((account?.balance ?? 0) < decision.costCoins) {
-      throw noteError("insufficient_balance", `金币不足：抽纸条需要 ${decision.costCoins} 金币`);
+    if ((account?.balance ?? 0) < costCoins) {
+      throw noteError("insufficient_balance", `金币不足：抽纸条需要 ${costCoins} 金币`);
     }
     const outcome = await runSpendBatch(
       db,
@@ -344,7 +385,7 @@ export async function drawNote(
         participantHash: drawerHash,
         userId,
         // runSpendBatch 约定收正数金额（扣款由它内部取负入账）。
-        amount: decision.costCoins,
+        amount: costCoins,
         kind: "note_draw",
         idempotencyKey: ledgerKey,
         refType: "note",
@@ -358,7 +399,14 @@ export async function drawNote(
                 SELECT ?, ?, 'coin', ? WHERE ${charged.sql}`,
           params: [drawerHash, candidate.id, now, ...charged.params],
         },
-        insertThread,
+        {
+          sql: `INSERT INTO note_threads (note_id, drawer_hash, status, created_at)
+                SELECT ?, ?, 'active', ?
+                WHERE EXISTS (SELECT 1 FROM note_draws
+                               WHERE drawer_hash = ? AND note_id = ? AND kind = 'coin' AND created_at = ?)
+                ON CONFLICT(note_id, drawer_hash) DO NOTHING`,
+          params: [candidate.id, drawerHash, now, drawerHash, candidate.id, now],
+        },
       ],
     );
     if (outcome.duplicate) {
@@ -378,8 +426,26 @@ export async function drawNote(
       throw noteError("draw_replay_failed", "抽取结果回放失败，请重新抽取");
     }
     if (!outcome.applied && !outcome.duplicate) {
-      throw noteError("insufficient_balance", `金币不足：抽纸条需要 ${decision.costCoins} 金币`);
+      throw noteError("insufficient_balance", `金币不足：抽纸条需要 ${costCoins} 金币`);
     }
+    return null;
+  };
+
+  if (decision.kind === "free") {
+    const freeApplied = await insertFreeDrawAtomically(db, drawerHash, candidate.id, now, cutoffIso);
+    if (!freeApplied) {
+      // 免费额被并发请求用尽（占用守卫未生效行）：转金币路径扣同一候选，
+      // 单价按标准 DRAW_COST_COINS 计（与 decideDrawKind 的 coin 决策等价，
+      // 预判的 decision.costCoins 此时是 free 口径的 0）。不重挑候选——
+      // 候选查询后池子只可能更小，重挑反而可能把可抽变空池。
+      appliedKind = "coin";
+      appliedFreeLeft = 0;
+      const replay = await chargeCoinDraw(DRAW_COST_COINS);
+      if (replay) return replay;
+    }
+  } else {
+    const replay = await chargeCoinDraw(decision.costCoins);
+    if (replay) return replay;
   }
 
   const thread = await db
@@ -393,9 +459,9 @@ export async function drawNote(
   return {
     ok: true,
     empty: false,
-    kind: decision.kind,
+    kind: appliedKind,
     balance,
-    freeLeft: decision.freeLeft,
+    freeLeft: appliedFreeLeft,
     threadId: thread?.id ?? 0,
     note: {
       id: candidate.id,
@@ -490,23 +556,49 @@ export interface ThreadSummary {
   messageCount: number;
 }
 
+/** 可见会话集合按批圈定的分块尺寸（B8）：会话列表 LIMIT 100，IN 列表留出
+ * 余量给其余绑定参数——D1 单语句绑定参数上限 100
+ * （media.repository.ts 的 MEDIA_ID_BATCH_SIZE 同款口径）。 */
+const NOTE_THREAD_ID_BATCH_SIZE = 90;
+
 /** 会话列表（我是抽中者 or 纸条主人）。未读数在这里搭车算出，不单独轮询。 */
 export async function listThreads(db: D1Database, participantHash: string): Promise<ThreadSummary[]> {
+  // 主查询（B8 重写，D1_EXPLAIN_AUDIT Q10）：原来的跨表 OR
+  // `(t.drawer_hash=? OR n.owner_hash=?)` 无法走索引——SQLite 的 multi-index
+  // OR 只适用于同表谓词，审计实测任何索引都救不了（EXP1/EXP2 计划无变化），
+  // note_threads 随玩法线性增长时是全表扫描。改为 UNION 两臂（审计 §四 EXP3
+  // 验证过的形态）：抽中者臂走 idx_threads_drawer_status，主人臂走
+  // idx_notes_owner_hash + 会话唯一索引（0099 补齐两条访问路径）。
+  // 用 UNION（去重）而非 UNION ALL：规则变更前的历史自抽 thread 会让两臂
+  // 同时命中同一行，UNION 与旧查询的输出严格一致。两臂是同一份投影，结果
+  // 列名以第一臂为准；排序键投影成 sortAt 供复合查询的 ORDER BY 引用。
   const result = await db
     .prepare(
-      `SELECT t.id, t.note_id AS noteId, t.drawer_hash AS drawerHash, t.status AS threadStatus,
+      `SELECT t.id AS id, t.note_id AS noteId, t.drawer_hash AS drawerHash, t.status AS threadStatus,
               n.owner_hash AS ownerHash, n.status AS noteStatus,
               n.gender, n.age_band AS ageBand, n.region, n.content, n.image_asset_id AS imageAssetId,
               t.last_message_at AS lastMessageAt, t.message_count AS messageCount,
-              COALESCE(r.last_read_message_id, 0) AS readUpTo
+              COALESCE(r.last_read_message_id, 0) AS readUpTo,
+              COALESCE(t.last_message_at, t.created_at) AS sortAt
          FROM note_threads t
          JOIN notes n ON n.id = t.note_id
          LEFT JOIN note_thread_reads r ON r.thread_id = t.id AND r.participant_hash = ?
-        WHERE (t.drawer_hash = ? OR n.owner_hash = ?) AND t.status = 'active'
-        ORDER BY COALESCE(t.last_message_at, t.created_at) DESC
+        WHERE t.drawer_hash = ? AND t.status = 'active'
+        UNION
+       SELECT t.id AS id, t.note_id AS noteId, t.drawer_hash AS drawerHash, t.status AS threadStatus,
+              n.owner_hash AS ownerHash, n.status AS noteStatus,
+              n.gender, n.age_band AS ageBand, n.region, n.content, n.image_asset_id AS imageAssetId,
+              t.last_message_at AS lastMessageAt, t.message_count AS messageCount,
+              COALESCE(r.last_read_message_id, 0) AS readUpTo,
+              COALESCE(t.last_message_at, t.created_at) AS sortAt
+         FROM notes n
+         JOIN note_threads t ON t.note_id = n.id
+         LEFT JOIN note_thread_reads r ON r.thread_id = t.id AND r.participant_hash = ?
+        WHERE n.owner_hash = ? AND t.status = 'active'
+        ORDER BY sortAt DESC
         LIMIT 100`,
     )
-    .bind(participantHash, participantHash, participantHash)
+    .bind(participantHash, participantHash, participantHash, participantHash)
     .all<{
       id: number;
       noteId: number;
@@ -521,6 +613,7 @@ export async function listThreads(db: D1Database, participantHash: string): Prom
       lastMessageAt: string | null;
       messageCount: number;
       readUpTo: number;
+      sortAt: string;
     }>();
   const rows = result.results ?? [];
   if (rows.length === 0) return [];
@@ -544,26 +637,49 @@ export async function listThreads(db: D1Database, participantHash: string): Prom
           return !blockedPeers.has(peerHash);
         })
       : rows;
-  const lastBodies = await db
-    .prepare(
-      `SELECT m.thread_id AS threadId, m.body FROM note_messages m
-        WHERE m.id IN (SELECT MAX(id) FROM note_messages WHERE status = 'active' GROUP BY thread_id)`,
-    )
-    .all<{ threadId: number; body: string }>();
-  const lastByThread = new Map((lastBodies.results ?? []).map((row) => [row.threadId, row.body]));
-  const unreadRows = await db
-    .prepare(
-      `SELECT m.thread_id AS threadId, COUNT(*) AS n FROM note_messages m
-         JOIN note_threads t ON t.id = m.thread_id
-         JOIN notes n ON n.id = t.note_id
-        WHERE (t.drawer_hash = ? OR n.owner_hash = ?) AND m.sender_hash != ? AND m.status = 'active'
-          AND m.id > COALESCE((SELECT last_read_message_id FROM note_thread_reads r
-                                WHERE r.thread_id = m.thread_id AND r.participant_hash = ?), 0)
-        GROUP BY m.thread_id`,
-    )
-    .bind(participantHash, participantHash, participantHash, participantHash)
-    .all<{ threadId: number; n: number }>();
-  const unreadByThread = new Map((unreadRows.results ?? []).map((row) => [row.threadId, Number(row.n)]));
+  // 搭车查询两步化（B8 · D1_EXPLAIN_AUDIT Q11/Q24）：旧实现 lastBodies 对
+  // 全库 note_messages 逐线程取 MAX(id)（Q24 全索引扫），未读数把参与者谓词
+  // 绑在 join 后（Q11 全索引扫）——都线性于全库消息数。现在以可见会话集合
+  // （≤ LIMIT 100）圈定范围、按 thread_id IN 聚合，note_messages 的访问路径
+  // 变成 idx_messages_thread 的逐会话范围扫。旧实现对「超出 LIMIT/被拉黑」
+  // 的会话也算出的未读数从不展示，两步化只算可见集合，展示口径不变。
+  // 全部被拉黑时集合为空，跳过两条聚合（IN () 不是合法 SQL）。
+  const threadIds = visibleRows.map((row) => row.id);
+  const lastByThread = new Map<number, string>();
+  const unreadByThread = new Map<number, number>();
+  for (let start = 0; start < threadIds.length; start += NOTE_THREAD_ID_BATCH_SIZE) {
+    const ids = threadIds.slice(start, start + NOTE_THREAD_ID_BATCH_SIZE);
+    const placeholders = ids.map(() => "?").join(", ");
+    // 末条消息：依赖 SQLite bare-MAX 特例（lang_select.html §bareagg）——查询
+    // 只有唯一一个聚合 MAX(id) 时，裸列 body 取自 MAX 命中的那一行；id 唯一
+    // 无并列，与旧实现「每线程 active 末条 body」逐字段一致。LIMIT ? 按
+    // ids 长度绑定，是「结果行数 ≤ 会话数」的显式护栏（GROUP BY 后每会话
+    // 至多一行，永不截断）。回归用例逐字段对比见 tests/unit/note-chat.test.ts。
+    const lastBodies = await db
+      .prepare(
+        `SELECT m.thread_id AS threadId, m.body, MAX(m.id) AS lastMessageId
+           FROM note_messages m
+          WHERE m.thread_id IN (${placeholders}) AND m.status = 'active'
+          GROUP BY m.thread_id
+          LIMIT ?`,
+      )
+      .bind(...ids, ids.length)
+      .all<{ threadId: number; body: string }>();
+    for (const row of lastBodies.results ?? []) lastByThread.set(row.threadId, row.body);
+    // 未读数：旧实现里的参与者谓词（跨表 OR）已经由主查询完成圈定，这里
+    // 只剩 thread_id IN + 逐行已读水位点查（UNIQUE(thread_id, participant_hash)）。
+    const unreadRows = await db
+      .prepare(
+        `SELECT m.thread_id AS threadId, COUNT(*) AS n FROM note_messages m
+          WHERE m.thread_id IN (${placeholders}) AND m.sender_hash != ? AND m.status = 'active'
+            AND m.id > COALESCE((SELECT last_read_message_id FROM note_thread_reads r
+                                  WHERE r.thread_id = m.thread_id AND r.participant_hash = ?), 0)
+          GROUP BY m.thread_id`,
+      )
+      .bind(...ids, participantHash, participantHash)
+      .all<{ threadId: number; n: number }>();
+    for (const row of unreadRows.results ?? []) unreadByThread.set(row.threadId, Number(row.n));
+  }
   return visibleRows.map((row) => ({
     id: row.id,
     noteId: row.noteId,

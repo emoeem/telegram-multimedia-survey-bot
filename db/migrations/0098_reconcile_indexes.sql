@@ -116,6 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_url ON media_assets(url);
 CREATE INDEX IF NOT EXISTS idx_media_refs_asset ON media_refs(asset_id);
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON note_messages(thread_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_owner_active ON notes(owner_hash) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_notes_owner_hash ON notes(owner_hash);
 CREATE INDEX IF NOT EXISTS idx_notes_pool ON notes(status, expires_at, id);
 CREATE INDEX IF NOT EXISTS idx_notifications_participant ON notifications(participant_hash, id DESC);
 CREATE INDEX IF NOT EXISTS idx_option_media_asset_id
@@ -262,6 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_task_items_pack ON task_items(pack_id, enabled, p
 CREATE INDEX IF NOT EXISTS idx_task_items_pack_sort
   ON task_items(pack_id, enabled, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_task_packs_game_type ON task_packs(game_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_packs_name ON task_packs(name);
 CREATE INDEX IF NOT EXISTS idx_task_runs_leaderboard ON task_runs(pack_id, mode, status, score DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_participant ON task_runs(participant_hash, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_user_pack_mode
@@ -271,6 +273,7 @@ CREATE INDEX IF NOT EXISTS idx_telegram_update_dedup_received_at
 CREATE INDEX IF NOT EXISTS idx_telegram_update_dedup_status_received
   ON telegram_update_dedup(status, received_at);
 CREATE INDEX IF NOT EXISTS idx_threads_drawer ON note_threads(drawer_hash, last_message_at);
+CREATE INDEX IF NOT EXISTS idx_threads_drawer_status ON note_threads(drawer_hash, status);
 CREATE INDEX IF NOT EXISTS idx_user_tags_tag ON user_tags(tag);
 CREATE INDEX IF NOT EXISTS idx_user_tags_user ON user_tags(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_banned_at ON users(banned_at, id);

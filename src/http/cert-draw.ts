@@ -12,6 +12,7 @@
 
 import { drawTaskItems } from "../services/game-draw.service";
 import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
+import { describePublicDatabaseError, isDatabaseCapacityError, isKeyValueCapacityError } from "../db/errors";
 
 export const CERT_DRAW_PATH = "/api/cert/draw";
 
@@ -58,10 +59,31 @@ export async function handleCertDraw(
     if (!limited.allowed) return rateLimitResponse(limited.retryAfterSeconds);
   }
 
-  const items = await drawTaskItems(env.DB, packId, {
-    ...(persona ? { persona } : {}),
-    count,
-  });
+  // D1 异常也回 JSON（对齐 guard.ts 的公开 API 错误边界约定）：cert 生成器
+  // 前端按 JSON 解析错误，Worker 的非 JSON 500 页只会显示成「请求失败」。
+  // 容量类错误（D1/KV 额度）给 503 让前端按可重试对待，其余 500。
+  let items: Awaited<ReturnType<typeof drawTaskItems>>;
+  try {
+    items = await drawTaskItems(env.DB, packId, {
+      ...(persona ? { persona } : {}),
+      count,
+    });
+  } catch (error) {
+    console.error("cert-draw failed", error);
+    const capacity = isDatabaseCapacityError(error) || isKeyValueCapacityError(error);
+    return Response.json(
+      {
+        ok: false,
+        code: isDatabaseCapacityError(error)
+          ? "database_capacity"
+          : isKeyValueCapacityError(error)
+            ? "kv_capacity"
+            : "internal_error",
+        message: describePublicDatabaseError(error),
+      },
+      { status: capacity ? 503 : 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   if (items === null) {
     return Response.json({ ok: false, code: "not_found", message: "小游戏包不存在" }, { status: 404 });
   }

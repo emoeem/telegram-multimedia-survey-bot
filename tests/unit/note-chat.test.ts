@@ -6,6 +6,7 @@ import {
   blockThread,
   decideDrawKind,
   DRAW_COST_COINS,
+  drawDayCutoffIso,
   drawNote,
   drawPoolWhere,
   FREE_DRAWS_PER_DAY,
@@ -711,5 +712,437 @@ describe.skipIf(!sqliteD1Available)("纸条抽取幂等 · 金币路径（参与
     expect(Number(txns?.n ?? 0)).toBe(1);
     const notifications = await base.prepare(`SELECT COUNT(*) AS n FROM notifications`).first<{ n: number }>();
     expect(Number(notifications?.n ?? 0)).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 免费额原子化（B8 · 并发收口）。
+ * 旧实现「SELECT COUNT → 内存判定 → 无条件 INSERT」是读-判-写两段式，
+ * 并发双请求会各自读到同一计数、双双吃掉免费额。现在判定下推进插入本体
+ * （INSERT ... SELECT ... WHERE (SELECT COUNT(*)) < 3），条件与插入同语句
+ * 求值、由 D1 写事务串行化兜底。会话行以 EXISTS(本次 free 抽取行) 接续，
+ * 金币路径同样把会话行挂在「抽取行确实落库」上——修掉「扣款没生效却留下
+ * 会话行」的旧隐患。
+ * ------------------------------------------------------------------ */
+
+describe.skipIf(!sqliteD1Available)("纸条抽取 · 免费额原子化（B8）", () => {
+  function makeDrawDb(): D1Database {
+    return createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}\n${IDENTITY_DDL}`);
+  }
+
+  async function putNoteOk(db: D1Database, ownerHash: string, content: string): Promise<void> {
+    await putNote(db, ownerHash, { gender: "x", ageBand: "25-30", region: "", content }, null);
+  }
+
+  async function seedBalance(db: D1Database, participantHash: string, balance: number): Promise<void> {
+    await db
+      .prepare(
+        `INSERT INTO coin_accounts (participant_hash, user_id, balance, total_earned, total_spent, created_at, updated_at)
+         VALUES (?, NULL, ?, 0, 0, ?, ?)`,
+      )
+      .bind(participantHash, balance, new Date().toISOString(), new Date().toISOString())
+      .run();
+  }
+
+  async function countDrawsByKind(db: D1Database, drawerHash: string): Promise<{ free: number; coin: number }> {
+    const rows = await db
+      .prepare(`SELECT kind, COUNT(*) AS n FROM note_draws WHERE drawer_hash = ? GROUP BY kind`)
+      .bind(drawerHash)
+      .all<{ kind: string; n: number }>();
+    const byKind = new Map((rows.results ?? []).map((row) => [row.kind, Number(row.n)]));
+    return { free: byKind.get("free") ?? 0, coin: byKind.get("coin") ?? 0 };
+  }
+
+  it("drawDayCutoffIso（纯函数）：本地日零点换算回 UTC 时刻，正负时区都对", () => {
+    // 东八区（480）：2026-11-19T10:00Z 是本地 11-19 18:00 → 零点是 11-18T16:00Z。
+    expect(drawDayCutoffIso(Date.parse("2026-11-19T10:00:00Z"), 480)).toBe("2026-11-18T16:00:00.000Z");
+    // UTC-5（-300）：2026-11-19T02:00Z 是本地 11-18 21:00 → 零点是 11-18T05:00Z。
+    expect(drawDayCutoffIso(Date.parse("2026-11-19T02:00:00Z"), -300)).toBe("2026-11-18T05:00:00.000Z");
+    // 恰好压在本地日界的零点本身。
+    expect(drawDayCutoffIso(Date.parse("2026-11-18T16:00:00Z"), 480)).toBe("2026-11-18T16:00:00.000Z");
+  });
+
+  it("免费额还剩 1 次时本次抽取 free 且占满第 3 次；下一次转 coin", async () => {
+    const db = makeDrawDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_c", "C 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    await seedBalance(db, "hash_b", 100);
+    // 直接预插 2 条当日 free 抽取行（note_draws 无 note_id 外键，1 号纸条必存在）。
+    for (let i = 0; i < 2; i += 1) {
+      await db
+        .prepare(`INSERT INTO note_draws (drawer_hash, note_id, kind, created_at) VALUES ('hash_b', 1, 'free', ?)`)
+        .bind(new Date().toISOString())
+        .run();
+    }
+    const third = await drawNote(db, "hash_b", null, "note:quota-3");
+    expect(third).toMatchObject({ ok: true, empty: false, kind: "free" });
+    expect(await countDrawsByKind(db, "hash_b")).toEqual({ free: 3, coin: 0 });
+
+    // 第 4 次：池里只剩最后一张候选纸条，判定转 coin 并正常扣款。
+    const fourth = await drawNote(db, "hash_b", null, "note:quota-4");
+    expect(fourth).toMatchObject({ ok: true, empty: false, kind: "coin" });
+    expect(await countDrawsByKind(db, "hash_b")).toEqual({ free: 3, coin: 1 });
+  });
+
+  it("并发 20 次抽取：免费次数不超 3，超额走 coin 且扣费与账本一致", async () => {
+    const db = makeDrawDb();
+    // 6 张他人纸条进池，抽取者自己的纸条满足「先放后抽」。
+    for (const owner of ["hash_a", "hash_c", "hash_d", "hash_e", "hash_f", "hash_g"]) {
+      await putNoteOk(db, owner, `${owner} 的纸条`);
+    }
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    await seedBalance(db, "hash_b", 1000);
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        drawNote(db, "hash_b", null, `note:race-${i}`).then(
+          (value) => ({ ok: true as const, value }),
+          (error) => ({ ok: false as const, error }),
+        ),
+      ),
+    );
+    // 任何一次都不该失败：免费额被并发用尽的请求要落到金币路径，而不是抛错。
+    const failures = outcomes.filter((outcome) => !outcome.ok);
+    expect(failures.map((outcome) => (outcome.ok ? "" : String(outcome.error)))).toEqual([]);
+    expect(outcomes.every((outcome) => outcome.ok && outcome.value.ok)).toBe(true);
+
+    const draws = await countDrawsByKind(db, "hash_b");
+    // 核心断言：无论读写怎么交错，免费额都不会被并发双吃；同时至少一次
+    // free 占额成功（首个到达占用语句的请求必然 count<3），证明本用例真的
+    // 踩到了免费路径而不是全员金币的空转。
+    expect(draws.free).toBeGreaterThanOrEqual(1);
+    expect(draws.free).toBeLessThanOrEqual(FREE_DRAWS_PER_DAY);
+
+    // 非免费路径扣费与账本一致：每笔 coin 抽取恰有一笔流水，余额差额吻合。
+    const txns = await db
+      .prepare(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total FROM coin_transactions WHERE participant_hash = ?`,
+      )
+      .bind("hash_b")
+      .first<{ n: number; total: number }>();
+    expect(Number(txns?.n ?? 0)).toBe(draws.coin);
+    expect(Number(txns?.total ?? 0)).toBe(-DRAW_COST_COINS * draws.coin);
+    const account = await db
+      .prepare(`SELECT balance FROM coin_accounts WHERE participant_hash = ?`)
+      .bind("hash_b")
+      .first<{ balance: number }>();
+    expect(Number(account?.balance ?? 0)).toBe(1000 - DRAW_COST_COINS * draws.coin);
+
+    // 会话行完备性：每个会话都有对应的抽取行（不存在没扣款/没占额的孤儿会话）。
+    const orphanThreads = await db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM note_threads t
+          WHERE t.drawer_hash = 'hash_b'
+            AND NOT EXISTS (SELECT 1 FROM note_draws d
+                             WHERE d.drawer_hash = 'hash_b' AND d.note_id = t.note_id)`,
+      )
+      .first<{ n: number }>();
+    expect(Number(orphanThreads?.n ?? 0)).toBe(0);
+  });
+
+  it("余额在预检后、batch 前被并发抽干：insufficient_balance 且不留孤儿会话（B8 前的旧隐患）", async () => {
+    const base = makeDrawDb();
+    await putNoteOk(base, "hash_a", "A 的纸条");
+    await putNoteOk(base, "hash_b", "B 的纸条");
+    // 免费额已耗尽（3 行）→ 本次抽取走金币路径。
+    for (let i = 0; i < FREE_DRAWS_PER_DAY; i += 1) {
+      await base
+        .prepare(`INSERT INTO note_draws (drawer_hash, note_id, kind, created_at) VALUES ('hash_b', 1, 'free', ?)`)
+        .bind(new Date().toISOString())
+        .run();
+    }
+    // 余额恰好够一次：预检通过；batch 钩子在扣款前把余额抽干（模拟并发扣款）。
+    await seedBalance(base, "hash_b", DRAW_COST_COINS);
+    const drainedDb: D1Database = {
+      prepare: (sql: string) => base.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        await base.prepare(`UPDATE coin_accounts SET balance = 0 WHERE participant_hash = 'hash_b'`).run();
+        return base.batch(statements);
+      },
+    } as unknown as D1Database;
+
+    await expect(drawNote(drainedDb, "hash_b", null, "note:drained")).rejects.toMatchObject({
+      code: "insufficient_balance",
+    });
+    // 修复前：守卫流水没生效，但无条件挂载的会话行会留下「有会话没扣款」
+    // 的孤儿。修复后：会话行以 EXISTS(本次 coin 抽取行) 为前提，零残留。
+    const threads = await base
+      .prepare(`SELECT COUNT(*) AS n FROM note_threads WHERE drawer_hash = 'hash_b'`)
+      .first<{ n: number }>();
+    expect(Number(threads?.n ?? 0)).toBe(0);
+    const coinDraws = await base
+      .prepare(`SELECT COUNT(*) AS n FROM note_draws WHERE drawer_hash = 'hash_b' AND kind = 'coin'`)
+      .first<{ n: number }>();
+    expect(Number(coinDraws?.n ?? 0)).toBe(0);
+    const txns = await base.prepare(`SELECT COUNT(*) AS n FROM coin_transactions`).first<{ n: number }>();
+    expect(Number(txns?.n ?? 0)).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * listThreads · UNION 改写回归（B8）。
+ * 逐字段对比基准：把改写前的三条查询（跨表 OR 主查询 / 全库 MAX(id)
+ * lastBodies / join 后谓词的未读数）原样内联在测试里跑同一份数据，再与
+ * 改写后的服务输出做全字段对比——包括排序。自抽 thread（规则变更前的
+ * 历史数据）会让 UNION 两臂同时命中同一行，用 UNION 去重才能与旧查询
+ * 一致；>90 个会话的用例覆盖 IN 分块。
+ * ------------------------------------------------------------------ */
+
+type LegacyThreadRow = {
+  id: number;
+  noteId: number;
+  drawerHash: string;
+  ownerHash: string;
+  noteStatus: string;
+  gender: string;
+  ageBand: string;
+  region: string;
+  content: string;
+  imageAssetId: number | null;
+  lastMessageAt: string | null;
+  messageCount: number;
+  readUpTo: number;
+};
+
+describe.skipIf(!sqliteD1Available)("listThreads · UNION 改写回归（B8）", () => {
+  function makeThreadDb(): D1Database {
+    // drawNote 的幂等预检会摸 coin_transactions，账本最小 DDL 一并带上。
+    return createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}`);
+  }
+
+  async function putNoteOk(db: D1Database, ownerHash: string, content: string): Promise<void> {
+    await putNote(db, ownerHash, { gender: "x", ageBand: "25-30", region: "", content }, null);
+  }
+
+  /** 改写前的 listThreads（三条旧查询 + 旧装配逻辑，逐字对齐旧实现）。 */
+  async function legacyListThreads(db: D1Database, participantHash: string): Promise<ThreadSummaryLike[]> {
+    const main = await db
+      .prepare(
+        `SELECT t.id, t.note_id AS noteId, t.drawer_hash AS drawerHash, t.status AS threadStatus,
+              n.owner_hash AS ownerHash, n.status AS noteStatus,
+              n.gender, n.age_band AS ageBand, n.region, n.content, n.image_asset_id AS imageAssetId,
+              t.last_message_at AS lastMessageAt, t.message_count AS messageCount,
+              COALESCE(r.last_read_message_id, 0) AS readUpTo
+         FROM note_threads t
+         JOIN notes n ON n.id = t.note_id
+         LEFT JOIN note_thread_reads r ON r.thread_id = t.id AND r.participant_hash = ?
+        WHERE (t.drawer_hash = ? OR n.owner_hash = ?) AND t.status = 'active'
+        ORDER BY COALESCE(t.last_message_at, t.created_at) DESC
+        LIMIT 100`,
+      )
+      .bind(participantHash, participantHash, participantHash)
+      .all<LegacyThreadRow>();
+    const rows = main.results ?? [];
+    const blockRows = await db
+      .prepare(
+        `SELECT blocker_hash AS blockerHash, blocked_hash AS blockedHash FROM note_block
+        WHERE blocker_hash = ? OR blocked_hash = ?`,
+      )
+      .bind(participantHash, participantHash)
+      .all<{ blockerHash: string; blockedHash: string }>();
+    const blockedPeers = new Set<string>();
+    for (const block of blockRows.results ?? []) {
+      blockedPeers.add(block.blockerHash === participantHash ? block.blockedHash : block.blockerHash);
+    }
+    const visibleRows =
+      blockedPeers.size > 0
+        ? rows.filter((row) => {
+            const peerHash = row.drawerHash === participantHash ? row.ownerHash : row.drawerHash;
+            return !blockedPeers.has(peerHash);
+          })
+        : rows;
+    const lastBodies = await db
+      .prepare(
+        `SELECT m.thread_id AS threadId, m.body FROM note_messages m
+        WHERE m.id IN (SELECT MAX(id) FROM note_messages WHERE status = 'active' GROUP BY thread_id)`,
+      )
+      .all<{ threadId: number; body: string }>();
+    const lastByThread = new Map((lastBodies.results ?? []).map((row) => [row.threadId, row.body]));
+    const unreadRows = await db
+      .prepare(
+        `SELECT m.thread_id AS threadId, COUNT(*) AS n FROM note_messages m
+         JOIN note_threads t ON t.id = m.thread_id
+         JOIN notes n ON n.id = t.note_id
+        WHERE (t.drawer_hash = ? OR n.owner_hash = ?) AND m.sender_hash != ? AND m.status = 'active'
+          AND m.id > COALESCE((SELECT last_read_message_id FROM note_thread_reads r
+                                WHERE r.thread_id = m.thread_id AND r.participant_hash = ?), 0)
+        GROUP BY m.thread_id`,
+      )
+      .bind(participantHash, participantHash, participantHash, participantHash)
+      .all<{ threadId: number; n: number }>();
+    const unreadByThread = new Map((unreadRows.results ?? []).map((row) => [row.threadId, Number(row.n)]));
+    return visibleRows.map((row) => ({
+      id: row.id,
+      noteId: row.noteId,
+      role: row.drawerHash === participantHash ? "drawer" : "owner",
+      peerNote:
+        row.drawerHash === participantHash
+          ? {
+              id: row.noteId,
+              gender: row.gender,
+              ageBand: row.ageBand,
+              region: row.region,
+              content: row.content,
+              imageAssetId: row.imageAssetId ?? null,
+            }
+          : null,
+      noteStatus: row.noteStatus,
+      lastBody: lastByThread.get(row.id) ?? null,
+      lastMessageAt: row.lastMessageAt,
+      unread: unreadByThread.get(row.id) ?? 0,
+      messageCount: Number(row.messageCount ?? 0),
+    }));
+  }
+
+  interface ThreadSummaryLike {
+    id: number;
+    noteId: number;
+    role: string;
+    peerNote: Record<string, unknown> | null;
+    noteStatus: string;
+    lastBody: string | null;
+    lastMessageAt: string | null;
+    unread: number;
+    messageCount: number;
+  }
+
+  it("与改写前三条查询逐字段一致（含排序、hidden 末条、已读水位、双向拉黑）", async () => {
+    const db = makeThreadDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    // 候选唯一化，保证抽取目标确定：B 的池里只有 A 的纸条（T1：drawer=B,
+    // owner=A）；随后 A 的池里只剩 C 的纸条（T2：drawer=A, owner=C）。同一
+    // 参与者在两条会话里分别是 drawer 与 owner，UNION 两臂都被踩到。
+    const draw1 = await drawNote(db, "hash_b", null, "note:parity-1");
+    expect(draw1).toMatchObject({ ok: true, empty: false });
+    const thread1 = draw1 && "threadId" in draw1 ? draw1.threadId : 0;
+    await putNoteOk(db, "hash_c", "C 的纸条");
+    await withdrawNote(db, "hash_b");
+    const draw2 = await drawNote(db, "hash_a", null, "note:parity-2");
+    expect(draw2).toMatchObject({ ok: true, empty: false });
+    const thread2 = draw2 && "threadId" in draw2 ? draw2.threadId : 0;
+    // 排序基准固定：两线程的 created_at / last_message_at 各不相同，避免
+    // 相同 sortAt 下新旧实现对并列键的排序歧义（二者都不承诺次级排序键）。
+    await db
+      .prepare(`UPDATE note_threads SET created_at = '2026-11-18T09:00:00.000Z' WHERE id = ?`)
+      .bind(thread1)
+      .run();
+    await db
+      .prepare(`UPDATE note_threads SET created_at = '2026-11-18T10:00:00.000Z' WHERE id != ?`)
+      .bind(thread1)
+      .run();
+
+    await sendMessage(db, thread1, "hash_b", "T1 第一条", null);
+    await sendMessage(db, thread1, "hash_b", "T1 第二条（将被隐藏）", null);
+    const rows = await db.prepare(`SELECT id, body FROM note_messages ORDER BY id`).all<{ id: number; body: string }>();
+    const hidden = (rows.results ?? []).find((row) => row.body.includes("将被隐藏"));
+    await db.prepare(`UPDATE note_messages SET status = 'hidden' WHERE id = ?`).bind(hidden?.id).run();
+    // 末条 hidden 后，lastBody 必须退回第一条；未读数也不计 hidden。
+    await sendMessage(db, thread2, "hash_c", "T2 唯一一条", null);
+    // 水位：A 已读 T1 至第一条可见消息（T2 全部未读）。
+    await db
+      .prepare(
+        `INSERT INTO note_thread_reads (thread_id, participant_hash, last_read_message_id, updated_at)
+         VALUES (?, 'hash_a', ?, '2026-11-18T12:00:00.000Z')
+         ON CONFLICT(thread_id, participant_hash) DO UPDATE SET last_read_message_id = excluded.last_read_message_id`,
+      )
+      .bind(thread1, Number(rows.results?.[0]?.id ?? 0))
+      .run();
+    // 固定两条会话的 last_message_at，排序逐字段可比。
+    await db
+      .prepare(`UPDATE note_threads SET last_message_at = '2026-11-19T08:00:00.000Z' WHERE id = ?`)
+      .bind(thread1)
+      .run();
+    await db
+      .prepare(`UPDATE note_threads SET last_message_at = '2026-11-19T09:00:00.000Z' WHERE id = ?`)
+      .bind(thread2)
+      .run();
+
+    for (const participant of ["hash_a", "hash_b", "hash_c"]) {
+      const legacy = await legacyListThreads(db, participant);
+      const current = await listThreads(db, participant);
+      expect(current).toEqual(legacy);
+    }
+
+    // 双向拉黑后再比一轮：B 拉黑 A，A/B 的列表都该清空（两实现一致）。
+    await blockThread(db, thread1, "hash_b");
+    for (const participant of ["hash_a", "hash_b", "hash_c"]) {
+      const legacy = await legacyListThreads(db, participant);
+      const current = await listThreads(db, participant);
+      expect(current).toEqual(legacy);
+    }
+    await unblockThread(db, thread1, "hash_b");
+
+    // 规则变更前的历史脏数据：自抽 thread（drawer = owner）会让 UNION 两臂
+    // 同时命中同一行——UNION（去重）下两实现都只显示一次。
+    await putNoteOk(db, "hash_e", "E 的纸条");
+    await db
+      .prepare(
+        `INSERT INTO note_threads (note_id, drawer_hash, status, created_at)
+         SELECT id, owner_hash, 'active', '2026-11-18T11:00:00.000Z' FROM notes WHERE owner_hash = 'hash_e'`,
+      )
+      .run();
+    const legacySelf = await legacyListThreads(db, "hash_e");
+    const currentSelf = await listThreads(db, "hash_e");
+    expect(currentSelf).toEqual(legacySelf);
+    expect(currentSelf).toHaveLength(1);
+    expect(currentSelf[0]?.role).toBe("drawer");
+  });
+
+  it("会话数超过 90 时按批圈定聚合：每批的 lastBody / 未读数都与逐行口径一致", async () => {
+    const db = makeThreadDb();
+    // 直接造 120 个「hash_x 抽中 own_i」的会话：主查询 LIMIT 100 圈出可见
+    // 集合（100 条）→ IN 分块跑两轮（90 + 10）。
+    const noteStmts: D1PreparedStatement[] = [];
+    const threadStmts: D1PreparedStatement[] = [];
+    const messageStmts: D1PreparedStatement[] = [];
+    for (let i = 1; i <= 120; i += 1) {
+      noteStmts.push(
+        db
+          .prepare(
+            `INSERT INTO notes (owner_hash, gender, age_band, region, content, status, created_at, expires_at)
+             VALUES (?, 'x', '25-30', '', ?, 'active', ?, '2026-12-30T00:00:00.000Z')`,
+          )
+          .bind(`own_${i}`, `纸条 ${i}`, "2026-11-01T00:00:00.000Z"),
+      );
+    }
+    await db.batch(noteStmts);
+    for (let i = 1; i <= 120; i += 1) {
+      // created_at 递增：LIMIT 100 稳定取 newest 100（thread id 21..120）。
+      threadStmts.push(
+        db
+          .prepare(
+            `INSERT INTO note_threads (note_id, drawer_hash, status, created_at)
+             VALUES (?, 'hash_x', 'active', ?)`,
+          )
+          .bind(i, new Date(Date.parse("2026-11-18T00:00:00.000Z") + i * 60_000).toISOString()),
+      );
+    }
+    await db.batch(threadStmts);
+    const threadRows = await db
+      .prepare(`SELECT id, note_id AS noteId FROM note_threads ORDER BY id`)
+      .all<{ id: number; noteId: number }>();
+    for (const thread of threadRows.results ?? []) {
+      messageStmts.push(
+        db
+          .prepare(`INSERT INTO note_messages (thread_id, sender_hash, body, created_at) VALUES (?, ?, ?, ?)`)
+          .bind(thread.id, `own_${thread.noteId}`, `msg-${thread.noteId}`, "2026-11-18T12:00:00.000Z"),
+      );
+    }
+    await db.batch(messageStmts);
+
+    const threads = await listThreads(db, "hash_x");
+    expect(threads).toHaveLength(100);
+    // 全部可见会话（含第二批的）都要有正确的 lastBody 与未读数——这只有在
+    // 分块聚合把 100 个会话都覆盖到时才成立。
+    for (const thread of threads) {
+      expect(thread.lastBody).toBe(`msg-${thread.noteId}`);
+      expect(thread.unread).toBe(1);
+      expect(thread.role).toBe("drawer");
+    }
+    // 排序：created_at 递增 → 列表按 sortAt DESC，首条是最新会话。
+    expect(threads[0]?.noteId).toBe(120);
+    expect(threads[99]?.noteId).toBe(21);
   });
 });

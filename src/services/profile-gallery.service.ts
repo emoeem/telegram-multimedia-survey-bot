@@ -1,5 +1,5 @@
 import type { Answer, QuestionType } from "../db/schema";
-import { createMediaAsset, expireMediaAsset } from "../db/repositories/media.repository";
+import { createMediaAsset } from "../db/repositories/media.repository";
 import { listAnswersByResponseIds, setResponseGalleryPublished } from "../db/repositories/response.repository";
 import { normalizeAnswer } from "./answer-value-adapter.service";
 import { createMediaStore } from "./media/temporary-media-store";
@@ -276,7 +276,17 @@ export async function unpublishProfileResponse(db: D1Database, responseId: numbe
   await setResponseGalleryPublished(db, responseId, false);
 }
 
-/** Hard-removes gallery copies (used when a gallery entry is deleted). */
+/** Hard-removes gallery copies (used when a gallery entry is deleted).
+ *
+ * B8 批量化（已知待办 4 / 审计 N+1 清单 profile-gallery.service.ts:292）：旧
+ * 实现逐行 3 次往返（store.delete + expireMediaAsset + DELETE 映射行），行数
+ * = 单答卷媒体数。现在存储对象并行 fan-out、D1 写合并为一个 batch（两个
+ * 语句、3 个绑定参数）——资产过期的行集与映射删除都由 response_id 圈定，
+ * 与逐行版的选择口径完全一致；结果等价：每个映射行被删、其 media_assets
+ * 行被置 storage_key = NULL + expires_at（与 expireMediaAsset 同语义，此处
+ * 内联同一 SQL 以并入同一 batch；行数有界性不变 = 单答卷媒体数）。
+ * 存储删除保持 best-effort（catch 后继续），失败不阻断映射清理——与逐行版
+ * 逐行 catch 的语义一致。 */
 export async function deleteProfileGalleryMedia(env: ProfileGalleryEnvironment, responseId: number): Promise<void> {
   const rows = await env.DB.prepare(
     `SELECT gpm.id mappingId, gpm.media_asset_id mediaAssetId, m.storage_key storageKey
@@ -286,14 +296,25 @@ export async function deleteProfileGalleryMedia(env: ProfileGalleryEnvironment, 
   )
     .bind(responseId)
     .all<{ mappingId: number; mediaAssetId: number; storageKey: string | null }>();
+  const items = rows.results ?? [];
+  if (items.length === 0) return;
   const store = env.MEDIA_KV
     ? createMediaStore({ ...(env.MEDIA ? { MEDIA: env.MEDIA } : {}), MEDIA_KV: env.MEDIA_KV })
     : null;
-  for (const row of rows.results ?? []) {
-    if (row.storageKey && store) await store.delete(row.storageKey).catch(() => undefined);
-    await expireMediaAsset(env.DB, row.mediaAssetId);
-    await env.DB.prepare("DELETE FROM gallery_profile_media WHERE id = ?").bind(row.mappingId).run();
+  if (store) {
+    await Promise.all(
+      items.flatMap((row) => (row.storageKey ? [store.delete(row.storageKey).catch(() => undefined)] : [])),
+    );
   }
+  const expiredAt = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE media_assets
+       SET storage_key = NULL, expires_at = ?, updated_at = ?
+       WHERE id IN (SELECT media_asset_id FROM gallery_profile_media WHERE response_id = ?)`,
+    ).bind(expiredAt, expiredAt, responseId),
+    env.DB.prepare(`DELETE FROM gallery_profile_media WHERE response_id = ?`).bind(responseId),
+  ]);
 }
 
 /** Converts a single stored answer into its display text for the profile card. */

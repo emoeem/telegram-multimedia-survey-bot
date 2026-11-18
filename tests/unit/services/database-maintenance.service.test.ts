@@ -22,6 +22,10 @@ interface FakeDbOptions {
   rowsReadByKeyword?: Array<[string, number]>;
   /** system_settings 现有键值（游标/健康快照读取走 .first()）。 */
   settings?: Record<string, string>;
+  /** B8 批量化：候选 id → storage_key（缺行的 id 不出现在结果里）。 */
+  keysById?: Record<number, string | null>;
+  /** B8 批量化：批删后仍被引用的 storage_key（复用保护按它保留 blob）。 */
+  usedKeys?: string[];
 }
 
 // 默认表尾 id 恰好等于一个扫描窗口宽：MAX(id) 探针 + 单窗口语句，扫描必然
@@ -63,6 +67,25 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
           if (sql.includes("FROM media_assets m")) {
             return { results: (options.candidates ?? []).map((id) => ({ id })), meta };
           }
+          // B8 批量化：键预取与复用检查都是 IN 形态（绑定参数即 id/key 集）。
+          if (sql.includes("SELECT id, storage_key storageKey FROM media_assets WHERE id IN")) {
+            return {
+              results: bound
+                .map((id) => Number(id))
+                .filter((id) => options.keysById?.[id] !== undefined && options.keysById?.[id] !== null)
+                .map((id) => ({ id, storageKey: options.keysById?.[id] })),
+              meta,
+            };
+          }
+          if (sql.includes("SELECT DISTINCT storage_key storageKey FROM media_assets WHERE storage_key IN")) {
+            return {
+              results: bound
+                .map((key) => String(key))
+                .filter((key) => options.usedKeys?.includes(key))
+                .map((key) => ({ storageKey: key })),
+              meta,
+            };
+          }
           if (sql.includes("FROM answers")) {
             return { results: (options.answerJson ?? []).map((value) => ({ value })), meta };
           }
@@ -79,6 +102,12 @@ function createMaintenanceDb(options: FakeDbOptions = {}) {
         }),
         run: vi.fn(async () => {
           runBinds.push([...bound]);
+          // B8 批量化后的孤儿删除是 IN 形态：绑定参数即本次删除的 id 集合，
+          // meta.changes = 实际删除行数（假库按绑定行数计）。
+          if (sql.startsWith("DELETE FROM media_assets WHERE id IN")) {
+            for (const id of bound) deleted.push(Number(id));
+            return { meta: { changes: bound.length, rows_read: rowsReadFor(sql) } };
+          }
           if (sql.startsWith("DELETE FROM media_assets WHERE id = ?")) {
             deleted.push(Number(bound[0]));
           }
@@ -356,5 +385,100 @@ describe("database maintenance", () => {
       [22, "survey:3:22"],
     ]);
     expect(statements.some((sql) => sql.includes("FROM surveys") && sql.includes('"assetId"'))).toBe(true);
+  });
+
+  /* ---------------- B8 · 孤儿清扫批量化（每候选 3 查询 → 集合化三步） ---------------- */
+
+  function makeStore() {
+    const blobDeleted: string[] = [];
+    const store = {
+      delete: vi.fn(async (key: string) => {
+        blobDeleted.push(key);
+      }),
+    };
+    return {
+      store: store as unknown as import("../../../src/services/database-maintenance.service").OrphanBlobStore,
+      blobDeleted,
+    };
+  }
+
+  it("批量删除与逐行版结果一致：行删光、blob 只删无引用键（复用保护保留共享键）", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { db, deleted, statements } = createMaintenanceDb({
+        indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+        candidates: [1, 2, 3, 4],
+        keysById: { 1: "media:blob:shared", 2: "media:blob:shared", 3: "media:blob:unique", 4: null },
+        usedKeys: ["media:blob:shared"],
+      });
+      const { store, blobDeleted } = makeStore();
+      const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"), store);
+      // 全部候选行都被删（键为 NULL 的行 4 也删——逐行版同样只删行不删 blob）。
+      expect(deleted.sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+      expect(summary.orphanAssets).toBe(4);
+      // 复用保护：共享键仍被别的行引用 → blob 保留；唯一键无人引用 → 删。
+      expect(blobDeleted).toEqual(["media:blob:unique"]);
+      // 三步集合化的语句形态真实出现（键预取 / IN 批删 / IN 复用检查）。
+      expect(
+        statements.some((sql) => sql.includes("SELECT id, storage_key storageKey FROM media_assets WHERE id IN")),
+      ).toBe(true);
+      expect(statements.some((sql) => sql.includes("DELETE FROM media_assets WHERE id IN"))).toBe(true);
+      expect(
+        statements.some((sql) =>
+          sql.includes("SELECT DISTINCT storage_key storageKey FROM media_assets WHERE storage_key IN"),
+        ),
+      ).toBe(true);
+      // 逐行形态不应再出现。
+      expect(statements.some((sql) => sql.startsWith("DELETE FROM media_assets WHERE id = ?"))).toBe(false);
+      // 扫描完整、未截断 → 不得误报「保护扫描被截断」告警。
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        "Orphan sweep skipped: a protective scan was truncated by the read budget",
+        expect.anything(),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("批量化后的 rows_read 记账正常：新语句计入预算并可触发 truncated", async () => {
+    const { db, deleted } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates: [7],
+      keysById: { 7: "media:blob:solo" },
+      // 键预取语句烧掉超额预算（旧行的 .first() 探针不计账，批量化后必须计）。
+      rowsReadByKeyword: [["storage_key storageKey FROM media_assets WHERE id IN", MAINTENANCE_ROWS_READ_BUDGET + 100]],
+    });
+    const { store } = makeStore();
+    const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"), store);
+    // 预算在键预取处耗尽 → truncated 且本轮不删（候选集已圈定但删除步未跑……）
+    // 实现上键预取发生在删除之前：预算耗尽只影响后续步骤的 shouldStop，
+    // 已圈定的候选删除保持与旧实现相同的「本轮照删」语义。
+    expect(summary.truncated).toBe(true);
+    expect(summary.rowsRead).toBeGreaterThan(MAINTENANCE_ROWS_READ_BUDGET);
+    expect(deleted).toEqual([7]);
+    expect(summary.orphanAssets).toBe(1);
+  });
+
+  it("候选批超过 90 时按 90/批分块，删除与 blob 语义跨块一致", async () => {
+    // 95 个候选：候选扫描可在窗口内完成（>=100 会触发断点续扫，本轮不删——
+    // 既有游标用例已覆盖），删除侧仍跨两个分块（90 + 5）。
+    const candidates = Array.from({ length: 95 }, (_, index) => index + 1);
+    const keysById: Record<number, string | null> = {};
+    for (const id of candidates) keysById[id] = `media:blob:k${id}`;
+    const { db, deleted, statements } = createMaintenanceDb({
+      indexes: ORPHAN_SWEEP_INDEXES.map((index) => index.name),
+      candidates,
+      keysById,
+    });
+    const { store, blobDeleted } = makeStore();
+    const summary = await runDatabaseMaintenance(db, Date.parse("2026-08-19T00:00:00.000Z"), store);
+    expect(summary.orphanAssets).toBe(95);
+    expect(deleted.sort((a, b) => a - b)).toEqual(candidates);
+    expect(blobDeleted).toHaveLength(95);
+    // 两轮 IN 语句（90 + 10）：分块真实发生，且 deleted 全集与候选集一致
+    //（无漏删/重复删）。
+    const deleteStatements = statements.filter((sql) => sql.startsWith("DELETE FROM media_assets WHERE id IN"));
+    expect(deleteStatements).toHaveLength(2);
+    expect(deleteStatements.map((sql) => (sql.match(/\?/g) ?? []).length).sort((a, b) => b - a)).toEqual([90, 5]);
   });
 });
