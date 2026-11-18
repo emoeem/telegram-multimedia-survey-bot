@@ -47,7 +47,10 @@ export const SCREEN_HELP: Record<string, ScreenHelp> = {
   survey: {
     intro: "这里是问卷大厅：浏览可以填写的问卷，点开就直接答，答完会生成一份为你写的解读报告。",
     entries: [
-      { label: "挑一份填", hint: "点开任意问卷直接开始，不用注册账号", href: "/s" },
+      // 与注册墙同口径（src/http/survey/handler.ts：「填写问卷前请先注册或
+      // 登录（邮箱即可）」）。旧文案「不用注册账号」与实际行为相反——浏览器
+      // 匿名访客点开问卷会被 401 拦下，直接劝退。
+      { label: "挑一份填", hint: "点开一份问卷开始作答，填写前需要注册或登录（用邮箱就行）", href: "/s" },
       { label: "回头看报告", hint: "填过的问卷的解读报告都在「我的」里", href: "/me" },
     ],
   },

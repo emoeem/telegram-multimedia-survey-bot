@@ -39,13 +39,31 @@ async function findManifests() {
   return manifests;
 }
 
-function runUpdate(deploymentDir, dryRun) {
+function readLocalToken(deploymentDir) {
+  // 每实例一颗 token 的约定（.license-key.local 同款模式）：客户部署各在
+  // 自己的 Cloudflare 账号里，一颗环境变量 token 只能覆盖其中一个实例——
+  // 2026-11-17 批量更新时实测。文件缺失时回退环境变量（单账号场景）。
+  return fs.readFile(path.join(deploymentDir, ".api-token.local"), "utf8").then(
+    (raw) => raw.trim() || null,
+    () => null,
+  );
+}
+
+async function runUpdate(deploymentDir, dryRun) {
+  const localToken = await readLocalToken(deploymentDir);
+  if (!localToken && !process.env.CLOUDFLARE_API_TOKEN) {
+    return { ok: false, skipped: true, error: "缺少 .api-token.local 且未设 CLOUDFLARE_API_TOKEN，已跳过" };
+  }
   return new Promise((resolve) => {
     const args = [path.join(ROOT_DIR, "scripts/deploy-customer.mjs"), "--update-existing", deploymentDir];
     if (dryRun) args.push("--dry-run");
+    // token 是文件里的还是环境变量继承的，都统一以子进程 env 交付；账号 ID
+    // 由 manifest.accountId（写在各实例 wrangler.toml 里）决定，环境变量里的
+    // ACCOUNT_ID 不会串账号。
+    const childEnv = { ...process.env, ...(localToken ? { CLOUDFLARE_API_TOKEN: localToken } : {}) };
     const child = spawn(WRANGLER, args, {
       cwd: ROOT_DIR,
-      env: process.env,
+      env: childEnv,
       stdio: ["inherit", "inherit", "inherit"],
     });
     child.on("error", (error) => resolve({ ok: false, error: String(error) }));
@@ -56,7 +74,7 @@ function runUpdate(deploymentDir, dryRun) {
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   if (!process.env.CLOUDFLARE_API_TOKEN && !dryRun) {
-    console.warn("提示：未设置 CLOUDFLARE_API_TOKEN，部署可能失败。");
+    console.warn("提示：未设置 CLOUDFLARE_API_TOKEN——只影响没有 .api-token.local 的实例，它们将被跳过。");
   }
   const manifests = await findManifests();
   if (manifests.length === 0) {
@@ -65,13 +83,17 @@ async function main() {
   }
   console.log(`共 ${manifests.length} 个客户实例${dryRun ? "（预演）" : ""}：`);
   const failed = [];
+  const skipped = [];
   for (const item of manifests) {
     const name = path.basename(item.dir);
     console.log(`\n========== ${name} ==========`);
     const result = await runUpdate(item.dir, dryRun);
-    if (!result.ok) {
-      failed.push(`${name}: ${result.error}`);
-    }
+    if (result.skipped) skipped.push(`${name}: ${result.error}`);
+    else if (!result.ok) failed.push(`${name}: ${result.error}`);
+  }
+  if (skipped.length) {
+    console.warn(`\n跳过 ${skipped.length}/${manifests.length}（缺 per-instance token）：`);
+    for (const line of skipped) console.warn(`  - ${line}`);
   }
   if (failed.length) {
     console.error(`\n失败 ${failed.length}/${manifests.length}：`);

@@ -47,6 +47,7 @@ import { SpriteLayer } from "./SpriteLayer";
 import { closeWebApp } from "./navigation";
 import { resolveBgmUrl, resolveSprite, resolveSurveySfxUrls, resolveThemeMediaRef } from "../../../src/survey/theme";
 import { BottomNav } from "./BottomNav";
+import { HelpButton } from "./help-button";
 import { ScreenShell, usePublicTheme } from "./ScreenShell";
 import { EmptyState, ErrorState } from "./PublicPrimitives";
 import { PublishOptionsDialog } from "./PublishOptionsDialog";
@@ -874,6 +875,8 @@ function SurveyListPage() {
           <div className="flex items-center justify-between gap-3">
             <p className="survey-hall-eyebrow">SURVEY HALL · 问卷大厅</p>
             <div className="flex shrink-0 items-center gap-1.5">
+              {/* 「这是什么」帮助（/s 大厅专用；/s/{id} 答题流程保持无帮助按钮）。 */}
+              <HelpButton helpKey="survey" />
               <a href="/auth" aria-label="邮箱登录" title="邮箱登录" className="survey-icon-btn">
                 <MailCheck className="h-4 w-4" />
               </a>

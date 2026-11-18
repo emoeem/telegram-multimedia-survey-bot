@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Info, Palette, RefreshCw, Sparkles, Sprout, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Palette, RefreshCw, Sparkles, Sprout } from "lucide-react";
 import { BottomNav } from "./BottomNav";
+import { HelpButton } from "./help-button";
 import { ShowcaseSheet } from "./ShowcaseSheet";
-import { closeWebApp } from "./navigation";
 import { vibrateLight } from "./haptics";
 import { fetchShowcase, type ShowcasePerson } from "./showcase-api";
 import { loadGlobalPreset, saveGlobalPreset, ThemePickerSheet, themeCssVars } from "./theme-ui";
@@ -357,6 +357,11 @@ export function ShowcaseScreen() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {/* 「这是什么」帮助。原来这里还有一个 aria-label=「关闭」的 X 按钮
+             * （closeWebApp）：展示区是带底部导航的完整页面，浏览器里它没有任何
+             * 可关的东西（window.close 无效，只能后退/跳走），Telegram 里原生
+             * 标题栏自带关闭，属于误导性入口，2026-11-19 审计后直接移除。 */}
+            <HelpButton helpKey="showcase" />
             <button
               type="button"
               className="showcase-icon-btn"
@@ -364,9 +369,6 @@ export function ShowcaseScreen() {
               onClick={() => setThemePickerOpen(true)}
             >
               <Palette className="h-4 w-4" />
-            </button>
-            <button type="button" className="showcase-icon-btn" aria-label="关闭" onClick={() => closeWebApp()}>
-              <X className="h-4 w-4" />
             </button>
           </div>
         </header>

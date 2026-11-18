@@ -43,7 +43,7 @@ export function WelcomeGuide() {
             <div>
               <p className="text-[13px] font-semibold text-[var(--survey-heading)]">答题就出报告</p>
               <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--survey-muted)]">
-                挑一份问卷直接填，不用注册，答完生成一份为你写的解读报告。
+                挑一份问卷开始填，填写前用邮箱注册或登录一下（很快），答完生成一份为你写的解读报告。
               </p>
             </div>
           </li>
@@ -54,7 +54,7 @@ export function WelcomeGuide() {
             <div>
               <p className="text-[13px] font-semibold text-[var(--survey-heading)]">还能玩和攒奖励</p>
               <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--survey-muted)]">
-                小游戏挑战、每日签到攒金币、抽随机报告，都在底部导航里。
+                小游戏在底部导航里；签到攒金币、抽随机报告，都在「我的」页的金币卡里。
               </p>
             </div>
           </li>
@@ -65,7 +65,8 @@ export function WelcomeGuide() {
             <div>
               <p className="text-[13px] font-semibold text-[var(--survey-heading)]">有社区，也可以安静看</p>
               <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--survey-muted)]">
-                广场是匿名树洞，纸条能抽到同路人聊天；只想看就不用发言。每页右上角的 ？ 都有说明。
+                广场是匿名树洞，纸条能抽到同路人聊天；只想看就不用发言。大部分页面的右上角都有 ？
+                按钮，点开能看这一页是什么。
               </p>
             </div>
           </li>
@@ -86,7 +87,7 @@ export function WelcomeGuide() {
         </div>
         <p className="mt-2 flex items-center gap-1 text-[11px] text-[var(--survey-muted)]" aria-hidden="true">
           <Mail className="h-3 w-3" />
-          有疑问随时点每页右上角的 ？ 图标
+          有疑问随时点页面右上角的 ？ 图标
         </p>
       </div>
     </div>

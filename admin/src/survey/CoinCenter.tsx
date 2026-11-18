@@ -72,7 +72,16 @@ async function probeAudioDuration(file: File): Promise<number | null> {
   }
 }
 
-function CoinPageShell(props: { title: string; subtitle: string; embedded?: boolean; children: React.ReactNode }) {
+function CoinPageShell(props: {
+  title: string;
+  subtitle: string;
+  /** 帮助注册键（screen-help.ts），由调用方传入：金币中心 "coins"、抽奖中心
+   * "gacha"、投稿中心 "submissions"。此前写死 "coins"，/gacha 点 ？ 会弹出
+   * 金币中心的帮助，承诺与所在页面对不上（2026-11-19 接线对齐）。 */
+  helpKey: string;
+  embedded?: boolean;
+  children: React.ReactNode;
+}) {
   /* embedded = 已经嵌在 /submissions 投稿中心里，外壳（顶栏 / 底部导航 /
    * survey-glow）由投稿中心统一提供。不这样的话页面上会出现两条 header。
    *
@@ -83,7 +92,7 @@ function CoinPageShell(props: { title: string; subtitle: string; embedded?: bool
   return (
     <ScreenShell themeState={themeState}>
       <PageHeader
-        helpKey="coins"
+        helpKey={props.helpKey}
         title={props.title}
         subtitle={props.subtitle}
         backHref={null}
@@ -285,7 +294,7 @@ export function CoinsScreen() {
   const checkin = overview?.checkin;
 
   return (
-    <CoinPageShell title="我的金币" subtitle="签到、做任务、赚金币；解锁问卷与抽报告都花在这里">
+    <CoinPageShell helpKey="coins" title="我的金币" subtitle="签到、做任务、赚金币；解锁问卷与抽报告都花在这里">
       {error ? <ErrorBox message={error} /> : null}
       {overview === null ? (
         <Loading />
@@ -767,6 +776,7 @@ export function GachaScreen() {
   if (detail) {
     return (
       <CoinPageShell
+        helpKey="gacha"
         title={detail.pool.name}
         subtitle={`单抽 ${detail.pool.costSingle} 金币${detail.pool.costMulti ? ` · ${detail.pool.costMulti} 金币十连` : ""}`}
       >
@@ -865,7 +875,7 @@ export function GachaScreen() {
   }
 
   return (
-    <CoinPageShell title="抽奖中心" subtitle="缘分纸条每天前 3 次免费；报告奖池用金币抽取">
+    <CoinPageShell helpKey="gacha" title="抽奖中心" subtitle="缘分纸条每天前 3 次免费；报告奖池用金币抽取">
       {error ? <ErrorBox message={error} /> : null}
       {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
       <div className="flex gap-2" role="tablist" aria-label="抽卡页面切换">
@@ -1087,7 +1097,12 @@ export function SubmissionsScreen({ embedded = false }: { embedded?: boolean } =
   const selectedMeta = SUBMISSION_TYPE_META.find((entry) => entry.type === type);
 
   return (
-    <CoinPageShell title="投稿中心" subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池" embedded={embedded}>
+    <CoinPageShell
+      helpKey="submissions"
+      title="投稿中心"
+      subtitle="审核通过可获得金币奖励，并有机会进入报告抽卡池"
+      embedded={embedded}
+    >
       {error ? <ErrorBox message={error} /> : null}
       {success ? (
         <div className="coin-success-box" role="status">
