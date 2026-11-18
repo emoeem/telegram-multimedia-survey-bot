@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
+import { HelpButton } from "./help-button";
 
 /**
  * 公开页统一顶栏。
@@ -22,6 +23,7 @@ export function PageHeader({
   backLabel = "首页",
   topNav = true,
   wide = true,
+  helpKey,
 }: {
   title: string;
   subtitle?: string;
@@ -42,6 +44,12 @@ export function PageHeader({
   topNav?: boolean;
   /** 内容列宽：wide = 站点级 1200px 居中列；false = 与 max-w-3xl 的表单列对齐。 */
   wide?: boolean;
+  /**
+   * 本页帮助内容的注册键（screen-help.ts）：传入后顶栏右侧出现「？」按钮，
+   * 点开一张底部弹层解释本页是什么、新手能做什么。2026-11-18 用户反馈
+   * 「功能太多看不懂」的响应；不传则不渲染（答题等无帮助的页保持原样）。
+   */
+  helpKey?: string;
 }) {
   return (
     <header
@@ -76,6 +84,11 @@ export function PageHeader({
             {subtitle ? <p className="mt-0.5 truncate text-[11px] text-[var(--survey-muted)]">{subtitle}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+          {helpKey ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <HelpButton helpKey={helpKey} />
+            </div>
+          ) : null}
         </div>
         {tabs ? <div className="mt-2.5 flex gap-1.5 pb-0.5">{tabs}</div> : null}
       </div>

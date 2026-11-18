@@ -1028,7 +1028,7 @@ export function NoteScreen() {
 
   return (
     <ScreenShell themeState={themeState}>
-      <PageHeader title="纸条聊天" subtitle="放一张纸条 · 抽一段缘分 · 聊聊看" wide={false} />
+      <PageHeader helpKey="notes" title="纸条聊天" subtitle="放一张纸条 · 抽一段缘分 · 聊聊看" wide={false} />
       <main className="mx-auto max-w-xl px-5 pt-4 lg:max-w-3xl">
         {loadError ? (
           <ErrorState message="纸条功能加载失败" onRetry={reload} retryLabel="重新加载" />

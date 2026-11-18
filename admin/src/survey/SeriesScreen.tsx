@@ -81,6 +81,7 @@ function SeriesShelfScreen({
   return (
     <ScreenShell themeState={themeState}>
       <PageHeader
+        helpKey="series"
         title="系列书架"
         subtitle="追一部连载，按章节慢慢读"
         titleIcon={<BookOpen className="h-4 w-4" />}

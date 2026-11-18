@@ -35,6 +35,7 @@ import {
 import { createTrialShare } from "./plaza-api";
 import { submissionTargetFromUrl } from "./submission-target";
 import { BottomNav } from "./BottomNav";
+import { HelpButton } from "./help-button";
 import { closeWebApp } from "./navigation";
 import { PluginGamePlay } from "./PluginGamePlay";
 import {
@@ -703,6 +704,7 @@ export function TrialScreen() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          <HelpButton helpKey="trial" />
           <button
             type="button"
             aria-label="选择主题"

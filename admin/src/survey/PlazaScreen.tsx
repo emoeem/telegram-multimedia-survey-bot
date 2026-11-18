@@ -795,6 +795,7 @@ function PlazaFeedScreen() {
     <ScreenShell themeState={themeState}>
       <div className="relative">
         <PageHeader
+          helpKey="plaza"
           title="广场"
           subtitle="个人资料 · 树洞心里话"
           wide={false}

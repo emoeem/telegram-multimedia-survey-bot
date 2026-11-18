@@ -83,6 +83,7 @@ function CoinPageShell(props: { title: string; subtitle: string; embedded?: bool
   return (
     <ScreenShell themeState={themeState}>
       <PageHeader
+        helpKey="coins"
         title={props.title}
         subtitle={props.subtitle}
         backHref={null}

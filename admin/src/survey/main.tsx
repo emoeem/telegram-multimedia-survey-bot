@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "../index.css";
 import { SurveyApp } from "./SurveyApp";
+import { WelcomeGuide } from "./welcome-card";
 import { DialogsProvider } from "../components/Dialogs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { activateTelegramWebApp, waitForTelegramWebApp } from "../telegram";
@@ -22,6 +23,8 @@ void (async () => {
       <ErrorBoundary scope="survey">
         <DialogsProvider>
           <SurveyApp />
+          {/* 首访欢迎卡：只在社区/个人类页面首次进入时弹一次，答题中永不打扰。 */}
+          <WelcomeGuide />
         </DialogsProvider>
       </ErrorBoundary>
     </StrictMode>,

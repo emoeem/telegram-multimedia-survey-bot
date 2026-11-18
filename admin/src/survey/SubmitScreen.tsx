@@ -283,6 +283,7 @@ export function SubmitScreen({ embedded = false }: { embedded?: boolean } = {}) 
     <div className={embedded ? "" : "survey-glow min-h-dvh"}>
       {embedded ? null : (
         <PageHeader
+          helpKey="submit"
           title={form?.title ?? "投稿"}
           subtitle="不用注册 · 审核通过后发布"
           topNav={false}
@@ -589,6 +590,7 @@ export function SubmitInboxScreen({ embedded = false }: { embedded?: boolean } =
     <div className={embedded ? "" : "survey-glow min-h-dvh"}>
       {embedded ? null : (
         <PageHeader
+          helpKey="submissions"
           title="我的投稿"
           subtitle="进度 · 评论 · 管理员留言"
           topNav={false}

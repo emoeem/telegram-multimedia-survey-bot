@@ -342,6 +342,7 @@ export function MyScreen() {
   return (
     <ScreenShell themeState={themeState}>
       <PageHeader
+        helpKey="me"
         title="我的"
         subtitle="你的答卷、资料卡与挑战记录"
         titleIcon={<UserRound className="h-4 w-4" />}

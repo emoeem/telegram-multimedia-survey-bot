@@ -143,6 +143,7 @@ export function SubmissionHub() {
     <ScreenShell themeState={themeState} nav={false}>
       <div data-submission-hub={tab}>
         <PageHeader
+          helpKey="submissions"
           title="投稿中心"
           subtitle={subtitle}
           /* 本页不渲染 BottomNav：桌面顶栏必须贴住视口顶（topNav=false），
