@@ -79,6 +79,21 @@ describe("plaza bot handler", () => {
     expect(lastScreenText()).toContain("🧑 个人资料");
   });
 
+  it("links the profile-wall button to the profiles tab (plaza default tab is the treehole)", async () => {
+    // 2026-11-19 广场默认页签翻转为树洞：「🧑 个人资料」按钮原先指向裸 /plaza
+    // 靠旧默认落资料墙，现在必须显式带 ?tab=profiles，否则按钮与落地页签脱节。
+    mocks.listPlazaPosts.mockResolvedValue({ items: [], total: 0 });
+
+    await expect(
+      handlePlazaCallback({ ...context(), origin: "https://example.test" }, callback("plaza:list"), 7),
+    ).resolves.toBe(true);
+
+    const call = mocks.renderScreen.mock.calls.at(-1)?.[0] as
+      { replyMarkup?: { inline_keyboard?: Array<Array<{ text: string; url?: string }>> } } | undefined;
+    const profileButton = call?.replyMarkup?.inline_keyboard?.flat().find((button) => button?.text === "🧑 个人资料");
+    expect(profileButton?.url).toBe("https://example.test/plaza?tab=profiles");
+  });
+
   it("renders treehole posts with author attribution", async () => {
     mocks.listPlazaPosts.mockResolvedValue({
       items: [
@@ -112,7 +127,10 @@ describe("plaza bot handler", () => {
       expect.stringContaining("已搬到网页版"),
       expect.objectContaining({
         inline_keyboard: expect.arrayContaining([
-          expect.arrayContaining([expect.objectContaining({ url: "https://example.test/plaza" })]),
+          expect.arrayContaining([
+            // 广场默认页签已是树洞：资料画廊按钮必须显式带 ?tab=profiles 才落资料墙。
+            expect.objectContaining({ url: "https://example.test/plaza?tab=profiles" }),
+          ]),
         ]),
       }),
     );

@@ -41,9 +41,10 @@ import {
   type PlazaTopic,
 } from "./plaza-api";
 import { submissionTargetFromUrl } from "./submission-target";
+import { plazaTabFromSearch, type PlazaTab } from "./plaza-tab";
 import { prepareImageForPublish } from "../lib/image-publish";
 
-type Tab = "treehole" | "profiles";
+type Tab = PlazaTab;
 
 const PAGE_SIZE = 10;
 
@@ -361,7 +362,7 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
         <button type="button" aria-label="查看大图" onClick={() => setLightboxUrl(cover.url)} className="block w-full">
           <img
             src={cover.url}
-            alt="个人资料照片"
+            alt="答卷档案照片"
             loading="lazy"
             onError={hideBrokenImage}
             className="max-h-[460px] w-full object-cover"
@@ -384,7 +385,7 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
             >
               <img
                 src={image.url}
-                alt="个人资料照片"
+                alt="答卷档案照片"
                 loading="lazy"
                 onError={hideBrokenImage}
                 className="h-36 w-full object-cover"
@@ -414,7 +415,7 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
             className="flex w-full items-center justify-center gap-1 pt-1 text-sm font-medium text-[var(--color-primary)]"
             onClick={() => setExpanded((current) => !current)}
           >
-            {expanded ? "收起详细资料" : `查看全部资料（${detailFields.length} 项）`}
+            {expanded ? "收起详细内容" : `展开全部内容（${detailFields.length} 项）`}
             <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </button>
         ) : null}
@@ -422,7 +423,7 @@ function ProfileCard({ profile }: { profile: PlazaProfileItem }) {
           href={`/plaza/profile/${profile.id}`}
           className="flex w-full items-center justify-center gap-1 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2 text-[13px] font-semibold text-[var(--survey-primary)]"
         >
-          查看资料卡
+          查看答卷档案
           <ArrowRight className="h-4 w-4" />
         </a>
       </div>
@@ -527,7 +528,7 @@ function useProfileFeed(reloadKey: number, active: boolean) {
   };
 }
 
-/** 资料卡详情页（/plaza/profile/:id）：完整资料 + 大图浏览，可分享直达。 */
+/** 答卷档案详情页（/plaza/profile/:id）：完整内容 + 大图浏览，可分享直达。 */
 function ProfileDetailScreen({ profileId }: { profileId: number }) {
   const [profile, setProfile] = useState<PlazaProfileItem | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -563,11 +564,16 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
     <ScreenShell themeState={themeState}>
       <header className="sticky top-0 z-10 border-b border-[var(--survey-card-border)] bg-[var(--survey-header-bg)] backdrop-blur-md lg:top-14">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-2 px-5 py-3 lg:max-w-3xl">
-          <a href="/plaza" className="flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]">
+          {/* 返回来源页签：广场默认页签已是树洞（plaza-tab.ts），档案详情的返回
+              必须显式带 ?tab=profiles，才落回用户进来的答卷档案墙。 */}
+          <a
+            href="/plaza?tab=profiles"
+            className="flex items-center gap-1.5 text-sm font-semibold text-[var(--survey-heading)]"
+          >
             <ArrowLeft className="h-4 w-4" />
             返回广场
           </a>
-          <p className="text-[13px] font-semibold text-[var(--survey-muted)]">个人资料卡</p>
+          <p className="text-[13px] font-semibold text-[var(--survey-muted)]">答卷档案</p>
         </div>
       </header>
       <main className="mx-auto max-w-xl px-5 py-5 lg:max-w-3xl">
@@ -576,8 +582,9 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
         ) : error || !profile ? (
           <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-8 text-center">
             <p className="text-sm text-[var(--survey-body)]">{error ?? "资料不存在或未公开"}</p>
+            {/* 同返回广场：档案详情的落点是答卷档案墙，显式带 ?tab=profiles。 */}
             <a
-              href="/plaza"
+              href="/plaza?tab=profiles"
               className="mt-4 inline-block rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-6 py-2.5 text-sm font-semibold text-[var(--survey-primary-content)]"
             >
               回广场逛逛
@@ -597,7 +604,7 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
                   >
                     <img
                       src={image.url}
-                      alt="个人资料照片"
+                      alt="答卷档案照片"
                       loading={index === 0 ? "eager" : "lazy"}
                       onError={hideBrokenImage}
                       className={`w-full object-cover ${index === 0 ? "max-h-[520px]" : "h-48"}`}
@@ -625,7 +632,7 @@ function ProfileDetailScreen({ profileId }: { profileId: number }) {
                 </div>
               ))}
               {profile.fields.length === 0 ? (
-                <p className="pt-2 text-sm text-[var(--survey-muted)]">这位参与者还没有公开更多资料。</p>
+                <p className="pt-2 text-sm text-[var(--survey-muted)]">这位参与者还没有公开更多内容。</p>
               ) : null}
             </div>
           </article>
@@ -648,9 +655,9 @@ export function PlazaScreen() {
 }
 
 function PlazaFeedScreen() {
-  const [tab, setTab] = useState<Tab>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "treehole" ? "treehole" : "profiles",
-  );
+  // 默认页签是「树洞」（B5）：广场的定位就是匿名树洞，直开 /plaza 首屏即树洞；
+  // 带 tab 参数的直达链接（?tab=profiles / ?tab=treehole）行为不变。
+  const [tab, setTab] = useState<Tab>(() => plazaTabFromSearch(window.location.search));
   const [reloadKey, setReloadKey] = useState(0);
   const themeState = usePublicTheme();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -797,7 +804,7 @@ function PlazaFeedScreen() {
         <PageHeader
           helpKey="plaza"
           title="广场"
-          subtitle="个人资料 · 树洞心里话"
+          subtitle="答卷档案 · 树洞心里话"
           wide={false}
           actions={
             <>
@@ -815,7 +822,7 @@ function PlazaFeedScreen() {
           }
           tabs={(
             [
-              { id: "profiles", label: "个人资料", icon: Users },
+              { id: "profiles", label: "答卷档案", icon: Users },
               { id: "treehole", label: "树洞", icon: TreePine },
             ] as const
           ).map((item) => {
@@ -876,7 +883,7 @@ function PlazaFeedScreen() {
                 external
                 icon={Users}
                 title="加入 Telegram 群聊"
-                subtitle="认识更多参与者，交流个人资料卡和问卷内容"
+                subtitle="认识更多参与者，交流答卷档案和问卷内容"
               />
             </div>
           ) : null}
@@ -897,7 +904,7 @@ function PlazaFeedScreen() {
               className="mb-4 flex items-center justify-center gap-2 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] px-4 py-3 text-sm font-semibold text-[var(--survey-primary-content)] shadow-md"
             >
               <PencilLine className="h-4 w-4" aria-hidden="true" />
-              填写我的个人资料
+              填写答卷档案问卷
             </a>
           ) : null}
           {activeFeed.error ? (
@@ -907,13 +914,15 @@ function PlazaFeedScreen() {
           ) : !activeFeed.loading && activeFeed.items.length === 0 ? (
             <EmptyState
               icon={tab === "treehole" ? TreePine : Users}
-              title={tab === "treehole" ? "树洞还没有内容" : "个人画廊还没有内容"}
+              title={tab === "treehole" ? "树洞还没有内容" : "答卷档案还没有内容"}
               description={
                 tab === "treehole"
                   ? "点击右下角按钮说出第一句心里话（可以匿名）。"
                   : profiles.surveyId
-                    ? "填写一份个人介绍问卷，提交时选择「发布到个人画廊」，就会出现在这里。"
-                    : "还没有人发布个人资料，先去逛逛树洞吧。"
+                    ? // 提交页的勾选项旧名在 /s/{id} 答题流程内（本轮硬约束不碰），
+                      // 这里不复述旧名，只描述动作本身。
+                      "填写一份个人介绍问卷，提交时勾选公开发布，就会出现在这里。"
+                    : "还没有人公开答卷档案，先去逛逛树洞吧。"
               }
             />
           ) : tab === "treehole" ? (

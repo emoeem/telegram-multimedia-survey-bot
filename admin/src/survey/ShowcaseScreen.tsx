@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Info, Palette, RefreshCw, Sparkles, Sprout } from "lucide-react";
+import { ChevronLeft, ChevronRight, Info, Palette, PencilLine, RefreshCw, Sparkles, Sprout } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 import { HelpButton } from "./help-button";
 import { ShowcaseSheet } from "./ShowcaseSheet";
@@ -353,7 +353,8 @@ export function ShowcaseScreen() {
               展示区
             </p>
             <p className="mt-0.5 truncate text-[11px] text-white/60">
-              {total > 0 ? `左右滑动浏览 ${total} 位创作者` : "创作者的作品展览空间"}
+              {/* 人物档案口径与 screen-help.ts 的 showcase intro 一致（B5 命名合一）。 */}
+              {total > 0 ? `左右滑动浏览 ${total} 份人物档案` : "人物档案的展览空间"}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -390,10 +391,16 @@ export function ShowcaseScreen() {
         ) : people && people.length === 0 ? (
           <div className="showcase-state">
             <h2>展台还空着</h2>
-            <p>还没有公开的展示人物。管理员可以在后台「展示区」创建第一位创作者。</p>
+            {/* 访客视角（B5）：去掉后台创建流程的内部表述，
+                给访客可执行的下一步——去广场或去答题，答卷也能变成人物档案。 */}
+            <p>还没有人公开人物档案。先去广场逛逛，或者填一份问卷，让你的答卷也出现在这里。</p>
             <a className="showcase-cta" href="/plaza">
               <Sprout className="h-4 w-4" />
               去广场看看
+            </a>
+            <a className="showcase-cta" href="/s">
+              <PencilLine className="h-4 w-4" />
+              去答一份问卷
             </a>
           </div>
         ) : (

@@ -316,8 +316,9 @@ export function ShowcaseSheet({
             </section>
           ) : null}
 
+          {/* 人物档案口径（B5）：展示区详情面板与主屏同一叫法。 */}
           {person.items.length === 0 && !person.description ? (
-            <p className="showcase-sheet-desc">这位创作者还没有补充更多资料。</p>
+            <p className="showcase-sheet-desc">这份人物档案还没有补充更多内容。</p>
           ) : null}
 
           {person.links.length > 0 ? (

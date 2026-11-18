@@ -280,7 +280,11 @@ function SeriesDetailScreen({
   );
 }
 
-/** 「我的」页的通知区块：未读红点 + 列表，打开即清未读。 */
+/**
+ * 「我的」页「动态与通知」分组（2026-11-19 通宵批次 B5）：未读红点 + 列表，打开即清未读。
+ * 通知内容是纸条配对、审核结果、连载更新等全站动态，与系列书架无关——此前嵌在
+ * 书架卡片里渲染，视觉上让人以为通知只服务追更。现在独立成卡（只在 /me 使用）。
+ */
 export function NotificationCenter() {
   const [items, setItems] = useState<NotificationDto[] | null>(null);
   const [unread, setUnread] = useState(0);
@@ -307,7 +311,7 @@ export function NotificationCenter() {
     <section className="survey-card p-4">
       <SectionHeader
         icon={Bell}
-        title="通知"
+        title="动态与通知"
         action={
           unread > 0 ? (
             <span className="rounded-full bg-[var(--app-danger)] px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -317,7 +321,9 @@ export function NotificationCenter() {
         }
       />
       {items.length === 0 ? (
-        <p className="mt-2 text-xs text-[var(--survey-muted)]">还没有通知。关注系列后，更新会出现在这里。</p>
+        <p className="mt-2 text-xs text-[var(--survey-muted)]">
+          还没有动态。纸条配对、连载更新、审核结果都会出现在这里。
+        </p>
       ) : (
         <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
           {items.slice(0, 8).map((item) => (

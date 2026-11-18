@@ -84,7 +84,9 @@ function overviewKeyboard(ctx: BotContext): InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "🌳 看树洞", callback_data: "plaza:treehole:0" },
-        ...(ctx.origin ? [{ text: "🧑 个人资料", url: `${ctx.origin}/plaza` }] : []),
+        // 网页广场默认页签已是树洞（plaza-tab.ts）；「个人资料」按钮必须显式带
+        // ?tab=profiles，否则靠旧默认落资料墙的语义就断了（2026-11-19 复核修订）。
+        ...(ctx.origin ? [{ text: "🧑 个人资料", url: `${ctx.origin}/plaza?tab=profiles` }] : []),
       ],
       [{ text: "✏️ 投稿树洞", callback_data: "plaza:post" }],
       ...homeRow(),
@@ -187,7 +189,8 @@ export async function handlePlazaCallback(
       await answerCallbackQuery(ctx.botToken, callback.id);
       await replyMessage(ctx, chatId, "🧑 个人资料画廊已搬到网页版。", {
         inline_keyboard: [
-          [{ text: "打开个人资料画廊", url: `${ctx.origin}/plaza` }],
+          // 同上：资料画廊语义对应答卷档案墙，显式带 ?tab=profiles（广场默认页签已是树洞）。
+          [{ text: "打开个人资料画廊", url: `${ctx.origin}/plaza?tab=profiles` }],
           [{ text: "返回主菜单", callback_data: "home:menu" }],
         ],
       });
