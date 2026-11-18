@@ -144,7 +144,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       return serve(raw, true);
     }
     const packId = Number(url.searchParams.get("packId"));
-    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的小游戏");
+    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
     const stamp = await loadTaskRunLeaderboardStamp(env.DB, { packId, mode });
     const cacheKey = trialLeaderboardCacheKey(`pack:${packId}`, mode, stamp);
     const cached = await readCachedJson<LeaderboardRawEntry[]>(env.CACHE, cacheKey);
@@ -220,7 +220,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       startingFloor?: unknown;
     } | null;
     const packId = Number(body?.packId);
-    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的小游戏");
+    if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
     const persona = normalizeTrialPersona(body?.persona);
     if (!persona) return fail(400, "validation_failed", "请选择身份");
     const mode = normalizeTrialMode(body?.mode) ?? "normal";
@@ -232,7 +232,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
 
     const packs = await listTaskPacks(env.DB, { enabledOnly: true, withItems: true });
     const pack = packs.find((item) => item.id === packId);
-    if (!pack) return fail(404, "not_found", "小游戏不存在或已停用");
+    if (!pack) return fail(404, "not_found", "任务包不存在或已停用");
     // 开局入口按玩法分发：内置爬塔走历史路径，插件玩法交给插件引擎。
     const gameType = normalizeGameType(pack.gameType);
     if (!gameType) return fail(400, "unsupported_game", "该玩法暂未开放，敬请期待");
@@ -240,7 +240,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       return startPluginRun(env, { pack, participant, persona, mode });
     }
     const items = pack.items ?? [];
-    if (items.length === 0) return fail(409, "empty_pack", "该小游戏还没有可用任务，请联系管理员");
+    if (items.length === 0) return fail(409, "empty_pack", "该任务包还没有可用任务，请联系管理员");
     // The run's floor window must stay inside the content actually reachable by
     // this persona/mode — otherwise the player climbs into floors with no tasks
     // and the run dead-ends halfway.
@@ -248,11 +248,11 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       (item) => (item.persona === "any" || item.persona === persona) && (item.mode === "any" || item.mode === mode),
     );
     if (matched.length === 0) {
-      return fail(409, "empty_pack", "该小游戏在你的身份/模式下没有可用任务，请换个设置或联系管理员");
+      return fail(409, "empty_pack", "该任务包在你的身份/模式下没有可用任务，请换个设置或联系管理员");
     }
     const coverageTop = matched.reduce((top, item) => Math.max(top, item.maxFloor), 0);
     if (startingFloor > coverageTop) {
-      return fail(400, "validation_failed", `该小游戏的内容只覆盖到第 ${coverageTop} 层，请选择更低的起始层`);
+      return fail(400, "validation_failed", `该任务包的内容只覆盖到第 ${coverageTop} 层，请选择更低的起始层`);
     }
     const floorCount = mode === "hell" ? pack.hellFloors : pack.normalFloors;
     const maxFloor = Math.min(startingFloor + floorCount - 1, coverageTop);
@@ -322,10 +322,10 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     run.state.phase = "playing";
     const packs = await listTaskPacks(env.DB, { withItems: true });
     const pack = packs.find((item) => item.id === run.packId);
-    if (!pack) return fail(404, "not_found", "小游戏不存在");
+    if (!pack) return fail(404, "not_found", "任务包不存在");
     const items = pack.items ?? [];
     const firstTask = pickNextTask(items, run);
-    if (!firstTask) return fail(409, "empty_pack", "该小游戏在你的设置下没有可用任务");
+    if (!firstTask) return fail(409, "empty_pack", "该任务包在你的设置下没有可用任务");
     run.state.currentTaskId = firstTask.id;
     run.state.usedTaskIds = [firstTask.id];
     await saveTaskRun(env.DB, mergeTaskRun(record, run));
@@ -389,7 +389,7 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     if (run.state.phase !== "playing") return fail(409, "not_playing", "本局还在商店阶段，先确认出发");
     const packs = await listTaskPacks(env.DB, { withItems: true });
     const pack = packs.find((item) => item.id === record.packId);
-    if (!pack) return fail(404, "not_found", "小游戏不存在");
+    if (!pack) return fail(404, "not_found", "任务包不存在");
     const items = pack.items ?? [];
     const action = rawAction as TrialAction;
     const { run: nextRun, nextTask, earned } = applyTrialAction(items, run, action);

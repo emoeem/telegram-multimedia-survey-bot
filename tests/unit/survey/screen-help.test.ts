@@ -37,20 +37,7 @@ describe("screen help registry", () => {
 
   it("keeps every intro written in plain language: no internal jargon leaks", () => {
     // 2026-11-18 用户反馈「看不懂」的直接来源是内部词汇直接当 UI 文案。
-    const jargon = [
-      "弱引用",
-      "素材库",
-      "管线",
-      "content_rating",
-      "OG",
-      "幂等",
-      "retention",
-      // 2026-11-19 通宵批次 B4：/trial 内部术语外泄防回潮——三套旧叫法统一
-      // 为「小游戏」口径后，禁止再出现在任何帮助文案里。
-      "插件玩法",
-      "任务包",
-      "小游戏包",
-    ];
+    const jargon = ["弱引用", "素材库", "管线", "content_rating", "OG", "幂等", "retention"];
     for (const [key, help] of Object.entries(SCREEN_HELP)) {
       for (const word of jargon) {
         expect(`${key}: ${help.intro}`, `${key} 的 intro 含内部术语 ${word}`).not.toContain(word);

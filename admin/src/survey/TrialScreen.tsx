@@ -69,8 +69,8 @@ import type { GameRunView } from "../../../src/game-plugin/types";
 const AGREEMENT_KEY = "trialAdultAgreement:v1";
 
 const PERSONA_OPTIONS: { id: TrialPersona; label: string; hint: string }[] = [
-  { id: "male", label: "男向", hint: "任务按男向文案抽取" },
-  { id: "female", label: "女向", hint: "任务按女向文案抽取" },
+  { id: "male", label: "公", hint: "任务按公向文案抽取" },
+  { id: "female", label: "母", hint: "任务按母向文案抽取" },
 ];
 
 const MODE_OPTIONS: { id: TrialMode; label: string; hint: string }[] = [
@@ -130,7 +130,7 @@ function statusLabel(status: TrialRunStatus): string {
 }
 
 function personaLabel(persona: TrialPersona): string {
-  return persona === "male" ? "男向" : "女向";
+  return persona === "male" ? "公" : "母";
 }
 
 function modeLabel(mode: TrialMode): string {
@@ -314,11 +314,11 @@ export function TrialScreen() {
       startFloor: normalizedStartFloor,
     };
     if (!effective.packId) {
-      setNotice("请先选择一个小游戏");
+      setNotice("请先选择一个小游戏包");
       return;
     }
     if (!persona && !config) {
-      setNotice("请选择你的身份（男向 / 女向）");
+      setNotice("请选择你的身份（公 / 母）");
       return;
     }
     // 服务端 normalizeGameType 保证 game_type 非 tower 即已注册插件。
@@ -811,7 +811,7 @@ export function TrialScreen() {
                 管理员快捷入口
               </p>
               <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
-                在这里手动编写小游戏与任务文案，保存后玩家端实时生效
+                在这里手动编写小游戏包与任务文案，保存后玩家端实时生效
               </p>
             </div>
             <a
@@ -938,7 +938,7 @@ export function TrialScreen() {
           ))}
         </div>
 
-        <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">小游戏</p>
+        <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">小游戏包</p>
         {packsError ? <p className="mt-2 text-xs text-red-500">{packsError}</p> : null}
         {packs === null ? (
           <div className="mt-2 space-y-2">
@@ -987,9 +987,7 @@ export function TrialScreen() {
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
                         <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
-                          {pack.gameType === "tower"
-                            ? `普通 ${pack.normalFloors} 层 · 地狱 ${pack.hellFloors} 层`
-                            : "即开即玩"}
+                          {pack.gameType === "tower" ? `${pack.normalFloors}/${pack.hellFloors} 层` : "即开即玩"}
                         </span>
                       </div>
                       <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
@@ -1278,7 +1276,7 @@ export function TrialScreen() {
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-[var(--survey-muted)]">玩法总榜</p>
                 <p className="mt-0.5 truncate text-sm font-bold text-[var(--survey-heading)]">
-                  {boardScope.label} · 全部小游戏合并计分
+                  {boardScope.label} · 全部任务包合并计分
                 </p>
               </div>
               <button
@@ -1287,14 +1285,14 @@ export function TrialScreen() {
                 disabled={!targetPackId}
                 className="shrink-0 rounded-full border border-[var(--survey-card-border)] px-3 py-1.5 text-[11px] font-semibold text-[var(--survey-muted)] disabled:opacity-40"
               >
-                按小游戏看
+                按任务包看
               </button>
             </div>
           ) : (
             <>
-              <p className="text-xs font-semibold text-[var(--survey-muted)]">小游戏</p>
+              <p className="text-xs font-semibold text-[var(--survey-muted)]">任务包</p>
               <select
-                aria-label="小游戏"
+                aria-label="任务包"
                 value={String(targetPackId ?? "")}
                 disabled={packs === null || packs.length === 0}
                 onChange={(event) => changeBoardPack(Number(event.target.value))}
@@ -1390,7 +1388,7 @@ export function TrialScreen() {
         )}
         <p className="text-center text-[11px] text-[var(--survey-muted)]">
           只展示已完成并结算的挑战 · 每位玩家取最好一局
-          {isGameTypeBoard ? " · 玩法总榜合并该玩法全部小游戏" : ""}
+          {isGameTypeBoard ? " · 玩法总榜合并该玩法全部任务包" : ""}
         </p>
       </main>
     );
@@ -1645,7 +1643,11 @@ export function TrialScreen() {
                   : "rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-60"
               }
             >
-              {shareBusy ? "发布中…" : sharedPostId ? `已匿名晒到树洞 #${sharedPostId}` : "匿名晒进度到树洞"}
+              {shareBusy
+                ? "发布中…"
+                : sharedPostId
+                  ? `已匿名晒到树洞 #${sharedPostId}`
+                  : "匿名晒进度到树洞（自动同步频道）"}
             </button>
             {sharedPostId ? (
               <a
@@ -1677,7 +1679,7 @@ export function TrialScreen() {
               className="inline-flex items-center justify-center gap-1.5 rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] py-2.5 text-sm font-semibold text-[var(--survey-body)]"
             >
               <Trophy className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-              看看这个小游戏的排行榜
+              看看这个任务包的排行榜
             </button>
             <button
               type="button"
@@ -1724,7 +1726,7 @@ export function TrialScreen() {
   const renderPluginPlay = () =>
     pluginPlay ? (
       <>
-        {renderHeader(pluginPlay.title, "小游戏 · 自动保存", true)}
+        {renderHeader(pluginPlay.title, "插件玩法 · 自动保存", true)}
         <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-2xl">
           {notice ? (
             <div className="rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-2.5 text-[13px] font-medium text-[var(--survey-primary)]">
@@ -1837,7 +1839,7 @@ export function TrialScreen() {
       data-theme={resolvedPreset ?? undefined}
       style={{ ...themeVars.vars, ...themeVars.background }}
     >
-      {renderHeader("小游戏", "选一个玩法和包，开始你的挑战（「包」就是一个现成的小游戏，选好即玩）", false)}
+      {renderHeader("小游戏", "选一个玩法和包，开始你的挑战", false)}
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
       {renderThemePicker()}

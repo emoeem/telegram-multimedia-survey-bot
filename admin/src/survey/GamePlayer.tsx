@@ -32,8 +32,8 @@ export const TRIAL_AGREEMENT_KEY = "trialAdultAgreement:v1";
 export type GameAnswerValue = Extract<AnswerValue, { kind: "game" }>;
 
 const PERSONA_OPTIONS: { id: TrialPersona; label: string; hint: string }[] = [
-  { id: "male", label: "男向", hint: "男向文案" },
-  { id: "female", label: "女向", hint: "女向文案" },
+  { id: "male", label: "公", hint: "公向文案" },
+  { id: "female", label: "母", hint: "母向文案" },
 ];
 
 const MODE_OPTIONS: { id: TrialMode; label: string; hint: string }[] = [
@@ -196,7 +196,7 @@ export function GamePlayer({
   if (!packId) {
     return (
       <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-sm text-[var(--survey-muted)]">
-        这道题还没有配置小游戏，请联系问卷创建者。
+        这道题还没有配置小游戏包，请联系问卷创建者。
       </div>
     );
   }

@@ -70,7 +70,7 @@ export const SCREEN_HELP: Record<string, ScreenHelp> = {
     ],
   },
   trial: {
-    intro: "挑战任务是用答题做的小游戏：一层层往上闯关，通关记录和排行榜都在这里。",
+    intro: "挑战任务是用答题做的小游戏：限时对局、通关记录和排行榜都在这里。",
     entries: [
       { label: "开一局", hint: "挑一个挑战直接开始，答得越快分越高" },
       { label: "看排行榜", hint: "就在当前页往下滑" },
