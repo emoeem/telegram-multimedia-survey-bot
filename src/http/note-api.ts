@@ -43,6 +43,14 @@ const NOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const NOTE_IMAGE_STORAGE_PREFIX = "media:note:";
 const NOTE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
+/**
+ * 抽纸条幂等键格式（note-chat.service.ts:267 注释约定的 HTTP 层落实）：
+ * `note:` 前缀 + uuid 形态 token，总长 8-128（与 gacha.service.ts 的键界同款）。
+ * 服务层还会把键重组为参与者作用域账本键，两段缺一不可——这里挡客户端
+ * 任意透传（空串/裸 uuid/超长），作用域化挡不同用户同键互撞。
+ */
+const NOTE_IDEMPOTENCY_KEY_RE = /^note:[0-9a-zA-Z][0-9a-zA-Z-]{2,122}$/;
+
 function isNoteError(error: unknown): error is NoteError {
   return Boolean(error) && typeof error === "object" && "code" in (error as Record<string, unknown>);
 }
@@ -364,6 +372,9 @@ export async function handleNoteApiRequest(request: Request, env: Env, url: URL)
     if (!perDay.allowed) return rateLimitResponse(perDay.retryAfterSeconds);
     const body = await readJsonBody(request);
     const idem = asString(body?.idempotencyKey);
+    if (!NOTE_IDEMPOTENCY_KEY_RE.test(idem)) {
+      return fail(400, "invalid_idempotency_key", "幂等键格式不合法（应为 note:<uuid>）");
+    }
     return respond(async () => {
       const result = await drawNote(env.DB, hash, participant.dbUserId ?? null, idem, noteDmOptions(env, url));
       return { ...result };

@@ -5,8 +5,10 @@ import { createSqliteD1, sqliteD1Available } from "../helpers/sqlite-d1";
 import {
   blockThread,
   decideDrawKind,
+  DRAW_COST_COINS,
   drawNote,
   drawPoolWhere,
+  FREE_DRAWS_PER_DAY,
   isBlockedPair,
   listMessages,
   listThreads,
@@ -119,9 +121,10 @@ const NOTE_SCHEMA = ["0084_follows_notifications.sql", "0089_note_chat.sql", "00
   .map((file) => readFileSync(new URL(`../../db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
 
-// drawNote 成功后要读余额（getCoinAccount）。测试只走免费抽取路径，
-// 手写最小 coin_accounts（plaza-post.repository.test.ts 同款做法），
-// 免去引入整条金币迁移链。
+// drawNote 要读余额（getCoinAccount），且幂等重放预检查 coin_transactions
+// （0089 之后 drawNote 每次抽取都会摸这张表）。手写最小两张账本表
+//（plaza-post.repository.test.ts 同款做法），免引入整条金币迁移链；
+// coin_transactions 与 0078 同列同约束（idempotency_key 全局 UNIQUE）。
 const COIN_ACCOUNTS_DDL = `
 CREATE TABLE IF NOT EXISTS coin_accounts (
   participant_hash TEXT NOT NULL PRIMARY KEY,
@@ -131,6 +134,19 @@ CREATE TABLE IF NOT EXISTS coin_accounts (
   total_spent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS coin_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_hash TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  ref_type TEXT,
+  ref_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  note TEXT,
+  created_by TEXT NOT NULL DEFAULT 'system',
+  created_at TEXT NOT NULL
 );
 `;
 
@@ -507,5 +523,193 @@ describe.skipIf(!sqliteD1Available)("纸条聊天 · DB 行为（0094 安全层�
     expect(sent).toMatchObject({ mine: true, body: "第二条消息" });
     const row = await db.prepare(`SELECT COUNT(*) AS n FROM note_messages`).first<{ n: number }>();
     expect(Number(row?.n ?? 0)).toBe(2);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 抽取幂等（金币路径）——账本键参与者作用域化（通宵批次 B7）。
+ * coin_transactions.idempotency_key 是全局 UNIQUE（ledger.service.ts 的查重
+ * 是裸键全局查），drawNote 必须把客户端键重组为 note:<drawerHash>:<token>
+ * 再入账：同用户重放撞 UNIQUE → 幂等返回不重复扣款；不同用户持相同 uuid
+ * 各自扣款、各自抽纸条。并发语义由 UNIQUE 承担，两个分支都要到得了：
+ * 先后重放（第二次调用时赢家已提交）走顶部预检回放；并发输家分支
+ * （预检后、扣款 batch 撞 UNIQUE）由下方 raceDb 用 batch 钩子模拟
+ * 「预检与扣款之间赢家提交」的窗口专项覆盖——不靠等价假设。
+ * ------------------------------------------------------------------ */
+
+/** 两个用户「恰好」生成的同一个客户端 uuid（同 uuid 撞键的并发场景）。 */
+const SHARED_UUID = "11111111-2222-3333-4444-555555555555";
+
+describe.skipIf(!sqliteD1Available)("纸条抽取幂等 · 金币路径（参与者作用域键）", () => {
+  function makeCoinDb(): D1Database {
+    return createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}\n${IDENTITY_DDL}`);
+  }
+
+  async function putNoteOk(db: D1Database, ownerHash: string, content: string): Promise<void> {
+    await putNote(db, ownerHash, { gender: "x", ageBand: "25-30", region: "", content }, null);
+  }
+
+  /** 直接插满当日免费额（绕开真实抽取，把下一次抽取推到金币路径）。 */
+  async function exhaustFreeDraws(db: D1Database, drawerHash: string): Promise<void> {
+    for (let i = 0; i < FREE_DRAWS_PER_DAY; i += 1) {
+      await db
+        .prepare(`INSERT INTO note_draws (drawer_hash, note_id, kind, created_at) VALUES (?, 1, 'free', ?)`)
+        .bind(drawerHash, new Date().toISOString())
+        .run();
+    }
+  }
+
+  async function seedBalance(db: D1Database, participantHash: string, balance: number): Promise<void> {
+    await db
+      .prepare(
+        `INSERT INTO coin_accounts (participant_hash, user_id, balance, total_earned, total_spent, created_at, updated_at)
+         VALUES (?, NULL, ?, 0, 0, ?, ?)`,
+      )
+      .bind(participantHash, balance, new Date().toISOString(), new Date().toISOString())
+      .run();
+  }
+
+  async function countTxns(db: D1Database, participantHash: string): Promise<number> {
+    const row = await db
+      .prepare(`SELECT COUNT(*) AS n FROM coin_transactions WHERE participant_hash = ?`)
+      .bind(participantHash)
+      .first<{ n: number }>();
+    return Number(row?.n ?? 0);
+  }
+
+  it("金币抽取扣款：账本键是 note:<drawerHash>:<token>，不是客户端裸键", async () => {
+    const db = makeCoinDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    await exhaustFreeDraws(db, "hash_b");
+    await seedBalance(db, "hash_b", 100);
+
+    const draw = await drawNote(db, "hash_b", null, `note:${SHARED_UUID}`);
+    expect(draw).toMatchObject({ ok: true, empty: false, kind: "coin" });
+    const txn = await db
+      .prepare(`SELECT participant_hash, amount, idempotency_key FROM coin_transactions LIMIT 1`)
+      .first<{ participant_hash: string; amount: number; idempotency_key: string }>();
+    expect(txn?.participant_hash).toBe("hash_b");
+    expect(txn?.amount).toBe(-DRAW_COST_COINS);
+    expect(txn?.idempotency_key).toBe(`note:hash_b:${SHARED_UUID}`);
+    expect("balance" in draw ? draw.balance : -1).toBe(100 - DRAW_COST_COINS);
+  });
+
+  it("同用户同键重放：得 duplicate、回放首次结果、不重复扣款", async () => {
+    const db = makeCoinDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    await exhaustFreeDraws(db, "hash_b");
+    await seedBalance(db, "hash_b", 100);
+
+    const first = await drawNote(db, "hash_b", null, `note:${SHARED_UUID}`);
+    expect(first).toMatchObject({ ok: true, empty: false, kind: "coin" });
+    const replay = await drawNote(db, "hash_b", null, `note:${SHARED_UUID}`);
+    // 重放带 duplicate 标记，回放的是首次抽取的会话与纸条（双击/超时不重抽）。
+    expect(replay).toMatchObject({ ok: true, empty: false, kind: "coin", duplicate: true });
+    expect("threadId" in replay ? replay.threadId : -1).toBe("threadId" in first ? first.threadId : -2);
+    expect("note" in replay ? replay.note.id : -1).toBe("note" in first ? first.note.id : -2);
+    // 只有一笔扣款流水，余额只扣一次。
+    expect(await countTxns(db, "hash_b")).toBe(1);
+    expect("balance" in replay ? replay.balance : -1).toBe(100 - DRAW_COST_COINS);
+    // 换一个新键是全新抽取（不是重放）。
+    const fresh = await drawNote(db, "hash_b", null, "note:22222222-3333-4444-5555-666666666666");
+    expect("duplicate" in fresh ? (fresh.duplicate ?? false) : false).toBe(false);
+  });
+
+  it("两个用户持相同 uuid：各自扣款、各自抽纸条，互不干扰（旧实现全局裸键会幽灵互撞）", async () => {
+    const db = makeCoinDb();
+    await putNoteOk(db, "hash_a", "A 的纸条");
+    await putNoteOk(db, "hash_b", "B 的纸条");
+    await exhaustFreeDraws(db, "hash_b");
+    await exhaustFreeDraws(db, "hash_a");
+    await seedBalance(db, "hash_b", 100);
+    await seedBalance(db, "hash_a", 100);
+
+    const bDraw = await drawNote(db, "hash_b", null, `note:${SHARED_UUID}`);
+    expect(bDraw).toMatchObject({ ok: true, empty: false, kind: "coin" });
+
+    // A 用完全相同的 uuid 抽：必须成功并扣自己的钱。全局裸键下 A 会撞
+    // UNIQUE、被当成 duplicate 白拿一次抽取结果——未扣款却 ok 的幽灵。
+    const aDraw = await drawNote(db, "hash_a", null, `note:${SHARED_UUID}`);
+    expect(aDraw).toMatchObject({ ok: true, empty: false, kind: "coin" });
+    expect("balance" in aDraw ? aDraw.balance : -1).toBe(100 - DRAW_COST_COINS);
+    expect("balance" in bDraw ? bDraw.balance : -1).toBe(100 - DRAW_COST_COINS);
+
+    // 两笔独立流水（键各自作用域）、两条会话（各抽到对方的纸条）。
+    const txns = await db
+      .prepare(`SELECT participant_hash, idempotency_key FROM coin_transactions ORDER BY id`)
+      .all<{ participant_hash: string; idempotency_key: string }>();
+    expect((txns.results ?? []).map((row) => row.idempotency_key)).toEqual([
+      `note:hash_b:${SHARED_UUID}`,
+      `note:hash_a:${SHARED_UUID}`,
+    ]);
+    const threads = await db.prepare(`SELECT drawer_hash FROM note_threads ORDER BY id`).all<{ drawer_hash: string }>();
+    expect((threads.results ?? []).map((row) => row.drawer_hash)).toEqual(["hash_b", "hash_a"]);
+  });
+
+  it("真并发双提交的输家：batch 撞 UNIQUE 后回放赢家结果，不给未抽中的作者误发通知", async () => {
+    const base = createSqliteD1(`PRAGMA foreign_keys = ON;\n${NOTE_SCHEMA}\n${COIN_ACCOUNTS_DDL}\n${IDENTITY_DDL}`);
+    // 竞态窗口模拟（「预检后、扣款 batch 提交冲突前赢家落库」）：
+    // - 调用前插赢家**会话+抽取行**（不插流水）→ 输家预检放过，候选池只剩 C；
+    // - batch 钩子里补插赢家**流水** → 输家的流水 INSERT 撞 UNIQUE →
+    //   runSpendBatch duplicate → 必须按赢家 refId 回放，绝不把自选候选
+    //   （C）当成功。真 D1 下输家的整批语句原子回滚，shim 不回滚留下的
+    //   输家抽取/会话脏行是假象，本测试不断言它们。
+    const now = new Date().toISOString();
+    await putNoteOk(base, "hash_a", "A 的纸条");
+    await putNoteOk(base, "hash_c", "C 的纸条");
+    await putNoteOk(base, "hash_b", "B 的纸条");
+    await exhaustFreeDraws(base, "hash_b");
+    await seedBalance(base, "hash_b", 100);
+
+    // 赢家产物中先可见的部分：会话+抽取行（不插流水）→ 输家预检放过、候选池只剩 C。
+    await base
+      .prepare(`INSERT INTO note_threads (note_id, drawer_hash, status, created_at) VALUES (1, 'hash_b', 'active', ?)`)
+      .bind(now)
+      .run();
+    await base
+      .prepare(`INSERT INTO note_draws (drawer_hash, note_id, kind, created_at) VALUES ('hash_b', 1, 'coin', ?)`)
+      .bind(now)
+      .run();
+
+    const raceDb: D1Database = {
+      prepare: (sql: string) => base.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        await base
+          .prepare(
+            `INSERT INTO coin_transactions
+               (participant_hash, amount, balance_after, kind, ref_type, ref_id, idempotency_key, note, created_by, created_at)
+             VALUES ('hash_b', -5, 95, 'note_draw', 'note', '1', ?, '抽纸条', 'note_chat', ?)`,
+          )
+          .bind(`note:hash_b:${SHARED_UUID}`, now)
+          .run();
+        return base.batch(statements);
+      },
+    } as unknown as D1Database;
+
+    const loser = await drawNote(raceDb, "hash_b", null, `note:${SHARED_UUID}`);
+    // 输家拿到的是赢家那次抽取的回放（A 的纸条、A 的会话），带 duplicate 标记。
+    const winnerThreadId = Number(
+      (
+        await base
+          .prepare(`SELECT id FROM note_threads WHERE note_id = 1 AND drawer_hash = 'hash_b'`)
+          .first<{ id: number }>()
+      )?.id ?? 0,
+    );
+    expect(loser).toMatchObject({ ok: true, empty: false, kind: "coin", duplicate: true });
+    expect("note" in loser ? loser.note.id : -1).toBe(1);
+    expect("threadId" in loser ? loser.threadId : -1).toBe(winnerThreadId);
+    expect("balance" in loser ? loser.balance : -1).toBe(95);
+
+    // 未扣款的幽灵被钉死：流水只有赢家一笔；输家自选的 C 的作者没有
+    // 被误发「被抽中」通知（修复前 tail 会给 hash_c 误发 + 返回 threadId 0）。
+    const txns = await base
+      .prepare(`SELECT COUNT(*) AS n FROM coin_transactions WHERE idempotency_key = ?`)
+      .bind(`note:hash_b:${SHARED_UUID}`)
+      .first<{ n: number }>();
+    expect(Number(txns?.n ?? 0)).toBe(1);
+    const notifications = await base.prepare(`SELECT COUNT(*) AS n FROM notifications`).first<{ n: number }>();
+    expect(Number(notifications?.n ?? 0)).toBe(0);
   });
 });

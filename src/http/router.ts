@@ -244,14 +244,18 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
     }
 
     // 认证卡内容包：公开只读，管理端通过 /api/admin/cert-content 写入。
+    // getSystemSetting 的 D1 异常也要给 JSON：cert 生成器按 JSON 解析，
+    // Worker 的非 JSON 500 页只会显示成「请求失败」（guard.ts 的同一条纪律）。
     if (url.pathname === "/api/cert-content") {
-      const raw = await getSystemSetting(env.DB, CERT_CONTENT_SETTING_KEY);
-      if (!raw) return Response.json({ ok: true, pack: null });
-      try {
-        return Response.json({ ok: true, pack: JSON.parse(raw) });
-      } catch {
-        return Response.json({ ok: true, pack: null });
-      }
+      return guardApiResponse(request, env, url, async () => {
+        const raw = await getSystemSetting(env.DB, CERT_CONTENT_SETTING_KEY);
+        if (!raw) return Response.json({ ok: true, pack: null });
+        try {
+          return Response.json({ ok: true, pack: JSON.parse(raw) });
+        } catch {
+          return Response.json({ ok: true, pack: null });
+        }
+      });
     }
 
     // 客户端结构化日志上报（2026-11-19 通宵批次 B3）：screen_view 在浏览器
@@ -273,10 +277,14 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
     }
 
     // 认证卡抽取池：主题内容包指向小游戏区的任务包，前端带 18+ ack 实时抽。
+    // 纳入 guardApiResponse：handleCertDraw 内部已有 D1 异常 → JSON 的兜底，
+    // 这里再兜住它之前/之外的意外抛出（公开端点一律可解释 JSON）。
     if (url.pathname === CERT_DRAW_PATH) {
-      return handleCertDraw(request, env, {
-        clientKey: rateLimitIpSubject(resolveClientIdentity(request, env)) ?? "",
-      });
+      return guardApiResponse(request, env, url, () =>
+        handleCertDraw(request, env, {
+          clientKey: rateLimitIpSubject(resolveClientIdentity(request, env)) ?? "",
+        }),
+      );
     }
 
     if (url.pathname === "/series" || url.pathname.startsWith("/series/")) {

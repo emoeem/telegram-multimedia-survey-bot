@@ -259,12 +259,19 @@ export interface DrawHit {
   freeLeft: number;
   threadId: number;
   note: NoteCard;
+  /** 幂等重放标记：仅同键重放返回（回放首次抽取结果），首次抽取不带。 */
+  duplicate?: true;
 }
 export type DrawResult = DrawOutcome | DrawHit;
 
 /**
  * 抽纸条。先挑后付：池空不扣任何东西；免费额够走免费，否则原子扣金币。
- * 幂等键由客户端带来（防双击双扣），格式 `note:<uuid>` 由 HTTP 层校验。
+ * 幂等键由客户端带来（防双击双扣），格式 `note:<uuid>` 由 HTTP 层校验；
+ * 入账前再重组为参与者作用域账本键 `note:<drawerHash>:<uuid>`（对齐
+ * checkin.service.ts / challenge.service.ts 的既有前缀模式）——
+ * coin_transactions.idempotency_key 是全局 UNIQUE（ledger.service.ts 的查重
+ * 是裸键全局查），客户端裸键直接入账会让不同用户持相同 uuid 互撞、
+ * 重放回放别人的结果，甚至出现未扣款却 ok 的幽灵返回。
  */
 export async function drawNote(
   db: D1Database,
@@ -276,6 +283,24 @@ export async function drawNote(
   // 需先放入 1 张纸条才能抽取（玩法规则，也保证回信有人收）。
   const mine = await getMyActiveNote(db, drawerHash);
   if (!mine) throw noteError("need_own_note", "先放一张自己的纸条，才能抽别人的");
+
+  // 账本键参与者作用域化：取客户端键的 token 部分（HTTP 层已校验 `note:`
+  // 前缀；此处剥前缀兜底），与抽取者 hash 绑定。
+  const clientToken = idempotencyKey.startsWith("note:") ? idempotencyKey.slice("note:".length) : idempotencyKey;
+  const ledgerKey = `note:${drawerHash}:${clientToken}`;
+
+  // 同键幂等重放：本人已用这个键扣款抽过 → 直接回放首次结果。必须先于
+  // 候选重挑——首次抽取的纸条已被会话池排除，重挑要么落空（empty）要么
+  // 换张，与首次扣款对不上。免额路径没有账本行，不经过这里。
+  const previous = await db
+    .prepare(
+      `SELECT id, ref_id FROM coin_transactions
+        WHERE idempotency_key = ? AND participant_hash = ? AND kind = 'note_draw'`,
+    )
+    .bind(ledgerKey, drawerHash)
+    .first<{ id: number; ref_id: string | null }>();
+  const replayed = previous?.ref_id ? await replayDrawHit(db, drawerHash, Number(previous.ref_id)) : null;
+  if (replayed) return replayed;
 
   const now = nowIso();
   const pool = drawPoolWhere(drawerHash, now);
@@ -321,7 +346,7 @@ export async function drawNote(
         // runSpendBatch 约定收正数金额（扣款由它内部取负入账）。
         amount: decision.costCoins,
         kind: "note_draw",
-        idempotencyKey,
+        idempotencyKey: ledgerKey,
         refType: "note",
         refId: String(candidate.id),
         note: "抽纸条",
@@ -336,6 +361,22 @@ export async function drawNote(
         insertThread,
       ],
     );
+    if (outcome.duplicate) {
+      // 真并发双提交的输家：赢家流水已落库、本批（真 D1 里）整体回滚。
+      // 绝不能把自选候选当成功——那会返回幽灵纸条（threadId 0）、给没被抽中
+      // 的作者误发「被抽中」通知，构成「未扣款却 ok」。按赢家流水记下的
+      // refId 回放，与顶部预检同一出口；回放对不上（异常数据）就报错让
+      // 客户端换新键重试，也不走 tail。
+      const winner = outcome.transactionId
+        ? await db
+            .prepare(`SELECT ref_id FROM coin_transactions WHERE id = ?`)
+            .bind(outcome.transactionId)
+            .first<{ ref_id: string | null }>()
+        : null;
+      const concurrentReplay = winner?.ref_id ? await replayDrawHit(db, drawerHash, Number(winner.ref_id)) : null;
+      if (concurrentReplay) return concurrentReplay;
+      throw noteError("draw_replay_failed", "抽取结果回放失败，请重新抽取");
+    }
     if (!outcome.applied && !outcome.duplicate) {
       throw noteError("insufficient_balance", `金币不足：抽纸条需要 ${decision.costCoins} 金币`);
     }
@@ -365,6 +406,54 @@ export async function drawNote(
       imageAssetId: candidate.imageAssetId ?? null,
       createdAt: candidate.createdAt,
       expiresAt: candidate.expiresAt,
+    },
+  };
+}
+
+/**
+ * 幂等重放：按首次扣款流水记下的纸条（ref_id）回放会话与纸条卡片。
+ * 重放不再通知作者、不再随机挑候选——结果与首次扣款严格一致。
+ * 返回 null 表示首次记录对不上（异常数据），调用方照常走新抽取。
+ */
+async function replayDrawHit(db: D1Database, drawerHash: string, noteId: number): Promise<DrawHit | null> {
+  const row = await db
+    .prepare(
+      `SELECT t.id AS threadId, n.id, n.gender, n.age_band AS ageBand, n.region, n.content,
+              n.image_asset_id AS imageAssetId, n.created_at AS createdAt, n.expires_at AS expiresAt
+         FROM note_threads t JOIN notes n ON n.id = t.note_id
+        WHERE t.note_id = ? AND t.drawer_hash = ?`,
+    )
+    .bind(noteId, drawerHash)
+    .first<{
+      threadId: number;
+      id: number;
+      gender: string;
+      ageBand: string;
+      region: string;
+      content: string;
+      imageAssetId: number | null;
+      createdAt: string;
+      expiresAt: string;
+    }>();
+  if (!row) return null;
+  return {
+    ok: true,
+    empty: false,
+    kind: "coin",
+    duplicate: true,
+    balance: (await getCoinAccount(db, drawerHash))?.balance ?? 0,
+    // 金币路径只在免费额耗尽后发生，重放时免费额必然仍是 0。
+    freeLeft: 0,
+    threadId: row.threadId,
+    note: {
+      id: row.id,
+      gender: row.gender,
+      ageBand: row.ageBand,
+      region: row.region,
+      content: row.content,
+      imageAssetId: row.imageAssetId ?? null,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
     },
   };
 }

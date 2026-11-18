@@ -29,8 +29,9 @@ const NOTE_SCHEMA = ["0089_note_chat.sql", "0094_note_chat_safety.sql"]
   .map((file) => readFileSync(new URL(`../../../db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");
 
-// drawNote 读余额（getCoinAccount）、writeAudit 写审计，各给最小 DDL
-//（note-chat.test.ts 同款做法），免引入整条金币/权限迁移链。
+// drawNote 读余额（getCoinAccount）与幂等重放预检查 coin_transactions、
+// writeAudit 写审计，各给最小 DDL（note-chat.test.ts 同款做法），免引入
+// 整条金币/权限迁移链。
 const TEST_ONLY_DDL = `
 CREATE TABLE IF NOT EXISTS coin_accounts (
   participant_hash TEXT NOT NULL PRIMARY KEY,
@@ -40,6 +41,19 @@ CREATE TABLE IF NOT EXISTS coin_accounts (
   total_spent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS coin_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_hash TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  ref_type TEXT,
+  ref_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  note TEXT,
+  created_by TEXT NOT NULL DEFAULT 'system',
+  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,5 +364,37 @@ describe.skipIf(!sqliteD1Available)("note-api · UGC 安全（0094）", () => {
       new URL("https://example.test/api/note/admin/blocks"),
     );
     expect(denied.status).toBe(401);
+  });
+  /* ---- 幂等键格式校验（通宵批次 B7）：HTTP 层挡客户端任意透传，服务层
+   * 再做参与者作用域化——两段缺一不可。 ---- */
+  it("POST /api/note/draw 幂等键格式校验：空/裸 uuid/缺前缀/超长 → 400 invalid_idempotency_key", async () => {
+    const env = makeEnv();
+    for (const key of [
+      "",
+      "11111111-2222-3333-4444-555555555555", // 裸 uuid，缺 note: 前缀
+      "note:", // 只有前缀
+      "note:ab", // token 过短（总长 < 8）
+      `note:${"a".repeat(200)}`, // 超长（总长 > 128）
+      "draw:11111111-2222-3333-4444-555555555555", // 前缀不对
+    ]) {
+      const response = await handleNoteApiRequest(
+        jsonRequest("/api/note/draw", "POST", { idempotencyKey: key }),
+        env,
+        new URL("https://example.test/api/note/draw"),
+      );
+      expect(response.status, `key=${key.slice(0, 40)}`).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, code: "invalid_idempotency_key" });
+    }
+  });
+
+  it("POST /api/note/draw 合法 note:<uuid> 键通过校验进入服务层（无纸条 → need_own_note）", async () => {
+    const env = makeEnv();
+    const response = await handleNoteApiRequest(
+      jsonRequest("/api/note/draw", "POST", { idempotencyKey: "note:11111111-2222-3333-4444-555555555555" }),
+      env,
+      new URL("https://example.test/api/note/draw"),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, code: "need_own_note" });
   });
 });

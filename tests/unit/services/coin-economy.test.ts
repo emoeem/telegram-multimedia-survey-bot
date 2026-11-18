@@ -7,6 +7,8 @@ import { CoinLedgerError, earnCoins, getCoinAccount } from "../../../src/service
 import { performCheckin, getCheckinStatus } from "../../../src/services/coin/checkin.service";
 import { unlockSurvey, resolveCoinGate } from "../../../src/services/coin/unlock.service";
 import { pullGacha, drawWeighted, listActivePools } from "../../../src/services/coin/gacha.service";
+import { claimChallenge, ChallengeError } from "../../../src/services/coin/challenge.service";
+import { saveCoinConfigSection } from "../../../src/services/coin/config.service";
 import { createSubmission, reviewSubmission } from "../../../src/services/coin/submission.service";
 import { backfillCheckin } from "../../../src/services/coin/checkin.service";
 import { moderateSubmission } from "../../../src/services/coin/moderation.service";
@@ -943,5 +945,83 @@ describe("投稿", () => {
     expect(again.reward).toBeNull();
     const balance = await getCoinAccount(db, PARTICIPANT.participantHash);
     expect(balance?.balance).toBe(30);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 抽卡重放参与者校验 + 挑战禁用语义（通宵批次 B7）。
+ * ------------------------------------------------------------------ */
+
+describe("抽卡重放参与者校验", () => {
+  function poolObject(poolId: number) {
+    return {
+      id: poolId,
+      slug: "test-pool",
+      name: "测试池",
+      description: "",
+      costSingle: 10,
+      costMulti: null,
+      status: "active" as const,
+      startAt: null,
+      endAt: null,
+      pityAt: null,
+      defaultAccess: "permanent",
+      version: 1,
+      contentRating: "all" as const,
+    };
+  }
+
+  it("他人幂等键重放：4xx 拒绝、不回放抽取结果、自身未扣款", async () => {
+    const poolId = seedPool(db);
+    seedPoolItem(db, poolId, "N", 1);
+    const other = { participantHash: "web_other", dbUserId: 8 };
+    for (const who of [PARTICIPANT, other]) {
+      await earnCoins(db, {
+        participantHash: who.participantHash,
+        amount: 100,
+        kind: "checkin",
+        idempotencyKey: `t:seed:${who.participantHash}`,
+      });
+    }
+
+    const first = await pullGacha({ DB: db } as never, poolObject(poolId), PARTICIPANT, 1, "pull-key-x");
+    expect(first.ok).toBe(true);
+
+    // 他人拿同一个键重放：撞的是全局 UNIQUE，但键的归属不是自己 → 4xx，
+    // 绝不回放 itemId/rarity/title，也不返回 ok（未扣款却 ok 的幽灵）。
+    await expect(pullGacha({ DB: db } as never, poolObject(poolId), other, 1, "pull-key-x")).rejects.toMatchObject({
+      name: "GachaError",
+      code: "idempotency_key_conflict",
+    });
+    // 他人自身未扣款、没有任何抽取行。
+    expect((await getCoinAccount(db, other.participantHash))?.balance).toBe(100);
+    const pulls = await db
+      .prepare(`SELECT COUNT(*) AS n FROM gacha_pulls WHERE participant_hash = ?`)
+      .bind(other.participantHash)
+      .first<{ n: number }>();
+    expect(Number(pulls?.n ?? 0)).toBe(0);
+
+    // 本人重放照常幂等回放（既有路径不回归）。
+    const replay = await pullGacha({ DB: db } as never, poolObject(poolId), PARTICIPANT, 1, "pull-key-x");
+    expect(replay.duplicate).toBe(true);
+    expect(replay.results.length).toBe(1);
+    expect((await getCoinAccount(db, PARTICIPANT.participantHash))?.balance).toBe(90);
+  });
+});
+
+describe("挑战中心", () => {
+  it("活动禁用时领取抛 ChallengeError(challenges_disabled)——400 可解释，而非 500", async () => {
+    await saveCoinConfigSection(db, "challenges", { enabled: false }, "test");
+    await expect(claimChallenge(db, PARTICIPANT.participantHash, PARTICIPANT.dbUserId, 1)).rejects.toMatchObject({
+      name: "ChallengeError",
+      code: "challenges_disabled",
+    });
+  });
+
+  it("其余 claim 错误路径不回归：挑战不存在仍是 ChallengeError(challenge_not_found)", async () => {
+    await expect(claimChallenge(db, PARTICIPANT.participantHash, PARTICIPANT.dbUserId, 999)).rejects.toMatchObject({
+      name: "ChallengeError",
+      code: "challenge_not_found",
+    });
   });
 });

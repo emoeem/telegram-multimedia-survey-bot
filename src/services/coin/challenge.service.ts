@@ -199,7 +199,9 @@ export async function claimChallenge(
   challengeId: number,
 ): Promise<ClaimResult> {
   const cfg = await loadCoinConfig(db);
-  if (!cfg.challenges.enabled) throw new Error("挑战活动未开启");
+  // 禁用是可解释的业务拒绝（400），不是服务端内部错误：走 ChallengeError
+  // 走 coin-api.ts 的既有映射链，而不是裸 Error 冒泡成 500 coin_internal。
+  if (!cfg.challenges.enabled) throw new ChallengeError("challenges_disabled", "挑战活动未开启");
   const nowMs = Date.now();
   const row = await db
     .prepare(

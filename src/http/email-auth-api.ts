@@ -7,6 +7,7 @@ import {
   getEmailAccountById,
   markEmailAccountVerified,
   updateEmailAccountPassword,
+  type EmailAccountRecord,
 } from "../db/repositories/email-account.repository";
 import {
   createEmailSessionToken,
@@ -177,8 +178,18 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     if (valid === null) return fail(503, "email_code_store_unavailable", EMAIL_CODE_STORE_UNAVAILABLE);
     if (!valid) return fail(400, "invalid_code", "验证码错误或已过期");
     if (existing?.verifiedAt) return fail(409, "email_taken", "该邮箱已注册，请直接登录");
-    const account =
-      existing ?? (await createEmailAccount(db, { email, passwordHash: await hashPassword(password), verified: true }));
+    // 并发注册同邮箱：两个请求都能通过上面的「先查」，INSERT 的
+    // UNIQUE(email) 只有一方能赢，输的一方要归一为 409 email_taken，
+    // 不能冒泡成 500 internal_error（guard 兜底会给 JSON，但语义是错的）。
+    let account: EmailAccountRecord;
+    try {
+      account =
+        existing ??
+        (await createEmailAccount(db, { email, passwordHash: await hashPassword(password), verified: true }));
+    } catch (error) {
+      if (!/UNIQUE constraint failed/i.test(String((error as Error)?.message ?? ""))) throw error;
+      return fail(409, "email_taken", "该邮箱已注册，请直接登录");
+    }
     if (!existing) await markEmailAccountVerified(db, account.id);
     else await updateEmailAccountPassword(db, account.id, await hashPassword(password));
     const version = existing ? account.sessionVersion + 1 : account.sessionVersion;

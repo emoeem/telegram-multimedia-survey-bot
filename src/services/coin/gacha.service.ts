@@ -325,6 +325,16 @@ export async function pullGacha(
     )) as Array<{ meta?: { changes?: number } }>;
   } catch (error) {
     if (isDuplicateTransactionError(error)) {
+      // 重放参与者校验：撞 UNIQUE 只说明这个键全局已存在，不说明是本人的。
+      // 他人键的重放一律 4xx——既不能回放 itemId/rarity/title（拿别人的键
+      // 就能免费看别人的抽取结果），也不能返回 ok（未扣款却 ok 的幽灵结果）。
+      const charge = await db
+        .prepare(`SELECT participant_hash FROM coin_transactions WHERE idempotency_key = ?`)
+        .bind(chargeKey)
+        .first<{ participant_hash: string }>();
+      if (!charge || charge.participant_hash !== participant.participantHash) {
+        throw new GachaError("idempotency_key_conflict", "幂等键已被其它请求占用，请换一个新键重试");
+      }
       const rows = await db
         .prepare(
           `SELECT item_id, rarity FROM gacha_pulls
