@@ -11,6 +11,7 @@ import { getSystemSetting } from "../db/repositories/system-settings.repository"
 import { CERT_PAGE_REDIRECT_LOCATION, certPageRoute } from "./cert-page";
 import { CERT_SHARE_PATH, handleCertShare } from "./cert-share";
 import { CERT_DRAW_PATH, handleCertDraw } from "./cert-draw";
+import { CLIENT_LOG_PATH, handleClientLogRequest } from "./client-log";
 import { handleSubmitApiRequest, isSubmitApiPath } from "./submit-api";
 import { bareAdminRedirect, homeRedirectLocation, submitPageMetaPath } from "./public-page";
 import { handleInternalRenderRequest } from "./internal-render";
@@ -253,6 +254,14 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
       }
     }
 
+    // 客户端结构化日志上报（2026-11-19 通宵批次 B3）：screen_view 在浏览器
+    // console 出不了用户设备，这里由 Worker 校验后再 console.info 一条，
+    // Workers Logs（wrangler.toml [observability]）才检索得到。形状/限流
+    // 见 client-log.ts。
+    if (url.pathname === CLIENT_LOG_PATH) {
+      return guardApiResponse(request, env, url, () => handleClientLogRequest(request, env));
+    }
+
     // 认证卡「完成制作」时的原图 + 成品同步：GET 探测开关，POST 上传。
     // 目标频道与报告归档频道共用同一条解析链（见 src/http/cert-share.ts），
     // 未带来源标头的跨站表单一律 403。
@@ -281,6 +290,13 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
 
     if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) {
       return servePublicPageWithMeta(env, request, "/auth");
+    }
+
+    // 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，与其它公开页共用
+    // 问卷 SPA，由前端按路径切屏。生产 assets 配置 not_found_handling="none"
+    // （wrangler.toml），没有这条分支 /help 在生产会真 404。
+    if (url.pathname === "/help" || url.pathname.startsWith("/help/")) {
+      return servePublicPageWithMeta(env, request, "/help");
     }
 
     // 免登录投稿(/api/submit/*):并轨后由本 Worker 直接服务(数据在本站

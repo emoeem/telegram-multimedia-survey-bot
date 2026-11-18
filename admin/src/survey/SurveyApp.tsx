@@ -143,6 +143,7 @@ function RedirectTo({ to }: { to: string }) {
 }
 const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
+const HelpCenterScreen = lazy(() => import("./HelpCenterScreen").then((m) => ({ default: m.HelpCenterScreen })));
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
 function LazyScreen({ children }: { children: React.ReactNode }) {
@@ -2336,6 +2337,15 @@ export function SurveyApp() {
     return (
       <LazyScreen>
         <EmailAuthScreen />
+      </LazyScreen>
+    );
+  }
+  // 帮助中心（2026-11-19 通宵批次 B3）：每屏 ？ 弹层的整页版，按 SCREEN_HELP
+  // 注册表逐屏分组渲染；入口在「我的」页与 ？ 弹层底部的「更多帮助」。
+  if (window.location.pathname === "/help" || window.location.pathname.startsWith("/help/")) {
+    return (
+      <LazyScreen>
+        <HelpCenterScreen />
       </LazyScreen>
     );
   }

@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { BookOpen, ChevronRight, FileCheck2, Images, Link2, MailCheck, Target, UserRound, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  CircleHelp,
+  FileCheck2,
+  Images,
+  Link2,
+  MailCheck,
+  Target,
+  UserRound,
+  X,
+} from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
@@ -532,6 +543,8 @@ export function MyScreen() {
 
             {/* 入口 */}
             <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
+            {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
+            <EntryRow href="/help" icon={CircleHelp} title="帮助中心" subtitle="每一屏是什么、新手第一步点哪里" />
           </>
         )}
       </main>

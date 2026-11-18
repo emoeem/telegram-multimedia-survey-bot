@@ -98,6 +98,7 @@ export const PUBLIC_PAGE_META: Record<string, { title: string; description: stri
   "/u": { title: "个人画像 · 问卷平台", description: "跨问卷的答卷足迹与收集成就。" },
   "/submissions": { title: "投稿中心 · 问卷平台", description: "投稿原创内容获取金币奖励，并参与报告抽卡生态。" },
   "/auth": { title: "邮箱账号 · 问卷平台", description: "使用邮箱注册、登录或找回问卷平台账号。" },
+  "/help": { title: "帮助中心 · 问卷平台", description: "每一屏是什么、新手第一步点哪里：全部帮助说明放在一页。" },
   "/s": { title: "问卷 · 问卷平台", description: "选一份问卷开始回答，或看看社区里正在流行的问卷。" },
   "/submit": { title: "投稿 · 问卷平台", description: "不用注册、不用装 Telegram，直接把内容投过来。" },
   "/submit/inbox": { title: "投稿收件箱 · 问卷平台", description: "查看投稿进度、管理员回复与审核结果。" },
