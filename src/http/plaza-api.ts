@@ -461,7 +461,7 @@ export async function handlePlazaApiRequest(request: Request, env: Env, url: URL
     }
     const packs = await listTaskPacks(env.DB, {});
     const pack = packs.find((item) => item.id === run.packId);
-    if (!pack) return fail(404, "not_found", "任务包不存在");
+    if (!pack) return fail(404, "not_found", "小游戏不存在");
     const share = buildTrialShare({
       runId: run.id,
       packId: run.packId,

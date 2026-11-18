@@ -65,13 +65,13 @@ export function buildTrialShare(input: {
     skippedTasks: input.skippedTasks,
     floors: input.maxFloor - input.startingFloor + 1,
   };
-  const personaLabel = input.persona === "male" ? "公" : "母";
+  const personaLabel = input.persona === "male" ? "男向" : "女向";
   const modeLabel = input.mode === "hell" ? "地狱" : "普通";
   const content = [
     `🎯 挑战结局 · ${grade} 级`,
     `${copy.title}`,
     "",
-    `任务包「${input.packName}」 · ${modeLabel} · ${personaLabel}`,
+    `小游戏「${input.packName}」 · ${modeLabel} · ${personaLabel}`,
     `到达 ${input.maxFloor} 层 · 完成 ${input.completedTasks} 层 · 积分 ${input.score}`,
     "",
     copy.text,

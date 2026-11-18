@@ -786,6 +786,10 @@ export function GachaScreen() {
         {balance !== null ? <p className="text-xs text-[var(--survey-muted)]">当前余额 {balance} 金币</p> : null}
         <section className="coin-card">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--survey-muted)]">概率公示</p>
+          {/* 稀有度图例：不假设玩家懂抽卡文化，N/R/SR/SSR 就地给大白话解释。 */}
+          <p className="mt-1.5 text-[11px] leading-4 text-[var(--survey-muted)]">
+            稀有度从低到高：N（普通）→ R（稀有）→ SR（超稀有）→ SSR（最稀有）。
+          </p>
           <ul className="mt-2 space-y-1.5">
             {detail.items.map((item) => (
               <li

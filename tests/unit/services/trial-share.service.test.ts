@@ -21,7 +21,10 @@ describe("trial share service", () => {
     expect(payload.floors).toBe(10);
     expect(content).toContain("🎯 挑战结局 · C 级");
     expect(content).toContain("示例 · 楼道挑战");
-    expect(content).toContain("母");
+    // 2026-11-19 通宵批次 B4：晒卡正文走「小游戏」口径，身份用男向/女向，
+    // 不再出现内部术语「任务包」与养殖叫法「公/母」（会同步镜像到频道）。
+    expect(content).toContain("小游戏「示例 · 楼道挑战」");
+    expect(content).toContain("女向");
   });
 
   it("grades a near-perfect run as S", () => {

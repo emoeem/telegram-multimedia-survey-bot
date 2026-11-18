@@ -140,7 +140,7 @@ function TreeHolePost({
 
   const payload = post.kind === "trial" ? post.payload : null;
   const modeLabel = payload?.mode === "hell" ? "地狱" : "普通";
-  const personaLabel = payload?.persona === "male" ? "公" : "母";
+  const personaLabel = payload?.persona === "male" ? "男向" : "女向";
 
   return (
     <article className="survey-card p-4">
