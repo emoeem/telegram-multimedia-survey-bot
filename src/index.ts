@@ -1,6 +1,6 @@
 /**
  * Worker 入口装配层：fetch/queue/scheduled 三个运行时钩子的组合点，外加必须
- * 原样保留的兼容出口（Env、四个 Durable Object 类、escapeMetaAttribute、
+ * 原样保留的兼容出口（Env、五个 Durable Object 类、escapeMetaAttribute、
  * RESULT_VISUAL_WASM）。路由分发在 src/http/router.ts，scheduled 在 src/cron.ts
  * （拆分地图见 docs/OPTIMIZATION_BACKLOG_2026-11-14.md §D）。
  */
@@ -9,13 +9,14 @@ import { route } from "./http/router";
 import { handleExportQueue } from "./services/export-worker.service";
 import { withQueueMetrics } from "./observability/metrics";
 import type { Env } from "./env";
+import { GameRoomDO } from "./durable-objects/game-room";
 import { RateLimitDO } from "./durable-objects/rate-limit";
 import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
 import { UiSessionDO } from "./durable-objects/ui-session";
 
 export type { Env } from "./env";
-export { SurveySessionDO, SurveyBuilderDO, UiSessionDO, RateLimitDO };
+export { SurveySessionDO, SurveyBuilderDO, UiSessionDO, RateLimitDO, GameRoomDO };
 export { RESULT_VISUAL_WASM } from "./services/result-visual-wasm";
 
 /**

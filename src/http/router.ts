@@ -36,6 +36,7 @@ import { handleCoinApiRequest } from "./coin-api";
 import { handleShowcaseApiRequest } from "./showcase-api";
 import { handleTrialApiRequest } from "./trial-api";
 import { handleWebAppApiRequest } from "./web-app-api";
+import { handleGameApiRequest } from "./game-api";
 import { handleEmailAuthApiRequest } from "./email-auth-api";
 import { handleReportRequest } from "./report-api";
 import { handleSharePageRequest } from "./share-api";
@@ -386,6 +387,12 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
 
     if (url.pathname.startsWith("/api/trial/")) {
       return guardApiResponse(request, env, url, () => handleTrialApiRequest(request, env, url));
+    }
+
+    // 多人对局房间（0105/G1）：REST 创建/加入/列表/关闭 + WS 握手转发
+    // GAME_ROOM DO。鉴权与限流在 game-api 内部（WS 非鉴权在升级前被拒）。
+    if (url.pathname.startsWith("/api/game/")) {
+      return guardApiResponse(request, env, url, () => handleGameApiRequest(request, env, url));
     }
 
     // 应用中心「网页导航」（0104/M2）：公开只读。写端点只在 /api/admin/web-apps*

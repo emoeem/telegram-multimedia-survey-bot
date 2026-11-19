@@ -163,6 +163,13 @@ class_name = "UiSessionDO"
 name = "RATE_LIMIT"
 class_name = "RateLimitDO"
 
+# 多人对局房间（P0 批次 G1）：WebSocket Hibernation + alarm 驱动回合倒计时/
+# 空房间回收。房间实时态只在 DO storage，D1 的 game_rooms 仅存索引与终态
+# （见 db/migrations/0105_game_rooms.sql）。
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoomDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
@@ -177,3 +184,10 @@ new_sqlite_classes = ["UiSessionDO"]
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["RateLimitDO"]
+
+# GameRoomDO（G1）：SQLite-backed DO，沿用 new_sqlite_classes 先例（KV 存储对
+# 房间状态的读改写没有事务性保证）。迁移 tag 按各自环境递增，不要求跨环境
+# 同名：生产已用到 v3 故本条为 v4，staging 只用到 v2 故本条为 v3。
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["GameRoomDO"]

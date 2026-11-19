@@ -1,4 +1,5 @@
 import type { BrowserWorker } from "@cloudflare/puppeteer";
+import type { GameRoomDO } from "./durable-objects/game-room";
 import type { RateLimitDO } from "./durable-objects/rate-limit";
 import type { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import type { SurveySessionDO } from "./durable-objects/survey-session";
@@ -20,6 +21,12 @@ export interface Env {
    *  binding still boot; without it the KV limiter is used. */
   RATE_LIMIT?: DurableObjectNamespace<RateLimitDO>;
   BUILDER: DurableObjectNamespace<SurveyBuilderDO>;
+  /**
+   * 多人对局房间（P0 批次 G1）：实时态在 DO storage，WS Hibernation 承载
+   * 长连接。可选绑定——无此绑定的旧部署/客户部署不启用多人对局入口
+   * （/api/game/* 返回 not_found），不影响其余功能。
+   */
+  GAME_ROOM?: DurableObjectNamespace<GameRoomDO>;
   BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
   ADMIN_IDS: string;

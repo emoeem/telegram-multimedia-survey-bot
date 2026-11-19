@@ -60,6 +60,12 @@ class_name = "SurveyBuilderDO"
 name = "UI"
 class_name = "UiSessionDO"
 
+# 多人对局房间（P0 批次 G1）：与 wrangler.toml 的 GAME_ROOM 绑定保持同步
+# （双配置是已核实的坑：staging 迁移曾落后生产一档，必须同批对齐）。
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoomDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
@@ -67,6 +73,12 @@ new_sqlite_classes = ["SurveySessionDO", "SurveyBuilderDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["UiSessionDO"]
+
+# GameRoomDO（G1）：staging 自身序列到 v3 为止（生产同名迁移是 v4，tag 按
+# 各环境递增、不要求跨环境同名），沿用 new_sqlite_classes 先例。
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["GameRoomDO"]
 
 [triggers]
 crons = ["*/30 * * * *", "15 1 * * *", "30 9 * * 1"]
