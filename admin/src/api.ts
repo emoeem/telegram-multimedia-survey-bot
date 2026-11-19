@@ -1447,6 +1447,61 @@ export function deleteAdminTaskPack(id: number): Promise<{ ok: boolean }> {
   return apiSend("DELETE", `/api/admin/task-packs/${id}`);
 }
 
+/* ---- Web apps (应用中心「网页导航」, 0104/M2) management ---------------- */
+
+export type WebAppOpenMode = "miniapp" | "browser";
+
+export interface AdminWebApp {
+  id: number;
+  name: string;
+  description: string | null;
+  /** 服务端强校验 https://（normalizeHttpsUrl 规范化，根路径带尾斜杠）。 */
+  url: string;
+  iconUrl: string | null;
+  category: string | null;
+  sortOrder: number;
+  enabled: boolean;
+  /** miniapp=内嵌（M4 按白名单域校验），browser=外跳浏览器。 */
+  openMode: WebAppOpenMode;
+  /** M4 打开白名单（小写主机名）；null = 未配置。 */
+  allowedDomains: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminWebAppInput {
+  name: string;
+  url: string;
+  description?: string | null;
+  iconUrl?: string | null;
+  category?: string | null;
+  enabled?: boolean;
+  openMode?: WebAppOpenMode;
+  allowedDomains?: string[] | null;
+}
+
+export function fetchAdminWebApps(): Promise<{ items: AdminWebApp[] }> {
+  return api<{ items: AdminWebApp[] }>("/api/admin/web-apps");
+}
+
+export function createAdminWebApp(input: AdminWebAppInput): Promise<AdminWebApp> {
+  return apiSend("POST", "/api/admin/web-apps", input as unknown as Record<string, unknown>);
+}
+
+export function updateAdminWebApp(id: number, input: AdminWebAppInput): Promise<AdminWebApp> {
+  return apiSend("PATCH", `/api/admin/web-apps/${id}`, input as unknown as Record<string, unknown>);
+}
+
+/** 全量重排序：ids 顺序即 sort_order（1 起）。 */
+export function reorderAdminWebApps(ids: number[]): Promise<{ ok: boolean; changed: number }> {
+  return apiSend("POST", "/api/admin/web-apps/reorder", { ids });
+}
+
+/** web_apps 无级联子表：硬删，痕迹留在审计日志（web_app.delete）。 */
+export function deleteAdminWebApp(id: number): Promise<{ ok: boolean }> {
+  return apiSend("DELETE", `/api/admin/web-apps/${id}`);
+}
+
 /* ---- Showcase (展示区) management ------------------------------------- */
 
 export type ShowcaseItemKind =

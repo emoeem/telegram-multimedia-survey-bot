@@ -1,6 +1,37 @@
 # 项目交接文档（给下一位开发者 / AI）
 
-> **2026-11-19 交接（最新）：新户可懂性第一批 + 通宵加固批次 B1-B8 + 发布闭环**：
+> **2026-11-20 交接（最新）：11 月 P1「/app 入口体系」愿景批次 M1-M4**：
+> 围绕「Telegram 之外的第二个门面：应用中心 /app」展开：把问卷/小游戏/网页导航/社区
+> 聚到一个公开入口，并给「打开第三方 URL」这条入口链的最后安全敏感面做收口。
+> ① **M1 [`f8b15a5`](https://github.com/emoeem/telegram-multimedia-survey-bot/commit/f8b15a5726fb77323f228b3101a0b06747a3bce5)**：
+> 新增 /app 应用中心屏（Worker `servePublicPageWithMeta` 分支 + head 注入 +
+> SPA 四功能区：问卷/小游戏/网页导航/社区 +「我的」页入口卡），网页导航区先落
+> 空态（数据面留给 M2）；
+> ② **M2 [`70126a4`](https://github.com/emoeem/telegram-multimedia-survey-bot/commit/70126a41b04fd5ecdaad95015e0c35075216af23)**：
+> 迁移 0104 建 web_apps 表（open_mode/allowed_domains 一次建齐），公开只读
+> `GET /api/web-apps` + 管理端网页应用 CRUD（writeAudit 审计，读 read.ts、写
+> web-app.ts）。**注记**：该提交曾被
+> [`8515bfe`](https://github.com/emoeem/telegram-multimedia-survey-bot/commit/8515bfe018c9a00c1eb77fab3b1a993ed31be18a)
+> revert；M4 批次按其声明的依赖关系把同一内容连同收口一起重新落库（admin/src/api.ts
+> 只恢复 Web apps 段，未带回其中混入的 task-pack adult 残留）；
+> ③ **M3 [`0cdb1ba`](https://github.com/emoeem/telegram-multimedia-survey-bot/commit/0cdb1ba0a2a6b2274d9ab4d0121ce9b348211680)**：
+> /start 加「打开应用」web_app 按钮、`scripts/telegram-set-menu-button.mjs` 菜单
+> 按钮脚本、游戏按钮按 web_app 先例化；
+> ④ **M4（本批，随本条目同批提交）**：打开方式与域名白名单安全收口（误放行即
+> 任意跳转，故整批排最末）。服务端保存面：url 必须 https://、host 必须命中
+> allowed_domains（显式主机名精确匹配；`*.example.com` 通配任意深度子域但不含
+> 裸域，策略唯一权威见 `src/db/repositories/web-app.repository.ts` 的
+> ALLOWED_DOMAIN_WILDCARD_PREFIX 注释）、open_mode 枚举非法一律 400（不静默回退）、
+> 未配置或传空白名单时强制与 url 同域落库（公开 API 永远下发非空白名单）。玩家面：
+> 打开统一走 `admin/src/survey/web-app-open.ts` 三分支（Telegram 内一律
+> `WebApp.openLink` 且仅由用户点击触发：miniapp 内嵌呈现、browser 交系统浏览器；
+> 普通浏览器 `window.open(url,'_blank','noopener,noreferrer')`），打开前按公开
+> API 下发的白名单二次校验（纵深防御：数据被篡改或空白名单一律拦截并提示），
+> 网页导航组件零 iframe、打开动作零网络副作用。M4 针对性单测
+> （web-app-api / web-app.repository / app-center / web-app-open 四文件 29 例）
+> 与根/admin 两侧 tsc 全绿。
+>
+> **2026-11-19 交接：新户可懂性第一批 + 通宵加固批次 B1-B8 + 发布闭环**：
 > 2026-11-18/19 通宵会话产出已全部 commit 并 push 至 origin/main（head `b809c48`，本地与远端零差异）。
 > 要点：① **新户可懂性第一批**（`63bb20d`，11-18）：每屏「这是什么」说明 + 首访欢迎卡
 > （起因：用户反馈「功能太多看不懂」）；② **通宵批次 B1-B8**（逐批一提交）：

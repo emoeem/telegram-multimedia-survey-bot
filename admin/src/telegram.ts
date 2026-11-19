@@ -3,6 +3,13 @@ interface TelegramWebApp {
   ready?: () => void;
   expand?: () => void;
   setHeaderColor?: (color: string) => void;
+  /**
+   * 外链打开（M4 打开收口）：Telegram WebView 里 window.open 不可靠，客户端
+   * 文档要求外链一律走 openLink——mini app 链接内嵌打开、普通链接交给系统
+   * 浏览器（等效新上下文，绝不在 mini app 里 iframe）。只允许由用户点击
+   * 回调调用（不自动弹）；分支与白名单二次校验在 survey/web-app-open.ts。
+   */
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   /** Mini App 内的震动通路：iOS 上 navigator.vibrate 不存在，只有这条会真的震。 */
   HapticFeedback?: {
     notificationOccurred?: (type: "error" | "success" | "warning") => void;

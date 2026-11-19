@@ -7,6 +7,7 @@ import { getSurveyById } from "../../db/repositories/survey.repository";
 import { listReportDeliveries } from "../../db/repositories/report-delivery.repository";
 import { listPlazaComments } from "../../db/repositories/plaza-comment.repository";
 import { listTaskPacks } from "../../db/repositories/task-pack.repository";
+import { listWebApps } from "../../db/repositories/web-app.repository";
 import { listMediaLibraryPage } from "../../db/repositories/media.repository";
 import { buildMediaResponse } from "../../services/media/media-serve.service";
 import { listPlazaPosts } from "../../db/repositories/plaza-post.repository";
@@ -490,6 +491,12 @@ export async function handleAdminRead(url: URL, env: Env, ctx: ReadContext): Pro
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
     const packs = await listTaskPacks(env.DB, { withItems: true });
     return json({ packs });
+  }
+
+  // 网页应用（0104/M2）：管理端全量列表（含停用项），写侧在 web-app.ts。
+  if (url.pathname === "/api/admin/web-apps") {
+    if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理网页应用");
+    return json({ items: await listWebApps(env.DB) });
   }
 
   // 素材库（0091）：分页列出全部素材 + 引用计数；mime 前缀筛选（image/ audio/ …）。

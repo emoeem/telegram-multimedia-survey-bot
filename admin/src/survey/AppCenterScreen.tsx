@@ -4,16 +4,24 @@ import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { EntryRow, SectionHeader } from "./PublicPrimitives";
 import { fetchWebApps, type WebAppLink } from "./web-apps";
+import { openWebAppLink } from "./web-app-open";
+import { currentWebApp } from "../telegram";
 
 /**
  * 「网页导航」区（应用中心四功能区之三）。
  *
  * 数据来自 GET /api/web-apps（M2 批次落地）：接口 404、空数据或网络失败都
- * 由 fetchWebApps 收敛为空列表，这里只渲染空态——M1 阶段这条文案就是
- * 该区的常态，绝不能报错或白屏。
+ * 由 fetchWebApps 收敛为空列表，这里只渲染空态——绝不能报错或白屏。
+ *
+ * 打开（M4 收口）：不用 <a href>（中键/新标签会绕过校验），统一走用户点击
+ * 回调 openWebAppLink——先按公开 API 下发的 allowed_domains 二次校验目标
+ * host（纵深防御，管理端数据异常/被篡改时不盲目打开并提示），再按环境与
+ * open_mode 三分支打开（Telegram 内 openLink、普通浏览器新标签
+ * noopener,noreferrer）；绝不把第三方站点塞 iframe。
  */
 function WebAppsCard() {
   const [apps, setApps] = useState<WebAppLink[] | null>(null);
+  const [blockedHint, setBlockedHint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,36 +33,60 @@ function WebAppsCard() {
     };
   }, []);
 
+  /** 打开入口（M4）：只由本点击回调触发，点击前无任何网络请求副作用。 */
+  const handleOpen = (app: WebAppLink) => {
+    const outcome = openWebAppLink(app, { telegramWebApp: currentWebApp() });
+    if (outcome === "blocked:not-allowed") {
+      setBlockedHint(`「${app.name}」的链接未通过域名白名单校验，已停止打开。`);
+      return;
+    }
+    setBlockedHint(null);
+  };
+
   return (
     <section className="survey-card p-4">
       <SectionHeader icon={Globe} title="网页导航" />
       {apps === null ? (
         <p className="mt-2 text-[13px] text-[var(--survey-muted)]">正在加载网页导航…</p>
       ) : apps.length === 0 ? (
-        /* M2 落地前的空态：接口未上线或暂无收录，一句话说明而不是报错。 */
+        /* 空态：接口未上线或暂无收录，一句话说明而不是报错。 */
         <p className="mt-2 py-2 text-center text-[13px] text-[var(--survey-muted)]">
           网页导航还在筹备中，收录的好站会出现在这里。
         </p>
       ) : (
-        <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
-          {apps.map((app) => (
-            <li key={`${app.id}-${app.url}`} className="py-2.5">
-              <a href={app.url} target="_blank" rel="noreferrer" className="flex items-center gap-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
-                    {app.name}
-                  </span>
-                  {app.description ? (
-                    <span className="mt-0.5 block truncate text-[11px] text-[var(--survey-muted)]">
-                      {app.description}
+        <>
+          <ul className="mt-1 divide-y divide-[var(--survey-card-border)]">
+            {apps.map((app) => (
+              <li key={`${app.id}-${app.url}`} className="py-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleOpen(app)}
+                  className="flex w-full items-center gap-2 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-semibold text-[var(--survey-heading)]">
+                      {app.name}
                     </span>
-                  ) : null}
-                </span>
-                <ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
-              </a>
-            </li>
-          ))}
-        </ul>
+                    {app.description ? (
+                      <span className="mt-0.5 block truncate text-[11px] text-[var(--survey-muted)]">
+                        {app.description}
+                      </span>
+                    ) : null}
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {blockedHint ? (
+            <p
+              role="alert"
+              className="mt-2 rounded-lg bg-[color-mix(in_srgb,var(--app-danger)_12%,transparent)] px-3 py-2 text-[12px] leading-5 text-[var(--app-danger)]"
+            >
+              {blockedHint}
+            </p>
+          ) : null}
+        </>
       )}
     </section>
   );
