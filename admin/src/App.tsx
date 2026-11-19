@@ -45,6 +45,7 @@ const ProfileGalleryPage = lazy(() =>
   import("./routes/ProfileGalleryPage").then((m) => ({ default: m.ProfileGalleryPage })),
 );
 const TaskPacksPage = lazy(() => import("./routes/TaskPacksPage").then((m) => ({ default: m.TaskPacksPage })));
+const WebAppsPage = lazy(() => import("./routes/WebAppsPage").then((m) => ({ default: m.WebAppsPage })));
 const MediaLibraryPage = lazy(() => import("./routes/MediaLibraryPage").then((m) => ({ default: m.MediaLibraryPage })));
 const ShowcasePage = lazy(() => import("./routes/ShowcasePage").then((m) => ({ default: m.ShowcasePage })));
 const TrashPage = lazy(() => import("./routes/TrashPage").then((m) => ({ default: m.TrashPage })));
@@ -109,6 +110,7 @@ const router = createBrowserRouter(
         { path: "showcase", element: lazyElement(<ShowcasePage />) },
         { path: "trash", element: lazyElement(<TrashPage />) },
         { path: "task-packs", element: lazyElement(<TaskPacksPage />) },
+        { path: "web-apps", element: lazyElement(<WebAppsPage />) },
         { path: "media-library", element: lazyElement(<MediaLibraryPage />) },
         { path: "audit", element: lazyElement(<AuditPage />) },
         { path: "settings", element: lazyElement(<SettingsPage />) },

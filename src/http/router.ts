@@ -35,6 +35,7 @@ import { handleMeApiRequest } from "./me-api";
 import { handleCoinApiRequest } from "./coin-api";
 import { handleShowcaseApiRequest } from "./showcase-api";
 import { handleTrialApiRequest } from "./trial-api";
+import { handleWebAppApiRequest } from "./web-app-api";
 import { handleEmailAuthApiRequest } from "./email-auth-api";
 import { handleReportRequest } from "./report-api";
 import { handleSharePageRequest } from "./share-api";
@@ -385,6 +386,12 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
 
     if (url.pathname.startsWith("/api/trial/")) {
       return guardApiResponse(request, env, url, () => handleTrialApiRequest(request, env, url));
+    }
+
+    // 应用中心「网页导航」（0104/M2）：公开只读。写端点只在 /api/admin/web-apps*
+    // （鉴权 + 审计）；这里显式 405 非 GET，不落回后续兜底。
+    if (url.pathname === "/api/web-apps") {
+      return guardApiResponse(request, env, url, () => handleWebAppApiRequest(request, env, url));
     }
 
     if (url.pathname.startsWith("/api/control/customer/") || url.pathname.startsWith("/api/control/runner/")) {
