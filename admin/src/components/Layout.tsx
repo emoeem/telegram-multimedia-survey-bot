@@ -7,7 +7,6 @@ import {
   Coins,
   Contact,
   FileUp,
-  Globe,
   LayoutDashboard,
   ListChecks,
   Menu,
@@ -64,7 +63,6 @@ const ICONS: Record<WorkspaceIconKey, LucideIcon> = {
   coins: Coins,
   contact: Contact,
   fileUp: FileUp,
-  globe: Globe,
   images: Images,
   inbox: Inbox,
   keyRound: KeyRound,
@@ -220,7 +218,6 @@ export function Layout() {
     if (path.startsWith("/profile-gallery")) return "个人画廊";
     if (path.startsWith("/showcase")) return "展示区";
     if (path.startsWith("/task-packs")) return "小游戏管理";
-    if (path.startsWith("/web-apps")) return "网页应用";
     if (path.startsWith("/media-library")) return "素材库";
     if (path.startsWith("/audit")) return "审计日志";
     if (path.startsWith("/trash")) return "回收站";

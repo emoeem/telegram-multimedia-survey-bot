@@ -29,7 +29,6 @@ import {
 import { cleanImportText } from "../../services/text-cleaner";
 import { handleAdminSurveysWrite } from "./surveys";
 import { handleAdminCategoriesWrite } from "./categories";
-import { handleAdminWebAppWrite } from "./web-app";
 import { handleAdminSeriesWrite } from "./series-admin";
 import { handleAdminEditorWrite } from "./editor";
 import { handleAdminReportsWrite } from "./reports";
@@ -86,9 +85,6 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
 
   const categoriesResponse = await handleAdminCategoriesWrite(request, url, env, ctx, body);
   if (categoriesResponse) return categoriesResponse;
-
-  const webAppResponse = await handleAdminWebAppWrite(request, url, env, ctx, body);
-  if (webAppResponse) return webAppResponse;
 
   const reportResponse = await handleAdminReportsWrite(request, url, env, ctx, body);
   if (reportResponse) return reportResponse;

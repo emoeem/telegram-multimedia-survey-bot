@@ -20,7 +20,6 @@ export type WorkspaceIconKey =
   | "coins"
   | "contact"
   | "fileUp"
-  | "globe"
   | "images"
   | "inbox"
   | "keyRound"
@@ -125,8 +124,6 @@ export const WORKSPACES: readonly Workspace[] = [
       // and the two point at different pages (this one is the 小游戏 admin, the
       // footer one is the public 小游戏 page). The page title here is 小游戏管理.
       { order: 5, to: "/task-packs", label: "小游戏管理", icon: "target", hint: "小游戏任务包配置" },
-      // 应用中心「网页导航」区的数据源（0104/M2）：收录外链、排序与启停。
-      { order: 6, to: "/web-apps", label: "网页应用", icon: "globe", hint: "应用中心网页导航的外链收录" },
     ],
   },
   {
