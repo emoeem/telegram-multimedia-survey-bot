@@ -38,14 +38,7 @@ import {
   TRIAL_SHOP,
   validateShopSelection,
 } from "../trial/engine";
-import {
-  gameTypeLabel,
-  isAdultGamePack,
-  isPluginGameType,
-  listGameTypes,
-  normalizeGameType,
-} from "../trial/engine-registry";
-import { getTrialAdultAck, trialAdultAckAllowsPack } from "../services/trial-adult-ack.service";
+import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../trial/engine-registry";
 import { applyPluginAction, loadActivePluginRun, pluginHistoryFields, startPluginRun } from "./trial-plugin-api";
 
 /**
@@ -99,9 +92,6 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
         description: pack.description,
         gameType: normalizeGameType(pack.gameType) ?? "tower",
         gameLabel: gameTypeLabel(pack.gameType),
-        // 包级 18+ 标志（0104）：爬塔读列、插件读清单 capabilities.adult，
-        // 与 POST /runs 的服务端校验同源（isAdultGamePack），客户端只渲染。
-        adult: isAdultGamePack(pack),
         normalFloors: pack.normalFloors,
         hellFloors: pack.hellFloors,
         prepItems: pack.prepItems,
@@ -248,15 +238,6 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     // 开局入口按玩法分发：内置爬塔走历史路径，插件玩法交给插件引擎。
     const gameType = normalizeGameType(pack.gameType);
     if (!gameType) return fail(400, "unsupported_game", "该玩法暂未开放，敬请期待");
-    // 0104 包级 18+ 服务端强制点（/api/trial/* 的第一个）：adult 包未 ack
-    // 直接拒开、不建 task_runs 行——纯客户端 localStorage 门禁可绕过的止血。
-    // 放行 = 偏好里的全局 ack 标志或该包 id 命中 ackedAdultPackIds（任一）。
-    if (isAdultGamePack({ gameType, adult: pack.adult })) {
-      const ack = await getTrialAdultAck(env.DB, participant.participantHash);
-      if (!trialAdultAckAllowsPack(ack, packId)) {
-        return fail(451, "adult_ack_required", "该任务包为 18+ 内容，请先在页面上确认年龄后再开始");
-      }
-    }
     if (isPluginGameType(gameType)) {
       return startPluginRun(env, { pack, participant, persona, mode });
     }

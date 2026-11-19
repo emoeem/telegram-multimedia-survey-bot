@@ -625,7 +625,6 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       hellFloors?: number;
       prepItems?: string[];
       prepText?: string | null;
-      adult?: boolean;
       items?: unknown[];
     } = {
       name,
@@ -644,9 +643,6 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     }
     if (typeof body.prepText === "string") createInput.prepText = body.prepText.slice(0, 300);
     else if (body.prepText === null) createInput.prepText = null;
-    // 包级 18+ 标志（0104）：缺省走仓库层默认 1（与存量现状一致）；插件玩法
-    // 的玩家侧判定走清单 capabilities.adult，列值仅存储冗余。
-    if (typeof body.adult === "boolean") createInput.adult = body.adult;
     const pack = await createTaskPack(db, createInput);
     await writeAudit(db, {
       actorUserId: user.id,
@@ -674,7 +670,6 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       hellFloors?: number;
       prepItems?: string[];
       prepText?: string | null;
-      adult?: boolean;
       enabled?: boolean;
       sortOrder?: number;
       items?: unknown[];
@@ -709,9 +704,6 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
     }
     if (typeof body.prepText === "string") updateInput.prepText = body.prepText.slice(0, 300);
     else if (body.prepText === null) updateInput.prepText = null;
-    // 包级 18+ 标志（0104）：只在本请求显式携带时才改（PATCH 局部语义），
-    // 列表页启停等部分更新不会把它意外重置。
-    if (typeof body.adult === "boolean") updateInput.adult = body.adult;
     if (typeof body.enabled === "boolean") updateInput.enabled = body.enabled;
     if (typeof body.sortOrder === "number") updateInput.sortOrder = body.sortOrder;
     if (Array.isArray(body.items)) updateInput.items = body.items;

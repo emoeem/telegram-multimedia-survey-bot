@@ -39,7 +39,6 @@ function pack(items: TaskItemRecord[]): TaskPackRecord {
     hellFloors: 12,
     prepItems: [],
     prepText: null,
-    adult: true,
     enabled: true,
     sortOrder: 0,
     createdAt: "",

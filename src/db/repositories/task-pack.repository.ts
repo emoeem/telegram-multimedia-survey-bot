@@ -29,12 +29,6 @@ export interface TaskPackRecord {
   /** Preparation checklist shown to the player before floor 1. */
   prepItems: string[];
   prepText: string | null;
-  /**
-   * 包级 18+ 标志（0104）。仅爬塔包参与玩家侧判定（插件玩法读清单
-   * capabilities.adult，见 engine-registry.isAdultGamePack）；存量包默认
-   * adult = true，与「页级门挡所有人」的历史现状一致。
-   */
-  adult: boolean;
   enabled: boolean;
   sortOrder: number;
   createdAt: string;
@@ -55,7 +49,7 @@ export interface TaskItemInput {
   sortOrder?: number;
 }
 
-const PACK_COLUMNS = `id, name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, adult, enabled, sort_order, created_at, updated_at`;
+const PACK_COLUMNS = `id, name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at`;
 const ITEM_COLUMNS = `id, pack_id, title, description, warning, score, persona, mode, min_floor, max_floor, enabled, sort_order, created_at, updated_at`;
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -98,8 +92,6 @@ function mapPack(row: Record<string, unknown>): TaskPackRecord {
     hellFloors: clampInt(row.hell_floors, 1, 60, 12),
     prepItems: parsePrepItems(row.prep_items),
     prepText: typeof row.prep_text === "string" ? row.prep_text : null,
-    // 0104：列默认 1；NULL/异常值一律按 adult（与存量现状一致，不因数据脏而放开门禁）。
-    adult: Number(row.adult ?? 1) === 1,
     enabled: Number(row.enabled ?? 1) === 1,
     sortOrder: Number(row.sort_order ?? 0),
     createdAt: String(row.created_at),
@@ -238,16 +230,14 @@ export async function createTaskPack(
     hellFloors?: number;
     prepItems?: string[];
     prepText?: string | null;
-    /** 包级 18+ 标志（0104）：缺省 true，与列默认及存量现状一致。 */
-    adult?: boolean;
     items?: unknown[];
   },
 ): Promise<TaskPackRecord> {
   const now = new Date().toISOString();
   const result = await db
     .prepare(
-      `INSERT INTO task_packs (name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, adult, enabled, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM task_packs), ?, ?)`,
+      `INSERT INTO task_packs (name, description, game_type, settings_json, normal_floors, hell_floors, prep_items, prep_text, enabled, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM task_packs), ?, ?)`,
     )
     .bind(
       input.name.slice(0, 60),
@@ -258,7 +248,6 @@ export async function createTaskPack(
       clampInt(input.hellFloors, 1, 60, 12),
       JSON.stringify(parsePrepItems(input.prepItems ?? [])),
       input.prepText?.slice(0, 300) ?? null,
-      input.adult === false ? 0 : 1,
       now,
       now,
     )
@@ -311,8 +300,6 @@ export async function updateTaskPack(
     hellFloors?: number;
     prepItems?: string[];
     prepText?: string | null;
-    /** 包级 18+ 标志（0104）：undefined 时保持 existing（PATCH 局部更新语义）。 */
-    adult?: boolean;
     enabled?: boolean;
     sortOrder?: number;
     items?: unknown[];
@@ -326,7 +313,7 @@ export async function updateTaskPack(
   if (!existing) return null;
   await db
     .prepare(
-      `UPDATE task_packs SET name = ?, description = ?, game_type = ?, settings_json = ?, normal_floors = ?, hell_floors = ?, prep_items = ?, prep_text = ?, adult = ?, enabled = ?, sort_order = ?, updated_at = ?
+      `UPDATE task_packs SET name = ?, description = ?, game_type = ?, settings_json = ?, normal_floors = ?, hell_floors = ?, prep_items = ?, prep_text = ?, enabled = ?, sort_order = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -338,7 +325,6 @@ export async function updateTaskPack(
       clampInt(input.hellFloors ?? existing.hellFloors, 1, 60, 12),
       JSON.stringify(parsePrepItems(input.prepItems ?? existing.prepItems)),
       (input.prepText !== undefined ? input.prepText : existing.prepText)?.slice(0, 300) ?? null,
-      (input.adult ?? existing.adult) ? 1 : 0,
       (input.enabled ?? existing.enabled) ? 1 : 0,
       clampInt(input.sortOrder ?? existing.sortOrder, 0, 999, existing.sortOrder),
       new Date().toISOString(),

@@ -58,8 +58,6 @@ interface EditablePack {
   /** 一行一个的准备清单条目。 */
   prepItemsText: string;
   prepText: string;
-  /** 包级 18+ 标志（0104）：仅爬塔包可配置；插件玩法跟随清单 capabilities.adult。 */
-  adult: boolean;
   enabled: boolean;
   /** 插件玩法的配置（settings_json）；爬塔不用。 */
   settings: Record<string, unknown>;
@@ -80,7 +78,6 @@ function packToEditable(pack: AdminTaskPack): EditablePack {
     hellFloors: pack.hellFloors,
     prepItemsText: (pack.prepItems ?? []).join("\n"),
     prepText: pack.prepText ?? "",
-    adult: pack.adult ?? true,
     enabled: pack.enabled,
     settings: pack.settings ?? {},
     items: pack.items.map((item, index) => ({
@@ -108,9 +105,6 @@ function blankPack(): EditablePack {
     hellFloors: 12,
     prepItemsText: "",
     prepText: "",
-    // 新包默认 18+（0104 列默认 1）：与存量包「页级门挡所有人」的现状一致，
-    // 管理员显式取消勾选才降级为全年龄。
-    adult: true,
     enabled: true,
     settings: {},
     items: [],
@@ -380,9 +374,6 @@ export function TaskPacksPage() {
         .map((line) => line.trim())
         .filter(Boolean),
       prepText: editing.prepText.trim() || null,
-      // 包级 18+（0104）：插件玩法不显示开关但沿用状态，落库只是存储冗余
-      // （玩家侧判定走清单 capabilities.adult）。
-      adult: editing.adult,
       enabled: editing.enabled,
       ...(isPlugin ? { settings: editing.settings } : {}),
       items,
@@ -570,8 +561,7 @@ export function TaskPacksPage() {
               </>
             ) : (
               <p className="text-xs text-[var(--color-muted-soft)] lg:col-span-2">
-                插件玩法不需要楼层与准备清单；内容在下方「玩法配置」里维护。18+
-                标志跟随玩法清单（capabilities.adult）声明，不在此配置。
+                插件玩法不需要楼层与准备清单；内容在下方「玩法配置」里维护。
               </p>
             )}
             <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-[var(--color-muted)]">
@@ -583,17 +573,6 @@ export function TaskPacksPage() {
               />
               玩家端可见
             </label>
-            {editing.gameType === "tower" ? (
-              <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-[var(--color-muted)]">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-sm"
-                  checked={editing.adult}
-                  onChange={(event) => updateMeta({ adult: event.target.checked })}
-                />
-                18+ 内容（玩家开局前需确认年龄）
-              </label>
-            ) : null}
           </div>
         </section>
 
@@ -830,7 +809,6 @@ export function TaskPacksPage() {
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">
                   {gameTypeLabel(pack.gameType ?? "tower")}
                 </span>
-                {pack.adult ? <span className="badge badge-red">18+</span> : null}
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">普通 {pack.normalFloors} 层</span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">地狱 {pack.hellFloors} 层</span>
                 <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5">

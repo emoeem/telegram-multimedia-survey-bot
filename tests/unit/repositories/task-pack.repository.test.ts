@@ -124,30 +124,6 @@ describe.skipIf(!sqliteD1Available)("task pack repository (soft delete 0101)", (
     expect(await updateTaskPack(db, 999_999, { name: "不存在" })).toBeNull();
   });
 
-  it("0104 adult 列：缺省 1（存量现状）、可显式 false；updateTaskPack 只在显式携带时翻转", async () => {
-    const db = createSqliteD1(fullMigrationSchema());
-    // 缺省 = adult（列默认 1，与「页级门挡所有人」的存量行为一致）。
-    const defaulted = await seedPack(db, "缺省包", 1);
-    expect(defaulted.adult).toBe(true);
-
-    const free = await createTaskPack(db, {
-      name: "全年龄包",
-      adult: false,
-      items: [{ title: "任务1", description: "描述1", score: 3 }],
-    });
-    expect(free.adult).toBe(false);
-
-    // PATCH 局部语义：不携带 adult 的更新保持原值。
-    const untouched = await updateTaskPack(db, free.id, { name: "全年龄包·改名" });
-    expect(untouched?.adult).toBe(false);
-
-    // 显式携带才翻转。
-    const flipped = await updateTaskPack(db, free.id, { adult: true });
-    expect(flipped?.adult).toBe(true);
-    const reverted = await updateTaskPack(db, free.id, { adult: false });
-    expect(reverted?.adult).toBe(false);
-  });
-
   it("决策②：drawTaskItems 命中墓碑包仍抽题（金币抽卡行为不变），包不存在仍 null", async () => {
     const db = createSqliteD1(fullMigrationSchema());
     const pack = await seedPack(db, "金币抽卡包", 3);
