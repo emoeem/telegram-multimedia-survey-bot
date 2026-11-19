@@ -144,6 +144,8 @@ function RedirectTo({ to }: { to: string }) {
 const SeriesScreen = lazy(() => import("./SeriesScreen").then((m) => ({ default: m.SeriesScreen })));
 const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ default: m.EmailAuthScreen })));
 const HelpCenterScreen = lazy(() => import("./HelpCenterScreen").then((m) => ({ default: m.HelpCenterScreen })));
+/** 应用中心（M1）：四功能区聚合入口，网页导航数据由 M2 的 /api/web-apps 供给。 */
+const AppCenterScreen = lazy(() => import("./AppCenterScreen").then((m) => ({ default: m.AppCenterScreen })));
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
 function LazyScreen({ children }: { children: React.ReactNode }) {
@@ -2346,6 +2348,15 @@ export function SurveyApp() {
     return (
       <LazyScreen>
         <HelpCenterScreen />
+      </LazyScreen>
+    );
+  }
+  // 应用中心（2026-11-20 P0 加固批次 M1）：问卷 / 小游戏 / 网页导航 / 社区
+  // 四功能区的聚合入口；入口在「我的」页的应用中心入口卡。
+  if (window.location.pathname === "/app" || window.location.pathname.startsWith("/app/")) {
+    return (
+      <LazyScreen>
+        <AppCenterScreen />
       </LazyScreen>
     );
   }

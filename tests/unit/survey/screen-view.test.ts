@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { buildScreenViewLine, resolveScreenViewName } from "../../../admin/src/survey/screen-view";
 
 describe("screen_view screen 名映射", () => {
-  it("十三屏各归各屏：分发链每个分支都有对应的 screen 名", () => {
+  it("十四屏各归各屏：分发链每个分支都有对应的 screen 名", () => {
     const expected: Array<[string, string]> = [
       ["/series", "series"],
       ["/plaza", "plaza"],
@@ -21,6 +21,7 @@ describe("screen_view screen 名映射", () => {
       ["/submit", "submit"],
       ["/auth", "auth"],
       ["/help", "help"],
+      ["/app", "app"],
     ];
     for (const [path, screen] of expected) {
       expect(resolveScreenViewName(path), path).toBe(screen);
@@ -57,7 +58,7 @@ describe("screen_view screen 名映射", () => {
     const dispatchLiterals = [...source.matchAll(/window\.location\.pathname === "(\/[^"]*)"/g)].map(
       (match) => match[1] ?? "",
     );
-    expect(dispatchLiterals.length, "SurveyApp.tsx 的分发分支字面量应有 13 条").toBe(13);
+    expect(dispatchLiterals.length, "SurveyApp.tsx 的分发分支字面量应有 14 条").toBe(14);
     for (const literal of dispatchLiterals) {
       const screen = resolveScreenViewName(literal);
       // 映射必须给出一个「非兜底」的名字：新增分支忘了同步映射时，这里会

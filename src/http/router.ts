@@ -307,6 +307,14 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
       return servePublicPageWithMeta(env, request, "/help");
     }
 
+    // 应用中心（2026-11-20 P0 加固批次 M1）：问卷 / 小游戏 / 网页导航 / 社区
+    // 四功能区的聚合入口，与其它公开页共用问卷 SPA，由前端按路径切屏。
+    // 与 /help 同一条纪律：生产 assets 配置 not_found_handling="none"
+    // （wrangler.toml），没有这条分支 /app 在生产会真 404。
+    if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
+      return servePublicPageWithMeta(env, request, "/app");
+    }
+
     // 免登录投稿(/api/submit/*):并轨后由本 Worker 直接服务(数据在本站
     // D1,migration 0088;实现见 src/http/submit-api.ts)。历史上这里曾把
     // 请求代理到独立的 submission-bot Worker,该 Worker 已退役。

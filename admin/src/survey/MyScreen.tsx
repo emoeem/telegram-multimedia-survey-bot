@@ -5,6 +5,7 @@ import {
   CircleHelp,
   FileCheck2,
   Images,
+  LayoutGrid,
   Link2,
   MailCheck,
   Target,
@@ -550,6 +551,9 @@ export function MyScreen() {
 
             {/* 入口 */}
             <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
+            {/* 应用中心（2026-11-20 P0 加固批次 M1）：四功能区聚合入口，
+                后续新入口统一挂到 /app，不再各自散进「我的」。 */}
+            <EntryRow href="/app" icon={LayoutGrid} title="应用中心" subtitle="问卷、小游戏、网页导航与社区" />
             {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
             <EntryRow href="/help" icon={CircleHelp} title="帮助中心" subtitle="每一屏是什么、新手第一步点哪里" />
           </>

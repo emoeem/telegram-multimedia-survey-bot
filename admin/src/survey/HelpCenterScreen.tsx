@@ -6,6 +6,7 @@ import {
   FileUp,
   IdCard,
   Images,
+  LayoutGrid,
   MailCheck,
   MessagesSquare,
   Send,
@@ -32,6 +33,7 @@ const HELP_SCREEN_ICONS: Record<string, LucideIcon> = {
   series: BookOpen,
   me: UserRound,
   submit: FileUp,
+  app: LayoutGrid,
   cert: BadgeCheck,
   // 兜底图标：注册表加了新键而这里没配图标时，别让渲染直接炸。
   fallback: IdCard,

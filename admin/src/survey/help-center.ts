@@ -24,6 +24,7 @@ export const HELP_SCREEN_TITLES: Record<string, string> = {
   series: "系列书架",
   me: "我的",
   submit: "投稿",
+  app: "应用中心",
   cert: "认证卡生成器",
 };
 
