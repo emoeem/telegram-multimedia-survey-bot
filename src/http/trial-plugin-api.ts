@@ -43,20 +43,31 @@ function packConfig(pack: TaskPackRecord): Record<string, unknown> {
   return pack.settings ?? {};
 }
 
+/**
+ * 进行中局的生效配置：开局快照优先（0103，新局必有），存量行为 NULL 时回退
+ * 现读包配置（0103 之前的行为）。管理端随时可改包（write.ts 不检查 active 局），
+ * 快照保证「旧局用开局配置」——旧引擎状态永远配对它开局时的那份配置。
+ */
+function effectiveRunConfig(record: TaskRunRecord, pack: TaskPackRecord | null): Record<string, unknown> {
+  return record.configSnapshot?.settings ?? (pack ? packConfig(pack) : {});
+}
+
 function gradeOf(envelope: PluginRunEnvelope | null): string | null {
   return typeof envelope?.grade === "string" ? envelope.grade : null;
 }
 
 export function pluginRunSummary(record: TaskRunRecord, packName: string) {
   const envelope = record.plugin;
-  const plugin = envelope?.plugin ?? "";
-  const manifest = gamePluginRegistry.get(plugin)?.manifest;
+  // 玩法身份用开局快照（0103）；无快照的存量行回退信封里的插件 id——它同样是
+  // 开局定格的。管理端改包玩法后，历史局的标题不漂移。
+  const pluginId = record.configSnapshot?.gameType ?? envelope?.plugin ?? "";
+  const manifest = gamePluginRegistry.get(pluginId)?.manifest;
   return {
     id: record.id,
     packId: record.packId,
     packName,
-    plugin,
-    pluginTitle: manifest?.title ?? plugin,
+    plugin: pluginId,
+    pluginTitle: manifest?.title ?? pluginId,
     persona: record.persona,
     mode: record.mode,
     status: record.status,
@@ -76,7 +87,7 @@ export function serializePluginRun(
   if (!envelope) return { run, view: null };
   try {
     const plugin = gamePluginRegistry.require(envelope.plugin);
-    const config = pack ? packConfig(pack) : {};
+    const config = effectiveRunConfig(record, pack);
     return { run, view: plugin.engine.view({ state: envelope.state, config }) };
   } catch {
     // 插件下线或 state 损坏：视图给 null，前端提示「本局无法继续」。
@@ -126,6 +137,9 @@ export async function startPluginRun(env: Env, input: Parameters<PluginRunApi["s
       coinRerolls: 0,
     },
     plugin: envelope,
+    // 开局快照（0103）：settings 用 validateConfig 归一化后的结果，gameType 用
+    // 当时的值。管理端此后改包（允许随时改、不检查 active 局）不再影响本局。
+    configSnapshot: { gameType: pluginId, settings: config },
   });
   return json({ run: pluginRunSummary(record, pack.name), view: created.view }, 201);
 }
@@ -147,7 +161,7 @@ export async function applyPluginAction(env: Env, input: Parameters<PluginRunApi
     const packName = pack?.name ?? `#${record.packId}`;
     return json({
       run: pluginRunSummary(settled, packName),
-      view: safeView(plugin.engine, envelope, pack),
+      view: safeView(plugin.engine, envelope, record, pack),
       finished: true,
       result: { runId: settled.id, score: settled.score, grade: null, completed: false },
     });
@@ -167,7 +181,9 @@ export async function applyPluginAction(env: Env, input: Parameters<PluginRunApi
     });
   }
 
-  const config = packConfig(pack);
+  // 生效配置读开局快照（新局必有）；存量行回退现读包配置。改包不再触发下面
+  // catch 的 abandoned 兜底结算——那只是状态损坏的最后一道安全网，不是常规路径。
+  const config = effectiveRunConfig(record, pack);
   let applied;
   try {
     applied = plugin.engine.apply({ state: envelope.state, config, action, random: Math.random });
@@ -229,10 +245,11 @@ export async function applyPluginAction(env: Env, input: Parameters<PluginRunApi
 function safeView(
   engine: { view(input: { state: unknown; config: Record<string, unknown> }): GameRunView },
   envelope: PluginRunEnvelope,
+  record: TaskRunRecord,
   pack: TaskPackRecord | null,
 ): GameRunView | null {
   try {
-    return engine.view({ state: envelope.state, config: pack ? packConfig(pack) : {} });
+    return engine.view({ state: envelope.state, config: effectiveRunConfig(record, pack) });
   } catch {
     return null;
   }

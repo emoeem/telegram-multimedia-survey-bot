@@ -1,0 +1,17 @@
+-- 0103: task_runs 开局配置快照（config_json）——杜绝管理端改配置打乱进行中的局。
+--
+-- 动机：src/http/admin/write.ts:680-685 允许随时改 task_packs 的 gameType 与
+-- settings（注释自证「玩法类型创建后仍可改」），且不检查是否存在进行中
+-- （status='active'）的对局。进行中的插件局持有的是「开局时的引擎状态」，
+-- 却一直读「当前时刻的包配置」（trial-plugin-api.ts packConfig）——状态与
+-- 配置错配：轻则 flip-card 读 cfg.cards[cardIndex] 静默错结算，重则引擎抛错
+-- 被 trial-plugin-api.ts 的 catch 自动结算为 abandoned，玩家无端丢局。
+--
+-- 本迁移给 task_runs 加可空 config_json：开局时把 validateConfig 归一化后的
+-- settings 与当时的 gameType 定格成快照（{gameType, settings}），此后该局的
+-- view/apply/grade 一律读快照——「新局用最新配置、旧局用开局配置」成为自然
+-- 结果。存量行为 NULL：读取侧回退现读包配置（0103 之前的行为），保持兼容。
+--
+-- 信封 state_json（PluginRunEnvelope）不动：快照是配置、不是运行状态，分开
+-- 存避免信封体积膨胀与配置/状态混存。
+ALTER TABLE task_runs ADD COLUMN config_json TEXT;

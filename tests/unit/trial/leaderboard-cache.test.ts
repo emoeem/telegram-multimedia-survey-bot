@@ -21,7 +21,8 @@ import { createSqliteD1, sqliteD1Available } from "../../helpers/sqlite-d1";
 /**
  * 小游戏排行榜 · KV 戳式缓存 + 玩法聚合榜（0095）。
  *
- * DB 用真迁移（users 0001 + task 表 0045 + game_type 0090 + 索引 0095）跑真
+ * DB 用真迁移（users 0001 + task 表 0045 + game_type 0090 + 索引 0095 +
+ * config_json 0103——saveTaskRun 会写该列）跑真
  * SQL：聚合榜依赖 SQLite「聚合查询里唯一 max() 的裸列取自取得最大值那一行」
  * 的文档化行为，mock 测试测不出来。KV 用内存 fake；榜单 SQL 计数靠一层
  * prepare 代理（戳探针含 MAX(updated_at)，聚合榜含 GROUP BY r.user_id，
@@ -32,6 +33,7 @@ const SCHEMA = [
   "0045_trial_tasks.sql",
   "0090_game_zone.sql",
   "0095_task_packs_game_type_index.sql",
+  "0103_task_run_config_snapshot.sql",
 ]
   .map((file) => readFileSync(new URL(`../../../db/migrations/${file}`, import.meta.url), "utf8"))
   .join("\n");

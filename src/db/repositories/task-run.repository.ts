@@ -6,6 +6,19 @@ import {
   type TrialRunState,
 } from "../../trial/engine";
 
+/**
+ * 开局配置快照（task_runs.config_json，0103）：开局那一刻的玩法与内容配置。
+ *
+ * 管理端可随时改包的 gameType/settings（write.ts 允许且不检查 active 局），
+ * 进行中的局如果一直现读包配置，会拿到「旧引擎状态 + 新配置」而错结算。
+ * 快照在开局写入后就不再变，此后该局的 view/apply/grade 都读它；存量行为
+ * NULL，读取侧回退现读包配置。
+ */
+export interface TaskRunConfigSnapshot {
+  gameType: string;
+  settings: Record<string, unknown>;
+}
+
 export interface TaskRunRecord {
   id: number;
   packId: number;
@@ -24,6 +37,8 @@ export interface TaskRunRecord {
   state: TrialRunState;
   /** 插件局信封；爬塔局为 null。 */
   plugin: PluginRunEnvelope | null;
+  /** 开局配置快照（0103）；存量行为 NULL（undefined）。 */
+  configSnapshot?: TaskRunConfigSnapshot;
   startedAt: string;
   finishedAt: string | null;
   updatedAt: string;
@@ -54,12 +69,30 @@ export interface TaskRunInput {
   state: TrialRunState;
   /** 插件局必须带信封；带了你就不需要 state。 */
   plugin?: PluginRunEnvelope;
+  /** 插件局开局快照（0103）：不传则 config_json 落 NULL（爬塔局与存量行为）。 */
+  configSnapshot?: TaskRunConfigSnapshot;
 }
 
 export function isPluginEnvelope(value: unknown): value is PluginRunEnvelope {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
   return raw.kind === "plugin" && typeof raw.plugin === "string" && raw.plugin.length > 0;
+}
+
+/** 解析 config_json 快照；NULL/损坏/形状不对（含中途版本写入的异形数据）一律回 undefined。 */
+function parseConfigSnapshot(raw: unknown): TaskRunConfigSnapshot | undefined {
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.gameType !== "string" || record.gameType.length === 0) return undefined;
+  if (!record.settings || typeof record.settings !== "object" || Array.isArray(record.settings)) return undefined;
+  return { gameType: record.gameType, settings: record.settings as Record<string, unknown> };
 }
 
 function mapRow(row: Record<string, unknown>): TaskRunRecord {
@@ -70,6 +103,7 @@ function mapRow(row: Record<string, unknown>): TaskRunRecord {
     parsed = {};
   }
   const plugin = isPluginEnvelope(parsed) ? parsed : null;
+  const configSnapshot = parseConfigSnapshot(row.config_json);
   return {
     id: Number(row.id),
     packId: Number(row.pack_id),
@@ -87,6 +121,7 @@ function mapRow(row: Record<string, unknown>): TaskRunRecord {
     // 插件局不做爬塔归一化（normalizeState 会把插件状态整个丢掉）。
     state: plugin ? normalizeState({}) : normalizeState(parsed),
     plugin,
+    ...(configSnapshot ? { configSnapshot } : {}),
     startedAt: String(row.started_at),
     finishedAt: typeof row.finished_at === "string" ? row.finished_at : null,
     updatedAt: String(row.updated_at),
@@ -121,8 +156,8 @@ export async function createTaskRun(db: D1Database, input: TaskRunInput): Promis
     .prepare(
       `INSERT INTO task_runs
         (pack_id, user_id, participant_hash, persona, mode, starting_floor, current_floor, max_floor,
-         score, completed_tasks, skipped_tasks, status, state_json, started_at, finished_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 'active', ?, ?, NULL, ?)`,
+         score, completed_tasks, skipped_tasks, status, state_json, config_json, started_at, finished_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 'active', ?, ?, ?, NULL, ?)`,
     )
     .bind(
       input.packId,
@@ -134,6 +169,8 @@ export async function createTaskRun(db: D1Database, input: TaskRunInput): Promis
       input.startingFloor,
       input.maxFloor,
       JSON.stringify(input.plugin ?? input.state),
+      // 开局快照（0103）：开局后不再变更；不传落 NULL（存量行为兼容）。
+      input.configSnapshot ? JSON.stringify(input.configSnapshot) : null,
       now,
       now,
     )
@@ -166,7 +203,7 @@ export async function saveTaskRun(db: D1Database, record: TaskRunRecord): Promis
     .prepare(
       `UPDATE task_runs
        SET current_floor = ?, score = ?, completed_tasks = ?, skipped_tasks = ?, status = ?, state_json = ?,
-           finished_at = ?, updated_at = ?
+           config_json = ?, finished_at = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -177,6 +214,8 @@ export async function saveTaskRun(db: D1Database, record: TaskRunRecord): Promis
       record.status,
       // 插件局按信封整份写回（含引擎状态与结算评级），爬塔局写回状态机。
       JSON.stringify(record.plugin ?? record.state),
+      // 快照随记录回写（mapRow 读出的值原样落回）；开局后业务路径不修改它。
+      record.configSnapshot ? JSON.stringify(record.configSnapshot) : null,
       record.status === "active" ? null : (record.finishedAt ?? new Date().toISOString()),
       new Date().toISOString(),
       record.id,
