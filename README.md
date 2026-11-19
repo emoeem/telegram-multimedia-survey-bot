@@ -150,7 +150,7 @@
 - 用户、身份、任务、社区和审计数据。
 
 历史 migration 保持不重写原则。新结构通过递增 migration 添加。仓库 head 的最新 migration
-为 `0093`（`db/migrations/0093_report_publication_progress.sql`）；生产库实际已应用到的版本
+为 `0100`（`db/migrations/0100_k9_task_pack_dedup.sql`）；生产库实际已应用到的版本
 以只读命令复核为准，本文不预设（此前记录的「生产已完成至 0053」是历史快照，已过期）：
 
 ```bash

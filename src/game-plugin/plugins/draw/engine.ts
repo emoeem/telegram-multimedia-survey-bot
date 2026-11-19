@@ -55,7 +55,13 @@ function asConfig(raw: Record<string, unknown>): DrawConfig {
   return raw as unknown as DrawConfig;
 }
 
-/** 不放回加权抽样：每轮按剩余条目的 weight 抽一个。全 0 权重退化为均匀随机。 */
+/**
+ * 不放回加权抽样：每轮按剩余条目的 weight 抽一个。
+ * 全 0 权重退化为按池序抽取（total=0 时 threshold 恒为 0，首轮即命中当前池首，
+ * 确定性、与 random 无关，不是均匀随机）。注意 weight min=1 是 Schema 层约束
+ * （manifest 的 min:1 经 props.ts clampNumber 夹取），运行时配置到不了全零状态，
+ * 本分支仅为防御。
+ */
 function weightedOrderWithoutReplacement(items: DrawItem[], count: number, random: () => number): number[] {
   const pool = items.map((item, index) => ({ index, weight: Math.max(0, Math.floor(item.weight) || 0) }));
   const order: number[] = [];

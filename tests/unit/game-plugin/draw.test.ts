@@ -141,7 +141,7 @@ describe("draw engine · 边界", () => {
     expect(drawEngine.grade({ state: run.state, config: empty }).grade).toBe("C");
   });
 
-  it("drawCount 超过奖池大小时封顶；全 0 权重退化为不放回均匀抽取", () => {
+  it("drawCount 超过奖池大小时封顶", () => {
     const big = drawEngine.createRun({
       config: config({ drawCount: 99 }),
       persona: "male",
@@ -149,17 +149,44 @@ describe("draw engine · 边界", () => {
       random: seededRandom(1),
     });
     expect(big.state.order).toHaveLength(4);
+  });
 
-    const zeroWeights = normalizeConfig(drawProps, {
+  it("全 0 权重退化为按池序抽取（绕过 normalizeConfig 的引擎级用例）", () => {
+    // weight min=1 是 Schema 层约束（manifest.ts 的 min:1 经 props.ts clampNumber
+    // 夹取），经 normalizeConfig 的配置到不了引擎的全零分支；这里直接传字面量
+    // config，实证 engine.ts total===0 分支的真实行为：threshold 恒为 0，逐轮
+    // 命中当前池首，即确定性按池序抽取，与 random 无关，非均匀随机。该分支仅为防御。
+    const literalZeroWeights = {
       items: [
         { label: "A", weight: 0, rarity: "common", score: 1 },
-        { label: "B", weight: 0, rarity: "common", score: 1 },
+        { label: "B", weight: 0, rarity: "common", score: 2 },
       ],
       drawCount: 2,
-    }) as Record<string, unknown>;
-    const run = drawEngine.createRun({ config: zeroWeights, persona: "male", mode: "normal", random: seededRandom(3) });
-    expect(run.state.order).toHaveLength(2);
-    expect(new Set(run.state.order).size).toBe(2);
+      cover: null,
+    } as Record<string, unknown>;
+    const runA = drawEngine.createRun({
+      config: literalZeroWeights,
+      persona: "male",
+      mode: "normal",
+      random: seededRandom(3),
+    });
+    const runB = drawEngine.createRun({
+      config: literalZeroWeights,
+      persona: "male",
+      mode: "normal",
+      random: seededRandom(999),
+    });
+    const runC = drawEngine.createRun({
+      config: literalZeroWeights,
+      persona: "male",
+      mode: "normal",
+      random: () => 0.999999,
+    });
+    expect(runA.state.order).toEqual([0, 1]);
+    expect(runB.state.order).toEqual([0, 1]);
+    expect(runC.state.order).toEqual([0, 1]);
+    expect(runA.view.total).toBe(2);
+    expect(runA.state.maxScore).toBe(3);
   });
 
   it("defaultConfig 归一化补齐全部键", () => {
