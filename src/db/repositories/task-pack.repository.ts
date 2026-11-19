@@ -142,11 +142,21 @@ function normalizeItemInput(raw: unknown, index: number): TaskItemInput | null {
   };
 }
 
+/**
+ * 列任务包。0101 软删（墓碑）语义：默认排除 deleted_at 非空的行——玩家侧
+ * /api/trial/packs、开局入口、管理端默认列表（read.ts）与存在性预检（write.ts）
+ * 都走默认值，已删包不可见；需要读到墓碑包的映射/审计类调用（如
+ * /api/trial/history 的包名映射——历史成绩保留、不退化成 #id）显式传
+ * includeDeleted: true。
+ */
 export async function listTaskPacks(
   db: D1Database,
-  options: { enabledOnly?: boolean; withItems?: boolean } = {},
+  options: { enabledOnly?: boolean; withItems?: boolean; includeDeleted?: boolean } = {},
 ): Promise<TaskPackRecord[]> {
-  const where = options.enabledOnly ? "WHERE enabled = 1" : "";
+  const conditions: string[] = [];
+  if (options.enabledOnly) conditions.push("enabled = 1");
+  if (!options.includeDeleted) conditions.push("deleted_at IS NULL");
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const { results } = await db
     .prepare(`SELECT ${PACK_COLUMNS} FROM task_packs ${where} ORDER BY sort_order ASC, id ASC`)
     .all();
@@ -170,8 +180,26 @@ export async function listTaskPacks(
   return packs.map((pack) => ({ ...pack, items: byPack.get(pack.id) ?? [] }));
 }
 
-export async function getTaskPackById(db: D1Database, id: number): Promise<TaskPackRecord | null> {
-  const row = await db.prepare(`SELECT ${PACK_COLUMNS} FROM task_packs WHERE id = ? LIMIT 1`).bind(id).first();
+/**
+ * 按 id 取任务包（含条目）。0101 软删（墓碑）语义，逐调用方决策：
+ * - updateTaskPack（取 existing 与最终回读）传 includeDeleted: true——墓碑包
+ *   仍可编辑（复核决策①），回读不返回 null，否则墓碑包「更新成功却 404」；
+ * - game-draw.service.ts drawTaskItems 传 includeDeleted: true——金币抽卡
+ *   （/api/cert/draw）对已删包行为不变（决策②，task_items 不随软删消失）；
+ * - createTaskPack 回读用默认值——新插入的包不可能有墓碑（决策③）；
+ * - 其余调用方与 /api/trial/* 玩家路径（经 listTaskPacks 默认排除）用默认值
+ *   排除墓碑（决策④）。
+ */
+export async function getTaskPackById(
+  db: D1Database,
+  id: number,
+  opts: { includeDeleted?: boolean } = {},
+): Promise<TaskPackRecord | null> {
+  const tombstoneFilter = opts.includeDeleted ? "" : "AND deleted_at IS NULL";
+  const row = await db
+    .prepare(`SELECT ${PACK_COLUMNS} FROM task_packs WHERE id = ? ${tombstoneFilter} LIMIT 1`)
+    .bind(id)
+    .first();
   if (!row) return null;
   const pack = mapPack(row as Record<string, unknown>);
   const { results } = await db
@@ -181,6 +209,7 @@ export async function getTaskPackById(db: D1Database, id: number): Promise<TaskP
   return { ...pack, items: (results ?? []).map((row) => mapItem(row as Record<string, unknown>)) };
 }
 
+/** 统计包内条目数。0101 软删后刻意不过滤墓碑包：仅统计题数（供审计/恢复），不涉及玩家可见性。 */
 export async function countTaskItems(db: D1Database, packId: number, enabledOnly = false): Promise<number> {
   const row = await db
     .prepare(`SELECT COUNT(*) AS n FROM task_items WHERE pack_id = ? ${enabledOnly ? "AND enabled = 1" : ""}`)
@@ -227,6 +256,7 @@ export async function createTaskPack(
   if (typeof id !== "number") throw new Error("无法保存任务包");
   const items = (input.items ?? []).map(normalizeItemInput).filter((item): item is TaskItemInput => item !== null);
   if (items.length > 0) await insertTaskItems(db, id, items);
+  // 0101 逐调用方决策③：回读用默认值（新包不可能有墓碑）。
   const created = await getTaskPackById(db, id);
   if (!created) throw new Error("无法保存任务包");
   return created;
@@ -275,7 +305,11 @@ export async function updateTaskPack(
     items?: unknown[];
   },
 ): Promise<TaskPackRecord | null> {
-  const existing = await getTaskPackById(db, id);
+  // 0101 逐调用方决策①：取 existing 带 includeDeleted——墓碑包仍可编辑，不因
+  // 墓碑 404（HTTP 层 write.ts 的 PUT/PATCH 预检走 listTaskPacks 默认排除墓碑，
+  // 墓碑对管理端不可见且无恢复端点；本函数层面保持可编辑，供仓库层/未来
+  // 恢复流程使用）。
+  const existing = await getTaskPackById(db, id, { includeDeleted: true });
   if (!existing) return null;
   await db
     .prepare(
@@ -302,10 +336,22 @@ export async function updateTaskPack(
     await db.prepare("DELETE FROM task_items WHERE pack_id = ?").bind(id).run();
     if (items.length > 0) await insertTaskItems(db, id, items);
   }
-  return getTaskPackById(db, id);
+  // 0101 回读与上方 existing 同语义（带 includeDeleted）：墓碑包编辑成功后
+  // 必须返回更新后的记录，否则管理端表现为 404。
+  return getTaskPackById(db, id, { includeDeleted: true });
 }
 
+/**
+ * 软删任务包（0101 墓碑）：0045_trial_tasks.sql:20/:38 的 task_items/task_runs
+ * 外键均 ON DELETE CASCADE 且 D1 强制外键（0034 迁移注释为证），硬删父包会
+ * 级联清空对局历史。这里只打 deleted_at 墓碑，task_items/task_runs 原样保留。
+ * 名称唯一索引是局部索引（0102，仅活跃行）：软删即释放包名，可重建同名包。
+ * 返回 Boolean(changes) 语义不变：包不存在或已是墓碑（重复删除）都返回 false。
+ */
 export async function deleteTaskPack(db: D1Database, id: number): Promise<boolean> {
-  const result = await db.prepare("DELETE FROM task_packs WHERE id = ?").bind(id).run();
+  const result = await db
+    .prepare("UPDATE task_packs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL")
+    .bind(new Date().toISOString(), id)
+    .run();
   return Boolean(result.meta?.changes);
 }

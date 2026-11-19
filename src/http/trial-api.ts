@@ -185,7 +185,9 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
     const runs = await listTaskRunsByParticipant(env.DB, participant.participantHash, 10);
-    const packs = await listTaskPacks(env.DB, {});
+    // 包名映射显式含软删（0101 墓碑）包：历史成绩已经发生，不因包删除消失，
+    // 显示真实包名而不是退化成 #id。玩家可见性过滤只作用于 packs/开局入口。
+    const packs = await listTaskPacks(env.DB, { includeDeleted: true });
     const packNames = new Map(packs.map((pack) => [pack.id, pack.name]));
     return json({
       runs: runs.map((run) => {

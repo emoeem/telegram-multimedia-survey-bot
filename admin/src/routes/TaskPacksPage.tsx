@@ -396,7 +396,15 @@ export function TaskPacksPage() {
   };
 
   const remove = async (pack: AdminTaskPack) => {
-    if (!(await confirm({ message: `确定删除小游戏包「${pack.name}」吗？历史挑战记录不受影响。`, variant: "danger" })))
+    // 软删（0101）语义：删除 = 停用 + 软删墓碑（管理端不再显示；task_packs 不在
+    // 回收站白名单内，没有恢复端点，文案不得承诺「进回收站」）。
+    // task_runs 历史成绩保留；名称因 0102 局部唯一索引而即刻释放，可重建同名包。
+    if (
+      !(await confirm({
+        message: `确定删除小游戏包「${pack.name}」吗？删除后包将停用并隐藏，历史成绩保留。`,
+        variant: "danger",
+      }))
+    )
       return;
     try {
       await deleteAdminTaskPack(pack.id);

@@ -34,7 +34,9 @@ export async function drawTaskItems(
   packId: number,
   options: DrawOptions,
 ): Promise<DrawnTaskItem[] | null> {
-  const pack = await getTaskPackById(db, packId);
+  // 0101 逐调用方决策②：显式带墓碑包——金币抽卡（/api/cert/draw）对已删包
+  // 行为不变：task_items 不随包软删消失，照常出题。
+  const pack = await getTaskPackById(db, packId, { includeDeleted: true });
   if (!pack) return null;
   const pool = (pack.items ?? []).filter(
     (item) => item.enabled && (!options.persona || item.persona === "any" || item.persona === options.persona),

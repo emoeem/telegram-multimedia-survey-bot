@@ -7,6 +7,12 @@
 -- CREATE IF NOT EXISTS 重申一遍（幂等、按名排序），一次性消除所有部署的
 -- 历史漂移。
 --
+-- 覆盖范围：只收录「在本文件执行位置（文件名序，位于 0099+ 之前）可创建」
+-- 的终态索引。引用后续迁移才新增列的索引（如 0101/0102 引用 0101 才加入
+-- 的 task_packs.deleted_at 的局部索引）不收录——它们在 0098 位置创建会
+-- 让全新库的按序 bootstrap 报错；这些索引由各自迁移（自带 IF NOT EXISTS）
+-- 负责创建。
+--
 -- 生成方式：node scripts/gen-reconcile-migration.mjs——把全部迁移在真实
 -- SQLite 里执行后从终态 sqlite_master 提取（不是解析迁移文件文本：过渡表
 -- 与已 DROP 表的索引照抄会在终态 schema 上失败）。普通迁移变更后重跑本
@@ -263,7 +269,6 @@ CREATE INDEX IF NOT EXISTS idx_task_items_pack ON task_items(pack_id, enabled, p
 CREATE INDEX IF NOT EXISTS idx_task_items_pack_sort
   ON task_items(pack_id, enabled, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_task_packs_game_type ON task_packs(game_type);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_task_packs_name ON task_packs(name);
 CREATE INDEX IF NOT EXISTS idx_task_runs_leaderboard ON task_runs(pack_id, mode, status, score DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_participant ON task_runs(participant_hash, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_runs_user_pack_mode

@@ -44,6 +44,30 @@ const entries = rows
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
+// 位置过滤：0098 在迁移文件名序里排在后续迁移之前执行（全新库 bootstrap 与
+// wrangler apply 都是按文件名顺序）。引用「后续迁移才新增列」的索引（如
+// 0101/0102 引用 0101 才加入的 task_packs.deleted_at）在 0098 位置无法创建，
+// 收进本文件会让全新库在 0098 处直接报错。这类索引由各自的迁移文件（自带
+// IF NOT EXISTS）负责创建；守卫测试 tests/unit/migrations/reconcile-indexes
+// 按同一规则双向核对——缺失与越界收录都报错。
+const positionDb = new DatabaseSync(":memory:");
+for (const file of files.filter((f) => f < TARGET_NAME)) {
+  positionDb.exec(await fs.readFile(path.join(MIGRATIONS_DIR, file), "utf8"));
+}
+const reconcilable = [];
+const skipped = [];
+for (const entry of entries) {
+  try {
+    positionDb.exec("BEGIN");
+    positionDb.exec(entry.sql);
+    positionDb.exec("COMMIT");
+    reconcilable.push(entry);
+  } catch (error) {
+    positionDb.exec("ROLLBACK");
+    skipped.push(`${entry.name}: ${String(error).split("\n")[0]}`);
+  }
+}
+
 const lines = [
   "-- 0098 · 全库索引对账（reconcile）。",
   "--",
@@ -54,6 +78,12 @@ const lines = [
   "-- CREATE IF NOT EXISTS 重申一遍（幂等、按名排序），一次性消除所有部署的",
   "-- 历史漂移。",
   "--",
+  "-- 覆盖范围：只收录「在本文件执行位置（文件名序，位于 0099+ 之前）可创建」",
+  "-- 的终态索引。引用后续迁移才新增列的索引（如 0101/0102 引用 0101 才加入",
+  "-- 的 task_packs.deleted_at 的局部索引）不收录——它们在 0098 位置创建会",
+  "-- 让全新库的按序 bootstrap 报错；这些索引由各自迁移（自带 IF NOT EXISTS）",
+  "-- 负责创建。",
+  "--",
   "-- 生成方式：node scripts/gen-reconcile-migration.mjs——把全部迁移在真实",
   "-- SQLite 里执行后从终态 sqlite_master 提取（不是解析迁移文件文本：过渡表",
   "-- 与已 DROP 表的索引照抄会在终态 schema 上失败）。普通迁移变更后重跑本",
@@ -63,10 +93,13 @@ const lines = [
   "--",
   "-- 回滚：本迁移只新增索引；DROP 对应索引名即可（一般无需回滚）。",
   "",
-  ...entries.map((e) => `${e.sql};`),
+  ...reconcilable.map((e) => `${e.sql};`),
   "",
 ];
 await fs.writeFile(path.join(MIGRATIONS_DIR, TARGET_NAME), lines.join("\n"), "utf8");
 console.log(
-  `generated ${TARGET_NAME}: ${entries.length} indexes from ${files.length} migration files (executed schema)`,
+  `generated ${TARGET_NAME}: ${reconcilable.length} indexes from ${files.length} migration files (executed schema)`,
 );
+for (const item of skipped) {
+  console.log(`  skipped (not creatable at 0098 position, owned by its own migration): ${item}`);
+}

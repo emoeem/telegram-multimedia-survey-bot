@@ -727,6 +727,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
   if (request.method === "DELETE" && taskPackMatch) {
     if (!isAdmin) return fail(403, "forbidden", "仅管理员可管理挑战任务包");
     const packId = Number(taskPackMatch[1]);
+    // 0101 起删除为软删（墓碑）：deleteTaskPack 只打 deleted_at，task_runs
+    // 历史成绩保留；HTTP 语义与路由不变。
     const removed = await deleteTaskPack(db, packId);
     if (!removed) return fail(404, "not_found", "任务包不存在");
     await writeAudit(db, {
@@ -734,6 +736,8 @@ export async function handleAdminWrite(request: Request, url: URL, env: Env, ctx
       action: "task_pack.delete",
       entityType: "task_pack",
       entityId: String(packId),
+      // 如实记录软删动作：deleted_at 墓碑（回收站），非硬删。
+      after: { softDeleted: true },
     });
     return json({ ok: true, id: packId });
   }
