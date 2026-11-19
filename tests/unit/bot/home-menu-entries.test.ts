@@ -52,9 +52,12 @@ function makeCtx(overrides: Partial<BotContext> = {}): BotContext {
   };
 }
 
-type KeyboardButton = { text: string; url?: string; callback_data?: string };
+type KeyboardButton = { text: string; url?: string; callback_data?: string; web_app?: { url: string } };
 
-async function homeKeyboard(ctx: BotContext): Promise<{ rows: KeyboardButton[][]; raw: string }> {
+async function homeKeyboard(
+  ctx: BotContext,
+  chat: { id: number; type?: string } = { id: 2 },
+): Promise<{ rows: KeyboardButton[][]; raw: string }> {
   const bodies: Array<Record<string, unknown>> = [];
   vi.stubGlobal(
     "fetch",
@@ -65,7 +68,7 @@ async function homeKeyboard(ctx: BotContext): Promise<{ rows: KeyboardButton[][]
   );
   await handleTelegramMessage(ctx, {
     message_id: 1,
-    chat: { id: 2 },
+    chat,
     from: { id: 88, first_name: "tester" },
     text: "/start",
   });
@@ -138,6 +141,71 @@ describe("home menu web entries", () => {
     expect(findButton(rows, "👤 个人中心")).toBeUndefined();
     expect(findButton(rows, "浏览问卷")?.callback_data).toBe("home:surveys");
     expect(findButton(rows, "🌳 树洞")?.callback_data).toBe("plaza:treehole:0");
+    expect(findButton(rows, "打开应用")).toBeUndefined();
     expect(raw).not.toContain("undefined");
+  });
+});
+
+/**
+ * M3：/app 应用中心入口 + 小游戏按钮 web_app 化。
+ * web_app 平台约束（HTTPS 页面 + 私聊）沿用 /s/{id} 游戏题分支的判定。
+ */
+describe("home menu app entry and web_app games", () => {
+  beforeEach(() => {
+    mocks.getUserByTelegramId.mockResolvedValue({ id: 7, telegramUserId: 88, systemRole: "participant" });
+    mocks.hasActiveCreatorTrial.mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("主菜单出现「打开应用」按钮，指向 /app 应用中心", async () => {
+    const { rows, raw } = await homeKeyboard(makeCtx());
+
+    const app = findButton(rows, "打开应用");
+    expect(app?.url).toBe("https://example.com/app");
+    // 应用中心是导航页：不带参与者 token，也不出现半截链接。
+    expect(new URL(app!.url!).search).toBe("");
+    expect(raw).not.toContain("undefined");
+  });
+
+  it("私聊里「小游戏」用 web_app 内嵌按钮（/trial 同源）", async () => {
+    const { rows, raw } = await homeKeyboard(makeCtx(), { id: 2, type: "private" });
+
+    const game = findButton(rows, "🎮 小游戏");
+    expect(game?.web_app?.url).toContain("https://example.com/trial");
+    expect(game?.url).toBeUndefined();
+    expect(raw).not.toContain("undefined");
+  });
+
+  it("非私聊（频道帖）里「小游戏」保持 url 按钮（web_app 群里会被 Telegram 拒收）", async () => {
+    // 群消息在 handleTelegramMessage 开头的门禁就回提示、群回调也被拒，主键盘
+    // 实际只会经频道帖（channel_post 不在 isGroupChat 里）落到非私聊场景——
+    // 这里钉住：只要不是 private，一律回落 url。
+    const { rows } = await homeKeyboard(makeCtx(), { id: -1001234567890, type: "channel" });
+
+    const game = findButton(rows, "🎮 小游戏");
+    expect(game?.url).toContain("https://example.com/trial");
+    expect(game?.web_app).toBeUndefined();
+  });
+
+  it("聊天类型未知时「小游戏」回落 url 按钮", async () => {
+    // 老回调消息可能没有 chat.type；未知按群聊处理，宁可少一个 web_app 也不让
+    // 整条 sendMessage 失败。
+    const { rows } = await homeKeyboard(makeCtx());
+
+    const game = findButton(rows, "🎮 小游戏");
+    expect(game?.url).toContain("https://example.com/trial");
+    expect(game?.web_app).toBeUndefined();
+  });
+
+  it("非 https origin 时私聊也回落 url 按钮", async () => {
+    const { rows } = await homeKeyboard(makeCtx({ origin: "http://localhost:8787" }), { id: 2, type: "private" });
+
+    const game = findButton(rows, "🎮 小游戏");
+    expect(game?.url).toContain("http://localhost:8787/trial");
+    expect(game?.web_app).toBeUndefined();
   });
 });

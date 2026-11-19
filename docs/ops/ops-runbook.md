@@ -61,3 +61,34 @@
 - **接受机器人作为降级入口**:bot 全功能可用(答卷、投稿、报告),域名侧故障时它是不经过任何网页链路的独立通道——这也是为什么 `workers_dev = true` 特意保留(Telegram webhook 一直打 workers.dev 域名)。
 
 **默认决策**:不加备用中继,依赖「机器人 = 永远可用的降级通道」。若中继一年内故障超过一次,再升级到第二中继方案。
+
+## 4. 设置 Telegram 菜单按钮(scripts/telegram-set-menu-button.mjs)
+
+**机制**:Bot 输入框左侧的「菜单按钮」默认展开命令列表。脚本调 Telegram 的 `setChatMenuButton` 把它换成 `web_app` 类型,点击直接进 Mini App 应用中心(`/app`,P0-M1 上线);`--reset` 恢复 Telegram 默认(展开命令列表)。注意:菜单按钮的 URL 是一次性写入 Telegram 服务端的,不会跟着 Worker 配置自动更新,所以换域名/换路径后必须重跑本脚本。
+
+**用法**(凭据只走环境变量,脚本不读配置文件、不含任何硬编码 token):
+
+```bash
+# 预览 payload,不发请求(不需要 BOT_TOKEN)
+PUBLIC_ORIGIN=https://emoemok.top node scripts/telegram-set-menu-button.mjs --dry-run
+
+# 设置:菜单按钮 → web_app「打开应用」→ https://emoemok.top/app
+BOT_TOKEN=<与 wrangler secret BOT_TOKEN 同值> PUBLIC_ORIGIN=https://emoemok.top node scripts/telegram-set-menu-button.mjs
+
+# 自定义按钮文案
+BOT_TOKEN=... PUBLIC_ORIGIN=... node scripts/telegram-set-menu-button.mjs --text "打开应用"
+
+# 恢复默认(展开命令列表)
+BOT_TOKEN=... node scripts/telegram-set-menu-button.mjs --reset
+```
+
+**环境变量**:
+
+| 变量            | 说明                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `BOT_TOKEN`     | Bot 凭据,仅从环境变量读取(与 Worker 绑定同名,见 `src/env.ts`);`--dry-run` 不需要它            |
+| `PUBLIC_ORIGIN` | 应用中心地址来源;可用 `--origin` 参数覆盖;必须 https(`web_app` 按钮要求),配置里的尾斜杠会剥掉 |
+
+**前置条件**:`/app` 所在域名需已在 BotFather 配置为 Mini App 域名,否则 Telegram 拒收 web_app 按钮(`BUTTON_URL_INVALID`)。
+
+**重跑时机**:换 `PUBLIC_ORIGIN`、`/app` 路径变化或按钮文案调整之后;建议先用 `--dry-run` 核对 payload 再实跑。

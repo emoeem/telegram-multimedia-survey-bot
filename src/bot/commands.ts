@@ -36,7 +36,7 @@ export interface CommandSpec {
  */
 export const COMMANDS: readonly CommandSpec[] = [
   // ---- 公共：私聊菜单 ----
-  { name: "start", description: "主菜单", audience: "public", scopes: ["private"] },
+  { name: "start", description: "主菜单（含「打开应用」/app 应用中心入口）", audience: "public", scopes: ["private"] },
   { name: "surveys", description: "浏览并填写问卷", audience: "public", scopes: ["private", "group"] },
   { name: "me", description: "我的：问卷 / 投稿 / 个人中心", audience: "public", scopes: ["private"] },
   { name: "codes", description: "问卷访问密码", audience: "public", scopes: ["private"] },

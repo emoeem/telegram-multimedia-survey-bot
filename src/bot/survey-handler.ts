@@ -288,6 +288,11 @@ function appendQuery(url: string, query: string): string {
  * Mini App 时整条 sendMessage 会失败；而这里只需要「跳到网页」，`url` 在私聊/
  * 群聊、http/https 下都成立。
  *
+ * 唯一按 web_app 化处理的是「🎮 小游戏」：小游戏在 Bot 端本来就玩不了，跳出
+ * Telegram 再跳回来体验最差，所以私聊 + HTTPS 时改用 `web_app` 内嵌打开
+ * /trial（判定模式与 /s/{id} 游戏题分支一致）；群聊、非 HTTPS 或聊天类型未知
+ * 时仍回落 `url` 按钮，平台约束不变。
+ *
  * 新入口两两并排，是为了补上四个入口的同时不把主菜单撑到十几行。
  */
 /**
@@ -339,6 +344,8 @@ async function buildHomeKeyboard(
   submissionBotUrl?: string | null,
   /** 「网页管理后台」的入口地址；传了就优先用它（一次性免密链接）。 */
   adminPanelUrl?: string | null,
+  /** 聊天类型（message.chat.type）：私聊才允许 web_app 按钮，群聊/未知回落 url。 */
+  chatType?: string,
 ): Promise<InlineKeyboardMarkup> {
   // 没有 origin 时一个网页按钮都不会生成，连 token 都不用签。
   const query = origin ? await participantTokenQuery({ webhookSecret, userId, from }) : "";
@@ -360,8 +367,18 @@ async function buildHomeKeyboard(
 
   const surveysUrl = pageUrl("/s?v=3");
   const trialUrl = pageUrl("/trial");
+  // 「打开应用」：/app 应用中心（P0-M1，问卷/小游戏/网页导航/社区四区合一）。
+  // 与 /s/{id} 分支的 fillUrl 同源构建——origin 在 webhook 入口已经过
+  // resolvePublicOrigin 优选 PUBLIC_ORIGIN，不取请求到达的 host。
+  const appUrl = origin ? `${origin}/app` : null;
+  // 小游戏按钮的 useWebApp 判定（沿用 /s/{id} 游戏题分支的模式）：HTTPS + 私聊
+  // 才内嵌。web_app 按钮出现在群聊会被 Telegram 拒收（整条 sendMessage 失败），
+  // 所以聊天类型未知（老回调消息等）一律按群聊处理，回落 url。
+  const trialUseWebApp = Boolean(origin?.startsWith("https://") && chatType === "private");
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [
     surveysUrl ? [{ text: "浏览问卷", url: surveysUrl }] : [{ text: "浏览问卷", callback_data: "home:surveys" }],
+    // 没有 origin（本地/测试上下文）时连「打开应用」都不出现，不留半截链接。
+    ...(appUrl ? [[{ text: "打开应用", url: appUrl }]] : []),
     // 网页端已有、TG 里原来没有入口的四屏。身份（pt）必须带上，否则个人中心/
     // 纸条在站内浏览器里没有 initData，会被当成匿名访客。
     ...packPages([
@@ -380,7 +397,9 @@ async function buildHomeKeyboard(
           { text: "🌳 树洞", callback_data: "plaza:treehole:0" },
           { text: "🏛 广场", callback_data: "plaza:list" },
         ],
-    ...(trialUrl ? [[{ text: "🎮 小游戏", url: trialUrl }]] : []),
+    ...(trialUrl
+      ? [[trialUseWebApp ? { text: "🎮 小游戏", web_app: { url: trialUrl } } : { text: "🎮 小游戏", url: trialUrl }]]
+      : []),
   ];
   // Same jump the web surfaces carry. 投稿入口是一个网页表单（国内可直连、不用
   // Telegram），所以按钮文案不再写「机器人」；页面上另有「用 Telegram 投稿」的回跳按钮。
@@ -496,6 +515,7 @@ async function showHomeMenu(
   dbUser: NonNullable<Awaited<ReturnType<typeof getUserByTelegramId>>>,
   messageId?: number,
   from?: { username?: string; first_name?: string; last_name?: string; language_code?: string },
+  chatType?: string,
 ): Promise<void> {
   const creator = await canCreateSurvey(ctx.db, dbUser, ctx.adminIds);
   const text = buildWelcomeText(creator, from?.first_name, { returning: creator }, ctx.communityGroupUrl);
@@ -513,6 +533,7 @@ async function showHomeMenu(
       from,
       ctx.submissionBotUrl,
       await resolveAdminPanelUrl(ctx, dbUser, creator),
+      chatType,
     ),
     ...(messageId === undefined ? {} : { messageId }),
   });
@@ -1556,6 +1577,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         message.from,
         ctx.submissionBotUrl,
         await resolveAdminPanelUrl(ctx, dbUser, creator),
+        message.chat.type,
       ),
     });
     return;
@@ -1607,6 +1629,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
         message.from,
         ctx.submissionBotUrl,
         await resolveAdminPanelUrl(ctx, dbUser, creator),
+        message.chat.type,
       ),
     });
     return;
@@ -1759,6 +1782,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
               dbUser,
               Boolean(dbUser && (await canCreateSurvey(ctx.db, dbUser, ctx.adminIds))),
             ),
+            message.chat.type,
           ),
         });
         return;
@@ -1860,6 +1884,7 @@ export async function handleTelegramMessage(ctx: BotContext, message: TelegramMe
       message.from,
       ctx.submissionBotUrl,
       await resolveAdminPanelUrl(ctx, dbUser, creator),
+      message.chat.type,
     ),
   });
 }
@@ -1936,7 +1961,16 @@ export async function handleTelegramCallback(ctx: BotContext, callback: Telegram
   }
 
   if (data === "home:menu") {
-    await showHomeMenu(ctx, chatId, userId, dbUser, callback.message?.message_id, callback.from);
+    // 聊天类型一起带上：web_app 按钮只允许私聊（见 buildHomeKeyboard 的小游戏分支）。
+    await showHomeMenu(
+      ctx,
+      chatId,
+      userId,
+      dbUser,
+      callback.message?.message_id,
+      callback.from,
+      callback.message?.chat.type,
+    );
     await answerCallbackQuery(ctx.botToken, callback.id);
     return;
   }
