@@ -13,6 +13,13 @@ name: d1-backup
 # 2026-11-04 事故:R2_BACKUP_BUCKET 这个 secret 从建工作流起就没配过,
 # 对象路径被拼成 /d1/... 被 wrangler 拒绝,备份连续红了一个月才被发现。
 # 现在:守卫步骤对桶名归一化、缺失即人话报错;桶不存在时幂等自动创建。
+#
+# 2026-11-19 事故(run 44429772644):token 缺 R2 权限(code 10000),守卫
+# 通过后拖到建桶步才炸,且 info 的失败原因被 >/dev/null 2>&1 吞掉,
+# 导出/上传/校验从未运行——数据库一度没有任何备份保护。现在装好
+# wrangler 后先用 r2 bucket list 做权限自检,失败即 fail-fast 并给出
+# 「Account | Workers R2 Storage | Edit」指引;建桶步再捕获 info 的退出码
+# 与 stderr 判别,Authentication error 直接终止,不再盲目尝试 create。
 
 on:
   schedule:
@@ -60,19 +67,51 @@ jobs:
       - name: Install wrangler
         run: pnpm install --frozen-lockfile
 
+      - name: R2 permission preflight
+        run: |
+          # 建桶前的权限自检:r2 bucket list 只读探测一次,把权限问题挡在
+          # 最前面,不拖到建桶/导出阶段才暴露。list 报 Authentication error
+          # [code: 10000] 时 wrangler 已能用该 token 解析出账户——密钥本身
+          # 有效,是 R2 权限缺失而非密钥无效(判别方法与手动授权清单见
+          # docs/ops/ops-runbook.md)。
+          if ! list_out="$(pnpm exec wrangler r2 bucket list 2>&1)"; then
+            echo "$list_out"
+            if printf '%s' "$list_out" | grep -q "Authentication error"; then
+              echo "::error::R2 权限自检失败:Authentication error [code: 10000]——wrangler 能解析出账户,CLOUDFLARE_API_TOKEN 本身有效,属 R2 权限缺失而非密钥无效。需 Account | Workers R2 Storage | Edit 权限(手动授权清单见 docs/ops/ops-runbook.md)。以下步骤已跳过:建桶/导出/上传/校验。"
+            else
+              echo "::error::R2 权限自检失败(r2 bucket list 非权限类错误,原因见上方原始输出)。以下步骤已跳过:建桶/导出/上传/校验。"
+            fi
+            exit 1
+          fi
+          echo "R2 权限自检通过:token 具备 R2 访问权限,继续建桶/导出"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Ensure the backup bucket exists
         run: |
           # 先只读探测桶是否存在;不存在才建(默认私有、不开公开访问)。
-          # 2026-11-04 验证:当前 CI token 对 r2/buckets 无权限(code 10000),
-          # 建不了桶时给出明确指引,而不是拖到上传才炸。
-          if pnpm exec wrangler r2 bucket info "$bucket" >/dev/null 2>&1; then
+          # 此前 info 用 >/dev/null 2>&1 吞掉失败原因,「桶不存在」和「权限
+          # 缺失」不可区分(run 44429772644:守卫通过后拖到这里才报 code
+          # 10000)。现在捕获退出码与 stderr,先落日志再判别:报
+          # Authentication error 说明 wrangler 能解析出账户、token 本身
+          # 有效,属 R2 权限缺失而非密钥无效——fail-fast,不再盲目建桶。
+          info_rc=0
+          info_out="$(pnpm exec wrangler r2 bucket info "$bucket" 2>&1)" || info_rc=$?
+          if [ "$info_rc" -eq 0 ]; then
             echo "桶已存在,继续"
-          else
-            if ! create_out="$(pnpm exec wrangler r2 bucket create "$bucket" 2>&1)"; then
-              echo "$create_out"
-              echo "::error::备份桶 $bucket 不存在,自动建桶失败(大概率 CLOUDFLARE_API_TOKEN 没有 Workers R2 Storage Edit 权限)。二选一:① Cloudflare Dashboard → R2 手动建桶 $bucket;② 给 token 加 R2 编辑权限(https://dash.cloudflare.com/profile/api-tokens)后重跑。"
-              exit 1
-            fi
+            exit 0
+          fi
+          echo "$info_out"
+          if printf '%s' "$info_out" | grep -q "Authentication error"; then
+            echo "::error::r2 bucket info 报 Authentication error [code: 10000]:wrangler 能解析出账户,CLOUDFLARE_API_TOKEN 本身有效,属 R2 权限缺失而非密钥无效,不再尝试建桶。需 Account | Workers R2 Storage | Edit 权限(手动授权清单见 docs/ops/ops-runbook.md)。以下步骤已跳过:导出/上传/校验。"
+            exit 1
+          fi
+          # 非权限类失败(多为桶不存在):照旧幂等建桶,建不成再带指引失败。
+          if ! create_out="$(pnpm exec wrangler r2 bucket create "$bucket" 2>&1)"; then
+            echo "$create_out"
+            echo "::error::备份桶 $bucket 自动建桶失败(大概率 CLOUDFLARE_API_TOKEN 没有 Workers R2 Storage Edit 权限)。二选一:① Cloudflare Dashboard → R2 手动建桶 $bucket;② 给 token 加 R2 编辑权限(https://dash.cloudflare.com/profile/api-tokens)后重跑。以下步骤已跳过:导出/上传/校验。"
+            exit 1
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

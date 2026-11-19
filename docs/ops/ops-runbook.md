@@ -10,13 +10,28 @@
 
 | Secret                  | 值                                                                                     |
 | ----------------------- | -------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | 与 deploy 共用;权限需包含 D1 Edit + R2 Edit                                            |
+| `CLOUDFLARE_API_TOKEN`  | 与 deploy 共用;Account 级 Workers R2 Storage: Edit + D1: Edit                          |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                     |
 | `R2_BACKUP_BUCKET`      | 备份桶名;桶不存在时工作流自动创建(R2 桶默认私有,不开公开访问),未配置时守卫步骤直接报错 |
 
 配好后用 Actions 页面的 **Run workflow**(workflow_dispatch)手动跑一次,绿了才算启用。
 (2026-11-04 起工作流带守卫:`R2_BACKUP_BUCKET` 未配置会在导出前人话报错——
 此前 secret 一直缺失、备份连续失败一个月才被发现;桶缺失时会幂等自动创建。)
+
+**R2 权限排障(2026-11-19 run 44429772644 的教训)**:`CLOUDFLARE_API_TOKEN` 缺 Account 级 **Workers R2 Storage: Edit** 权限时,R2 相关步骤报 `Authentication error [code: 10000]`(请求 `GET /accounts/{account_id}/r2/buckets`),导出/上传/校验不会运行,数据库处于无备份保护状态。
+判别方法:同一 token 能正常 deploy(D1/Workers 权限在),报错又带 Authentication 字样;wrangler 能解析出账户说明 token 本身有效,报 10000 就是缺 R2 权限而非密钥无效。
+「桶不存在」不会报 Authentication error,报了 10000 就别再去猜桶名。
+工作流已在建桶前用 `wrangler r2 bucket list` 做前置权限自检并 fail-fast(见 d1-backup.yml)。
+
+手动授权步骤(全部在 Cloudflare/GitHub 后台操作,按顺序;清单只列步骤、不含任何凭据值):
+
+1. 打开 [dash.cloudflare.com](https://dash.cloudflare.com) → 右上角头像 → **My Profile** → **API Tokens**;
+2. 找到 `CLOUDFLARE_API_TOKEN` 对应的 User API Token → 点 **Edit**(只在后台界面操作,不要把 token 值复制到任何地方);
+3. **Permissions** 里新增一行 **Account | Workers R2 Storage | Edit**,保留既有 D1/Workers 权限行不动;
+4. 点 **Save** 保存;
+5. 回 GitHub 仓库 → Actions → **d1-backup** → **Run workflow** 手动重跑(workflow_dispatch 入口定义在 d1-backup.yml 顶部的 `on:` 段),全绿才算修好。
+
+可选捷径:先在 Cloudflare Dashboard → R2 手动建桶可省去工作流自动建桶一步,但**只建桶不够**:对象 put/get 用的是同一套权限,不授权的话 `Authentication error [code: 10000]` 会在上传步原样复现。
 
 **恢复流程**:R2 下载对应日期的 SQL → `wrangler d1 execute DB --remote --file <dump>.sql`(空库重放)或按表挑选重放。SQL 里有 `CREATE TABLE`,重放前确认目标库是空的。
 
