@@ -271,6 +271,30 @@ export function confirmAgeVerification(): Promise<{ ageVerifiedAt: string | null
   });
 }
 
+/**
+ * /trial 包级 18+ ack（0104）：服务端强制点（POST /api/trial/runs）读取的
+ * 偏好。全局标志是客户端既有全局键「trialAdultAgreement:v1 === '1'」的单向
+ * 同步目标（幂等；调用方在成功后才置「已同步」标记，失败留待下次开局重试）；
+ * 包级 ack 追加 ackedAdultPackIds——包级键为权威，绝不回写全局键，调用方
+ * （TrialScreen.confirmAdultAck）服务端优先：写成功才落本地包级键，写失败
+ * 中止本次确认、下次开局重弹按包确认，避免「本地已 ack、服务端永远 451」的
+ * 死状态。两者均只确认不撤销、幂等；开局 451 的客户端自愈见
+ * TrialScreen.startGame 的 adult_ack_required 分支（清本地键重弹确认）。
+ */
+export function ackTrialAdultAll(): Promise<void> {
+  return request<void>("/api/me/preferences", {
+    method: "POST",
+    body: JSON.stringify({ trialAdultAckAll: true }),
+  });
+}
+
+export function ackTrialAdultPack(packId: number): Promise<void> {
+  return request<void>("/api/me/preferences", {
+    method: "POST",
+    body: JSON.stringify({ trialAdultAckedPackId: packId }),
+  });
+}
+
 /** 报告分享卡（0081）：幂等创建，返回公开结局卡链接。 */
 export function createReportShare(responseId: number): Promise<{
   share: { url: string; ogUrl: string; createdAt: string; viewCount: number };

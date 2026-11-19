@@ -50,6 +50,8 @@ export interface TrialPack {
   /** 玩法类型（engine-registry 注册表），客户端按它分组展示。 */
   gameType: string;
   gameLabel: string;
+  /** 包级 18+ 标志（0104）：爬塔读列、插件读清单 capabilities.adult，与服务端校验同源。 */
+  adult: boolean;
   normalFloors: number;
   hellFloors: number;
   /** Preparation checklist the player should gather before floor 1. */

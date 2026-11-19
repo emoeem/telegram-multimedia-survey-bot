@@ -66,6 +66,9 @@ describe.skipIf(!sqliteD1Available)("trial HTTP (task pack soft delete 0101)", (
     mocks.resolveParticipant.mockResolvedValue(ANONYMOUS);
     const pack = await createTaskPack(db, {
       name: PACK_NAME,
+      // 0104 起新包默认 adult=1（会命中包级 18+ 服务端门）；本测试只关心
+      // 0101 软删语义，与门禁无关，显式建非 adult 包避免交叉。
+      adult: false,
       items: [
         { title: "任务一", description: "描述一", score: 3 },
         { title: "任务二", description: "描述二", score: 4 },

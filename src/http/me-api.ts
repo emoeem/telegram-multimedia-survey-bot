@@ -6,6 +6,7 @@ import { loadAchievementOverview, markAchievementsSeen } from "../services/achie
 import { syncShowcasePersonFromProfile } from "../services/showcase-profile.service";
 import { createReportAccessTokens } from "../services/report-access-token.service";
 import { getAgeAttestation, setAgeVerified } from "../services/content-rating.service";
+import { addTrialAdultAckedPack, getTrialAdultAck, setTrialAdultAckAll } from "../services/trial-adult-ack.service";
 import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
 import { getSurveyById } from "../db/repositories/survey.repository";
 import { getResultProfileByResponseId } from "../db/repositories/result-profile.repository";
@@ -240,23 +241,59 @@ export async function handleMeApiRequest(request: Request, env: Env, url: URL): 
   // 内容分级偏好（0080）：年龄确认是 r18 公开面/入口的唯一钥匙。匿名浏览器
   // key 也允许确认（attestation 按 participant_hash 记录，换设备需重新确认）；
   // 撤销只影响今后可见性，不改变已产生的答卷归属。
+  // 0104 起同一端点兼任 /trial 包级 18+ ack 的读写：trialAdultAckAll（全局
+  // ack 标志，客户端既有全局键的单向同步）与 trialAdultAckedPackId（包级
+  // ack 追加，包级键为权威、绝不回写全局键）；只支持确认不支持撤销。
   if (request.method === "GET" && url.pathname === "/api/me/preferences") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const attestation = await getAgeAttestation(env.DB, participant.participantHash);
-    return json({ ageVerifiedAt: attestation?.ageVerifiedAt ?? null });
+    const [attestation, trialAck] = await Promise.all([
+      getAgeAttestation(env.DB, participant.participantHash),
+      getTrialAdultAck(env.DB, participant.participantHash),
+    ]);
+    return json({
+      ageVerifiedAt: attestation?.ageVerifiedAt ?? null,
+      trialAdultAckAll: trialAck.ackAll,
+      trialAdultAckedPackIds: trialAck.ackedPackIds,
+    });
   }
 
   if (request.method === "POST" && url.pathname === "/api/me/preferences") {
     const participant = await resolveParticipant(request, env);
     if (participant instanceof Response) return participant;
-    const body = (await request.json().catch(() => null)) as { ageVerified?: unknown } | null;
-    if (typeof body?.ageVerified !== "boolean") {
-      return fail(400, "validation_failed", "ageVerified 必须是布尔值");
+    const body = (await request.json().catch(() => null)) as {
+      ageVerified?: unknown;
+      trialAdultAckAll?: unknown;
+      trialAdultAckedPackId?: unknown;
+    } | null;
+    if (body?.trialAdultAckAll !== undefined) {
+      // 单向确认：只接受 true（ack 不撤销，与客户端全局键的单向 '1' 一致）。
+      if (body.trialAdultAckAll !== true) return fail(400, "validation_failed", "trialAdultAckAll 只接受 true");
+      await setTrialAdultAckAll(env.DB, participant.participantHash);
     }
-    await setAgeVerified(env.DB, participant.participantHash, body.ageVerified);
-    const attestation = await getAgeAttestation(env.DB, participant.participantHash);
-    return json({ ageVerifiedAt: attestation?.ageVerifiedAt ?? null });
+    if (body?.trialAdultAckedPackId !== undefined) {
+      const packId = Number(body.trialAdultAckedPackId);
+      if (!Number.isInteger(packId) || packId <= 0) {
+        return fail(400, "validation_failed", "trialAdultAckedPackId 必须是正整数");
+      }
+      await addTrialAdultAckedPack(env.DB, participant.participantHash, packId);
+    }
+    if (body?.trialAdultAckAll === undefined && body?.trialAdultAckedPackId === undefined) {
+      // 0080 原语义：不带 trial 字段时按 ageVerified 走（问卷 r18 年龄确认）。
+      if (typeof body?.ageVerified !== "boolean") {
+        return fail(400, "validation_failed", "ageVerified 必须是布尔值");
+      }
+      await setAgeVerified(env.DB, participant.participantHash, body.ageVerified);
+    }
+    const [attestation, trialAck] = await Promise.all([
+      getAgeAttestation(env.DB, participant.participantHash),
+      getTrialAdultAck(env.DB, participant.participantHash),
+    ]);
+    return json({
+      ageVerifiedAt: attestation?.ageVerifiedAt ?? null,
+      trialAdultAckAll: trialAck.ackAll,
+      trialAdultAckedPackIds: trialAck.ackedPackIds,
+    });
   }
 
   // 站内通知未读数（T2 · G4 角标）：单条 COUNT + 60s KV 边缘缓存（键含 hash，
