@@ -313,9 +313,54 @@ async function handleRoomState(request: Request, env: Env, id: number): Promise<
 // GET /api/game/rooms/:id/ws —— WebSocket 握手（Worker 鉴权后转发 DO）
 // ---------------------------------------------------------------------------
 
+/**
+ * WS 握手身份头白名单：与 resolveParticipant 的读取顺序一一对应，解出哪条
+ * 就带哪条（identityHeaders() 一次只产出一个主身份头）。
+ */
+const WS_IDENTITY_HEADERS = [
+  "x-telegram-init-data",
+  "x-participant-token",
+  "x-email-session",
+  "x-participant-key",
+] as const;
+
+/**
+ * 浏览器 WebSocket API 不允许自定义请求头（identityHeaders 那套身份头带不
+ * 上升级请求），客户端把 identityHeaders() 编进 Sec-WebSocket-Protocol 子
+ * 协议（game-auth.<base64url(JSON)>）。这里解回同一套头并构造请求交给
+ * resolveParticipant——身份体系不变（同批凭证、同一解析函数），只是为 WS
+ * 握手换了个传输面。头不可用/形状不对返回 null，走原始请求（依旧会被
+ * resolveParticipant 以 401 拒掉）。
+ */
+function identityRequestFromSubprotocol(request: Request): Request | null {
+  const raw = request.headers.get("sec-websocket-protocol") ?? "";
+  const token = raw
+    .split(",")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith("game-auth."));
+  if (!token) return null;
+  try {
+    // base64url → 标准 base64（客户端按 RFC 6455 token 规则去了 padding）。
+    let base64 = token.slice("game-auth.".length).replaceAll("-", "+").replaceAll("_", "/");
+    while (base64.length % 4 !== 0) base64 += "=";
+    const parsed = JSON.parse(atob(base64)) as Record<string, unknown>;
+    const headers: Array<[string, string]> = [];
+    for (const key of WS_IDENTITY_HEADERS) {
+      const value = parsed[key];
+      if (typeof value === "string" && value !== "") headers.push([key, value]);
+    }
+    if (headers.length === 0) return null;
+    return new Request(request.url, { method: "GET", headers });
+  } catch {
+    return null;
+  }
+}
+
 async function handleRoomSocket(request: Request, env: Env, id: number): Promise<Response> {
-  // 非鉴权用户在升级前就被拒（401/403），绝不转发升级请求。
-  const participant = await resolveParticipant(request, env);
+  // 非鉴权用户在升级前就被拒（401/403），绝不转发升级请求。身份优先从子
+  // 协议解（浏览器 WS 带不了自定义头），普通 fetch 升级（内部/测试路径）
+  // 仍走原始请求头。
+  const participant = await resolveParticipant(identityRequestFromSubprotocol(request) ?? request, env);
   if (participant instanceof Response) return participant;
   const namespace = roomNamespace(env);
   if (!namespace) return gameDisabled();
@@ -328,16 +373,21 @@ async function handleRoomSocket(request: Request, env: Env, id: number): Promise
 
   // 显式重建升级请求注入身份头（`fetch(request, {headers})` 的 init.headers
   // 是整体替换，会把 Upgrade 头丢掉）：binding 转发的升级请求在 DO 侧与
-  // WebSocketPair 对接（Hibernation acceptWebSocket 挂 tag）。
+  // WebSocketPair 对接（Hibernation acceptWebSocket 挂 tag）。子协议头原样
+  // 转发——DO 的 101 响应必须回显选中的子协议（RFC 6455），否则浏览器会
+  // 直接断开连接（game-room.ts handleWebSocketUpgrade）。
+  const protocol = request.headers.get("sec-websocket-protocol") ?? "";
+  const upgradeHeaders: Array<[string, string]> = [
+    ["Upgrade", "websocket"],
+    ["Connection", "Upgrade"],
+    ["x-game-viewer-hash", participant.participantHash],
+  ];
+  if (protocol !== "") upgradeHeaders.push(["Sec-WebSocket-Protocol", protocol]);
   const stub = namespace.get(namespace.idFromName(gameRoomDOName(id)));
   return stub.fetch(
     new Request(request.url, {
       method: "GET",
-      headers: [
-        ["Upgrade", "websocket"],
-        ["Connection", "Upgrade"],
-        ["x-game-viewer-hash", participant.participantHash],
-      ],
+      headers: upgradeHeaders,
     }),
   );
 }

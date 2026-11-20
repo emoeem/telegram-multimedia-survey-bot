@@ -11,6 +11,7 @@ import {
   MessagesSquare,
   Send,
   Sparkles,
+  Swords,
   Target,
   UserRound,
   type LucideIcon,
@@ -34,6 +35,7 @@ const HELP_SCREEN_ICONS: Record<string, LucideIcon> = {
   me: UserRound,
   submit: FileUp,
   app: LayoutGrid,
+  game: Swords,
   cert: BadgeCheck,
   // 兜底图标：注册表加了新键而这里没配图标时，别让渲染直接炸。
   fallback: IdCard,

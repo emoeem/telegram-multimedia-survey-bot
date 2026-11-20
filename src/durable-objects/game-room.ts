@@ -402,8 +402,15 @@ export class GameRoomDO extends DurableObject {
     const pair = new WebSocketPair();
     await this.registerSocket(pair[1], viewerHash, room);
     // 101 + client 端回给升级方；server 端由 Hibernation 托管（休眠不占内存，
-    // 消息/断开由 webSocketMessage/Close/Error 唤醒）。
-    return new Response(null, { status: 101, webSocket: pair[0] });
+    // 消息/断开由 webSocketMessage/Close/Error 唤醒）。客户端若请求了子协议
+    // （game-room-client.ts 用它携带身份），101 必须原样选中其中一个
+    // （RFC 6455），否则浏览器判定握手失败直接断连。
+    const protocol = (request.headers.get("sec-websocket-protocol") ?? "").split(",")[0]?.trim() ?? "";
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      ...(protocol !== "" ? { headers: { "Sec-WebSocket-Protocol": protocol } } : {}),
+    });
   }
 
   /**

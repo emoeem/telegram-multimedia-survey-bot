@@ -146,6 +146,10 @@ const EmailAuthScreen = lazy(() => import("./EmailAuthScreen").then((m) => ({ de
 const HelpCenterScreen = lazy(() => import("./HelpCenterScreen").then((m) => ({ default: m.HelpCenterScreen })));
 /** 应用中心（M1）：四功能区聚合入口，网页导航数据由 M2 的 /api/web-apps 供给。 */
 const AppCenterScreen = lazy(() => import("./AppCenterScreen").then((m) => ({ default: m.AppCenterScreen })));
+/** 五子棋联机对战（W3）：大厅 + 房间对局一屏完成，入口在 /trial 与 /app。 */
+const MultiplayerGameScreen = lazy(() =>
+  import("./MultiplayerGameScreen").then((m) => ({ default: m.MultiplayerGameScreen })),
+);
 
 /** 懒加载屏幕的极简占位：整屏高度居中，避免布局跳动。 */
 function LazyScreen({ children }: { children: React.ReactNode }) {
@@ -2357,6 +2361,17 @@ export function SurveyApp() {
     return (
       <LazyScreen>
         <AppCenterScreen />
+      </LazyScreen>
+    );
+  }
+  // 五子棋联机对战（批次 W3）：/trial 小游戏区与应用中心的入口卡进来；
+  // ?room=<房间码> 直达加入流程。与 /help 同一条纪律：生产 assets 配置
+  // not_found_handling="none"（wrangler.toml），路由要在 src/http/router.ts
+  // 同步加 servePublicPageWithMeta 分支。
+  if (window.location.pathname === "/game" || window.location.pathname.startsWith("/game/")) {
+    return (
+      <LazyScreen>
+        <MultiplayerGameScreen />
       </LazyScreen>
     );
   }

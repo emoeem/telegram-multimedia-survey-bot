@@ -15,7 +15,7 @@
  *    webdriver 探测口径）。
  */
 
-/** screen 名：与 SurveyApp 的 pathname 分发链分支一一对应（14 屏）。 */
+/** screen 名：与 SurveyApp 的 pathname 分发链分支一一对应（15 屏）。 */
 export type ScreenViewName =
   | "series"
   | "plaza"
@@ -30,6 +30,7 @@ export type ScreenViewName =
   | "auth"
   | "help"
   | "app"
+  | "game"
   | "survey";
 
 /**
@@ -56,6 +57,7 @@ export function resolveScreenViewName(pathname: string): ScreenViewName {
   if (pathname === "/auth" || pathname.startsWith("/auth/")) return "auth";
   if (pathname === "/help" || pathname.startsWith("/help/")) return "help";
   if (pathname === "/app" || pathname.startsWith("/app/")) return "app";
+  if (pathname === "/game" || pathname.startsWith("/game/")) return "game";
   return "survey";
 }
 

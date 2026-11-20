@@ -40,6 +40,7 @@ export const ROUTE_ALLOWLIST = [
   "/submissions",
   "/notes",
   "/series",
+  "/game",
   "/cert/",
 ] as const;
 
@@ -142,6 +143,15 @@ export const SCREEN_HELP: Record<string, ScreenHelp> = {
   cert: {
     intro: "认证卡生成器：把答卷结果做成一张好看的图片卡片，可以直接发到朋友圈或群里。",
     entries: [{ label: "生成认证卡", hint: "就在当前页，选好样式保存图片即可" }],
+  },
+  // 五子棋联机对战（批次 W3）：创建/加入房间与对局是什么、第一步点哪里。
+  game: {
+    intro: "五子棋联机对战：创建一个房间把房间码发给好友，或输入对方的房间码，两人实时下一局。",
+    entries: [
+      { label: "创建房间", hint: "点创建房间拿到一串房间码，发给好友就能开始", href: "/game" },
+      { label: "输入房间码加入", hint: "把好友发来的房间码（或邀请链接）填进来，加入同一局" },
+      { label: "黑白轮流落子", hint: "轮到自己时点棋盘交叉点落子，先连成五子的一方赢" },
+    ],
   },
 };
 

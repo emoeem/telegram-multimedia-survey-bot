@@ -14,6 +14,7 @@ import {
   Send,
   Settings,
   Shield,
+  Swords,
   Ticket,
   TriangleAlert,
   Trophy,
@@ -850,6 +851,23 @@ export function TrialScreen() {
           <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
         </a>
       ) : null}
+
+      {/* 五子棋联机对战（批次 W3）：与爬塔任务并排的实时对战入口，整页跳 /game。 */}
+      <a
+        href="/game"
+        className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+          <Swords className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">五子棋 · 联机对战</span>
+          <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+            创建房间或输入房间码，和好友实时对弈
+          </span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
+      </a>
 
       {activeLoading ? (
         <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-sm text-[var(--survey-muted)]">

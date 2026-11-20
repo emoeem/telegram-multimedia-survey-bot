@@ -25,6 +25,7 @@ export const HELP_SCREEN_TITLES: Record<string, string> = {
   me: "我的",
   submit: "投稿",
   app: "应用中心",
+  game: "五子棋 · 联机对战",
   cert: "认证卡生成器",
 };
 

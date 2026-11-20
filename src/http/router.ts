@@ -317,6 +317,14 @@ export async function route(request: Request, env: Env, ctx?: Pick<ExecutionCont
       return servePublicPageWithMeta(env, request, "/app");
     }
 
+    // 五子棋联机对战（批次 W3）：创建/加入房间与实时对局，与其它公开页共用
+    // 问卷 SPA，由前端按路径切屏（SurveyApp 分发链 /game 分支）。与 /help
+    // 同一条纪律：生产 assets 配置 not_found_handling="none"（wrangler.toml），
+    // 没有这条分支 /game 在生产会真 404。
+    if (url.pathname === "/game" || url.pathname.startsWith("/game/")) {
+      return servePublicPageWithMeta(env, request, "/game");
+    }
+
     // 免登录投稿(/api/submit/*):并轨后由本 Worker 直接服务(数据在本站
     // D1,migration 0088;实现见 src/http/submit-api.ts)。历史上这里曾把
     // 请求代理到独立的 submission-bot Worker,该 Worker 已退役。
