@@ -35,3 +35,13 @@ cert/cert.html
 # 失败的修法）。0098 还是对账生成产物（scripts/gen-reconcile-migration.mjs
 # 输出，勿手工编辑），格式检查更无意义。
 db/migrations/*.sql
+
+# Wrangler 配置：prettier 没有 TOML parser（TOML 走插件，本仓库未装）。
+# 目录扫描会静默跳过，但门禁逐个显式传变更文件时报 "No parser could be
+# inferred"（同上先例）。P0 批次 G1 首次在门禁里触碰 wrangler*.toml 才暴露。
+wrangler.toml
+wrangler.staging.toml
+
+# 本文件自身无扩展名，同样没有 parser 可推断；显式传参时跳过自己
+# （prettier 对被 ignore 的显式文件返回 0）。
+.prettierignore
