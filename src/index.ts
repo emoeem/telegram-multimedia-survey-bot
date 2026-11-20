@@ -14,6 +14,9 @@ import { RateLimitDO } from "./durable-objects/rate-limit";
 import { SurveyBuilderDO } from "./durable-objects/survey-builder";
 import { SurveySessionDO } from "./durable-objects/survey-session";
 import { UiSessionDO } from "./durable-objects/ui-session";
+// 多人玩法引擎注册（副作用 import）：Worker 启动时登记 gomoku 等内置引擎，
+// 保证 GameRoomDO 在任何建房请求到达前就能 resolveGameEngine。
+import "./game/multiplayer/server-engines";
 
 export type { Env } from "./env";
 export { SurveySessionDO, SurveyBuilderDO, UiSessionDO, RateLimitDO, GameRoomDO };
