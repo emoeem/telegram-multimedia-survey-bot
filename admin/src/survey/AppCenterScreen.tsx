@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, FileText, Globe, LayoutGrid, MailCheck, MessagesSquare, Sparkles } from "lucide-react";
+import { ArrowUpRight, FileText, Globe, LayoutGrid, MailCheck, MessagesSquare, Sparkles, Swords } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { EntryRow, SectionHeader } from "./PublicPrimitives";
@@ -120,6 +120,13 @@ export function AppCenterScreen() {
 
         {/* ② 小游戏 */}
         <EntryRow href="/trial" icon={Sparkles} title="小游戏" subtitle="爬塔挑战等小游戏，查看成绩与排行榜" />
+        {/* 五子棋联机对战（批次 W3）：小游戏区新增实时对战入口。 */}
+        <EntryRow
+          href="/game"
+          icon={Swords}
+          title="五子棋 · 联机对战"
+          subtitle="创建房间或输入房间码，和好友实时对弈"
+        />
 
         {/* ③ 网页导航：数据由 M2 的 /api/web-apps 供给，M1 先落空态。 */}
         <WebAppsCard />

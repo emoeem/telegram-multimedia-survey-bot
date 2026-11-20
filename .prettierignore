@@ -42,6 +42,12 @@ db/migrations/*.sql
 wrangler.toml
 wrangler.staging.toml
 
+# cert 目录的手工备份（.bak-<时间戳>）：双扩展名 .js.bak-… / .html.bak-…
+# 推断不出 parser。目录扫描会静默跳过，但本地门禁把变更文件逐个显式传给
+# prettier 时报 "No parser could be inferred"（先例：94d3147 / wrangler*.toml
+# 同款修法）。备份是快照，格式检查无意义，永不应被 prettier 改写。
+cert/*.bak-*
+
 # 本文件自身无扩展名，同样没有 parser 可推断；显式传参时跳过自己
 # （prettier 对被 ignore 的显式文件返回 0）。
 .prettierignore
