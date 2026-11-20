@@ -264,11 +264,18 @@ export function gameRoomDOName(id: number): string {
   return `${GAME_ROOM_REF_PREFIX}${id}`;
 }
 
-/** `room_<id>` 解析回数字 id；非该格式返回 null（拒绝裸数字与任意串）。 */
+/**
+ * `room_<id>` 解析回数字 id；非该格式返回 null（拒绝裸数字与任意串）。
+ * 只收规范十进制：`Number()` 会把 `room_1e3` / `room_1.0` / `room_ 7` /
+ * `room_07` 宽松解析成另一个 id，解析结果与 gameRoomDOName 不再 roundtrip
+ * （G3 客户端按此解析 startapp，不能把非 canonical 串当成合法房间码）。
+ */
 export function parseGameRoomRef(value: string): number | null {
   if (!value.startsWith(GAME_ROOM_REF_PREFIX)) return null;
-  const id = Number(value.slice(GAME_ROOM_REF_PREFIX.length));
-  return Number.isInteger(id) && id > 0 ? id : null;
+  const digits = value.slice(GAME_ROOM_REF_PREFIX.length);
+  if (!/^[1-9]\d*$/.test(digits)) return null;
+  const id = Number(digits);
+  return Number.isSafeInteger(id) ? id : null;
 }
 
 // ---------------------------------------------------------------------------

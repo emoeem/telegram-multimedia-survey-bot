@@ -35,6 +35,22 @@ describe("房间标识锁定（room_<id>）", () => {
     expect(parseGameRoomRef("")).toBeNull();
   });
 
+  it("parseGameRoomRef：只认规范十进制，Number() 能宽松解析的串一律拒绝", () => {
+    // 回归：这些串过去会被 Number() 解析成另一个 id（room_1e3→1000 等），
+    // 与 gameRoomDOName 的 canonical 形态不 roundtrip。
+    for (const value of [
+      "room_1e3",
+      "room_1.0",
+      "room_ 7",
+      "room_+7",
+      "room_07",
+      "room_0x10",
+      "room_9007199254740993", // 超出 safe integer，精度已丢
+    ]) {
+      expect(parseGameRoomRef(value), value).toBeNull();
+    }
+  });
+
   it("roundtrip：id → DO 名 → id 无损", () => {
     for (const id of [1, 9, 1000]) {
       expect(parseGameRoomRef(gameRoomDOName(id))).toBe(id);
