@@ -5,9 +5,11 @@ import { BOARD_VIEW_SIZE, boardGeometry, cellFromPoint, starPoints, type GomokuC
  * 五子棋 15×15 SVG 棋盘（批次 W3）。
  *
  * 单个 <svg> 承载网格/星位/棋子/最后一手标记/胜者连线高亮，整块只挂一个
- * click 监听：点击坐标经 cellFromPoint 吸附到最近交点（0.45 格内才算点到）
- * ——390px 视口下交点间距约 22px，容差避免边缘误触。棋子颜色是玩法语义
- * （黑白），不走主题变量；落子可用性由父层决定（不可用时整块不响应点击）。
+ * click 监听：点击坐标经 cellFromPoint 吸附到最近交点（半格对角线内都算
+ * 点到，格间不留死区）——390px 视口下交点间距约 21px，触控热区必须整格
+ * 连续才够手指点。棋子颜色是玩法语义（黑白），不走主题变量；落子可用性
+ * 由父层决定（不可用时整块不响应点击）。touch-manipulation 关掉移动端
+ * 双击缩放，落子不吃 300ms 延迟。
  */
 export function GomokuBoard({
   board,
@@ -44,7 +46,7 @@ export function GomokuBoard({
       role="img"
       aria-label="五子棋棋盘"
       onClick={handleClick}
-      className={`aspect-square w-full select-none ${playable ? "cursor-pointer" : "cursor-default"}`}
+      className={`aspect-square w-full touch-manipulation select-none ${playable ? "cursor-pointer" : "cursor-default"}`}
     >
       {/* 棋盘底 + 网格线 */}
       <rect x={0} y={0} width={BOARD_VIEW_SIZE} height={BOARD_VIEW_SIZE} rx={12} fill="#e7c48a" />

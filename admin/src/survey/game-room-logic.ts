@@ -123,17 +123,20 @@ export function boardGeometry(boardSize: number): BoardGeometry {
 }
 
 /**
- * 点击坐标 → 棋盘交点。吸附到最近交点，距交点超过 0.45 格视为点空了
- * （棋盘边缘/格线之间的误触不落子）。越界返回 null。
+ * 点击坐标 → 棋盘交点。吸附到最近交点；命中半径 0.71 格（≈ 半格对角线，
+ * √2/2）——格与格之间不留死区，交点间距在 390px 视口下约 21px，热区必须
+ * 整格连续才够手指点。越界返回 null。
  */
 export function cellFromPoint(x: number, y: number, boardSize: number): { row: number; col: number } | null {
   const { cell } = boardGeometry(boardSize);
   if (cell <= 0) return null;
-  const col = Math.round((x - BOARD_MARGIN) / cell);
-  const row = Math.round((y - BOARD_MARGIN) / cell);
+  // `|| 0` 归一 Math.round 的负零（如 x 略小于 margin 时）：-0 当索引没问题，
+  // 但会污染返回值形状（toEqual 区分 -0/0）。
+  const col = Math.round((x - BOARD_MARGIN) / cell) || 0;
+  const row = Math.round((y - BOARD_MARGIN) / cell) || 0;
   if (row < 0 || row >= boardSize || col < 0 || col >= boardSize) return null;
   const distance = Math.hypot(x - (BOARD_MARGIN + col * cell), y - (BOARD_MARGIN + row * cell));
-  if (distance > cell * 0.45) return null;
+  if (distance > cell * 0.71) return null;
   return { row, col };
 }
 
@@ -187,6 +190,96 @@ export function formatCountdown(remainingMs: number | null): string | null {
   const seconds = totalSeconds % 60;
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${pad(minutes)}:${pad(seconds)}`;
+}
+
+export type CountdownTone = "normal" | "urgent" | "expired";
+
+/**
+ * 倒计时紧迫度：剩 ≤10s 转「紧迫」、到点转「告警」，UI 换色提醒该出手了。
+ * 无时限（null/非数）恒为 normal，不进告警分支。
+ */
+export function countdownTone(remainingMs: number | null): CountdownTone {
+  if (remainingMs === null || !Number.isFinite(remainingMs)) return "normal";
+  if (remainingMs <= 0) return "expired";
+  if (remainingMs <= 10_000) return "urgent";
+  return "normal";
+}
+
+// ---------------------------------------------------------------------------
+// 协议错误码 → 中文文案
+// ---------------------------------------------------------------------------
+
+/**
+ * 全部协议错误码（engine-types.GAME_PROTOCOL_ERROR_CODES）与 REST/客户端
+ * 兜底码的中文可读文案。服务端的 message 已是中文且往往更具体（如
+ * “房间已满（五子棋为两人对局）”）——有 message 时优先展示原文，这里兜住
+ * 缺失/外语/未知码的情况，保证任何错误最终都落成一句能看懂的人话。
+ */
+const GAME_ERROR_TEXT: Record<string, string> = {
+  // 协议码（src/game/multiplayer/engine-types.ts）
+  invalid_payload: "请求内容不对，请刷新页面后重试",
+  unknown_game_type: "这个玩法还没有上线",
+  invalid_action: "当前状态不能执行这个操作",
+  not_a_player: "你还不是本房间的玩家",
+  spectator_forbidden: "观战者不能参与对局操作",
+  not_your_turn: "还没轮到你",
+  illegal_move: "这一步不符合规则",
+  game_over: "对局已经结束",
+  stale_action: "棋局刚有更新，请按最新棋盘重新操作",
+  not_host: "只有房主可以执行这个操作",
+  room_not_found: "房间不存在或已被回收",
+  internal_error: "服务器开小差了，请稍后再试",
+  // REST 层附加码（game-api / rate-limit / api-response）与客户端兜底码
+  network_error: "网络异常，请稍后再试",
+  rate_limited: "操作太频繁了，休息一下再试",
+  game_disabled: "多人对局在当前部署未开放",
+  game_room_error: "房间服务暂时不可用，请稍后再试",
+  validation_failed: "提交的内容没有通过校验",
+  method_not_allowed: "请求方式不支持",
+  bad_response: "房间数据加载失败，请稍后再试",
+  unknown_error: "请求没有成功，请稍后再试",
+};
+
+/**
+ * 错误文案收敛：message 非空原样用（服务端的具体中文），否则按 code 映射，
+ * 双双落空给通用兜底。code/message 都允许空——网络层错误只有兜底文案。
+ */
+export function gameErrorText(code: string | null | undefined, message?: string | null): string {
+  if (typeof message === "string" && message.trim()) return message;
+  if (typeof code === "string" && GAME_ERROR_TEXT[code]) return GAME_ERROR_TEXT[code]!;
+  return "出了点问题，请稍后再试";
+}
+
+// ---------------------------------------------------------------------------
+// 对手掉线 / 悔棋被拒 的纯判定（屏层据此弹提示）
+// ---------------------------------------------------------------------------
+
+/**
+ * 对手掉线风险：对局中在线玩家 < 2（presence 推送的 onlinePlayers，按身份
+ * 去重；自己掉线时收不到推送，等重连后由下一条 presence 纠正）。
+ * 五子棋固定两人对局，所以阈值取 2；观战人数不参与判定。
+ */
+export function opponentLikelyOffline(status: string | null, onlinePlayers: number | null): boolean {
+  return status === "playing" && onlinePlayers !== null && onlinePlayers < 2;
+}
+
+/**
+ * 悔棋申请被拒绝的判定：上一帧我的申请还在等待（pendingUndoFrom === 我），
+ * 下一帧申请消失且 moveCount 增加 = 对方落子把申请顶掉了（协议语义：落子
+ * 即拒绝）。moveCount 减少 = 悔棋被同意，棋盘变化自解释，不需要提示。
+ */
+export function undoRejectedNotice(
+  prevPendingUndoFrom: string | null,
+  nextPendingUndoFrom: string | null,
+  prevMoveCount: number,
+  nextMoveCount: number,
+  myHash: string | null,
+): string | null {
+  if (myHash === null) return null;
+  if (prevPendingUndoFrom !== myHash) return null;
+  if (nextPendingUndoFrom !== null) return null;
+  if (nextMoveCount > prevMoveCount) return "对方落子了，你的悔棋申请已失效";
+  return null;
 }
 
 // ---------------------------------------------------------------------------

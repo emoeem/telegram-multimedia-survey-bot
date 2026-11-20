@@ -398,4 +398,50 @@ describe("五子棋整链路：REST 建房 → REST 加入 → WS 开局 → WS 
     expect(restState.view.version).toBe(6);
     expect(restState.view.view.yourColor).toBe("black");
   });
+
+  it("对局中白方 WS 离席 = 认输：立即结算 resign、黑方胜，不再等超时判负", async () => {
+    const { env, fake, instance } = makeEnv();
+    await createAndJoin(env);
+    const hostSocket = await connect(instance, fake, HOST);
+    const guestSocket = await connect(instance, fake, GUEST);
+    await send(instance, hostSocket, { type: "ready", ready: true });
+    await send(instance, guestSocket, { type: "ready", ready: true });
+    await send(instance, hostSocket, { type: "start" });
+    hostSocket.sent.length = 0;
+    guestSocket.sent.length = 0;
+
+    // leave 只在 WS 控制面（REST 面只有 join/close/state/ws），客户端 sendLeave 即此路径。
+    await send(instance, guestSocket, { type: "leave" });
+
+    // 发起者收到 action_result，留下的一方收到结算广播。
+    const result = guestSocket.sent.filter((frame) => frame.type === "action_result").at(-1)!;
+    expect(result).toMatchObject({ type: "action_result", actionId: "leave", ok: true });
+
+    // 结算：resign、胜者是留下的黑方；离席者标记 leftAt。
+    const stored = fake.peek("room") as GameRoomState;
+    expect(stored.status).toBe("settled");
+    const settlement = fake.peek("settlement") as { result: string; winnerParticipantHash: string | null };
+    expect(settlement.result).toBe("resign");
+    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(stored.players.find((p) => p.participantHash === GUEST)?.leftAt).not.toBeNull();
+
+    // 留下的玩家收到结算广播，视图带 settlement 快照。
+    const hostState = lastState(hostSocket);
+    expect(hostState.view.status).toBe("settled");
+    expect((hostState.view as { settlement?: { result: string } }).settlement?.result).toBe("resign");
+  });
+
+  it("第三人进入对局中的房间：REST join 降级观战（spectatorFallback），不占座位", async () => {
+    const { env, fake } = makeEnv();
+    await createAndJoin(env);
+    const before = fake.peek("room") as GameRoomState;
+    const response = await rest(env, STRANGER, post(`/api/game/rooms/${ROOM_ROW_ID}/join`, {}));
+    expect(response.status).toBe(200);
+    const payload = await json<{ role: string; spectatorFallback?: boolean }>(response);
+    expect(payload.role).toBe("spectator");
+    expect(payload.spectatorFallback).toBe(true);
+    const after = fake.peek("room") as GameRoomState;
+    expect(after.players).toHaveLength(2);
+    expect(after.version).toBe(before.version);
+  });
 });

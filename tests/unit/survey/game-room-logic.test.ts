@@ -4,15 +4,20 @@ import {
   BOARD_MARGIN,
   boardGeometry,
   cellFromPoint,
+  countdownTone,
   describeSettlement,
   formatCountdown,
   formatRoomRef,
+  gameErrorText,
   localMoveCheck,
   normalizeRoomCode,
+  opponentLikelyOffline,
   parseGomokuView,
   roomCodeToId,
   starPoints,
+  undoRejectedNotice,
 } from "../../../admin/src/survey/game-room-logic";
+import { GAME_PROTOCOL_ERROR_CODES } from "../../../src/game/multiplayer/engine-types";
 
 /** 15 路空盘（与 gomokuEngine.emptyBoard 同构）。 */
 function emptyBoard(cells = 15): Array<Array<"black" | "white" | null>> {
@@ -73,14 +78,17 @@ describe("棋盘坐标换算（boardGeometry / cellFromPoint）", () => {
     expect(cellFromPoint(100, 100, 1)).toBeNull();
   });
 
-  it("点击坐标吸附到最近交点；0.45 格内算命中", () => {
+  it("点击坐标吸附到最近交点；整格连续热区（格间不留死区，触控友好）", () => {
     const x = BOARD_MARGIN + 3 * cell;
     const y = BOARD_MARGIN + 3 * cell;
     expect(cellFromPoint(x, y, 15)).toEqual({ row: 3, col: 3 });
     expect(cellFromPoint(x + cell * 0.2, y - cell * 0.2, 15)).toEqual({ row: 3, col: 3 });
-    // 超过 0.45 格视为点空了。
-    expect(cellFromPoint(x + cell * 0.46, y, 15)).toBeNull();
-    expect(cellFromPoint(x + cell * 0.44, y, 15)).toEqual({ row: 3, col: 3 });
+    // 半格之内吸附到本点；越过半格自动落到相邻点——格与格之间没有点不到的死区。
+    expect(cellFromPoint(x + cell * 0.46, y, 15)).toEqual({ row: 3, col: 3 });
+    expect(cellFromPoint(x + cell * 0.5, y, 15)).toEqual({ row: 3, col: 4 });
+    expect(cellFromPoint(x + cell * 0.5, y - cell * 0.51, 15)).toEqual({ row: 2, col: 4 });
+    // 外圈留白（棋盘木边）也吸附到最近的边线交点。
+    expect(cellFromPoint(BOARD_MARGIN - 8, BOARD_MARGIN - 8, 15)).toEqual({ row: 0, col: 0 });
   });
 
   it("棋盘外（越界坐标）返回 null", () => {
@@ -259,5 +267,86 @@ describe("视图收敛（parseGomokuView）", () => {
     expect(parsed?.winningLine).toBeNull();
     expect(parsed?.outcome).toBeNull();
     expect(parsed?.moveCount).toBe(0);
+  });
+});
+
+describe("倒计时紧迫度（countdownTone）", () => {
+  it("无时限（null/非数）恒为 normal，不进告警分支", () => {
+    expect(countdownTone(null)).toBe("normal");
+    expect(countdownTone(Number.NaN)).toBe("normal");
+  });
+
+  it("剩 ≤10s 转 urgent、到点/负数转 expired、其余 normal", () => {
+    expect(countdownTone(60_000)).toBe("normal");
+    expect(countdownTone(10_001)).toBe("normal");
+    expect(countdownTone(10_000)).toBe("urgent");
+    expect(countdownTone(9_999)).toBe("urgent");
+    expect(countdownTone(1)).toBe("urgent");
+    expect(countdownTone(0)).toBe("expired");
+    expect(countdownTone(-500)).toBe("expired");
+  });
+});
+
+describe("错误码中文映射（gameErrorText）", () => {
+  it("协议码全集逐个有中文文案，不裸抛英文码", () => {
+    for (const code of GAME_PROTOCOL_ERROR_CODES) {
+      const text = gameErrorText(code);
+      expect(text, `错误码 ${code} 缺中文文案`).not.toBe("出了点问题，请稍后再试");
+      expect(text).toMatch(/[\u4e00-\u9fff]/);
+    }
+  });
+
+  it("REST/客户端兜底码（网络/限流/禁用/坏响应）也有文案", () => {
+    for (const code of ["network_error", "rate_limited", "game_disabled", "game_room_error", "bad_response"]) {
+      expect(gameErrorText(code)).toMatch(/[\u4e00-\u9fff]/);
+    }
+  });
+
+  it("message 非空优先原文（服务端具体中文），message 缺失才按 code 映射", () => {
+    expect(gameErrorText("not_your_turn", "还没轮到你落子")).toBe("还没轮到你落子");
+    expect(gameErrorText("not_your_turn", "")).toBe("还没轮到你");
+    expect(gameErrorText("not_your_turn", null)).toBe("还没轮到你");
+  });
+
+  it("未知码/空码落到通用兜底，不抛 undefined", () => {
+    expect(gameErrorText("mystery_code")).toBe("出了点问题，请稍后再试");
+    expect(gameErrorText(null)).toBe("出了点问题，请稍后再试");
+    expect(gameErrorText(undefined)).toBe("出了点问题，请稍后再试");
+    expect(gameErrorText("mystery_code", "  ")).toBe("出了点问题，请稍后再试");
+  });
+});
+
+describe("对手掉线判定（opponentLikelyOffline）", () => {
+  it("对局中在线玩家 < 2 判掉线风险；未收到 presence（null）不误报", () => {
+    expect(opponentLikelyOffline("playing", 1)).toBe(true);
+    expect(opponentLikelyOffline("playing", 0)).toBe(true);
+    expect(opponentLikelyOffline("playing", 2)).toBe(false);
+    expect(opponentLikelyOffline("playing", null)).toBe(false);
+  });
+
+  it("非对局状态（lobby/settled/closed）不提示", () => {
+    expect(opponentLikelyOffline("lobby", 1)).toBe(false);
+    expect(opponentLikelyOffline("settled", 1)).toBe(false);
+    expect(opponentLikelyOffline("closed", 0)).toBe(false);
+    expect(opponentLikelyOffline(null, 1)).toBe(false);
+  });
+});
+
+describe("悔棋被拒判定（undoRejectedNotice）", () => {
+  const me = "hash-me";
+
+  it("上一帧我的申请在等待 → 下一帧消失且步数增加 = 对方落子顶掉申请", () => {
+    expect(undoRejectedNotice(me, null, 5, 6, me)).toBe("对方落子了，你的悔棋申请已失效");
+  });
+
+  it("步数不变（同意悔棋棋盘回退）/ 申请仍在 / 不是我的申请 / 观战者：不提示", () => {
+    // 同意悔棋：moveCount 减少，棋盘变化自解释。
+    expect(undoRejectedNotice(me, null, 5, 4, me)).toBeNull();
+    // 申请仍在等待（下一帧还有 pendingUndoFrom）。
+    expect(undoRejectedNotice(me, me, 5, 6, me)).toBeNull();
+    // 等待中的是别人的申请。
+    expect(undoRejectedNotice("hash-other", null, 5, 6, me)).toBeNull();
+    // 我没有身份（观战）。
+    expect(undoRejectedNotice(me, null, 5, 6, null)).toBeNull();
   });
 });

@@ -23,7 +23,7 @@
 import type { GameClientMessage, GamePlayerView, GamePublicView } from "../../../src/game/multiplayer/engine-types";
 import { identityHeaders } from "./api";
 import { sessionParticipantIdentity } from "./participant-token";
-import { roomCodeToId } from "./game-room-logic";
+import { gameErrorText, roomCodeToId } from "./game-room-logic";
 
 const GOMOKU_GAME_TYPE = "gomoku";
 /** 动作（落子/悔棋/求和/认输）等待 action_result 的超时：超过即提示连接不稳。 */
@@ -63,19 +63,22 @@ async function callGameApi(
       ...(init.body !== undefined ? { body: init.body } : {}),
     });
     const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return { ok: false, error: { code: "network_error", message: "网络异常，请稍后再试" } };
+    if (!body) return { ok: false, error: { code: "network_error", message: gameErrorText("network_error") } };
     if (body.ok !== true) {
+      const code = typeof body.code === "string" ? body.code : "unknown_error";
       return {
         ok: false,
         error: {
-          code: typeof body.code === "string" ? body.code : "unknown_error",
-          message: typeof body.message === "string" && body.message ? body.message : "请求没有成功，请稍后再试",
+          code,
+          // 错误码统一收敛成中文可读文案：服务端 message 缺失/不可读时按
+          // code 映射（gameErrorText），不再裸抛英文码。
+          message: gameErrorText(code, typeof body.message === "string" ? body.message : null),
         },
       };
     }
     return { ok: true, data: body };
   } catch {
-    return { ok: false, error: { code: "network_error", message: "网络异常，请稍后再试" } };
+    return { ok: false, error: { code: "network_error", message: gameErrorText("network_error") } };
   }
 }
 
@@ -84,6 +87,8 @@ export interface GameRoomSnapshot {
   roomRef: string;
   view: GamePlayerView | GamePublicView;
   role: "player" | "spectator";
+  /** 满员/已开局坐不下，服务端自动降级为观战（屏层据此提示）。 */
+  spectatorFallback?: boolean;
 }
 
 function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<GameRoomSnapshot> {
@@ -91,7 +96,7 @@ function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<G
   const roomId = roomCodeToId(roomRef);
   const view = (payload.view ?? null) as GamePlayerView | GamePublicView | null;
   if (roomId === null || view === null) {
-    return { ok: false, error: { code: "bad_response", message: "房间数据加载失败，请稍后再试" } };
+    return { ok: false, error: { code: "bad_response", message: gameErrorText("bad_response") } };
   }
   return {
     ok: true,
@@ -100,6 +105,7 @@ function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<G
       roomRef,
       view,
       role: payload.role === "player" ? "player" : "spectator",
+      ...(payload.spectatorFallback === true ? { spectatorFallback: true } : {}),
     },
   };
 }
@@ -160,6 +166,8 @@ export interface GameRoomConnectionOptions {
   onFatal: (message: string) => void;
   /** 连接状态变化（attempt 从 1 起，首次连接为 1，重连依次递增）。 */
   onStatus: (status: GameConnectionStatus, attempt: number) => void;
+  /** 在线人数推送（presence）：对手掉线提示的信号源。缺省忽略。 */
+  onPresence?: (counts: { players: number; spectators: number }) => void;
 }
 
 /** WS 升级地址：同源 /api/game/rooms/:id/ws（Worker 鉴权后转发到房间 DO）。 */
@@ -324,7 +332,7 @@ export class GameRoomConnection {
     if (this.disposed) return;
     if (!result.ok) {
       if (result.error.code === "room_not_found") {
-        this.options.onFatal("房间不存在或已被回收");
+        this.options.onFatal(gameErrorText("room_not_found"));
         this.dispose();
       }
       return; // 其它错误交给后续 WS 推送与下一次重连兜底。
@@ -366,7 +374,7 @@ export class GameRoomConnection {
       return;
     }
     if (message.type === "error") {
-      const text = typeof message.message === "string" && message.message ? message.message : "连接出现问题";
+      const text = gameErrorText(typeof message.code === "string" ? message.code : null, message.message as string);
       if (message.code === "room_not_found") {
         this.options.onFatal(text);
         this.dispose();
@@ -374,7 +382,11 @@ export class GameRoomConnection {
       }
       this.options.onNotice(text);
     }
-    // presence 是元信息，客户端忽略。
+    if (message.type === "presence") {
+      const players = typeof message.onlinePlayers === "number" ? message.onlinePlayers : null;
+      const spectators = typeof message.onlineSpectators === "number" ? message.onlineSpectators : null;
+      if (players !== null && spectators !== null) this.options.onPresence?.({ players, spectators });
+    }
   }
 
   private failPending(message: string): void {
@@ -398,8 +410,11 @@ export class GameRoomConnection {
 
 function actionErrorText(error: unknown): string {
   if (error !== null && typeof error === "object") {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message) return message;
+    const record = error as { code?: unknown; message?: unknown };
+    return gameErrorText(
+      typeof record.code === "string" ? record.code : null,
+      typeof record.message === "string" ? record.message : null,
+    );
   }
-  return "操作没有成功，请稍后再试";
+  return gameErrorText("unknown_error", "操作没有成功，请稍后再试");
 }

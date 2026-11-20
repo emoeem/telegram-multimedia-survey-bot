@@ -32,6 +32,7 @@ const server = createServer(async (req, res) => {
     const relative =
       pathname.startsWith("/s/") ||
       pathname.startsWith("/trial") ||
+      pathname.startsWith("/game") ||
       pathname.startsWith("/plaza") ||
       pathname.startsWith("/showcase") ||
       pathname.startsWith("/me") ||

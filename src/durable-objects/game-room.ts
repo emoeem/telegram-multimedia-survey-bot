@@ -224,7 +224,17 @@ export class GameRoomDO extends DurableObject {
     // 私密信息——满员判定与座位表都是引擎的职责。
     const players = room.players.filter((p) => p.participantHash !== hash);
     const outcome = engine.joinRoom({ ...room, players }, player);
-    if (!outcome.ok) return this.engineErrorResponse(outcome);
+    if (!outcome.ok) {
+      // 第三人进入房间 = 只读观战：坐不下（满员/已开局）不报错，降级为
+      // 公开视图放行——不占座位、不碰房间状态，HTTP 层带 spectatorFallback
+      // 让客户端提示“已进入观战”。仍坐着的玩家重入失败属于身份/状态异常，
+      // 保持协议错误不静默降级。
+      const seatedActive = room.players.some((p) => p.participantHash === hash && p.leftAt === null);
+      if (!seatedActive) {
+        return this.withView(room, viewerHash, { spectatorFallback: true });
+      }
+      return this.engineErrorResponse(outcome);
+    }
     const next = bumpVersion(outcome.state);
     await this.commitState(next);
     await this.broadcastState();
@@ -269,9 +279,7 @@ export class GameRoomDO extends DurableObject {
     if (!identity.ok) return doFail(401, "invalid_payload", "缺少玩家身份");
     const room = await this.loadRoom();
     if (!room) return doFail(404, "room_not_found", "房间不存在或已被回收");
-    // leave 不进引擎协议（引擎只管玩法本身）：默认实现标记 leftAt，
-    // 全员走光即 closed（commitState 兜回收时间）。
-    const outcome = leaveRoomDefault(room, identity.participantHash);
+    const outcome = await this.applyLeave(room, identity.participantHash);
     if (!outcome.ok) return this.engineErrorResponse(outcome);
     const next = bumpVersion(outcome.state);
     await this.commitState(next);
@@ -295,6 +303,37 @@ export class GameRoomDO extends DurableObject {
     await this.commitState(next);
     await this.broadcastState();
     return this.withView(next, viewerHash);
+  }
+
+  /**
+   * 离开的共享实现（REST /leave 与 WS {type:"leave"} 同一语义）：
+   * 对局中离席 = 认输——先走引擎 resign 结算出胜负，再把人标记离开。否则
+   * 剩下的一方会被卡在对方的回合上等到超时判负，这是不公平的结局。
+   * 引擎不支持 resign（协议桩等）时退回默认实现，绝不因离开而报错。
+   */
+  private async applyLeave(room: GameRoomState, participantHash: string): Promise<EngineOutcome> {
+    const leaver = room.players.find((player) => player.participantHash === participantHash);
+    if (room.status === "playing" && leaver && leaver.leftAt === null) {
+      const engine = resolveGameEngine(room.gameType);
+      if (engine) {
+        // actionId 用房间版本圈定唯一性：leave 不走 DO 去重表，同一 version
+        // 重放会被引擎的 actionIds 兜底拒绝，不同 version 各自成立。
+        const resign = engine.applyAction(room, {
+          actionId: `leave:${participantHash}:${room.version}`,
+          participantHash,
+          action: "resign",
+        });
+        if (resign.ok) {
+          let state = bumpVersion(resign.state);
+          if (engine.checkGameOver(state)) state = await this.settleRoom(state, engine);
+          // 结算后再把人标记离开：对局已终不影响胜负，但 leftAt 是"此人不在
+          // 座"的唯一事实来源（视图/座位表都靠它）。
+          const left = leaveRoomDefault(state, participantHash);
+          return left.ok ? left : { ok: true, state };
+        }
+      }
+    }
+    return leaveRoomDefault(room, participantHash);
   }
 
   /**
@@ -429,6 +468,8 @@ export class GameRoomDO extends DurableObject {
     // 连接落地后房间有主：走 commitState 重算 lobby 回收时间（有人在线 = 不回收）。
     await this.commitState(room);
     ws.send(JSON.stringify(await this.buildServerMessage(room, viewerHash, role)));
+    // 新连接改变了在线名单：全房推送 presence（对手掉线提示依赖它）。
+    await this.broadcastPresence();
   }
 
   /** 休眠唤醒后的消息入口：与 REST 控制面共用同一分发器（形状见 GameClientMessage）。 */
@@ -467,6 +508,7 @@ export class GameRoomDO extends DurableObject {
     const room = await this.loadRoom();
     if (!room) return;
     await this.armPresenceRecycle(room, ws);
+    await this.broadcastPresence(ws);
   }
 
   /** 发送失败（客户端半开等）：等同断开处理。 */
@@ -474,6 +516,7 @@ export class GameRoomDO extends DurableObject {
     const room = await this.loadRoom();
     if (!room) return;
     await this.armPresenceRecycle(room, ws);
+    await this.broadcastPresence(ws);
   }
 
   /**
@@ -522,7 +565,7 @@ export class GameRoomDO extends DurableObject {
         };
       }
       case "leave": {
-        const outcome = leaveRoomDefault(room, attachment.participantHash);
+        const outcome = await this.applyLeave(room, attachment.participantHash);
         if (!outcome.ok) return { message: { type: "error", ...outcome.error }, stateChanged: false };
         const next = bumpVersion(outcome.state);
         await this.commitState(next);
@@ -649,6 +692,28 @@ export class GameRoomDO extends DurableObject {
       const attachment = readAttachment(ws);
       if (!attachment) continue;
       const message = await this.buildServerMessage(room, attachment.participantHash, attachment.role);
+      try {
+        ws.send(JSON.stringify(message));
+      } catch {
+        // 单个连接发失败不阻断其他人的推送；断开由 webSocketClose/Error 收尾。
+      }
+    }
+  }
+
+  /**
+   * 全房推送在线人数（协议里的 presence 消息，state 不带名单）：玩家按身份
+   * 去重（同一人多端/重连期会有多条连接），观战同理。断开事件触发时运行时
+   * 的连接表未必已摘掉该连接，所以接受 exclude 参数排除正在收尾的连接。
+   */
+  private async broadcastPresence(exclude?: WebSocket): Promise<void> {
+    const sockets = this.ctx.getWebSockets().filter((ws) => ws !== exclude);
+    const counts = presenceCounts(sockets.map(readAttachment));
+    const message: GameServerMessage = {
+      type: "presence",
+      onlinePlayers: counts.players,
+      onlineSpectators: counts.spectators,
+    };
+    for (const ws of sockets) {
       try {
         ws.send(JSON.stringify(message));
       } catch {
@@ -843,6 +908,20 @@ function toPublicPlayer(
 function remainingMs(room: GameRoomState): number | null {
   if (room.status !== "playing" || room.deadlineAt === null) return null;
   return Math.max(0, room.deadlineAt - Date.now());
+}
+
+/**
+ * 在线人数统计（presence 消息载荷）：按 participantHash 去重——同一身份的
+ * 重连期新旧连接并存时只算一个人；无身份的连接（防御位）不计入。
+ */
+function presenceCounts(attachments: Array<SocketAttachment | null>): { players: number; spectators: number } {
+  const players = new Set<string>();
+  const spectators = new Set<string>();
+  for (const attachment of attachments) {
+    if (!attachment) continue;
+    (attachment.role === "player" ? players : spectators).add(attachment.participantHash);
+  }
+  return { players: players.size, spectators: spectators.size };
 }
 
 /** 引擎未提供 leaveRoom 时的默认实现：标记 leftAt，全员走光即 closed。 */

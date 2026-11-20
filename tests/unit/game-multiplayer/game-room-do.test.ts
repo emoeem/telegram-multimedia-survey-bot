@@ -223,7 +223,7 @@ describe("GameRoomDO 房间生命周期", () => {
     expect(after).toBe(before);
   });
 
-  it("第三人加入被引擎拒（房间已满），version 不动", async () => {
+  it("第三人加入满员房间：W4 起降级为只读观战（不报错），version 不动", async () => {
     const { instance } = makeDO();
     await instance.fetch(
       post(
@@ -238,9 +238,14 @@ describe("GameRoomDO 房间生命周期", () => {
         view: { version: number };
       }
     ).view.version;
-    const rejected = await instance.fetch(post("/join", { participantHash: STRANGER }));
-    expect(rejected.status).toBe(400);
-    expect((await httpJson(rejected)).code).toBe("invalid_action");
+    // 原契约是 400 invalid_action；W4 改为不报错、降级观战（第三人=看客）。
+    const fallback = await instance.fetch(
+      post("/join", { participantHash: STRANGER }, { "x-game-viewer-hash": STRANGER }),
+    );
+    expect(fallback.status).toBe(200);
+    const payload = (await httpJson(fallback)) as { role: string; spectatorFallback?: boolean };
+    expect(payload.role).toBe("spectator");
+    expect(payload.spectatorFallback).toBe(true);
     const after = (
       (await instance.fetch(get("/state", { "x-game-viewer-hash": HOST })).then(httpJson)) as {
         view: { version: number };
@@ -404,6 +409,53 @@ describe("GameRoomDO 视图裁剪（协议不变量三）", () => {
     expect((join.view as { view: { mySecret: string } }).view.mySecret).toBe(`secret-of-${GUEST}`);
     expect(JSON.stringify(join.view)).not.toContain(`secret-of-${HOST}`);
   });
+
+  it("第三人进入满员房间：不报错、降级观战（spectatorFallback），不占座位", async () => {
+    const { instance, fake } = await makeStartedRoom(); // 双方已在座
+    const before = fake.peek("room") as GameRoomState;
+    const response = await instance.fetch(
+      post("/join", { participantHash: STRANGER, displayName: "路人" }, { "x-game-viewer-hash": STRANGER }),
+    );
+    expect(response.status).toBe(200);
+    const payload = await httpJson(response);
+    expect(payload.ok).toBe(true);
+    expect(payload.role).toBe("spectator");
+    expect(payload.spectatorFallback).toBe(true);
+    // 公开视图（没有玩家私密信息），房间座位与 version 原样不动。
+    expect(JSON.stringify(payload.view)).not.toContain("secret-of-");
+    expect(payload.view).not.toHaveProperty("state");
+    const after = fake.peek("room") as GameRoomState;
+    expect(after.players).toHaveLength(2);
+    expect(after.version).toBe(before.version);
+    expect(after.players.some((p) => p.participantHash === STRANGER)).toBe(false);
+  });
+
+  it("对局中的第三人 join 同样降级观战；仍坐着的玩家 join 失败不静默降级", async () => {
+    const { instance } = await makeStartedRoom(); // status=playing
+    const stranger = await instance
+      .fetch(post("/join", { participantHash: STRANGER }, { "x-game-viewer-hash": STRANGER }))
+      .then(httpJson);
+    expect(stranger.role).toBe("spectator");
+    expect(stranger.spectatorFallback).toBe(true);
+    // 已坐着的玩家重入走幂等分支（rejoined），永远不该看到 fallback。
+    const rejoin = await instance
+      .fetch(post("/join", { participantHash: HOST }, { "x-game-viewer-hash": HOST }))
+      .then(httpJson);
+    expect(rejoin.rejoined).toBe(true);
+    expect(rejoin.spectatorFallback).toBeUndefined();
+  });
+
+  it("对局中离席（引擎不支持 resign 的玩法）：退回默认 leave，不报错", async () => {
+    const { instance, fake } = await makeStartedRoom();
+    const before = fake.peek("room") as GameRoomState;
+    const response = await instance.fetch(post("/leave", { participantHash: GUEST }, { "x-game-viewer-hash": GUEST }));
+    expect(response.status).toBe(200);
+    const after = fake.peek("room") as GameRoomState;
+    expect(after.players.find((p) => p.participantHash === GUEST)?.leftAt).not.toBeNull();
+    expect(after.version).toBe(before.version + 1);
+    // 桩引擎没有 resign 动作：房间不结算，保持 playing（默认实现语义）。
+    expect(after.status).toBe("playing");
+  });
 });
 
 describe("GameRoomDO WebSocket Hibernation", () => {
@@ -420,12 +472,14 @@ describe("GameRoomDO WebSocket Hibernation", () => {
       instance as unknown as { registerSocket(ws: FakeSocket, hash: string, room: GameRoomState): Promise<void> }
     ).registerSocket(hostSocket, HOST, fake.peek("room") as GameRoomState);
     expect(hostSocket.tags).toEqual(["player"]);
-    expect(hostSocket.sent).toHaveLength(1);
+    // 首帧 state + presence 广播（W4：在线人数推送）。
+    expect(hostSocket.sent).toHaveLength(2);
     expect(hostSocket.sent[0]!.type).toBe("state");
     expect((hostSocket.sent[0] as { role: string }).role).toBe("player");
     expect((hostSocket.sent[0] as { view: { view: { mySecret: string } } }).view.view.mySecret).toBe(
       `secret-of-${HOST}`,
     );
+    expect(hostSocket.sent[1]).toEqual({ type: "presence", onlinePlayers: 1, onlineSpectators: 0 });
 
     const spectatorSocket = fakeSocket();
     await (
@@ -556,6 +610,36 @@ describe("GameRoomDO WebSocket Hibernation", () => {
     const afterClose = fake.peek("room") as GameRoomState;
     expect(afterClose.recycleAt).not.toBeNull();
     expect(await fake.storage.getAlarm()).not.toBeNull();
+  });
+
+  it("presence：连接落地/断开都推送按身份去重的在线人数（掉线提示的信号源）", async () => {
+    const { instance, fake } = await makeStartedRoom();
+    const hostSocket = fakeSocket();
+    await (
+      instance as unknown as { registerSocket(ws: FakeSocket, hash: string, room: GameRoomState): Promise<void> }
+    ).registerSocket(hostSocket, HOST, fake.peek("room") as GameRoomState);
+    hostSocket.sent.length = 0; // 自己落地时的 presence 已在上一个用例覆盖
+    const spectatorSocket = fakeSocket();
+    await (
+      instance as unknown as { registerSocket(ws: FakeSocket, hash: string, room: GameRoomState): Promise<void> }
+    ).registerSocket(spectatorSocket, STRANGER, fake.peek("room") as GameRoomState);
+    // 观战连接落地时，先到的玩家连接收到 presence：1 玩家 + 1 观战。
+    const presenceToHost = hostSocket.sent.at(-1);
+    expect(presenceToHost).toEqual({ type: "presence", onlinePlayers: 1, onlineSpectators: 1 });
+
+    hostSocket.sent.length = 0;
+    await instance.webSocketClose(hostSocket as unknown as WebSocket);
+    // 断开事件的连接不计入：剩下的观战者看到玩家清零。
+    const presenceAfterClose = spectatorSocket.sent.at(-1);
+    expect(presenceAfterClose).toEqual({ type: "presence", onlinePlayers: 0, onlineSpectators: 1 });
+
+    // 同一身份两条连接只算一个人（重连期新旧并存）。
+    const secondHost = fakeSocket();
+    await (
+      instance as unknown as { registerSocket(ws: FakeSocket, hash: string, room: GameRoomState): Promise<void> }
+    ).registerSocket(secondHost, HOST, fake.peek("room") as GameRoomState);
+    const deduped = spectatorSocket.sent.at(-1);
+    expect(deduped).toEqual({ type: "presence", onlinePlayers: 1, onlineSpectators: 1 });
   });
 });
 

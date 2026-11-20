@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Gamepad2, Link2, LogOut, RefreshCw, Swords, Users, WifiOff } from "lucide-react";
+import { Copy, Eye, Gamepad2, Link2, LogOut, RefreshCw, Swords, Users, WifiOff } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { ErrorState, SectionHeader } from "./PublicPrimitives";
@@ -7,12 +7,16 @@ import { useDialogs } from "../components/Dialogs";
 import { safeCopy } from "./clipboard";
 import { GomokuBoard } from "./GomokuBoard";
 import {
+  countdownTone,
   describeSettlement,
   formatCountdown,
   localMoveCheck,
   normalizeRoomCode,
+  opponentLikelyOffline,
   parseGomokuView,
+  undoRejectedNotice,
   type GomokuColor,
+  type GomokuView,
 } from "./game-room-logic";
 import {
   closeGameRoom,
@@ -64,10 +68,14 @@ export function MultiplayerGameScreen() {
   /** 房间进入瞬间的剩余毫秒快照，与本地时钟配合做倒计时显示。 */
   const [syncedRemaining, setSyncedRemaining] = useState<{ ms: number | null; at: number }>({ ms: null, at: 0 });
   const [clockMs, setClockMs] = useState(() => Date.now());
+  /** presence 推送的在线人数（null = 还没收到首条推送，不做掉线判定）。 */
+  const [online, setOnline] = useState<{ players: number; spectators: number } | null>(null);
 
   const connRef = useRef<GameRoomConnection | null>(null);
   const versionRef = useRef(0);
   const autoJoinedRef = useRef(false);
+  /** 上一帧的玩法视图：悔棋被拒（对方落子顶掉申请）靠前后帧对比判定。 */
+  const prevGomokuRef = useRef<GomokuView | null>(null);
 
   // 倒计时本地走秒：500ms 一跳，配合 syncedRemaining 换算剩余时间。
   useEffect(() => {
@@ -97,7 +105,9 @@ export function MultiplayerGameScreen() {
     setConnection("closed");
     setReconnectAttempt(0);
     setSyncedRemaining({ ms: null, at: 0 });
+    setOnline(null);
     versionRef.current = 0;
+    prevGomokuRef.current = null;
   }, []);
 
   const attachConnection = useCallback(
@@ -110,6 +120,22 @@ export function MultiplayerGameScreen() {
           setRole(nextRole);
           versionRef.current = nextView.version;
           setSyncedRemaining({ ms: nextView.remainingMs, at: Date.now() });
+          // 悔棋申请被顶掉（对方落子即拒绝）的帧间对比：你的申请上一帧还在
+          // 等待，下一帧消失且步数增加 → 明确提示，而不是横幅无声消失。
+          const nextGomoku = parseGomokuView(nextView.view);
+          const myHashNow =
+            nextGomoku?.yourColor != null
+              ? (nextGomoku.players.find((seat) => seat.color === nextGomoku.yourColor)?.participantHash ?? null)
+              : null;
+          const rejected = undoRejectedNotice(
+            prevGomokuRef.current?.pendingUndoFrom ?? null,
+            nextGomoku?.pendingUndoFrom ?? null,
+            prevGomokuRef.current?.moveCount ?? 0,
+            nextGomoku?.moveCount ?? 0,
+            myHashNow,
+          );
+          prevGomokuRef.current = nextGomoku;
+          if (rejected) toast({ message: rejected, variant: "info" });
         },
         onNotice: (message) => toast({ message, variant: "error" }),
         onFatal: (message) => {
@@ -120,6 +146,7 @@ export function MultiplayerGameScreen() {
           setConnection(status);
           setReconnectAttempt(attempt);
         },
+        onPresence: (counts) => setOnline(counts),
       });
       connRef.current = connection;
       setRoomId(id);
@@ -145,10 +172,20 @@ export function MultiplayerGameScreen() {
         }
         let snapshot = stateResult.data;
         if (snapshot.role !== "player") {
-          // 还不是本房间玩家：先尝试入座；满员（两人对局）等失败则降级观战。
+          // 还不是本房间玩家：先尝试入座。服务端在满员/已开局时不再报错，
+          // 而是把请求降级为只读观战（spectatorFallback）——第三人进入房间
+          // 就能看到棋局，不占座位、不可操作。
           const joinResult = await joinGameRoom(id, selfDisplayName());
           if (joinResult.ok) {
             snapshot = joinResult.data;
+            if (snapshot.role === "spectator") {
+              toast({
+                message: snapshot.spectatorFallback
+                  ? "对局进行中或房间已满，你将以观战身份看这一局"
+                  : "你以观战身份进入了房间",
+                variant: "info",
+              });
+            }
           } else {
             const retry = await fetchGameRoomState(id);
             if (!retry.ok) {
@@ -170,9 +207,15 @@ export function MultiplayerGameScreen() {
   // ?room=<房间码> 直达：进屏自动走加入流程（粘贴链接/深链接落地的路径）。
   useEffect(() => {
     if (autoJoinedRef.current) return;
-    const requested = normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? "");
-    if (requested === null) return;
+    const rawParam = new URLSearchParams(window.location.search).get("room");
+    if (rawParam === null) return;
     autoJoinedRef.current = true;
+    const requested = normalizeRoomCode(rawParam);
+    if (requested === null) {
+      // 链接带了房间参数但解析不出：明说，而不是静默停在大厅。
+      setError("链接里的房间码无效，请让好友重新发送邀请");
+      return;
+    }
     void enterRoom(requested);
   }, [enterRoom]);
 
@@ -186,7 +229,8 @@ export function MultiplayerGameScreen() {
     return gomoku.players.find((seat) => seat.color === gomoku.yourColor)?.participantHash ?? null;
   }, [gomoku]);
   const mePlayer = useMemo(
-    () => view?.players.find((player) => player.participantHash === myHash && player.leftAt === null) ?? null,
+    // `players?.` 防御：信封由服务端装配、正常恒带 players，但坏帧不应白屏。
+    () => view?.players?.find((player) => player.participantHash === myHash && player.leftAt === null) ?? null,
     [myHash, view],
   );
   const amHost = mePlayer?.isHost ?? false;
@@ -201,11 +245,15 @@ export function MultiplayerGameScreen() {
     status === "playing" &&
     gomoku.outcome === null &&
     gomoku.turn === gomoku.yourColor;
+  /** 观战身份标识：进入房间后由服务端 role 决定（第三人/满员/公开视图都算）。 */
+  const isSpectator = view !== null && role === "spectator";
+  /** 对手掉线风险：对局中在线玩家 < 2（presence 推送，按身份去重）。 */
+  const opponentOffline = opponentLikelyOffline(status, online?.players ?? null);
 
-  const countdownText = useMemo(() => {
-    if (syncedRemaining.ms === null) return null;
-    return formatCountdown(syncedRemaining.ms - (clockMs - syncedRemaining.at));
-  }, [clockMs, syncedRemaining]);
+  /** 本地走秒后的剩余毫秒：倒计时文案与紧迫度都从这里派生。 */
+  const remainingNow = syncedRemaining.ms === null ? null : syncedRemaining.ms - (clockMs - syncedRemaining.at);
+  const countdownText = useMemo(() => formatCountdown(remainingNow), [remainingNow]);
+  const countdownToneValue = countdownTone(remainingNow);
 
   const settlementCopy = useMemo(() => {
     if (gomoku?.outcome) {
@@ -401,6 +449,37 @@ export function MultiplayerGameScreen() {
     );
   };
 
+  /** 观战标识：第三人/满员降级进来的只读身份，一眼可辨。 */
+  const renderSpectatorBadge = () => {
+    if (!isSpectator) return null;
+    return (
+      <div
+        role="status"
+        className="flex items-center gap-2 rounded-xl bg-[var(--survey-primary-soft)] px-3 py-2 text-[12px] font-semibold text-[var(--survey-primary)]"
+      >
+        <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          观战模式 · 你可以实时看这一局，但不能落子或参与操作
+          {online !== null && online.spectators > 1 ? `（当前 ${online.spectators} 人观战）` : ""}
+        </span>
+      </div>
+    );
+  };
+
+  /** 对手掉线提示：presence 显示对局中在线玩家不足两人时亮起。 */
+  const renderOfflineBanner = () => {
+    if (!opponentOffline || role !== "player") return null;
+    return (
+      <div
+        role="alert"
+        className="flex items-center gap-2 rounded-xl bg-[color-mix(in_srgb,var(--app-warning)_14%,transparent)] px-3 py-2 text-[12px] font-medium text-[var(--app-warning)]"
+      >
+        <WifiOff className="h-4 w-4 shrink-0" aria-hidden="true" />
+        对方似乎已掉线，等待重连…（回合超时会判负）
+      </div>
+    );
+  };
+
   const renderRoomHeader = () => (
     <section className="survey-card flex items-center justify-between gap-3 p-4">
       <div className="min-w-0">
@@ -508,7 +587,7 @@ export function MultiplayerGameScreen() {
     const drawPendingFromOpponent = gomoku.pendingDrawFrom !== null && gomoku.pendingDrawFrom !== myHash;
     return (
       <section className="survey-card p-4">
-        {/* 回合条：轮到谁 + 倒计时 */}
+        {/* 回合条：轮到谁 + 观战人数 + 倒计时（≤10s 转警示色，到点转告警色） */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <span
@@ -521,17 +600,39 @@ export function MultiplayerGameScreen() {
               {isMyTurn ? "轮到你了" : gameEnded ? "对局结束" : `等待${gomoku.turn === "black" ? "黑棋" : "白棋"}落子`}
             </span>
           </div>
-          {status === "playing" && gomoku.outcome === null && countdownText !== null ? (
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-bold tabular-nums ${
-                countdownText === "00:00"
-                  ? "bg-[color-mix(in_srgb,var(--app-danger)_14%,transparent)] text-[var(--app-danger)]"
-                  : "bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
-              }`}
-            >
-              <RefreshCw className="h-3 w-3" aria-hidden="true" />
-              {countdownText}
-            </span>
+          {status === "playing" && gomoku.outcome === null ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              {online !== null && online.spectators > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--survey-card-border)] px-2.5 py-1 text-[12px] font-semibold text-[var(--survey-muted)]"
+                  title={`${online.spectators} 人正在观战`}
+                >
+                  <Eye className="h-3 w-3" aria-hidden="true" />
+                  {online.spectators}
+                </span>
+              ) : null}
+              {countdownText !== null ? (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-bold tabular-nums ${
+                    countdownToneValue === "expired"
+                      ? "bg-[color-mix(in_srgb,var(--app-danger)_14%,transparent)] text-[var(--app-danger)]"
+                      : countdownToneValue === "urgent"
+                        ? "bg-[color-mix(in_srgb,var(--app-warning)_14%,transparent)] text-[var(--app-warning)]"
+                        : "bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]"
+                  }`}
+                  title={
+                    countdownToneValue === "expired"
+                      ? "本回合时间已用完"
+                      : countdownToneValue === "urgent"
+                        ? "剩余时间不足 10 秒"
+                        : undefined
+                  }
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                  {countdownText}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -630,7 +731,7 @@ export function MultiplayerGameScreen() {
       return (
         <div className="space-y-4">
           {renderRoomHeader()}
-          <ErrorState message="房间已关闭。" />
+          <ErrorState message="房间已关闭，本局到此为止。回大厅再开一局，或把新房间码发给好友。" />
           <button type="button" className="btn btn-primary w-full" onClick={exitRoom}>
             返回大厅
           </button>
@@ -651,6 +752,8 @@ export function MultiplayerGameScreen() {
       <div className="space-y-4">
         {renderRoomHeader()}
         {renderConnectionBanner()}
+        {renderSpectatorBadge()}
+        {renderOfflineBanner()}
         {status === "lobby" ? renderLobbyControls() : null}
         {renderBoardCard()}
       </div>

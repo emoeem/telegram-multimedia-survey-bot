@@ -178,6 +178,7 @@ async function handleJoinRoom(request: Request, env: Env, id: number): Promise<R
     view?: GamePlayerView | GamePublicView;
     role?: "player" | "spectator";
     rejoined?: boolean;
+    spectatorFallback?: boolean;
   };
   return json({
     ok: true,
@@ -185,6 +186,7 @@ async function handleJoinRoom(request: Request, env: Env, id: number): Promise<R
     view: payload.view,
     role: payload.role ?? (asSpectator ? "spectator" : "player"),
     ...(payload.rejoined ? { rejoined: true } : {}),
+    ...(payload.spectatorFallback ? { spectatorFallback: true } : {}),
   });
 }
 
