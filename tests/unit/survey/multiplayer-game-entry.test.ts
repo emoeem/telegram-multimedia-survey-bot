@@ -66,8 +66,12 @@ describe("/game 的接线（前端分发链 + Worker 静态页 + 入口卡）", 
     expect(trialScreen).toContain('href="/game"');
   });
 
-  it("/app 应用中心小游戏区有 EntryRow 入口", () => {
-    expect(appCenter).toContain('href="/game"');
+  it("/app 应用中心小游戏区有联机对战入口卡（读 /api/game/types，静态回退不消失）", () => {
+    // X2 批次：/app 与 /trial 同一数据面——动态渲染已注册玩法（五子棋/象棋）。
+    expect(appCenter).toContain("fetchGameTypes()");
+    expect(appCenter).toContain("gameEntryHref(");
+    expect(appCenter).toContain("FALLBACK_GAME_TYPES");
+    // 回退卡的五子棋文案仍在源里（守卫读源码而非运行时）。
     expect(appCenter).toContain("和好友实时对弈");
   });
 
@@ -85,6 +89,8 @@ describe("/game 的 Lobby/Board 分层（Board 注册表 + 未知玩法兜底）
     expect(screen).toContain("resolveGameBoard(view.gameType)");
     expect(screen).toContain("<UnknownGameBoard gameType={view.gameType} />");
     expect(boards).toContain('registerGameBoard("gomoku", GomokuBoardPanel)');
+    // X2 批次：象棋 Board 面板同样注册进分发表。
+    expect(boards).toContain('registerGameBoard("xiangqi", XiangqiBoardPanel)');
   });
 
   it("大厅层走 GameLobby.tsx；房间壳不再直接触碰五子棋渲染（分层守护）", () => {

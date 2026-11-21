@@ -454,6 +454,24 @@ export interface XiangqiLastMoveView {
   givesCheck: boolean;
 }
 
+/** 可走点提示的一条合法着法（服务端 legalMoves 条目，按选中棋子 from 过滤用）。 */
+export interface XiangqiLegalMoveView {
+  from: XiangqiPointView;
+  to: XiangqiPointView;
+}
+
+/** 棋谱侧栏的一手（服务端 history 条目）：坐标 + 服务端生成的中文记谱。 */
+export interface XiangqiHistoryEntryView {
+  ply: number;
+  color: XiangqiColor;
+  from: XiangqiPointView;
+  to: XiangqiPointView;
+  piece: string;
+  captured: string | null;
+  notation: string;
+  givesCheck: boolean;
+}
+
 export interface XiangqiOutcomeView {
   result: string;
   winnerParticipantHash: string | null;
@@ -473,6 +491,10 @@ export interface XiangqiView {
   players: XiangqiSeatView[];
   moveCount: number;
   lastMove: XiangqiLastMoveView | null;
+  /** 行棋方的合法着法（可走点提示数据源）；旧部署缺字段时为空表。 */
+  legalMoves: XiangqiLegalMoveView[];
+  /** 走棋历史（中文记谱由服务端生成）；旧部署缺字段时为空表。 */
+  history: XiangqiHistoryEntryView[];
   /** 当前行棋方是否正被将军（红/黑/null）。 */
   check: XiangqiColor | null;
   outcome: XiangqiOutcomeView | null;
@@ -575,6 +597,43 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
     }
   }
 
+  // 可走点提示（X2）：形状不对的条目逐条丢弃，字段缺失整表为空——旧部署
+  // 没有该字段时提示不出现，棋盘照常可走（权威校验仍在服务端）。
+  const legalMoves: XiangqiLegalMoveView[] = [];
+  if (Array.isArray(record.legalMoves)) {
+    for (const entry of record.legalMoves) {
+      if (!entry || typeof entry !== "object") continue;
+      const move = entry as Record<string, unknown>;
+      const from = parsePoint(move.from);
+      const to = parsePoint(move.to);
+      if (from && to) legalMoves.push({ from, to });
+    }
+  }
+
+  // 走棋历史（X2）：记谱是服务端生成的字符串，客户端只渲染不复刻规则；
+  // 脏条目（缺记谱/坐标）整条丢弃，不进侧栏。
+  const history: XiangqiHistoryEntryView[] = [];
+  if (Array.isArray(record.history)) {
+    for (const entry of record.history) {
+      if (!entry || typeof entry !== "object") continue;
+      const move = entry as Record<string, unknown>;
+      const from = parsePoint(move.from);
+      const to = parsePoint(move.to);
+      if (!from || !to) continue;
+      if (!isXiangqiPieceCode(move.piece) || !isXiangqiColor(move.color)) continue;
+      history.push({
+        ply: typeof move.ply === "number" ? move.ply : 0,
+        color: move.color,
+        from,
+        to,
+        piece: move.piece,
+        captured: isXiangqiPieceCode(move.captured) ? move.captured : null,
+        notation: typeof move.notation === "string" ? move.notation : "",
+        givesCheck: move.givesCheck === true,
+      });
+    }
+  }
+
   const outcomeRecord =
     record.outcome !== null && typeof record.outcome === "object" ? (record.outcome as Record<string, unknown>) : null;
   const outcome = outcomeRecord
@@ -594,6 +653,8 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
     players,
     moveCount: typeof record.moveCount === "number" ? record.moveCount : 0,
     lastMove,
+    legalMoves,
+    history,
     check: isXiangqiColor(record.check) ? record.check : null,
     outcome,
     pendingDrawFrom: typeof record.pendingDrawFrom === "string" ? record.pendingDrawFrom : null,
@@ -668,8 +729,10 @@ export function xiangqiGeometry(): XiangqiGeometry {
 }
 
 /**
- * 点击坐标 → 棋盘交点。吸附到最近交点，命中半径半格（棋子圆盘直径内都算
- * 点到）；越界返回 null。`|| 0` 归一 Math.round 的负零（与五子棋同款纪律）。
+ * 点击坐标 → 棋盘交点。吸附到最近交点，命中半径 0.71 格（≈ 半格对角线，
+ * √2/2，与五子棋 cellFromPoint 同款）——390px 视口下交点间距约 36px，
+ * 热区必须整格连续不留格角死区，手指才点得准；越界返回 null。
+ * `|| 0` 归一 Math.round 的负零（与五子棋同款纪律）。
  */
 export function xiangqiCellFromPoint(x: number, y: number): { row: number; col: number } | null {
   const { cellX, cellY } = xiangqiGeometry();
@@ -678,7 +741,7 @@ export function xiangqiCellFromPoint(x: number, y: number): { row: number; col: 
   if (row < 0 || row >= 10 || col < 0 || col >= 9) return null;
   const dx = Math.abs(x - (XIANGQI_MARGIN_X + col * cellX));
   const dy = Math.abs(y - (XIANGQI_MARGIN_Y + row * cellY));
-  if (Math.hypot(dx, dy) > Math.min(cellX, cellY) * 0.5) return null;
+  if (Math.hypot(dx, dy) > Math.min(cellX, cellY) * 0.71) return null;
   return { row, col };
 }
 

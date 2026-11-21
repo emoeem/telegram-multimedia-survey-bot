@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Eye, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Eye, RefreshCw } from "lucide-react";
 import { XiangqiBoard } from "./XiangqiBoard";
 import { ErrorState } from "./PublicPrimitives";
 import { useDialogs } from "../components/Dialogs";
 import {
+  XIANGQI_PIECE_CHARS,
   countdownTone,
   formatCountdown,
   localXiangqiMoveCheck,
@@ -28,7 +29,10 @@ function colorOfPiece(piece: string): XiangqiColor {
  * 自指信息（「我是谁」）从玩法载荷自取：玩家视图的 yourColor 对回座位表即
  * 得到自己的 participantHash（engine-types 协议不变量三：视图按人裁剪）。
  * 走子采用两段式：先点选己方棋子，再点目标交点发 { from, to }——权威校验
- * 全在服务端引擎，本地预判（localXiangqiMoveCheck）只挡必被拒的操作。
+ * 全在服务端引擎，本地预判（localXiangqiMoveCheck）只挡必被拒的操作；
+ * 选中后按服务端 legalMoves 画可走点提示，点在提示外直接提示不发请求
+ * （旧部署没有 legalMoves 字段时提示缺位，退回直接发送由服务端拒）。
+ * 棋谱侧栏渲染服务端 history 的中文记谱（重连/中途观战也能看到全谱）。
  */
 export function XiangqiBoardPanel({
   view,
@@ -41,9 +45,21 @@ export function XiangqiBoardPanel({
 }: GameBoardProps) {
   const { toast, confirm } = useDialogs();
   const [selected, setSelected] = useState<XiangqiPointView | null>(null);
+  /** 棋谱侧栏折叠开关（默认展开；窄屏可收起省屏幕）。 */
+  const [movesOpen, setMovesOpen] = useState(true);
+  /** 棋谱列表容器：新的一手落到列表底部后自动滚到底。 */
+  const movesListRef = useRef<HTMLOListElement | null>(null);
 
   const xiangqi = parseXiangqiView(view.view);
   const status = view.status;
+
+  // 棋谱自动滚底：新的一手（或折叠/展开）后把列表滚到最新一手。effect 必须在
+  // 早退 return 之前挂（rules-of-hooks），xiangqi 还没解析好时靠长度 0 空转。
+  const historyLength = xiangqi?.history.length ?? 0;
+  useEffect(() => {
+    const list = movesListRef.current;
+    if (list !== null && movesOpen) list.scrollTop = list.scrollHeight;
+  }, [historyLength, movesOpen]);
 
   if (xiangqi === null) {
     return <ErrorState message="对局数据没有加载出来，请稍候或重新进入房间。" />;
@@ -93,6 +109,16 @@ export function XiangqiBoardPanel({
     }
   };
 
+  /** 选中棋子的合法落点（服务端 legalMoves 按 from 过滤）：可走点提示与
+   * 点击拦截共用。旧部署没有该字段时整表为空——提示缺位，点击退回直接
+   * 发送路径，由服务端权威拒绝。 */
+  const hintPoints =
+    selected !== null && isMyTurn && xiangqi.legalMoves.length > 0
+      ? xiangqi.legalMoves
+          .filter((move) => move.from.row === selected.row && move.from.col === selected.col)
+          .map((move) => move.to)
+      : [];
+
   const handleCellClick = async (row: number, col: number) => {
     if (!isMyTurn || connection !== "open") return;
     const piece = xiangqi.board[row]?.[col] ?? null;
@@ -110,6 +136,13 @@ export function XiangqiBoardPanel({
     // 已选中：点己方另一枚棋子 = 换选；点空格/对方棋子 = 尝试走子。
     if (piece !== null && colorOfPiece(piece) === xiangqi.yourColor) {
       setSelected({ row, col });
+      return;
+    }
+    // 合法走法表在手时，提示之外的落点直接拦下（不发必被拒的请求），保留
+    // 选中让用户改点提示位置；表为空（旧部署/该子无着可走）走服务端判定。
+    const inHints = hintPoints.some((point) => point.row === row && point.col === col);
+    if (hintPoints.length > 0 && !inHints) {
+      toast({ message: "这枚棋子走不到那里", variant: "info" });
       return;
     }
     const from = selected;
@@ -261,10 +294,58 @@ export function XiangqiBoardPanel({
           board={xiangqi.board}
           lastMoveTo={xiangqi.lastMove?.to ?? null}
           selected={isMyTurn ? selected : null}
+          hints={hintPoints}
           playable={isMyTurn && connection === "open"}
           onCellClick={(row, col) => void handleCellClick(row, col)}
         />
       </div>
+
+      {/* 棋谱侧栏（X2）：服务端中文记谱全量渲染，最新一手在底部、自动滚出。
+          记谱缺串（异常数据）退化为坐标记法保持中文可读。 */}
+      {xiangqi.history.length > 0 ? (
+        <section
+          className="mt-3 overflow-hidden rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+          aria-label="棋谱"
+        >
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3 py-2 text-[12px] font-bold text-[var(--survey-heading)]"
+            onClick={() => setMovesOpen((open) => !open)}
+            aria-expanded={movesOpen}
+          >
+            棋谱（{xiangqi.moveCount} 手）
+            <ChevronDown
+              className={`h-4 w-4 text-[var(--survey-muted)] transition-transform ${movesOpen ? "" : "-rotate-90"}`}
+              aria-hidden="true"
+            />
+          </button>
+          {movesOpen ? (
+            <ol ref={movesListRef} className="max-h-40 overflow-y-auto px-3 pb-2 text-[12px] leading-6">
+              {xiangqi.history.map((move) => (
+                <li key={move.ply} className="flex items-center gap-2">
+                  <span className="w-8 shrink-0 text-right tabular-nums text-[var(--survey-muted)]">{move.ply}.</span>
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                      move.color === "red" ? "bg-red-600" : "bg-slate-900"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="font-semibold text-[var(--survey-heading)]">
+                    {move.notation ||
+                      `${XIANGQI_PIECE_CHARS[move.piece] ?? move.piece}(${move.from.row},${move.from.col})→(${move.to.row},${move.to.col})`}
+                  </span>
+                  {move.captured !== null ? (
+                    <span className="text-[var(--survey-muted)]">
+                      吃{XIANGQI_PIECE_CHARS[move.captured] ?? move.captured}
+                    </span>
+                  ) : null}
+                  {move.givesCheck ? <span className="font-bold text-[var(--app-warning)]">将军</span> : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="mt-3 space-y-2">
         {checkBanner()}

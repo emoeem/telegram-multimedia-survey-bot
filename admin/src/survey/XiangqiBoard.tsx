@@ -8,18 +8,20 @@ import {
 } from "./game-room-logic";
 
 /**
- * 象棋 9×10 SVG 棋盘（多人玩法批次 X1）。
+ * 象棋 9×10 SVG 棋盘（多人玩法批次 X1，X2 补可走点提示）。
  *
  * 单个 <svg> 承载棋盘线（中路竖线在楚河汉界断开）、九宫斜线、河界文字、
- * 棋子（交点圆盘 + 汉字）、最后一手标记与选中高亮；整块只挂一个 click
- * 监听：点击坐标经 xiangqiCellFromPoint 吸附到最近交点。棋子颜色是玩法
- * 语义（红/黑汉字），不走主题变量；落子可用性由父层决定（不可用时整块
- * 不响应点击）。touch-manipulation 关掉移动端双击缩放。
+ * 棋子（交点圆盘 + 汉字）、最后一手标记、选中高亮与可走点提示（空点画
+ * 主题色圆点、对方棋子画吃子环——提示点可落在敌子上）；整块只挂一个
+ * click 监听：点击坐标经 xiangqiCellFromPoint 吸附到最近交点。棋子颜色
+ * 是玩法语义（红/黑汉字），不走主题变量；落子可用性由父层决定（不可用
+ * 时整块不响应点击）。touch-manipulation 关掉移动端双击缩放。
  */
 export function XiangqiBoard({
   board,
   lastMoveTo,
   selected,
+  hints,
   playable,
   onCellClick,
 }: {
@@ -28,6 +30,8 @@ export function XiangqiBoard({
   lastMoveTo: { row: number; col: number } | null;
   /** 当前选中的己方棋子（高亮环），null = 无。 */
   selected: { row: number; col: number } | null;
+  /** 可走点提示（选中棋子的合法落点，服务端 legalMoves 按选中过滤而来）。 */
+  hints: Array<{ row: number; col: number }>;
   playable: boolean;
   onCellClick: (row: number, col: number) => void;
 }) {
@@ -187,6 +191,35 @@ export function XiangqiBoard({
           );
         }),
       )}
+
+      {/* 可走点提示（X2）：空点画主题色小圆点；落点有对方棋子（吃子）画
+          包住圆盘的提示环。画在棋子之后，环不被圆盘遮住。 */}
+      {hints.map(({ row, col }) => {
+        const p = point(row, col);
+        if (!p) return null;
+        const occupied = board[row]?.[col] != null;
+        return occupied ? (
+          <circle
+            key={`hint-${row}-${col}`}
+            cx={p.x}
+            cy={p.y}
+            r={stoneRadius + 3}
+            fill="none"
+            stroke="var(--survey-primary)"
+            strokeWidth={2.5}
+            opacity={0.9}
+          />
+        ) : (
+          <circle
+            key={`hint-${row}-${col}`}
+            cx={p.x}
+            cy={p.y}
+            r={Math.max(3, stoneRadius * 0.24)}
+            fill="var(--survey-primary)"
+            opacity={0.8}
+          />
+        );
+      })}
     </svg>
   );
 }

@@ -569,3 +569,99 @@ describe("象棋棋盘几何（xiangqiGeometry / xiangqiCellFromPoint）", () =>
     expect(xiangqiCellFromPoint(470, 28)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 象棋 X2 批次：legalMoves / history 收敛 + 触控热区连续化
+// ---------------------------------------------------------------------------
+
+describe("象棋视图收敛（X2 批次字段）", () => {
+  function viewPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      cols: 9,
+      rows: 10,
+      board: emptyXiangqiBoard(),
+      turn: "red",
+      players: [{ participantHash: "hash-a", color: "red" }],
+      moveCount: 1,
+      lastMove: null,
+      check: null,
+      outcome: null,
+      pendingDrawFrom: null,
+      yourColor: "red",
+      ...overrides,
+    };
+  }
+
+  it("legalMoves/history 合法载荷逐条收敛；脏条目逐条丢弃，不整包拒绝", () => {
+    const parsed = parseXiangqiView(
+      viewPayload({
+        legalMoves: [
+          { from: { row: 7, col: 7 }, to: { row: 7, col: 4 } },
+          { from: { row: 6, col: 4 }, to: { row: 5, col: 4 } },
+          "junk",
+          null,
+          { from: { row: 0 }, to: { row: 7, col: 4 } }, // 缺 col：丢弃
+        ],
+        history: [
+          {
+            ply: 1,
+            color: "red",
+            from: { row: 7, col: 7 },
+            to: { row: 7, col: 4 },
+            piece: "C",
+            captured: null,
+            notation: "炮二平五",
+            givesCheck: false,
+          },
+          "junk",
+          { ply: 2, color: "green", from: { row: 0, col: 0 }, to: { row: 1, col: 1 }, piece: "k" }, // 坏颜色：丢弃
+        ],
+      }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed?.legalMoves).toEqual([
+      { from: { row: 7, col: 7 }, to: { row: 7, col: 4 } },
+      { from: { row: 6, col: 4 }, to: { row: 5, col: 4 } },
+    ]);
+    expect(parsed?.history).toEqual([
+      {
+        ply: 1,
+        color: "red",
+        from: { row: 7, col: 7 },
+        to: { row: 7, col: 4 },
+        piece: "C",
+        captured: null,
+        notation: "炮二平五",
+        givesCheck: false,
+      },
+    ]);
+  });
+
+  it("缺 legalMoves/history 字段（旧部署）按空表处理，不整包拒绝", () => {
+    const parsed = parseXiangqiView(viewPayload({ legalMoves: undefined, history: undefined }));
+    expect(parsed).not.toBeNull();
+    expect(parsed?.legalMoves).toEqual([]);
+    expect(parsed?.history).toEqual([]);
+    // 非数组同样给空表。
+    const junk = parseXiangqiView(viewPayload({ legalMoves: "junk", history: 42 }));
+    expect(junk?.legalMoves).toEqual([]);
+    expect(junk?.history).toEqual([]);
+  });
+});
+
+describe("象棋触控热区（xiangqiCellFromPoint 0.71 连续热区）", () => {
+  it("格间中点与格角都命中最近交点，390px 视口下不再有死区", () => {
+    const { cellX, cellY } = xiangqiGeometry();
+    // 两交点正中间：归到最近交点（五子棋同款连续热区）。
+    expect(xiangqiCellFromPoint(28 + cellX / 2, 28)).toEqual({ row: 0, col: 1 });
+    // 格角（半格对角线处）：0.5 半径下是死区，0.71 后必命中。
+    expect(xiangqiCellFromPoint(28 + cellX / 2, 28 + cellY / 2)).toEqual({ row: 1, col: 1 });
+    // 0.71 ≥ 半格对角线（√2/2），网格内部全量覆盖：任意格内点都命中最近
+    // 交点（拒绝只发生在网格之外），此处抽查远离原点的格内点。
+    expect(xiangqiCellFromPoint(28 + cellX * 4.42, 28 + cellY * 5.43)).toEqual({ row: 5, col: 4 });
+    // 网格之外照旧返回 null（负行列/越界）。
+    expect(xiangqiCellFromPoint(1, 1)).toBeNull();
+    expect(xiangqiCellFromPoint(28, 520)).toBeNull();
+    expect(xiangqiCellFromPoint(470, 28)).toBeNull();
+  });
+});

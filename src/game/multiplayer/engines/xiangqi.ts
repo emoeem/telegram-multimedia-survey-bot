@@ -13,8 +13,10 @@
  * - 长将判和：同一局面（含行棋方）在最近窗口内第 N 次出现（N=3），且有一
  *   方连续 N 手都在将军（该方任何非将军着法即清零计数），判和——按 brief
  *   "长将判和"；无将军的单纯循环走子不判和（本引擎不实现自然限着）。
- * - 走棋历史存 engineState.moves（棋谱：from/to/吃子/是否将军），settle 时
- *   整体进结算快照供回放；引擎不触 D1，落盘由 DO/REST 层负责。
+ * - 走棋历史存 engineState.moves（棋谱：from/to/吃子/是否将军/中文记谱），
+ *   settle 时整体进结算快照供回放；引擎不触 D1，落盘由 DO/REST 层负责。
+ *   记谱在走子当下用走子前局面生成（前/后 同线消歧需要它），随记录进视图
+ *   的 history——棋谱侧栏（批次 X2）直接渲染，客户端不复刻记谱规则。
  * - 无隐藏信息：getPlayerView 双方全知，玩家视图仅多一个 yourColor；协议
  *   强制按人裁剪的路径不变，内部簿记（actionIds/positions/checkStreaks）
  *   永不进视图载荷。
@@ -68,7 +70,7 @@ interface XiangqiSeat {
   color: XiangqiColor;
 }
 
-/** 一手棋谱（回放数据源：from/to + 吃子 + 是否将军）。 */
+/** 一手棋谱（回放数据源：from/to + 吃子 + 是否将军 + 中文记谱）。 */
 export interface XiangqiMoveRecord {
   /** 全局手数（1 起）。 */
   ply: number;
@@ -82,6 +84,8 @@ export interface XiangqiMoveRecord {
   participantHash: string;
   /** 该手是否使对方被将军。 */
   givesCheck: boolean;
+  /** 中文记谱（如「炮二平五」「前車退一」），走子当下用走子前局面生成。 */
+  notation: string;
 }
 
 export type XiangqiResult = "win" | "draw" | "timeout" | "resign" | "aborted";
@@ -447,9 +451,101 @@ function hasAnyLegalMove(board: Cell[][], color: XiangqiColor): boolean {
   return false;
 }
 
+/**
+ * color 的全部合法着法（含送将复核，与 applyMove 的权威校验同判据）。
+ * 批次 X2：进公开视图的 legalMoves 字段，客户端选中棋子后按 from 过滤画
+ * 「可走点」提示。象棋无隐藏信息，合法着法可由公开棋盘完全推导——不构成
+ * 任何私有信息泄漏；只算行棋方（提示只在该方回合用到，载荷也小）。
+ */
+function legalMovesFor(board: Cell[][], color: XiangqiColor): Array<{ from: Point; to: Point }> {
+  const moves: Array<{ from: Point; to: Point }> = [];
+  for (let row = 0; row < XIANGQI_ROWS; row += 1) {
+    for (let col = 0; col < XIANGQI_COLS; col += 1) {
+      const piece = board[row]![col]!;
+      if (piece === null || pieceColor(piece) !== color) continue;
+      for (const dest of pseudoDestinations(board, row, col)) {
+        if (isKingSafe(boardAfter(board, { row, col }, dest), color)) {
+          moves.push({ from: { row, col }, to: dest });
+        }
+      }
+    }
+  }
+  return moves;
+}
+
 /** 局面键（棋盘 + 行棋方）：长将重复判定用。 */
 function positionKey(board: Cell[][], turn: XiangqiColor): string {
   return `${turn}|${board.map((line) => line.map((cell) => cell ?? ".").join("")).join("/")}`;
+}
+
+// ---------------------------------------------------------------------------
+// 中文记谱（批次 X2：棋谱侧栏的数据源；纯函数，导出供单测直测）
+// ---------------------------------------------------------------------------
+
+/** 记谱用棋子汉字（与客户端 game-room-logic 的 XIANGQI_PIECE_CHARS 同表）。 */
+const NOTATION_CHARS: Record<XiangqiColor, Record<string, string>> = {
+  red: { K: "帥", A: "仕", E: "相", H: "傌", R: "俥", C: "炮", P: "兵" },
+  black: { K: "將", A: "士", E: "象", H: "馬", R: "車", C: "砲", P: "卒" },
+};
+
+/** 红方纵线号用中文数字（一…九），黑方用阿拉伯数字（1…9）。 */
+const CN_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+/**
+ * 纵线号（各从己方右手数起）：红方 col 8 是一路（col 0 是九路），黑方
+ * col 0 是 1 路（col 8 是 9 路）。row 0 在黑方顶端，红从下往上攻。
+ */
+function fileNumber(color: XiangqiColor, col: number): number {
+  return color === "red" ? 9 - col : col + 1;
+}
+
+/** 纵线号/步数 → 记谱文本：红中文数字、黑阿拉伯数字。 */
+function fileText(color: XiangqiColor, number: number): string {
+  return color === "red" ? (CN_NUMERALS[number - 1] ?? String(number)) : String(number);
+}
+
+/**
+ * 一手棋的中文记谱（如「炮二平五」「前車退一」）。规则：
+ * - 纵线号各从己方右手数起；红用中文数字、黑用阿拉伯数字。
+ * - 同列同种棋子恰有两枚时用「前/后」替代纵线号（前 = 更靠近敌方的一枚；
+ *   红方向上攻，row 小者在前）。三枚及以上（多兵同线）退化为纵线记法。
+ * - 同行平移记「平 + 目的纵线号」；同列直进/退记「进/退 + 步数」；
+ *   斜走子（马/象/士）进退记「进/退 + 目的纵线号」。
+ * 参数 board 是**走子前**的局面（前/后 消歧依赖它）；导出仅为单测直测，
+ * 入参放宽为 string|null 网格（棋子码非法时按原样显示，不抛异常）。
+ */
+export function xiangqiMoveNotation(board: Array<Array<string | null>>, from: Point, to: Point): string {
+  const piece = board[from.row]?.[from.col] ?? null;
+  if (!piece) return "？？";
+  const color: XiangqiColor = piece === piece.toUpperCase() ? "red" : "black";
+  const char = NOTATION_CHARS[color][piece.toUpperCase()] ?? piece;
+
+  // 同列同种棋子统计：恰两枚才有确定的 前/后。
+  const sameFileRows: number[] = [];
+  for (let row = 0; row < XIANGQI_ROWS; row += 1) {
+    if (board[row]![from.col] === piece) sameFileRows.push(row);
+  }
+  let prefix = "";
+  if (sameFileRows.length === 2) {
+    const frontRow = color === "red" ? Math.min(...sameFileRows) : Math.max(...sameFileRows);
+    prefix = frontRow === from.row ? "前" : "后";
+  }
+  const fileLabel = prefix === "" ? fileText(color, fileNumber(color, from.col)) : "";
+
+  let verb: string;
+  let target: string;
+  if (to.row === from.row) {
+    verb = "平";
+    target = fileText(color, fileNumber(color, to.col));
+  } else {
+    const forward = color === "red" ? to.row < from.row : to.row > from.row;
+    verb = forward ? "进" : "退";
+    target =
+      from.col === to.col
+        ? fileText(color, Math.abs(to.row - from.row)) // 直行：步数
+        : fileText(color, fileNumber(color, to.col)); // 斜走：目的纵线
+  }
+  return `${prefix}${char}${fileLabel}${verb}${target}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +615,8 @@ function applyMove(
     captured,
     participantHash: action.participantHash,
     givesCheck,
+    // 记谱用走子前局面（engine.board 尚未更新），同线前/后 消歧因此准确。
+    notation: xiangqiMoveNotation(engine.board, move.from, move.to),
   };
   const nextTurn = opponentColor(seat.color);
   const checkStreaks: Record<XiangqiColor, number> = {
@@ -623,6 +721,12 @@ function publicViewPayload(engine: XiangqiEngineState): Record<string, unknown> 
     players: engine.seats.map((seat) => ({ ...seat })),
     moveCount: engine.moves.length,
     lastMove: engine.moves.at(-1) ?? null,
+    // 棋谱全量（每手带中文记谱）：客户端棋谱侧栏直接渲染，重连/观战中途
+    // 进房也能看到从头开始的完整走棋历史。
+    history: engine.moves.map((move) => ({ ...move })),
+    // 行棋方的合法着法表（可走点提示）；终局后为空表。只含公开推导信息，
+    // 不构成私有信息泄漏（见 legalMovesFor 注释）。
+    legalMoves: engine.outcome === null ? legalMovesFor(engine.board, engine.turn) : [],
     check: isInCheck(engine.board, engine.turn) ? engine.turn : null,
     outcome: engine.outcome,
     pendingDrawFrom: engine.pendingDrawFrom,

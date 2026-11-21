@@ -6,6 +6,7 @@ import { ErrorState } from "./PublicPrimitives";
 import { useDialogs } from "../components/Dialogs";
 import { safeCopy } from "./clipboard";
 import { GameLobbyEntry, GameLobbyRoomPanel } from "./GameLobby";
+import { ChatPanel } from "./ChatPanel";
 import { UnknownGameBoard, resolveGameBoard } from "./game-boards";
 import { FALLBACK_GAME_TYPES, findGameType, isRoomPlayerReady, type RoomPlayerRow } from "./game-lobby-logic";
 import {
@@ -18,8 +19,13 @@ import {
   selfDisplayName,
   type GameConnectionStatus,
 } from "./game-room-client";
-import { normalizeRoomCode, opponentLikelyOffline } from "./game-room-logic";
-import type { GamePlayerView, GamePublicView } from "../../../src/game/multiplayer/engine-types";
+import { chatTabsFor, mergeChatMessage, normalizeRoomCode, opponentLikelyOffline } from "./game-room-logic";
+import type {
+  GameChatChannel,
+  GameChatMessage,
+  GamePlayerView,
+  GamePublicView,
+} from "../../../src/game/multiplayer/engine-types";
 
 /**
  * 多人对局房（/game，批次：Lobby/Board 分层）。
@@ -68,6 +74,8 @@ export function MultiplayerGameScreen() {
   const [online, setOnline] = useState<{ players: number; spectators: number } | null>(null);
   /** 我的 participantHash（REST 快照 you 字段；一次连接内不变）。 */
   const [myHash, setMyHash] = useState<string | null>(null);
+  /** 房间内聊天：服务端推送的全部消息（跨频道存放，ChatPanel 按页签过滤）。 */
+  const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
 
   const connRef = useRef<GameRoomConnection | null>(null);
   const versionRef = useRef(0);
@@ -115,6 +123,7 @@ export function MultiplayerGameScreen() {
     setSyncedRemaining({ ms: null, at: 0 });
     setOnline(null);
     setMyHash(null);
+    setChatMessages([]);
     versionRef.current = 0;
   }, []);
 
@@ -139,6 +148,10 @@ export function MultiplayerGameScreen() {
           setReconnectAttempt(attempt);
         },
         onPresence: (counts) => setOnline(counts),
+        // 房间内聊天：单条推送按 seq 去重合入；重连/进房的历史整包替换。
+        // 上屏以服务端为准（回显即上屏），被拒的消息不会出现在列表里。
+        onChat: (message) => setChatMessages((prev) => mergeChatMessage(prev, message)),
+        onChatHistory: (messages) => setChatMessages(messages),
       });
       connRef.current = connection;
       setRoomId(id);
@@ -318,6 +331,29 @@ export function MultiplayerGameScreen() {
     await connRef.current.sendAction(action, payload, versionRef.current);
   }, []);
 
+  // ChatPanel 的发送通道（fire-and-forget）：上屏以服务端回显为准，被拒
+  // （超限/限流/频道无资格）经 error 帧 → onNotice 弹提示。
+  const sendChatText = useCallback((channel: GameChatChannel, text: string, clientId: string) => {
+    connRef.current?.sendChatText(channel, text, clientId);
+  }, []);
+  const sendChatVoice = useCallback(
+    (
+      channel: GameChatChannel,
+      voice: { audioBase64: string; durationMs: number; mimeType: string },
+      clientId: string,
+    ) => {
+      connRef.current?.sendChatVoice(channel, voice, clientId);
+    },
+    [],
+  );
+  const sendChatImage = useCallback((channel: GameChatChannel, dataUrl: string, clientId: string) => {
+    connRef.current?.sendChatImage(channel, dataUrl, clientId);
+  }, []);
+  /** 可用频道页签：本批五子棋/大厅没有狼人身份，wolves 页签恒不出现；观战
+   * 者另可见「观战·出局」频道。R2 狼人杀批次把引擎视图里的狼人/出局资格
+   * 传进 chatTabsFor 的 membership 参数即可点亮 wolves/dead 页签。 */
+  const chatTabs = useMemo(() => chatTabsFor(role), [role]);
+
   // ------------------------------------------------------------------
   // 渲染
   // ------------------------------------------------------------------
@@ -466,6 +502,19 @@ export function MultiplayerGameScreen() {
         ) : (
           <UnknownGameBoard gameType={view.gameType} />
         )}
+        {/* 房间内聊天：大厅（lobby）与对局（playing）都接入；settled 后服务端
+        即焚拒新消息，面板只剩空列表提示。 */}
+        <ChatPanel
+          messages={chatMessages}
+          myHash={myHash}
+          role={role}
+          connected={connection === "open"}
+          tabs={chatTabs}
+          onSendText={sendChatText}
+          onSendVoice={sendChatVoice}
+          onSendImage={sendChatImage}
+          onNotice={(message) => toast({ message, variant: "error" })}
+        />
       </div>
     );
   };

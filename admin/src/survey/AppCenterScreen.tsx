@@ -3,6 +3,8 @@ import { ArrowUpRight, FileText, Globe, LayoutGrid, MailCheck, MessagesSquare, S
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { EntryRow, SectionHeader } from "./PublicPrimitives";
+import { FALLBACK_GAME_TYPES, gameEntryHref, type GameTypeInfo } from "./game-lobby-logic";
+import { fetchGameTypes } from "./game-room-client";
 import { fetchWebApps, type WebAppLink } from "./web-apps";
 import { openWebAppLink } from "./web-app-open";
 import { currentWebApp } from "../telegram";
@@ -102,6 +104,21 @@ function WebAppsCard() {
  */
 export function AppCenterScreen() {
   const themeState = usePublicTheme();
+  // 联机对战入口卡（批次 X2）：读 GET /api/game/types 渲染已注册玩法
+  // （五子棋/象棋各一卡），失败/未升级部署回退静态列表——入口在任何部署
+  // 下都不消失，与 /trial 小游戏区同一套数据面。
+  const [gameEntries, setGameEntries] = useState<GameTypeInfo[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchGameTypes().then((result) => {
+      if (!cancelled) setGameEntries(result.ok ? result.data : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <ScreenShell themeState={themeState}>
       <PageHeader
@@ -120,13 +137,18 @@ export function AppCenterScreen() {
 
         {/* ② 小游戏 */}
         <EntryRow href="/trial" icon={Sparkles} title="小游戏" subtitle="爬塔挑战等小游戏，查看成绩与排行榜" />
-        {/* 五子棋联机对战（批次 W3）：小游戏区新增实时对战入口。 */}
-        <EntryRow
-          href="/game"
-          icon={Swords}
-          title="五子棋 · 联机对战"
-          subtitle="创建房间或输入房间码，和好友实时对弈"
-        />
+        {/* 联机对战（批次 X2）：读 /api/game/types 渲染每款已注册玩法一卡
+            （五子棋→/game、象棋→/game?type=xiangqi）；拉取失败回退静态
+            五子棋卡，入口在任何部署下都不消失。 */}
+        {(gameEntries ?? FALLBACK_GAME_TYPES).map((game) => (
+          <EntryRow
+            key={game.name}
+            href={gameEntryHref(game.name)}
+            icon={Swords}
+            title={`${game.displayName} · 联机对战`}
+            subtitle={game.description || "创建房间或输入房间码，和好友实时对弈"}
+          />
+        ))}
 
         {/* ③ 网页导航：数据由 M2 的 /api/web-apps 供给，M1 先落空态。 */}
         <WebAppsCard />

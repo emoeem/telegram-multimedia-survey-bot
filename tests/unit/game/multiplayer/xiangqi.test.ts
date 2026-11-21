@@ -7,7 +7,7 @@ import type {
   GameRoomPlayer,
   GameRoomState,
 } from "../../../../src/game/multiplayer/engine-types";
-import { xiangqiEngine } from "../../../../src/game/multiplayer/engines/xiangqi";
+import { xiangqiEngine, xiangqiMoveNotation } from "../../../../src/game/multiplayer/engines/xiangqi";
 import { registerBuiltinMultiplayerEngines } from "../../../../src/game/multiplayer/server-engines";
 
 /**
@@ -187,7 +187,20 @@ interface PublicXiangqiView {
     captured: string | null;
     participantHash: string;
     givesCheck: boolean;
+    notation: string;
   } | null;
+  legalMoves: Array<{ from: { row: number; col: number }; to: { row: number; col: number } }>;
+  history: Array<{
+    ply: number;
+    color: "red" | "black";
+    from: { row: number; col: number };
+    to: { row: number; col: number };
+    piece: string;
+    captured: string | null;
+    participantHash: string;
+    givesCheck: boolean;
+    notation: string;
+  }>;
   check: "red" | "black" | null;
   outcome: { result: string; winnerParticipantHash: string | null; reason: string | null } | null;
   pendingDrawFrom: string | null;
@@ -836,5 +849,185 @@ describe("象棋 视图纪律（无隐藏信息但走协议裁剪）", () => {
     state = commit(xiangqiEngine.applyAction(state, action(GUEST, "resign", "over-1")));
     expectRejected(xiangqiEngine.applyAction(state, moveAction(HOST, [6, 4], [5, 4], "over-2")), "game_over");
     expect(publicViewOf(state).outcome).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 批次 X2：中文记谱 / 合法走法字段 / 走棋历史进视图
+// ---------------------------------------------------------------------------
+
+/** 标准开局盘（与引擎 initialBoard 同构，供记谱纯函数直测）。 */
+function openingBoard(): Array<Array<string | null>> {
+  return boardFrom([
+    "rheakaehr",
+    ".........",
+    ".c.....c.",
+    "p.p.p.p.p",
+    ".........",
+    ".........",
+    "P.P.P.P.P",
+    ".C.....C.",
+    ".........",
+    "RHEAKAEHR",
+  ]);
+}
+
+describe("象棋 中文记谱（xiangqiMoveNotation）", () => {
+  it("开局着法：炮二平五 / 傌二进三 / 兵七进一 / 車一进二（红方用繁体字表）", () => {
+    const board = openingBoard();
+    // 红炮 (7,7) 纵线 = 9-7 = 二，平移到 col 4（纵线五）。
+    expect(xiangqiMoveNotation(board, { row: 7, col: 7 }, { row: 7, col: 4 })).toBe("炮二平五");
+    // 红傌 (9,7) → (7,6)：斜走记目的纵线（9-6=三）。红方字表与客户端
+    // XIANGQI_PIECE_CHARS 一致（帥仕相傌俥炮兵）。
+    expect(xiangqiMoveNotation(board, { row: 9, col: 7 }, { row: 7, col: 6 })).toBe("傌二进三");
+    // 红兵 (6,2) → (5,2)：同列直进记步数一。
+    expect(xiangqiMoveNotation(board, { row: 6, col: 2 }, { row: 5, col: 2 })).toBe("兵七进一");
+    // 红俥 (9,8) → (7,8)：同列直进两步。
+    expect(xiangqiMoveNotation(board, { row: 9, col: 8 }, { row: 7, col: 8 })).toBe("俥一进二");
+  });
+
+  it("黑方记谱用阿拉伯数字；进退方向按黑方自上而下", () => {
+    const board = openingBoard();
+    // 黑砲 (2,1) 纵线 = col+1 = 2，平移到 col 4（纵线 5）。
+    expect(xiangqiMoveNotation(board, { row: 2, col: 1 }, { row: 2, col: 4 })).toBe("砲2平5");
+    // 黑馬 (0,7) → (2,6)：黑方向下（row 增大）为进，斜走记目的纵线 7。
+    expect(xiangqiMoveNotation(board, { row: 0, col: 7 }, { row: 2, col: 6 })).toBe("馬8进7");
+    // 黑卒 (3,4) → (2,4)：row 减小为退，记步数 1。
+    expect(xiangqiMoveNotation(board, { row: 3, col: 4 }, { row: 2, col: 4 })).toBe("卒5退1");
+  });
+
+  it("退着与空起点兜底；同列双炮用 前/后 消歧", () => {
+    // 红兵过河后横移：红 (4,4) → (5,4) 为退一步。
+    const crossed = openingBoard();
+    crossed[4]![4] = "P";
+    crossed[6]![4] = null;
+    expect(xiangqiMoveNotation(crossed, { row: 4, col: 4 }, { row: 5, col: 4 })).toBe("兵五退一");
+    // 同列两枚红炮（(4,7) 前、(7,7) 后）：前/后 替代纵线号。
+    const twin = openingBoard();
+    twin[4]![7] = "C";
+    expect(xiangqiMoveNotation(twin, { row: 4, col: 7 }, { row: 4, col: 4 })).toBe("前炮平五");
+    expect(xiangqiMoveNotation(twin, { row: 7, col: 7 }, { row: 7, col: 4 })).toBe("后炮平五");
+    // 起点无子（异常输入）给占位符，不抛异常。
+    expect(xiangqiMoveNotation(openingBoard(), { row: 5, col: 4 }, { row: 4, col: 4 })).toBe("？？");
+  });
+});
+
+describe("象棋 合法走法字段（legalMoves，可走点提示数据源）", () => {
+  it("开局红方 44 个合法着法，全部为红子落点，含炮二平五", () => {
+    const state = started();
+    const view = publicViewOf(state);
+    expect(view.legalMoves).toHaveLength(44);
+    for (const move of view.legalMoves) {
+      const piece = view.board[move.from.row]?.[move.from.col] ?? null;
+      expect(piece).not.toBeNull();
+      expect(piece === piece?.toUpperCase()).toBe(true); // 起点全是红子（大写）
+    }
+    expect(view.legalMoves).toContainEqual({ from: { row: 7, col: 7 }, to: { row: 7, col: 4 } }); // 炮二平五
+    expect(view.legalMoves).toContainEqual({ from: { row: 7, col: 7 }, to: { row: 0, col: 7 } }); // 炮打黑马（同列炮架）
+  });
+
+  it("走子后 legalMoves 交棒给黑方；终局后清空为空表", () => {
+    let state = play(started(), HOST, [6, 4], [5, 4], "lm-1");
+    const view = publicViewOf(state);
+    expect(view.turn).toBe("black");
+    for (const move of view.legalMoves) {
+      const piece = view.board[move.from.row]?.[move.from.col] ?? null;
+      expect(piece === piece?.toUpperCase()).toBe(false); // 全是黑子（小写）
+    }
+    const resigned = commit(xiangqiEngine.applyAction(state, action(GUEST, "resign", "lm-2")));
+    expect(publicViewOf(resigned).legalMoves).toEqual([]);
+  });
+
+  it("应将局面：legalMoves 只剩解将着法（垫将/吃车/帅横躲），走后不再被将军", () => {
+    // 黑被红車沿 4 列将军；黑可 士垫将、帅横躲一路 或 車吃車，其余着法全部送将。
+    const state = crafted(
+      [
+        "...ak....",
+        ".........",
+        ".........",
+        ".........",
+        "....R....",
+        ".........",
+        ".........",
+        "....r....",
+        ".........",
+        "....K....",
+      ],
+      "black",
+    );
+    const view = publicViewOf(state);
+    expect(view.check).toBe("black");
+    expect(view.legalMoves).toEqual([
+      { from: { row: 0, col: 3 }, to: { row: 1, col: 4 } }, // 士垫将
+      { from: { row: 0, col: 4 }, to: { row: 0, col: 5 } }, // 帅横躲（出攻击线）
+      { from: { row: 7, col: 4 }, to: { row: 4, col: 4 } }, // 車吃車
+    ]);
+    for (const move of view.legalMoves) {
+      const next = unwrap(
+        xiangqiEngine.applyAction(
+          state,
+          moveAction(GUEST, [move.from.row, move.from.col], [move.to.row, move.to.col], `lm-check-${move.from.row}`),
+        ),
+      );
+      // 走后行棋方交棒给红方：黑不再处于被将军态（check 字段只标行棋方）。
+      expect(publicViewOf(next).check).not.toBe("black");
+    }
+  });
+
+  it("泄漏断言：legalMoves/history 不携带引擎簿记，公开视图与玩家视图同构", () => {
+    let state = started();
+    state = play(state, HOST, [6, 4], [5, 4], "lm-leak");
+    const publicView = xiangqiEngine.getPublicView(state).view as Record<string, unknown>;
+    const json = JSON.stringify(publicView);
+    expect(json).not.toContain("actionIds");
+    expect(json).not.toContain("checkStreaks");
+    expect(json).not.toContain('"positions"');
+    expect(json).not.toContain("turnMs");
+    // legalMoves 只描述行棋方（本例红已走完一手，行棋方是黑）的着法。
+    const legalMoves = publicView.legalMoves as Array<{ from: { row: number; col: number } }>;
+    for (const move of legalMoves) {
+      const piece = (publicView.board as Array<Array<string | null>>)[move.from.row]?.[move.from.col] ?? null;
+      expect(piece === piece?.toUpperCase()).toBe(false); // 黑子（小写）
+    }
+  });
+});
+
+describe("象棋 走棋历史进视图（history，棋谱侧栏数据源）", () => {
+  it("每手带中文记谱与吃子/将军旗标，lastMove 即最后一手完整记录", () => {
+    let state = play(started(), HOST, [6, 4], [5, 4], "hist-1"); // 兵五进一
+    state = play(state, GUEST, [3, 4], [4, 4], "hist-2"); // 卒5进1
+    const view = publicViewOf(state);
+    expect(view.history).toHaveLength(2);
+    expect(view.history[0]).toMatchObject({
+      ply: 1,
+      color: "red",
+      piece: "P",
+      captured: null,
+      notation: "兵五进一",
+      givesCheck: false,
+    });
+    expect(view.history[1]).toMatchObject({
+      ply: 2,
+      color: "black",
+      piece: "p",
+      notation: "卒5进1",
+    });
+    expect(view.moveCount).toBe(2);
+    expect(view.lastMove).toMatchObject({ ply: 2, notation: "卒5进1" });
+  });
+
+  it("吃子的记谱进 history；settle 快照同样带记谱", () => {
+    // 红炮 (7,1) 隔炮架（黑砲 (2,1)）打黑马 (0,1)：记谱 炮八进七。
+    // （开局 col 0 有红兵挡車路，直吃改走炮打——炮架正是黑砲，越过即吃。）
+    let state = play(started(), HOST, [7, 1], [0, 1], "hist-c1");
+    const view = publicViewOf(state);
+    expect(view.history[0]).toMatchObject({ ply: 1, captured: "h", notation: "炮八进七" });
+    // 吃马不将军：黑象/士仍隔在炮与黑帅之间（成两子不成炮架）。
+    expect(view.history[0]?.givesCheck).toBe(false);
+
+    state = commit(xiangqiEngine.applyAction(state, action(GUEST, "resign", "hist-c2")));
+    const settlement = xiangqiEngine.settle(state);
+    const history = settlement.summary.history as Array<{ ply: number; notation: string }>;
+    expect(history[0]?.notation).toBe("炮八进七");
   });
 });
