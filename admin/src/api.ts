@@ -1378,6 +1378,8 @@ export interface AdminTaskPack {
   hellFloors: number;
   prepItems: string[];
   prepText: string | null;
+  /** 包级 18+ 标志（0106）：仅爬塔可配置；插件玩法跟随清单 capabilities.adult。 */
+  adult: boolean;
   enabled: boolean;
   sortOrder: number;
   createdAt: string;
@@ -1406,6 +1408,8 @@ export interface AdminTaskPackInput {
   hellFloors: number;
   prepItems: string[];
   prepText: string | null;
+  /** 包级 18+ 标志（0106）：服务端 PATCH 语义，显式携带才改。 */
+  adult?: boolean;
   enabled: boolean;
   items: AdminTaskItemInput[];
 }

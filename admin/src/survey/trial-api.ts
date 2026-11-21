@@ -50,6 +50,8 @@ export interface TrialPack {
   /** 玩法类型（engine-registry 注册表），客户端按它分组展示。 */
   gameType: string;
   gameLabel: string;
+  /** 包级 18+ 标志（0106）：爬塔读列、插件读清单 capabilities.adult，与服务端校验同源。 */
+  adult: boolean;
   normalFloors: number;
   hellFloors: number;
   /** Preparation checklist the player should gather before floor 1. */
@@ -120,6 +122,12 @@ interface TrialStartRequest {
   persona: TrialPersona;
   mode: TrialMode;
   startingFloor: number;
+  /**
+   * 0106 包级 18+ 的服务端闸（请求参数确认）：adult 包必须显式携带 true，
+   * 服务端校验失败返回 451 + adult_ack_required。调用方只在本地包级 ack
+   * （trial-adult-ack.ts 的包级键）后才传 true。
+   */
+  adultAck?: boolean;
 }
 
 interface TrialActionResponse {

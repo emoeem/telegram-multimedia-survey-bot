@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../../../src/trial/engine-registry";
+import {
+  gameTypeLabel,
+  isAdultGamePack,
+  isPluginGameType,
+  listGameTypes,
+  normalizeGameType,
+} from "../../../src/trial/engine-registry";
 
 /**
  * 玩法类型清单：内置爬塔 + 已注册插件。
@@ -31,5 +37,16 @@ describe("engine-registry（玩法类型清单）", () => {
     expect(normalizeGameType(42)).toBeNull();
     expect(gameTypeLabel("mystery")).toBe("爬塔挑战");
     expect(gameTypeLabel("flip-card")).toBe("答题翻牌");
+  });
+
+  it("isAdultGamePack（0106 切分点）：爬塔读 adult 列，插件读清单 capabilities.adult", () => {
+    // 爬塔：列值即判定（0106 默认 0 = 全年龄，管理员勾选才 18+）。
+    expect(isAdultGamePack({ gameType: "tower", adult: false })).toBe(false);
+    expect(isAdultGamePack({ gameType: "tower", adult: true })).toBe(true);
+    // 插件：包行上的列值不参与判定，只看清单声明（quest=true、flip-card=false）。
+    expect(isAdultGamePack({ gameType: "quest", adult: false })).toBe(true);
+    expect(isAdultGamePack({ gameType: "flip-card", adult: true })).toBe(false);
+    // 未知玩法按非 adult 处理（开局入口本来就拒绝未知玩法）。
+    expect(isAdultGamePack({ gameType: "mystery", adult: true })).toBe(false);
   });
 });

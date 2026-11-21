@@ -1,7 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
-import { safeGet, safeSet } from "./storage";
-import { TRIAL_AGREEMENT_KEY } from "./GamePlayer";
+import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
 import { lazyPlayView } from "../game-plugins/loader";
 import type { GameHostBridge, GamePlayResult } from "../game-plugins/types";
 import type { GameRunView } from "../../../src/game-plugin/types";
@@ -70,7 +69,10 @@ export function PluginGamePlay({
   disabled?: boolean;
   onResult: (next: PluginGameAnswer) => void;
 }) {
-  const [adultAck, setAdultAck] = useState(() => safeGet(TRIAL_AGREEMENT_KEY) === "1");
+  // 0106：18+ ack 改按包键（键含 pack id，见 trial-adult-ack.ts）。原与
+  // TrialScreen 共用全局键 trialAdultAgreement:v1（一次确认解锁所有包），
+  // 本轮废除；旧全局键 '1' 只读单向兼容，存量用户零回归。
+  const [adultAck, setAdultAck] = useState(() => isAdultPackAckedLocally(packId));
   const [saved, setSaved] = useState<GamePlayResult | null>(() => {
     if (value && typeof value === "object" && !Array.isArray(value) && (value as { kind?: unknown }).kind === "game") {
       const answer = value as PluginGameAnswer;
@@ -86,6 +88,11 @@ export function PluginGamePlay({
   const [loadError, setLoadError] = useState<string | null>(null);
   const runIdRef = useRef<number | null>(null);
   const lastResultRef = useRef<GamePlayResult | null>(null);
+
+  // 换题换包时按新包重估 ack（/s 侧 question 切换不重挂组件）。
+  useEffect(() => {
+    setAdultAck(isAdultPackAckedLocally(packId));
+  }, [packId]);
 
   // 同一个插件只创建一次懒加载组件（每次 render 新建会反复挂载）。
   const PlayView = useMemo(() => lazyPlayView(pluginId), [pluginId]);
@@ -123,6 +130,9 @@ export function PluginGamePlay({
         persona,
         mode,
         startingFloor: 1,
+        // 0106 服务端第二道闸（请求参数确认）：adult 包显式携带；能走到
+        // 引擎开局说明宿主的包级门已放行（adultAck 状态即本地包级 ack）。
+        adultAck,
       });
       runIdRef.current = created.run.id;
       return created.view;
@@ -139,7 +149,8 @@ export function PluginGamePlay({
     return {
       adultAck,
       requestAdultAck: () => {
-        safeSet(TRIAL_AGREEMENT_KEY, "1");
+        // 0106 按包确认：只写包级键（键含 pack id），绝不回写全局键。
+        ackAdultPackLocally(packId);
         setAdultAck(true);
       },
       start,

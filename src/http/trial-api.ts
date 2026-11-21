@@ -38,7 +38,13 @@ import {
   TRIAL_SHOP,
   validateShopSelection,
 } from "../trial/engine";
-import { gameTypeLabel, isPluginGameType, listGameTypes, normalizeGameType } from "../trial/engine-registry";
+import {
+  gameTypeLabel,
+  isAdultGamePack,
+  isPluginGameType,
+  listGameTypes,
+  normalizeGameType,
+} from "../trial/engine-registry";
 import { applyPluginAction, loadActivePluginRun, pluginHistoryFields, startPluginRun } from "./trial-plugin-api";
 
 /**
@@ -92,6 +98,9 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
         description: pack.description,
         gameType: normalizeGameType(pack.gameType) ?? "tower",
         gameLabel: gameTypeLabel(pack.gameType),
+        // 包级 18+ 标志（0106）：爬塔读列、插件读清单 capabilities.adult，
+        // 与 POST /runs 的服务端校验同源（isAdultGamePack），客户端只渲染。
+        adult: isAdultGamePack(pack),
         normalFloors: pack.normalFloors,
         hellFloors: pack.hellFloors,
         prepItems: pack.prepItems,
@@ -220,6 +229,8 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
       persona?: unknown;
       mode?: unknown;
       startingFloor?: unknown;
+      /** 0106 包级 18+ 的服务端闸：adult 包必须显式携带 true（请求参数确认）。 */
+      adultAck?: unknown;
     } | null;
     const packId = Number(body?.packId);
     if (!Number.isInteger(packId) || packId <= 0) return fail(400, "validation_failed", "无效的任务包");
@@ -238,6 +249,15 @@ export async function handleTrialApiRequest(request: Request, env: Env, url: URL
     // 开局入口按玩法分发：内置爬塔走历史路径，插件玩法交给插件引擎。
     const gameType = normalizeGameType(pack.gameType);
     if (!gameType) return fail(400, "unsupported_game", "该玩法暂未开放，敬请期待");
+    // 0106 包级 18+ 服务端强制点（/api/trial/* 的唯一开局/加入入口，爬塔与
+    // 插件开局都从这里分发）：adult 包未携带显式 ack 参数直接拒开、不建
+    // task_runs 行。客户端第一道闸 = 包卡级确认弹层 + localStorage 包级键
+    // （键含 pack id，trial-adult-ack.ts）；本闸是第二道——请求参数确认，
+    // 客户端只在本地确认后才可能带上 adultAck: true。451 属 4xx，错误码
+    // adult_ack_required 供客户端识别后弹确认。
+    if (isAdultGamePack({ gameType, adult: pack.adult }) && body?.adultAck !== true) {
+      return fail(451, "adult_ack_required", "该任务包为 18+ 内容，请先确认年龄后再开始");
+    }
     if (isPluginGameType(gameType)) {
       return startPluginRun(env, { pack, participant, persona, mode });
     }

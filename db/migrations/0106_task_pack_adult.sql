@@ -1,0 +1,20 @@
+-- 0106: /trial 18+ 门禁从页级下沉到包级——task_packs 包级 adult 标志。
+--
+-- 动机：/trial 现行 18+ 门禁是纯客户端整页 localStorage 键
+-- （trialAdultAgreement:v1，TrialScreen.tsx 的页级 renderGate），/api/trial/*
+-- 对 adult 内容零服务端校验，清掉 localStorage 即可绕过。本列给门禁下沉
+-- （B5 批次）提供包级标志：
+--
+-- 1) 默认 0（全年龄）：页级门移除后，存量包的行为基线是「不再被整页门挡住」
+--    ——0045 以来的存量爬塔包都是普通任务内容，默认放行才不误伤；管理员在
+--    管理端包编辑里显式勾选才升为 18+（adult = 1）。
+-- 2) 仅爬塔（tower）参与玩家侧判定：effective adult 读取侧是
+--    engine-registry.isAdultGamePack——tower 读本列，插件玩法读清单现成的
+--    capabilities.adult（src/game-plugin/types.ts:38，quest=true、其余=false），
+--    插件协议不加列，包行上的 adult 列值对插件包仅作存储冗余。
+-- 3) 服务端强制点：POST /api/trial/runs（爬塔与插件开局的共同入口）对
+--    isAdultGamePack 的包校验请求参数 adultAck（包卡级一次性确认后的显式
+--    携带），未携带返回 451 + 错误码 adult_ack_required；客户端确认记录在
+--    localStorage 包级键（键含 pack id，见 admin/src/survey/trial-adult-ack.ts），
+--    两道闸（客户端键 + 服务端参数校验）缺一不可。
+ALTER TABLE task_packs ADD COLUMN adult INTEGER NOT NULL DEFAULT 0;

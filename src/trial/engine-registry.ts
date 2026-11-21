@@ -62,3 +62,16 @@ export function isPluginGameType(value: unknown): boolean {
   const id = String(value ?? "");
   return gamePluginRegistry.has(id);
 }
+
+/**
+ * 包级 18+ 判定（0106，/trial 门禁下沉的唯一切分点）：
+ * - 爬塔（tower）：读 task_packs.adult 列（0106，管理端可编辑，默认 0）；
+ * - 插件玩法：读清单现成的 capabilities.adult（src/game-plugin/types.ts:38，
+ *   如 quest=true、其余=false）——插件协议不加列，包行上的 adult 列值
+ *   对插件包不参与玩家侧判定。
+ * 未知玩法按非 adult 处理（开局入口本来就拒绝未知玩法）。
+ */
+export function isAdultGamePack(pack: { gameType: string; adult: boolean }): boolean {
+  if (pack.gameType === "tower") return pack.adult;
+  return gamePluginRegistry.get(pack.gameType)?.manifest.capabilities.adult === true;
+}

@@ -21,8 +21,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { safeGet, safeSet, safeRemove } from "./storage";
 import { safeCopy } from "./clipboard";
+import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
 import { useDialogs } from "../components/Dialogs";
 import {
@@ -67,8 +67,6 @@ import {
 import type { UnlockedAchievement } from "./api";
 import type { GameRunView } from "../../../src/game-plugin/types";
 
-const AGREEMENT_KEY = "trialAdultAgreement:v1";
-
 const PERSONA_OPTIONS: { id: TrialPersona; label: string; hint: string }[] = [
   { id: "male", label: "公", hint: "任务按公向文案抽取" },
   { id: "female", label: "母", hint: "任务按母向文案抽取" },
@@ -99,7 +97,9 @@ const GRADE_STYLE: Record<TrialGrade, { ring: string; badge: string }> = {
 };
 
 type HomeTab = "home" | "runs" | "board";
-type Screen = "gate" | "home" | "shop" | "run" | "done" | "plugin";
+// 0106 门禁下沉：页级 18+ 门（原 "gate" 整页拦截）已移除，首页包卡直接渲染；
+// adult 包改为「包卡徽标 + 按包确认弹层」，ack 语义见 trial-adult-ack.ts。
+type Screen = "home" | "shop" | "run" | "done" | "plugin";
 
 /** 插件玩法局在首页「进行中」卡片的挂点：run 是摘要 + 开局/恢复时的当帧视图。 */
 type ActivePluginRun = { run: TrialRun; view: GameRunView };
@@ -139,7 +139,8 @@ function modeLabel(mode: TrialMode): string {
 }
 
 export function TrialScreen() {
-  const [screen, setScreen] = useState<Screen>(() => (safeGet(AGREEMENT_KEY) === "1" ? "home" : "gate"));
+  // 0106 门禁下沉：页级 18+ 门移除，首屏直接进首页（无整页拦截）。
+  const [screen, setScreen] = useState<Screen>("home");
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [packs, setPacks] = useState<TrialPack[] | null>(null);
   const [gameTypes, setGameTypes] = useState<TrialGameType[]>([]);
@@ -197,6 +198,12 @@ export function TrialScreen() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [me, setMe] = useState<{ telegram: boolean; isAdmin: boolean } | null>(null);
   const [warningAckId, setWarningAckId] = useState<number | null>(null);
+  // 0106 包级 18+：待确认 ack 的包（null = 无弹层）；确认后续跑被暂挂的开局
+  // （pendingStart 存配置，避免把 ack 流程塞进 startGame 的回调）。
+  const [adultAckPack, setAdultAckPack] = useState<TrialPack | null>(null);
+  const pendingStartRef = useRef<{ packId: number; persona: TrialPersona; mode: TrialMode; startFloor: number } | null>(
+    null,
+  );
 
   const { confirm, toast } = useDialogs();
 
@@ -296,11 +303,6 @@ export function TrialScreen() {
   const floorOptions = Array.from({ length: floorCount }, (_, index) => index + 1);
   const normalizedStartFloor = Math.min(Math.max(Number(startFloor) || 1, 1), Math.max(floorCount, 1));
 
-  const agree = () => {
-    safeSet(AGREEMENT_KEY, "1");
-    setScreen("home");
-  };
-
   const goHome = useCallback(() => {
     setScreen("home");
     setNotice(null);
@@ -325,6 +327,13 @@ export function TrialScreen() {
     // 服务端 normalizeGameType 保证 game_type 非 tower 即已注册插件。
     const targetPack = packs?.find((pack) => pack.id === effective.packId) ?? null;
     const isPluginPack = targetPack !== null && targetPack.gameType !== "tower";
+    // 0106 包级 18+ 第一道闸（客户端）：未 ack 的 adult 包先弹按包确认弹层，
+    // 不发起开局请求；确认记录走包级键（键含 pack id，绝不回写全局键）。
+    if (targetPack?.adult && !isAdultPackAckedLocally(effective.packId)) {
+      pendingStartRef.current = effective;
+      setAdultAckPack(targetPack);
+      return;
+    }
     setStarting(true);
     setNotice(null);
     void requestNotificationPermission();
@@ -334,6 +343,9 @@ export function TrialScreen() {
         persona: effective.persona,
         mode: effective.mode,
         startingFloor: effective.startFloor,
+        // 0106 包级 18+ 第二道闸（服务端请求参数确认）：adult 包显式携带，
+        // 能走到这里说明本地包级键已 ack（第一道闸放行）。
+        ...(targetPack?.adult ? { adultAck: true } : {}),
       });
       lastConfigRef.current = effective;
       if (isPluginPack) {
@@ -351,6 +363,14 @@ export function TrialScreen() {
       setScreen(response.run.phase === "shop" ? "shop" : "run");
     } catch (error) {
       const message = error instanceof Error ? error.message : "开局失败";
+      // 0106 451 自愈：本地包级键缺失而服务端认定 adult（管理员刚把包标成
+      // 18+、首页包列表还是旧数据），直接弹按包确认弹层——确认后 pendingStart
+      // 续跑开局，用户不用手动重试。
+      if ((error as Error & { code?: string })?.code === "adult_ack_required" && targetPack) {
+        pendingStartRef.current = effective;
+        setAdultAckPack(targetPack);
+        return;
+      }
       if (message.includes("进行中")) {
         try {
           const active = await fetchTrialActiveRun();
@@ -387,6 +407,20 @@ export function TrialScreen() {
     } finally {
       setStarting(false);
     }
+  };
+
+  // 0106 包级 ack 确认（语义①，绝不回写全局键 trialAdultAgreement:v1——回写
+  // 会立即废掉包级粒度）：先落本地包级键再续跑被暂挂的开局。服务端没有 ack
+  // 偏好存储（请求参数确认语义，见 trial-adult-ack.ts 头注释③），无「写失败
+  // 死状态」问题；下次开局如撞 451 会由 catch 里的自愈分支重弹确认。
+  const confirmAdultAck = () => {
+    const pack = adultAckPack;
+    const effective = pendingStartRef.current;
+    setAdultAckPack(null);
+    pendingStartRef.current = null;
+    if (!pack || !effective) return;
+    ackAdultPackLocally(pack.id);
+    void startGame(effective);
   };
 
   const resumeRun = async () => {
@@ -760,46 +794,43 @@ export function TrialScreen() {
     </div>
   );
 
-  const renderGate = () => (
-    <div className="grid min-h-dvh place-items-center px-5 py-10">
-      <div className="w-full max-w-md overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] shadow-xl">
-        <div className="bg-gradient-to-br from-[color-mix(in_srgb,var(--survey-primary)_25%,transparent)] to-[var(--survey-bg)] px-6 py-8 text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[var(--survey-primary-soft)]">
-            <Trophy className="h-8 w-8 text-[var(--survey-primary)]" aria-hidden="true" />
+  // 0106 包级 18+ 确认弹层（原页级门禁 renderGate 的包卡化）：合规警示文案
+  // 沿用原门，确认只对当前包生效（包级 ack，语义见 trial-adult-ack.ts）。
+  const renderAdultAckModal = () =>
+    adultAckPack ? (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-5">
+        <div className="w-full max-w-md overflow-hidden rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] shadow-xl">
+          <div className="p-6">
+            <div className="rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
+              <p className="flex items-start gap-1.5">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+                <span>
+                  「{adultAckPack.name}」为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
+                </span>
+              </p>
+              <p className="mt-1">全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
+            </div>
+            <button
+              type="button"
+              onClick={confirmAdultAck}
+              className="mt-6 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+            >
+              我已年满 18 周岁，开始
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdultAckPack(null);
+                pendingStartRef.current = null;
+              }}
+              className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-medium text-[var(--survey-muted)]"
+            >
+              取消
+            </button>
           </div>
-          <h1 className="mt-3 text-center text-2xl font-black tracking-tight text-[var(--survey-heading)] lg:font-[family-name:var(--fx-font-serif)] lg:tracking-[0.04em]">
-            小游戏
-          </h1>
-          <p className="mt-1 text-center text-sm text-[var(--survey-muted)]">爬塔挑战 · 文字扮演 · 逐层上行</p>
-        </div>
-        <div className="p-6">
-          <div className="rounded-2xl border border-[var(--survey-card-border)] bg-[var(--survey-bg)] p-4 text-[13px] leading-6 text-[var(--survey-body)]">
-            <p className="flex items-start gap-1.5">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-              <span>
-                本页面为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
-              </span>
-            </p>
-            <p className="mt-1">全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
-          </div>
-          <button
-            type="button"
-            onClick={agree}
-            className="mt-6 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
-          >
-            我已年满 18 周岁，同意进入
-          </button>
-          <button
-            type="button"
-            onClick={() => closeWebApp()}
-            className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-sm font-medium text-[var(--survey-muted)]"
-          >
-            离开
-          </button>
         </div>
       </div>
-    </div>
-  );
+    ) : null;
 
   const renderHomeContent = () => (
     <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-2xl">
@@ -1004,6 +1035,12 @@ export function TrialScreen() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
+                        {/* 0106 包级 18+ 徽标：adult 包需按包确认后才能开局。 */}
+                        {pack.adult ? (
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                            18+
+                          </span>
+                        ) : null}
                         <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
                           {pack.gameType === "tower" ? `${pack.normalFloors}/${pack.hellFloors} 层` : "即开即玩"}
                         </span>
@@ -1786,19 +1823,6 @@ export function TrialScreen() {
       </>
     ) : null;
 
-  if (screen === "gate") {
-    return (
-      <div
-        className="survey-glow min-h-dvh"
-        data-theme={resolvedPreset ?? undefined}
-        style={{ ...themeVars.vars, ...themeVars.background }}
-      >
-        {renderGate()}
-        {renderThemePicker()}
-      </div>
-    );
-  }
-
   if (screen === "run") {
     return (
       <div
@@ -1860,6 +1884,7 @@ export function TrialScreen() {
       {renderHeader("小游戏", "选一个玩法和包，开始你的挑战", false)}
       {renderTabs()}
       {activeTab === "home" ? renderHomeContent() : activeTab === "runs" ? renderRunsContent() : renderBoardContent()}
+      {renderAdultAckModal()}
       {renderThemePicker()}
       <BottomNav />
     </div>

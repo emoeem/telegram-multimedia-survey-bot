@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Coins, Dices, Shield, Ticket, TriangleAlert, Trophy, Zap } from "lucide-react";
-import { safeGet, safeSet } from "./storage";
+import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
 import { vibrateFail, vibrateLight, vibrateSuccess } from "./haptics";
 import {
   confirmTrialShop,
@@ -23,11 +23,11 @@ import type { AnswerValue } from "./api";
  * 结束（通关/放弃/护盾结算）后通过 onResult 把挑战局写回答卷——
  * 服务端会按 runId 从 task_runs 重算分数，客户端值仅用于展示与本地跳转。
  *
- * 与 TrialScreen 的完整版共用同一个 18+ 门禁 localStorage 键：同意过一次，
- * 两个入口都不再重复询问。
+ * 18+ 门禁（0106）：原与 TrialScreen 共用同一个全局 localStorage 键
+ * （trialAdultAgreement:v1，一次确认解锁所有包），本轮改为**按包**——
+ * 确认写入包级键（键含 pack id，见 trial-adult-ack.ts）；旧全局键 '1'
+ * 只读单向兼容，存量用户零回归。门禁卡片的 DOM 与文案原样保留。
  */
-
-export const TRIAL_AGREEMENT_KEY = "trialAdultAgreement:v1";
 
 export type GameAnswerValue = Extract<AnswerValue, { kind: "game" }>;
 
@@ -66,7 +66,9 @@ export function GamePlayer({
     value && typeof value === "object" && !Array.isArray(value) && (value as { kind?: unknown }).kind === "game"
       ? (value as GameAnswerValue)
       : null;
-  const [phase, setPhase] = useState<Phase>(() => (safeGet(TRIAL_AGREEMENT_KEY) === "1" ? "setup" : "gate"));
+  const [phase, setPhase] = useState<Phase>(() =>
+    packId !== null && isAdultPackAckedLocally(packId) ? "setup" : "gate",
+  );
   const [persona, setPersona] = useState<TrialPersona>("male");
   const [mode, setMode] = useState<TrialMode>("normal");
   const [run, setRun] = useState<TrialRun | null>(null);
@@ -91,6 +93,15 @@ export function GamePlayer({
     },
     [onResult],
   );
+
+  // 换题换包时按新包重估 18+ ack（0106 按包键）：已 ack 该包或旧全局键兼容
+  // 的保持 setup，未 ack 的回到 gate。只在 gate/setup 间切换，不打断进行中的局。
+  useEffect(() => {
+    setPhase((current) => {
+      if (current !== "gate" && current !== "setup") return current;
+      return packId !== null && isAdultPackAckedLocally(packId) ? "setup" : "gate";
+    });
+  }, [packId]);
 
   // 有进行中的局时自动接上（换题/刷新不断档）；找不到就停在开局设置。
   useEffect(() => {
@@ -117,7 +128,15 @@ export function GamePlayer({
     setBusy(true);
     setError(null);
     try {
-      const response = await startTrialRun({ packId, persona, mode, startingFloor: 1 });
+      const response = await startTrialRun({
+        packId,
+        persona,
+        mode,
+        startingFloor: 1,
+        // 0106 服务端第二道闸（请求参数确认）：能点开始说明该包已过本地
+        // 包级门（adultAck 由此派生）；非 adult 包服务端忽略该参数。
+        adultAck: isAdultPackAckedLocally(packId),
+      });
       setRun(response.run);
       setTask(response.task);
       setShopQty({ skipTickets: 0, boosters: 0, shields: 0 });
@@ -189,7 +208,8 @@ export function GamePlayer({
   };
 
   const agree = () => {
-    safeSet(TRIAL_AGREEMENT_KEY, "1");
+    // 0106 按包确认：只写包级键（键含 pack id），绝不回写全局键。
+    if (packId !== null) ackAdultPackLocally(packId);
     setPhase("setup");
   };
 
