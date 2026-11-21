@@ -11,8 +11,11 @@
  *   setAlarm 先例：终态即停闹，不做常驻心跳）。
  *
  * 存储纪律：房间实时态只写 DO storage（键 `room` + `act:<actionId>` 去重表
- * + `settlement` 结算快照）。**DO 与引擎绝不触碰 D1**——"每步棋不触 D1"，
- * 索引与终态由 HTTP 层写进 game_rooms / game_matches（0105）。
+ * + `settlement` 结算快照 + 聊天暂存 `chat:*`）。**DO 与引擎绝不触碰
+ * D1/KV/R2**——"每步棋不触 D1"，索引与终态由 HTTP 层写进 game_rooms /
+ * game_matches（0105）。聊天只暂存文字（环形 50 条，断线重连补发），语音/
+ * 图片收到即中继、不落任何存储；settle/close/回收三条路径全部清空 `chat:*`
+ * （对局结束即焚）。
  *
  * 身份信任模型：Worker（src/http/game-api.ts）用 resolveParticipant 鉴权后，
  * 把身份放进 `x-game-viewer-hash` / `x-game-role` 头转发进来；DO 内部绑定
@@ -23,9 +26,12 @@ import { DurableObject } from "cloudflare:workers";
 
 import { resolveGameEngine } from "../game/multiplayer/engine-registry";
 import {
+  CHAT_HISTORY_LIMIT,
   gameRoomDOName,
   parseGameRoomRef,
+  type ChatClientMessage,
   type GameActionRecord,
+  type GameChatMessage,
   type GameClientMessage,
   type GameProtocolErrorCode,
   type GamePublicView,
@@ -37,10 +43,31 @@ import {
   type GameSettlement,
   type EngineOutcome,
 } from "../game/multiplayer/engine-types";
+import {
+  canAccessChannel,
+  chatChannelAccess,
+  chatPurgeRequired,
+  chatRateFilter,
+  chatRingEvictionSeq,
+  chatSeqKey,
+  type ChatChannelAccess,
+  validateChatImage,
+  validateChatText,
+  validateChatVoice,
+  visibleChatHistory,
+} from "../game/multiplayer/chat-logic";
 
 const ROOM_KEY = "room";
 const SETTLEMENT_KEY = "settlement";
 const ACTION_KEY_PREFIX = "act:";
+/** 聊天序号计数器（单调整数，文字暂存键由它派生）。 */
+const CHAT_SEQ_KEY = "chat:seq";
+/** 每参与者速率窗口键：值 = 最近成功发送的时间戳数组（滑动窗口，休眠不丢）。 */
+const CHAT_RATE_KEY_PREFIX = "chat:rate:";
+/** 文字聊天暂存键前缀（值 = GameChatMessage；语音/图片绝不落这个前缀）。 */
+const CHAT_MSG_KEY_PREFIX = "chat:m:";
+/** 聊天全部键的公共前缀（即焚清理与回收兜底的删除范围）。 */
+const CHAT_KEY_PREFIX = "chat:";
 
 /** lobby 空房间（无任何在线连接且全员未开局）的回收时延。 */
 const EMPTY_ROOM_TTL_MS = 30 * 60 * 1000;
@@ -65,6 +92,14 @@ function protocolError(
   message: string,
 ): { ok: false; error: { code: GameProtocolErrorCode; message: string } } {
   return { ok: false, error: { code, message } };
+}
+
+/** 聊天被拒的统一回帧形状（type:"error" 帧不含 ok 字段）。 */
+function chatErrorFrame(
+  code: GameProtocolErrorCode,
+  message: string,
+): { message: GameServerMessage; stateChanged: false } {
+  return { message: { type: "error", code, message }, stateChanged: false };
 }
 
 export class GameRoomDO extends DurableObject {
@@ -468,6 +503,14 @@ export class GameRoomDO extends DurableObject {
     // 连接落地后房间有主：走 commitState 重算 lobby 回收时间（有人在线 = 不回收）。
     await this.commitState(room);
     ws.send(JSON.stringify(await this.buildServerMessage(room, viewerHash, role)));
+    // 聊天历史（仅文字，环形 50 条）按查看者频道裁剪补发：断线重连与后进房
+    // 的观看者靠它补齐讨论；语音/图片从不暂存，历史里没有它们。
+    ws.send(
+      JSON.stringify({
+        type: "chat_history",
+        messages: await this.chatHistoryFor(room, viewerHash),
+      } satisfies GameServerMessage),
+    );
     // 新连接改变了在线名单：全房推送 presence（对手掉线提示依赖它）。
     await this.broadcastPresence();
   }
@@ -498,7 +541,7 @@ export class GameRoomDO extends DurableObject {
       return;
     }
     const attachment = readAttachment(ws);
-    const result = await this.dispatchClientMessage(parsed, attachment);
+    const result = await this.dispatchClientMessage(parsed, attachment, ws);
     ws.send(JSON.stringify(result.message));
     if (result.stateChanged) await this.broadcastState();
   }
@@ -521,11 +564,13 @@ export class GameRoomDO extends DurableObject {
 
   /**
    * WS 客户端消息分发（与 REST 控制面同一套引擎调用，保证两条路径行为一致）。
-   * 返回值直接回给发送者；stateChanged 时再向全房间广播。
+   * 返回值直接回给发送者；stateChanged 时再向全房间广播。聊天消息额外携带
+   * 发送者连接：中继广播要排除它，回显经返回值单发（恰好一份）。
    */
   private async dispatchClientMessage(
     message: GameClientMessage,
     attachment: SocketAttachment | null,
+    sender?: WebSocket,
   ): Promise<{ message: GameServerMessage; stateChanged: boolean }> {
     if (!attachment) {
       return { message: { type: "error", code: "invalid_payload", message: "连接缺少身份" }, stateChanged: false };
@@ -626,9 +671,135 @@ export class GameRoomDO extends DurableObject {
           stateChanged: false,
         };
       }
+      case "chat_text":
+      case "chat_voice":
+      case "chat_image":
+        return this.handleChatSend(message, attachment, room, sender);
       default:
         return { message: { type: "error", code: "invalid_payload", message: "未知消息类型" }, stateChanged: false };
     }
+  }
+
+  // ------------------------------------------------------------------
+  // 房间内聊天（chat_text / chat_voice / chat_image：收到即中继，即焚）
+  // ------------------------------------------------------------------
+
+  /**
+   * 聊天发送：校验链全部通过才中继——房间状态（结算/关闭即拒）→ 频道资格
+   * （wolves 仅狼人、dead 收留死亡与观战）→ 内容大小/审核 → 每参与者速率
+   * 窗口。文字入环形暂存（最近 50 条，断线重连补发用）；语音/图片只在内存
+   * 里转发，不落任何存储、不进日志。回显经 dispatch 返回值单发给发送者，
+   * 其余成员经 broadcastChat 按频道裁剪后收到。
+   */
+  private async handleChatSend(
+    message: ChatClientMessage,
+    attachment: SocketAttachment,
+    room: GameRoomState,
+    sender?: WebSocket,
+  ): Promise<{ message: GameServerMessage; stateChanged: boolean }> {
+    // 对局结束即焚：结算/关闭的房间不再接受新消息（历史已清空）。
+    if (room.status !== "lobby" && room.status !== "playing") {
+      return chatErrorFrame("game_over", "对局已结束，聊天已焚毁");
+    }
+    const access = this.chatAccessFor(room, attachment.participantHash);
+    if (!canAccessChannel(access, message.channel)) {
+      return chatErrorFrame("chat_channel_forbidden", "你不在该频道的可见范围内");
+    }
+    // 内容校验先行：被拒的尝试不占速率窗口。
+    let kind: GameChatMessage["kind"];
+    let payload: Pick<GameChatMessage, "text" | "voice" | "image">;
+    if (message.type === "chat_text") {
+      const check = validateChatText(message.text);
+      if (!check.ok) return chatErrorFrame(check.code, check.message);
+      kind = "text";
+      payload = { text: check.value };
+    } else if (message.type === "chat_voice") {
+      const check = validateChatVoice(message.audioBase64, message.durationMs, message.mimeType);
+      if (!check.ok) return chatErrorFrame(check.code, check.message);
+      kind = "voice";
+      payload = { voice: check.value };
+    } else {
+      const check = validateChatImage(message.dataUrl);
+      if (!check.ok) return chatErrorFrame(check.code, check.message);
+      kind = "image";
+      payload = { image: { dataUrl: check.value } };
+    }
+    // 速率窗口（每参与者滑动窗口；文字/语音/图片合并计数，状态进 storage 休眠不丢）。
+    const rateKey = CHAT_RATE_KEY_PREFIX + attachment.participantHash;
+    const decision = chatRateFilter((await this.ctx.storage.get<number[]>(rateKey)) ?? [], Date.now());
+    if (!decision.allowed) {
+      const seconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000));
+      return chatErrorFrame("chat_rate_limited", `发言太频繁了，请 ${seconds} 秒后再试`);
+    }
+    await this.ctx.storage.put(rateKey, decision.next);
+
+    const seq = ((await this.ctx.storage.get<number>(CHAT_SEQ_KEY)) ?? 0) + 1;
+    await this.ctx.storage.put(CHAT_SEQ_KEY, seq);
+    // 发送者=座位昵称（观战者无座位行，固定「观战者」）；绝不带 IP/UA。
+    const from =
+      attachment.role === "player"
+        ? (room.players.find((p) => p.participantHash === attachment.participantHash)?.displayName ?? "玩家")
+        : "观战者";
+    const chat: GameChatMessage = {
+      seq,
+      channel: message.channel,
+      kind,
+      from,
+      fromHash: attachment.participantHash,
+      at: Date.now(),
+      clientId: typeof message.clientId === "string" ? message.clientId.slice(0, 64) : "",
+      ...payload,
+    };
+    // 只有文字入环形暂存；语音/图片不落盘（存储成本与隐私即焚的要求）。
+    if (kind === "text") {
+      await this.ctx.storage.put(chatSeqKey(seq), chat);
+      const evictSeq = chatRingEvictionSeq(seq, CHAT_HISTORY_LIMIT);
+      if (evictSeq !== null) await this.ctx.storage.delete(chatSeqKey(evictSeq));
+    }
+    await this.broadcastChat(chat, sender);
+    return { message: { type: "chat", message: chat }, stateChanged: false };
+  }
+
+  /** 频道资格：在座与否 + 引擎 chatMembership 钩子（纯判定在 chat-logic）。 */
+  private chatAccessFor(room: GameRoomState, participantHash: string): ChatChannelAccess {
+    const active = room.players.some((p) => p.participantHash === participantHash && p.leftAt === null);
+    const engine = resolveGameEngine(room.gameType);
+    const hook = active && engine?.chatMembership ? engine.chatMembership(room, participantHash) : null;
+    return chatChannelAccess({ isActivePlayer: active, isSpectator: !active, hook });
+  }
+
+  /**
+   * 聊天中继：按频道裁剪的定向推送——绝不做全房广播（wolves 帧发给非狼 =
+   * 私密信息泄漏）。发送者连接被排除（回显走 dispatch 返回值，恰好一份）；
+   * 同一发送者的其他连接（多端/重连期）仍按资格正常收到。
+   */
+  private async broadcastChat(message: GameChatMessage, exclude?: WebSocket): Promise<void> {
+    const room = await this.loadRoom();
+    if (!room) return;
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket === exclude) continue;
+      const attachment = readAttachment(socket);
+      if (!attachment) continue;
+      if (!canAccessChannel(this.chatAccessFor(room, attachment.participantHash), message.channel)) continue;
+      try {
+        socket.send(JSON.stringify({ type: "chat", message } satisfies GameServerMessage));
+      } catch {
+        // 单连接失败不阻断中继；断开由 webSocketClose/Error 收尾。
+      }
+    }
+  }
+
+  /** 断线重连/后进房补发：环形暂存的文字按查看者频道裁剪（语音/图片从不暂存）。 */
+  private async chatHistoryFor(room: GameRoomState, viewerHash: string): Promise<GameChatMessage[]> {
+    const access = this.chatAccessFor(room, viewerHash);
+    const stored = await this.ctx.storage.list<GameChatMessage>({ prefix: CHAT_MSG_KEY_PREFIX });
+    return visibleChatHistory([...stored.values()], access);
+  }
+
+  /** 聊天即焚：删除 chat:* 全部键（文字暂存 / 速率窗口 / 序号计数）。 */
+  private async clearChat(): Promise<void> {
+    const keys = [...(await this.ctx.storage.list({ prefix: CHAT_KEY_PREFIX })).keys()];
+    if (keys.length > 0) await this.ctx.storage.delete(keys);
   }
 
   // ------------------------------------------------------------------
@@ -792,6 +963,10 @@ export class GameRoomDO extends DurableObject {
       next.recycleAt = online === 0 ? Date.now() + EMPTY_ROOM_TTL_MS : null;
     }
     await this.ctx.storage.put(ROOM_KEY, next);
+    // 即焚：结算/关闭的房间立刻清空聊天（环形文字 + 速率窗口 + 序号）。回收
+    // 路径另有 alarm 的 storage.deleteAll 兜底，但即焚不必等回收 TTL——对局
+    // 一结束聊天就该消失。幂等：终态房间的后续 commit（如重连观战）重复清。
+    if (chatPurgeRequired(next.status)) await this.clearChat();
     await this.ensureAlarm();
   }
 

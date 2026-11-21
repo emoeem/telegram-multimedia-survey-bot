@@ -20,7 +20,13 @@
  * 断线恢复：连接断开按 1s→2s→4s…15s 封顶自动重连；重连成功后先拉一次
  * REST /state 兜底补齐断线期间错过的变更，再交给 WS 推送维持实时。
  */
-import type { GameClientMessage, GamePlayerView, GamePublicView } from "../../../src/game/multiplayer/engine-types";
+import type {
+  GameChatChannel,
+  GameChatMessage,
+  GameClientMessage,
+  GamePlayerView,
+  GamePublicView,
+} from "../../../src/game/multiplayer/engine-types";
 import { identityHeaders } from "./api";
 import { sessionParticipantIdentity } from "./participant-token";
 import { gameErrorText, roomCodeToId } from "./game-room-logic";
@@ -194,6 +200,10 @@ export interface GameRoomConnectionOptions {
   onStatus: (status: GameConnectionStatus, attempt: number) => void;
   /** 在线人数推送（presence）：对手掉线提示的信号源。缺省忽略。 */
   onPresence?: (counts: { players: number; spectators: number }) => void;
+  /** 房间内聊天（收到即中继，含自己的回显与他人的转发）。缺省忽略。 */
+  onChat?: (message: GameChatMessage) => void;
+  /** 进房/重连时的文字聊天补发（服务端按人裁剪；语音/图片不落盘不在历史里）。缺省忽略。 */
+  onChatHistory?: (messages: GameChatMessage[]) => void;
 }
 
 /** WS 升级地址：同源 /api/game/rooms/:id/ws（Worker 鉴权后转发到房间 DO）。 */
@@ -297,6 +307,35 @@ export class GameRoomConnection {
   /** 离开房间。 */
   sendLeave(): void {
     this.send({ type: "leave" });
+  }
+
+  /**
+   * 房间内聊天三类信封（chat_text/chat_voice/chat_image）：fire-and-forget，
+   * 上屏以服务端回显（onChat）为准；被拒（超限/限流/频道无资格）走 error
+   * 帧 → onNotice。语音/图片的 base64 已由采集层压到协议上限内，服务端
+   * 会再校验一次（超限明确错误码）。
+   */
+  sendChatText(channel: GameChatChannel, text: string, clientId: string): void {
+    this.send({ type: "chat_text", channel, text, clientId });
+  }
+
+  sendChatVoice(
+    channel: GameChatChannel,
+    voice: { audioBase64: string; durationMs: number; mimeType: string },
+    clientId: string,
+  ): void {
+    this.send({
+      type: "chat_voice",
+      channel,
+      audioBase64: voice.audioBase64,
+      durationMs: voice.durationMs,
+      mimeType: voice.mimeType,
+      clientId,
+    });
+  }
+
+  sendChatImage(channel: GameChatChannel, dataUrl: string, clientId: string): void {
+    this.send({ type: "chat_image", channel, dataUrl, clientId });
   }
 
   // ------------------------------------------------------------------
@@ -412,6 +451,20 @@ export class GameRoomConnection {
       const players = typeof message.onlinePlayers === "number" ? message.onlinePlayers : null;
       const spectators = typeof message.onlineSpectators === "number" ? message.onlineSpectators : null;
       if (players !== null && spectators !== null) this.options.onPresence?.({ players, spectators });
+    }
+    // 房间内聊天：单条转发帧（含自己的回显）；载荷形状不对整帧丢弃（服务端
+    // 是唯一事实来源，这里只按形状防御）。
+    if (message.type === "chat") {
+      const chat = message.message as GameChatMessage | undefined;
+      if (chat && typeof chat.seq === "number" && typeof chat.channel === "string") {
+        this.options.onChat?.(chat);
+      }
+      return;
+    }
+    if (message.type === "chat_history") {
+      if (Array.isArray(message.messages)) {
+        this.options.onChatHistory?.(message.messages as GameChatMessage[]);
+      }
     }
   }
 

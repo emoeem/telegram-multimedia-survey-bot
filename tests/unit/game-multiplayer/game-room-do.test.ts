@@ -472,14 +472,15 @@ describe("GameRoomDO WebSocket Hibernation", () => {
       instance as unknown as { registerSocket(ws: FakeSocket, hash: string, room: GameRoomState): Promise<void> }
     ).registerSocket(hostSocket, HOST, fake.peek("room") as GameRoomState);
     expect(hostSocket.tags).toEqual(["player"]);
-    // 首帧 state + presence 广播（W4：在线人数推送）。
-    expect(hostSocket.sent).toHaveLength(2);
+    // 首帧 state + 聊天历史（房间聊天批次：空历史也是一帧）+ presence 广播。
+    expect(hostSocket.sent).toHaveLength(3);
     expect(hostSocket.sent[0]!.type).toBe("state");
     expect((hostSocket.sent[0] as { role: string }).role).toBe("player");
     expect((hostSocket.sent[0] as { view: { view: { mySecret: string } } }).view.view.mySecret).toBe(
       `secret-of-${HOST}`,
     );
-    expect(hostSocket.sent[1]).toEqual({ type: "presence", onlinePlayers: 1, onlineSpectators: 0 });
+    expect(hostSocket.sent[1]).toEqual({ type: "chat_history", messages: [] });
+    expect(hostSocket.sent[2]).toEqual({ type: "presence", onlinePlayers: 1, onlineSpectators: 0 });
 
     const spectatorSocket = fakeSocket();
     await (

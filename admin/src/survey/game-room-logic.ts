@@ -10,6 +10,7 @@
  * - parseGomokuView 按「服务端可能返回任何 JSON」防御收敛：形状对不上返回
  *   null，屏层落错误态，绝不白屏。
  */
+import type { GameChatChannel, GameChatMessage } from "../../../src/game/multiplayer/engine-types";
 
 export type GomokuColor = "black" | "white";
 
@@ -238,6 +239,12 @@ const GAME_ERROR_TEXT: Record<string, string> = {
   method_not_allowed: "请求方式不支持",
   bad_response: "房间数据加载失败，请稍后再试",
   unknown_error: "请求没有成功，请稍后再试",
+  // 房间内聊天（engine-types 末尾追加的聊天码；WS error 帧经 gameErrorText 收敛）
+  chat_too_long: "消息最长 500 字，请分几条发送",
+  chat_payload_too_large: "语音/图片超过 300KB 上限，压缩后再发",
+  chat_rate_limited: "发言太频繁了，休息一下再试",
+  chat_channel_forbidden: "你不在该频道的可见范围内",
+  chat_content_rejected: "内容包含不允许的字词，请修改后再试",
 };
 
 /**
@@ -416,4 +423,38 @@ export function parseGomokuView(payload: unknown): GomokuView | null {
     pendingUndoFrom: typeof record.pendingUndoFrom === "string" ? record.pendingUndoFrom : null,
     yourColor: isGomokuColor(record.yourColor) ? record.yourColor : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// 房间内聊天（纯逻辑；批次：房间实时讨论）
+// ---------------------------------------------------------------------------
+
+/**
+ * 聊天页签的可见性：all 恒在（默认全员频道）；wolves 页签仅狼人可见（资格
+ * 由 R2 狼人杀批次从引擎视图传入，五子棋没有狼恒 false）；dead 页签给观战
+ * 与出局者（观战频道）。顺序固定：all → wolves → dead，页签渲染稳定。
+ */
+export function chatTabsFor(
+  role: "player" | "spectator",
+  membership: { wolf?: boolean; dead?: boolean } = {},
+): GameChatChannel[] {
+  const tabs: GameChatChannel[] = ["all"];
+  if (membership.wolf === true) tabs.push("wolves");
+  if (role === "spectator" || membership.dead === true) tabs.push("dead");
+  return tabs;
+}
+
+/**
+ * 服务端推送合入本地列表：按 seq 去重（服务端重复投递/回显与广播竞态的
+ * 防御），再按 seq 升序稳定排列。发送端不做乐观上屏——回显即上屏（恰好
+ * 一份），被服务端拒绝的消息永远不会出现在列表里。
+ */
+export function mergeChatMessage(prev: GameChatMessage[], incoming: GameChatMessage): GameChatMessage[] {
+  if (prev.some((message) => message.seq === incoming.seq)) return prev;
+  return [...prev, incoming].sort((a, b) => a.seq - b.seq);
+}
+
+/** 当前频道可见的消息（ChatPanel 列表数据源；切换页签即过滤）。 */
+export function filterChatByChannel(messages: GameChatMessage[], channel: GameChatChannel): GameChatMessage[] {
+  return messages.filter((message) => message.channel === channel);
 }

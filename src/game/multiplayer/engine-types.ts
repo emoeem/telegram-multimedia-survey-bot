@@ -103,6 +103,17 @@ export const GAME_PROTOCOL_ERROR_CODES = [
   "room_not_found",
   /** 内部错误（引擎抛异常等），message 不带细节。 */
   "internal_error",
+  // ---- 房间内聊天（批次：房间实时讨论；聊天仅走 WS，这些码不会出现在 REST）----
+  /** 文字超长（> CHAT_TEXT_MAX_CHARS）。 */
+  "chat_too_long",
+  /** 语音/图片 base64 载荷超限（> CHAT_BASE64_MAX_CHARS）。 */
+  "chat_payload_too_large",
+  /** 触发每参与者速率窗口（CHAT_RATE_LIMIT / CHAT_RATE_WINDOW_MS）。 */
+  "chat_rate_limited",
+  /** 对所选频道无资格（狼人频道非狼、死亡频道活人）。 */
+  "chat_channel_forbidden",
+  /** 文字未通过内容审核（仓库现有词表适配器 note-content-filter）。 */
+  "chat_content_rejected",
 ] as const;
 
 export type GameProtocolErrorCode = (typeof GAME_PROTOCOL_ERROR_CODES)[number];
@@ -268,6 +279,83 @@ export interface MultiplayerGameEngine {
    * 统一结算路径（settleRoom），结算快照只有 DO 一个入口。
    */
   handleTimeout(state: GameRoomState, now: number): EngineOutcome;
+  /**
+   * 聊天频道成员资格钩子（可选）：狼人杀（R2）等隐藏信息玩法声明「谁是狼人/
+   * 谁已出局」，DO 据此做频道裁剪（wolves 仅狼人可见、dead 频道收留出局者）。
+   * 未实现时走默认（无人是狼、无人出局）。返回值只用于频道裁剪，绝不进入
+   * 任何视图载荷；DO 只对在座玩家调用（离席者按观战处理）。
+   */
+  chatMembership?(state: GameRoomState, participantHash: string): GameChatMembership;
+}
+
+// ---------------------------------------------------------------------------
+// 房间内聊天（批次：房间实时讨论）——频道、限额与消息形状
+// ---------------------------------------------------------------------------
+
+/**
+ * 聊天频道：
+ * - all：全员（在座玩家 + 观战），默认频道；
+ * - wolves：仅狼人（狼人杀夜聊），非狼（含观战）发送与接收都被拒——私密
+ *   信息不外泄；
+ * - dead：死亡与观战频道（出局玩家退到这里，观战者默认在此）。
+ * 发送资格与可见资格同权：能发才收得到，收不到也发不出。
+ */
+export type GameChatChannel = "all" | "wolves" | "dead";
+
+export type GameChatKind = "text" | "voice" | "image";
+
+/** 文字上限（字数）：超限返回 chat_too_long。 */
+export const CHAT_TEXT_MAX_CHARS = 500;
+/** 语音/图片 base64 载荷上限（字符串字符数 ≈ 300KiB）：超限 chat_payload_too_large。 */
+export const CHAT_BASE64_MAX_CHARS = 300 * 1024;
+/** 语音最长录制时长（客户端 MediaRecorder 的权威约束）。 */
+export const CHAT_VOICE_MAX_MS = 60_000;
+/** 服务端对 durationMs 的卫生上限（录制端时钟进位留裕量）：超出按 invalid_payload 拒。 */
+export const CHAT_VOICE_DURATION_GUARD_MS = 90_000;
+/** 每参与者聊天速率：滑动窗口 60s 内最多 10 条（文字/语音/图片合并计数，房内计数）。 */
+export const CHAT_RATE_LIMIT = 10;
+export const CHAT_RATE_WINDOW_MS = 60_000;
+/** 文字聊天在 DO storage 的环形暂存上限（仅文字；语音/图片不落盘）。 */
+export const CHAT_HISTORY_LIMIT = 50;
+
+/** 语音载荷（webm/opus，客户端转 base64；服务端只中继不落盘）。 */
+export interface GameChatVoicePayload {
+  audioBase64: string;
+  durationMs: number;
+  mimeType: string;
+}
+
+/** 图片载荷（客户端 canvas 压缩后的 data:image/* URL；服务端只中继不落盘）。 */
+export interface GameChatImagePayload {
+  dataUrl: string;
+}
+
+/**
+ * 一条房内聊天消息。隐私边界：发送者只有座位昵称与 fromHash（与信封
+ * players 同一 participantHash 体系，客户端用来区分「我发的」）——IP/UA/
+ * 凭证从协议形状上就不存在；语音/图片随 WS 转发后在服务端内存中消失。
+ */
+export interface GameChatMessage {
+  /** 房内自增序号（单调解序/去重；环形暂存键也用它）。 */
+  seq: number;
+  channel: GameChatChannel;
+  kind: GameChatKind;
+  /** 座位昵称：玩家取 displayName（缺省「玩家」），观战者固定「观战者」。 */
+  from: string;
+  fromHash: string;
+  /** 服务端接收时间（epoch ms）。 */
+  at: number;
+  /** 客户端生成的去重键（发送方匹配自己的回显）。 */
+  clientId: string;
+  text?: string;
+  voice?: GameChatVoicePayload;
+  image?: GameChatImagePayload;
+}
+
+/** 引擎 chatMembership 钩子的返回：该参与者是否狼人 / 是否已出局。 */
+export interface GameChatMembership {
+  isWolf: boolean;
+  isDead: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,11 +394,29 @@ export type GameServerMessage =
   | { type: "action_result"; actionId: string; ok: boolean; version?: number; error?: GameProtocolError }
   | { type: "error"; code: GameProtocolErrorCode; message: string }
   /** 对端连接数变化（0 = 空房回收倒计时开始）等元信息，客户端可忽略。 */
-  | { type: "presence"; onlinePlayers: number; onlineSpectators: number };
+  | { type: "presence"; onlinePlayers: number; onlineSpectators: number }
+  /** 房间内聊天（收到即中继；按查看者频道裁剪，非该频道成员收不到该帧）。 */
+  | { type: "chat"; message: GameChatMessage }
+  /** 进房/重连时的文字聊天补发（按查看者频道裁剪；语音/图片不落盘故不在历史里）。 */
+  | { type: "chat_history"; messages: GameChatMessage[] };
 
 /** 客户端 → 服务端的 WS 消息（与 REST POST 体同形状，走同一分发器）。 */
 export type GameClientMessage =
   | { type: "ready"; ready: boolean }
   | { type: "start" }
   | { type: "leave" }
-  | { type: "action"; actionId: string; action: string; payload?: unknown; baseVersion?: number };
+  | { type: "action"; actionId: string; action: string; payload?: unknown; baseVersion?: number }
+  // 房间内聊天三类信封：收到即中继；channel 为目标频道，clientId 用于匹配回显。
+  | { type: "chat_text"; channel: GameChatChannel; text: string; clientId: string }
+  | {
+      type: "chat_voice";
+      channel: GameChatChannel;
+      audioBase64: string;
+      durationMs: number;
+      mimeType?: string;
+      clientId: string;
+    }
+  | { type: "chat_image"; channel: GameChatChannel; dataUrl: string; clientId: string };
+
+/** 三类聊天信封的联合（DO 分发/校验的入参形状）。 */
+export type ChatClientMessage = Extract<GameClientMessage, { type: "chat_text" | "chat_voice" | "chat_image" }>;
