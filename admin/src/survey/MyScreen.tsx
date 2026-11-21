@@ -10,6 +10,7 @@ import {
   MailCheck,
   Target,
   UserRound,
+  Volume2,
   X,
 } from "lucide-react";
 import { AchievementWall } from "./AchievementWall";
@@ -33,6 +34,7 @@ import {
 } from "./api";
 import { safeGet } from "./storage";
 import { closeWebApp } from "./navigation";
+import { armGameSoundGestureUnlock, playGameSound, useGameSoundSettings } from "./game-sound";
 import { NotificationCenter } from "./SeriesScreen";
 
 /** 金币卡片（独立取数：金币服务不可用时不影响「我的」其他区块）。 */
@@ -316,6 +318,66 @@ function ReportShareButton({ responseId }: { responseId: number }) {
 }
 
 /**
+ * 游戏音效设置（五款联机游戏共用的提示音/音效层）：总开关与音量滑条，与
+ * 对局页头的小喇叭同一状态源（useGameSoundSettings 订阅引擎）。开启瞬间给
+ * 一声「轮到你」作试听——点击本身就是手势，满足自动播放合规。
+ */
+function GameSoundSettings() {
+  const sound = useGameSoundSettings();
+  useEffect(() => armGameSoundGestureUnlock(), []);
+  return (
+    <section className="survey-card p-4">
+      <SectionHeader icon={Volume2} title="游戏音效" />
+      <div className="mt-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-[var(--survey-heading)]">对局提示音</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
+              落子、骰子、回合与结算等音效（联机对战共用）
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sound.enabled}
+            aria-label="对局提示音"
+            onClick={() => {
+              sound.setEnabled(!sound.enabled);
+              if (!sound.enabled) playGameSound("turn_you");
+            }}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+              sound.enabled ? "bg-[var(--survey-primary)]" : "bg-[var(--survey-card-border)]"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                sound.enabled ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+        <label className="flex items-center gap-3">
+          <span className="shrink-0 text-[12px] font-semibold text-[var(--survey-muted)]">音量</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={sound.volume}
+            onChange={(event) => sound.setVolume(Number(event.target.value))}
+            className="h-1.5 min-w-0 flex-1 accent-[var(--survey-primary)]"
+            aria-label="对局音效音量"
+          />
+          <span className="w-10 shrink-0 text-right text-[12px] tabular-nums text-[var(--survey-muted)]">
+            {Math.round(sound.volume * 100)}%
+          </span>
+        </label>
+      </div>
+    </section>
+  );
+}
+
+/**
  * 「我的」个人中心（/me）：当前参与者身份下的答卷、答卷档案、徽章、挑战数据与
  * 外观设置的统一入口。
  */
@@ -447,6 +509,9 @@ export function MyScreen() {
             <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
 
             <ProfileShareCard />
+
+            {/* 游戏音效：联机对局提示音总开关与音量（与对局页头小喇叭同源）。 */}
+            <GameSoundSettings />
 
             <ReportList />
 

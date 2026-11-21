@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Eye, LogOut, Swords, WifiOff } from "lucide-react";
+import { Copy, Eye, LogOut, Swords, Volume2, VolumeX, WifiOff } from "lucide-react";
 import { PageHeader } from "./PageHeader";
 import { ScreenShell, ThemeAction, usePublicTheme } from "./ScreenShell";
 import { ErrorState } from "./PublicPrimitives";
@@ -27,6 +27,15 @@ import {
   type WerewolfHostConfigForm,
 } from "./game-room-logic";
 import { WerewolfHostConfigPanel } from "./WerewolfBoard";
+import {
+  armGameSoundGestureUnlock,
+  countdownTickDue,
+  deriveGameSoundEvents,
+  gameSoundIsEnabled,
+  playGameSound,
+  setGameSoundEnabled,
+  subscribeGameSound,
+} from "./game-sound";
 import type {
   GameChatChannel,
   GameChatMessage,
@@ -89,12 +98,40 @@ export function MultiplayerGameScreen() {
   const connRef = useRef<GameRoomConnection | null>(null);
   const versionRef = useRef(0);
   const autoJoinedRef = useRef(false);
+  /** 上一帧房间视图：声音差分（deriveGameSoundEvents）用帧间对比推事件。 */
+  const viewRef = useRef<GamePlayerView | GamePublicView | null>(null);
+  /** myHash 的 ref 镜像：onState 回调闭包里拿到的是最新值而非挂连接时的旧值。 */
+  const myHashRef = useRef<string | null>(null);
+  /** 对局音效开关（页头小喇叭）：引擎订阅驱动同步。 */
+  const [soundOn, setSoundOn] = useState(() => gameSoundIsEnabled());
+
+  // 声音合规闸门：首次用户手势（pointerdown/touchstart/keydown）解锁
+  // AudioContext——手势前 WS 推送驱动的任何声音都不播放。
+  useEffect(() => {
+    armGameSoundGestureUnlock();
+    return subscribeGameSound(() => setSoundOn(gameSoundIsEnabled()));
+  }, []);
 
   // 倒计时本地走秒：500ms 一跳，配合 syncedRemaining 换算剩余时间。
   useEffect(() => {
     const timer = setInterval(() => setClockMs(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
+
+  /** 本地走秒后的回合剩余毫秒（无时限/未同步为 null）——Board 与倒计时 tick 共用。 */
+  const remainingNow = syncedRemaining.ms === null ? null : syncedRemaining.ms - (clockMs - syncedRemaining.at);
+
+  // 倒计时 ≤10s 每秒 tick：纯函数判定「跨秒且真实走秒」，换手重置/重连跳变不响。
+  const prevRemainingRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (view === null || view.status !== "playing") {
+      prevRemainingRef.current = null;
+      return;
+    }
+    const prev = prevRemainingRef.current;
+    prevRemainingRef.current = remainingNow;
+    if (countdownTickDue(prev, remainingNow)) playGameSound("countdown_tick");
+  }, [clockMs, remainingNow, view]);
 
   // 已注册玩法列表：入口卡与开局人数下限都从它来；拉不到（部署未升级/
   // 网络失败）回退静态五子棋入口，入口在任何部署下都不消失。
@@ -131,7 +168,9 @@ export function MultiplayerGameScreen() {
     setReconnectAttempt(0);
     setSyncedRemaining({ ms: null, at: 0 });
     setOnline(null);
+    myHashRef.current = null;
     setMyHash(null);
+    viewRef.current = null;
     setChatMessages([]);
     versionRef.current = 0;
   }, []);
@@ -142,6 +181,19 @@ export function MultiplayerGameScreen() {
       const connection = new GameRoomConnection({
         roomId: id,
         onState: (nextView, nextRole) => {
+          // 对局声音的唯一入口：服务端权威状态的帧间差分推事件（首帧不响）。
+          // 本地点击不预放——等回声，双方同一时刻听到同一个声音。
+          const prevView = viewRef.current;
+          viewRef.current = nextView;
+          for (const sound of deriveGameSoundEvents({
+            gameType: nextView.gameType,
+            role: nextRole,
+            myHash: myHashRef.current,
+            prev: prevView,
+            next: nextView,
+          })) {
+            playGameSound(sound);
+          }
           setView(nextView);
           setRole(nextRole);
           versionRef.current = nextView.version;
@@ -159,7 +211,11 @@ export function MultiplayerGameScreen() {
         onPresence: (counts) => setOnline(counts),
         // 房间内聊天：单条推送按 seq 去重合入；重连/进房的历史整包替换。
         // 上屏以服务端为准（回显即上屏），被拒的消息不会出现在列表里。
-        onChat: (message) => setChatMessages((prev) => mergeChatMessage(prev, message)),
+        onChat: (message) => {
+          setChatMessages((prev) => mergeChatMessage(prev, message));
+          // 消息 pop 与对局音效同一条总线（自己的回显不响；历史补发不响）。
+          if (message.fromHash !== myHashRef.current) playGameSound("chat_pop");
+        },
         onChatHistory: (messages) => setChatMessages(messages),
       });
       connRef.current = connection;
@@ -212,6 +268,7 @@ export function MultiplayerGameScreen() {
         }
         // 自己的 participantHash 只随 REST 快照更新（身份一次连接内不变，
         // WS 帧不重复携带）；信封 players 里以它定位「我的行」。
+        myHashRef.current = snapshot.selfParticipantHash;
         setMyHash(snapshot.selfParticipantHash);
         attachConnection(snapshot.roomId);
       } finally {
@@ -289,6 +346,7 @@ export function MultiplayerGameScreen() {
       // 建房是唯一不经 enterRoom 的进房路径：这里必须同步落「我的行」锚点
       // （REST 信封 you），否则 mePlayer 恒 null——房主在 lobby 被渲染成观战
       // （无准备/开局按钮、房间头无「关闭房间」），建→备→开局链路第一步即断。
+      myHashRef.current = result.data.selfParticipantHash;
       setMyHash(result.data.selfParticipantHash);
       attachConnection(result.data.roomId);
     } finally {
@@ -425,15 +483,31 @@ export function MultiplayerGameScreen() {
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-center gap-2">
-        <button
-          type="button"
-          className="survey-icon-btn"
-          aria-label="复制房间码"
-          title="复制房间码"
-          onClick={() => void copyRoomCode()}
-        >
-          <Copy className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 对局音效开关（小喇叭）：与「我的」设置同一状态源；切换给一声反馈。 */}
+          <button
+            type="button"
+            className="survey-icon-btn"
+            aria-label={soundOn ? "关闭对局音效" : "开启对局音效"}
+            aria-pressed={soundOn}
+            title={soundOn ? "关闭对局音效" : "开启对局音效"}
+            onClick={() => {
+              setGameSoundEnabled(!soundOn);
+              if (!soundOn) playGameSound("turn_you");
+            }}
+          >
+            {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            className="survey-icon-btn"
+            aria-label="复制房间码"
+            title="复制房间码"
+            onClick={() => void copyRoomCode()}
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
         {amHost ? (
           <button
             type="button"
@@ -507,7 +581,7 @@ export function MultiplayerGameScreen() {
             role={role}
             connection={connection}
             online={online}
-            remainingNow={syncedRemaining.ms === null ? null : syncedRemaining.ms - (clockMs - syncedRemaining.at)}
+            remainingNow={remainingNow}
             sendAction={sendBoardAction}
             onExitRoom={exitRoom}
           />
