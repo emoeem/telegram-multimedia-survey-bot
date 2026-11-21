@@ -11,6 +11,16 @@
  *   null，屏层落错误态，绝不白屏。
  */
 import type { GameChatChannel, GameChatMessage } from "../../../src/game/multiplayer/engine-types";
+// 飞行棋常量与共享主环几何直接复用服务端引擎（ludo.ts 纯函数、零副作用），
+// 客户端绝不复刻第二份恒等式——漂移即错位渲染，单一事实来源在引擎。
+import {
+  LUDO_FINISH_POS,
+  LUDO_LOOP_CELLS,
+  LUDO_LOOP_TOP,
+  LUDO_PLANES_PER_PLAYER,
+  LUDO_SEAT_COLORS,
+  ludoLoopCell,
+} from "../../../src/game/multiplayer/engines/ludo";
 
 export type GomokuColor = "black" | "white";
 
@@ -777,4 +787,473 @@ export function mergeChatMessage(prev: GameChatMessage[], incoming: GameChatMess
 /** 当前频道可见的消息（ChatPanel 列表数据源；切换页签即过滤）。 */
 export function filterChatByChannel(messages: GameChatMessage[], channel: GameChatChannel): GameChatMessage[] {
   return messages.filter((message) => message.channel === channel);
+}
+
+// ---------------------------------------------------------------------------
+// 飞行棋（游戏批次 X2-C 客户端）：视图收敛、棋盘几何与反弹展示
+// ---------------------------------------------------------------------------
+//
+// 与服务端 ludo.ts 的分工：权威判定（掷骰/落点链/撞机/胜负）全在引擎，客户端
+// 只做「渲染 + 可点性裁剪」。这里放三块纯逻辑：
+// - parseLudoView：服务端载荷防御收敛（形状不对整包拒绝返回 null，屏层落错误态）；
+// - 棋盘几何：path(0..56) → 15×15 网格坐标（52 格主环 + 4 条 5 格终点跑道 +
+//   中心终点），与引擎 ludoLoopCell(色号, pos) 的主环恒等式严格对齐；
+// - 反弹展示：终点需要精确步数、超出即反弹（final = 2×56 − target，引擎同式），
+//   客户端独立复算用于「反弹预览」提示，不做任何权威判定。
+//
+// 飞行棋无隐藏信息：引擎的玩家视图与公开视图同一局面（仅多 yourSeat），这里
+// 的收敛对两种视图同构处理。
+
+export { LUDO_FINISH_POS, LUDO_LOOP_CELLS, LUDO_LOOP_TOP, LUDO_PLANES_PER_PLAYER, LUDO_SEAT_COLORS };
+
+export type LudoPhase = "await_roll" | "await_move";
+
+/** 视图里的座位（ludoEngine viewPayload.seats 条目；不含任何私密信息）。 */
+export interface LudoSeatView {
+  seatIndex: number;
+  colorIndex: number;
+  color: string;
+  /** 每架飞机的 path 位置（null = 待机机库，56 = 已到达）。 */
+  planes: Array<number | null>;
+  arrived: number;
+  resigned: boolean;
+}
+
+/** 落点链一段（起飞/前进/跳跃/飞行，客户端只渲染不复算）。 */
+export interface LudoHopView {
+  kind: "takeoff" | "move" | "jump" | "fly";
+  to: number;
+}
+
+export interface LudoMoveRecordView {
+  ply: number;
+  seatIndex: number;
+  colorIndex: number;
+  roll: number;
+  planeSlot: number;
+  from: number | null;
+  to: number;
+  hops: LudoHopView[];
+  captures: Array<{ seatIndex: number; colorIndex: number; planeSlot: number }>;
+  text: string;
+}
+
+export interface LudoEventView {
+  ply: number;
+  seatIndex: number | null;
+  kind: "skip" | "penalty" | "timeout" | "resign" | "win";
+  text: string;
+}
+
+export interface LudoOutcomeView {
+  result: string;
+  winnerSeat: number | null;
+  reason: string | null;
+}
+
+/** 规则快照（引擎 viewPayload.rules 的客户端形状；捷径虚线按它画）。 */
+export interface LudoRulesView {
+  turnMs: number;
+  extraRollOnSix: boolean;
+  maxConsecutiveSixes: number;
+  jumpStep: number;
+  flyStep: number;
+  flyPos: number;
+}
+
+export interface LudoView {
+  seats: LudoSeatView[];
+  planesPerPlayer: number;
+  loopCells: number;
+  stretchCells: number;
+  finishPos: number;
+  turnSeat: number;
+  phase: LudoPhase;
+  lastRoll: number | null;
+  sixStreak: number;
+  /** 当前待走方的可动飞机槽位（await_move 时非空，服务端权威）。 */
+  legalPlanes: number[];
+  rules: LudoRulesView;
+  history: LudoMoveRecordView[];
+  events: LudoEventView[];
+  outcome: LudoOutcomeView | null;
+  /** 玩家视图专属：你的座位号；观战/公开视图为 null。 */
+  yourSeat: number | null;
+}
+
+function isLudoPhase(value: unknown): value is LudoPhase {
+  return value === "await_roll" || value === "await_move";
+}
+
+function parseLudoPlanePos(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > LUDO_FINISH_POS) return null;
+  return value;
+}
+
+/**
+ * 把 ludoEngine 的视图载荷收敛成 LudoView。seats/turnSeat/phase 是渲染硬前提，
+ * 形状不对整包拒绝（返回 null）；其余字段逐个容错（缺失给中性默认值）。
+ */
+export function parseLudoView(payload: unknown): LudoView | null {
+  if (payload === null || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if (typeof record.turnSeat !== "number" || !Number.isInteger(record.turnSeat)) return null;
+  if (!isLudoPhase(record.phase)) return null;
+  if (!Array.isArray(record.seats)) return null;
+
+  const seats: LudoSeatView[] = [];
+  for (const seat of record.seats) {
+    if (!seat || typeof seat !== "object") continue;
+    const entry = seat as Record<string, unknown>;
+    if (typeof entry.seatIndex !== "number" || !Number.isInteger(entry.seatIndex)) continue;
+    if (typeof entry.colorIndex !== "number" || !Number.isInteger(entry.colorIndex)) continue;
+    if (!Array.isArray(entry.planes) || entry.planes.length !== LUDO_PLANES_PER_PLAYER) continue;
+    const planes: Array<number | null> = [];
+    let planesValid = true;
+    for (const pos of entry.planes) {
+      const parsed = parseLudoPlanePos(pos);
+      if (parsed === null && pos !== null) {
+        planesValid = false;
+        break;
+      }
+      planes.push(parsed);
+    }
+    if (!planesValid) continue;
+    seats.push({
+      seatIndex: entry.seatIndex,
+      colorIndex: entry.colorIndex,
+      color: typeof entry.color === "string" ? entry.color : (LUDO_SEAT_COLORS[entry.colorIndex] ?? "?"),
+      planes,
+      arrived: typeof entry.arrived === "number" ? entry.arrived : 0,
+      resigned: entry.resigned === true,
+    });
+  }
+  if (seats.length === 0) return null;
+
+  const rulesRecord =
+    record.rules !== null && typeof record.rules === "object" ? (record.rules as Record<string, unknown>) : {};
+  const rules: LudoRulesView = {
+    turnMs: typeof rulesRecord.turnMs === "number" ? rulesRecord.turnMs : 60_000,
+    extraRollOnSix: rulesRecord.extraRollOnSix !== false,
+    maxConsecutiveSixes: typeof rulesRecord.maxConsecutiveSixes === "number" ? rulesRecord.maxConsecutiveSixes : 3,
+    jumpStep: typeof rulesRecord.jumpStep === "number" ? rulesRecord.jumpStep : 4,
+    flyStep: typeof rulesRecord.flyStep === "number" ? rulesRecord.flyStep : 12,
+    flyPos: typeof rulesRecord.flyPos === "number" ? rulesRecord.flyPos : 20,
+  };
+
+  const history: LudoMoveRecordView[] = [];
+  if (Array.isArray(record.history)) {
+    for (const item of record.history) {
+      if (!item || typeof item !== "object") continue;
+      const move = item as Record<string, unknown>;
+      if (typeof move.ply !== "number" || typeof move.seatIndex !== "number") continue;
+      if (typeof move.roll !== "number" || typeof move.planeSlot !== "number") continue;
+      if (typeof move.to !== "number" || !Array.isArray(move.hops) || !Array.isArray(move.captures)) continue;
+      history.push({
+        ply: move.ply,
+        seatIndex: move.seatIndex,
+        colorIndex: typeof move.colorIndex === "number" ? move.colorIndex : 0,
+        roll: move.roll,
+        planeSlot: move.planeSlot,
+        from: move.from === null ? null : typeof move.from === "number" ? move.from : null,
+        to: move.to,
+        hops: move.hops.filter(
+          (hop): hop is LudoHopView =>
+            !!hop &&
+            typeof hop === "object" &&
+            ["takeoff", "move", "jump", "fly"].includes((hop as Record<string, unknown>).kind as string) &&
+            typeof (hop as Record<string, unknown>).to === "number",
+        ),
+        captures: move.captures.filter(
+          (cap): cap is LudoMoveRecordView["captures"][number] =>
+            !!cap &&
+            typeof cap === "object" &&
+            typeof (cap as Record<string, unknown>).seatIndex === "number" &&
+            typeof (cap as Record<string, unknown>).planeSlot === "number",
+        ),
+        text: typeof move.text === "string" ? move.text : "",
+      });
+    }
+  }
+
+  const events: LudoEventView[] = [];
+  if (Array.isArray(record.events)) {
+    for (const item of record.events) {
+      if (!item || typeof item !== "object") continue;
+      const event = item as Record<string, unknown>;
+      if (typeof event.text !== "string") continue;
+      events.push({
+        ply: typeof event.ply === "number" ? event.ply : 0,
+        seatIndex: typeof event.seatIndex === "number" ? event.seatIndex : null,
+        kind:
+          event.kind === "skip" ||
+          event.kind === "penalty" ||
+          event.kind === "timeout" ||
+          event.kind === "resign" ||
+          event.kind === "win"
+            ? event.kind
+            : "skip",
+        text: event.text,
+      });
+    }
+  }
+
+  const outcomeRecord =
+    record.outcome !== null && typeof record.outcome === "object" ? (record.outcome as Record<string, unknown>) : null;
+  const outcome = outcomeRecord
+    ? {
+        result: typeof outcomeRecord.result === "string" ? outcomeRecord.result : "",
+        winnerSeat: typeof outcomeRecord.winnerSeat === "number" ? outcomeRecord.winnerSeat : null,
+        reason: typeof outcomeRecord.reason === "string" ? outcomeRecord.reason : null,
+      }
+    : null;
+
+  const legalPlanes: number[] = [];
+  if (Array.isArray(record.legalPlanes)) {
+    for (const slot of record.legalPlanes) {
+      if (typeof slot === "number" && Number.isInteger(slot) && slot >= 0 && slot < LUDO_PLANES_PER_PLAYER) {
+        legalPlanes.push(slot);
+      }
+    }
+  }
+
+  return {
+    seats,
+    planesPerPlayer: typeof record.planesPerPlayer === "number" ? record.planesPerPlayer : LUDO_PLANES_PER_PLAYER,
+    loopCells: typeof record.loopCells === "number" ? record.loopCells : LUDO_LOOP_CELLS,
+    stretchCells: typeof record.stretchCells === "number" ? record.stretchCells : 6,
+    finishPos: typeof record.finishPos === "number" ? record.finishPos : LUDO_FINISH_POS,
+    turnSeat: record.turnSeat,
+    phase: record.phase,
+    lastRoll:
+      typeof record.lastRoll === "number" && record.lastRoll >= 1 && record.lastRoll <= 6 ? record.lastRoll : null,
+    sixStreak: typeof record.sixStreak === "number" ? record.sixStreak : 0,
+    legalPlanes,
+    rules,
+    history,
+    events,
+    outcome,
+    yourSeat: typeof record.yourSeat === "number" ? record.yourSeat : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 棋盘几何（LudoBoard 渲染用；纯函数可单测）
+// ---------------------------------------------------------------------------
+
+/** 15×15 标准飞行棋/Ludo 网格（四角机场 + 十字航线 + 中心终点）。 */
+export const LUDO_GRID = 15;
+
+export interface LudoGridPoint {
+  row: number;
+  col: number;
+}
+
+/**
+ * 52 格主环的标准网格坐标（顺时针）。下标 = 引擎的 loopCell 号，恒等式：
+ * loopCell 0 = 红（色号 0）起飞格 (6,1)，loopCell 13c = 色号 c 的起飞格，
+ * 色号 = loopCell % 4（与引擎「主环按 4 色循环着色」一致）。
+ */
+export const LUDO_TRACK_CELLS: LudoGridPoint[] = [
+  { row: 6, col: 1 },
+  { row: 6, col: 2 },
+  { row: 6, col: 3 },
+  { row: 6, col: 4 },
+  { row: 6, col: 5 },
+  { row: 5, col: 6 },
+  { row: 4, col: 6 },
+  { row: 3, col: 6 },
+  { row: 2, col: 6 },
+  { row: 1, col: 6 },
+  { row: 0, col: 6 },
+  { row: 0, col: 7 },
+  { row: 0, col: 8 },
+  { row: 1, col: 8 },
+  { row: 2, col: 8 },
+  { row: 3, col: 8 },
+  { row: 4, col: 8 },
+  { row: 5, col: 8 },
+  { row: 6, col: 9 },
+  { row: 6, col: 10 },
+  { row: 6, col: 11 },
+  { row: 6, col: 12 },
+  { row: 6, col: 13 },
+  { row: 6, col: 14 },
+  { row: 7, col: 14 },
+  { row: 8, col: 14 },
+  { row: 8, col: 13 },
+  { row: 8, col: 12 },
+  { row: 8, col: 11 },
+  { row: 8, col: 10 },
+  { row: 8, col: 9 },
+  { row: 9, col: 8 },
+  { row: 10, col: 8 },
+  { row: 11, col: 8 },
+  { row: 12, col: 8 },
+  { row: 13, col: 8 },
+  { row: 14, col: 8 },
+  { row: 14, col: 7 },
+  { row: 14, col: 6 },
+  { row: 13, col: 6 },
+  { row: 12, col: 6 },
+  { row: 11, col: 6 },
+  { row: 10, col: 6 },
+  { row: 9, col: 6 },
+  { row: 8, col: 5 },
+  { row: 8, col: 4 },
+  { row: 8, col: 3 },
+  { row: 8, col: 2 },
+  { row: 8, col: 1 },
+  { row: 8, col: 0 },
+  { row: 7, col: 0 },
+  { row: 6, col: 0 },
+];
+
+/** 主环格号 → 网格坐标（越界 null）。 */
+export function ludoTrackPoint(loopCell: number): LudoGridPoint | null {
+  const cell = LUDO_TRACK_CELLS[loopCell];
+  return cell ? { row: cell.row, col: cell.col } : null;
+}
+
+/**
+ * 每色 5 格终点跑道（path 51..55）的网格坐标，按行进方向排列。
+ * 位置由主环恒等式反推：跑道口在主环格 13c−2（该色航线绕行一周后的转角格），
+ * 跑道沿其所在臂的中线向中心延伸——红在左臂第 7 行、黄在顶臂第 7 列，
+ * 蓝/绿对角镜像。
+ */
+export const LUDO_STRETCH_CELLS_BY_COLOR: LudoGridPoint[][] = [
+  [
+    { row: 7, col: 1 },
+    { row: 7, col: 2 },
+    { row: 7, col: 3 },
+    { row: 7, col: 4 },
+    { row: 7, col: 5 },
+  ],
+  [
+    { row: 1, col: 7 },
+    { row: 2, col: 7 },
+    { row: 3, col: 7 },
+    { row: 4, col: 7 },
+    { row: 5, col: 7 },
+  ],
+  [
+    { row: 7, col: 13 },
+    { row: 7, col: 12 },
+    { row: 7, col: 11 },
+    { row: 7, col: 10 },
+    { row: 7, col: 9 },
+  ],
+  [
+    { row: 13, col: 7 },
+    { row: 12, col: 7 },
+    { row: 11, col: 7 },
+    { row: 10, col: 7 },
+    { row: 9, col: 7 },
+  ],
+];
+
+/** 四角机场（机位）的 4 个停机位坐标（2×2 排布，色号 0红/1黄/2蓝/3绿 对角）。 */
+export const LUDO_HANGAR_SLOTS_BY_COLOR: LudoGridPoint[][] = [
+  [
+    { row: 1, col: 1 },
+    { row: 1, col: 3 },
+    { row: 3, col: 1 },
+    { row: 3, col: 3 },
+  ],
+  [
+    { row: 1, col: 11 },
+    { row: 1, col: 13 },
+    { row: 3, col: 11 },
+    { row: 3, col: 13 },
+  ],
+  [
+    { row: 11, col: 11 },
+    { row: 11, col: 13 },
+    { row: 13, col: 11 },
+    { row: 13, col: 13 },
+  ],
+  [
+    { row: 11, col: 1 },
+    { row: 11, col: 3 },
+    { row: 13, col: 1 },
+    { row: 13, col: 3 },
+  ],
+];
+
+/**
+ * 已到达飞机（path 56）在中心终点的展示位：终点 3×3 区按四色三角分象，
+ * 飞机停在各自颜色的三角内，四色同到也不重叠。
+ */
+export const LUDO_FINISH_POINTS_BY_COLOR: LudoGridPoint[] = [
+  { row: 7, col: 6.4 },
+  { row: 6.4, col: 7 },
+  { row: 7, col: 7.6 },
+  { row: 7.6, col: 7 },
+];
+
+/**
+ * 飞机位置（path 值）→ 网格坐标。主环段（0..50）经引擎 ludoLoopCell 换算成
+ * 共享格号；跑道（51..55）与终点（56）是该色私有坐标。null（待机）没有
+ * path 语义——机位坐标带槽位信息，由 LudoBoard 用 ludoHangarPoint 直取；
+ * 越界/未知道具返回 null（屏层不渲染该机）。
+ */
+export function ludoPathPoint(colorIndex: number, pos: number | null): LudoGridPoint | null {
+  // 色号只有 0..3：脏数据（座位色越界）直接不渲染，绝不静默映射到别的颜色。
+  if (!Number.isInteger(colorIndex) || colorIndex < 0 || colorIndex > 3) return null;
+  if (pos === null) return null;
+  if (pos >= 0 && pos <= LUDO_LOOP_TOP) {
+    const cell = ludoLoopCell(colorIndex, pos);
+    return cell === null ? null : ludoTrackPoint(cell);
+  }
+  if (pos >= LUDO_LOOP_TOP + 1 && pos <= LUDO_FINISH_POS - 1) {
+    return LUDO_STRETCH_CELLS_BY_COLOR[colorIndex]?.[pos - LUDO_LOOP_TOP - 1] ?? null;
+  }
+  if (pos === LUDO_FINISH_POS) {
+    return LUDO_FINISH_POINTS_BY_COLOR[colorIndex] ?? null;
+  }
+  return null;
+}
+
+/** 机库停机位（色号 + 槽位 0..3）→ 网格坐标。 */
+export function ludoHangarPoint(colorIndex: number, planeSlot: number): LudoGridPoint | null {
+  return LUDO_HANGAR_SLOTS_BY_COLOR[colorIndex]?.[planeSlot] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// 反弹展示（终点精确步数：超出即反弹，与引擎 planLudoMove 同式）
+// ---------------------------------------------------------------------------
+
+export interface LudoBouncePreview {
+  /** 反弹后的最终落点 path（56 = 恰好到达）。 */
+  final: number;
+  /** 是否发生反弹（超出终点才弹）。 */
+  bounced: boolean;
+}
+
+/**
+ * 反弹计算展示：航线上飞机走 roll 步后的落点。终点需要精确步数，超出即
+ * 反弹 final = 2×终点 − 目标（只发生在终点跑道，永不弹回主环）。
+ * 待机（null）/已到达（56）没有前进语义 → 返回 null（屏层不显示预览）。
+ * 纯展示辅助：主环段的跳跃/飞行链条由服务端权威结算，这里不复算。
+ */
+export function ludoBounceLanding(from: number | null, roll: number): LudoBouncePreview | null {
+  if (from === null || from >= LUDO_FINISH_POS) return null;
+  if (!Number.isInteger(roll) || roll < 1 || roll > 6) return null;
+  const target = from + roll;
+  if (target > LUDO_FINISH_POS) {
+    return { final: 2 * LUDO_FINISH_POS - target, bounced: true };
+  }
+  return { final: target, bounced: false };
+}
+
+/**
+ * 一手棋谱的反弹标注：起点在终点跑道（51..55）、掷点越过了终点而最终落点
+ * 与反弹公式一致 → 返回「（反弹）」注记，历史行渲染时拼在服务端文案后；
+ * 其余情况返回空串。
+ */
+export function ludoBounceNote(from: number | null, roll: number, to: number): string {
+  if (from === null || from < LUDO_LOOP_TOP + 1) return "";
+  const preview = ludoBounceLanding(from, roll);
+  return preview !== null && preview.bounced && preview.final === to ? "（反弹）" : "";
 }

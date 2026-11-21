@@ -7,6 +7,7 @@
  * 保证 REST/DO 首个请求到达前 resolveGameEngine("gomoku") 已非空。
  */
 import { registerGameEngine } from "./engine-registry";
+import { doudizhuEngine } from "./engines/doudizhu";
 import { gomokuEngine } from "./engines/gomoku";
 import { ludoEngine } from "./engines/ludo";
 import { xiangqiEngine } from "./engines/xiangqi";
@@ -18,6 +19,8 @@ export function registerBuiltinMultiplayerEngines(): void {
   // 飞行棋(游戏批次 X2-B):2–4 人掷骰竞速;/api/game/types 与入口卡经
   // 注册表自动带上,客户端 Board 未注册时走 UnknownGameBoard 兜底。
   registerGameEngine(ludoEngine);
+  // 斗地主(游戏批次 X3):3 人叫分/出牌/春天计分的积分制对局;不足三人不开。
+  registerGameEngine(doudizhuEngine);
 }
 
 // Worker 启动即注册：src/index.ts 的副作用 import 触发本行。

@@ -665,3 +665,256 @@ describe("象棋触控热区（xiangqiCellFromPoint 0.71 连续热区）", () =>
     expect(xiangqiCellFromPoint(470, 28)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 飞行棋（游戏批次 X2-C 客户端）：航线坐标 / 反弹展示 / 视图收敛
+// ---------------------------------------------------------------------------
+
+import {
+  LUDO_FINISH_POINTS_BY_COLOR,
+  LUDO_GRID,
+  LUDO_HANGAR_SLOTS_BY_COLOR,
+  LUDO_SEAT_COLORS,
+  LUDO_STRETCH_CELLS_BY_COLOR,
+  LUDO_TRACK_CELLS,
+  ludoBounceLanding,
+  ludoBounceNote,
+  ludoHangarPoint,
+  ludoPathPoint,
+  ludoTrackPoint,
+  parseLudoView,
+} from "../../../admin/src/survey/game-room-logic";
+import { planLudoMove, type LudoRules } from "../../../src/game/multiplayer/engines/ludo";
+
+/** 与引擎默认规则同构（反弹公式一致性交叉验证用）。 */
+const LUDO_DEFAULT_RULES: LudoRules = {
+  turnMs: 60_000,
+  extraRollOnSix: true,
+  maxConsecutiveSixes: 3,
+  jumpStep: 4,
+  flyStep: 12,
+  flyPos: 20,
+};
+
+/** ludoEngine viewPayload 的最小合法载荷（含一个座位、一架待机飞机）。 */
+function ludoViewPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    seats: [
+      {
+        seatIndex: 0,
+        colorIndex: 0,
+        color: "红",
+        planes: [null, null, null, null],
+        arrived: 0,
+        resigned: false,
+      },
+    ],
+    planesPerPlayer: 4,
+    loopCells: 52,
+    stretchCells: 6,
+    finishPos: 56,
+    turnSeat: 0,
+    phase: "await_roll",
+    lastRoll: null,
+    sixStreak: 0,
+    legalPlanes: [],
+    rules: { turnMs: 60000, extraRollOnSix: true, maxConsecutiveSixes: 3, jumpStep: 4, flyStep: 12, flyPos: 20 },
+    history: [],
+    events: [],
+    outcome: null,
+    yourSeat: 0,
+    ...overrides,
+  };
+}
+
+describe("飞行棋航线坐标（LUDO_TRACK_CELLS / ludoPathPoint）", () => {
+  it("主环 52 格互异且都在 15×15 网格内，四角机位互不重叠", () => {
+    expect(LUDO_TRACK_CELLS).toHaveLength(52);
+    const keys = LUDO_TRACK_CELLS.map((cell) => `${cell.row},${cell.col}`);
+    expect(new Set(keys).size).toBe(52);
+    for (const cell of LUDO_TRACK_CELLS) {
+      expect(cell.row).toBeGreaterThanOrEqual(0);
+      expect(cell.row).toBeLessThan(LUDO_GRID);
+      expect(cell.col).toBeGreaterThanOrEqual(0);
+      expect(cell.col).toBeLessThan(LUDO_GRID);
+    }
+    const hangarKeys = LUDO_HANGAR_SLOTS_BY_COLOR.flat().map((cell) => `${cell.row},${cell.col}`);
+    expect(new Set(hangarKeys).size).toBe(16); // 4 色 × 4 机位互异
+    for (const key of keys) expect(hangarKeys).not.toContain(key);
+  });
+
+  it("与引擎主环恒等式对齐：path 0..50 全部落在 ludoLoopCell 对应格上", () => {
+    for (let color = 0; color < 4; color += 1) {
+      for (let pos = 0; pos <= 50; pos += 1) {
+        expect(ludoPathPoint(color, pos)).toEqual(ludoTrackPoint((13 * color + pos) % 52));
+      }
+    }
+  });
+
+  it("起飞格 = 13×色号；path 50 = 跑道口前两格（绕行一周的转角）", () => {
+    expect(ludoPathPoint(0, 0)).toEqual(LUDO_TRACK_CELLS[0]);
+    expect(ludoPathPoint(1, 0)).toEqual(LUDO_TRACK_CELLS[13]);
+    expect(ludoPathPoint(2, 0)).toEqual(LUDO_TRACK_CELLS[26]);
+    expect(ludoPathPoint(3, 0)).toEqual(LUDO_TRACK_CELLS[39]);
+    expect(ludoPathPoint(0, 50)).toEqual(LUDO_TRACK_CELLS[50]);
+    expect(ludoPathPoint(1, 50)).toEqual(LUDO_TRACK_CELLS[11]);
+  });
+
+  it("终点跑道 51..55 是该色私有 5 格（互异且不与主环/他色重叠），56 落中心", () => {
+    const trackKeys = LUDO_TRACK_CELLS.map((cell) => `${cell.row},${cell.col}`);
+    for (let color = 0; color < 4; color += 1) {
+      const stretch = LUDO_STRETCH_CELLS_BY_COLOR[color]!;
+      expect(stretch).toHaveLength(5);
+      for (let step = 0; step < 5; step += 1) {
+        const key = `${stretch[step]!.row},${stretch[step]!.col}`;
+        expect(trackKeys).not.toContain(key);
+        expect(ludoPathPoint(color, 51 + step)).toEqual(stretch[step]);
+      }
+      expect(ludoPathPoint(color, 56)).toEqual(LUDO_FINISH_POINTS_BY_COLOR[color]);
+    }
+    // 四色跑道互不重叠（红/蓝共行不共列，黄/绿共列不共行）。
+    const allStretchKeys = LUDO_STRETCH_CELLS_BY_COLOR.flat().map((cell) => `${cell.row},${cell.col}`);
+    expect(new Set(allStretchKeys).size).toBe(20);
+  });
+
+  it("越界/待机/未知座位返回 null：null 走机位由 ludoHangarPoint 直取", () => {
+    expect(ludoPathPoint(0, null)).toBeNull();
+    expect(ludoPathPoint(0, 57)).toBeNull();
+    expect(ludoPathPoint(0, -1)).toBeNull();
+    expect(ludoPathPoint(4, 0)).toBeNull(); // 色号只有 0..3
+    expect(ludoHangarPoint(0, 0)).toEqual(LUDO_HANGAR_SLOTS_BY_COLOR[0]![0]);
+    expect(ludoHangarPoint(0, 4)).toBeNull();
+    expect(ludoTrackPoint(52)).toBeNull();
+  });
+
+  it("座位色名与引擎一致（红黄蓝绿）", () => {
+    expect(LUDO_SEAT_COLORS).toEqual(["红", "黄", "蓝", "绿"]);
+  });
+});
+
+describe("飞行棋反弹计算展示（ludoBounceLanding / ludoBounceNote）", () => {
+  it("精确步数到达不反弹，超出即反弹（final = 2×56 − target）", () => {
+    expect(ludoBounceLanding(55, 1)).toEqual({ final: 56, bounced: false }); // 恰好到达
+    expect(ludoBounceLanding(54, 5)).toEqual({ final: 53, bounced: true }); // 59 → 53
+    expect(ludoBounceLanding(52, 6)).toEqual({ final: 54, bounced: true }); // 58 → 54
+    expect(ludoBounceLanding(53, 6)).toEqual({ final: 53, bounced: true }); // 59 → 53 原地弹回
+    expect(ludoBounceLanding(51, 4)).toEqual({ final: 55, bounced: false });
+  });
+
+  it("待机/已到达/非法骰点没有前进语义 → null（屏层不显示预览）", () => {
+    expect(ludoBounceLanding(null, 3)).toBeNull();
+    expect(ludoBounceLanding(56, 1)).toBeNull();
+    expect(ludoBounceLanding(0, 0)).toBeNull();
+    expect(ludoBounceLanding(0, 7)).toBeNull();
+    expect(ludoBounceLanding(10, 1.5)).toBeNull();
+  });
+
+  it("与引擎 planLudoMove 在终点跑道上完全一致（单一规则、两处独立实现）", () => {
+    for (let from = 51; from <= 55; from += 1) {
+      for (let roll = 1; roll <= 6; roll += 1) {
+        const preview = ludoBounceLanding(from, roll);
+        const plan = planLudoMove(from, roll, LUDO_DEFAULT_RULES);
+        expect(preview).not.toBeNull();
+        expect(plan).not.toBeNull();
+        expect(preview!.final).toBe(plan!.final);
+        // 反弹只发生在跑道：反弹落点永不回到主环（> 50）。
+        if (preview!.bounced) expect(preview!.final).toBeGreaterThan(50);
+      }
+    }
+  });
+
+  it("ludoBounceNote：只给「跑道起点 + 越过终点 + 落点吻合公式」的历史加注", () => {
+    expect(ludoBounceNote(52, 6, 54)).toBe("（反弹）");
+    expect(ludoBounceNote(55, 6, 51)).toBe("（反弹）");
+    expect(ludoBounceNote(52, 2, 54)).toBe(""); // 没反弹
+    expect(ludoBounceNote(10, 2, 12)).toBe(""); // 起点在主环
+    expect(ludoBounceNote(null, 6, 0)).toBe(""); // 起飞
+    expect(ludoBounceNote(52, 6, 99)).toBe(""); // 落点与公式不符（脏数据不加注）
+  });
+});
+
+describe("飞行棋视图收敛（parseLudoView）", () => {
+  it("合法载荷全字段收敛：座位/骰点/可动飞机/规则/历史", () => {
+    const payload = ludoViewPayload({
+      seats: [
+        { seatIndex: 0, colorIndex: 0, color: "红", planes: [0, null, 53, 56], arrived: 1, resigned: false },
+        { seatIndex: 1, colorIndex: 2, color: "蓝", planes: [7, null, null, null], arrived: 0, resigned: true },
+      ],
+      turnSeat: 1,
+      phase: "await_move",
+      lastRoll: 6,
+      sixStreak: 1,
+      legalPlanes: [2],
+      history: [
+        {
+          ply: 1,
+          seatIndex: 0,
+          colorIndex: 0,
+          roll: 5,
+          planeSlot: 0,
+          from: null,
+          to: 0,
+          hops: [{ kind: "takeoff", to: 0 }],
+          captures: [],
+          text: "红1号机 掷5 起飞",
+        },
+      ],
+      events: [{ ply: 0, seatIndex: null, kind: "skip", text: "蓝方掷出 3 点,无子可动,自动跳过" }],
+    });
+    const parsed = parseLudoView(payload);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.seats).toHaveLength(2);
+    expect(parsed?.seats[0]?.planes).toEqual([0, null, 53, 56]);
+    expect(parsed?.seats[1]?.arrived).toBe(0);
+    expect(parsed?.seats[1]?.resigned).toBe(true);
+    expect(parsed?.phase).toBe("await_move");
+    expect(parsed?.lastRoll).toBe(6);
+    expect(parsed?.legalPlanes).toEqual([2]);
+    expect(parsed?.rules.flyPos).toBe(20);
+    expect(parsed?.history).toHaveLength(1);
+    expect(parsed?.history[0]?.hops[0]?.kind).toBe("takeoff");
+    expect(parsed?.events[0]?.kind).toBe("skip");
+    expect(parsed?.yourSeat).toBe(0);
+  });
+
+  it("观战公开视图没有 yourSeat → null；其余照常收敛", () => {
+    const payload = ludoViewPayload({ yourSeat: undefined });
+    const parsed = parseLudoView(payload);
+    expect(parsed?.yourSeat).toBeNull();
+    expect(parsed?.seats).toHaveLength(1);
+  });
+
+  it("形状不对整包拒绝：非对象/缺 turnSeat/坏 phase/空座位/座位飞机数不符", () => {
+    expect(parseLudoView(null)).toBeNull();
+    expect(parseLudoView(42)).toBeNull();
+    expect(parseLudoView(ludoViewPayload({ turnSeat: undefined }))).toBeNull();
+    expect(parseLudoView(ludoViewPayload({ phase: "flying" }))).toBeNull();
+    expect(parseLudoView(ludoViewPayload({ seats: [] }))).toBeNull();
+    expect(parseLudoView(ludoViewPayload({ seats: "junk" }))).toBeNull();
+    const badPlanes = ludoViewPayload({
+      seats: [{ seatIndex: 0, colorIndex: 0, color: "红", planes: [0, null, 53], arrived: 0, resigned: false }],
+    });
+    expect(parseLudoView(badPlanes)).toBeNull(); // 飞机数不足 4 架
+    const badPos = ludoViewPayload({
+      seats: [
+        { seatIndex: 0, colorIndex: 0, color: "红", planes: [57, null, null, null], arrived: 0, resigned: false },
+      ],
+    });
+    expect(parseLudoView(badPos)).toBeNull(); // path 越界
+  });
+
+  it("脏条目逐条丢弃不整包拒绝：坏历史/坏事件被剔除，lastRoll 越界收 null", () => {
+    const payload = ludoViewPayload({
+      history: [{ ply: "x" }, { ply: 2, seatIndex: 0, roll: 1, planeSlot: 0, to: 5, hops: [], captures: [] }],
+      events: [{ text: "ok" }, { noText: true }],
+      lastRoll: 9,
+      legalPlanes: [0, 9, "x", 3],
+    });
+    const parsed = parseLudoView(payload);
+    expect(parsed?.history).toHaveLength(1);
+    expect(parsed?.history[0]?.ply).toBe(2);
+    expect(parsed?.events).toHaveLength(1);
+    expect(parsed?.lastRoll).toBeNull();
+    expect(parsed?.legalPlanes).toEqual([0, 3]);
+  });
+});
