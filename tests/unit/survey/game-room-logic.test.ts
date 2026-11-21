@@ -350,3 +350,222 @@ describe("悔棋被拒判定（undoRejectedNotice）", () => {
     expect(undoRejectedNotice(me, null, 5, 6, null)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 象棋（多人玩法批次 X1）：视图收敛 / 本地预判 / 结算文案 / 棋盘几何
+// ---------------------------------------------------------------------------
+
+import {
+  XIANGQI_PIECE_CHARS,
+  localXiangqiMoveCheck,
+  parseXiangqiView,
+  xiangqiCellFromPoint,
+  xiangqiGeometry,
+  xiangqiSettlementCopy,
+} from "../../../admin/src/survey/game-room-logic";
+
+/** 10 行 × 9 列空盘（与 xiangqiEngine.initialBoard 同构）。 */
+function emptyXiangqiBoard(): Array<Array<string | null>> {
+  return Array.from({ length: 10 }, () => Array<string | null>(9).fill(null));
+}
+
+describe("象棋视图收敛（parseXiangqiView）", () => {
+  function viewPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      cols: 9,
+      rows: 10,
+      board: emptyXiangqiBoard(),
+      turn: "red",
+      players: [{ participantHash: "hash-a", color: "red" }],
+      moveCount: 0,
+      lastMove: null,
+      check: null,
+      outcome: null,
+      pendingDrawFrom: null,
+      yourColor: "red",
+      ...overrides,
+    };
+  }
+
+  it("合法载荷完整收敛；缺 yourColor 的公开视图按观战处理", () => {
+    const parsed = parseXiangqiView(viewPayload());
+    expect(parsed).not.toBeNull();
+    expect(parsed?.cols).toBe(9);
+    expect(parsed?.rows).toBe(10);
+    expect(parsed?.turn).toBe("red");
+    expect(parsed?.players).toEqual([{ participantHash: "hash-a", color: "red" }]);
+    expect(parsed?.yourColor).toBe("red");
+
+    const spectator = parseXiangqiView(viewPayload({ yourColor: undefined }));
+    expect(spectator?.yourColor).toBeNull();
+  });
+
+  it("带最后一手/将军旗标/终局的载荷逐字段保留", () => {
+    const board = emptyXiangqiBoard();
+    board[6]![4] = null;
+    board[5]![4] = "P";
+    const parsed = parseXiangqiView(
+      viewPayload({
+        board,
+        moveCount: 1,
+        lastMove: {
+          ply: 1,
+          color: "red",
+          from: { row: 6, col: 4 },
+          to: { row: 5, col: 4 },
+          piece: "P",
+          captured: null,
+          participantHash: "hash-a",
+          givesCheck: false,
+        },
+        check: "black",
+        outcome: { result: "win", winnerParticipantHash: "hash-a", reason: "checkmate" },
+        pendingDrawFrom: "hash-a",
+      }),
+    );
+    expect(parsed?.lastMove).toEqual({
+      ply: 1,
+      color: "red",
+      from: { row: 6, col: 4 },
+      to: { row: 5, col: 4 },
+      piece: "P",
+      captured: null,
+      participantHash: "hash-a",
+      givesCheck: false,
+    });
+    expect(parsed?.check).toBe("black");
+    expect(parsed?.outcome).toEqual({ result: "win", winnerParticipantHash: "hash-a", reason: "checkmate" });
+    expect(parsed?.pendingDrawFrom).toBe("hash-a");
+  });
+
+  it("board/turn/尺寸形状不对整包拒绝（渲染硬前提）", () => {
+    expect(parseXiangqiView(null)).toBeNull();
+    expect(parseXiangqiView(42)).toBeNull();
+    expect(parseXiangqiView(viewPayload({ cols: 8 }))).toBeNull();
+    expect(parseXiangqiView(viewPayload({ rows: 9 }))).toBeNull();
+    expect(parseXiangqiView(viewPayload({ board: emptyXiangqiBoard().slice(1) }))).toBeNull();
+    // 行长不等于 9 同样拒绝。
+    expect(parseXiangqiView(viewPayload({ board: emptyXiangqiBoard().map((line) => line.slice(1)) }))).toBeNull();
+    expect(parseXiangqiView(viewPayload({ turn: "green" }))).toBeNull();
+    // 脏棋子码整包拒绝（合法码全集只有 14 个大小写字母）。
+    const dirty = emptyXiangqiBoard();
+    dirty[0]![0] = "X";
+    expect(parseXiangqiView(viewPayload({ board: dirty }))).toBeNull();
+  });
+
+  it("非关键字段缺失/形状不对时给中性默认值，不整包拒绝", () => {
+    const parsed = parseXiangqiView(
+      viewPayload({ players: "junk", lastMove: "junk", outcome: "junk", moveCount: "junk" }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed?.players).toEqual([]);
+    expect(parsed?.lastMove).toBeNull();
+    expect(parsed?.outcome).toBeNull();
+    expect(parsed?.moveCount).toBe(0);
+    expect(parsed?.check).toBeNull();
+  });
+});
+
+describe("象棋棋子汉字表（XIANGQI_PIECE_CHARS）", () => {
+  it("14 个棋子码全部有汉字映射，红黑两套", () => {
+    expect(XIANGQI_PIECE_CHARS).toEqual({
+      K: "帥",
+      A: "仕",
+      E: "相",
+      H: "傌",
+      R: "俥",
+      C: "炮",
+      P: "兵",
+      k: "將",
+      a: "士",
+      e: "象",
+      h: "馬",
+      r: "車",
+      c: "砲",
+      p: "卒",
+    });
+  });
+});
+
+describe("象棋走棋本地预判（localXiangqiMoveCheck）", () => {
+  function parsedView(overrides: Record<string, unknown> = {}) {
+    const board = emptyXiangqiBoard();
+    board[6]![4] = "P"; // 红兵
+    board[3]![4] = "p"; // 黑卒
+    const payload = {
+      cols: 9,
+      rows: 10,
+      board,
+      turn: "red",
+      players: [{ participantHash: "hash-a", color: "red" }],
+      moveCount: 0,
+      lastMove: null,
+      check: null,
+      outcome: null,
+      pendingDrawFrom: null,
+      yourColor: "red",
+      ...overrides,
+    };
+    const parsed = parseXiangqiView(payload);
+    if (!parsed) throw new Error("测试载荷必须是合法视图");
+    return parsed;
+  }
+
+  it("观战者/未轮到/原地/空起点/对方棋子都被本地拦下", () => {
+    const view = parsedView();
+    expect(localXiangqiMoveCheck({ ...view, yourColor: null }, { row: 6, col: 4 }, { row: 5, col: 4 })).toBe(
+      "观战者不能走棋",
+    );
+    expect(localXiangqiMoveCheck({ ...view, turn: "black" }, { row: 6, col: 4 }, { row: 5, col: 4 })).toBe(
+      "还没轮到你走棋",
+    );
+    expect(localXiangqiMoveCheck(view, { row: 6, col: 4 }, { row: 6, col: 4 })).toBe("起点和终点不能相同");
+    expect(localXiangqiMoveCheck(view, { row: 5, col: 5 }, { row: 4, col: 5 })).toBe("起点没有棋子");
+    expect(localXiangqiMoveCheck(view, { row: 3, col: 4 }, { row: 4, col: 4 })).toBe("只能移动自己的棋子");
+  });
+
+  it("合法走子（红兵前进）本地放行（权威校验在服务端）", () => {
+    expect(localXiangqiMoveCheck(parsedView(), { row: 6, col: 4 }, { row: 5, col: 4 })).toBeNull();
+  });
+});
+
+describe("象棋结算文案（xiangqiSettlementCopy）", () => {
+  it("将死/困毙/长将按 reason 细化 detail，其余沿用通用文案", () => {
+    expect(xiangqiSettlementCopy("win", "hash-a", "hash-a", "checkmate")).toEqual({
+      headline: "你赢了！",
+      detail: "将死对方",
+      tone: "win",
+    });
+    expect(xiangqiSettlementCopy("win", "hash-a", "hash-b", "checkmate").detail).toBe("被将死");
+    expect(xiangqiSettlementCopy("win", "hash-a", "hash-b", "stalemate").detail).toBe("己方困毙（无子可动）");
+    expect(xiangqiSettlementCopy("draw", null, "hash-a", "perpetual_check").detail).toBe("长将判和（连续重复局面）");
+    // 其余 reason 沿用 describeSettlement 通用文案。
+    expect(xiangqiSettlementCopy("timeout", "hash-b", "hash-a", "timeout")).toEqual({
+      headline: "对方获胜",
+      detail: "超时判负",
+      tone: "lose",
+    });
+  });
+});
+
+describe("象棋棋盘几何（xiangqiGeometry / xiangqiCellFromPoint）", () => {
+  it("交点表 10×9=90 个，边距与格距按视口推导", () => {
+    const { cellX, cellY, points } = xiangqiGeometry();
+    expect(points).toHaveLength(90);
+    expect(cellX).toBe((468 - 28 * 2) / 8);
+    expect(cellY).toBe((520 - 28 * 2) / 9);
+    expect(points[0]).toEqual({ x: 28, y: 28 });
+    expect(points[89]).toEqual({ x: 28 + 8 * cellX, y: 28 + 9 * cellY });
+  });
+
+  it("点击坐标吸附最近交点；网格之外返回 null", () => {
+    expect(xiangqiCellFromPoint(28, 28)).toEqual({ row: 0, col: 0 });
+    expect(xiangqiCellFromPoint(28 + 51.5, 28)).toEqual({ row: 0, col: 1 });
+    // 吸附到最近交点：格内偏移仍归到最近交点。
+    expect(xiangqiCellFromPoint(28, 28 + 40)).toEqual({ row: 1, col: 0 });
+    // 交点网格之外（负行列 / 越过最后一行一列）返回 null。
+    expect(xiangqiCellFromPoint(1, 1)).toBeNull();
+    expect(xiangqiCellFromPoint(28, 520)).toBeNull();
+    expect(xiangqiCellFromPoint(470, 28)).toBeNull();
+  });
+});

@@ -426,6 +426,263 @@ export function parseGomokuView(payload: unknown): GomokuView | null {
 }
 
 // ---------------------------------------------------------------------------
+// 象棋（多人玩法批次 X1）：类型、棋子汉字表、视图收敛与本地预判
+// ---------------------------------------------------------------------------
+
+export type XiangqiColor = "red" | "black";
+
+/** 玩法私有视图里的座位（xiangqiEngine publicViewPayload.players）。 */
+export interface XiangqiSeatView {
+  participantHash: string;
+  color: XiangqiColor;
+}
+
+export interface XiangqiPointView {
+  row: number;
+  col: number;
+}
+
+export interface XiangqiLastMoveView {
+  ply: number;
+  color: XiangqiColor;
+  from: XiangqiPointView;
+  to: XiangqiPointView;
+  /** 走动棋子的棋子码（大写红/小写黑）。 */
+  piece: string;
+  captured: string | null;
+  participantHash: string;
+  givesCheck: boolean;
+}
+
+export interface XiangqiOutcomeView {
+  result: string;
+  winnerParticipantHash: string | null;
+  /** 终局原因：checkmate/stalemate/perpetual_check/resign/timeout/aborted/agreed。 */
+  reason: string | null;
+}
+
+/**
+ * 象棋视图载荷（xiangqiEngine 的 view 字段）的客户端收敛形状。象棋无隐藏
+ * 信息：board/turn 全知；yourColor 只在玩家视图里出现，观战者为 null。
+ */
+export interface XiangqiView {
+  cols: number;
+  rows: number;
+  board: Array<Array<string | null>>;
+  turn: XiangqiColor;
+  players: XiangqiSeatView[];
+  moveCount: number;
+  lastMove: XiangqiLastMoveView | null;
+  /** 当前行棋方是否正被将军（红/黑/null）。 */
+  check: XiangqiColor | null;
+  outcome: XiangqiOutcomeView | null;
+  pendingDrawFrom: string | null;
+  yourColor: XiangqiColor | null;
+}
+
+/** 合法棋子码全集（xiangqi.ts 大写红 / 小写黑）。 */
+const XIANGQI_PIECE_CODES = ["K", "A", "E", "H", "R", "C", "P", "k", "a", "e", "h", "r", "c", "p"] as const;
+
+function isXiangqiPieceCode(value: unknown): value is (typeof XIANGQI_PIECE_CODES)[number] {
+  return (XIANGQI_PIECE_CODES as readonly string[]).includes(value as string);
+}
+
+function isXiangqiColor(value: unknown): value is XiangqiColor {
+  return value === "red" || value === "black";
+}
+
+/**
+ * 棋子码 → 盘面汉字（红帅仕相傌俥炮兵 / 黑將士象馬車砲卒）。
+ * 与服务端 xiangqi.ts 的编码注释一一对应，漂移只影响显示不影响协议。
+ */
+export const XIANGQI_PIECE_CHARS: Record<string, string> = {
+  K: "帥",
+  A: "仕",
+  E: "相",
+  H: "傌",
+  R: "俥",
+  C: "炮",
+  P: "兵",
+  k: "將",
+  a: "士",
+  e: "象",
+  h: "馬",
+  r: "車",
+  c: "砲",
+  p: "卒",
+};
+
+/** 把引擎视图载荷收敛成 XiangqiView；board/turn 形状不对整包拒绝（返回 null）。 */
+export function parseXiangqiView(payload: unknown): XiangqiView | null {
+  if (payload === null || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  const cols = record.cols;
+  const rows = record.rows;
+  if (cols !== 9 || rows !== 10) return null;
+  if (!isXiangqiColor(record.turn)) return null;
+  if (!Array.isArray(record.board) || record.board.length !== rows) return null;
+  const board: Array<Array<string | null>> = [];
+  for (const line of record.board) {
+    if (!Array.isArray(line) || line.length !== cols) return null;
+    const row: Array<string | null> = [];
+    for (const cell of line) {
+      if (cell !== null && !isXiangqiPieceCode(cell)) return null;
+      row.push(cell);
+    }
+    board.push(row);
+  }
+
+  const players: XiangqiSeatView[] = [];
+  if (Array.isArray(record.players)) {
+    for (const seat of record.players) {
+      if (!seat || typeof seat !== "object") continue;
+      const entry = seat as Record<string, unknown>;
+      if (typeof entry.participantHash !== "string" || !isXiangqiColor(entry.color)) continue;
+      players.push({ participantHash: entry.participantHash, color: entry.color });
+    }
+  }
+
+  const lastMoveRecord =
+    record.lastMove !== null && typeof record.lastMove === "object"
+      ? (record.lastMove as Record<string, unknown>)
+      : null;
+  const parsePoint = (value: unknown): XiangqiPointView | null => {
+    if (!value || typeof value !== "object") return null;
+    const point = value as Record<string, unknown>;
+    return typeof point.row === "number" && typeof point.col === "number" ? { row: point.row, col: point.col } : null;
+  };
+  let lastMove: XiangqiLastMoveView | null = null;
+  if (lastMoveRecord) {
+    const from = parsePoint(lastMoveRecord.from);
+    const to = parsePoint(lastMoveRecord.to);
+    if (
+      from &&
+      to &&
+      isXiangqiPieceCode(lastMoveRecord.piece) &&
+      (lastMoveRecord.captured === null || isXiangqiPieceCode(lastMoveRecord.captured)) &&
+      typeof lastMoveRecord.participantHash === "string"
+    ) {
+      lastMove = {
+        ply: typeof lastMoveRecord.ply === "number" ? lastMoveRecord.ply : 0,
+        color: isXiangqiColor(lastMoveRecord.color) ? lastMoveRecord.color : "red",
+        from,
+        to,
+        piece: lastMoveRecord.piece,
+        captured: lastMoveRecord.captured === null ? null : lastMoveRecord.captured,
+        participantHash: lastMoveRecord.participantHash,
+        givesCheck: lastMoveRecord.givesCheck === true,
+      };
+    }
+  }
+
+  const outcomeRecord =
+    record.outcome !== null && typeof record.outcome === "object" ? (record.outcome as Record<string, unknown>) : null;
+  const outcome = outcomeRecord
+    ? {
+        result: typeof outcomeRecord.result === "string" ? outcomeRecord.result : "",
+        winnerParticipantHash:
+          typeof outcomeRecord.winnerParticipantHash === "string" ? outcomeRecord.winnerParticipantHash : null,
+        reason: typeof outcomeRecord.reason === "string" ? outcomeRecord.reason : null,
+      }
+    : null;
+
+  return {
+    cols,
+    rows,
+    board,
+    turn: record.turn,
+    players,
+    moveCount: typeof record.moveCount === "number" ? record.moveCount : 0,
+    lastMove,
+    check: isXiangqiColor(record.check) ? record.check : null,
+    outcome,
+    pendingDrawFrom: typeof record.pendingDrawFrom === "string" ? record.pendingDrawFrom : null,
+    yourColor: isXiangqiColor(record.yourColor) ? record.yourColor : null,
+  };
+}
+
+/**
+ * 走棋本地预判（服务端权威校验的“挡掉必被拒”前置）：观战者、未轮到自己、
+ * 起点不是己方棋子、原地不动都直接给中文原因；走法是否合规（蹩马腿/炮架/
+ * 送将等）交服务端判定，客户端不复刻棋规。
+ */
+export function localXiangqiMoveCheck(view: XiangqiView, from: XiangqiPointView, to: XiangqiPointView): string | null {
+  if (view.yourColor === null) return "观战者不能走棋";
+  if (view.turn !== view.yourColor) return "还没轮到你走棋";
+  if (from.row === to.row && from.col === to.col) return "起点和终点不能相同";
+  const line = view.board[from.row];
+  const piece = Array.isArray(line) ? line[from.col] : undefined;
+  if (piece === null || piece === undefined) return "起点没有棋子";
+  const isRed = piece === piece.toUpperCase();
+  if ((isRed ? "red" : "black") !== view.yourColor) return "只能移动自己的棋子";
+  return null;
+}
+
+/**
+ * 象棋终局文案：在通用结算文案（result 视角）之上用 reason 细化“怎么赢的”。
+ * reason 取值来自引擎（checkmate/stalemate/perpetual_check/agreed/timeout/…）。
+ */
+export function xiangqiSettlementCopy(
+  result: string,
+  winnerParticipantHash: string | null,
+  myParticipantHash: string | null,
+  reason: string | null,
+): SettlementCopy {
+  const base = describeSettlement(result, winnerParticipantHash, myParticipantHash);
+  const iWon = winnerParticipantHash !== null && myParticipantHash === winnerParticipantHash;
+  if (result === "win" && reason === "checkmate") return { ...base, detail: iWon ? "将死对方" : "被将死" };
+  if (result === "win" && reason === "stalemate") {
+    return { ...base, detail: iWon ? "对方困毙（无子可动）" : "己方困毙（无子可动）" };
+  }
+  if (result === "draw" && reason === "perpetual_check") return { ...base, detail: "长将判和（连续重复局面）" };
+  return base;
+}
+
+// ---------------------------------------------------------------------------
+// 象棋棋盘几何（XiangqiBoard 渲染与点击吸附共用）
+// ---------------------------------------------------------------------------
+
+/** SVG 视口宽高与四周留白：9 列 10 行的交点网格，棋子落在交点上。 */
+export const XIANGQI_VIEW_W = 468;
+export const XIANGQI_VIEW_H = 520;
+export const XIANGQI_MARGIN_X = 28;
+export const XIANGQI_MARGIN_Y = 28;
+
+export interface XiangqiGeometry {
+  cellX: number;
+  cellY: number;
+  /** 按行优先排列的全部交点坐标（row × col，row 0 在黑方顶端）。 */
+  points: Array<{ x: number; y: number }>;
+}
+
+export function xiangqiGeometry(): XiangqiGeometry {
+  const cellX = (XIANGQI_VIEW_W - XIANGQI_MARGIN_X * 2) / 8;
+  const cellY = (XIANGQI_VIEW_H - XIANGQI_MARGIN_Y * 2) / 9;
+  const points: Array<{ x: number; y: number }> = [];
+  for (let row = 0; row < 10; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      points.push({ x: XIANGQI_MARGIN_X + col * cellX, y: XIANGQI_MARGIN_Y + row * cellY });
+    }
+  }
+  return { cellX, cellY, points };
+}
+
+/**
+ * 点击坐标 → 棋盘交点。吸附到最近交点，命中半径半格（棋子圆盘直径内都算
+ * 点到）；越界返回 null。`|| 0` 归一 Math.round 的负零（与五子棋同款纪律）。
+ */
+export function xiangqiCellFromPoint(x: number, y: number): { row: number; col: number } | null {
+  const { cellX, cellY } = xiangqiGeometry();
+  const col = Math.round((x - XIANGQI_MARGIN_X) / cellX) || 0;
+  const row = Math.round((y - XIANGQI_MARGIN_Y) / cellY) || 0;
+  if (row < 0 || row >= 10 || col < 0 || col >= 9) return null;
+  const dx = Math.abs(x - (XIANGQI_MARGIN_X + col * cellX));
+  const dy = Math.abs(y - (XIANGQI_MARGIN_Y + row * cellY));
+  if (Math.hypot(dx, dy) > Math.min(cellX, cellY) * 0.5) return null;
+  return { row, col };
+}
+
+// ---------------------------------------------------------------------------
 // 房间内聊天（纯逻辑；批次：房间实时讨论）
 // ---------------------------------------------------------------------------
 

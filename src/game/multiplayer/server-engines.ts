@@ -8,10 +8,12 @@
  */
 import { registerGameEngine } from "./engine-registry";
 import { gomokuEngine } from "./engines/gomoku";
+import { xiangqiEngine } from "./engines/xiangqi";
 
 /** 登记全部内置多人引擎（可重复调用；重复 gameType 以最后一次为准）。 */
 export function registerBuiltinMultiplayerEngines(): void {
   registerGameEngine(gomokuEngine);
+  registerGameEngine(xiangqiEngine);
 }
 
 // Worker 启动即注册：src/index.ts 的副作用 import 触发本行。

@@ -1,5 +1,6 @@
 import { Gamepad2 } from "lucide-react";
 import { GomokuBoardPanel } from "./GomokuBoardPanel";
+import { XiangqiBoardPanel } from "./XiangqiBoardPanel";
 import { registerGameBoard, resolveGameBoard, type GameBoardProps } from "./game-board-registry";
 
 /**
@@ -13,6 +14,7 @@ import { registerGameBoard, resolveGameBoard, type GameBoardProps } from "./game
  * 进时，房间仍可进（观战提示），不会白屏。
  */
 registerGameBoard("gomoku", GomokuBoardPanel);
+registerGameBoard("xiangqi", XiangqiBoardPanel);
 
 export { resolveGameBoard, type GameBoardProps };
 

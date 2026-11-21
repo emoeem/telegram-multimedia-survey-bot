@@ -147,6 +147,13 @@ export const FALLBACK_GAME_TYPES: GameTypeInfo[] = [
     minPlayers: 2,
     maxPlayers: 2,
   },
+  {
+    name: "xiangqi",
+    displayName: "象棋",
+    description: "楚河汉界双人博弈：车马炮兵象士将，将死或困毙对方获胜；每一步限时一分钟。",
+    minPlayers: 2,
+    maxPlayers: 2,
+  },
 ];
 
 /** 按 gameType 找玩法信息（找不到返回 null——未知玩法走「即将上线」兜底）。 */
