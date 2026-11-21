@@ -14,6 +14,7 @@ vi.mock("../../../src/db/repositories/audit.repository", () => ({ createAuditLog
 import { handleGameApiRequest } from "../../../src/http/game-api";
 import { GameRoomDO } from "../../../src/durable-objects/game-room";
 import { clearGameEnginesForTest, registerGameEngine } from "../../../src/game/multiplayer/engine-registry";
+import { gomokuEngine } from "../../../src/game/multiplayer/engines/gomoku";
 import type { GameRoomState } from "../../../src/game/multiplayer/engine-types";
 import { stubEngine } from "../../helpers/game-engine-stub";
 import type { Env } from "../../../src/index";
@@ -422,5 +423,85 @@ describe("game-api WS 握手转发", () => {
     );
     expect(response).not.toBeNull();
     expect(response!.status).toBe(400);
+  });
+});
+
+describe("game-api GET /api/game/types（已注册玩法列表）", () => {
+  it("公开 GET 返回注册表里每个引擎的元数据；缺 meta 的引擎按 label 兜底、人数为 null", async () => {
+    // beforeEach 已注册 stubEngine（无 meta）：走 label 兜底分支。
+    const response = await handleGameApiRequest(
+      get("/api/game/types"),
+      makeEnv(makeDb([]).db, makeCache(), null),
+      new URL("https://worker/api/game/types"),
+    );
+    expect(response).not.toBeNull();
+    expect(response!.status).toBe(200);
+    const body = (await response!.json()) as {
+      ok: boolean;
+      games: Array<{
+        name: string;
+        displayName: string;
+        description: string;
+        minPlayers: number | null;
+        maxPlayers: number | null;
+      }>;
+    };
+    expect(body.ok).toBe(true);
+    const stub = body.games.find((game) => game.name === "stub-guess");
+    expect(stub).toEqual({
+      name: "stub-guess",
+      displayName: "协议测试桩",
+      description: "",
+      minPlayers: null,
+      maxPlayers: null,
+    });
+  });
+
+  it("带 meta 的引擎（gomoku）透出完整元数据；注册表空时返回空列表", async () => {
+    registerGameEngine(gomokuEngine);
+    const response = await handleGameApiRequest(
+      get("/api/game/types"),
+      makeEnv(makeDb([]).db, makeCache(), null),
+      new URL("https://worker/api/game/types"),
+    );
+    const body = (await response!.json()) as { ok: boolean; games: Array<Record<string, unknown>> };
+    expect(body.games.find((game) => game.name === "gomoku")).toEqual({
+      name: "gomoku",
+      displayName: "五子棋",
+      description: "黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。",
+      minPlayers: 2,
+      maxPlayers: 2,
+    });
+
+    clearGameEnginesForTest();
+    const empty = await handleGameApiRequest(
+      get("/api/game/types"),
+      makeEnv(makeDb([]).db, makeCache(), null),
+      new URL("https://worker/api/game/types"),
+    );
+    expect(((await empty!.json()) as { games: unknown[] }).games).toEqual([]);
+  });
+
+  it("非 GET 返回 405；响应是纯元数据，不含任何玩家/房间私有信息（泄漏断言）", async () => {
+    registerGameEngine(gomokuEngine);
+    const methodCheck = await handleGameApiRequest(
+      post("/api/game/types", {}),
+      makeEnv(makeDb([]).db, makeCache(), null),
+      new URL("https://worker/api/game/types"),
+    );
+    expect(methodCheck!.status).toBe(405);
+
+    const response = await handleGameApiRequest(
+      get("/api/game/types"),
+      makeEnv(makeDb([]).db, makeCache(), null),
+      new URL("https://worker/api/game/types"),
+    );
+    const raw = JSON.stringify(await response!.json());
+    // 私有视图纪律：玩法列表只读注册表元数据，绝不允许夹带 participantHash、
+    // 房间状态或引擎私有载荷（stub 引擎的 secret 也不得出现）。
+    expect(raw).not.toContain("participantHash");
+    expect(raw).not.toContain("secret-of-");
+    expect(raw).not.toContain("engineState");
+    expect(raw).not.toContain("roomId");
   });
 });

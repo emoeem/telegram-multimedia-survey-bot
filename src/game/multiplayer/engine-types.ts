@@ -205,6 +205,22 @@ export interface GameSettlement {
 // ---------------------------------------------------------------------------
 
 /**
+ * 玩法元数据（GET /api/game/types 与客户端入口卡的直读数据）。可选字段：
+ * 引擎忘带时端点按 label/空值兜底，不让列表接口挂掉；正文中不含任何玩家
+ * 私有信息，可公开返回。
+ */
+export interface GameEngineMeta {
+  /** 展示名（入口卡/大厅标题；与 label 同值即可——label 是协议内名字，这里给 UI）。 */
+  displayName: string;
+  /** 一句话玩法说明（入口卡副标题）。 */
+  description: string;
+  /** 正常开局需要的最少在座人数（客户端据此禁用开局按钮，服务端仍是权威）。 */
+  minPlayers: number;
+  /** 座位上限（满员后加入自动降级观战）。 */
+  maxPlayers: number;
+}
+
+/**
  * 多人玩法引擎统一协议。全部方法为纯函数（输入状态 → 返回新状态），
  * 抛异常视为 internal_error 由 DO 兜底；实现里禁止任何 IO（D1/KV/fetch），
  * 保证“每步棋不触 D1”。
@@ -218,6 +234,8 @@ export interface MultiplayerGameEngine {
   readonly gameType: string;
   /** 展示名（列表/分享用）。 */
   readonly label: string;
+  /** 玩法元数据（GET /api/game/types 直读；缺省时端点按 label 兜底）。 */
+  readonly meta?: GameEngineMeta;
 
   /** 建房：由房主 config 初始化 engineState（config 校验失败抛/返回 invalid_action）。 */
   createRoom(state: GameRoomState, config: Record<string, unknown>): EngineOutcome;

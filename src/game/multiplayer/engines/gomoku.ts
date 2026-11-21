@@ -24,6 +24,7 @@
  */
 import type {
   EngineOutcome,
+  GameEngineMeta,
   GameProtocolErrorCode,
   GameRoomAction,
   GameRoomPlayer,
@@ -384,6 +385,14 @@ function publicViewPayload(engine: GomokuEngineState): Record<string, unknown> {
 export const gomokuEngine: MultiplayerGameEngine = {
   gameType: "gomoku",
   label: "五子棋",
+  // 玩法元数据（GET /api/game/types 直读）：入口卡/大厅标题与人数规则都从
+  // 这里来，客户端不再硬编码玩法名。
+  meta: {
+    displayName: "五子棋",
+    description: "黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。",
+    minPlayers: 2,
+    maxPlayers: 2,
+  } satisfies GameEngineMeta,
 
   createRoom(state, config): EngineOutcome {
     const turnMs = readTurnMs(config);

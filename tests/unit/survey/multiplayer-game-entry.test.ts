@@ -59,6 +59,13 @@ describe("/game 的接线（前端分发链 + Worker 静态页 + 入口卡）", 
     expect(trialScreen).toContain("五子棋 · 联机对战");
   });
 
+  it("/trial 联机对战入口卡读 GET /api/game/types，失败回退静态五子棋入口（分层批次）", () => {
+    expect(trialScreen).toContain("fetchGameTypes()");
+    expect(trialScreen).toContain("gameEntryHref(");
+    // 静态回退卡仍在源里（guard 读源码而非运行时）：入口在任何部署下都不消失。
+    expect(trialScreen).toContain('href="/game"');
+  });
+
   it("/app 应用中心小游戏区有 EntryRow 入口", () => {
     expect(appCenter).toContain('href="/game"');
     expect(appCenter).toContain("和好友实时对弈");
@@ -67,5 +74,33 @@ describe("/game 的接线（前端分发链 + Worker 静态页 + 入口卡）", 
   it("/s 与 /cert 分支未被触碰（答题流程与认证卡 DOM 不动）", () => {
     expect(surveyApp).toContain("window.location.pathname.match(/^\\/s\\/(\\d+)/)");
     expect(router).toContain('servePublicPageWithMeta(env, request, "/s")');
+  });
+});
+
+describe("/game 的 Lobby/Board 分层（Board 注册表 + 未知玩法兜底）", () => {
+  const screen = readFileSync(join(process.cwd(), "admin", "src", "survey", "MultiplayerGameScreen.tsx"), "utf8");
+  const boards = readFileSync(join(process.cwd(), "admin", "src", "survey", "game-boards.tsx"), "utf8");
+
+  it("屏按 view.gameType 经注册表分发 Board；未注册玩法渲染「该游戏客户端即将上线」", () => {
+    expect(screen).toContain("resolveGameBoard(view.gameType)");
+    expect(screen).toContain("<UnknownGameBoard gameType={view.gameType} />");
+    expect(boards).toContain('registerGameBoard("gomoku", GomokuBoardPanel)');
+  });
+
+  it("大厅层走 GameLobby.tsx；房间壳不再直接触碰五子棋渲染（分层守护）", () => {
+    expect(screen).toContain('from "./GameLobby"');
+    // 玩法私有渲染全部下沉到 GomokuBoardPanel：房间壳不 import 棋盘组件、
+    // 不解析玩法载荷（normalizeRoomCode 等房间级纯函数仍可复用）。
+    expect(screen).not.toContain('from "./GomokuBoard"');
+    expect(screen).not.toContain("parseGomokuView");
+    expect(screen).not.toContain("<GomokuBoard");
+  });
+
+  it("建房路径必须同步落「我的行」锚点 setMyHash（创建不经 enterRoom，漏掉即房主被渲染成观战）", () => {
+    // handleCreate 拿到 create 响应（game-api 的 you 字段 → selfParticipantHash）
+    // 后要 setMyHash，再 attachConnection；这是「建→备→开局」链路的前提。
+    const createBlock = screen.slice(screen.indexOf("const handleCreate"), screen.indexOf("const handleJoinInput"));
+    expect(createBlock).toContain("setMyHash(result.data.selfParticipantHash)");
+    expect(createBlock).toContain("attachConnection(result.data.roomId)");
   });
 });

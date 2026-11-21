@@ -3,6 +3,7 @@ import type { GameRoomDO } from "../durable-objects/game-room";
 import { fail, json, resolveParticipant } from "./survey-api";
 import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
 import { writeAudit } from "./admin/helpers";
+import { listGameEngines } from "../game/multiplayer/engine-registry";
 import {
   GAME_ROOM_REF_PREFIX,
   gameRoomDOName,
@@ -41,6 +42,24 @@ const ROOM_PATH = /^\/api\/game\/rooms\/(\d+)\/(join|close|state|ws)$/;
  * 先例：显式 405 由各端点自己返回）。
  */
 export async function handleGameApiRequest(request: Request, env: Env, url: URL): Promise<Response | null> {
+  // GET /api/game/types：已注册玩法列表（读 engine 注册表的 meta，纯内存、
+  // 无身份/无 D1）。公开只读——响应只有玩法名与元数据，不含任何房间或玩家
+  // 信息；/trial 入口卡与 /game 大厅都消费它。未知/缺 meta 的引擎按 label
+  // 兜底，注册表空时返回空列表（调用方回退到本地静态入口）。
+  if (url.pathname === "/api/game/types") {
+    if (request.method !== "GET") return fail(405, "method_not_allowed", "玩法列表只支持 GET");
+    return json({
+      ok: true,
+      games: listGameEngines().map((engine) => ({
+        name: engine.gameType,
+        displayName: engine.meta?.displayName ?? engine.label,
+        description: engine.meta?.description ?? "",
+        minPlayers: engine.meta?.minPlayers ?? null,
+        maxPlayers: engine.meta?.maxPlayers ?? null,
+      })),
+    });
+  }
+
   if (!url.pathname.startsWith("/api/game/rooms")) return null;
 
   const roomMatch = ROOM_PATH.exec(url.pathname);
@@ -139,6 +158,10 @@ async function handleCreateRoom(request: Request, env: Env, _url: URL): Promise<
     room: { id: roomId, gameType, status: payload.state?.status ?? "lobby" },
     roomRef: `${GAME_ROOM_REF_PREFIX}${roomId}`,
     view: payload.view,
+    // 查看者自己的 participantHash（Lobby/Board 层用它在信封 players 里定位
+    // 「我的行」）。只回本人哈希——他人哈希已在按人裁剪的信封 players 里，
+    // 这里不新增任何他人的身份信息。
+    you: participant.participantHash,
   });
 }
 
@@ -185,6 +208,8 @@ async function handleJoinRoom(request: Request, env: Env, id: number): Promise<R
     roomRef,
     view: payload.view,
     role: payload.role ?? (asSpectator ? "spectator" : "player"),
+    // 查看者自己的 participantHash（同 create：仅本人哈希，用于定位「我的行」）。
+    you: participant.participantHash,
     ...(payload.rejoined ? { rejoined: true } : {}),
     ...(payload.spectatorFallback ? { spectatorFallback: true } : {}),
   });
@@ -308,7 +333,14 @@ async function handleRoomState(request: Request, env: Env, id: number): Promise<
   });
   if (!response.ok) return relayDoError(response);
   const payload = (await response.json()) as { view?: GamePlayerView | GamePublicView; role?: "player" | "spectator" };
-  return json({ ok: true, roomRef, view: payload.view, role: payload.role ?? "spectator" });
+  return json({
+    ok: true,
+    roomRef,
+    view: payload.view,
+    role: payload.role ?? "spectator",
+    // 查看者自己的 participantHash（同 create/join：仅本人哈希）。
+    you: participant.participantHash,
+  });
 }
 
 // ---------------------------------------------------------------------------

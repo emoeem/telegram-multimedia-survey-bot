@@ -25,6 +25,11 @@ export function listMultiplayerGameTypes(): string[] {
   return [...engines.keys()];
 }
 
+/** 已登记引擎实例列表（GET /api/game/types 的数据源；注册顺序即展示顺序）。 */
+export function listGameEngines(): MultiplayerGameEngine[] {
+  return [...engines.values()];
+}
+
 /** 仅测试用：清空注册表（vitest 各用例互不串扰）。 */
 export function clearGameEnginesForTest(): void {
   engines.clear();

@@ -24,8 +24,8 @@ import type { GameClientMessage, GamePlayerView, GamePublicView } from "../../..
 import { identityHeaders } from "./api";
 import { sessionParticipantIdentity } from "./participant-token";
 import { gameErrorText, roomCodeToId } from "./game-room-logic";
+import { parseGameTypes, type GameConnectionStatus, type GameTypeInfo } from "./game-lobby-logic";
 
-const GOMOKU_GAME_TYPE = "gomoku";
 /** 动作（落子/悔棋/求和/认输）等待 action_result 的超时：超过即提示连接不稳。 */
 const ACTION_TIMEOUT_MS = 8000;
 const RECONNECT_BASE_MS = 1000;
@@ -87,6 +87,8 @@ export interface GameRoomSnapshot {
   roomRef: string;
   view: GamePlayerView | GamePublicView;
   role: "player" | "spectator";
+  /** 查看者自己的 participantHash（REST 信封 you 字段）：定位信封 players 里的「我的行」。 */
+  selfParticipantHash: string | null;
   /** 满员/已开局坐不下，服务端自动降级为观战（屏层据此提示）。 */
   spectatorFallback?: boolean;
 }
@@ -105,19 +107,41 @@ function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<G
       roomRef,
       view,
       role: payload.role === "player" ? "player" : "spectator",
+      selfParticipantHash: typeof payload.you === "string" ? payload.you : null,
       ...(payload.spectatorFallback === true ? { spectatorFallback: true } : {}),
     },
   };
 }
 
-/** 创建五子棋房间（房主）。 */
-export async function createGameRoom(displayName: string | null): Promise<GameApiResult<GameRoomSnapshot>> {
+/**
+ * 创建房间（房主）。gameType 由调用方从玩法列表（GET /api/game/types）选择
+ * 传入——本层不再硬编码玩法；未注册的 gameType 由服务端以 unknown_game_type
+ * 拒绝（错误文案经 gameErrorText 收敛成中文）。
+ */
+export async function createGameRoom(
+  gameType: string,
+  displayName: string | null,
+): Promise<GameApiResult<GameRoomSnapshot>> {
   const result = await callGameApi("/api/game/rooms", {
     method: "POST",
-    body: JSON.stringify({ gameType: GOMOKU_GAME_TYPE, ...(displayName ? { displayName } : {}) }),
+    body: JSON.stringify({ gameType, ...(displayName ? { displayName } : {}) }),
   });
   if (!result.ok) return result;
   return snapshotFromResponse(result.data);
+}
+
+/**
+ * 已注册玩法列表（GET /api/game/types）。响应只有玩法元数据、不含任何房间
+ * 或玩家信息；解析失败/空列表返回错误，调用方回退到 FALLBACK_GAME_TYPES。
+ */
+export async function fetchGameTypes(): Promise<GameApiResult<GameTypeInfo[]>> {
+  const result = await callGameApi("/api/game/types", { method: "GET" });
+  if (!result.ok) return result;
+  const types = parseGameTypes(result.data);
+  if (types === null) {
+    return { ok: false, error: { code: "bad_response", message: gameErrorText("bad_response") } };
+  }
+  return { ok: true, data: types };
 }
 
 /** 加入（或重入）房间：已是玩家时服务端幂等返回当前视图。 */
@@ -154,7 +178,9 @@ export async function closeGameRoom(roomId: number): Promise<GameApiResult<{ roo
 // WebSocket 连接
 // ---------------------------------------------------------------------------
 
-export type GameConnectionStatus = "connecting" | "open" | "closed";
+// 连接状态类型移到 game-lobby-logic.ts（纯层）以供 Board 注册表复用，这里
+// 原样再导出保持既有 import 路径不变。
+export type { GameConnectionStatus };
 
 export interface GameRoomConnectionOptions {
   roomId: number;

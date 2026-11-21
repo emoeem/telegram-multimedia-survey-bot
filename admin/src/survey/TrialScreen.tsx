@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { safeCopy } from "./clipboard";
 import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
+import { fetchGameTypes } from "./game-room-client";
+import { gameEntryHref, type GameTypeInfo } from "./game-lobby-logic";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
 import { useDialogs } from "../components/Dialogs";
 import {
@@ -197,6 +199,9 @@ export function TrialScreen() {
   const [themePreset, setThemePreset] = useState<string | null>(() => loadGlobalPreset());
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [me, setMe] = useState<{ telegram: boolean; isAdmin: boolean } | null>(null);
+  // 联机对战入口卡的数据源：GET /api/game/types（已注册玩法）。null = 拉取
+  // 失败/未升级部署，回退到静态五子棋入口卡（入口在任何部署下都不消失）。
+  const [gameEntries, setGameEntries] = useState<GameTypeInfo[] | null>(null);
   const [warningAckId, setWarningAckId] = useState<number | null>(null);
   // 0106 包级 18+：待确认 ack 的包（null = 无弹层）；确认后续跑被暂挂的开局
   // （pendingStart 存配置，避免把 ack 流程塞进 startGame 的回调）。
@@ -225,6 +230,17 @@ export function TrialScreen() {
       .catch(() => {
         // Role info is non-critical: hide management shortcuts on failure.
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 联机对战入口卡读已注册玩法列表：失败不报错（非关键数据），置 null 走静态回退。
+  useEffect(() => {
+    let cancelled = false;
+    void fetchGameTypes().then((result) => {
+      if (!cancelled) setGameEntries(result.ok ? result.data : null);
+    });
     return () => {
       cancelled = true;
     };
@@ -883,22 +899,48 @@ export function TrialScreen() {
         </a>
       ) : null}
 
-      {/* 五子棋联机对战（批次 W3）：与爬塔任务并排的实时对战入口，整页跳 /game。 */}
-      <a
-        href="/game"
-        className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-      >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-          <Swords className="h-5 w-5" aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">五子棋 · 联机对战</span>
-          <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-            创建房间或输入房间码，和好友实时对弈
+      {/* 联机对战入口卡（Lobby/Board 分层批次）：读 GET /api/game/types 渲染
+          已注册玩法，每款一卡整页跳 /game；拉取失败/部署未升级时回退到静态
+          五子棋入口卡（else 分支），入口在任何部署下都不消失。 */}
+      {gameEntries !== null ? (
+        gameEntries.map((game) => (
+          <a
+            key={game.name}
+            href={gameEntryHref(game.name)}
+            className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+              <Swords className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                {game.displayName} · 联机对战
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                {game.description || "创建房间或输入房间码，和好友实时对弈"}
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
+          </a>
+        ))
+      ) : (
+        /* 五子棋联机对战（批次 W3）：静态回退入口，与爬塔任务并排的实时对战卡，整页跳 /game。 */
+        <a
+          href="/game"
+          className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+            <Swords className="h-5 w-5" aria-hidden="true" />
           </span>
-        </span>
-        <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
-      </a>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">五子棋 · 联机对战</span>
+            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+              创建房间或输入房间码，和好友实时对弈
+            </span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
+        </a>
+      )}
 
       {activeLoading ? (
         <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-sm text-[var(--survey-muted)]">
