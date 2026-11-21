@@ -20,6 +20,8 @@
     "test:visual:gate": "pnpm build:admin && pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test --grep-invert @production",
     "test:visual:prod": "pnpm build:admin && pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test --grep @production",
     "test:visual:update": "pnpm build:admin && pnpm exec vite-node scripts/generate-report-fixtures.ts && pnpm exec playwright test --update-snapshots",
+    "proto": "node prototype-lab/server.cjs",
+    "test:proto": "pnpm exec playwright test -c prototype-lab/playwright.config.mjs",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
     "license-admin:setup": "node scripts/setup-license-admin.mjs",

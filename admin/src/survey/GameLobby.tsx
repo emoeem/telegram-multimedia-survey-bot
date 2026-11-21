@@ -63,114 +63,113 @@ export function GameLobbyEntry({
 }: GameLobbyEntryProps) {
   const selected = gameTypes.find((game) => game.name === selectedType) ?? gameTypes[0] ?? null;
   return (
-    <div className="space-y-4">
-      <section className="survey-card p-4">
-        <SectionHeader icon={Swords} title={`${selected?.displayName ?? "联机对战"} · 联机对战`} />
-        <p className="mt-2 text-[13px] leading-relaxed text-[var(--survey-muted)]">
-          创建一个房间把房间码发给好友，或输入对方的房间码加入同一局。
-          {selected?.description ? selected.description : ""}
-        </p>
-      </section>
-      <section className="survey-card p-4">
-        <SectionHeader icon={Users} title="创建房间" />
-        <p className="mt-1.5 text-[12px] text-[var(--survey-muted)]">创建后你会拿到一个房间码，发给好友即可加入。</p>
+    /* M8 双区（docs/design/USER_FLOWS.md F4 / BASELINE_AUDIT (a)(b)）：
+     * 桌面 ≥lg 左区「玩法说明 + 选择玩法」、右区「创建(主) + 加入(次)」；
+     * 手机保持原纵堆顺序（intro → 选择玩法 → 创建 → 加入），只改栅格不改流程。
+     * configPanel（狼人杀房主配置）跟创建卡走右区。 */
+    <div className="game-lobby-grid">
+      <div className="min-w-0 space-y-4">
+        <section className="survey-card p-4">
+          <SectionHeader icon={Swords} title={`${selected?.displayName ?? "联机对战"} · 联机对战`} />
+          <p className="mt-2 text-[13px] leading-relaxed text-[var(--survey-muted)]">
+            创建一个房间把房间码发给好友，或输入对方的房间码加入同一局。
+            {selected?.description ? selected.description : ""}
+          </p>
+        </section>
         {gameTypes.length > 1 ? (
-          <div className="mt-3 space-y-2" role="radiogroup" aria-label="选择玩法">
-            {gameTypes.map((game) => {
-              const active = game.name === selectedType;
-              return (
-                <button
-                  key={game.name}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => onSelectType(game.name)}
-                  className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
-                    active
-                      ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
-                      : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                      {game.displayName}
+          <section className="survey-card p-4">
+            <SectionHeader icon={Users} title="选择玩法" />
+            <div className="mt-3 space-y-2" role="radiogroup" aria-label="选择玩法">
+              {gameTypes.map((game) => {
+                const active = game.name === selectedType;
+                return (
+                  <button
+                    key={game.name}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => onSelectType(game.name)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
+                      active
+                        ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
+                        : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                        {game.displayName}
+                      </span>
+                      {game.description ? (
+                        <span className="mt-0.5 block truncate text-[11px] text-[var(--survey-muted)]">
+                          {game.description}
+                        </span>
+                      ) : null}
                     </span>
-                    {game.description ? (
-                      <span className="mt-0.5 block truncate text-[11px] text-[var(--survey-muted)]">
-                        {game.description}
+                    {active ? (
+                      <span className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[10px] font-bold text-[var(--survey-primary-content)]">
+                        已选
                       </span>
                     ) : null}
-                  </span>
-                  {active ? (
-                    <span className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[10px] font-bold text-[var(--survey-primary-content)]">
-                      已选
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-            {configPanel}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+      </div>
+      <div className="min-w-0 space-y-4">
+        <section className="survey-card p-4">
+          <SectionHeader icon={Users} title="创建房间" />
+          <p className="mt-1.5 text-[12px] text-[var(--survey-muted)]">创建后你会拿到一个房间码，发给好友即可加入。</p>
+          {configPanel}
+          <button
+            type="button"
+            className="btn btn-primary mt-3 w-full disabled:opacity-50"
+            disabled={busy}
+            onClick={onCreate}
+          >
+            {busy ? "正在创建…" : gameTypes.length > 1 ? `创建${selected?.displayName ?? ""}房间` : "创建房间"}
+          </button>
+        </section>
+        <section className="survey-card p-4">
+          <SectionHeader icon={Link2} title="加入房间" />
+          <div className="mt-2 flex gap-2">
+            <input
+              className="input min-w-0 flex-1 text-center tracking-widest"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="输入房间码"
+              aria-label="房间码"
+              value={joinInput}
+              onChange={(event) => onJoinInputChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onJoinSubmit();
+              }}
+            />
             <button
               type="button"
-              className="btn btn-primary w-full disabled:opacity-50"
+              className="btn btn-primary shrink-0 disabled:opacity-50"
               disabled={busy}
-              onClick={onCreate}
+              onClick={onJoinSubmit}
             >
-              {busy ? "正在创建…" : `创建${selected?.displayName ?? ""}房间`}
+              加入
             </button>
           </div>
-        ) : (
-          <>
-            {configPanel}
+          <p className="mt-1.5 text-[11px] text-[var(--survey-muted)]">直接粘贴好友发来的邀请链接也可以。</p>
+        </section>
+        {error !== null ? (
+          <div role="alert" className="survey-card border-[color-mix(in_srgb,var(--app-danger)_35%,transparent)] p-3">
+            <p className="text-[13px] font-medium text-[var(--app-danger)]">{error}</p>
             <button
               type="button"
-              className="btn btn-primary mt-3 w-full disabled:opacity-50"
-              disabled={busy}
-              onClick={onCreate}
+              className="mt-1 text-[12px] font-semibold text-[var(--survey-primary)] underline"
+              onClick={onDismissError}
             >
-              {busy ? "正在创建…" : "创建房间"}
+              知道了
             </button>
-          </>
-        )}
-      </section>
-      <section className="survey-card p-4">
-        <SectionHeader icon={Link2} title="加入房间" />
-        <div className="mt-2 flex gap-2">
-          <input
-            className="input min-w-0 flex-1 text-center tracking-widest"
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="输入房间码"
-            aria-label="房间码"
-            value={joinInput}
-            onChange={(event) => onJoinInputChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onJoinSubmit();
-            }}
-          />
-          <button
-            type="button"
-            className="btn btn-primary shrink-0 disabled:opacity-50"
-            disabled={busy}
-            onClick={onJoinSubmit}
-          >
-            加入
-          </button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-[var(--survey-muted)]">直接粘贴好友发来的邀请链接也可以。</p>
-      </section>
-      {error !== null ? (
-        <div role="alert" className="survey-card border-[color-mix(in_srgb,var(--app-danger)_35%,transparent)] p-3">
-          <p className="text-[13px] font-medium text-[var(--app-danger)]">{error}</p>
-          <button
-            type="button"
-            className="mt-1 text-[12px] font-semibold text-[var(--survey-primary)] underline"
-            onClick={onDismissError}
-          >
-            知道了
-          </button>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

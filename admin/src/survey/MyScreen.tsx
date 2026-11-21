@@ -437,7 +437,7 @@ export function MyScreen() {
         subtitle="你的答卷、档案与挑战记录"
         titleIcon={<UserRound className="h-4 w-4" />}
         backHref={null}
-        wide={false}
+        wide
         actions={
           <>
             <ThemeAction themeState={themeState} />
@@ -454,173 +454,208 @@ export function MyScreen() {
         }
       />
 
-      <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-3xl">
+      <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-[1200px] lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-4 lg:space-y-0">
         {error ? (
-          <ErrorState message={error} onRetry={() => setRetryKey((key) => key + 1)} />
+          <div className="lg:col-span-12">
+            <ErrorState message={error} onRetry={() => setRetryKey((key) => key + 1)} />
+          </div>
         ) : overview === null ? (
-          <LoadingState label="正在加载我的资料" rows={4} />
+          <div className="lg:col-span-12">
+            <LoadingState label="正在加载我的资料" rows={4} />
+          </div>
         ) : (
           <>
-            {/* 身份 */}
-            <section className="flex items-center gap-3 survey-card p-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-                <UserRound className="h-6 w-6" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-[var(--survey-heading)]">
-                  {overview.identity.telegram
-                    ? "Telegram 身份"
-                    : overview.identity.email
-                      ? `邮箱账号 · ${overview.identity.emailMasked ?? "已登录"}`
-                      : "匿名访客身份"}
-                </p>
-                <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
-                  {overview.identity.telegram
-                    ? "答卷、挑战与档案都会归属到这个身份"
-                    : overview.identity.email
-                      ? "已注册登录，答卷与进度都归属这个账号；绑定 Telegram 后成绩可上榜"
-                      : "注册或登录（邮箱即可）后答卷进度才能找回"}
-                </p>
-              </div>
-              {overview.identity.telegram || overview.identity.email ? (
-                <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--app-success)_14%,transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-success)]">
-                  {overview.identity.telegram ? "已认证" : "已登录"}
+            {/* M9 分组栅格：DOM 顺序不变，仅 ≥lg 分列（身份 5 + 金币 7，互动/内容双列 6+6）。
+                手机端包装 div 不产生任何视觉差（space-y 语义不变）。 */}
+            <div className="lg:col-span-5">
+              {/* 身份 */}
+              <section className="flex items-center gap-3 survey-card p-4">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+                  <UserRound className="h-6 w-6" />
                 </span>
-              ) : (
-                <a
-                  href="/auth"
-                  className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary-content)] no-underline"
-                >
-                  去注册 / 登录
-                </a>
-              )}
-            </section>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-[var(--survey-heading)]">
+                    {overview.identity.telegram
+                      ? "Telegram 身份"
+                      : overview.identity.email
+                        ? `邮箱账号 · ${overview.identity.emailMasked ?? "已登录"}`
+                        : "匿名访客身份"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-[var(--survey-muted)]">
+                    {overview.identity.telegram
+                      ? "答卷、挑战与档案都会归属到这个身份"
+                      : overview.identity.email
+                        ? "已注册登录，答卷与进度都归属这个账号；绑定 Telegram 后成绩可上榜"
+                        : "注册或登录（邮箱即可）后答卷进度才能找回"}
+                  </p>
+                </div>
+                {overview.identity.telegram || overview.identity.email ? (
+                  <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--app-success)_14%,transparent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-success)]">
+                    {overview.identity.telegram ? "已认证" : "已登录"}
+                  </span>
+                ) : (
+                  <a
+                    href="/auth"
+                    className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--survey-primary-content)] no-underline"
+                  >
+                    去注册 / 登录
+                  </a>
+                )}
+              </section>
+            </div>
 
-            <CoinCard />
+            <div className="lg:col-span-7">
+              <CoinCard />
+            </div>
 
             {/* 纸条聊天（0089）：个人中心的一等入口。 */}
-            <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
+            <div className="lg:col-span-6">
+              <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
+            </div>
 
             {/* 动态与通知（B5）：纸条配对、审核结果、连载更新等全站动态，与书架无关——
                 独立成卡，不再嵌在「系列书架」卡片里渲染。 */}
-            <NotificationCenter />
+            <div className="lg:col-span-6">
+              <NotificationCenter />
+            </div>
 
             {/* 系列书架入口保留原位：分组重排不动入口取舍。 */}
-            <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
+            <div className="lg:col-span-6">
+              <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
+            </div>
 
-            <ProfileShareCard />
+            <div className="lg:col-span-6">
+              <ProfileShareCard />
+            </div>
 
             {/* 游戏音效：联机对局提示音总开关与音量（与对局页头小喇叭同源）。 */}
-            <GameSoundSettings />
+            <div className="lg:col-span-6">
+              <GameSoundSettings />
+            </div>
 
-            <ReportList />
+            <div className="lg:col-span-6">
+              <ReportList />
+            </div>
 
             {/* 数据总览 */}
-            <section className="grid grid-cols-2 gap-3">
-              <div className="survey-card p-4">
-                <SectionHeader icon={FileCheck2} title="已完成问卷" />
-                <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
-                  {overview.completedSurveys}
-                  <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">份</span>
-                </p>
-              </div>
-              <div className="survey-card p-4">
-                <SectionHeader icon={Target} title="挑战通关" />
-                <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
-                  {overview.trial.completed}
-                  <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">
-                    / {overview.trial.runs} 局
-                  </span>
-                </p>
-              </div>
-            </section>
+            <div className="lg:col-span-6">
+              <section className="grid grid-cols-2 gap-3 h-full">
+                <div className="survey-card p-4">
+                  <SectionHeader icon={FileCheck2} title="已完成问卷" />
+                  <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
+                    {overview.completedSurveys}
+                    <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">份</span>
+                  </p>
+                </div>
+                <div className="survey-card p-4">
+                  <SectionHeader icon={Target} title="挑战通关" />
+                  <p className="mt-1.5 text-2xl font-black text-[var(--survey-heading)]">
+                    {overview.trial.completed}
+                    <span className="ml-1 text-xs font-semibold text-[var(--survey-muted)]">
+                      / {overview.trial.runs} 局
+                    </span>
+                  </p>
+                </div>
+              </section>
+            </div>
 
             {/* 我的答卷档案（B5 命名合一）：答卷公开档案统一叫「答卷档案」，
                 与广场页签、档案详情页同一口径。 */}
-            <section className="survey-card p-4">
-              <SectionHeader icon={Link2} title="我的答卷档案" />
-              {overview.myProfile ? (
-                <a href={`/plaza/profile/${overview.myProfile.responseId}`} className="mt-2.5 flex items-center gap-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-bold text-[var(--survey-heading)]">
-                      {overview.myProfile.heading ?? "未命名答卷档案"}
+            <div className="lg:col-span-6">
+              <section className="survey-card p-4 h-full">
+                <SectionHeader icon={Link2} title="我的答卷档案" />
+                {overview.myProfile ? (
+                  <a
+                    href={`/plaza/profile/${overview.myProfile.responseId}`}
+                    className="mt-2.5 flex items-center gap-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-bold text-[var(--survey-heading)]">
+                        {overview.myProfile.heading ?? "未命名答卷档案"}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                        已发布于 {(overview.myProfile.publishedAt || "").slice(0, 10)} · 点击查看
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
-                      已发布于 {(overview.myProfile.publishedAt || "").slice(0, 10)} · 点击查看
-                    </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-                </a>
-              ) : overview.profileSurveyId ? (
-                <a
-                  href={`/s/${overview.profileSurveyId}`}
-                  className="mt-3 block rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-center text-[13px] font-semibold text-[var(--survey-primary-content)]"
-                >
-                  填写答卷档案问卷，生成我的答卷档案
-                </a>
-              ) : (
-                <p className="mt-2 text-[13px] text-[var(--survey-muted)]">
-                  答卷档案功能还未开放，先去逛逛
-                  <a className="text-[var(--survey-primary)] underline" href="/plaza">
-                    广场
+                    <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
                   </a>
-                  吧。
-                </p>
-              )}
+                ) : overview.profileSurveyId ? (
+                  <a
+                    href={`/s/${overview.profileSurveyId}`}
+                    className="mt-3 block rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-center text-[13px] font-semibold text-[var(--survey-primary-content)]"
+                  >
+                    填写答卷档案问卷，生成我的答卷档案
+                  </a>
+                ) : (
+                  <p className="mt-2 text-[13px] text-[var(--survey-muted)]">
+                    答卷档案功能还未开放，先去逛逛
+                    <a className="text-[var(--survey-primary)] underline" href="/plaza">
+                      广场
+                    </a>
+                    吧。
+                  </p>
+                )}
 
-              {overview.myProfile ? (
-                <div className="mt-3 border-t border-[var(--survey-card-border)] pt-3">
-                  {/* 展示区（B5 命名合一）：与 screen-help.ts 的 showcase intro 同一叫法。 */}
-                  <SectionHeader icon={Images} title="展示区" />
-                  {overview.showcase?.published ? (
-                    <a href={`/showcase?p=${overview.showcase.personId}`} className="mt-2 flex items-center gap-2">
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                          已在展示区公开
+                {overview.myProfile ? (
+                  <div className="mt-3 border-t border-[var(--survey-card-border)] pt-3">
+                    {/* 展示区（B5 命名合一）：与 screen-help.ts 的 showcase intro 同一叫法。 */}
+                    <SectionHeader icon={Images} title="展示区" />
+                    {overview.showcase?.published ? (
+                      <a href={`/showcase?p=${overview.showcase.personId}`} className="mt-2 flex items-center gap-2">
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                            已在展示区公开
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">点击查看</span>
                         </span>
-                        <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">点击查看</span>
-                      </span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-                    </a>
-                  ) : overview.showcase ? (
-                    <a href="/showcase" className="mt-2 flex items-center gap-2">
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                          已提交展示区
+                        <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+                      </a>
+                    ) : overview.showcase ? (
+                      <a href="/showcase" className="mt-2 flex items-center gap-2">
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                            已提交展示区
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                            管理员审核通过后就会公开 · 去展示区逛逛
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
-                          管理员审核通过后就会公开 · 去展示区逛逛
-                        </span>
-                      </span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={showcaseBusy}
-                      onClick={() => void generateShowcase()}
-                      className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-[13px] font-semibold text-[var(--survey-body)] transition hover:bg-[var(--survey-primary-soft)] disabled:opacity-60"
-                    >
-                      {showcaseBusy ? "生成中…" : "把我的答卷档案提交到展示区"}
-                    </button>
-                  )}
-                  {showcaseError ? (
-                    <p className="mt-1.5 text-[11px] text-[var(--app-danger)]">{showcaseError}</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={showcaseBusy}
+                        onClick={() => void generateShowcase()}
+                        className="mt-2 w-full rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] py-2.5 text-[13px] font-semibold text-[var(--survey-body)] transition hover:bg-[var(--survey-primary-soft)] disabled:opacity-60"
+                      >
+                        {showcaseBusy ? "生成中…" : "把我的答卷档案提交到展示区"}
+                      </button>
+                    )}
+                    {showcaseError ? (
+                      <p className="mt-1.5 text-[11px] text-[var(--app-danger)]">{showcaseError}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            </div>
 
             {/* 成就徽章墙（目录与解锁状态都来自服务端） */}
-            {overview.achievements?.items?.length ? <AchievementWall overview={overview.achievements} /> : null}
+            {overview.achievements?.items?.length ? (
+              <div className="lg:col-span-6">
+                <AchievementWall overview={overview.achievements} />
+              </div>
+            ) : null}
 
             {/* 入口 */}
-            <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
-            {/* 应用中心（2026-11-20 P0 加固批次 M1）：四功能区聚合入口，
+            <div className="space-y-4 lg:col-span-12">
+              <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
+              {/* 应用中心（2026-11-20 P0 加固批次 M1）：四功能区聚合入口，
                 后续新入口统一挂到 /app，不再各自散进「我的」。 */}
-            <EntryRow href="/app" icon={LayoutGrid} title="应用中心" subtitle="问卷、小游戏、网页导航与社区" />
-            {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
-            <EntryRow href="/help" icon={CircleHelp} title="帮助中心" subtitle="每一屏是什么、新手第一步点哪里" />
+              <EntryRow href="/app" icon={LayoutGrid} title="应用中心" subtitle="问卷、小游戏、网页导航与社区" />
+              {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
+              <EntryRow href="/help" icon={CircleHelp} title="帮助中心" subtitle="每一屏是什么、新手第一步点哪里" />
+            </div>
           </>
         )}
       </main>

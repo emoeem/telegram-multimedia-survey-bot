@@ -515,6 +515,7 @@ export function CertContentPage() {
                         className="input input-sm w-16 text-center"
                         value={group.emoji}
                         placeholder="🏷️"
+                        aria-label="分组徽标 emoji"
                         onChange={(e) => {
                           const emoji = e.target.value;
                           patchActive({
@@ -526,6 +527,7 @@ export function CertContentPage() {
                         className="input input-sm w-36"
                         value={group.name}
                         placeholder="分组名"
+                        aria-label="分组名"
                         onChange={(e) => {
                           const name = e.target.value;
                           patchActive({
@@ -547,6 +549,7 @@ export function CertContentPage() {
                     </div>
                     <textarea
                       className="textarea mt-2 min-h-20 font-mono text-sm"
+                      aria-label="分组标签，每行一个"
                       value={group.tags.join("\n")}
                       onChange={(e) => {
                         const tags = e.target.value
@@ -605,6 +608,7 @@ export function CertContentPage() {
                     <input
                       className="input input-sm flex-1"
                       value={rank.name}
+                      aria-label={`第 ${index + 1} 档称号`}
                       onChange={(e) => {
                         const name = e.target.value;
                         patchActive({

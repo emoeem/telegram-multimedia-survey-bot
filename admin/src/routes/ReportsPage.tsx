@@ -7,6 +7,7 @@ import { apiSend, type ReportDeliveriesData, type ReportDeliveryItem } from "../
 import { useApi } from "../hooks";
 import { EmptyPanel, ErrorPanel, SkeletonPanel } from "../components/ui";
 import { StatCard } from "../components/StatCard";
+import { TablePagination } from "../components/Pagination";
 import { useDialogs } from "../components/Dialogs";
 import { formatDateTime } from "../format";
 
@@ -434,25 +435,12 @@ export function ReportsPage() {
           </p>
         ) : null}
 
-        <div className="mt-5 flex items-center justify-end gap-2 text-sm text-[var(--color-muted)]">
-          <button
-            className="btn btn-sm"
-            disabled={page <= 1}
-            onClick={() => setPage((value) => Math.max(1, value - 1))}
-          >
-            上一页
-          </button>
-          <span>
-            第 {data.page}/{Math.max(1, data.totalPages)} 页
-          </span>
-          <button
-            className="btn btn-sm"
-            disabled={page >= data.totalPages}
-            onClick={() => setPage((value) => value + 1)}
-          >
-            下一页
-          </button>
-        </div>
+        <TablePagination
+          page={page}
+          totalPages={data.totalPages}
+          onChange={setPage}
+          className="mt-5 text-[var(--color-muted)]"
+        />
       </section>
     </div>
   );

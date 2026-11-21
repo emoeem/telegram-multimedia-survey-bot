@@ -111,3 +111,33 @@ describe("/game 的 Lobby/Board 分层（Board 注册表 + 未知玩法兜底）
     expect(createBlock).toContain("attachConnection(result.data.roomId)");
   });
 });
+
+describe("M8 双区布局（docs/design/IMPLEMENTATION_PROGRESS.md 批次 M8）", () => {
+  const screen = readFileSync(join(process.cwd(), "admin", "src", "survey", "MultiplayerGameScreen.tsx"), "utf8");
+  const lobby = readFileSync(join(process.cwd(), "admin", "src", "survey", "GameLobby.tsx"), "utf8");
+  const indexCss = readFileSync(join(process.cwd(), "admin", "src", "index.css"), "utf8");
+
+  it("大厅入口双区：桌面 5fr/7fr + 横屏短高度双列，手机纵堆不变", () => {
+    expect(lobby).toContain("game-lobby-grid");
+    expect(indexCss).toMatch(
+      /@media \(min-width: 1000px\)[\s\S]{0,80}\.game-lobby-grid\s*\{[\s\S]{0,120}5fr\) minmax\(0, 7fr\)/,
+    );
+    expect(indexCss).toMatch(/landscape\) and \(max-height: 560px\)[\s\S]{0,80}\.game-lobby-grid/);
+  });
+
+  it("选择玩法单选组已从创建卡拆到左区；创建卡保留配置面板插槽", () => {
+    expect(lobby).toContain('aria-label="选择玩法"');
+    expect(lobby.indexOf("选择玩法")).toBeLessThan(lobby.indexOf("创建房间"));
+    // configPanel 必须仍在创建卡内（狼人杀房主配置跟创建走右区）
+    const createBlock = lobby.slice(lobby.indexOf('title="创建房间"'), lobby.indexOf('title="加入房间"'));
+    expect(createBlock).toContain("{configPanel}");
+  });
+
+  it("对局/结算态棋盘主列 + 聊天侧栏（sticky）；大厅态保持纵堆", () => {
+    expect(screen).toContain("room-stage-grid");
+    expect(screen).toContain('"room-stage-grid is-playing"');
+    expect(screen).toContain('className="room-chat-col min-w-0"');
+    expect(indexCss).toMatch(/\.room-stage-grid\.is-playing\s*\{[\s\S]{0,120}320px/);
+    expect(indexCss).toContain(".room-stage-grid.is-playing .room-chat-col");
+  });
+});

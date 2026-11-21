@@ -9,6 +9,6 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: [...configDefaults.exclude, "qa/**"],
+    exclude: [...configDefaults.exclude, "qa/**", "prototype-lab/**"],
   },
 });

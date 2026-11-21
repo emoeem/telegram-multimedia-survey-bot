@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { SURVEY_DISPLAY_MODES, SURVEY_DISPLAY_MODE_LABELS, type SurveyDisplayMode } from "../../../src/survey/display";
 import { EChart } from "../components/EChart";
+import { TablePagination } from "../components/Pagination";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Download, Loader2, Plus, Printer, Search } from "lucide-react";
 import { donutOption } from "../charts";
@@ -598,22 +599,19 @@ export function SurveysPage() {
         )}
 
         {data && data.totalPages > 1 ? (
-          <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-            <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              上一页
-            </button>
-            <span className="text-[var(--color-muted)]">
-              第 <span className="font-semibold text-[var(--color-foreground)]">{data.page}</span> / {data.totalPages}{" "}
-              页 （共 {data.total} 份）
-            </span>
-            <button
-              className="btn btn-sm"
-              disabled={page >= data.totalPages}
-              onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-            >
-              下一页
-            </button>
-          </div>
+          <TablePagination
+            page={page}
+            totalPages={data.totalPages}
+            onChange={setPage}
+            align="center"
+            className="mt-4"
+            label={
+              <span className="text-[var(--color-muted)]">
+                第 <span className="font-semibold text-[var(--color-foreground)]">{data.page}</span> / {data.totalPages}{" "}
+                页 （共 {data.total} 份）
+              </span>
+            }
+          />
         ) : null}
       </section>
 

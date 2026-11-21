@@ -527,6 +527,7 @@ export function ControlCenterPage() {
           />
           <select
             className="select select-sm"
+            aria-label="部署状态筛选"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
           >
@@ -602,7 +603,7 @@ export function ControlCenterPage() {
               ))}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center opacity-50">
+                  <td colSpan={6} className="py-10 text-center opacity-70">
                     没有匹配的部署
                   </td>
                 </tr>
@@ -665,6 +666,7 @@ export function ControlCenterPage() {
           </div>
           <select
             className="select select-sm"
+            aria-label="任务类型筛选"
             data-testid="jobs-kind-filter"
             value={jobKindFilter}
             onChange={(e) => setJobKindFilter(e.target.value as typeof jobKindFilter)}
@@ -702,7 +704,7 @@ export function ControlCenterPage() {
                   {jobStatusLabel[row.status] ?? row.status}
                 </span>
                 {row.attempts > 0 ? <span className="text-xs opacity-60">已尝试 {row.attempts} 次</span> : null}
-                <span className="ml-auto text-xs opacity-50">{formatDateTime(row.happenedAt)}</span>
+                <span className="ml-auto text-xs opacity-70">{formatDateTime(row.happenedAt)}</span>
               </div>
               <div className="mt-1 text-sm opacity-70">{jobContextText(row)}</div>
               {row.error ? (
@@ -772,7 +774,7 @@ export function ControlCenterPage() {
                 </div>
                 <div className="mt-2 text-sm opacity-70">Chat ID: {archive?.chatId ?? "未配置"}</div>
                 <div className="text-sm opacity-70">答卷完成后自动打包 PDF + 图片 + 答案；不接收公开报告相册。</div>
-                <div className="mt-1 text-xs opacity-50">
+                <div className="mt-1 text-xs opacity-70">
                   来源：{archive ? archiveSourceLabel[archive.source] : "未配置"}
                 </div>
               </div>
@@ -805,7 +807,7 @@ export function ControlCenterPage() {
                 <div className="text-sm opacity-70">
                   用户在认证卡生成器点「导出」时，成品图 + 用户自己上传的原图同步到这里。
                 </div>
-                <div className="mt-1 text-xs opacity-50">
+                <div className="mt-1 text-xs opacity-70">
                   {certShareDisabled ? (
                     <>
                       来源：部署环境变量 <code>CERT_SHARE_DISABLED=true</code>

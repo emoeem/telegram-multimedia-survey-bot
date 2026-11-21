@@ -576,32 +576,42 @@ export function MultiplayerGameScreen() {
             onStart={startGame}
           />
         ) : null}
-        {BoardPanel !== null ? (
-          <BoardPanel
-            view={view}
-            role={role}
-            connection={connection}
-            online={online}
-            remainingNow={remainingNow}
-            sendAction={sendBoardAction}
-            onExitRoom={exitRoom}
-          />
-        ) : (
-          <UnknownGameBoard gameType={view.gameType} />
-        )}
-        {/* 房间内聊天：大厅（lobby）与对局（playing）都接入；settled 后服务端
-        即焚拒新消息，面板只剩空列表提示。 */}
-        <ChatPanel
-          messages={chatMessages}
-          myHash={myHash}
-          role={role}
-          connected={connection === "open"}
-          tabs={chatTabs}
-          onSendText={sendChatText}
-          onSendVoice={sendChatVoice}
-          onSendImage={sendChatImage}
-          onNotice={(message) => toast({ message, variant: "error" })}
-        />
+        {/* M8 房间双区：对局/结算 ≥lg 棋盘主列 + 聊天侧栏（sticky）；大厅态
+        保持纵堆（等待面板本身轻量）。属性全部原样透传，不改任何回调。 */}
+        <div
+          className={
+            view.status === "playing" || view.status === "settled" ? "room-stage-grid is-playing" : "room-stage-grid"
+          }
+        >
+          {BoardPanel !== null ? (
+            <BoardPanel
+              view={view}
+              role={role}
+              connection={connection}
+              online={online}
+              remainingNow={remainingNow}
+              sendAction={sendBoardAction}
+              onExitRoom={exitRoom}
+            />
+          ) : (
+            <UnknownGameBoard gameType={view.gameType} />
+          )}
+          {/* 房间内聊天：大厅（lobby）与对局（playing）都接入；settled 后服务端
+          即焚拒新消息，面板只剩空列表提示。 */}
+          <div className="room-chat-col min-w-0">
+            <ChatPanel
+              messages={chatMessages}
+              myHash={myHash}
+              role={role}
+              connected={connection === "open"}
+              tabs={chatTabs}
+              onSendText={sendChatText}
+              onSendVoice={sendChatVoice}
+              onSendImage={sendChatImage}
+              onNotice={(message) => toast({ message, variant: "error" })}
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -618,7 +628,7 @@ export function MultiplayerGameScreen() {
         wide={false}
         actions={<ThemeAction themeState={themeState} />}
       />
-      <main className="mx-auto max-w-xl space-y-4 px-5 py-5">
+      <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-3xl">
         {roomId === null ? (
           <GameLobbyEntry
             gameTypes={types}

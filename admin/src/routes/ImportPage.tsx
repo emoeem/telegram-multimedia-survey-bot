@@ -457,6 +457,7 @@ export function ImportPage() {
           </button>
           <select
             className="rounded-lg border border-[var(--control-border)] bg-[var(--surface)] px-3 py-2.5 text-sm sm:flex-none"
+            aria-label="报告模板"
             value={templateId}
             onChange={(event) => setTemplateId(event.target.value)}
           >

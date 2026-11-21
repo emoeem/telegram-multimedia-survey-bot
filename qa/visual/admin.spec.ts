@@ -54,6 +54,21 @@ const PAGES = [
   "/admin/surveys/1/analytics",
   "/admin/surveys/1/versions",
   "/admin/surveys/1/responses/10",
+  // M6.3（docs/design/IMPLEMENTATION_PROGRESS.md）：以下 12 条此前无任何视觉
+  // 覆盖，侧栏/导航/布局改动不会被发现。逐条入矩阵（空数据态，与既有基线口径
+  // 一致——各页 EmptyPanel 分支）。
+  "/admin/categories",
+  "/admin/responses",
+  "/admin/imports",
+  "/admin/cert-content",
+  "/admin/notes",
+  "/admin/web-submissions",
+  "/admin/showcase",
+  "/admin/trash",
+  "/admin/web-apps",
+  "/admin/media-library",
+  "/admin/control",
+  "/admin/coin-economy",
 ];
 
 const TELEGRAM_STUB = `
@@ -294,7 +309,90 @@ const API_MOCKS: Record<string, unknown> = {
   "/api/admin/licenses": { items: [] },
   "/api/admin/releases": { items: [] },
   "/api/admin/trials": { items: [] },
-  "/api/admin/users": { items: [], page: 1, pageSize: 20, total: 0, totalPages: 1 },
+  // M6.3：以下端点此前落进 `{}` 兜底，页面按真实形状解构直接崩（control 读
+  // `jobs.backlog.deliveries` 等）。mock 一律与 src/http/admin/read.ts、
+  // admin/src/api.ts 的真实响应形状同形——空列表态，不虚构数字。
+  "/api/control/jobs": {
+    counts: {
+      deliveries: [],
+      imageGeneratorJobs: [],
+      renderJobs: [],
+      exportJobs: [],
+    },
+    backlog: { deliveries: 0, imageGeneratorJobs: 0, renderJobs: 0, exportJobs: 0 },
+    recentFailures: [],
+  },
+  "/api/admin/media-library": { items: [], total: 0, limit: 30, offset: 0 },
+  "/api/admin/web-submissions/list": { ok: true, total: 0, limit: 20, offset: 0, items: [] },
+  "/api/admin/web-submissions/count": { ok: true, pending: 0, total: 0 },
+  "/api/admin/web-submissions/form-config": {
+    ok: true,
+    showcaseEnabled: false,
+    showcaseFields: ["title", "description", "nickname"],
+    steps: [],
+  },
+  "/api/admin/submissions": { submissions: [] },
+  "/api/admin/gacha/pools": { pools: [] },
+  "/api/admin/coins/challenges": { challenges: [] },
+  "/api/admin/coins/config": {
+    timezoneOffsetMinutes: 480,
+    checkin: {
+      enabled: true,
+      ladder: [{ minStreak: 1, amount: 5 }],
+      backfill: { enabled: true, cost: 50, maxBackfillDays: 3 },
+    },
+    challenges: { enabled: true },
+    pricing: { minPrice: 10, maxPrice: 100, hotWeight: 1, qualityFactor: 1, refreshSeconds: 60 },
+    submissions: {
+      enabled: true,
+      autoApproveText: false,
+      baseRewards: { text: 20, image: 40 },
+      tierMultipliers: [1, 2],
+      dailyRewardCap: 100,
+      maxPerDay: 5,
+    },
+    gacha: { enabled: true, maxMulti: 10 },
+  },
+  // M6.3：/users 基线原本只有空态（audit 结论），换有数据变体——标签/封禁徽标/
+  // 移动字段卡都是布局敏感元素，空态截不到。
+  "/api/admin/users": {
+    items: [
+      {
+        id: 1,
+        telegramUserId: 100,
+        username: "demo",
+        firstName: "演示",
+        lastName: null,
+        completedResponses: 6,
+        tags: ["内测", "问卷达人"],
+        bannedAt: null,
+      },
+      {
+        id: 2,
+        telegramUserId: 101,
+        username: "nightowl",
+        firstName: "夜猫",
+        lastName: "子",
+        completedResponses: 2,
+        tags: ["夜跑"],
+        bannedAt: null,
+      },
+      {
+        id: 3,
+        telegramUserId: 102,
+        username: null,
+        firstName: "匿名",
+        lastName: null,
+        completedResponses: 0,
+        tags: [],
+        bannedAt: now,
+      },
+    ],
+    page: 1,
+    pageSize: 20,
+    total: 3,
+    totalPages: 1,
+  },
   "/api/admin/surveys/1/versions": { versions: [] },
   "/api/admin/surveys/1/responses/10": {
     survey: { id: 1, title: "示例问卷", anonymous: false },
@@ -399,3 +497,44 @@ for (const theme of THEMES) {
     }
   }
 }
+
+// ---- M6.3 补充状态（docs/design/IMPLEMENTATION_PROGRESS.md 批次 6.3）----
+// 主矩阵只覆盖默认态；以下两个状态此前从未被截图，却是 M10 呈现改动的敏感面。
+
+test("admin dashboard · 报告交付队列展开态（图表挂载）", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript((value) => localStorage.setItem("admin_theme", value), "dark");
+  await mockAdminApi(page);
+  await page.goto("/admin/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "功能地图" })).toBeVisible();
+
+  // T2 后队列默认折叠（details）；展开才挂载 4 张投递卡 + 环形图。
+  await page.locator("details", { hasText: "报告交付队列" }).locator("summary").click();
+  await expect(page.locator(".echarts-for-react").first()).toBeVisible();
+  await page.waitForTimeout(300);
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await expect(page).toHaveScreenshot("admin-dashboard-queue-expanded-1440x900.png", {
+    maxDiffPixelRatio: 0.002,
+    mask: [page.getByText(/更新于/)],
+  });
+});
+
+test("admin mobile · 侧栏抽屉开启态", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript((value) => localStorage.setItem("admin_theme", value), "dark");
+  await mockAdminApi(page);
+  await page.goto("/admin/surveys", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("h1, main").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "打开菜单" }).click();
+  // 抽屉打开后工作区导航应可见（Layout 的 slide-in 侧栏）。
+  await expect(page.locator("aside.admin-sidebar")).toBeVisible();
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await expect(page).toHaveScreenshot("admin-mobile-drawer-open-390x844.png", {
+    maxDiffPixelRatio: 0.002,
+  });
+});

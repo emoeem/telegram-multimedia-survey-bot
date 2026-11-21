@@ -164,6 +164,15 @@ body {
   overflow-x: hidden;
 }
 
+/* hidden 属性显隐纪律（Prototype Lab M2 教训，docs/design/COMPONENT_MAPPING.md §2）：
+ * 组件类自带的 display（flex/grid/block）会覆盖 UA 对 [hidden] 的 display:none，
+ * 导致"关着的抽屉/弹层"整块透明地浮在页面上拦截点击。此规则让 hidden 属性
+ * 始终具有最高优先级；如个别场景确需"hidden 但仍参与布局"，必须用
+ * visibility/opacity + aria-hidden 实现，并写明注释，不得移除本规则。 */
+[hidden] {
+  display: none !important;
+}
+
 /* 桌面顶栏让位：BottomNav 在 ≥lg 是 fixed top-0 高 56px（lg:h-14）。
  * 用 body 的透明 border-top 把整个文档流推下来，一处规则覆盖所有屏，
  * fixed 弹层（模态/抽屉/灯箱）不受影响。:has 同时保证这条只作用在
@@ -5025,6 +5034,114 @@ button.admin-stat:focus-visible {
   }
 }
 
+/* ---- Shared sheet / drawer (M6 批次 6.2) ---------------------------------
+ * components/Sheet.tsx：底部抽屉（side=bottom）与右侧抽屉（side=right）。
+ * 生命周期契约与 .ui-modal 一致；软键盘让位在组件内建。新代码一律用本组件，
+ * 不再手写 ThemePickerSheet / ShowcaseSheet 同款。 */
+.ui-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+.ui-sheet-layer-right {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.ui-sheet-panel {
+  position: relative;
+  display: flex;
+  max-height: min(88dvh, 900px);
+  width: 100%;
+  flex-direction: column;
+  border: 1px solid var(--color-edge);
+  background: var(--surface);
+  box-shadow: 0 28px 70px -24px rgba(9, 13, 22, 0.45);
+  outline: none;
+  animation: ui-sheet-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ui-sheet-rise {
+  from {
+    transform: translateY(14px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-sheet-panel {
+    animation: none;
+  }
+}
+.ui-sheet-grabber {
+  width: 40px;
+  height: 4px;
+  flex: none;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: var(--color-edge);
+}
+@media (max-width: 639px) {
+  .ui-sheet-panel {
+    max-height: 92dvh;
+    border-radius: 20px 20px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+@media (min-width: 640px) {
+  .ui-sheet {
+    align-items: center;
+    padding: 16px;
+  }
+  .ui-sheet-panel {
+    width: auto;
+    min-width: 420px;
+    max-width: 480px;
+    border-radius: 18px;
+  }
+  .ui-sheet-grabber {
+    display: none;
+  }
+}
+
+/* 右侧抽屉形态 */
+.ui-sheet-right {
+  height: 100%;
+  max-height: none;
+  width: min(420px, 92vw);
+  max-width: none;
+  min-width: 0;
+  border-radius: 18px 0 0 18px;
+  animation: ui-sheet-slide-right 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ui-sheet-slide-right {
+  from {
+    transform: translateX(24px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-sheet-right {
+    animation: none;
+  }
+}
+.ui-sheet-sm.ui-sheet-right {
+  width: min(340px, 92vw);
+}
+.ui-sheet-lg.ui-sheet-right {
+  width: min(520px, 94vw);
+}
+
 /* ---- Component-name compatibility vocabulary ----------------------------
  * Parts of the panel were written against daisyUI component class names
  * (`badge-success`, `btn-xs`, `btn-outline`, `bg-base-200`, `text-error`,
@@ -7336,6 +7453,51 @@ body.hotspot-lock {
 }
 .survey-bottom-nav-hidden {
   transform: translateY(112%);
+}
+
+/* ---- M8：联机游戏大厅双区布局 ------------------------------------------
+ * docs/design/USER_FLOWS.md F4 / BASELINE_AUDIT (a)(b)：桌面 ≥lg（1000px，
+ * 用户端导航切换点，见 RESPONSIVE_RULES）左区「玩法说明+选择玩法」、右区
+ * 「创建(主)+加入(次)」；手机保持纵堆。手机横屏（短高度）直接双列，
+ * 避免四张长卡把 CTA 挤出首屏。 */
+.game-lobby-grid {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+@media (min-width: 1000px) {
+  .game-lobby-grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+  }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .game-lobby-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ---- M8：房间内对局双区 -------------------------------------------------
+ * ≥lg 对局/结算态：棋盘主列 + 聊天侧栏（sticky，长棋盘滚动时保持可见）；
+ * 大厅态不套双列。窄屏保持纵堆（棋盘优先、聊天在下）。 */
+.room-stage-grid {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.room-chat-col {
+  min-width: 0;
+}
+@media (min-width: 1000px) {
+  .room-stage-grid.is-playing {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    align-items: start;
+  }
+  .room-stage-grid.is-playing .room-chat-col {
+    position: sticky;
+    top: 12px;
+  }
 }
 
 /* VN galgame 对话框：底部锚定、玻璃质感、名牌、唯一推进 CTA。

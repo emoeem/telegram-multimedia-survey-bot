@@ -30,6 +30,7 @@ const server = createServer(async (req, res) => {
     const pathname = decodeURIComponent(url.pathname);
     const base = pathname.startsWith("/fixtures/") ? fixturesRoot : root;
     const relative =
+      pathname === "/s" ||
       pathname.startsWith("/s/") ||
       pathname.startsWith("/trial") ||
       pathname.startsWith("/game") ||
@@ -40,6 +41,7 @@ const server = createServer(async (req, res) => {
       pathname.startsWith("/submissions") ||
       pathname.startsWith("/coins") ||
       pathname.startsWith("/gacha") ||
+      pathname.startsWith("/notes") ||
       pathname.startsWith("/series")
         ? "/survey.html"
         : pathname === "/"

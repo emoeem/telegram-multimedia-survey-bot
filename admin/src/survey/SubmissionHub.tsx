@@ -166,7 +166,9 @@ export function SubmissionHub() {
             </>
           }
           tabs={
-            <>
+            // role=tablist 包一层：role=tab 的可访问性父级（axe aria-required-parent），
+            // 广场页签走的是链接/按钮而非 role=tab，不受影响。
+            <div role="tablist" aria-label="投稿中心页签" className="flex gap-1.5">
               {visibleTabs(showcaseEnabled).map((entry) => {
                 const isActive = entry === tab;
                 return (
@@ -186,7 +188,7 @@ export function SubmissionHub() {
                   </button>
                 );
               })}
-            </>
+            </div>
           }
         />
         <main className="mx-auto max-w-xl lg:max-w-3xl">
