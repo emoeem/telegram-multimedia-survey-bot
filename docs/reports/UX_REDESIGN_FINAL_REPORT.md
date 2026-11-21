@@ -55,3 +55,18 @@
 - 授权：用户明确指示「确定没有问题后提交到 GitHub，通过 CI 之后部署上线，同时更新项目文档」。
 - 流程：commit/push → CI（visual 预期因基线再生滞后先红）→ dispatch `visual-baseline.yml` 再生基线 → 人工空提交引燃 CI → 全绿 → `deploy.yml` 上线 → 生产冒烟。
 - 实际执行结果以本文件追加的「§6 执行补记」为准（commit hash / run URL / 部署版本），见下方追加段。
+
+## §6 执行补记（2026-11-22 晨，实测记录）
+
+| 步骤       | 结果                                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 提交       | `67b6f26` docs(design) 原型+文档全套 → `930eac0` feat(ux) M6–M10 产品落地 → `473ba02` docs 终局报告格式修复                                               |
+| CI 首轮    | `930eac0`：checks 红（终局报告漏格式）+ visual 红（预期：基线未再生）→ 均按预案处理                                                                       |
+| 基线再生   | dispatch `visual-baseline.yml`（run 44940229112）→ bot 提交 `a618309`（54 个基线：12 新路由 + /users 有数据 + /game 双区 + /me 分组 + 队列展开 + 抽屉态） |
+| 空提交引燃 | `064ecf2` → **CI 全绿**（run 44940823235：checks 2m26s / visual 6m30s / tg-archive 31s）                                                                  |
+| 部署       | deploy run 44940823183：await-ci 6m38s → **deploy 41s 成功**（wrangler 上线 emoe.eu.cc）                                                                  |
+| 生产冒烟   | `/s` `/trial` `/game` `/me` 全 200；`/api/game/types` 返回真实 5 玩法注册表（短名口径与 qa mock 一致）；`/api/health` 200；`/` 302→`/s`                   |
+| 浏览器实测 | 全站巡检 11 路由 × 2 视口（/s 空态、/game 双区、/me 分组等逐张 Read 自检）；过程中发现并修复 visual-qa-server 两处映射缺口（/notes、精确 /s）             |
+| 遗留       | Figma 实际写入（无通道）；TrialScreen 三栏、/s xl 档、广场网格化、房间态真实 WS 视觉回归、横屏 BottomNav 策略——见 IMPLEMENTATION_PROGRESS 后续批次        |
+
+**结论：M0–M13 全链路闭环完成。生产 emoe.eu.cc 已运行本批次 UX 重设计版本，CI 三门禁全绿。**
