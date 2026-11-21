@@ -8,12 +8,16 @@
  */
 import { registerGameEngine } from "./engine-registry";
 import { gomokuEngine } from "./engines/gomoku";
+import { ludoEngine } from "./engines/ludo";
 import { xiangqiEngine } from "./engines/xiangqi";
 
-/** 登记全部内置多人引擎（可重复调用；重复 gameType 以最后一次为准）。 */
+/** 登记全部内置多人引擎(可重复调用;重复 gameType 以最后一次为准)。 */
 export function registerBuiltinMultiplayerEngines(): void {
   registerGameEngine(gomokuEngine);
   registerGameEngine(xiangqiEngine);
+  // 飞行棋(游戏批次 X2-B):2–4 人掷骰竞速;/api/game/types 与入口卡经
+  // 注册表自动带上,客户端 Board 未注册时走 UnknownGameBoard 兜底。
+  registerGameEngine(ludoEngine);
 }
 
 // Worker 启动即注册：src/index.ts 的副作用 import 触发本行。
