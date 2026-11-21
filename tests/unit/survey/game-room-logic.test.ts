@@ -199,7 +199,7 @@ describe("视图收敛（parseGomokuView）", () => {
       boardSize: 15,
       board: emptyBoard(),
       turn: "black",
-      players: [{ participantHash: "hash-a", color: "black" }],
+      players: [{ seatToken: "seat-a", color: "black" }],
       moveCount: 0,
       lastMove: null,
       winningLine: null,
@@ -216,7 +216,7 @@ describe("视图收敛（parseGomokuView）", () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.boardSize).toBe(15);
     expect(parsed?.turn).toBe("black");
-    expect(parsed?.players).toEqual([{ participantHash: "hash-a", color: "black" }]);
+    expect(parsed?.players).toEqual([{ seatToken: "seat-a", color: "black" }]);
     expect(parsed?.yourColor).toBe("black");
 
     const spectator = parseGomokuView(viewPayload({ yourColor: undefined }));
@@ -230,15 +230,15 @@ describe("视图收敛（parseGomokuView）", () => {
       viewPayload({
         board,
         moveCount: 1,
-        lastMove: { row: 7, col: 7, color: "black", participantHash: "hash-a" },
+        lastMove: { row: 7, col: 7, color: "black", seatToken: "seat-a" },
         winningLine: [{ row: 7, col: 7 }],
-        outcome: { result: "win", winnerParticipantHash: "hash-a" },
+        outcome: { result: "win", winnerSeatToken: "seat-a" },
         pendingUndoFrom: "hash-a",
       }),
     );
-    expect(parsed?.lastMove).toEqual({ row: 7, col: 7, color: "black", participantHash: "hash-a" });
+    expect(parsed?.lastMove).toEqual({ row: 7, col: 7, color: "black", seatToken: "seat-a" });
     expect(parsed?.winningLine).toEqual([{ row: 7, col: 7 }]);
-    expect(parsed?.outcome).toEqual({ result: "win", winnerParticipantHash: "hash-a" });
+    expect(parsed?.outcome).toEqual({ result: "win", winnerSeatToken: "seat-a" });
     expect(parsed?.pendingUndoFrom).toBe("hash-a");
     expect(parsed?.moveCount).toBe(1);
   });
@@ -376,7 +376,7 @@ describe("象棋视图收敛（parseXiangqiView）", () => {
       rows: 10,
       board: emptyXiangqiBoard(),
       turn: "red",
-      players: [{ participantHash: "hash-a", color: "red" }],
+      players: [{ seatToken: "seat-a", color: "red" }],
       moveCount: 0,
       lastMove: null,
       check: null,
@@ -393,7 +393,7 @@ describe("象棋视图收敛（parseXiangqiView）", () => {
     expect(parsed?.cols).toBe(9);
     expect(parsed?.rows).toBe(10);
     expect(parsed?.turn).toBe("red");
-    expect(parsed?.players).toEqual([{ participantHash: "hash-a", color: "red" }]);
+    expect(parsed?.players).toEqual([{ seatToken: "seat-a", color: "red" }]);
     expect(parsed?.yourColor).toBe("red");
 
     const spectator = parseXiangqiView(viewPayload({ yourColor: undefined }));
@@ -415,12 +415,12 @@ describe("象棋视图收敛（parseXiangqiView）", () => {
           to: { row: 5, col: 4 },
           piece: "P",
           captured: null,
-          participantHash: "hash-a",
+          seatToken: "seat-a",
           givesCheck: false,
         },
         check: "black",
-        outcome: { result: "win", winnerParticipantHash: "hash-a", reason: "checkmate" },
-        pendingDrawFrom: "hash-a",
+        outcome: { result: "win", winnerSeatToken: "seat-a", reason: "checkmate" },
+        pendingDrawFrom: "seat-a",
       }),
     );
     expect(parsed?.lastMove).toEqual({
@@ -430,12 +430,12 @@ describe("象棋视图收敛（parseXiangqiView）", () => {
       to: { row: 5, col: 4 },
       piece: "P",
       captured: null,
-      participantHash: "hash-a",
+      seatToken: "seat-a",
       givesCheck: false,
     });
     expect(parsed?.check).toBe("black");
-    expect(parsed?.outcome).toEqual({ result: "win", winnerParticipantHash: "hash-a", reason: "checkmate" });
-    expect(parsed?.pendingDrawFrom).toBe("hash-a");
+    expect(parsed?.outcome).toEqual({ result: "win", winnerSeatToken: "seat-a", reason: "checkmate" });
+    expect(parsed?.pendingDrawFrom).toBe("seat-a");
   });
 
   it("board/turn/尺寸形状不对整包拒绝（渲染硬前提）", () => {
@@ -497,7 +497,7 @@ describe("象棋走棋本地预判（localXiangqiMoveCheck）", () => {
       rows: 10,
       board,
       turn: "red",
-      players: [{ participantHash: "hash-a", color: "red" }],
+      players: [{ seatToken: "seat-a", color: "red" }],
       moveCount: 0,
       lastMove: null,
       check: null,
@@ -581,7 +581,7 @@ describe("象棋视图收敛（X2 批次字段）", () => {
       rows: 10,
       board: emptyXiangqiBoard(),
       turn: "red",
-      players: [{ participantHash: "hash-a", color: "red" }],
+      players: [{ seatToken: "seat-a", color: "red" }],
       moveCount: 1,
       lastMove: null,
       check: null,

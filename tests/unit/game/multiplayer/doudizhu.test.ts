@@ -47,6 +47,8 @@ const P = ["hash-host", "hash-p2", "hash-p3"];
 function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
   return {
     participantHash,
+    // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+    seatToken: `seat-${participantHash}`,
     displayName: isHost ? "房主" : `玩家${P.indexOf(participantHash) + 1}`,
     isHost,
     ready: false,
@@ -64,6 +66,7 @@ function baseRoom(roomId = "room_91"): GameRoomState {
     status: "lobby",
     version: 1,
     config: {},
+    rngNonce: "nonce-doudizhu",
     players: [roomPlayer(P[0]!, true)],
     engineState: null,
     createdAt: now,
@@ -577,7 +580,7 @@ describe("幂等与版本", () => {
     // 地主 +8,农民各 −4(代数和 0)。
     expect(a.summary.deltas).toEqual([8, -4, -4]);
     expect(a.result).toBe("win");
-    expect(a.winnerParticipantHash).toBe(P[0]);
+    expect(a.winnerSeatToken).toBe(`seat-${P[0]}`);
   });
 });
 
@@ -722,16 +725,44 @@ describe("私有视图纪律(泄漏断言)", () => {
     expect(viewP3.hand as string[]).toEqual([c(7)]);
   });
 
+  it("rngNonce 注入(修复 2):同 roomId 不同 nonce → 发牌不同;同 nonce → 重放一致", () => {
+    /** 用指定 nonce 走完整开局(发牌进入叫分阶段)。 */
+    const startedWithNonce = (nonce: string): DoudizhuEngineState => {
+      let state = commit(doudizhuEngine.createRoom({ ...baseRoom("room_91"), rngNonce: nonce }, {}));
+      for (let i = 1; i < 3; i += 1) {
+        const players = state.players.filter((p) => p.participantHash !== P[i]);
+        state = commit(doudizhuEngine.joinRoom({ ...state, players }, roomPlayer(P[i]!, false)));
+      }
+      for (const player of state.players) {
+        state = commit(doudizhuEngine.setReady(state, player.participantHash, true));
+      }
+      return engineOf(commit(doudizhuEngine.start(state, P[0]!)));
+    };
+    const nonceA = "nonce-A";
+    const a = startedWithNonce(nonceA);
+    const b = startedWithNonce("nonce-B");
+    // roomId 相同但 nonce 不同:发牌序列必须不同(roomId 是公开值,只由它派生
+    // 种子 = 任何人都可离线复现整局)。
+    expect(a.hands).not.toEqual(b.hands);
+    expect(a.bottomCards).not.toEqual(b.bottomCards);
+    // 同 roomId 同 nonce:发牌完全一致(重放一致性的基础)。
+    const a2 = startedWithNonce(nonceA);
+    expect(a2.hands).toEqual(a.hands);
+    expect(a2.rngSeed).toBe(a.rngSeed);
+  });
+
   it("种子与内部簿记绝不进任何视图(种子外泄 = 未发的牌可预测)", () => {
     const state = started();
     for (const hash of P) {
       const json = JSON.stringify(doudizhuEngine.getPlayerView(state, hash).view);
       expect(json).not.toContain("rngSeed");
       expect(json).not.toContain("actionIds");
+      expect(json).not.toContain("rngNonce"); // DO 注入的 RNG 盐同样绝不进视图
     }
     const publicJson = JSON.stringify(doudizhuEngine.getPublicView(state).view);
     expect(publicJson).not.toContain("rngSeed");
     expect(publicJson).not.toContain("actionIds");
+    expect(publicJson).not.toContain("rngNonce");
     // 引擎私有状态里有种子(确保上面断言不是空转)。
     expect(engineOf(state).rngSeed).toBeGreaterThan(0);
     expect(engineOf(state).actionIds).toEqual([]);

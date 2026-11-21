@@ -142,8 +142,10 @@ export const stubEngine: MultiplayerGameEngine = {
     const host = state.players.find((p) => p.isHost);
     return {
       result: engineState.timedOut ? "timeout" : "draw",
-      winnerParticipantHash: null,
-      summary: { moves: engineState.moves, movesTotal: engineState.movesTotal, host: host?.participantHash ?? null },
+      // 结算快照进视图对全房可见：胜者/东道主一律用座位令牌对位（修复 1），
+      // 绝不携带 participantHash。
+      winnerSeatToken: null,
+      summary: { moves: engineState.moves, movesTotal: engineState.movesTotal, host: host?.seatToken ?? null },
       settledAt: new Date().toISOString(),
       version: state.version,
     };

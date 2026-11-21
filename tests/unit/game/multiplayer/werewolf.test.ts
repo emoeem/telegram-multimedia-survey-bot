@@ -39,6 +39,8 @@ const P = Array.from({ length: 12 }, (_, i) => `hash-p${i + 1}`);
 function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
   return {
     participantHash,
+    // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+    seatToken: `seat-${participantHash}`,
     displayName: isHost ? "房主" : `玩家${P.indexOf(participantHash) + 1}`,
     isHost,
     ready: false,
@@ -55,6 +57,7 @@ function baseRoom(roomId = "room_r2", players: GameRoomPlayer[] = [roomPlayer(P[
     status: "lobby",
     version: 1,
     config: {},
+    rngNonce: "nonce-werewolf",
     players,
     engineState: null,
     createdAt: now,
@@ -267,6 +270,46 @@ describe("注册表与元数据", () => {
 // ---------------------------------------------------------------------------
 // 身份板(标准预女猎守板 + rolePlan 覆盖)
 // ---------------------------------------------------------------------------
+
+describe("rngNonce 注入(修复 2)", () => {
+  /** 用指定 nonce 走 9 人完整开局,取座位 → 身份序列。 */
+  const rolesWithNonce = (nonce: string): WerewolfRole[] => {
+    let state = commit(werewolfEngine.createRoom({ ...baseRoom("room_r2"), rngNonce: nonce }, {}));
+    for (let i = 1; i < 9; i += 1) {
+      const players = state.players.filter((p) => p.participantHash !== P[i]);
+      state = commit(werewolfEngine.joinRoom({ ...state, players }, roomPlayer(P[i]!, false)));
+    }
+    for (const player of state.players) {
+      state = commit(werewolfEngine.setReady(state, player.participantHash, true));
+    }
+    const started = commit(werewolfEngine.start(state, P[0]!));
+    return (started.engineState as WerewolfEngineState).seats.map((seat) => seat.role);
+  };
+
+  it("同 roomId 不同 nonce → 身份序列不同;同 nonce → 重放一致", () => {
+    const a = rolesWithNonce("nonce-A");
+    const b = rolesWithNonce("nonce-B");
+    // roomId 是公开值(深链接即可得),只由它派生种子 = 审计实测的离线复现
+    // (room_456 两次开局身份序列完全相同)。nonce 打破这一通道。
+    expect(a).not.toEqual(b);
+    expect(rolesWithNonce("nonce-A")).toEqual(a); // 同 nonce 重放一致
+    // 身份板构成不变(只是洗牌序不同):标准 9 人板 = 3 狼 + 预女猎守 + 3 民。
+    const count = (roles: WerewolfRole[], role: WerewolfRole) => roles.filter((r) => r === role).length;
+    for (const roles of [a, b]) {
+      expect(count(roles, "werewolf")).toBe(3);
+      expect(count(roles, "villager")).toBe(2); // 9 人标准板:3狼+预女猎守+2民
+    }
+  });
+
+  it("rngNonce 与种子绝不进任何视图(含玩家私有视图与公开视图)", () => {
+    const state = started(9);
+    for (const seatIndex of [0, 1, null]) {
+      const json = viewJson(state, seatIndex);
+      expect(json).not.toContain("rngSeed");
+      expect(json).not.toContain("rngNonce");
+    }
+  });
+});
 
 describe("身份板(werewolfBoard)", () => {
   it("标准板:狼数 6-7 人 2 狼 / 8-10 人 3 狼 / 11-12 人 4 狼;猎人 ≥7 人、守卫 ≥9 人", () => {
@@ -934,7 +977,7 @@ describe("胜负判定与结算复盘", () => {
     // 结算快照:复盘亮全部身份 + 事件流水(对局中绝不外泄的都在 settle 里)。
     const settlement = werewolfEngine.settle(settled);
     expect(settlement.result).toBe("good_win");
-    expect(settlement.winnerParticipantHash).toBeNull();
+    expect(settlement.winnerSeatToken).toBeNull();
     const summary = settlement.summary as Record<string, unknown>;
     const seatsSummary = summary.seats as Array<{ role: WerewolfRole; deathCause: string | null }>;
     expect(seatsSummary.filter((seat) => seat.role === "werewolf")).toHaveLength(2);

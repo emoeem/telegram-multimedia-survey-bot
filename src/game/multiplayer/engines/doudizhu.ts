@@ -5,9 +5,11 @@
  * 规则与协议取舍(brief 锁定的规则,全部实现并单测):
  * - 牌:54 张(3..2 各 4 张 + 小王 + 大王)。牌码 "点数:副本"(如 "10:0"、
  *   "2:3"、"16:0" 小王、"17:0" 大王),点数 3..14 = 3..A、15 = 2、16/17 =
- *   双王。洗牌用确定性 RNG(与 ludo 同款 mulberry32 变体),种子只由 roomId
- *   哈希派生,不提供任何 config 覆盖口子——建房 config 会被 REST 层原样透传,
- *   接受外部种子等于给建房者一个预知整局发牌的作弊通道。
+ *   双王。洗牌用确定性 RNG(与 ludo 同款 mulberry32 变体),种子由 roomId +
+ *   DO 注入的 rngNonce 哈希派生(修复 2:roomId 公开可取,只由它派生 = 离线
+ *   可复现整局发牌;nonce 只存 DO storage,绝不外发),也不提供任何 config
+ *   覆盖口子——建房 config 会被 REST 层原样透传,接受外部种子等于给建房者
+ *   一个预知整局发牌的作弊通道。
  * - 发牌:17×3 + 3 张底牌。每人 17 张,底牌开局(地主确定)后归地主并全场公开。
  * - 叫地主:单人轮一轮(0 = 不叫,1-3 = 叫分,后叫者必须严格高于当前最高分),
  *   三家叫完后最高分者成为地主;全不叫 → 洗牌重发(redealCount 计数,种子
@@ -419,7 +421,11 @@ export interface DoudizhuOutcome {
 }
 
 export interface DoudizhuEngineState {
-  seats: Array<{ participantHash: string }>;
+  seats: Array<{
+    participantHash: string;
+    /** 座位令牌（DO 座位分配处铸造）：视图/结算对位的唯一公开标识（修复 1）。 */
+    seatToken: string;
+  }>;
   /** 每座位手牌(牌码,点数降序);对外只发本座位的这份。 */
   hands: string[][];
   /** 3 张底牌;地主确定前对所有人隐藏,之后全场公开。 */
@@ -540,7 +546,10 @@ function nextBidSeat(engine: DoudizhuEngineState, from: number): number {
 
 /** 由在座玩家重建座位表(lobby 阶段;开局时按在座顺序固定 3 席)。 */
 function syncSeats(engine: DoudizhuEngineState, state: GameRoomState): DoudizhuEngineState {
-  const seats = activePlayers(state).map((player) => ({ participantHash: player.participantHash }));
+  const seats = activePlayers(state).map((player) => ({
+    participantHash: player.participantHash,
+    seatToken: player.seatToken,
+  }));
   return { ...engine, seats };
 }
 
@@ -710,11 +719,11 @@ function viewPayload(
   return {
     seats: engine.seats.map((seatRow, seat) => ({
       seatIndex: seat,
-      // 座位 → 参与者哈希(与信封 players 同一公开标识:toPublicPlayer 对观战
-      // 也原样下发)。客户端靠它把座位号对回昵称——中途离席后信封的「在座行
-      // 序 ≠ 座位序」(离席行保留、座位开局即固定),没有这个字段客户端只能
-      // 按行序猜,会把别人的昵称挂错座位。
-      participantHash: seatRow.participantHash,
+      // 座位 → 座位令牌(修复 1:与信封 players 同一公开标识体系;原来的
+      // participantHash 是身份凭证,绝不进任何对外载荷)。客户端靠它把座位号
+      // 对回昵称——中途离席后信封的「在座行序 ≠ 座位序」(离席行保留、座位
+      // 开局即固定),没有这个字段客户端只能按行序猜,会把别人的昵称挂错座位。
+      seatToken: seatRow.seatToken,
       handCount: engine.hands[seat]?.length ?? 0,
       isLandlord: engine.landlordSeat === seat,
       isBidTurn: engine.phase === "bidding" && engine.bidTurn === seat && engine.outcome === null,
@@ -1037,9 +1046,11 @@ export const doudizhuEngine: MultiplayerGameEngine = {
     if (!rules) {
       return failure("invalid_action", "config 非法:turnMs 5s–10min,baseScore 1–99");
     }
-    // 初始种子只由 roomId 派生(与 ludo 同一纪律:建房 config 原样透传,
-    // 收外部种子 = 建房者可离线复现整局发牌)。重发时种子前进。
-    const rngSeed = hashSeed(state.roomId);
+    // 初始种子由 DO 注入的 rngNonce + roomId 派生(修复 2,与 ludo 同一纪律):
+    // roomId 是公开值(深链接即可得),只由它派生种子等于任何人都可离线复现
+    // 整局发牌;建房 config 原样透传,这里不收外部种子。rngNonce 由 DO 建房时
+    // 随机铸造、只存 DO storage,绝不进任何对外载荷。重发时种子前进。
+    const rngSeed = hashSeed(`${state.roomId}:${state.rngNonce}`);
     const engine = syncSeats(
       {
         seats: [],
@@ -1104,7 +1115,10 @@ export const doudizhuEngine: MultiplayerGameEngine = {
     if (!active.every((player) => player.ready)) return failure("invalid_action", "全员准备后才能开局");
 
     // 开局即发牌:座位按在座顺序固定 3 席,叫分从座位 0 开始。
-    const seats = active.map((player) => ({ participantHash: player.participantHash }));
+    const seats = active.map((player) => ({
+      participantHash: player.participantHash,
+      seatToken: player.seatToken,
+    }));
     const dealt = dealHands(engine.rngSeed);
     const next: DoudizhuEngineState = {
       ...engine,
@@ -1219,9 +1233,10 @@ export const doudizhuEngine: MultiplayerGameEngine = {
         : [0, 0, 0];
     return {
       result: outcome?.result ?? "aborted",
-      winnerParticipantHash:
+      // 结算快照进视图对全房可见(含观战):一律用座位令牌对位(修复 1)。
+      winnerSeatToken:
         outcome?.winnerSeat !== undefined && outcome?.winnerSeat !== null
-          ? (engine?.seats[outcome.winnerSeat]?.participantHash ?? null)
+          ? (engine?.seats[outcome.winnerSeat]?.seatToken ?? null)
           : null,
       summary: {
         reason: outcome?.reason ?? null,
@@ -1237,7 +1252,9 @@ export const doudizhuEngine: MultiplayerGameEngine = {
         bottomCards: engine?.bottomCards ?? [],
         history: engine?.history ?? [],
         events: engine?.events ?? [],
-        seats: engine?.seats.map((seat) => ({ ...seat })) ?? [],
+        // 显式投影:引擎座位行还持有 participantHash(服务端内部映射用),
+        // 展开对象会把它带进快照,必须逐字段挑。
+        seats: engine?.seats.map((seat) => ({ seatToken: seat.seatToken })) ?? [],
       },
       settledAt: new Date().toISOString(),
       version: state.version,

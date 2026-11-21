@@ -10,10 +10,12 @@
  *   13×色号 推出:自己颜色的格子恰好是 path 上每 4 格一个(pos % 4 === 0)。
  *   座位分配:2 人对局取对角座位(色号 0/2),3/4 人取 0..n-1。
  * - 掷骰:服务端权威——引擎内确定性 RNG(mulberry32 变体),种子存
- *   engineState 并随每次掷骰演进;初始种子由 roomId 哈希派生,不提供任何
- *   config 覆盖口子——建房 config 会被 REST 层原样透传(game-api → DO
- *   handleCreate),接受外部种子等于给建房者一个离线复现整局骰点的作弊
- *   通道。客户端只发 "roll" 动作,永不提交骰值——同状态重放同骰点。
+ *   engineState 并随每次掷骰演进;初始种子由 roomId + DO 注入的 rngNonce
+ *   哈希派生(修复 2:roomId 公开可取,只由它派生 = 离线可复现整局骰点;
+ *   nonce 只存 DO storage,绝不外发),不提供任何 config 覆盖口子——建房
+ *   config 会被 REST 层原样透传(game-api → DO handleCreate),接受外部种子
+ *   等于给建房者一个离线复现整局骰点的作弊通道。客户端只发 "roll" 动作,
+ *   永不提交骰值——同状态重放同骰点。
  * - 六点起飞:待机飞机只有掷出 6 点才能起飞(落本方起飞格 path 0);起飞
  *   是「落位」不算「落点」,不触发跳跃/飞行,但同样判撞(起飞格上的敌机
  *   被撞回待机,经典规则)。
@@ -199,6 +201,8 @@ export type LudoPlanePos = number | null;
 
 export interface LudoSeat {
   participantHash: string;
+  /** 座位令牌（DO 座位分配处铸造）：结算快照对位的唯一公开标识（修复 1）。 */
+  seatToken: string;
   /** 座位色号(0红 1黄 2蓝 3绿)= 主环着色相位。 */
   colorIndex: number;
 }
@@ -344,6 +348,7 @@ function syncSeats(engine: LudoEngineState, state: GameRoomState): LudoEngineSta
   const active = activePlayers(state);
   const seats = active.map((player, order) => ({
     participantHash: player.participantHash,
+    seatToken: player.seatToken,
     colorIndex: seatColorIndexFor(active.length, order),
   }));
   const planes = seats.map(() => Array<LudoPlanePos>(LUDO_PLANES_PER_PLAYER).fill(null));
@@ -436,7 +441,8 @@ export interface LudoRankRow {
   seatIndex: number;
   colorIndex: number;
   color: string;
-  participantHash: string;
+  /** 座位令牌（结算快照对位用；participantHash 绝不进对外载荷）。 */
+  seatToken: string;
   arrived: number;
   maxPos: number;
   resigned: boolean;
@@ -447,7 +453,7 @@ export function ludoRanking(engine: LudoEngineState): LudoRankRow[] {
     seatIndex,
     colorIndex: seat.colorIndex,
     color: colorName(seat.colorIndex),
-    participantHash: seat.participantHash,
+    seatToken: seat.seatToken,
     arrived: arrivedCount(engine.planes[seatIndex] ?? []),
     maxPos: maxProgress(engine.planes[seatIndex] ?? []),
     resigned: engine.resigned.includes(seatIndex),
@@ -722,11 +728,13 @@ export const ludoEngine: MultiplayerGameEngine = {
         "config 非法:turnMs 5s–10min,maxConsecutiveSixes 2–6,jumpStep 1–12,flyStep 1–24 且 flyPos+flyStep ≤ 50,flyPos 须为 4 的倍数(4–44)",
       );
     }
-    // 初始种子只由 roomId 派生:建房 config 经 REST 层原样透传(game-api.ts
-    // /handleCreate),若接受 config.seed,建房者即可离线复现整局骰点序列
-    // 预知起飞/撞机时机——作弊通道,故这里没有第二个种子来源;重放一致性
-    // 由「同 roomId 同种子 + 确定性 RNG」保证,测试控骰走 engineState 摆盘。
-    const rngSeed = hashSeed(state.roomId);
+    // 初始种子由 DO 注入的 rngNonce + roomId 派生(修复 2):roomId 是公开值
+    // (深链接即可得),只由它派生种子等于任何人都可离线复现整局骰点序列——
+    // 审计已实测 room_123 种子=FNV-1a(roomId) 完全可复算。rngNonce 由 DO
+    // 建房时随机铸造、只存 DO storage,绝不进任何对外载荷;建房 config 原样
+    // 透传,这里不收外部种子(否则建房者可预知起飞/撞机时机)。重放一致性由
+    // 「同房间同 nonce + 确定性 RNG」保证,测试控骰走 engineState 摆盘。
+    const rngSeed = hashSeed(`${state.roomId}:${state.rngNonce}`);
     const engine = syncSeats(
       {
         seats: [],
@@ -784,6 +792,7 @@ export const ludoEngine: MultiplayerGameEngine = {
     // 开局是座位分配的唯一权威:按在座顺序重排(2 人对角),对局进度归零。
     const seats = active.map((player, order) => ({
       participantHash: player.participantHash,
+      seatToken: player.seatToken,
       colorIndex: seatColorIndexFor(active.length, order),
     }));
     const next: LudoEngineState = {
@@ -882,13 +891,17 @@ export const ludoEngine: MultiplayerGameEngine = {
     const winnerSeat = outcome?.winnerSeat ?? null;
     return {
       result: outcome?.result ?? "aborted",
-      winnerParticipantHash: winnerSeat !== null ? (engine?.seats[winnerSeat]?.participantHash ?? null) : null,
+      // 结算快照进视图对全房可见(含观战):一律用座位令牌对位(修复 1),
+      // participantHash 绝不外发。
+      winnerSeatToken: winnerSeat !== null ? (engine?.seats[winnerSeat]?.seatToken ?? null) : null,
       summary: {
         reason: outcome?.reason ?? null,
         moveCount: engine?.history.length ?? 0,
         history: engine?.history ?? [],
         ranking,
-        seats: engine?.seats.map((seat) => ({ ...seat })) ?? [],
+        // 显式投影:引擎座位行还持有 participantHash(服务端内部映射用),
+        // 展开对象会把它带进快照,必须逐字段挑。
+        seats: engine?.seats.map((seat) => ({ seatToken: seat.seatToken, colorIndex: seat.colorIndex })) ?? [],
       },
       settledAt: new Date().toISOString(),
       version: state.version,

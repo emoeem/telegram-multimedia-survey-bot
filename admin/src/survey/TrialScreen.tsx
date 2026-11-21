@@ -22,7 +22,12 @@ import {
   Zap,
 } from "lucide-react";
 import { safeCopy } from "./clipboard";
-import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
+import {
+  ackAdultPackLocally,
+  isAdultPackAckedLocally,
+  TRIAL_ADULT_CONFIRM_LABEL,
+  trialAdultNoticeLines,
+} from "./trial-adult-ack";
 import { fetchGameTypes } from "./game-room-client";
 import { gameEntryHref, type GameTypeInfo } from "./game-lobby-logic";
 import { vibrateSuccess, vibrateFail, vibrateLight, notify, requestNotificationPermission } from "./haptics";
@@ -810,8 +815,10 @@ export function TrialScreen() {
     </div>
   );
 
-  // 0106 包级 18+ 确认弹层（原页级门禁 renderGate 的包卡化）：合规警示文案
-  // 沿用原门，确认只对当前包生效（包级 ack，语义见 trial-adult-ack.ts）。
+  // 0106 包级 18+ 确认弹层（原页级门禁 renderGate 的包卡化）：文案与 /s 内嵌
+  // 玩法（GamePlayer/PluginGamePlay 的 TrialAdultGateCard）共用同一组常量
+  // （trialAdultNoticeLines，修复 3），确认只对当前包生效（包级 ack，语义见
+  // trial-adult-ack.ts；与旧全局键 trialAdultAgreement:v1 不互通、不迁移）。
   const renderAdultAckModal = () =>
     adultAckPack ? (
       <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 px-5">
@@ -821,17 +828,20 @@ export function TrialScreen() {
               <p className="flex items-start gap-1.5">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
                 <span>
-                  「{adultAckPack.name}」为 <b>18+ 成人向</b>虚构文字任务游戏，含羞耻与服从主题内容。
+                  {trialAdultNoticeLines(adultAckPack.name).map((line, index) => (
+                    <span key={line} className={index === 0 ? "block" : "mt-1 block"}>
+                      {line}
+                    </span>
+                  ))}
                 </span>
               </p>
-              <p className="mt-1">全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。</p>
             </div>
             <button
               type="button"
               onClick={confirmAdultAck}
               className="mt-6 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_35%,transparent)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
             >
-              我已年满 18 周岁，开始
+              {TRIAL_ADULT_CONFIRM_LABEL}
             </button>
             <button
               type="button"
@@ -1077,7 +1087,12 @@ export function TrialScreen() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
-                        {/* 0106 包级 18+ 徽标：adult 包需按包确认后才能开局。 */}
+                        {/* 0106 包级 18+ 徽标（修复 3 同源化）：严格渲染包列表
+                            /api/trial/packs 的 pack.adult——该字段与服务端开局闸
+                            （POST /runs 的 isAdultGamePack 校验）同一个来源，
+                            adult=false 的包绝不显示 18+，adult=true 必显示；
+                            开局门（choosePack → startGame 的包级确认弹层）判定
+                            的也是同一 pack.adult——徽标亮 = 门必在。 */}
                         {pack.adult ? (
                           <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                             18+

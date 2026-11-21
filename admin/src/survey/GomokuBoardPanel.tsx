@@ -21,8 +21,9 @@ import type { GameBoardProps } from "./game-board-registry";
  * 玩法逻辑。
  *
  * 自指信息（Board 内的「我是谁」）从玩法载荷自取：玩家视图的 yourColor 对
- * 回座位表即得到自己的 participantHash（engine-types 协议不变量三：视图按
- * 人裁剪）。大厅层的「我的行」走 REST 信封 you（见 MultiplayerGameScreen），
+ * 回座位表即得到自己的座位令牌 seatToken（engine-types 协议不变量三：视图按
+ * 人裁剪；修复 1 起座位对位键统一是座位令牌，participantHash 不再外发）。
+ * 大厅层的「我的行」走 REST 信封 you（见 MultiplayerGameScreen），
  * 本面板不依赖它——玩法私有载荷与协议信封各管各的。
  */
 export function GomokuBoardPanel({
@@ -49,9 +50,7 @@ export function GomokuBoardPanel({
     prevGomokuRef.current = next;
     if (prev === null || next === null) return;
     const myHashNow =
-      next.yourColor != null
-        ? (next.players.find((seat) => seat.color === next.yourColor)?.participantHash ?? null)
-        : null;
+      next.yourColor != null ? (next.players.find((seat) => seat.color === next.yourColor)?.seatToken ?? null) : null;
     const rejected = undoRejectedNotice(
       prev.pendingUndoFrom ?? null,
       next.pendingUndoFrom ?? null,
@@ -68,7 +67,7 @@ export function GomokuBoardPanel({
 
   const myHash =
     gomoku.yourColor !== null
-      ? (gomoku.players.find((seat) => seat.color === gomoku.yourColor)?.participantHash ?? null)
+      ? (gomoku.players.find((seat) => seat.color === gomoku.yourColor)?.seatToken ?? null)
       : null;
   const gameEnded = status === "settled" || status === "closed" || gomoku.outcome != null;
   const isMyTurn =
@@ -79,9 +78,9 @@ export function GomokuBoardPanel({
   const countdownToneValue = countdownTone(remainingNowMs);
 
   const settlementCopy = gomoku.outcome
-    ? describeSettlement(gomoku.outcome.result, gomoku.outcome.winnerParticipantHash, myHash)
+    ? describeSettlement(gomoku.outcome.result, gomoku.outcome.winnerSeatToken, myHash)
     : view.settlement
-      ? describeSettlement(view.settlement.result, view.settlement.winnerParticipantHash, myHash)
+      ? describeSettlement(view.settlement.result, view.settlement.winnerSeatToken, myHash)
       : null;
 
   const sendGameAction = async (action: string) => {
@@ -248,11 +247,11 @@ export function GomokuBoardPanel({
                   gomoku.outcome === null &&
                   gomoku.pendingUndoFrom === null &&
                   gomoku.lastMove !== null &&
-                  gomoku.lastMove.participantHash === myHash
+                  gomoku.lastMove.seatToken === myHash
                 )
               }
               title={
-                gomoku.lastMove !== null && gomoku.lastMove.participantHash === myHash
+                gomoku.lastMove !== null && gomoku.lastMove.seatToken === myHash
                   ? "申请撤回你刚落的一手"
                   : "只能申请撤回你刚落下的一手"
               }

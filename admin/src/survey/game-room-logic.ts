@@ -46,7 +46,8 @@ export type GomokuColor = "black" | "white";
 
 /** 玩法私有视图里的座位（gomokuEngine publicViewPayload.players）。 */
 export interface GomokuSeatView {
-  participantHash: string;
+  /** 座位令牌（修复 1：信封/视图对位的唯一公开标识，participantHash 不再外发）。 */
+  seatToken: string;
   color: GomokuColor;
 }
 
@@ -54,13 +55,13 @@ export interface GomokuLastMoveView {
   row: number;
   col: number;
   color: GomokuColor;
-  /** 落子者：悔棋申请的本地预判（只能撤回自己刚落下的一手）用它判定。 */
-  participantHash: string;
+  /** 落子者座位令牌：悔棋申请的本地预判（只能撤回自己刚落下的一手）用它判定。 */
+  seatToken: string;
 }
 
 export interface GomokuOutcomeView {
   result: string;
-  winnerParticipantHash: string | null;
+  winnerSeatToken: string | null;
 }
 
 /**
@@ -330,20 +331,20 @@ export interface SettlementCopy {
 }
 
 /**
- * 结算/终局文案。视角由 myParticipantHash 决定（胜者是我 → 你赢了）；
+ * 结算/终局文案。视角由 mySeatToken 决定（胜者是我 → 你赢了）；
  * 观战者与中止局给中性文案。result 取值来自引擎（win/draw/timeout/resign/aborted）。
  */
 export function describeSettlement(
   result: string,
-  winnerParticipantHash: string | null,
-  myParticipantHash: string | null,
+  winnerSeatToken: string | null,
+  mySeatToken: string | null,
 ): SettlementCopy {
   if (result === "draw") return { headline: "平局", detail: "双方握手言和", tone: "draw" };
-  if (result === "aborted" || !winnerParticipantHash) {
+  if (result === "aborted" || !winnerSeatToken) {
     return { headline: "对局结束", detail: "对局中止", tone: "neutral" };
   }
-  const iWon = myParticipantHash !== null && winnerParticipantHash === myParticipantHash;
-  const spectating = myParticipantHash === null;
+  const iWon = mySeatToken !== null && winnerSeatToken === mySeatToken;
+  const spectating = mySeatToken === null;
   const how =
     result === "timeout"
       ? iWon
@@ -397,8 +398,8 @@ export function parseGomokuView(payload: unknown): GomokuView | null {
     for (const seat of record.players) {
       if (!seat || typeof seat !== "object") continue;
       const entry = seat as Record<string, unknown>;
-      if (typeof entry.participantHash !== "string" || !isGomokuColor(entry.color)) continue;
-      players.push({ participantHash: entry.participantHash, color: entry.color });
+      if (typeof entry.seatToken !== "string" || !isGomokuColor(entry.color)) continue;
+      players.push({ seatToken: entry.seatToken, color: entry.color });
     }
   }
 
@@ -411,12 +412,12 @@ export function parseGomokuView(payload: unknown): GomokuView | null {
     typeof lastMoveRecord.row === "number" &&
     typeof lastMoveRecord.col === "number" &&
     isGomokuColor(lastMoveRecord.color) &&
-    typeof lastMoveRecord.participantHash === "string"
+    typeof lastMoveRecord.seatToken === "string"
       ? {
           row: lastMoveRecord.row,
           col: lastMoveRecord.col,
           color: lastMoveRecord.color,
-          participantHash: lastMoveRecord.participantHash,
+          seatToken: lastMoveRecord.seatToken,
         }
       : null;
 
@@ -435,8 +436,7 @@ export function parseGomokuView(payload: unknown): GomokuView | null {
   const outcome = outcomeRecord
     ? {
         result: typeof outcomeRecord.result === "string" ? outcomeRecord.result : "",
-        winnerParticipantHash:
-          typeof outcomeRecord.winnerParticipantHash === "string" ? outcomeRecord.winnerParticipantHash : null,
+        winnerSeatToken: typeof outcomeRecord.winnerSeatToken === "string" ? outcomeRecord.winnerSeatToken : null,
       }
     : null;
 
@@ -463,7 +463,8 @@ export type XiangqiColor = "red" | "black";
 
 /** 玩法私有视图里的座位（xiangqiEngine publicViewPayload.players）。 */
 export interface XiangqiSeatView {
-  participantHash: string;
+  /** 座位令牌（修复 1：信封/视图对位的唯一公开标识，participantHash 不再外发）。 */
+  seatToken: string;
   color: XiangqiColor;
 }
 
@@ -480,7 +481,8 @@ export interface XiangqiLastMoveView {
   /** 走动棋子的棋子码（大写红/小写黑）。 */
   piece: string;
   captured: string | null;
-  participantHash: string;
+  /** 行棋方座位令牌（公开对位键）。 */
+  seatToken: string;
   givesCheck: boolean;
 }
 
@@ -504,7 +506,7 @@ export interface XiangqiHistoryEntryView {
 
 export interface XiangqiOutcomeView {
   result: string;
-  winnerParticipantHash: string | null;
+  winnerSeatToken: string | null;
   /** 终局原因：checkmate/stalemate/perpetual_check/resign/timeout/aborted/agreed。 */
   reason: string | null;
 }
@@ -589,8 +591,8 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
     for (const seat of record.players) {
       if (!seat || typeof seat !== "object") continue;
       const entry = seat as Record<string, unknown>;
-      if (typeof entry.participantHash !== "string" || !isXiangqiColor(entry.color)) continue;
-      players.push({ participantHash: entry.participantHash, color: entry.color });
+      if (typeof entry.seatToken !== "string" || !isXiangqiColor(entry.color)) continue;
+      players.push({ seatToken: entry.seatToken, color: entry.color });
     }
   }
 
@@ -612,7 +614,7 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
       to &&
       isXiangqiPieceCode(lastMoveRecord.piece) &&
       (lastMoveRecord.captured === null || isXiangqiPieceCode(lastMoveRecord.captured)) &&
-      typeof lastMoveRecord.participantHash === "string"
+      typeof lastMoveRecord.seatToken === "string"
     ) {
       lastMove = {
         ply: typeof lastMoveRecord.ply === "number" ? lastMoveRecord.ply : 0,
@@ -621,7 +623,7 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
         to,
         piece: lastMoveRecord.piece,
         captured: lastMoveRecord.captured === null ? null : lastMoveRecord.captured,
-        participantHash: lastMoveRecord.participantHash,
+        seatToken: lastMoveRecord.seatToken,
         givesCheck: lastMoveRecord.givesCheck === true,
       };
     }
@@ -669,8 +671,7 @@ export function parseXiangqiView(payload: unknown): XiangqiView | null {
   const outcome = outcomeRecord
     ? {
         result: typeof outcomeRecord.result === "string" ? outcomeRecord.result : "",
-        winnerParticipantHash:
-          typeof outcomeRecord.winnerParticipantHash === "string" ? outcomeRecord.winnerParticipantHash : null,
+        winnerSeatToken: typeof outcomeRecord.winnerSeatToken === "string" ? outcomeRecord.winnerSeatToken : null,
         reason: typeof outcomeRecord.reason === "string" ? outcomeRecord.reason : null,
       }
     : null;
@@ -715,12 +716,12 @@ export function localXiangqiMoveCheck(view: XiangqiView, from: XiangqiPointView,
  */
 export function xiangqiSettlementCopy(
   result: string,
-  winnerParticipantHash: string | null,
-  myParticipantHash: string | null,
+  winnerSeatToken: string | null,
+  mySeatToken: string | null,
   reason: string | null,
 ): SettlementCopy {
-  const base = describeSettlement(result, winnerParticipantHash, myParticipantHash);
-  const iWon = winnerParticipantHash !== null && myParticipantHash === winnerParticipantHash;
+  const base = describeSettlement(result, winnerSeatToken, mySeatToken);
+  const iWon = winnerSeatToken !== null && mySeatToken === winnerSeatToken;
   if (result === "win" && reason === "checkmate") return { ...base, detail: iWon ? "将死对方" : "被将死" };
   if (result === "win" && reason === "stalemate") {
     return { ...base, detail: iWon ? "对方困毙（无子可动）" : "己方困毙（无子可动）" };
@@ -1300,10 +1301,10 @@ export {
 export interface DoudizhuSeatView {
   seatIndex: number;
   /**
-   * 座位 → 参与者哈希（与信封 players 同一公开标识；昵称对位的唯一可靠依据
-   * ——中途离席后信封「在座行序 ≠ 座位序」）。旧部署载荷缺该字段时为 null。
+   * 座位 → 座位令牌（修复 1：与信封 players 同一公开标识；昵称对位的唯一可靠
+   * 依据——中途离席后信封「在座行序 ≠ 座位序」）。旧部署载荷缺该字段时为 null。
    */
-  participantHash: string | null;
+  seatToken: string | null;
   handCount: number;
   isLandlord: boolean;
   isBidTurn: boolean;
@@ -1415,8 +1416,7 @@ export function parseDoudizhuView(payload: unknown): DoudizhuView | null {
     if (typeof entry.handCount !== "number" || !Number.isInteger(entry.handCount) || entry.handCount < 0) continue;
     seats.push({
       seatIndex: entry.seatIndex,
-      participantHash:
-        typeof entry.participantHash === "string" && entry.participantHash ? entry.participantHash : null,
+      seatToken: typeof entry.seatToken === "string" && entry.seatToken ? entry.seatToken : null,
       handCount: entry.handCount,
       isLandlord: entry.isLandlord === true,
       isBidTurn: entry.isBidTurn === true,
@@ -1594,24 +1594,24 @@ export function doudizhuPlayHint(selected: string[], lastPlay: DoudizhuLastPlayV
 /**
  * 座位 → 展示名的共享对位实现（狼人杀 werewolfSeatName 与斗地主
  * doudizhuSeatName 同款纪律）：
- * - 首选：座位载荷的 participantHash（引擎 seats 开局固定，与信封 players
- *   同一公开标识）→ 精确对回信封行取昵称。中途离席的座位行被 DO 保留
- *   （leftAt 置位、行序不动），引擎座位开局即固定——按「在座行序 = 座位序」
- *   猜会错位（离席者的座位显示后来者的名字），哈希对位没有这个问题；离席
- *   行匹配到时照样显示其昵称。
- * - 兜底：旧部署载荷没有座位哈希时，仅当信封每行都在座且行数与座位数一致
+ * - 首选：座位载荷的 seatToken（引擎 seats 开局固定，与信封 players 同一
+ *   公开标识——修复 1 起对位键从 participantHash 换成座位令牌）→ 精确对回
+ *   信封行取昵称。中途离席的座位行被 DO 保留（leftAt 置位、行序不动），引擎
+ *   座位开局即固定——按「在座行序 = 座位序」猜会错位（离席者的座位显示后来
+ *   者的名字），令牌对位没有这个问题；离席行匹配到时照样显示其昵称。
+ * - 兜底：旧部署载荷没有座位令牌时，仅当信封每行都在座且行数与座位数一致
  *   （此时行序 = 座位序恒成立）才按行序对位，否则回退「玩家N」——宁可少
  *   显示昵称，绝不把别人的昵称挂到别的座位上。
  */
 function seatDisplayName(
-  players: Array<{ displayName: string | null; leftAt: string | null; participantHash: string }>,
-  hash: string | null,
+  players: Array<{ displayName: string | null; leftAt: string | null; seatToken: string }>,
+  token: string | null,
   seatIndex: number,
   legacyOrderHolds: boolean,
 ): string {
   const fallback = `玩家${seatIndex + 1}`;
-  if (hash !== null) {
-    const name = players.find((player) => player.participantHash === hash)?.displayName?.trim();
+  if (token !== null) {
+    const name = players.find((player) => player.seatToken === token)?.displayName?.trim();
     return name || fallback;
   }
   if (!legacyOrderHolds) return fallback;
@@ -1619,19 +1619,19 @@ function seatDisplayName(
   return name || fallback;
 }
 
-/** 斗地主座位 → 展示名（哈希对位；座位缺行时回退「玩家N」）。 */
+/** 斗地主座位 → 展示名（座位令牌对位；座位缺行时回退「玩家N」）。 */
 export function doudizhuSeatName(
-  view: { players: Array<{ displayName: string | null; leftAt: string | null; participantHash: string }> },
+  view: { players: Array<{ displayName: string | null; leftAt: string | null; seatToken: string }> },
   dd: Pick<DoudizhuView, "seats">,
   seatIndex: number,
 ): string {
   const seat = dd.seats[seatIndex];
   if (!seat) return `玩家${seatIndex + 1}`;
   const legacyOrderHolds =
-    seat.participantHash === null &&
+    seat.seatToken === null &&
     view.players.length === dd.seats.length &&
     view.players.every((player) => player.leftAt === null);
-  return seatDisplayName(view.players, seat.participantHash, seatIndex, legacyOrderHolds);
+  return seatDisplayName(view.players, seat.seatToken, seatIndex, legacyOrderHolds);
 }
 
 // ---------------------------------------------------------------------------
@@ -1654,8 +1654,8 @@ export type { WerewolfPhase, WerewolfRole, WerewolfRolePlan } from "../../../src
 /** 视图里的座位（werewolfEngine viewPayload.seats 条目；不含任何角色/死因）。 */
 export interface WerewolfSeatView {
   seatIndex: number;
-  /** 座位 → 参与者哈希（与信封 players 同一公开标识；旧部署缺该字段时 null）。 */
-  participantHash: string | null;
+  /** 座位 → 座位令牌（修复 1：与信封 players 同一公开标识；旧部署缺该字段时 null）。 */
+  seatToken: string | null;
   alive: boolean;
   isYou: boolean;
 }
@@ -1779,8 +1779,7 @@ export function parseWerewolfView(payload: unknown): WerewolfView | null {
     if (typeof entry.seatIndex !== "number" || !Number.isInteger(entry.seatIndex) || entry.seatIndex < 0) continue;
     seats.push({
       seatIndex: entry.seatIndex,
-      participantHash:
-        typeof entry.participantHash === "string" && entry.participantHash ? entry.participantHash : null,
+      seatToken: typeof entry.seatToken === "string" && entry.seatToken ? entry.seatToken : null,
       alive: entry.alive === true,
       isYou: entry.isYou === true,
     });
@@ -2004,19 +2003,19 @@ export function werewolfLocalTargetCheck(w: WerewolfView, target: number): strin
 // 座位昵称与聊天频道资格
 // ---------------------------------------------------------------------------
 
-/** 狼人杀座位 → 展示名（哈希对位，与 doudizhuSeatName 同款纪律）。 */
+/** 狼人杀座位 → 展示名（座位令牌对位，与 doudizhuSeatName 同款纪律）。 */
 export function werewolfSeatName(
-  view: { players: Array<{ displayName: string | null; leftAt: string | null; participantHash: string }> },
+  view: { players: Array<{ displayName: string | null; leftAt: string | null; seatToken: string }> },
   w: Pick<WerewolfView, "seats">,
   seatIndex: number,
 ): string {
   const seat = w.seats[seatIndex];
   if (!seat) return `玩家${seatIndex + 1}`;
   const legacyOrderHolds =
-    seat.participantHash === null &&
+    seat.seatToken === null &&
     view.players.length === w.seats.length &&
     view.players.every((player) => player.leftAt === null);
-  return seatDisplayName(view.players, seat.participantHash, seatIndex, legacyOrderHolds);
+  return seatDisplayName(view.players, seat.seatToken, seatIndex, legacyOrderHolds);
 }
 
 /**

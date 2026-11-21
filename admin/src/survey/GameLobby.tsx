@@ -218,7 +218,7 @@ export function GameLobbyRoomPanel({
           const stateText = playerRowState(player, status);
           return (
             <div
-              key={player.participantHash}
+              key={player.seatToken}
               className="flex items-center gap-3 rounded-xl border border-[var(--survey-card-border)] px-3 py-2.5"
             >
               <span className="min-w-0 flex-1">

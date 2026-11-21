@@ -22,7 +22,7 @@ import {
  * 不出现任何具体玩法的载荷形状。
  */
 
-function row(overrides: Partial<RoomPlayerRow> & { participantHash: string }): RoomPlayerRow {
+function row(overrides: Partial<RoomPlayerRow> & { seatToken: string }): RoomPlayerRow {
   // 信封玩家行是 Pick 出来的子集（无 joinedAt）；ready 只在玩家视图行有，
   // 测试统一带上、由被测函数按 in 判定。
   return {
@@ -36,16 +36,16 @@ function row(overrides: Partial<RoomPlayerRow> & { participantHash: string }): R
 
 describe("在座玩家与准备态（activeRoomPlayers / isRoomPlayerReady / allRoomPlayersReady）", () => {
   it("activeRoomPlayers 过滤掉已离座行；players 缺失/为 null 时给空表（坏帧不白屏）", () => {
-    const players = [row({ participantHash: "a" }), row({ participantHash: "b", leftAt: "2026-01-01T01:00:00.000Z" })];
-    expect(activeRoomPlayers(players).map((player) => player.participantHash)).toEqual(["a"]);
+    const players = [row({ seatToken: "a" }), row({ seatToken: "b", leftAt: "2026-01-01T01:00:00.000Z" })];
+    expect(activeRoomPlayers(players).map((player) => player.seatToken)).toEqual(["a"]);
     expect(activeRoomPlayers(undefined)).toEqual([]);
     expect(activeRoomPlayers(null)).toEqual([]);
   });
 
   it("isRoomPlayerReady：玩家行取 ready 字段，观战行（无 ready）按未准备", () => {
-    expect(isRoomPlayerReady(row({ participantHash: "a", ready: true }))).toBe(true);
+    expect(isRoomPlayerReady(row({ seatToken: "a", ready: true }))).toBe(true);
     const spectatorRow = {
-      participantHash: "b",
+      seatToken: "b",
       displayName: null,
       isHost: false,
       joinedAt: "",
@@ -56,28 +56,26 @@ describe("在座玩家与准备态（activeRoomPlayers / isRoomPlayerReady / all
 
   it("allRoomPlayersReady：全员已准备才为真，空表恒 false（没人谈不上全员）", () => {
     expect(allRoomPlayersReady([])).toBe(false);
-    expect(allRoomPlayersReady([row({ participantHash: "a", ready: true })])).toBe(true);
-    expect(allRoomPlayersReady([row({ participantHash: "a", ready: true }), row({ participantHash: "b" })])).toBe(
-      false,
-    );
+    expect(allRoomPlayersReady([row({ seatToken: "a", ready: true })])).toBe(true);
+    expect(allRoomPlayersReady([row({ seatToken: "a", ready: true }), row({ seatToken: "b" })])).toBe(false);
   });
 });
 
 describe("玩家行文案（playerRowLabel / playerRowState）", () => {
   it("label：displayName trim 优先，缺名按序号兜底（玩家1/玩家2）", () => {
-    expect(playerRowLabel(row({ participantHash: "a", displayName: " 阿明 " }), 0)).toBe("阿明");
-    expect(playerRowLabel(row({ participantHash: "a", displayName: "   " }), 0)).toBe("玩家1");
-    expect(playerRowLabel(row({ participantHash: "b" }), 1)).toBe("玩家2");
+    expect(playerRowLabel(row({ seatToken: "a", displayName: " 阿明 " }), 0)).toBe("阿明");
+    expect(playerRowLabel(row({ seatToken: "a", displayName: "   " }), 0)).toBe("玩家1");
+    expect(playerRowLabel(row({ seatToken: "b" }), 1)).toBe("玩家2");
   });
 
   it("state：未入座/离座/房主/lobby 准备态/开局后各归各文案", () => {
     expect(playerRowState(null, "lobby")).toBe("等待加入…");
-    expect(playerRowState(row({ participantHash: "b", leftAt: "x" }), "lobby")).toBe("已离开房间");
-    expect(playerRowState(row({ participantHash: "a", isHost: true, ready: true }), "lobby")).toBe("房主 · 已准备");
-    expect(playerRowState(row({ participantHash: "b", ready: false }), "lobby")).toBe("玩家 · 未准备");
+    expect(playerRowState(row({ seatToken: "b", leftAt: "x" }), "lobby")).toBe("已离开房间");
+    expect(playerRowState(row({ seatToken: "a", isHost: true, ready: true }), "lobby")).toBe("房主 · 已准备");
+    expect(playerRowState(row({ seatToken: "b", ready: false }), "lobby")).toBe("玩家 · 未准备");
     // 开局后不再显示准备态（对局中「准备」没有语义）。
-    expect(playerRowState(row({ participantHash: "a", isHost: true }), "playing")).toBe("房主");
-    expect(playerRowState(row({ participantHash: "b" }), "settled")).toBe("玩家");
+    expect(playerRowState(row({ seatToken: "a", isHost: true }), "playing")).toBe("房主");
+    expect(playerRowState(row({ seatToken: "b" }), "settled")).toBe("玩家");
   });
 });
 

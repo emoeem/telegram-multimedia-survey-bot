@@ -44,7 +44,7 @@ function newClientId(): string {
 export interface ChatPanelProps {
   /** 服务端下发（已按人裁剪）的全部消息；跨频道存放，展示时按页签过滤。 */
   messages: GameChatMessage[];
-  /** 我的 participantHash（信封 you）；区分左右气泡与回显去重。 */
+  /** 我的座位令牌（信封 you，修复 1 起不再携带 participantHash）；观战为 null。 */
   myHash: string | null;
   role: "player" | "spectator";
   /** WS 连接是否可用：断连时禁输入，重连后由 chat_history 补齐。 */
@@ -209,7 +209,9 @@ export function ChatPanel({
   );
 
   const renderMessage = (message: GameChatMessage) => {
-    const mine = message.fromHash === myHash && myHash !== null;
+    // 「我发的」按座位令牌对位（修复 1：fromHash → fromSeat）；观战者消息
+    // fromSeat 为空串，恒不命中（回显仍按 clientId 在发送侧去重）。
+    const mine = myHash !== null && message.fromSeat !== "" && message.fromSeat === myHash;
     const rowTone = mine ? "items-end" : "items-start";
     const nameTone = mine ? "text-right" : "text-left";
     return (

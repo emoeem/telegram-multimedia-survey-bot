@@ -190,7 +190,9 @@ describe("聊天中继（收到即广播）", () => {
       channel: "all",
       kind: "text",
       from: "狼哥",
-      fromHash: HOST,
+      // 修复 1：署名是发送座位的 seatToken（随机铸造的公开标识），不再是
+      // participantHash（身份凭证，绝不外发）。
+      fromSeat: message.fromSeat,
       text: "晚上好",
     });
     expect(Object.keys(message).sort()).toEqual([
@@ -198,11 +200,14 @@ describe("聊天中继（收到即广播）", () => {
       "channel",
       "clientId",
       "from",
-      "fromHash",
+      "fromSeat",
       "kind",
       "seq",
       "text",
     ]);
+    // 座位令牌形状守卫：32 位 hex、绝不与 participantHash 同值。
+    expect(message.fromSeat).toMatch(/^[0-9a-f]{32}$/);
+    expect(message.fromSeat).not.toBe(HOST);
     // 其他成员各收一份。
     expect(chatFrames(guestSocket).map((m) => m.text)).toEqual(["晚上好"]);
     expect(chatFrames(spectatorSocket).map((m) => m.text)).toEqual(["晚上好"]);

@@ -29,7 +29,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
     seats: [
       {
         seatIndex: 0,
-        participantHash: "hash-host",
+        seatToken: "seat-host",
         handCount: 17,
         isLandlord: false,
         isBidTurn: true,
@@ -38,7 +38,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
       },
       {
         seatIndex: 1,
-        participantHash: "hash-p2",
+        seatToken: "seat-p2",
         handCount: 17,
         isLandlord: false,
         isBidTurn: false,
@@ -47,7 +47,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
       },
       {
         seatIndex: 2,
-        participantHash: "hash-p3",
+        seatToken: "seat-p3",
         handCount: 17,
         isLandlord: false,
         isBidTurn: false,
@@ -86,7 +86,7 @@ describe("parseDoudizhuView(视图收敛)", () => {
     expect(dd.phase).toBe("bidding");
     expect(dd.hand).toEqual([c(16), c(14, 2), c(10, 1), c(3, 0)]);
     expect(dd.seats).toHaveLength(3);
-    expect(dd.seats[0]!.participantHash).toBe("hash-host");
+    expect(dd.seats[0]!.seatToken).toBe("seat-host");
     expect(dd.seats[0]!.isBidTurn).toBe(true);
     expect(dd.yourSeat).toBe(0);
     expect(dd.bottomCards).toBeNull();
@@ -221,16 +221,16 @@ describe("doudizhuPlayHint(牌型即时预判文案;服务端裁决为准)", () 
   });
 });
 
-describe("doudizhuSeatName(座位名收敛,哈希对位)", () => {
+describe("doudizhuSeatName(座位名收敛,座位令牌对位)", () => {
   /** 信封行(与 GamePlayerView.players 同形)。 */
-  const row = (hash: string, name: string | null, leftAt: string | null = null) => ({
-    participantHash: hash,
+  const row = (token: string, name: string | null, leftAt: string | null = null) => ({
+    seatToken: token,
     displayName: name,
     leftAt,
   });
 
-  it("按座位载荷的 participantHash 对位昵称;displayName 缺名回退「玩家N」", () => {
-    const view = { players: [row("hash-host", "房主"), row("hash-p2", null), row("hash-p3", "  ")] };
+  it("按座位载荷的 seatToken 对位昵称;displayName 缺名回退「玩家N」", () => {
+    const view = { players: [row("seat-host", "房主"), row("seat-p2", null), row("seat-p3", "  ")] };
     expect(doudizhuSeatName(view, parseDoudizhuView(validPayload())!, 0)).toBe("房主");
     expect(doudizhuSeatName(view, parseDoudizhuView(validPayload())!, 1)).toBe("玩家2");
     expect(doudizhuSeatName(view, parseDoudizhuView(validPayload())!, 2)).toBe("玩家3");
@@ -240,28 +240,28 @@ describe("doudizhuSeatName(座位名收敛,哈希对位)", () => {
     // 复核代理的实测路径:3 人局进行中 B 走「离开房间」,DO 保留 B 的行并置
     // leftAt,在座行序变 [A,C] 而引擎座位开局固定 [A,B,C]——按在座行序对位
     // 会把 C 的昵称挂到座位 1(离席者)上。
-    const view = { players: [row("hash-host", "甲"), row("hash-p2", "乙", "t"), row("hash-p3", "丙")] };
+    const view = { players: [row("seat-host", "甲"), row("seat-p2", "乙", "t"), row("seat-p3", "丙")] };
     const dd = parseDoudizhuView(validPayload())!;
     expect(doudizhuSeatName(view, dd, 1)).toBe("乙");
     expect(doudizhuSeatName(view, dd, 2)).toBe("丙");
     expect(doudizhuSeatName(view, dd, 0)).toBe("甲");
   });
 
-  it("旧部署兜底(无座位哈希):全在座且行数=座位数时按行序对位;有离席行时回退「玩家N」绝不错挂", () => {
+  it("旧部署兜底(无座位令牌):全在座且行数=座位数时按行序对位;有离席行时回退「玩家N」绝不错挂", () => {
     const seatsNoHash = (payload: Record<string, unknown>): Record<string, unknown> => ({
       ...payload,
       seats: (payload.seats as Array<Record<string, unknown>>).map((seat) => {
-        const { participantHash: _drop, ...rest } = seat;
+        const { seatToken: _drop, ...rest } = seat;
         return rest;
       }),
     });
     // 全在座:行序 = 座位序,昵称照常显示。
-    const allActive = { players: [row("hash-host", "甲"), row("hash-p2", "乙"), row("hash-p3", "丙")] };
+    const allActive = { players: [row("seat-host", "甲"), row("seat-p2", "乙"), row("seat-p3", "丙")] };
     const ddNoHash = parseDoudizhuView(seatsNoHash(validPayload()))!;
-    expect(ddNoHash.seats.every((seat) => seat.participantHash === null)).toBe(true);
+    expect(ddNoHash.seats.every((seat) => seat.seatToken === null)).toBe(true);
     expect(doudizhuSeatName(allActive, ddNoHash, 1)).toBe("乙");
     // 有离席行:在座行序对不上座位序 → 回退「玩家N」,不取别人的名字。
-    const withLeft = { players: [row("hash-host", "甲"), row("hash-p2", "乙", "t"), row("hash-p3", "丙")] };
+    const withLeft = { players: [row("seat-host", "甲"), row("seat-p2", "乙", "t"), row("seat-p3", "丙")] };
     expect(doudizhuSeatName(withLeft, ddNoHash, 1)).toBe("玩家2");
     expect(doudizhuSeatName(withLeft, ddNoHash, 2)).toBe("玩家3");
     // 哈希缺失且找不到行:同样回退座位号名。
@@ -269,12 +269,14 @@ describe("doudizhuSeatName(座位名收敛,哈希对位)", () => {
   });
 });
 
-describe("座位哈希与信封同源(引擎集成断言)", () => {
+describe("座位令牌与信封同源(引擎集成断言)", () => {
   /** 建房 → 依序入座 → 全员准备 → 房主开局(与引擎单测同款最小驱动)。 */
   function startedReal(): GameRoomState {
     const P = ["hash-real-0", "hash-real-1", "hash-real-2"];
     const player = (hash: string, isHost: boolean): GameRoomPlayer => ({
       participantHash: hash,
+      // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+      seatToken: `seat-${hash}`,
       displayName: isHost ? "房主" : `玩家${P.indexOf(hash) + 1}`,
       isHost,
       ready: false,
@@ -293,6 +295,7 @@ describe("座位哈希与信封同源(引擎集成断言)", () => {
           status: "lobby",
           version: 1,
           config: {},
+          rngNonce: "nonce-seat-hash",
           players: [player(P[0]!, true)],
           engineState: null,
           createdAt: new Date().toISOString(),
@@ -316,17 +319,17 @@ describe("座位哈希与信封同源(引擎集成断言)", () => {
     return unwrap(doudizhuEngine.start(state, P[0]!));
   }
 
-  it("引擎视图 seats[].participantHash 与信封 players 行序一致(座位号→昵称对位的数据源)", () => {
+  it("引擎视图 seats[].seatToken 与信封 players 行序一致(座位号→昵称对位的数据源)", () => {
     const state = startedReal();
     const view = doudizhuEngine.getPlayerView(state, "hash-real-0").view as Record<string, unknown>;
-    const seats = view.seats as Array<{ seatIndex: number; participantHash: string }>;
-    expect(seats.map((seat) => seat.participantHash)).toEqual(
-      state.players.filter((p) => p.leftAt === null).map((p) => p.participantHash),
+    const seats = view.seats as Array<{ seatIndex: number; seatToken: string }>;
+    expect(seats.map((seat) => seat.seatToken)).toEqual(
+      state.players.filter((p) => p.leftAt === null).map((p) => p.seatToken),
     );
-    // 客户端解析后可直接按哈希对位。
+    // 客户端解析后可直接按令牌对位。
     const dd = parseDoudizhuView(view)!;
-    const rowByHash = new Map(state.players.map((p) => [p.participantHash, p]));
-    expect(dd.seats.every((seat) => rowByHash.get(seat.participantHash ?? "") !== undefined)).toBe(true);
+    const rowByToken = new Map(state.players.map((p) => [p.seatToken, p]));
+    expect(dd.seats.every((seat) => rowByToken.get(seat.seatToken ?? "") !== undefined)).toBe(true);
   });
 });
 

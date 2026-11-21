@@ -71,6 +71,8 @@ const CHAT_KEY_PREFIX = "chat:";
 
 /** lobby 空房间（无任何在线连接且全员未开局）的回收时延。 */
 const EMPTY_ROOM_TTL_MS = 30 * 60 * 1000;
+/** seatToken / rngNonce 的随机字节数（hex 后 32 字符；随机性与冒充成本对齐）。 */
+const ROOM_TOKEN_BYTES = 16;
 /** 已结算/已关闭房间的保留时延：终态快照留给 REST 层捞进 game_matches，之后清空。 */
 const SETTLED_ROOM_TTL_MS = 24 * 60 * 1000;
 /** 房主走光等极端情况下 closed 房间的兜底清理时延。 */
@@ -85,6 +87,34 @@ interface SocketAttachment {
 /** DO 内部 HTTP 协议的错误响应（与 src/http/api-response.ts 的 fail 同形状）。 */
 function doFail(status: number, code: GameProtocolErrorCode, message: string): Response {
   return Response.json({ ok: false, code, message }, { status });
+}
+
+/**
+ * 随机令牌（hex）：seatToken 与 rngNonce 共用的唯一随机源。Workers 与 vitest
+ * （Node webcrypto）都提供全局 crypto.getRandomValues，无部署差异。
+ */
+function randomRoomToken(): string {
+  const bytes = new Uint8Array(ROOM_TOKEN_BYTES);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 存量状态兜底（修复 1/2 的部署兼容）：旧部署写下的房间行没有 seatToken /
+ * rngNonce（新协议字段），loadRoom 时在这里补铸——引擎在本次请求里就能拿到
+ * 完整字段，补铸结果随后续 commitState 落盘，同一座位跨请求保持同一令牌。
+ * 有值的一律原样保留（重入不换牌，客户端对位稳定）。
+ */
+function withRoomInvariants(state: GameRoomState): GameRoomState {
+  let changed = false;
+  const players = state.players.map((player) => {
+    if (typeof player.seatToken === "string" && player.seatToken !== "") return player;
+    changed = true;
+    return { ...player, seatToken: randomRoomToken() };
+  });
+  const rngNonce = typeof state.rngNonce === "string" && state.rngNonce !== "" ? state.rngNonce : randomRoomToken();
+  if (rngNonce !== state.rngNonce) changed = true;
+  return changed ? { ...state, players, rngNonce } : state;
 }
 
 function protocolError(
@@ -161,7 +191,12 @@ export class GameRoomDO extends DurableObject {
     const isPlayer =
       viewerHash !== "" && room.players.some((p) => p.participantHash === viewerHash && p.leftAt === null);
     const view = isPlayer ? await this.buildPlayerView(room, viewerHash) : await this.buildPublicView(room);
-    return Response.json({ ok: true, view, role: isPlayer ? "player" : "spectator" });
+    return Response.json({
+      ok: true,
+      view,
+      role: isPlayer ? "player" : "spectator",
+      ...youSeatTokenField(room, viewerHash),
+    });
   }
 
   // ------------------------------------------------------------------
@@ -201,6 +236,8 @@ export class GameRoomDO extends DurableObject {
       players: [
         {
           participantHash: host.participantHash,
+          // 座位令牌在座位分配处铸造（修复 1）：对外载荷的唯一玩家标识。
+          seatToken: randomRoomToken(),
           displayName: typeof host.displayName === "string" ? host.displayName : null,
           isHost: true,
           ready: false,
@@ -208,6 +245,8 @@ export class GameRoomDO extends DurableObject {
           leftAt: null,
         },
       ],
+      // RNG 盐（修复 2）：随机铸造、只存 DO storage，绝不进任何对外载荷。
+      rngNonce: randomRoomToken(),
       engineState: null,
       createdAt: now,
       updatedAt: now,
@@ -246,9 +285,13 @@ export class GameRoomDO extends DurableObject {
     const engine = resolveGameEngine(room.gameType);
     if (!engine) return doFail(500, "internal_error", "玩法引擎未注册");
     const player: GameRoomPlayer = existing
-      ? { ...existing, leftAt: null } // 曾离开的玩家重新入座，房主身份随行保留
+      ? // 曾离开的玩家重新入座，房主身份与座位令牌随行保留（客户端对位稳定；
+        // 存量行缺 seatToken 时补铸一次，与本房间其他座位不再冲突）。
+        { ...existing, leftAt: null, ...(existing.seatToken ? {} : { seatToken: randomRoomToken() }) }
       : {
           participantHash: hash,
+          // 座位令牌在座位分配处铸造（修复 1）：与房主同源、互不关联。
+          seatToken: randomRoomToken(),
           displayName,
           isHost: false, // 房主只有创建者一人，后来者一律非房主
           ready: false,
@@ -448,6 +491,8 @@ export class GameRoomDO extends DurableObject {
   /**
    * OK 响应统一附加按人裁剪的视图（协议不变量三）：REST 层只把 view/version
    * 透传给客户端；`state` 字段是 Worker ⇄ DO 的内部契约，REST 层不得转发。
+   * 另附查看者自己的座位令牌（youSeatToken）：REST 层把它 relay 成 `you`，
+   * 客户端拿它对位信封 players / 引擎座位——`you` 不再携带 participantHash。
    */
   private async withView(
     state: GameRoomState,
@@ -457,7 +502,14 @@ export class GameRoomDO extends DurableObject {
     if (!viewerHash) return Response.json({ ok: true, ...extra, state });
     const isPlayer = state.players.some((p) => p.participantHash === viewerHash && p.leftAt === null);
     const view = isPlayer ? await this.buildPlayerView(state, viewerHash) : await this.buildPublicView(state);
-    return Response.json({ ok: true, ...extra, state, view, role: isPlayer ? "player" : "spectator" });
+    return Response.json({
+      ok: true,
+      ...extra,
+      state,
+      view,
+      role: isPlayer ? "player" : "spectator",
+      ...youSeatTokenField(state, viewerHash),
+    });
   }
 
   // ------------------------------------------------------------------
@@ -740,12 +792,19 @@ export class GameRoomDO extends DurableObject {
       attachment.role === "player"
         ? (room.players.find((p) => p.participantHash === attachment.participantHash)?.displayName ?? "玩家")
         : "观战者";
+    // 署名用座位令牌（修复 1）：participantHash 是身份凭证，从协议形状上就不
+    // 允许出现在聊天帧里。观战者无座位，fromSeat 为空串（客户端不把它当
+    // 「我发的」对位依据——回显仍按 clientId 匹配）。
+    const fromSeat =
+      attachment.role === "player"
+        ? (room.players.find((p) => p.participantHash === attachment.participantHash)?.seatToken ?? "")
+        : "";
     const chat: GameChatMessage = {
       seq,
       channel: message.channel,
       kind,
       from,
-      fromHash: attachment.participantHash,
+      fromSeat,
       at: Date.now(),
       clientId: typeof message.clientId === "string" ? message.clientId.slice(0, 64) : "",
       ...payload,
@@ -793,7 +852,9 @@ export class GameRoomDO extends DurableObject {
   private async chatHistoryFor(room: GameRoomState, viewerHash: string): Promise<GameChatMessage[]> {
     const access = this.chatAccessFor(room, viewerHash);
     const stored = await this.ctx.storage.list<GameChatMessage>({ prefix: CHAT_MSG_KEY_PREFIX });
-    return visibleChatHistory([...stored.values()], access);
+    // 存量兜底（修复 1）：旧部署写入的暂存消息签名是 fromHash（participantHash），
+    // 补发前统一清洗成 fromSeat——历史帧与实时帧走同一条隐私边界。
+    return visibleChatHistory([...stored.values()], access).map((message) => sanitizeChatMessage(room, message));
   }
 
   /** 聊天即焚：删除 chat:* 全部键（文字暂存 / 速率窗口 / 序号计数）。 */
@@ -991,7 +1052,13 @@ export class GameRoomDO extends DurableObject {
   }
 
   private async loadRoom(): Promise<GameRoomState | null> {
-    return (await this.ctx.storage.get<GameRoomState>(ROOM_KEY)) ?? null;
+    const stored = await this.ctx.storage.get<GameRoomState>(ROOM_KEY);
+    if (!stored) return null;
+    // 存量兜底（修复 1/2）：旧部署写下的房间行没有 seatToken/rngNonce，读取
+    // 时补铸并立即落盘——保证同一座位跨请求令牌稳定（绝不每次读都换牌）。
+    const room = withRoomInvariants(stored);
+    if (room !== stored) await this.ctx.storage.put(ROOM_KEY, room);
+    return room;
   }
 
   private async ensureAlarm(): Promise<void> {
@@ -1067,17 +1134,46 @@ function bumpVersion(state: GameRoomState): GameRoomState {
   return { ...state, version: state.version + 1 };
 }
 
-/** 视图里的玩家投影：只暴露展示字段，绝不带内部态。 */
+/**
+ * 视图里的玩家投影：只暴露展示字段与座位令牌，绝不带内部态——participantHash
+ * 是身份凭证（= `web_<participantKey>` 原文），从协议形状上就不允许出现在
+ * 任何对外载荷里（修复 1：所有视图/信封/结算统一以 seatToken 对位）。
+ */
 function toPublicPlayer(
   player: GameRoomPlayer,
-): Pick<GameRoomPlayer, "participantHash" | "displayName" | "isHost" | "ready" | "leftAt"> {
+): Pick<GameRoomPlayer, "seatToken" | "displayName" | "isHost" | "ready" | "leftAt"> {
   return {
-    participantHash: player.participantHash,
+    seatToken: player.seatToken,
     displayName: player.displayName,
     isHost: player.isHost,
     ready: player.ready,
     leftAt: player.leftAt,
   };
+}
+
+/**
+ * 查看者自己的座位令牌（withView / handleGetState 共用）：在座返回令牌，观战
+ * /未加入返回 null。字段名 youSeatToken——REST 层 relay 成 `you`（与旧字段
+ * 同名透传，只是值从 participantHash 换成了 seatToken）。
+ */
+function youSeatTokenField(room: GameRoomState, viewerHash: string): { youSeatToken: string | null } {
+  const viewer = viewerHash === "" ? null : (room.players.find((p) => p.participantHash === viewerHash) ?? null);
+  return { youSeatToken: viewer && viewer.leftAt === null ? viewer.seatToken : null };
+}
+
+/**
+ * 存量聊天消息清洗（修复 1）：旧部署写入的环形暂存签名是 fromHash
+ * （participantHash），补发给任何成员前统一改写成 fromSeat——发送者是玩家
+ * 就换其座位令牌（loadRoom 已兜底补铸），观战者/座位缺失置空串。实时路径
+ * （handleChatSend）铸造的就是 fromSeat，本函数只为历史帧兜底。
+ */
+function sanitizeChatMessage(room: GameRoomState, message: GameChatMessage): GameChatMessage {
+  const raw = message as GameChatMessage & { fromHash?: unknown };
+  if (typeof raw.fromHash !== "string" || raw.fromHash === "") return message;
+  const legacy = raw.fromHash;
+  const { fromHash: _legacy, ...rest } = raw;
+  void _legacy;
+  return { ...rest, fromSeat: room.players.find((p) => p.participantHash === legacy)?.seatToken ?? "" };
 }
 
 function remainingMs(room: GameRoomState): number | null {

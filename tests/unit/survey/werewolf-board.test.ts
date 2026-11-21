@@ -42,7 +42,7 @@ import {
 function validPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const seats = Array.from({ length: 9 }, (_, i) => ({
     seatIndex: i,
-    participantHash: `hash-p${i + 1}`,
+    seatToken: `seat-p${i + 1}`,
     alive: true,
     isYou: i === 0,
   }));
@@ -79,7 +79,7 @@ describe("parseWerewolfView(视图收敛)", () => {
     expect(w.day).toBe(1);
     expect(w.phase).toBe("night_wolf");
     expect(w.seats).toHaveLength(9);
-    expect(w.seats[0]).toEqual({ seatIndex: 0, participantHash: "hash-p1", alive: true, isYou: true });
+    expect(w.seats[0]).toEqual({ seatIndex: 0, seatToken: "seat-p1", alive: true, isYou: true });
     expect(w.yourSeat).toBe(0);
     expect(w.yourRole).toBe("werewolf");
     expect(w.yourAlive).toBe(true);
@@ -149,10 +149,10 @@ describe("parseWerewolfView(视图收敛)", () => {
         day: -1,
         yourRole: "god",
         seats: [
-          { seatIndex: 0, participantHash: "hash-p1", alive: true, isYou: true },
+          { seatIndex: 0, seatToken: "seat-p1", alive: true, isYou: true },
           null,
           { seatIndex: "x", alive: true },
-          { seatIndex: 3, participantHash: "", alive: false, isYou: false },
+          { seatIndex: 3, seatToken: "", alive: false, isYou: false },
         ],
         events: [{ seq: 1, day: 1, kind: "dawn", text: "天亮了" }, { text: 42 }, null],
         speeches: [{ day: 1, seatIndex: 2, skipped: false, text: "我是好人" }, { seatIndex: "x" }],
@@ -163,7 +163,7 @@ describe("parseWerewolfView(视图收敛)", () => {
     expect(w.day).toBe(0);
     expect(w.yourRole).toBeNull();
     expect(w.seats).toHaveLength(2);
-    expect(w.seats[1]).toEqual({ seatIndex: 3, participantHash: null, alive: false, isYou: false });
+    expect(w.seats[1]).toEqual({ seatIndex: 3, seatToken: null, alive: false, isYou: false });
     expect(w.events).toEqual([{ seq: 1, day: 1, kind: "dawn", text: "天亮了" }]);
     expect(w.speeches).toEqual([{ day: 1, seatIndex: 2, skipped: false, text: "我是好人" }]);
     expect(w.pkCandidates).toEqual([2, 5]);
@@ -261,7 +261,7 @@ describe("目标选择本地预判(werewolfLocalTargetCheck;权威校验在引�
     const deadSeat = {
       seats: Array.from({ length: 9 }, (_, i) => ({
         seatIndex: i,
-        participantHash: `h${i}`,
+        seatToken: `h${i}`,
         alive: i !== 5,
         isYou: false,
       })),
@@ -325,28 +325,28 @@ describe("目标选择本地预判(werewolfLocalTargetCheck;权威校验在引�
   });
 });
 
-describe("座位昵称(werewolfSeatName,哈希对位)", () => {
+describe("座位昵称(werewolfSeatName,座位令牌对位)", () => {
   const players = [
-    { participantHash: "h0", displayName: "甲", leftAt: null },
-    { participantHash: "h1", displayName: "乙", leftAt: null },
-    { participantHash: "h2", displayName: "丙", leftAt: "t" },
+    { seatToken: "h0", displayName: "甲", leftAt: null },
+    { seatToken: "h1", displayName: "乙", leftAt: null },
+    { seatToken: "h2", displayName: "丙", leftAt: "t" },
   ];
-  const seatsWithHash = [0, 1, 2].map((i) => ({ seatIndex: i, participantHash: `h${i}`, alive: true, isYou: false }));
-  const seatsNoHash = seatsWithHash.map((seat) => ({ ...seat, participantHash: null }));
+  const seatsWithHash = [0, 1, 2].map((i) => ({ seatIndex: i, seatToken: `h${i}`, alive: true, isYou: false }));
+  const seatsNoHash = seatsWithHash.map((seat) => ({ ...seat, seatToken: null }));
 
-  it("按座位载荷的 participantHash 对位昵称;离席座位照样显示其昵称(不回退)", () => {
+  it("按座位载荷的 seatToken 对位昵称;离席座位照样显示其昵称(不回退)", () => {
     const w = { seats: seatsWithHash };
     expect(werewolfSeatName({ players }, w, 0)).toBe("甲");
     expect(werewolfSeatName({ players }, w, 2)).toBe("丙");
     expect(werewolfSeatName({ players }, w, 1)).toBe("乙");
   });
 
-  it("旧部署兜底(无座位哈希):全在座且行数=座位数时按行序;有离席行回退「玩家N」绝不错挂", () => {
+  it("旧部署兜底(无座位令牌):全在座且行数=座位数时按行序;有离席行回退「玩家N」绝不错挂", () => {
     const w = { seats: seatsNoHash };
     const allActive = [
-      { participantHash: "h0", displayName: "甲", leftAt: null },
-      { participantHash: "h1", displayName: "乙", leftAt: null },
-      { participantHash: "h2", displayName: "丙", leftAt: null },
+      { seatToken: "h0", displayName: "甲", leftAt: null },
+      { seatToken: "h1", displayName: "乙", leftAt: null },
+      { seatToken: "h2", displayName: "丙", leftAt: null },
     ];
     expect(werewolfSeatName({ players: allActive }, w, 0)).toBe("甲");
     expect(werewolfSeatName({ players: allActive }, w, 1)).toBe("乙");
@@ -465,6 +465,7 @@ describe("房主配置(buildWerewolfRoomConfig)", () => {
       const now = new Date().toISOString();
       const host: GameRoomPlayer = {
         participantHash: "hash-cfg-host",
+        seatToken: "seat-cfg-host",
         displayName: "房主",
         isHost: true,
         ready: false,
@@ -477,6 +478,7 @@ describe("房主配置(buildWerewolfRoomConfig)", () => {
         status: "lobby",
         version: 1,
         config,
+        rngNonce: "nonce-cfg",
         players: [host],
         engineState: null,
         createdAt: now,
@@ -517,6 +519,8 @@ describe("引擎集成(9 人局驱动)", () => {
   function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
     return {
       participantHash,
+      // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+      seatToken: `seat-${participantHash}`,
       displayName: isHost ? "房主" : `玩家${P.indexOf(participantHash) + 1}`,
       isHost,
       ready: false,
@@ -539,6 +543,7 @@ describe("引擎集成(9 人局驱动)", () => {
       status: "lobby",
       version: 1,
       config: {},
+      rngNonce: "nonce-werewolf-client",
       players: [roomPlayer(P[0]!, true)],
       engineState: null,
       createdAt: now,
@@ -588,11 +593,11 @@ describe("引擎集成(9 人局驱动)", () => {
     expect(pub.nightKnife).toBeNull();
   });
 
-  it("座位哈希与信封同源:seats[].participantHash 按「开局时在座行序」对齐信封玩家", () => {
+  it("座位令牌与信封同源:seats[].seatToken 按「开局时在座行序」对齐信封玩家", () => {
     const room = startedReal(9);
     const parsed = parseWerewolfView(werewolfEngine.getPlayerView(room, P[0]!).view)!;
-    expect(parsed.seats.map((seat) => seat.participantHash)).toEqual(
-      room.players.filter((p) => p.leftAt === null).map((p) => p.participantHash),
+    expect(parsed.seats.map((seat) => seat.seatToken)).toEqual(
+      room.players.filter((p) => p.leftAt === null).map((p) => p.seatToken),
     );
     // 客户端据此把座位映射到昵称:座位 0 = 房主。
     expect(werewolfSeatName(room, parsed, 0)).toBe("房主");

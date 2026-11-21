@@ -27,7 +27,7 @@ function colorOfPiece(piece: string): XiangqiColor {
  * 本文件的玩法逻辑。
  *
  * 自指信息（「我是谁」）从玩法载荷自取：玩家视图的 yourColor 对回座位表即
- * 得到自己的 participantHash（engine-types 协议不变量三：视图按人裁剪）。
+ * 得到自己的 seatToken（engine-types 协议不变量三：视图按人裁剪）。
  * 走子采用两段式：先点选己方棋子，再点目标交点发 { from, to }——权威校验
  * 全在服务端引擎，本地预判（localXiangqiMoveCheck）只挡必被拒的操作；
  * 选中后按服务端 legalMoves 画可走点提示，点在提示外直接提示不发请求
@@ -67,7 +67,7 @@ export function XiangqiBoardPanel({
 
   const myHash =
     xiangqi.yourColor !== null
-      ? (xiangqi.players.find((seat) => seat.color === xiangqi.yourColor)?.participantHash ?? null)
+      ? (xiangqi.players.find((seat) => seat.color === xiangqi.yourColor)?.seatToken ?? null)
       : null;
   const gameEnded = status === "settled" || status === "closed" || xiangqi.outcome != null;
   const isMyTurn =
@@ -86,19 +86,9 @@ export function XiangqiBoardPanel({
       : null;
   };
   const settlementCopy = xiangqi.outcome
-    ? xiangqiSettlementCopy(
-        xiangqi.outcome.result,
-        xiangqi.outcome.winnerParticipantHash,
-        myHash,
-        xiangqi.outcome.reason,
-      )
+    ? xiangqiSettlementCopy(xiangqi.outcome.result, xiangqi.outcome.winnerSeatToken, myHash, xiangqi.outcome.reason)
     : view.settlement
-      ? xiangqiSettlementCopy(
-          view.settlement.result,
-          view.settlement.winnerParticipantHash,
-          myHash,
-          reasonFromSummary(),
-        )
+      ? xiangqiSettlementCopy(view.settlement.result, view.settlement.winnerSeatToken, myHash, reasonFromSummary())
       : null;
 
   const sendGameAction = async (action: string) => {

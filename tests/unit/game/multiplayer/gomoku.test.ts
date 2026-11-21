@@ -25,6 +25,8 @@ const GUEST = "hash-guest";
 function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
   return {
     participantHash,
+    // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+    seatToken: `seat-${participantHash}`,
     displayName: isHost ? "房主" : "客人",
     isHost,
     ready: false,
@@ -42,6 +44,7 @@ function baseRoom(): GameRoomState {
     status: "lobby",
     version: 1,
     config: {},
+    rngNonce: "nonce-gomoku",
     players: [roomPlayer(HOST, true)],
     engineState: null,
     createdAt: now,
@@ -133,7 +136,7 @@ describe("五子棋 胜负判定", () => {
     expect(gomokuEngine.checkGameOver(state)).toBe(true);
     const settlement = gomokuEngine.settle(state);
     expect(settlement.result).toBe("win");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${HOST}`);
     expect(settlement.summary.winningLine).toHaveLength(5);
     expect(settlement.summary.moveCount).toBe(9);
   });
@@ -158,7 +161,7 @@ describe("五子棋 胜负判定", () => {
     expect(gomokuEngine.checkGameOver(state)).toBe(true);
     const settlement = gomokuEngine.settle(state);
     expect(settlement.result).toBe("win");
-    expect(settlement.winnerParticipantHash).toBe(GUEST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${GUEST}`);
     expect(settlement.summary.winningLine).toHaveLength(5);
   });
 
@@ -181,7 +184,7 @@ describe("五子棋 胜负判定", () => {
     expect(gomokuEngine.checkGameOver(state)).toBe(true);
     const settlement = gomokuEngine.settle(state);
     expect(settlement.result).toBe("win");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${HOST}`);
     expect(settlement.summary.winningLine).toEqual([
       { row: 0, col: 0 },
       { row: 1, col: 1 },
@@ -214,7 +217,7 @@ describe("五子棋 胜负判定", () => {
     expect(gomokuEngine.checkGameOver(state)).toBe(true);
     const settlement = gomokuEngine.settle(state);
     expect(settlement.result).toBe("draw");
-    expect(settlement.winnerParticipantHash).toBeNull();
+    expect(settlement.winnerSeatToken).toBeNull();
     expect(settlement.summary.moveCount).toBe(225);
     expect(
       boardOf(state)
@@ -281,7 +284,7 @@ describe("五子棋 悔棋与求和", () => {
 
     state = commit(gomokuEngine.applyAction(state, action(HOST, "request_undo", "u-3")));
     const pending = gomokuEngine.getPublicView(state).view as { pendingUndoFrom: string | null; turn: string };
-    expect(pending.pendingUndoFrom).toBe(HOST);
+    expect(pending.pendingUndoFrom).toBe(`seat-${HOST}`);
     expect(pending.turn).toBe("white");
 
     // 发起人不能自己同意。
@@ -313,7 +316,7 @@ describe("五子棋 悔棋与求和", () => {
     expect(gomokuEngine.checkGameOver(state)).toBe(true);
     const settlement = gomokuEngine.settle(state);
     expect(settlement.result).toBe("draw");
-    expect(settlement.winnerParticipantHash).toBeNull();
+    expect(settlement.winnerSeatToken).toBeNull();
   });
 
   it("求和：对方申请后本方再发一次视为同意（少一个往返）", () => {
@@ -367,7 +370,7 @@ describe("五子棋 结算", () => {
     expect(gomokuEngine.checkGameOver(after)).toBe(true);
     const settlement = gomokuEngine.settle(after);
     expect(settlement.result).toBe("resign");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${HOST}`);
   });
 
   it("超时：截止前拒绝，到点判当前行棋方（黑/房主）负", () => {
@@ -379,7 +382,7 @@ describe("五子棋 结算", () => {
     expect(gomokuEngine.checkGameOver(timedOut)).toBe(true);
     const settlement = gomokuEngine.settle(timedOut);
     expect(settlement.result).toBe("timeout");
-    expect(settlement.winnerParticipantHash).toBe(GUEST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${GUEST}`);
     expect(timedOut.deadlineAt).toBeNull();
   });
 });

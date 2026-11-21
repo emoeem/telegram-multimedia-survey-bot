@@ -31,6 +31,8 @@ const GUEST = "hash-guest";
 function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
   return {
     participantHash,
+    // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+    seatToken: `seat-${participantHash}`,
     displayName: isHost ? "房主" : "客人",
     isHost,
     ready: false,
@@ -48,6 +50,7 @@ function baseRoom(): GameRoomState {
     status: "lobby",
     version: 1,
     config: {},
+    rngNonce: "nonce-xiangqi",
     players: [roomPlayer(HOST, true)],
     engineState: null,
     createdAt: now,
@@ -129,7 +132,7 @@ function boardFrom(rows: string[]): Array<Array<string | null>> {
 
 interface CraftedEngineState {
   board: Array<Array<string | null>>;
-  seats: Array<{ participantHash: string; color: "red" | "black" }>;
+  seats: Array<{ participantHash: string; seatToken: string; color: "red" | "black" }>;
   turn: "red" | "black";
   moves: unknown[];
   outcome: null;
@@ -148,8 +151,8 @@ function crafted(rows: string[], turn: "red" | "black" = "red"): GameRoomState {
   const engine: CraftedEngineState = {
     board: boardFrom(rows),
     seats: [
-      { participantHash: HOST, color: "red" },
-      { participantHash: GUEST, color: "black" },
+      { participantHash: HOST, seatToken: `seat-${HOST}`, color: "red" },
+      { participantHash: GUEST, seatToken: `seat-${GUEST}`, color: "black" },
     ],
     turn,
     moves: [],
@@ -176,7 +179,7 @@ interface PublicXiangqiView {
   rows: number;
   board: Array<Array<string | null>>;
   turn: "red" | "black";
-  players: Array<{ participantHash: string; color: "red" | "black" }>;
+  players: Array<{ seatToken: string; color: "red" | "black" }>;
   moveCount: number;
   lastMove: {
     ply: number;
@@ -185,7 +188,7 @@ interface PublicXiangqiView {
     to: { row: number; col: number };
     piece: string;
     captured: string | null;
-    participantHash: string;
+    seatToken: string;
     givesCheck: boolean;
     notation: string;
   } | null;
@@ -197,12 +200,12 @@ interface PublicXiangqiView {
     to: { row: number; col: number };
     piece: string;
     captured: string | null;
-    participantHash: string;
+    seatToken: string;
     givesCheck: boolean;
     notation: string;
   }>;
   check: "red" | "black" | null;
-  outcome: { result: string; winnerParticipantHash: string | null; reason: string | null } | null;
+  outcome: { result: string; winnerSeatToken: string | null; reason: string | null } | null;
   pendingDrawFrom: string | null;
 }
 
@@ -238,8 +241,8 @@ describe("象棋 注册表与红黑分配", () => {
     const state = started();
     const view = publicViewOf(state);
     expect(view.players).toEqual([
-      { participantHash: HOST, color: "red" },
-      { participantHash: GUEST, color: "black" },
+      { seatToken: `seat-${HOST}`, color: "red" },
+      { seatToken: `seat-${GUEST}`, color: "black" },
     ]);
     expect(view.turn).toBe("red");
     expect(state.status).toBe("playing");
@@ -591,13 +594,13 @@ describe("象棋 将死", () => {
     expect(publicViewOf(mated).check).toBe("black");
     expect(publicViewOf(mated).outcome).toEqual({
       result: "win",
-      winnerParticipantHash: HOST,
+      winnerSeatToken: `seat-${HOST}`,
       reason: "checkmate",
     });
     expect(xiangqiEngine.checkGameOver(mated)).toBe(true);
     const settlement = xiangqiEngine.settle(mated);
     expect(settlement.result).toBe("win");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${HOST}`);
     expect(settlement.summary.reason).toBe("checkmate");
     expect(settlement.summary.moveCount).toBe(1);
   });
@@ -633,7 +636,7 @@ describe("象棋 困毙", () => {
     const stuck = play(state, HOST, [9, 4], [9, 5], "stalemate");
     expect(publicViewOf(stuck).outcome).toEqual({
       result: "win",
-      winnerParticipantHash: HOST,
+      winnerSeatToken: `seat-${HOST}`,
       reason: "stalemate",
     });
     expect(xiangqiEngine.checkGameOver(stuck)).toBe(true);
@@ -677,13 +680,13 @@ describe("象棋 长将判和", () => {
     state = play(state, HOST, [3, 5], [3, 4], "p-8");
     expect(publicViewOf(state).outcome).toEqual({
       result: "draw",
-      winnerParticipantHash: null,
+      winnerSeatToken: null,
       reason: "perpetual_check",
     });
     expect(xiangqiEngine.checkGameOver(state)).toBe(true);
     const settlement = xiangqiEngine.settle(state);
     expect(settlement.result).toBe("draw");
-    expect(settlement.winnerParticipantHash).toBeNull();
+    expect(settlement.winnerSeatToken).toBeNull();
     expect(settlement.summary.reason).toBe("perpetual_check");
   });
 });
@@ -708,7 +711,7 @@ describe("象棋 走棋历史", () => {
       to: { row: 4, col: 2 },
       piece: "P",
       captured: "p",
-      participantHash: HOST,
+      seatToken: `seat-${HOST}`,
       givesCheck: false,
     });
 
@@ -718,7 +721,7 @@ describe("象棋 走棋历史", () => {
     expect(settlement.summary.moveCount).toBe(5);
     expect(settlement.summary.history).toHaveLength(5);
     const lastRecord = (settlement.summary.history as Array<Record<string, unknown>>).at(-1);
-    expect(lastRecord).toMatchObject({ ply: 5, captured: "p", participantHash: HOST });
+    expect(lastRecord).toMatchObject({ ply: 5, captured: "p", seatToken: `seat-${HOST}` });
   });
 });
 
@@ -773,21 +776,21 @@ describe("象棋 结算", () => {
     expect(xiangqiEngine.checkGameOver(after)).toBe(true);
     const settlement = xiangqiEngine.settle(after);
     expect(settlement.result).toBe("resign");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${HOST}`);
     expect(settlement.summary.reason).toBe("resign");
   });
 
   it("求和：申请 → 对方同意即和棋；自己不能同意自己的申请", () => {
     let state = started();
     state = commit(xiangqiEngine.applyAction(state, action(HOST, "offer_draw", "draw-1")));
-    expect(publicViewOf(state).pendingDrawFrom).toBe(HOST);
+    expect(publicViewOf(state).pendingDrawFrom).toBe(`seat-${HOST}`);
     expectRejected(xiangqiEngine.applyAction(state, action(HOST, "accept_draw", "draw-2")), "illegal_move");
 
     state = commit(xiangqiEngine.applyAction(state, action(GUEST, "accept_draw", "draw-3")));
     expect(xiangqiEngine.checkGameOver(state)).toBe(true);
     const settlement = xiangqiEngine.settle(state);
     expect(settlement.result).toBe("draw");
-    expect(settlement.winnerParticipantHash).toBeNull();
+    expect(settlement.winnerSeatToken).toBeNull();
   });
 
   it("超时：截止前拒绝，到点判当前行棋方（红/房主）负", () => {
@@ -799,7 +802,7 @@ describe("象棋 结算", () => {
     expect(xiangqiEngine.checkGameOver(timedOut)).toBe(true);
     const settlement = xiangqiEngine.settle(timedOut);
     expect(settlement.result).toBe("timeout");
-    expect(settlement.winnerParticipantHash).toBe(GUEST);
+    expect(settlement.winnerSeatToken).toBe(`seat-${GUEST}`);
     expect(settlement.summary.reason).toBe("timeout");
     expect(timedOut.deadlineAt).toBeNull();
   });

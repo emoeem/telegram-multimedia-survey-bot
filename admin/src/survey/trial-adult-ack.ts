@@ -27,6 +27,30 @@ export const TRIAL_AGREEMENT_GLOBAL_KEY = "trialAdultAgreement:v1";
 /** 包级 ack 键前缀：完整键 = 前缀 + pack id（①：键含 pack id）。 */
 export const TRIAL_PACK_ACK_PREFIX = "trialAdultPackAck:v1:";
 
+/**
+ * 18+ 确认弹层的统一文案（修复 3：徽标与门同源——三处确认（/trial 包卡弹层、
+ * /s 内嵌 GamePlayer、/s 内嵌 PluginGamePlay）共用同一常量，绝不各写一份）：
+ * - 文案里注明「确认仅对当前包生效」：包级 ack 键含 pack id，确认一个包不会
+ *   放行其它包；
+ * - 键语义说明：与旧全局键 trialAdultAgreement:v1 不互通也不迁移——全局键
+ *   只读单向兼容存量用户（②），新确认永远只写包级键，避免误放行。
+ */
+export const TRIAL_ADULT_CONFIRM_LABEL = "我已年满 18 周岁，同意进入";
+
+/** 18+ 警示正文：packName 拼进「本包为 18+」句；其余句子三处共用。 */
+export function trialAdultNoticeLines(packName: string | null): string[] {
+  const head = packName
+    ? `「${packName}」为 18+ 成人向虚构文字任务游戏，含羞耻与服从主题内容。`
+    : "该小游戏为 18+ 成人向虚构文字任务游戏，含羞耻与服从主题内容。";
+  return [
+    head,
+    "全部场景均为想象中的虚拟情境，请遵守当地法律，切勿在现实公共场所实施任何内容。",
+    // 包级记忆语义（修复 3 ④）：确认只写包级键、只对当前包生效；与旧全局键
+    // trialAdultAgreement:v1 不互通、不迁移（避免一次确认解锁所有包）。
+    "确认仅对当前包生效：换一个包需要重新确认（本偏好记录在本设备）。",
+  ];
+}
+
 /** 纯键构造（单测锚点）：包级键必须含 pack id，不同包不同键。 */
 export function trialPackAckKey(packId: number): string {
   return `${TRIAL_PACK_ACK_PREFIX}${packId}`;

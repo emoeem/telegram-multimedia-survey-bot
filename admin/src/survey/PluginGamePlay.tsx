@@ -1,10 +1,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { TrialAdultGateCard } from "./TrialAdultGateCard";
 import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
 import { lazyPlayView } from "../game-plugins/loader";
 import type { GameHostBridge, GamePlayResult } from "../game-plugins/types";
 import type { GameRunView } from "../../../src/game-plugin/types";
 import { identityHeaders, type AnswerValue } from "./api";
+import { resolveTrialPackAdult } from "./trial-api";
 
 /**
  * 插件玩法的宿主（问卷 game 题在答题时的容器）。
@@ -73,6 +74,12 @@ export function PluginGamePlay({
   // TrialScreen 共用全局键 trialAdultAgreement:v1（一次确认解锁所有包），
   // 本轮废除；旧全局键 '1' 只读单向兼容，存量用户零回归。
   const [adultAck, setAdultAck] = useState(() => isAdultPackAckedLocally(packId));
+  /**
+   * 包级 18+ 标志（修复 3：按 pack.adult 决定是否弹门）。null = 还没查到
+   * （/api/trial/packs 在路上或失败）——fail-closed：门先弹着，绝不因查询
+   * 失败跳过 18+ 确认；adult=false 的全年龄包绝不弹门。
+   */
+  const [packAdult, setPackAdult] = useState<boolean | null>(null);
   const [saved, setSaved] = useState<GamePlayResult | null>(() => {
     if (value && typeof value === "object" && !Array.isArray(value) && (value as { kind?: unknown }).kind === "game") {
       const answer = value as PluginGameAnswer;
@@ -89,9 +96,23 @@ export function PluginGamePlay({
   const runIdRef = useRef<number | null>(null);
   const lastResultRef = useRef<GamePlayResult | null>(null);
 
-  // 换题换包时按新包重估 ack（/s 侧 question 切换不重挂组件）。
+  // 换题换包时按新包重估 ack 与包级 adult（/s 侧 question 切换不重挂组件；
+  // 修复 3：门按 pack.adult 分支——adult=false 的全年龄包绝不弹门）。
   useEffect(() => {
     setAdultAck(isAdultPackAckedLocally(packId));
+    setPackAdult(null);
+    let cancelled = false;
+    void resolveTrialPackAdult(packId)
+      .then((adult) => {
+        if (!cancelled) setPackAdult(adult);
+      })
+      .catch(() => {
+        // resolveTrialPackAdult 内部已兜成 null；这里再兜一层保持 fail-closed。
+        if (!cancelled) setPackAdult(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [packId]);
 
   // 同一个插件只创建一次懒加载组件（每次 render 新建会反复挂载）。
@@ -185,22 +206,10 @@ export function PluginGamePlay({
   if (loadError) {
     return <p className="mt-4 text-sm text-red-500">{loadError}</p>;
   }
-  if (!adultAck) {
-    return (
-      <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-        <p className="flex items-start gap-1.5 text-[13px] leading-6 text-[var(--survey-body)]">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-          <span>该小游戏为虚构互动内容，请确认你已年满 18 周岁后开始。</span>
-        </p>
-        <button
-          type="button"
-          className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-[var(--survey-primary-content)]"
-          onClick={handleAdultAck}
-        >
-          我已年满 18 周岁，同意进入
-        </button>
-      </div>
-    );
+  // 修复 3：adult=false 的全年龄包直接进玩法，不弹 18+ 门；adult=true 或
+  // 查询未果（fail-closed）且未 ack 时弹统一确认卡（同一组件同一文案）。
+  if (packAdult !== false && !adultAck) {
+    return <TrialAdultGateCard packName={null} onConfirm={handleAdultAck} />;
   }
 
   return (

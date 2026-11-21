@@ -187,7 +187,7 @@ export function countdownTickDue(prevRemainingMs: number | null, nextRemainingMs
 export interface GameSoundDiffInput {
   gameType: string;
   role: "player" | "spectator";
-  /** 我的 participantHash（玩家身份）；观战为 null。 */
+  /** 我的座位令牌（信封 players / 引擎座位的公开对位键）；观战为 null。 */
   myHash: string | null;
   /** 上一帧信封（null = 首帧/进房/重连后的第一帧）。 */
   prev: GamePlayerView | GamePublicView | null;
@@ -220,12 +220,12 @@ export function deriveGameSoundEvents(input: GameSoundDiffInput): GameSoundEvent
 
   // 玩家加入/离开：信封 players 在座行差分（大厅与对局都算）。
   const prevActive = new Set(
-    (prev.players ?? []).filter((player) => player.leftAt === null).map((player) => player.participantHash),
+    (prev.players ?? []).filter((player) => player.leftAt === null).map((player) => player.seatToken),
   );
   for (const player of next.players ?? []) {
     if (player.leftAt !== null) {
-      if (prevActive.has(player.participantHash)) events.push("player_leave");
-    } else if (!prevActive.has(player.participantHash)) {
+      if (prevActive.has(player.seatToken)) events.push("player_leave");
+    } else if (!prevActive.has(player.seatToken)) {
       events.push("player_join");
     }
   }
@@ -281,7 +281,7 @@ function settlementResultSound(
         ? (parseGomokuView(view.view)?.outcome ?? null)
         : (parseXiangqiView(view.view)?.outcome ?? null);
     const result = outcome?.result ?? view.settlement?.result ?? null;
-    const winner = outcome?.winnerParticipantHash ?? view.settlement?.winnerParticipantHash ?? null;
+    const winner = outcome?.winnerSeatToken ?? view.settlement?.winnerSeatToken ?? null;
     if (result === "draw") return "draw";
     if (result === "aborted" || winner === null) return null;
     if (myHash !== null && winner === myHash) return "victory";
@@ -292,7 +292,7 @@ function settlementResultSound(
   const settlement = view.settlement ?? null;
   if (settlement === null || settlement.result === "aborted") return null;
   if (settlement.result === "draw") return "draw";
-  const winner = settlement.winnerParticipantHash;
+  const winner = settlement.winnerSeatToken;
   if (winner === null) return null;
   if (myHash !== null && winner === myHash) return "victory";
   if (settlement.result === "timeout") return "timeout_loss";

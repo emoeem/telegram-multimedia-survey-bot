@@ -103,10 +103,11 @@ describe("/game 的 Lobby/Board 分层（Board 注册表 + 未知玩法兜底）
   });
 
   it("建房路径必须同步落「我的行」锚点 setMyHash（创建不经 enterRoom，漏掉即房主被渲染成观战）", () => {
-    // handleCreate 拿到 create 响应（game-api 的 you 字段 → selfParticipantHash）
-    // 后要 setMyHash，再 attachConnection；这是「建→备→开局」链路的前提。
+    // handleCreate 拿到 create 响应（game-api 的 you 字段 → selfSeatToken，
+    // 修复 1：you 是座位令牌，不再携带 participantHash）后要 setMyHash，再
+    // attachConnection；这是「建→备→开局」链路的前提。
     const createBlock = screen.slice(screen.indexOf("const handleCreate"), screen.indexOf("const handleJoinInput"));
-    expect(createBlock).toContain("setMyHash(result.data.selfParticipantHash)");
+    expect(createBlock).toContain("setMyHash(result.data.selfSeatToken)");
     expect(createBlock).toContain("attachConnection(result.data.roomId)");
   });
 });

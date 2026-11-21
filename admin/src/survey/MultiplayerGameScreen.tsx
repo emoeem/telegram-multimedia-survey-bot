@@ -55,7 +55,8 @@ import type {
  * - Board 层（*BoardPanel）：玩法私有渲染（棋盘/牌桌/悔棋求和/结算）。
  *
  * 「我是谁」不引入新身份体系：REST create/join/state 信封带 you（Worker
- * 鉴权后自己的 participantHash，见 game-api.ts），用它对回信封 players 即
+ * 鉴权后自己的座位令牌 seatToken，见 game-api.ts——修复 1 起 `you` 不再携带
+ * participantHash，公开对位键统一是座位令牌），用它对回信封 players 即
  * 得到自己的 isHost/ready；WS 帧不重复携带——身份在一次连接内不变。
  *
  * 玩法列表来自 GET /api/game/types（失败回退 FALLBACK_GAME_TYPES 静态五子
@@ -88,7 +89,7 @@ export function MultiplayerGameScreen() {
   const [clockMs, setClockMs] = useState(() => Date.now());
   /** presence 推送的在线人数（null = 还没收到首条推送，不做掉线判定）。 */
   const [online, setOnline] = useState<{ players: number; spectators: number } | null>(null);
-  /** 我的 participantHash（REST 快照 you 字段；一次连接内不变）。 */
+  /** 我的座位令牌（REST 快照 you 字段；一次连接内不变）。 */
   const [myHash, setMyHash] = useState<string | null>(null);
   /** 房间内聊天：服务端推送的全部消息（跨频道存放，ChatPanel 按页签过滤）。 */
   const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
@@ -214,7 +215,7 @@ export function MultiplayerGameScreen() {
         onChat: (message) => {
           setChatMessages((prev) => mergeChatMessage(prev, message));
           // 消息 pop 与对局音效同一条总线（自己的回显不响；历史补发不响）。
-          if (message.fromHash !== myHashRef.current) playGameSound("chat_pop");
+          if (message.fromSeat !== myHashRef.current) playGameSound("chat_pop");
         },
         onChatHistory: (messages) => setChatMessages(messages),
       });
@@ -266,10 +267,10 @@ export function MultiplayerGameScreen() {
             toast({ message: "房间已满，你将以观战身份看这一局", variant: "info" });
           }
         }
-        // 自己的 participantHash 只随 REST 快照更新（身份一次连接内不变，
-        // WS 帧不重复携带）；信封 players 里以它定位「我的行」。
-        myHashRef.current = snapshot.selfParticipantHash;
-        setMyHash(snapshot.selfParticipantHash);
+        // 自己的座位令牌只随 REST 快照更新（身份一次连接内不变，WS 帧不重复
+        // 携带）；信封 players 里以它定位「我的行」（修复 1：不再用哈希对位）。
+        myHashRef.current = snapshot.selfSeatToken;
+        setMyHash(snapshot.selfSeatToken);
         attachConnection(snapshot.roomId);
       } finally {
         setBusy(false);
@@ -310,9 +311,9 @@ export function MultiplayerGameScreen() {
   // ------------------------------------------------------------------
 
   const players: RoomPlayerRow[] = useMemo(() => (view?.players ?? []) as RoomPlayerRow[], [view]);
-  /** 「我的行」按自己的 participantHash 对回信封 players；观战者不在座为 null。 */
+  /** 「我的行」按自己的座位令牌对回信封 players；观战者不在座为 null。 */
   const mePlayer = useMemo(
-    () => players.find((player) => player.participantHash === myHash && player.leftAt === null) ?? null,
+    () => players.find((player) => player.seatToken === myHash && player.leftAt === null) ?? null,
     [myHash, players],
   );
   const amHost = mePlayer?.isHost ?? false;
@@ -346,8 +347,8 @@ export function MultiplayerGameScreen() {
       // 建房是唯一不经 enterRoom 的进房路径：这里必须同步落「我的行」锚点
       // （REST 信封 you），否则 mePlayer 恒 null——房主在 lobby 被渲染成观战
       // （无准备/开局按钮、房间头无「关闭房间」），建→备→开局链路第一步即断。
-      myHashRef.current = result.data.selfParticipantHash;
-      setMyHash(result.data.selfParticipantHash);
+      myHashRef.current = result.data.selfSeatToken;
+      setMyHash(result.data.selfSeatToken);
       attachConnection(result.data.roomId);
     } finally {
       setBusy(false);

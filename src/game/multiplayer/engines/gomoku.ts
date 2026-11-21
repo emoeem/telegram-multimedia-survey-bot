@@ -47,6 +47,8 @@ type Cell = GomokuColor | null;
 
 interface GomokuSeat {
   participantHash: string;
+  /** 座位令牌（DO 座位分配处铸造）：视图/结算对位的唯一公开标识（修复 1）。 */
+  seatToken: string;
   color: GomokuColor;
 }
 
@@ -54,14 +56,16 @@ interface GomokuMove {
   row: number;
   col: number;
   color: GomokuColor;
-  participantHash: string;
+  /** 落子者座位令牌（随棋谱进视图/结算，公开标识；participantHash 绝不外发）。 */
+  seatToken: string;
 }
 
 type GomokuResult = "win" | "draw" | "timeout" | "resign" | "aborted";
 
 interface GomokuOutcome {
   result: GomokuResult;
-  winnerParticipantHash: string | null;
+  /** 胜者座位令牌（进视图与结算，公开标识）。 */
+  winnerSeatToken: string | null;
 }
 
 /** 引擎私有状态（DO 不解释，只有本引擎读写）。 */
@@ -71,9 +75,9 @@ interface GomokuEngineState {
   turn: GomokuColor;
   moves: GomokuMove[];
   outcome: GomokuOutcome | null;
-  /** 待对方同意的和棋申请（申请人 participantHash）。 */
+  /** 待对方同意的和棋申请（申请人座位令牌——随公开视图下发，不能存哈希）。 */
   pendingDrawFrom: string | null;
-  /** 待对方同意的悔棋申请（申请人 participantHash）。 */
+  /** 待对方同意的悔棋申请（申请人座位令牌——随公开视图下发，不能存哈希）。 */
   pendingUndoFrom: string | null;
   /** 最近处理过的 actionId（有界）——协议权威去重表在 DO storage。 */
   actionIds: string[];
@@ -225,7 +229,7 @@ function applyMove(
     row: move.row,
     col: move.col,
     color: seat.color,
-    participantHash: action.participantHash,
+    seatToken: seat.seatToken,
   };
   const moves = [...engine.moves, record];
   const winningLine = findWinningLine(board, move.row, move.col, seat.color);
@@ -233,9 +237,9 @@ function applyMove(
 
   let outcome: GomokuOutcome | null = null;
   if (winningLine) {
-    outcome = { result: "win", winnerParticipantHash: action.participantHash };
+    outcome = { result: "win", winnerSeatToken: seat.seatToken };
   } else if (boardFull) {
-    outcome = { result: "draw", winnerParticipantHash: null };
+    outcome = { result: "draw", winnerSeatToken: null };
   }
 
   const next: GomokuEngineState = {
@@ -262,8 +266,8 @@ function applyResign(
   const next: GomokuEngineState = {
     ...engine,
     outcome: opponent
-      ? { result: "resign", winnerParticipantHash: opponent.participantHash }
-      : { result: "aborted", winnerParticipantHash: null },
+      ? { result: "resign", winnerSeatToken: opponent.seatToken }
+      : { result: "aborted", winnerSeatToken: null },
     pendingDrawFrom: null,
     pendingUndoFrom: null,
     winningLine: null,
@@ -275,7 +279,7 @@ function applyResign(
 function agreeDraw(state: GameRoomState, engine: GomokuEngineState, action: GameRoomAction): EngineOutcome {
   const next: GomokuEngineState = {
     ...engine,
-    outcome: { result: "draw", winnerParticipantHash: null },
+    outcome: { result: "draw", winnerSeatToken: null },
     pendingDrawFrom: null,
     pendingUndoFrom: null,
     winningLine: null,
@@ -285,38 +289,46 @@ function agreeDraw(state: GameRoomState, engine: GomokuEngineState, action: Game
 }
 
 function applyOfferDraw(state: GameRoomState, engine: GomokuEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   // 对方已求和时，本方再发一次即视为同意（少一个往返，语义不变）。
-  if (engine.pendingDrawFrom !== null && engine.pendingDrawFrom !== action.participantHash) {
+  if (engine.pendingDrawFrom !== null && engine.pendingDrawFrom !== seat.seatToken) {
     return agreeDraw(state, engine, action);
   }
-  if (engine.pendingDrawFrom === action.participantHash) {
+  if (engine.pendingDrawFrom === seat.seatToken) {
     return failure("invalid_action", "已发出和棋申请，等待对方回应");
   }
   const next: GomokuEngineState = {
     ...engine,
-    pendingDrawFrom: action.participantHash,
+    // 申请记座位令牌（随公开视图下发）；participantHash 只留在 seats 里做
+    // 服务端成员校验，绝不外发。
+    pendingDrawFrom: seat.seatToken,
     actionIds: trackActionId(engine.actionIds, action.actionId),
   };
   return success(withEngine(state, next));
 }
 
 function applyAcceptDraw(state: GameRoomState, engine: GomokuEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   if (engine.pendingDrawFrom === null) {
     return failure("illegal_move", "没有待同意的和棋申请");
   }
-  if (engine.pendingDrawFrom === action.participantHash) {
+  if (engine.pendingDrawFrom === seat.seatToken) {
     return failure("illegal_move", "不能同意自己发起的和棋");
   }
   return agreeDraw(state, engine, action);
 }
 
 function applyRequestUndo(state: GameRoomState, engine: GomokuEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   const last = engine.moves.at(-1);
   if (!last) {
     return failure("illegal_move", "还没有可以撤回的落子");
   }
   // 只能撤回自己刚落下的一手：对方已经应手后不允许再翻旧账。
-  if (last.participantHash !== action.participantHash) {
+  if (last.seatToken !== seat.seatToken) {
     return failure("illegal_move", "只能申请撤回自己刚落下的一手");
   }
   if (engine.pendingUndoFrom !== null) {
@@ -324,21 +336,23 @@ function applyRequestUndo(state: GameRoomState, engine: GomokuEngineState, actio
   }
   const next: GomokuEngineState = {
     ...engine,
-    pendingUndoFrom: action.participantHash,
+    pendingUndoFrom: seat.seatToken,
     actionIds: trackActionId(engine.actionIds, action.actionId),
   };
   return success(withEngine(state, next));
 }
 
 function applyAcceptUndo(state: GameRoomState, engine: GomokuEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   if (engine.pendingUndoFrom === null) {
     return failure("illegal_move", "没有待同意的悔棋申请");
   }
-  if (engine.pendingUndoFrom === action.participantHash) {
+  if (engine.pendingUndoFrom === seat.seatToken) {
     return failure("illegal_move", "不能同意自己发起的悔棋");
   }
   const last = engine.moves.at(-1);
-  if (!last || last.participantHash !== engine.pendingUndoFrom) {
+  if (!last || last.seatToken !== engine.pendingUndoFrom) {
     return failure("invalid_action", "悔棋申请已失效");
   }
 
@@ -368,7 +382,9 @@ function publicViewPayload(engine: GomokuEngineState): Record<string, unknown> {
     boardSize: BOARD_SIZE,
     board: engine.board,
     turn: engine.turn,
-    players: engine.seats.map((seat) => ({ ...seat })),
+    // 显式投影：座位行还持有 participantHash（服务端内部成员校验用），展开
+    // 对象会把它带进视图——视图只发座位令牌（修复 1）。
+    players: engine.seats.map((seat) => ({ seatToken: seat.seatToken, color: seat.color })),
     moveCount: engine.moves.length,
     lastMove: engine.moves.at(-1) ?? null,
     winningLine: engine.winningLine,
@@ -404,6 +420,7 @@ export const gomokuEngine: MultiplayerGameEngine = {
       .slice(0, 2)
       .map((player, index) => ({
         participantHash: player.participantHash,
+        seatToken: player.seatToken,
         color: index === 0 ? "black" : "white",
       }));
     const engine: GomokuEngineState = {
@@ -444,7 +461,7 @@ export const gomokuEngine: MultiplayerGameEngine = {
     const color: GomokuColor = used.has("black") ? "white" : "black";
     const next: GomokuEngineState = {
       ...engine,
-      seats: [...seats, { participantHash: player.participantHash, color }],
+      seats: [...seats, { participantHash: player.participantHash, seatToken: player.seatToken, color }],
     };
     // 协议契约：state.players 此刻不含该玩家，引擎负责追加入座。
     return success(withEngine({ ...state, players: [...state.players, player] }, next));
@@ -489,6 +506,7 @@ export const gomokuEngine: MultiplayerGameEngine = {
     const colorByHash = new Map(engine.seats.map((seat) => [seat.participantHash, seat.color]));
     const seats: GomokuSeat[] = active.map((player, index) => ({
       participantHash: player.participantHash,
+      seatToken: player.seatToken,
       color: colorByHash.get(player.participantHash) ?? (index === 0 ? "black" : "white"),
     }));
     // 兜底：两座同色时按顺序重排（create/join 正常路径不会出现）。
@@ -583,13 +601,14 @@ export const gomokuEngine: MultiplayerGameEngine = {
     const white = engine ? seatByColor(engine, "white") : null;
     return {
       result: outcome?.result ?? "aborted",
-      winnerParticipantHash: outcome?.winnerParticipantHash ?? null,
+      // 结算快照进视图对全房可见（含观战）：一律用座位令牌对位（修复 1）。
+      winnerSeatToken: outcome?.winnerSeatToken ?? null,
       summary: {
         boardSize: BOARD_SIZE,
         moveCount: engine?.moves.length ?? 0,
         history: engine?.moves ?? [],
-        blackParticipantHash: black?.participantHash ?? null,
-        whiteParticipantHash: white?.participantHash ?? null,
+        blackSeatToken: black?.seatToken ?? null,
+        whiteSeatToken: white?.seatToken ?? null,
         winningLine: engine?.winningLine ?? null,
       },
       settledAt: new Date().toISOString(),
@@ -621,8 +640,8 @@ export const gomokuEngine: MultiplayerGameEngine = {
       ...engine,
       outcome:
         loser && winner
-          ? { result: "timeout", winnerParticipantHash: winner.participantHash }
-          : { result: "aborted", winnerParticipantHash: null },
+          ? { result: "timeout", winnerSeatToken: winner.seatToken }
+          : { result: "aborted", winnerSeatToken: null },
       pendingDrawFrom: null,
       pendingUndoFrom: null,
       winningLine: null,

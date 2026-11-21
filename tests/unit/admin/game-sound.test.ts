@@ -30,6 +30,10 @@ import { LUDO_FINISH_POS } from "../../../admin/src/survey/game-room-logic";
 
 const ME = "hash-me";
 const OPP = "hash-opp";
+// 座位令牌（修复 1）：信封 players / 玩法座位统一用它对位，participantHash
+// 不再出现在任何载荷里；差分/胜者判定全部改传 seatToken。
+const SEAT_ME = "seat-hash-me";
+const SEAT_OPP = "seat-hash-opp";
 
 function envelope(overrides: Partial<GamePlayerView> & { view?: unknown }): GamePlayerView {
   return {
@@ -38,8 +42,8 @@ function envelope(overrides: Partial<GamePlayerView> & { view?: unknown }): Game
     status: "playing",
     version: 1,
     players: [
-      { participantHash: ME, displayName: null, isHost: true, ready: true, leftAt: null },
-      { participantHash: OPP, displayName: null, isHost: false, ready: true, leftAt: null },
+      { seatToken: SEAT_ME, displayName: null, isHost: true, ready: true, leftAt: null },
+      { seatToken: SEAT_OPP, displayName: null, isHost: false, ready: true, leftAt: null },
     ],
     remainingMs: null,
     ...overrides,
@@ -52,8 +56,8 @@ function gomokuPayload(overrides: Record<string, unknown> = {}): Record<string, 
     board: Array.from({ length: 15 }, () => Array<string | null>(15).fill(null)),
     turn: "black",
     players: [
-      { participantHash: ME, color: "black" },
-      { participantHash: OPP, color: "white" },
+      { seatToken: SEAT_ME, color: "black" },
+      { seatToken: SEAT_OPP, color: "white" },
     ],
     moveCount: 0,
     lastMove: null,
@@ -73,8 +77,8 @@ function xiangqiPayload(overrides: Record<string, unknown> = {}): Record<string,
     board: Array.from({ length: 10 }, () => Array<string | null>(9).fill(null)),
     turn: "red",
     players: [
-      { participantHash: ME, color: "red" },
-      { participantHash: OPP, color: "black" },
+      { seatToken: SEAT_ME, color: "red" },
+      { seatToken: SEAT_OPP, color: "black" },
     ],
     moveCount: 0,
     lastMove: null,
@@ -128,8 +132,8 @@ function werewolfPayload(overrides: Record<string, unknown> = {}): Record<string
     day: 1,
     phase: "day_speak",
     seats: [
-      { seatIndex: 0, participantHash: ME, alive: true, isYou: true },
-      { seatIndex: 1, participantHash: OPP, alive: true, isYou: false },
+      { seatIndex: 0, seatToken: SEAT_ME, alive: true, isYou: true },
+      { seatIndex: 1, seatToken: SEAT_OPP, alive: true, isYou: false },
     ],
     aliveSeats: [0, 1],
     deadSeats: [],
@@ -166,7 +170,8 @@ function derive(
   return deriveGameSoundEvents({
     gameType: next.gameType,
     role: opts.role ?? "player",
-    myHash: opts.myHash !== undefined ? opts.myHash : ME,
+    // myHash 形参语义不变（「我的公开对位键」），缺省给座位令牌。
+    myHash: opts.myHash !== undefined ? opts.myHash : SEAT_ME,
     prev,
     next,
   });
@@ -292,14 +297,14 @@ describe("开局与玩家进出", () => {
   it("玩家加入/离开：信封在座行差分各响一次", () => {
     const prev = envelope({
       status: "lobby",
-      players: [{ participantHash: ME, displayName: null, isHost: true, ready: true, leftAt: null }],
+      players: [{ seatToken: SEAT_ME, displayName: null, isHost: true, ready: true, leftAt: null }],
       view: gomokuPayload(),
     });
     const joined = envelope({
       status: "lobby",
       players: [
-        { participantHash: ME, displayName: null, isHost: true, ready: true, leftAt: null },
-        { participantHash: OPP, displayName: null, isHost: false, ready: false, leftAt: null },
+        { seatToken: SEAT_ME, displayName: null, isHost: true, ready: true, leftAt: null },
+        { seatToken: SEAT_OPP, displayName: null, isHost: false, ready: false, leftAt: null },
       ],
       view: gomokuPayload(),
     });
@@ -308,8 +313,8 @@ describe("开局与玩家进出", () => {
     const left = envelope({
       status: "lobby",
       players: [
-        { participantHash: ME, displayName: null, isHost: true, ready: true, leftAt: null },
-        { participantHash: OPP, displayName: null, isHost: false, ready: false, leftAt: "2026-11-21T00:00:00Z" },
+        { seatToken: SEAT_ME, displayName: null, isHost: true, ready: true, leftAt: null },
+        { seatToken: SEAT_OPP, displayName: null, isHost: false, ready: false, leftAt: "2026-11-21T00:00:00Z" },
       ],
       view: gomokuPayload(),
     });
@@ -322,7 +327,7 @@ describe("开局与玩家进出", () => {
     expect(
       derive(
         null,
-        envelope({ status: "settled", view: gomokuPayload({ outcome: { result: "win", winnerParticipantHash: ME } }) }),
+        envelope({ status: "settled", view: gomokuPayload({ outcome: { result: "win", winnerSeatToken: SEAT_ME } }) }),
       ),
     ).toEqual([]);
   });
@@ -332,21 +337,21 @@ describe("结算音", () => {
   const settledGomoku = (result: string, winner: string | null) =>
     envelope({
       status: "settled",
-      settlement: { result, winnerParticipantHash: winner, summary: {}, settledAt: "x", version: 9 },
-      view: gomokuPayload({ outcome: { result, winnerParticipantHash: winner } }),
+      settlement: { result, winnerSeatToken: winner, summary: {}, settledAt: "x", version: 9 },
+      view: gomokuPayload({ outcome: { result, winnerSeatToken: winner } }),
     });
 
   it("我赢 → victory；对方赢 → defeat；平局 → draw", () => {
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("win", ME))).toContain("victory");
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("win", OPP))).toContain("defeat");
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("resign", OPP))).toContain("defeat");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("win", SEAT_ME))).toContain("victory");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("win", SEAT_OPP))).toContain("defeat");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("resign", SEAT_OPP))).toContain("defeat");
     expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("draw", null))).toContain("draw");
   });
 
   it("超时判负（我输）→ timeout_loss；对方超时（我赢）→ victory", () => {
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", OPP))).toContain("timeout_loss");
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", ME))).toContain("victory");
-    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", OPP))).not.toContain("defeat");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", SEAT_OPP))).toContain("timeout_loss");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", SEAT_ME))).toContain("victory");
+    expect(derive(envelope({ view: gomokuPayload() }), settledGomoku("timeout", SEAT_OPP))).not.toContain("defeat");
   });
 
   it("中止局（无赢家）不响；观战者不给胜负音", () => {
@@ -356,7 +361,7 @@ describe("结算音", () => {
       role: "spectator",
       myHash: null,
       prev: envelope({ view: gomokuPayload() }),
-      next: settledGomoku("win", OPP),
+      next: settledGomoku("win", SEAT_OPP),
     });
     expect(spectatorDerive).not.toContain("defeat");
     expect(spectatorDerive).not.toContain("victory");
@@ -412,14 +417,14 @@ describe("五子棋", () => {
       view: gomokuPayload({
         moveCount: 1,
         turn: "white",
-        lastMove: { row: 7, col: 7, color: "black", participantHash: ME },
+        lastMove: { row: 7, col: 7, color: "black", seatToken: SEAT_ME },
       }),
     });
     const next = envelope({
       view: gomokuPayload({
         moveCount: 2,
         turn: "black",
-        lastMove: { row: 8, col: 8, color: "white", participantHash: OPP },
+        lastMove: { row: 8, col: 8, color: "white", seatToken: SEAT_OPP },
       }),
     });
     expect(derive(prev, next)).toEqual(["gomoku_place", "turn_you"]);
@@ -431,7 +436,7 @@ describe("五子棋", () => {
       view: gomokuPayload({
         moveCount: 1,
         turn: "white",
-        lastMove: { row: 7, col: 7, color: "black", participantHash: ME },
+        lastMove: { row: 7, col: 7, color: "black", seatToken: SEAT_ME },
       }),
     });
     expect(derive(prev, next)).toEqual(["gomoku_place"]);
@@ -456,7 +461,7 @@ describe("象棋", () => {
         to: { row: 1, col: 0 },
         piece: "p",
         captured: null,
-        participantHash: OPP,
+        seatToken: SEAT_OPP,
         givesCheck: false,
       },
     };

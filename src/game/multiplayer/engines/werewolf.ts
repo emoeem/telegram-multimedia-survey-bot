@@ -8,8 +8,9 @@
  *   狼 6-7 人 2 狼 / 8-10 人 3 狼 / 11-12 人 4 狼;预言家、女巫恒有,猎人
  *   ≥7 人、守卫 ≥9 人,其余村民);config.rolePlan 可覆盖(见 readRules,
  *   总数必须恰等于座位数、狼 < 好人,否则 invalid_action)。座位 → 身份在
- *   开局时用确定性 RNG(mulberry32 变体,种子只由 roomId 哈希派生,不提供
- *   任何 config 覆盖口子)随机分配。
+ *   开局时用确定性 RNG(mulberry32 变体,种子由 roomId + DO 注入的 rngNonce
+ *   哈希派生——roomId 公开可取,只由它派生 = 离线可复现整局身份;nonce 只存
+ *   DO storage,绝不外发,也不提供任何 config 覆盖口子)随机分配。
  * - 夜晚阶段顺序:守卫守护(不可连守同一人,可守自己)→ 狼人刀(群狼一致,
  *   窗口内可重复提交,后提交覆盖前者;无人出刀 = 空刀)→ 预言家查验(结果
  *   只回查验者)→ 女巫救/毒(各一瓶全局仅一次,同夜不可双用,不可自救/
@@ -191,6 +192,8 @@ function readRules(config: Record<string, unknown>): WerewolfRules | null {
 
 export interface WerewolfSeat {
   participantHash: string;
+  /** 座位令牌（DO 座位分配处铸造）：视图/结算对位的唯一公开标识（修复 1）。 */
+  seatToken: string;
   role: WerewolfRole;
   alive: boolean;
   /**
@@ -841,13 +844,14 @@ function viewPayload(
   );
 
   const usableAlive = aliveSeats(engine).filter((seat) => seatUsable(state, engine, seat));
-  // participantHash 是信封 players 里已有的公开标识(R2 客户端批次补):圆桌
+  // seatToken 是信封 players 里的公开座位标识(R2 客户端批次补):圆桌
   // 座位 → 昵称对位的唯一可靠依据——中途离席后信封「在座行序 ≠ 座位序」,
-  // 按行序猜会错挂别人的名字(doudizhu seats 同款口径)。它不是私有信息,
-  // 不削弱私有视图纪律(本投影仍然没有 role/死因)。
+  // 按行序猜会错挂别人的名字(doudizhu seats 同款口径)。修复 1 起对位键从
+  // participantHash(身份凭证)换成座位令牌,令牌随机铸造、无冒充价值;
+  // 本投影仍然没有 role/死因,私有视图纪律不变。
   const seatsPublic = engine.seats.map((seat, index) => ({
     seatIndex: index,
-    participantHash: seat.participantHash,
+    seatToken: seat.seatToken,
     alive: seat.alive,
     isYou: index === viewerSeat,
   }));
@@ -1252,7 +1256,7 @@ export const werewolfEngine: MultiplayerGameEngine = {
       pendingShotThen: null,
       events: [],
       outcome: null,
-      rngSeed: hashSeed(state.roomId),
+      rngSeed: hashSeed(`${state.roomId}:${state.rngNonce}`),
       actionIds: [],
       rules,
     };
@@ -1296,11 +1300,13 @@ export const werewolfEngine: MultiplayerGameEngine = {
     if (!validated)
       return failure("invalid_action", "身份板与人数不匹配:wolves+神+villagers 必须恰等于座位数且狼<好人");
 
-    // 座位按在座顺序固定;身份用确定性 RNG 洗牌分配(种子只由 roomId 派生,
-    // 不提供任何外部覆盖口子——否则建房者可离线推算整局身份)。
+    // 座位按在座顺序固定;身份用确定性 RNG 洗牌分配(种子由 roomId + DO 注入
+    // 的 rngNonce 派生——修复 2:roomId 公开可取,只由它派生 = 离线可复现整局
+    // 身份;nonce 只存 DO storage,绝不外发,也不提供任何外部覆盖口子)。
     const shuffled = shuffleWithSeed(planRoles(validated), engine.rngSeed);
     const seats: WerewolfSeat[] = active.map((player, index) => ({
       participantHash: player.participantHash,
+      seatToken: player.seatToken,
       role: shuffled.items[index]!,
       alive: true,
       deathCause: null,
@@ -1443,8 +1449,8 @@ export const werewolfEngine: MultiplayerGameEngine = {
     const outcome = engine?.outcome ?? null;
     return {
       result: outcome?.result ?? "aborted",
-      // 阵营游戏无单一胜者:胜方名单在 summary.winnerSeats 里。
-      winnerParticipantHash: null,
+      // 阵营游戏无单一胜者:胜方名单在 summary.seats 里(座位令牌对位)。
+      winnerSeatToken: null,
       summary: {
         winnerSide: outcome?.winnerSide ?? null,
         reason: outcome?.reason ?? null,
@@ -1461,9 +1467,11 @@ export const werewolfEngine: MultiplayerGameEngine = {
                 villagers: engine.seats.filter((seat) => seat.role === "villager").length,
               },
         // 复盘:全座位身份/存活/死因 + 完整事件流水(公开+私有)+ 发言与查验。
+        // 座位以 seatToken 对位(修复 1:participantHash 是身份凭证,快照进
+        // 视图对全房可见,绝不携带)。
         seats:
           engine?.seats.map((seat) => ({
-            participantHash: seat.participantHash,
+            seatToken: seat.seatToken,
             role: seat.role,
             alive: seat.alive,
             deathCause: seat.deathCause,

@@ -29,6 +29,15 @@ export type GameRoomStatus = "lobby" | "playing" | "settled" | "closed";
 export interface GameRoomPlayer {
   /** 服务端身份哈希（resolveParticipant 的 participantHash），DO/storage 键与去重都基于它。 */
   participantHash: string;
+  /**
+   * 座位令牌：DO 在座位分配处铸造的一次性随机串（hex 16 字节）。它是**唯一**
+   * 允许出现在任何对外载荷（信封 players / 引擎视图 / 聊天署名 / 结算）里的
+   * 玩家标识——participantHash = `web_<participantKey>` 原文（见
+   * participant-link.repository.ts participantHashForKey），拿到即可冒充身份，
+   * 因此绝不外发、也不与 seatToken 建立任何对外可见的关联。重入（刷新/重连）
+   * 沿用同一 seatToken，保证客户端对位稳定。
+   */
+  seatToken: string;
   /** 展示名（可空）：来自 Telegram profile，永不是凭证。 */
   displayName: string | null;
   /** 房主 = 第一个加入的玩家（创建者）。 */
@@ -57,6 +66,14 @@ export interface GameRoomState {
   /** 玩法级配置（创建时由房主传入，引擎自行校验）。 */
   config: Record<string, unknown>;
   players: GameRoomPlayer[];
+  /**
+   * RNG 非对称盐（修复 2）：DO 建房时铸造（hex 随机 16 字节），与 roomId 一起
+   * 派生确定性引擎种子（`hashSeed(roomId + ":" + rngNonce)`）。roomId 是公开
+   * 值（深链接即可得），只由它派生种子等于任何人都可离线复现发牌/身份/骰点
+   * ——nonce 打破这一通道：它存在 DO storage、**绝不进入任何对外载荷**，引擎
+   * 视图/结算一律不得携带。旧部署存量房间缺该字段时由 DO loadRoom 兜底补铸。
+   */
+  rngNonce: string;
   /** 引擎私有状态（棋盘/手牌/阶段…），DO 不解释。 */
   engineState: unknown;
   createdAt: string;
@@ -170,13 +187,15 @@ export interface GameActionRecord {
  *
  * 信封字段（roomId/status/version/players/remainingMs/settlement）由
  * GameRoomDO 统一装配，引擎只负责裁剪后的 `view`（见 MultiplayerGameEngine）。
+ * players 只携带 seatToken（公开座位标识）——participantHash 是身份凭证，
+ * 从协议形状上就不允许出现在任何对外载荷里（修复 1）。
  */
 export interface GamePlayerView {
   roomId: string;
   gameType: string;
   status: GameRoomStatus;
   version: number;
-  players: Array<Pick<GameRoomPlayer, "participantHash" | "displayName" | "isHost" | "ready" | "leftAt">>;
+  players: Array<Pick<GameRoomPlayer, "seatToken" | "displayName" | "isHost" | "ready" | "leftAt">>;
   /** 玩法私有：引擎对“这个玩家”裁剪后的局面（如自己的手牌）。 */
   view: unknown;
   /** 倒计时剩余毫秒（deadlineAt - now，无时限为 null）。 */
@@ -191,7 +210,7 @@ export interface GamePublicView {
   gameType: string;
   status: GameRoomStatus;
   version: number;
-  players: Array<Pick<GameRoomPlayer, "participantHash" | "displayName" | "isHost" | "leftAt">>;
+  players: Array<Pick<GameRoomPlayer, "seatToken" | "displayName" | "isHost" | "leftAt">>;
   /** 玩法公开局面（不含任何隐藏信息）。 */
   view: unknown;
   remainingMs: number | null;
@@ -202,8 +221,8 @@ export interface GamePublicView {
 export interface GameSettlement {
   /** 'host_win' | 'guest_win' | 'draw' | 'timeout' | 'aborted'… 引擎可扩展，末尾追加。 */
   result: string;
-  /** 胜者 participantHash（平局/中止为 null）。 */
-  winnerParticipantHash: string | null;
+  /** 胜者座位令牌（平局/中止为 null）——结算快照进视图对全房可见，绝不带凭证哈希。 */
+  winnerSeatToken: string | null;
   /** 引擎自由格式的最终战绩（棋谱、比分、回合数…）。 */
   summary: Record<string, unknown>;
   settledAt: string;
@@ -331,9 +350,10 @@ export interface GameChatImagePayload {
 }
 
 /**
- * 一条房内聊天消息。隐私边界：发送者只有座位昵称与 fromHash（与信封
- * players 同一 participantHash 体系，客户端用来区分「我发的」）——IP/UA/
- * 凭证从协议形状上就不存在；语音/图片随 WS 转发后在服务端内存中消失。
+ * 一条房内聊天消息。隐私边界：发送者只有座位昵称与 fromSeat（该座位的
+ * seatToken，与信封 players 同一公开标识体系，客户端用来区分「我发的」；
+ * 观战者无座位，fromSeat 为空串）——participantHash/IP/UA/凭证从协议形状上
+ * 就不存在；语音/图片随 WS 转发后在服务端内存中消失。
  */
 export interface GameChatMessage {
   /** 房内自增序号（单调解序/去重；环形暂存键也用它）。 */
@@ -342,7 +362,8 @@ export interface GameChatMessage {
   kind: GameChatKind;
   /** 座位昵称：玩家取 displayName（缺省「玩家」），观战者固定「观战者」。 */
   from: string;
-  fromHash: string;
+  /** 发送者的座位令牌（玩家）；观战者为空串（无座位可对位）。 */
+  fromSeat: string;
   /** 服务端接收时间（epoch ms）。 */
   at: number;
   /** 客户端生成的去重键（发送方匹配自己的回显）。 */

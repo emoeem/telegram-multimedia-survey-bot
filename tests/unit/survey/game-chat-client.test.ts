@@ -14,7 +14,7 @@ function chatMessage(overrides: Partial<GameChatMessage> & { seq: number }): Gam
     channel: "all",
     kind: "text",
     from: "玩家",
-    fromHash: "hash-a",
+    fromSeat: "seat-a",
     at: 1_000,
     clientId: `c-${overrides.seq}`,
     text: "hello",

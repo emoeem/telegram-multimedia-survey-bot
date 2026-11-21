@@ -220,9 +220,9 @@ async function createAndJoin(env: Env) {
     view: {
       view: {
         yourColor: string;
-        players: Array<{ participantHash: string; color: string }>;
+        players: Array<{ seatToken: string; color: string }>;
       };
-      players: Array<{ participantHash: string; isHost: boolean }>;
+      players: Array<{ seatToken: string; isHost: boolean }>;
     };
   }>(await rest(env, GUEST, post(`/api/game/rooms/${created.room.id}/join`, { displayName: "客人" })));
 
@@ -283,15 +283,22 @@ describe("五子棋整链路：REST 建房 → REST 加入 → WS 开局 → WS 
     // 第二人加入：座位表按入座顺序分配黑白（房主黑、客人白）。
     expect(joined.role).toBe("player");
     expect(joined.view.view.yourColor).toBe("white");
-    expect(joined.view.view.players).toEqual([
-      { participantHash: HOST, color: "black" },
-      { participantHash: GUEST, color: "white" },
-    ]);
-    // DO 信封的玩家表也有两人，且房主身份只属于创建者。
-    expect(joined.view.players).toEqual([
-      expect.objectContaining({ participantHash: HOST, isHost: true }),
-      expect.objectContaining({ participantHash: GUEST, isHost: false }),
-    ]);
+    // 座位令牌是 DO 随机铸造的（32 位 hex）：这里按「令牌在信封与引擎座位
+    // 两侧同源」做关系断言，并确认绝不出现 participantHash 原文（修复 1）。
+    const engineSeats = joined.view.view.players as Array<{ seatToken: string; color: string }>;
+    expect(engineSeats.map((seat) => seat.color)).toEqual(["black", "white"]);
+    for (const seat of engineSeats) {
+      expect(seat.seatToken).toMatch(/^[0-9a-f]{32}$/);
+      expect(seat.seatToken).not.toBe(HOST);
+      expect(seat.seatToken).not.toBe(GUEST);
+    }
+    // DO 信封的玩家表也有两人，且房主身份只属于创建者；信封行与引擎座位
+    // 共用同一组 seatToken（客户端「座位 → 昵称」对位的数据源）。
+    const envelopeTokens = (joined.view.players as Array<{ seatToken: string; isHost: boolean }>).map(
+      (player) => player.seatToken,
+    );
+    expect(envelopeTokens).toEqual(engineSeats.map((seat) => seat.seatToken));
+    expect((joined.view.players as Array<{ isHost: boolean }>).map((player) => player.isHost)).toEqual([true, false]);
   });
 
   it("非房主经 WS 开局被拒 not_host，房间仍是 lobby", async () => {
@@ -417,12 +424,12 @@ describe("五子棋整链路：REST 建房 → REST 加入 → WS 开局 → WS 
     const result = guestSocket.sent.filter((frame) => frame.type === "action_result").at(-1)!;
     expect(result).toMatchObject({ type: "action_result", actionId: "leave", ok: true });
 
-    // 结算：resign、胜者是留下的黑方；离席者标记 leftAt。
+    // 结算：resign、胜者是留下的黑方（座位令牌对位，非哈希）；离席者标记 leftAt。
     const stored = fake.peek("room") as GameRoomState;
     expect(stored.status).toBe("settled");
-    const settlement = fake.peek("settlement") as { result: string; winnerParticipantHash: string | null };
+    const settlement = fake.peek("settlement") as { result: string; winnerSeatToken: string | null };
     expect(settlement.result).toBe("resign");
-    expect(settlement.winnerParticipantHash).toBe(HOST);
+    expect(settlement.winnerSeatToken).toBe(stored.players.find((p) => p.participantHash === HOST)?.seatToken);
     expect(stored.players.find((p) => p.participantHash === GUEST)?.leftAt).not.toBeNull();
 
     // 留下的玩家收到结算广播，视图带 settlement 快照。

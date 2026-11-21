@@ -152,16 +152,21 @@ async function handleCreateRoom(request: Request, env: Env, _url: URL): Promise<
 
   // 深链接格式锁定（G1）：https://t.me/<bot>?startapp=room_<id>，
   // roomRef 即 startapp 值，G3 生成器直接拼接。
-  const payload = (await response.json()) as { view?: GamePlayerView | GamePublicView; state?: { status?: string } };
+  const payload = (await response.json()) as {
+    view?: GamePlayerView | GamePublicView;
+    state?: { status?: string };
+    youSeatToken?: string | null;
+  };
   return json({
     ok: true,
     room: { id: roomId, gameType, status: payload.state?.status ?? "lobby" },
     roomRef: `${GAME_ROOM_REF_PREFIX}${roomId}`,
     view: payload.view,
-    // 查看者自己的 participantHash（Lobby/Board 层用它在信封 players 里定位
-    // 「我的行」）。只回本人哈希——他人哈希已在按人裁剪的信封 players 里，
-    // 这里不新增任何他人的身份信息。
-    you: participant.participantHash,
+    // 查看者自己的座位令牌（Lobby/Board 层用它在信封 players / 引擎座位里
+    // 定位「我的行」）。修复 1：不再回 participantHash——它是身份凭证
+    // （web_<participantKey> 原文），协议上没有任何载荷需要它；信封 players
+    // 与座位令牌（seatToken）是唯一公开标识。
+    you: payload.youSeatToken ?? null,
   });
 }
 
@@ -202,14 +207,16 @@ async function handleJoinRoom(request: Request, env: Env, id: number): Promise<R
     role?: "player" | "spectator";
     rejoined?: boolean;
     spectatorFallback?: boolean;
+    youSeatToken?: string | null;
   };
   return json({
     ok: true,
     roomRef,
     view: payload.view,
     role: payload.role ?? (asSpectator ? "spectator" : "player"),
-    // 查看者自己的 participantHash（同 create：仅本人哈希，用于定位「我的行」）。
-    you: participant.participantHash,
+    // 查看者自己的座位令牌（同 create：仅本人令牌，用于定位「我的行」；
+    // 修复 1 起不再携带 participantHash）。
+    you: payload.youSeatToken ?? null,
     ...(payload.rejoined ? { rejoined: true } : {}),
     ...(payload.spectatorFallback ? { spectatorFallback: true } : {}),
   });
@@ -332,14 +339,19 @@ async function handleRoomState(request: Request, env: Env, id: number): Promise<
     headers: { "x-game-viewer-hash": participant.participantHash },
   });
   if (!response.ok) return relayDoError(response);
-  const payload = (await response.json()) as { view?: GamePlayerView | GamePublicView; role?: "player" | "spectator" };
+  const payload = (await response.json()) as {
+    view?: GamePlayerView | GamePublicView;
+    role?: "player" | "spectator";
+    youSeatToken?: string | null;
+  };
   return json({
     ok: true,
     roomRef,
     view: payload.view,
     role: payload.role ?? "spectator",
-    // 查看者自己的 participantHash（同 create/join：仅本人哈希）。
-    you: participant.participantHash,
+    // 查看者自己的座位令牌（同 create/join：仅本人令牌；修复 1 起不再携带
+    // participantHash——身份凭证绝不外发，客户端对位统一走 seatToken）。
+    you: payload.youSeatToken ?? null,
   });
 }
 

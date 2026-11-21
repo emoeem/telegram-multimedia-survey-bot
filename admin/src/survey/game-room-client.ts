@@ -93,8 +93,12 @@ export interface GameRoomSnapshot {
   roomRef: string;
   view: GamePlayerView | GamePublicView;
   role: "player" | "spectator";
-  /** 查看者自己的 participantHash（REST 信封 you 字段）：定位信封 players 里的「我的行」。 */
-  selfParticipantHash: string | null;
+  /**
+   * 查看者自己的座位令牌（REST 信封 you 字段）：定位信封 players / 引擎座位
+   * 里的「我的行」。修复 1 起服务端不再下发 participantHash——公开对位键
+   * 统一是 seatToken（随机铸造、无冒充价值）。
+   */
+  selfSeatToken: string | null;
   /** 满员/已开局坐不下，服务端自动降级为观战（屏层据此提示）。 */
   spectatorFallback?: boolean;
 }
@@ -113,7 +117,7 @@ function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<G
       roomRef,
       view,
       role: payload.role === "player" ? "player" : "spectator",
-      selfParticipantHash: typeof payload.you === "string" ? payload.you : null,
+      selfSeatToken: typeof payload.you === "string" && payload.you !== "" ? payload.you : null,
       ...(payload.spectatorFallback === true ? { spectatorFallback: true } : {}),
     },
   };

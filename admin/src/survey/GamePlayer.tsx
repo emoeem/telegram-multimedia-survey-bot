@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Coins, Dices, Shield, Ticket, TriangleAlert, Trophy, Zap } from "lucide-react";
+import { Coins, Dices, Shield, Ticket, Trophy, Zap } from "lucide-react";
+import { TrialAdultGateCard } from "./TrialAdultGateCard";
 import { ackAdultPackLocally, isAdultPackAckedLocally } from "./trial-adult-ack";
 import { vibrateFail, vibrateLight, vibrateSuccess } from "./haptics";
 import {
   confirmTrialShop,
   fetchTrialActiveRun,
   rerollTrialCoins,
+  resolveTrialPackAdult,
   sendTrialAction,
   startTrialRun,
   TRIAL_SHOP_CONFIG,
@@ -23,10 +25,13 @@ import type { AnswerValue } from "./api";
  * 结束（通关/放弃/护盾结算）后通过 onResult 把挑战局写回答卷——
  * 服务端会按 runId 从 task_runs 重算分数，客户端值仅用于展示与本地跳转。
  *
- * 18+ 门禁（0106）：原与 TrialScreen 共用同一个全局 localStorage 键
- * （trialAdultAgreement:v1，一次确认解锁所有包），本轮改为**按包**——
- * 确认写入包级键（键含 pack id，见 trial-adult-ack.ts）；旧全局键 '1'
- * 只读单向兼容，存量用户零回归。门禁卡片的 DOM 与文案原样保留。
+ * 18+ 门禁（0106 + 修复 3 同源化）：原与 TrialScreen 共用同一个全局
+ * localStorage 键（trialAdultAgreement:v1，一次确认解锁所有包），0106 改为
+ * **按包**——确认写入包级键（键含 pack id，见 trial-adult-ack.ts）；旧全局
+ * 键 '1' 只读单向兼容，存量用户零回归。修复 3 起门还按 pack.adult 分支：
+ * 通过 /api/trial/packs（模块级缓存）取包级 adult 标志——adult=false 的
+ * 全年龄包绝不弹门；adult=true 或查询未果（fail-closed）且未 ack 时才弹，
+ * 确认卡片与 /trial 弹层共用同一组文案常量（TrialAdultGateCard）。
  */
 
 export type GameAnswerValue = Extract<AnswerValue, { kind: "game" }>;
@@ -69,6 +74,12 @@ export function GamePlayer({
   const [phase, setPhase] = useState<Phase>(() =>
     packId !== null && isAdultPackAckedLocally(packId) ? "setup" : "gate",
   );
+  /**
+   * 包级 18+ 标志（修复 3：按 pack.adult 决定是否弹门）。null = 还没查到
+   * （/api/trial/packs 在路上或失败）——按 fail-closed 处理：门先弹着，
+   * 绝不因查询失败跳过 18+ 确认；adult=false 的全年龄包永不弹门。
+   */
+  const [packAdult, setPackAdult] = useState<boolean | null>(null);
   const [persona, setPersona] = useState<TrialPersona>("male");
   const [mode, setMode] = useState<TrialMode>("normal");
   const [run, setRun] = useState<TrialRun | null>(null);
@@ -94,14 +105,36 @@ export function GamePlayer({
     [onResult],
   );
 
-  // 换题换包时按新包重估 18+ ack（0106 按包键）：已 ack 该包或旧全局键兼容
-  // 的保持 setup，未 ack 的回到 gate。只在 gate/setup 间切换，不打断进行中的局。
+  // 换题换包时按新包重估 18+ ack 与包级 adult（0106 按包键 + 修复 3 同源）：
+  // 门只在「该包确实是 18+（或还没查到）且未 ack」时弹——adult=false 的
+  // 全年龄包绝不弹门；已 ack 该包（或旧全局键兼容）的保持 setup。
+  // 只在 gate/setup 间切换，不打断进行中的局。
+  useEffect(() => {
+    setPackAdult(null);
+    if (packId === null) return;
+    let cancelled = false;
+    void resolveTrialPackAdult(packId)
+      .then((adult) => {
+        if (!cancelled) setPackAdult(adult);
+      })
+      .catch(() => {
+        // resolveTrialPackAdult 内部已兜成 null；这里再兜一层保持 fail-closed。
+        if (!cancelled) setPackAdult(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [packId]);
+
   useEffect(() => {
     setPhase((current) => {
       if (current !== "gate" && current !== "setup") return current;
-      return packId !== null && isAdultPackAckedLocally(packId) ? "setup" : "gate";
+      if (packId === null) return "gate";
+      // 修复 3：adult=false 的包直接进开局设置，不弹 18+ 门。
+      if (packAdult === false) return "setup";
+      return isAdultPackAckedLocally(packId) ? "setup" : "gate";
     });
-  }, [packId]);
+  }, [packAdult, packId]);
 
   // 有进行中的局时自动接上（换题/刷新不断档）；找不到就停在开局设置。
   useEffect(() => {
@@ -222,24 +255,9 @@ export function GamePlayer({
   }
 
   if (phase === "gate") {
-    return (
-      <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-        <p className="flex items-start gap-1.5 text-[13px] leading-6 text-[var(--survey-body)]">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-          <span>
-            小游戏挑战为 <b>18+ 成人向</b>虚构文字游戏，全部内容为想象中的虚拟情境。
-          </span>
-        </p>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={agree}
-          className="mt-3 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-[var(--survey-primary-content)] disabled:opacity-50"
-        >
-          我已年满 18 周岁，同意进入
-        </button>
-      </div>
-    );
+    // 修复 3：确认文案统一走 TrialAdultGateCard（同一组件 + 同一常量），并
+    // 注明「确认仅对当前包生效」；adult 包未确认时不发起任何开局请求。
+    return <TrialAdultGateCard packName={null} disabled={disabled} onConfirm={agree} />;
   }
 
   if (phase === "setup") {

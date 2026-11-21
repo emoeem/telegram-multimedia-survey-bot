@@ -67,6 +67,8 @@ interface Point {
 
 interface XiangqiSeat {
   participantHash: string;
+  /** 座位令牌（DO 座位分配处铸造）：视图/结算对位的唯一公开标识（修复 1）。 */
+  seatToken: string;
   color: XiangqiColor;
 }
 
@@ -81,7 +83,8 @@ export interface XiangqiMoveRecord {
   piece: XiangqiPieceCode;
   /** 被吃棋子码（无吃子为 null）。 */
   captured: XiangqiPieceCode | null;
-  participantHash: string;
+  /** 行棋方座位令牌（随棋谱进视图/结算，公开标识；participantHash 绝不外发）。 */
+  seatToken: string;
   /** 该手是否使对方被将军。 */
   givesCheck: boolean;
   /** 中文记谱（如「炮二平五」「前車退一」），走子当下用走子前局面生成。 */
@@ -92,7 +95,8 @@ export type XiangqiResult = "win" | "draw" | "timeout" | "resign" | "aborted";
 
 interface XiangqiOutcome {
   result: XiangqiResult;
-  winnerParticipantHash: string | null;
+  /** 胜者座位令牌（进视图与结算，公开标识）。 */
+  winnerSeatToken: string | null;
   /** 终局原因：checkmate 将死 / stalemate 困毙 / perpetual_check 长将 / resign / timeout / aborted。 */
   reason: string | null;
 }
@@ -104,7 +108,7 @@ interface XiangqiEngineState {
   turn: XiangqiColor;
   moves: XiangqiMoveRecord[];
   outcome: XiangqiOutcome | null;
-  /** 待对方同意的和棋申请（申请人 participantHash）。 */
+  /** 待对方同意的和棋申请（申请人座位令牌——随公开视图下发，不能存哈希）。 */
   pendingDrawFrom: string | null;
   /** 最近处理过的 actionId（有界）——协议权威去重表在 DO storage。 */
   actionIds: string[];
@@ -613,7 +617,7 @@ function applyMove(
     to: move.to,
     piece,
     captured,
-    participantHash: action.participantHash,
+    seatToken: seat.seatToken,
     givesCheck,
     // 记谱用走子前局面（engine.board 尚未更新），同线前/后 消歧因此准确。
     notation: xiangqiMoveNotation(engine.board, move.from, move.to),
@@ -632,12 +636,12 @@ function applyMove(
 
   let outcome: XiangqiOutcome | null = null;
   if (perpetual) {
-    outcome = { result: "draw", winnerParticipantHash: null, reason: "perpetual_check" };
+    outcome = { result: "draw", winnerSeatToken: null, reason: "perpetual_check" };
   } else if (!hasAnyLegalMove(board, nextTurn)) {
     // 对方无合法着法：被将军 = 将死，未被将军 = 困毙（象棋困毙判负）。
     outcome = isInCheck(board, nextTurn)
-      ? { result: "win", winnerParticipantHash: action.participantHash, reason: "checkmate" }
-      : { result: "win", winnerParticipantHash: action.participantHash, reason: "stalemate" };
+      ? { result: "win", winnerSeatToken: seat.seatToken, reason: "checkmate" }
+      : { result: "win", winnerSeatToken: seat.seatToken, reason: "stalemate" };
   }
 
   const next: XiangqiEngineState = {
@@ -663,8 +667,8 @@ function applyResign(
   const next: XiangqiEngineState = {
     ...engine,
     outcome: opponent
-      ? { result: "resign", winnerParticipantHash: opponent.participantHash, reason: "resign" }
-      : { result: "aborted", winnerParticipantHash: null, reason: "aborted" },
+      ? { result: "resign", winnerSeatToken: opponent.seatToken, reason: "resign" }
+      : { result: "aborted", winnerSeatToken: null, reason: "aborted" },
     pendingDrawFrom: null,
     actionIds: trackActionId(engine.actionIds, action.actionId),
   };
@@ -674,7 +678,7 @@ function applyResign(
 function agreeDraw(state: GameRoomState, engine: XiangqiEngineState, action: GameRoomAction): EngineOutcome {
   const next: XiangqiEngineState = {
     ...engine,
-    outcome: { result: "draw", winnerParticipantHash: null, reason: "agreed" },
+    outcome: { result: "draw", winnerSeatToken: null, reason: "agreed" },
     pendingDrawFrom: null,
     actionIds: trackActionId(engine.actionIds, action.actionId),
   };
@@ -682,26 +686,32 @@ function agreeDraw(state: GameRoomState, engine: XiangqiEngineState, action: Gam
 }
 
 function applyOfferDraw(state: GameRoomState, engine: XiangqiEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   // 对方已求和时，本方再发一次即视为同意（少一个往返，语义不变）。
-  if (engine.pendingDrawFrom !== null && engine.pendingDrawFrom !== action.participantHash) {
+  if (engine.pendingDrawFrom !== null && engine.pendingDrawFrom !== seat.seatToken) {
     return agreeDraw(state, engine, action);
   }
-  if (engine.pendingDrawFrom === action.participantHash) {
+  if (engine.pendingDrawFrom === seat.seatToken) {
     return failure("invalid_action", "已发出和棋申请，等待对方回应");
   }
   const next: XiangqiEngineState = {
     ...engine,
-    pendingDrawFrom: action.participantHash,
+    // 申请记座位令牌（随公开视图下发）；participantHash 只留在 seats 里做
+    // 服务端成员校验，绝不外发。
+    pendingDrawFrom: seat.seatToken,
     actionIds: trackActionId(engine.actionIds, action.actionId),
   };
   return success(withEngine(state, next));
 }
 
 function applyAcceptDraw(state: GameRoomState, engine: XiangqiEngineState, action: GameRoomAction): EngineOutcome {
+  const seat = seatOf(engine, action.participantHash);
+  if (!seat) return failure("internal_error", "玩家座次缺失");
   if (engine.pendingDrawFrom === null) {
     return failure("illegal_move", "没有待同意的和棋申请");
   }
-  if (engine.pendingDrawFrom === action.participantHash) {
+  if (engine.pendingDrawFrom === seat.seatToken) {
     return failure("illegal_move", "不能同意自己发起的和棋");
   }
   return agreeDraw(state, engine, action);
@@ -718,7 +728,9 @@ function publicViewPayload(engine: XiangqiEngineState): Record<string, unknown> 
     rows: XIANGQI_ROWS,
     board: engine.board,
     turn: engine.turn,
-    players: engine.seats.map((seat) => ({ ...seat })),
+    // 显式投影：座位行还持有 participantHash（服务端内部成员校验用），展开
+    // 对象会把它带进视图——视图只发座位令牌（修复 1）。
+    players: engine.seats.map((seat) => ({ seatToken: seat.seatToken, color: seat.color })),
     moveCount: engine.moves.length,
     lastMove: engine.moves.at(-1) ?? null,
     // 棋谱全量（每手带中文记谱）：客户端棋谱侧栏直接渲染，重连/观战中途
@@ -757,6 +769,7 @@ export const xiangqiEngine: MultiplayerGameEngine = {
       .slice(0, 2)
       .map((player, index) => ({
         participantHash: player.participantHash,
+        seatToken: player.seatToken,
         color: index === 0 ? "red" : "black",
       }));
     const engine: XiangqiEngineState = {
@@ -797,7 +810,7 @@ export const xiangqiEngine: MultiplayerGameEngine = {
     const color: XiangqiColor = used.has("red") ? "black" : "red";
     const next: XiangqiEngineState = {
       ...engine,
-      seats: [...seats, { participantHash: player.participantHash, color }],
+      seats: [...seats, { participantHash: player.participantHash, seatToken: player.seatToken, color }],
     };
     // 协议契约：state.players 此刻不含该玩家，引擎负责追加入座。
     return success(withEngine({ ...state, players: [...state.players, player] }, next));
@@ -842,8 +855,8 @@ export const xiangqiEngine: MultiplayerGameEngine = {
     const host = active.find((player) => player.isHost) ?? active[0]!;
     const guest = active.find((player) => player.participantHash !== host.participantHash)!;
     const seats: XiangqiSeat[] = [
-      { participantHash: host.participantHash, color: "red" },
-      { participantHash: guest.participantHash, color: "black" },
+      { participantHash: host.participantHash, seatToken: host.seatToken, color: "red" },
+      { participantHash: guest.participantHash, seatToken: guest.seatToken, color: "black" },
     ];
     const board = initialBoard();
     const next: XiangqiEngineState = {
@@ -928,13 +941,14 @@ export const xiangqiEngine: MultiplayerGameEngine = {
     const black = engine ? seatByColor(engine, "black") : null;
     return {
       result: outcome?.result ?? "aborted",
-      winnerParticipantHash: outcome?.winnerParticipantHash ?? null,
+      // 结算快照进视图对全房可见（含观战）：一律用座位令牌对位（修复 1）。
+      winnerSeatToken: outcome?.winnerSeatToken ?? null,
       summary: {
         reason: outcome?.reason ?? null,
         moveCount: engine?.moves.length ?? 0,
         history: engine?.moves ?? [],
-        redParticipantHash: red?.participantHash ?? null,
-        blackParticipantHash: black?.participantHash ?? null,
+        redSeatToken: red?.seatToken ?? null,
+        blackSeatToken: black?.seatToken ?? null,
       },
       settledAt: new Date().toISOString(),
       version: state.version,
@@ -965,8 +979,8 @@ export const xiangqiEngine: MultiplayerGameEngine = {
       ...engine,
       outcome:
         loser && winner
-          ? { result: "timeout", winnerParticipantHash: winner.participantHash, reason: "timeout" }
-          : { result: "aborted", winnerParticipantHash: null, reason: "aborted" },
+          ? { result: "timeout", winnerSeatToken: winner.seatToken, reason: "timeout" }
+          : { result: "aborted", winnerSeatToken: null, reason: "aborted" },
       pendingDrawFrom: null,
     };
     // 只打标记并清 deadline：checkGameOver 命中后由 DO 走统一 settleRoom。

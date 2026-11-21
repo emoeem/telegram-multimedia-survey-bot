@@ -171,6 +171,33 @@ export function fetchTrialPacks(): Promise<{
   return trialRequest("/api/trial/packs");
 }
 
+/**
+ * 查一个任务包的包级 18+ 标志（修复 3：徽标与门同源）。
+ *
+ * /s 内嵌玩法（GamePlayer/PluginGamePlay）只拿到 packId，没有包卡列表——
+ * 18+ 门此前不判断 pack.adult、对全年龄包也误弹（审计坐实）。这里走
+ * /api/trial/packs 的 `adult` 字段判定（服务端 isAdultGamePack：爬塔读列、
+ * 插件读清单 capabilities.adult，与 POST /runs 的服务端闸**同一个来源**），
+ * 并做模块级缓存：一次会话只拉一遍包列表，多题多包零额外请求。
+ *
+ * 返回 null = 查不到（请求失败/包不在列表）：调用方按「待定」处理——门先
+ * 弹着（fail-closed，绝不因查询失败跳过 18+ 确认），列表回来后再放行全年龄包。
+ */
+let trialPackAdultCache: Promise<Map<number, boolean>> | null = null;
+
+export function resolveTrialPackAdult(packId: number): Promise<boolean | null> {
+  if (trialPackAdultCache === null) {
+    trialPackAdultCache = fetchTrialPacks()
+      .then((response) => new Map(response.packs.map((pack) => [pack.id, pack.adult] as const)))
+      .catch(() => {
+        // 拉取失败清空缓存：下次再试，不让一次网络抖动永久固化 fail-closed。
+        trialPackAdultCache = null;
+        return new Map<number, boolean>();
+      });
+  }
+  return trialPackAdultCache.then((map) => map.get(packId) ?? null);
+}
+
 export interface TrialMe {
   telegram: boolean;
   isAdmin: boolean;

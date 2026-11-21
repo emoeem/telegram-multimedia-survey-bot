@@ -44,6 +44,8 @@ const P = ["hash-host", "hash-p2", "hash-p3", "hash-p4"];
 function roomPlayer(participantHash: string, isHost: boolean): GameRoomPlayer {
   return {
     participantHash,
+    // 座位令牌按身份确定性派生(测试内恒定);生产由 DO 随机铸造。
+    seatToken: `seat-${participantHash}`,
     displayName: isHost ? "房主" : `玩家${P.indexOf(participantHash)}`,
     isHost,
     ready: false,
@@ -61,6 +63,7 @@ function baseRoom(roomId = "room_77"): GameRoomState {
     status: "lobby",
     version: 1,
     config: {},
+    rngNonce: "nonce-ludo",
     players: [roomPlayer(P[0]!, true)],
     engineState: null,
     createdAt: now,
@@ -603,7 +606,7 @@ describe("超时与认输", () => {
     expect(ludoEngine.checkGameOver(state)).toBe(true);
     const settlement = ludoEngine.settle(state);
     expect(settlement.result).toBe("win");
-    expect(settlement.winnerParticipantHash).toBe(P[0]);
+    expect(settlement.winnerSeatToken).toBe(`seat-${P[0]}`);
     expect(settlement.summary.reason).toBe("resign");
   });
 });
@@ -626,7 +629,7 @@ describe("胜负排名", () => {
     const ranking = ludoRanking(engine);
     expect(ranking.map((row) => row.seatIndex)).toEqual([0, 3, 1, 2]);
     expect(ranking.map((row) => row.rank)).toEqual([1, 2, 3, 4]);
-    expect(ranking[0]!.participantHash).toBe(P[0]);
+    expect(ranking[0]!.seatToken).toBe(`seat-${P[0]}`);
 
     const settlement = ludoEngine.settle(
       withEngineState(state, {
@@ -753,7 +756,27 @@ describe("确定性 RNG 与重放", () => {
     expect(engineOf(a).rngSeed).not.toBe(initial); // 种子随每次掷骰演进
   });
 
-  it("种子只由 roomId 派生:同房间恒定、跨房间不同;config.seed 不存在(无外部种子作弊通道)", () => {
+  it("rngNonce 注入(修复 2):同 roomId 不同 nonce → 种子与骰点序列不同;同 nonce → 重放一致", () => {
+    /** 用指定 nonce 建房并开局(2 人),返回引擎状态。 */
+    const startedWithNonce = (nonce: string): LudoEngineState => {
+      let state = commit(ludoEngine.createRoom({ ...baseRoom("room_77"), rngNonce: nonce }, {}));
+      const players = state.players.filter((p) => p.participantHash !== P[1]);
+      state = commit(ludoEngine.joinRoom({ ...state, players }, roomPlayer(P[1]!, false)));
+      state = commit(ludoEngine.setReady(state, P[0]!, true));
+      state = commit(ludoEngine.setReady(state, P[1]!, true));
+      return engineOf(commit(ludoEngine.start(state, P[0]!)));
+    };
+    const a = startedWithNonce("nonce-A");
+    const b = startedWithNonce("nonce-B");
+    // roomId 是公开值(深链接即可得),只由它派生种子 = 审计实测 room_123 种子
+    // 可离线复算。nonce 不同 → 种子不同 → 骰点序列不同。
+    expect(a.rngSeed).not.toBe(b.rngSeed);
+    expect(nextLudoRandom(a.rngSeed).value).not.toBe(nextLudoRandom(b.rngSeed).value);
+    // 同 roomId 同 nonce:种子一致(重放一致性的基础)。
+    expect(startedWithNonce("nonce-A").rngSeed).toBe(a.rngSeed);
+  });
+
+  it("种子只由 roomId+nonce 派生:同房间恒定、跨房间不同;config.seed 不存在(无外部种子作弊通道)", () => {
     const a = engineOf(started(4));
     expect(a.rngSeed).toBe(engineOf(started(4)).rngSeed); // 同 roomId → 同种子,重放一致的基础
     expect(a.rngSeed).not.toBe(engineOf(started(4, {}, "room_88")).rngSeed); // 跨房间不同
