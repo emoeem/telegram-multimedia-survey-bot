@@ -708,8 +708,13 @@ function viewPayload(
     null,
   );
   return {
-    seats: engine.seats.map((_, seat) => ({
+    seats: engine.seats.map((seatRow, seat) => ({
       seatIndex: seat,
+      // 座位 → 参与者哈希(与信封 players 同一公开标识:toPublicPlayer 对观战
+      // 也原样下发)。客户端靠它把座位号对回昵称——中途离席后信封的「在座行
+      // 序 ≠ 座位序」(离席行保留、座位开局即固定),没有这个字段客户端只能
+      // 按行序猜,会把别人的昵称挂错座位。
+      participantHash: seatRow.participantHash,
       handCount: engine.hands[seat]?.length ?? 0,
       isLandlord: engine.landlordSeat === seat,
       isBidTurn: engine.phase === "bidding" && engine.bidTurn === seat && engine.outcome === null,
@@ -1022,7 +1027,7 @@ export const doudizhuEngine: MultiplayerGameEngine = {
   label: "斗地主",
   meta: {
     displayName: "斗地主",
-    description: "经典三人斗地主:叫分抢地主、底牌公开、炸弹王炸翻倍、春天反春天;积分制对战。",
+    description: "3 人开局:叫分抢地主、底牌公开、炸弹王炸翻倍、春天反春天;积分制对战。",
     minPlayers: 3,
     maxPlayers: 3,
   } satisfies GameEngineMeta,

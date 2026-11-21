@@ -10,6 +10,7 @@ import { registerGameEngine } from "./engine-registry";
 import { doudizhuEngine } from "./engines/doudizhu";
 import { gomokuEngine } from "./engines/gomoku";
 import { ludoEngine } from "./engines/ludo";
+import { werewolfEngine } from "./engines/werewolf";
 import { xiangqiEngine } from "./engines/xiangqi";
 
 /** 登记全部内置多人引擎(可重复调用;重复 gameType 以最后一次为准)。 */
@@ -21,6 +22,9 @@ export function registerBuiltinMultiplayerEngines(): void {
   registerGameEngine(ludoEngine);
   // 斗地主(游戏批次 X3):3 人叫分/出牌/春天计分的积分制对局;不足三人不开。
   registerGameEngine(doudizhuEngine);
+  // 狼人杀(游戏批次 R2):6–12 人预女猎守板,昼夜轮转;/api/game/types 与
+  // 入口卡自动带上,客户端 Board 未跟上时走 UnknownGameBoard 兜底。
+  registerGameEngine(werewolfEngine);
 }
 
 // Worker 启动即注册：src/index.ts 的副作用 import 触发本行。

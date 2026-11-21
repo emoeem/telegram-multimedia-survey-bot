@@ -21,6 +21,16 @@ import {
   LUDO_SEAT_COLORS,
   ludoLoopCell,
 } from "../../../src/game/multiplayer/engines/ludo";
+// 斗地主牌码/牌型纯函数直接复用服务端引擎(零副作用),客户端绝不复刻第二份
+// 恒等式;`export ... from` 下方再原样转出口供屏层引用。
+import {
+  DOU_DIZHU_RANK_LABELS,
+  DOU_DIZHU_TYPE_LABELS,
+  beatsDoudizhuPlay,
+  classifyDoudizhuPlay,
+  doudizhuCardLabel,
+  doudizhuCardRank,
+} from "../../../src/game/multiplayer/engines/doudizhu";
 
 export type GomokuColor = "black" | "white";
 
@@ -1256,4 +1266,346 @@ export function ludoBounceNote(from: number | null, roll: number, to: number): s
   if (from === null || from < LUDO_LOOP_TOP + 1) return "";
   const preview = ludoBounceLanding(from, roll);
   return preview !== null && preview.bounced && preview.final === to ? "（反弹）" : "";
+}
+
+// ---------------------------------------------------------------------------
+// 斗地主（游戏批次 F2 客户端）：视图收敛、手牌排序与牌型预判文案
+// ---------------------------------------------------------------------------
+//
+// 与服务端 doudizhu.ts 的分工：权威判定（牌型/大小/持有校验）全在引擎，客户端
+// 只做「渲染 + 即时预判提示」。牌码/牌型识别直接复用服务端引擎的纯函数
+// （classifyDoudizhuPlay/beatsDoudizhuPlay/doudizhuCardLabel，零副作用），绝不
+// 复刻第二份牌型恒等式——漂移即提示错乱，单一事实来源在引擎。服务端仍是唯一
+// 裁决者：预判只挡明显不合法的选择，最终以服务端 action_result 为准。
+
+export {
+  DOU_DIZHU_RANK_LABELS,
+  doudizhuCardLabel,
+  doudizhuCardRank,
+  classifyDoudizhuPlay,
+  beatsDoudizhuPlay,
+} from "../../../src/game/multiplayer/engines/doudizhu";
+
+/** 视图里的座位（doudizhuEngine viewPayload.seats 条目；不含任何手牌牌面）。 */
+export interface DoudizhuSeatView {
+  seatIndex: number;
+  /**
+   * 座位 → 参与者哈希（与信封 players 同一公开标识；昵称对位的唯一可靠依据
+   * ——中途离席后信封「在座行序 ≠ 座位序」）。旧部署载荷缺该字段时为 null。
+   */
+  participantHash: string | null;
+  handCount: number;
+  isLandlord: boolean;
+  isBidTurn: boolean;
+  resigned: boolean;
+  playedCount: number;
+}
+
+/** 上一手牌（公开信息：打出的牌全场可见）。 */
+export interface DoudizhuLastPlayView {
+  seatIndex: number;
+  cards: string[];
+  type: string;
+}
+
+/** 倍数拆解（进行中恒 spring=1；春天倍数只在结算落定）。 */
+export interface DoudizhuMultiplierView {
+  base: number;
+  bid: number;
+  bombs: number;
+  spring: number;
+}
+
+export interface DoudizhuPlayRecordView {
+  ply: number;
+  seatIndex: number;
+  kind: "bid" | "play" | "pass";
+  score?: number;
+  cards?: string[];
+  playType?: string;
+  text: string;
+}
+
+export interface DoudizhuEventView {
+  ply: number;
+  seatIndex: number | null;
+  kind: string;
+  text: string;
+}
+
+export interface DoudizhuOutcomeView {
+  result: string;
+  winnerSeat: number | null;
+  winnerSide: "landlord" | "farmers" | null;
+  reason: string | null;
+  spring: string;
+}
+
+/** 斗地主视图载荷（doudizhuEngine 的 view 字段）的客户端收敛形状。 */
+export interface DoudizhuView {
+  seats: DoudizhuSeatView[];
+  /** 只有查看者自己的手牌（观战/公开视图为空表——私有视图纪律）。 */
+  hand: string[];
+  bottomCount: number;
+  /** 底牌：地主确定后全场公开，此前为 null。 */
+  bottomCards: string[] | null;
+  phase: "bidding" | "playing";
+  bidTurn: number;
+  bids: Array<{ seatIndex: number; score: number }>;
+  currentBid: { seatIndex: number; score: number } | null;
+  landlordSeat: number | null;
+  bidScore: number;
+  currentTurn: number;
+  lastPlay: DoudizhuLastPlayView | null;
+  /** 跟牌才能过；自由出必须出牌（客户端据此裁剪「不出」按钮）。 */
+  canPass: boolean;
+  bombCount: number;
+  multiplier: DoudizhuMultiplierView;
+  history: DoudizhuPlayRecordView[];
+  events: DoudizhuEventView[];
+  outcome: DoudizhuOutcomeView | null;
+  redealCount: number;
+  /** 玩家视图专属：你的座位号；观战/公开视图为 null。 */
+  yourSeat: number | null;
+}
+
+function isDoudizhuPhase(value: unknown): value is "bidding" | "playing" {
+  return value === "bidding" || value === "playing";
+}
+
+/** 手牌/出牌历史里的牌码逐张校验（脏码整包拒绝——服务端协议损坏时落错误态）。 */
+function parseCardCodes(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const cards: string[] = [];
+  for (const card of value) {
+    if (typeof card !== "string" || doudizhuCardRank(card) === null) return null;
+    cards.push(card);
+  }
+  return cards;
+}
+
+/**
+ * 把 doudizhuEngine 的视图载荷收敛成 DoudizhuView。seats/phase 是渲染硬前提，
+ * 形状不对整包拒绝（返回 null）；手牌逐张过 doudizhuCardRank 校验；其余字段
+ * 逐个容错（缺失给中性默认值）。
+ */
+export function parseDoudizhuView(payload: unknown): DoudizhuView | null {
+  if (payload === null || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  if (!isDoudizhuPhase(record.phase)) return null;
+  if (!Array.isArray(record.seats)) return null;
+  const hand = parseCardCodes(record.hand);
+  if (hand === null) return null;
+
+  const seats: DoudizhuSeatView[] = [];
+  for (const seat of record.seats) {
+    if (!seat || typeof seat !== "object") continue;
+    const entry = seat as Record<string, unknown>;
+    if (typeof entry.seatIndex !== "number" || !Number.isInteger(entry.seatIndex)) continue;
+    if (typeof entry.handCount !== "number" || !Number.isInteger(entry.handCount) || entry.handCount < 0) continue;
+    seats.push({
+      seatIndex: entry.seatIndex,
+      participantHash:
+        typeof entry.participantHash === "string" && entry.participantHash ? entry.participantHash : null,
+      handCount: entry.handCount,
+      isLandlord: entry.isLandlord === true,
+      isBidTurn: entry.isBidTurn === true,
+      resigned: entry.resigned === true,
+      playedCount: typeof entry.playedCount === "number" ? entry.playedCount : 0,
+    });
+  }
+  if (seats.length === 0) return null;
+
+  const bids: Array<{ seatIndex: number; score: number }> = [];
+  if (Array.isArray(record.bids)) {
+    for (const bid of record.bids) {
+      if (!bid || typeof bid !== "object") continue;
+      const entry = bid as Record<string, unknown>;
+      if (typeof entry.seatIndex !== "number" || typeof entry.score !== "number") continue;
+      bids.push({ seatIndex: entry.seatIndex, score: entry.score });
+    }
+  }
+
+  const currentBidRecord =
+    record.currentBid !== null && typeof record.currentBid === "object"
+      ? (record.currentBid as Record<string, unknown>)
+      : null;
+  const currentBid =
+    currentBidRecord && typeof currentBidRecord.seatIndex === "number" && typeof currentBidRecord.score === "number"
+      ? { seatIndex: currentBidRecord.seatIndex, score: currentBidRecord.score }
+      : null;
+
+  const lastPlayRecord =
+    record.lastPlay !== null && typeof record.lastPlay === "object"
+      ? (record.lastPlay as Record<string, unknown>)
+      : null;
+  let lastPlay: DoudizhuLastPlayView | null = null;
+  if (lastPlayRecord) {
+    const cards = parseCardCodes(lastPlayRecord.cards);
+    if (cards === null) return null;
+    if (typeof lastPlayRecord.seatIndex === "number" && typeof lastPlayRecord.type === "string") {
+      lastPlay = { seatIndex: lastPlayRecord.seatIndex, cards, type: lastPlayRecord.type };
+    }
+  }
+
+  const bottomCards =
+    record.bottomCards === null
+      ? null
+      : parseCardCodes(record.bottomCards) === null
+        ? null
+        : (record.bottomCards as string[]);
+  if (record.bottomCards !== null && bottomCards === null) return null;
+
+  const multiplierRecord =
+    record.multiplier !== null && typeof record.multiplier === "object"
+      ? (record.multiplier as Record<string, unknown>)
+      : {};
+  const multiplier: DoudizhuMultiplierView = {
+    base: typeof multiplierRecord.base === "number" ? multiplierRecord.base : 1,
+    bid: typeof multiplierRecord.bid === "number" ? multiplierRecord.bid : 0,
+    bombs: typeof multiplierRecord.bombs === "number" ? multiplierRecord.bombs : 0,
+    spring: typeof multiplierRecord.spring === "number" ? multiplierRecord.spring : 1,
+  };
+
+  const history: DoudizhuPlayRecordView[] = [];
+  if (Array.isArray(record.history)) {
+    for (const item of record.history) {
+      if (!item || typeof item !== "object") continue;
+      const move = item as Record<string, unknown>;
+      if (typeof move.ply !== "number" || typeof move.seatIndex !== "number") continue;
+      if (move.kind !== "bid" && move.kind !== "play" && move.kind !== "pass") continue;
+      const cards = move.cards === undefined ? undefined : parseCardCodes(move.cards);
+      if (cards === null) continue;
+      history.push({
+        ply: move.ply,
+        seatIndex: move.seatIndex,
+        kind: move.kind,
+        ...(typeof move.score === "number" ? { score: move.score } : {}),
+        ...(cards !== undefined ? { cards } : {}),
+        ...(typeof move.playType === "string" ? { playType: move.playType } : {}),
+        text: typeof move.text === "string" ? move.text : "",
+      });
+    }
+  }
+
+  const events: DoudizhuEventView[] = [];
+  if (Array.isArray(record.events)) {
+    for (const item of record.events) {
+      if (!item || typeof item !== "object") continue;
+      const event = item as Record<string, unknown>;
+      if (typeof event.text !== "string") continue;
+      events.push({
+        ply: typeof event.ply === "number" ? event.ply : 0,
+        seatIndex: typeof event.seatIndex === "number" ? event.seatIndex : null,
+        kind: typeof event.kind === "string" ? event.kind : "",
+        text: event.text,
+      });
+    }
+  }
+
+  const outcomeRecord =
+    record.outcome !== null && typeof record.outcome === "object" ? (record.outcome as Record<string, unknown>) : null;
+  const winnerSideRaw = outcomeRecord?.winnerSide;
+  const winnerSide =
+    winnerSideRaw === "landlord" ? ("landlord" as const) : winnerSideRaw === "farmers" ? ("farmers" as const) : null;
+  const outcome = outcomeRecord
+    ? {
+        result: typeof outcomeRecord.result === "string" ? outcomeRecord.result : "aborted",
+        winnerSeat:
+          typeof outcomeRecord.winnerSeat === "number" && Number.isInteger(outcomeRecord.winnerSeat)
+            ? outcomeRecord.winnerSeat
+            : null,
+        winnerSide,
+        reason: typeof outcomeRecord.reason === "string" ? outcomeRecord.reason : null,
+        spring: typeof outcomeRecord.spring === "string" ? outcomeRecord.spring : "none",
+      }
+    : null;
+
+  return {
+    seats,
+    hand,
+    bottomCount: typeof record.bottomCount === "number" ? record.bottomCount : 3,
+    bottomCards,
+    phase: record.phase,
+    bidTurn: typeof record.bidTurn === "number" ? record.bidTurn : 0,
+    bids,
+    currentBid,
+    landlordSeat: typeof record.landlordSeat === "number" ? record.landlordSeat : null,
+    bidScore: typeof record.bidScore === "number" ? record.bidScore : 0,
+    currentTurn: typeof record.currentTurn === "number" ? record.currentTurn : 0,
+    lastPlay,
+    canPass: record.canPass === true,
+    bombCount: typeof record.bombCount === "number" ? record.bombCount : 0,
+    multiplier,
+    history,
+    events,
+    outcome,
+    redealCount: typeof record.redealCount === "number" ? record.redealCount : 0,
+    yourSeat: typeof record.yourSeat === "number" ? record.yourSeat : null,
+  };
+}
+
+/** 手牌排序方向：desc = 点数大在前（服务端默认序），asc = 点数小在前（可切换）。 */
+export type DoudizhuSortDir = "desc" | "asc";
+
+/**
+ * 手牌按点数排序（客户端展示用）：desc/asc 两档切换，同点数按牌码稳定排列。
+ * 纯函数（不改原数组）；牌码合法性由 parseDoudizhuView 保证，非法码沉底。
+ */
+export function doudizhuHandSort(cards: string[], dir: DoudizhuSortDir): string[] {
+  return [...cards].sort((a, b) => {
+    const ra = doudizhuCardRank(a) ?? -1;
+    const rb = doudizhuCardRank(b) ?? -1;
+    return dir === "desc" ? rb - ra || a.localeCompare(b) : ra - rb || a.localeCompare(b);
+  });
+}
+
+/**
+ * 牌型即时预判文案（客户端展示辅助；服务端是唯一裁决者）：
+ * - 未选牌 → null（不显示提示）；
+ * - 不是合法牌型 → 「不是合法的斗地主牌型」；
+ * - 自由出 → 「牌型名 · 可出」；
+ * - 跟牌压不过 → 「牌型名 · 压不过上一手（上一手牌型名）」；
+ * - 跟牌压过 → 「牌型名 · 可出」。
+ */
+export function doudizhuPlayHint(selected: string[], lastPlay: DoudizhuLastPlayView | null): string | null {
+  if (selected.length === 0) return null;
+  const shape = classifyDoudizhuPlay(selected);
+  if (shape === null) return "不是合法的斗地主牌型";
+  const label = DOU_DIZHU_TYPE_LABELS[shape.type] ?? shape.type;
+  if (lastPlay === null) return `${label} · 可出`;
+  // 上一手的形状从公开牌面复算(视图只发 cards+type,没有 keyRank/length),
+  // 识别口径与服务端 applyPlay 完全一致。
+  const lastShape = classifyDoudizhuPlay(lastPlay.cards);
+  if (lastShape !== null && beatsDoudizhuPlay(shape, lastShape)) return `${label} · 可出`;
+  return `${label} · 压不过上一手（${lastPlay.type}）`;
+}
+
+/**
+ * 座位 → 展示名。对位纪律：
+ * - 首选：座位载荷的 participantHash（引擎 seats 开局固定，与信封 players
+ *   同一公开标识）→ 精确对回信封行取昵称。中途离席的座位行被 DO 保留
+ *   （leftAt 置位、行序不动），引擎座位开局即固定——按「在座行序 = 座位序」
+ *   猜会错位（离席者的座位显示后来者的名字），哈希对位没有这个问题；离席
+ *   行匹配到时照样显示其昵称（引擎 resigned 标记负责标注「已认输」）。
+ * - 兜底：旧部署载荷没有座位哈希时，仅当信封每行都在座且行数与座位数一致
+ *   （此时行序 = 座位序恒成立）才按行序对位，否则回退「玩家N」——宁可少
+ *   显示昵称，绝不把别人的昵称挂到别的座位上。
+ */
+export function doudizhuSeatName(
+  view: { players: Array<{ displayName: string | null; leftAt: string | null; participantHash: string }> },
+  dd: Pick<DoudizhuView, "seats">,
+  seatIndex: number,
+): string {
+  const fallback = `玩家${seatIndex + 1}`;
+  const hash = dd.seats[seatIndex]?.participantHash ?? null;
+  if (hash !== null) {
+    const name = view.players.find((player) => player.participantHash === hash)?.displayName?.trim();
+    return name || fallback;
+  }
+  const players = view.players;
+  const legacyOrderHolds = players.length === dd.seats.length && players.every((player) => player.leftAt === null);
+  if (!legacyOrderHolds) return fallback;
+  const name = players[seatIndex]?.displayName?.trim();
+  return name || fallback;
 }
