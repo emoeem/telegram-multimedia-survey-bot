@@ -1,0 +1,138 @@
+/* ============================================================
+   Prototype Lab — Design Tokens (单一事实来源)
+   与 docs/design/tokens.json 保持同步；生产实现时迁移至 admin/web 样式系统。
+   深海军蓝/紫灰底 + 暖金主操作，低对比边框，圆角卡片。
+   ============================================================ */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* color.surface */
+  --surface-page: #0f1118;
+  --surface-panel: #161927;
+  --surface-elevated: #1d2130;
+  --surface-inset: #0c0e15;
+  --surface-overlay: rgba(5, 6, 12, 0.62);
+
+  /* color.text */
+  --text-primary: #e9ebf4;
+  --text-secondary: #a3aabe;
+  --text-muted: #6f7689;
+  --text-on-brand: #221507;
+
+  /* color.border */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* color.brand — 暖金 */
+  --brand-primary: #e0a458;
+  --brand-strong: #efb96f;
+  --brand-soft: rgba(224, 164, 88, 0.14);
+  --brand-softer: rgba(224, 164, 88, 0.08);
+  --brand-text: #e0a458;
+
+  /* 辅助冷色（少量使用） */
+  --accent: #8f9bff;
+  --accent-soft: rgba(143, 155, 255, 0.14);
+
+  /* color.status */
+  --status-success: #55c48b;
+  --status-success-soft: rgba(85, 196, 139, 0.14);
+  --status-warning: #e2a13d;
+  --status-warning-soft: rgba(226, 161, 61, 0.15);
+  --status-danger: #e5604f;
+  --status-danger-soft: rgba(229, 96, 79, 0.15);
+  --status-info: #6aa5fa;
+  --status-info-soft: rgba(106, 165, 250, 0.14);
+
+  /* shadow */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.28), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --shadow-popover: 0 6px 16px rgba(0, 0, 0, 0.35), 0 20px 56px rgba(0, 0, 0, 0.44);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-focus-ring: 0 0 0 3px rgba(224, 164, 88, 0.28);
+
+  /* type */
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --type-display: 26px;
+  --type-title: 19px;
+  --type-subtitle: 16px;
+  --type-body: 14px;
+  --type-body-lg: 15px;
+  --type-caption: 12px;
+  --type-mono: 13px;
+
+  /* space.1 .. space.8 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* control sizes */
+  --ctl-sm: 32px;
+  --ctl-md: 40px;
+  --ctl-lg: 48px;
+
+  /* layout */
+  --rail-w: 60px;
+  --content-max: 1120px;
+  --content-pad: 24px;
+  --topnav-h: 56px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --surface-page: #f2f3f7;
+  --surface-panel: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-inset: #eceef4;
+  --surface-overlay: rgba(24, 28, 50, 0.45);
+
+  --text-primary: #22242e;
+  --text-secondary: #5d6375;
+  --text-muted: #8b91a3;
+  --text-on-brand: #231506;
+
+  --border-subtle: rgba(22, 25, 45, 0.09);
+  --border-strong: rgba(22, 25, 45, 0.16);
+
+  --brand-primary: #cf8f3f;
+  --brand-strong: #b97c2a;
+  --brand-soft: rgba(198, 138, 51, 0.13);
+  --brand-softer: rgba(198, 138, 51, 0.08);
+  --brand-text: #9c6d20;
+
+  --accent: #5a6cf0;
+  --accent-soft: rgba(90, 108, 240, 0.12);
+
+  --status-success: #2e9e64;
+  --status-success-soft: rgba(46, 158, 100, 0.12);
+  --status-warning: #c78617;
+  --status-warning-soft: rgba(199, 134, 23, 0.13);
+  --status-danger: #d24a3e;
+  --status-danger-soft: rgba(210, 74, 62, 0.12);
+  --status-info: #3d7ee8;
+  --status-info-soft: rgba(61, 126, 232, 0.12);
+
+  --shadow-card: 0 1px 2px rgba(24, 28, 50, 0.06), 0 6px 20px rgba(24, 28, 50, 0.07);
+  --shadow-popover: 0 6px 16px rgba(24, 28, 50, 0.12), 0 20px 48px rgba(24, 28, 50, 0.14);
+  --shadow-modal: 0 12px 40px rgba(24, 28, 50, 0.2);
+  --shadow-focus-ring: 0 0 0 3px rgba(198, 138, 51, 0.25);
+}
+
+/* 布局断点约定（仅供文档与 JS 对齐，CSS 内以媒体查询实现）：
+   mobile  < 640px | tablet 640–1023px | desktop ≥ 1024px | wide ≥ 1280px */

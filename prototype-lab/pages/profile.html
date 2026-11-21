@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>我的 · Prototype Lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+    <link rel="stylesheet" href="../assets/tokens.css" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+      .avatar {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--brand-soft);
+        color: var(--brand-text);
+        font-size: 24px;
+        flex: none;
+      }
+      .identity-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-4);
+      }
+      /* 窄屏：身份卡按钮换行全宽，避免挤压标题/描述 */
+      @media (max-width: 639.98px) {
+        .identity-row {
+          flex-wrap: wrap;
+        }
+        .identity-row .btn {
+          width: 100%;
+          margin-top: 4px;
+        }
+      }
+      .notif-row {
+        display: flex;
+        gap: var(--space-3);
+        align-items: flex-start;
+        padding: var(--space-3) 0;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .notif-row:last-child {
+        border-bottom: none;
+      }
+      .group-title {
+        font-size: var(--type-caption);
+        color: var(--text-muted);
+        margin: 0 0 4px 4px;
+      }
+      .volume-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+      }
+      .volume-row input[type="range"] {
+        flex: 1;
+      }
+    </style>
+  </head>
+  <body class="user-page">
+    <header class="topnav">
+      <span class="topnav-brand">✉️ 问卷星球</span>
+      <nav class="topnav-links" aria-label="全局导航">
+        <a class="topnav-link" href="placeholder.html?from=profile&to=survey">📋 问卷</a>
+        <a class="topnav-link" href="games.html">🎮 小游戏</a>
+        <a class="topnav-link" href="placeholder.html?from=profile&to=plaza">🌳 广场</a>
+        <a class="topnav-link" href="placeholder.html?from=profile&to=showcase">🖼 展示</a>
+        <a class="topnav-link" href="placeholder.html?from=profile&to=card">🎫 认证卡</a>
+        <a class="topnav-link is-active" href="profile.html">👤 我的</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <div class="page-head">
+        <div>
+          <h1>我的</h1>
+          <p class="lead">你的答卷、档案与挑战记录</p>
+        </div>
+        <span class="chip chip-warning">原型演示 · Mock 数据</span>
+      </div>
+
+      <div class="profile-grid">
+        <!-- ① 身份与账号 -->
+        <div class="card col-5 profile-card" id="identity-card">
+          <div class="card-pad">
+            <div class="identity-row">
+              <span class="avatar">👤</span>
+              <div style="flex: 1">
+                <h3 id="identity-title">匿名访客身份</h3>
+                <p class="row-desc" id="identity-desc">注册或登录（邮箱即可）后，答卷进度才能找回</p>
+              </div>
+              <button class="btn btn-secondary" id="auth-btn">去注册 / 登录</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ② 资产：金币 -->
+        <div class="col-7">
+          <div class="coin-card" id="coin-card">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+              <div>
+                <span class="coin-label">我的金币</span>
+                <div class="coin-value">
+                  <span id="coin-balance">0</span> <small style="font-size: 16px">金币</small>
+                </div>
+                <div class="coin-sub">
+                  连续签到 <span id="coin-streak">0</span> 天 · 累计获得 <span id="coin-total">0</span>
+                </div>
+              </div>
+              <button class="btn btn-on-gold" id="checkin-btn">签到</button>
+            </div>
+            <div
+              id="coin-error"
+              class="hidden"
+              style="
+                font-size: var(--type-caption);
+                color: #7a2a20;
+                background: rgba(122, 42, 32, 0.12);
+                border-radius: 8px;
+                padding: 8px 12px;
+              "
+            >
+              ⚠️ 余额加载失败（Mock 演示）
+              <button class="btn btn-sm btn-on-gold" id="coin-retry" style="margin-left: 8px">重试</button>
+            </div>
+            <div class="coin-actions">
+              <button class="btn" id="coin-detail">明细 / 任务</button>
+              <button class="btn" id="gacha-btn">报告抽卡</button>
+              <button class="btn" id="submit-btn">投稿中心</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ 互动 -->
+        <div class="col-6">
+          <p class="group-title">互动</p>
+          <div class="card profile-card">
+            <div class="card-pad" style="padding-top: 4px; padding-bottom: 4px">
+              <button class="row-item" id="notes-entry">
+                <span class="row-icon">💌</span>
+                <span class="row-body">
+                  <span class="row-title">纸条聊天</span>
+                  <span class="row-desc">放一张纸条，抽到同路的人就开始私聊</span>
+                </span>
+                <span class="row-extra"
+                  ><span class="chip chip-danger" id="notes-unread">未读 2</span><span aria-hidden="true">→</span></span
+                >
+              </button>
+              <button class="row-item" id="notif-entry">
+                <span class="row-icon">🔔</span>
+                <span class="row-body">
+                  <span class="row-title">动态与通知</span>
+                  <span class="row-desc" id="notif-desc">纸条配对、连载更新、审核结果都会出现在这里。</span>
+                </span>
+                <span class="row-extra"
+                  ><span class="dot dot-danger" id="notif-dot"></span><span aria-hidden="true">→</span></span
+                >
+              </button>
+              <button class="row-item" id="achievement-entry">
+                <span class="row-icon">🏅</span>
+                <span class="row-body">
+                  <span class="row-title">成就徽章墙</span>
+                  <span class="row-desc">对局里程碑与问卷成就的徽章收集（正式版为可展示墙）。</span>
+                </span>
+                <span class="row-extra"><span aria-hidden="true">→</span></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ④ 我的内容 -->
+        <div class="col-6">
+          <p class="group-title">我的内容</p>
+          <div class="card profile-card">
+            <div class="card-pad" style="padding-top: 4px; padding-bottom: 4px">
+              <button class="row-item" data-goto="placeholder.html?from=profile&to=series">
+                <span class="row-icon">📚</span>
+                <span class="row-body">
+                  <span class="row-title">系列书架</span>
+                  <span class="row-desc">慢追小说一样追问卷连载</span>
+                </span>
+                <span class="row-extra"><span aria-hidden="true">→</span></span>
+              </button>
+              <div class="row-item" style="cursor: default">
+                <span class="row-icon">👣</span>
+                <span class="row-body">
+                  <span class="row-title">答卷足迹</span>
+                  <span class="row-desc"
+                    >把你的答卷足迹（完成卷数、结局收集、成就）做成一张可分享的公开页。只含聚合数字，不含任何答案。</span
+                  >
+                  <span style="margin-top: 8px"
+                    ><button class="btn btn-sm btn-secondary" id="footprint-btn">生成我的答卷足迹</button></span
+                  >
+                </span>
+              </div>
+              <div class="row-item" style="cursor: default">
+                <span class="row-icon">📄</span>
+                <span class="row-body">
+                  <span class="row-title">我的报告</span>
+                  <span class="row-desc" id="report-desc">完成问卷后生成的个人报告会出现在这里。</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑤ 偏好 -->
+        <div class="col-12">
+          <p class="group-title">偏好</p>
+          <div class="card">
+            <h3 style="margin-bottom: 12px">🔊 游戏音效</h3>
+            <div
+              class="setting-row"
+              style="display: flex; align-items: center; justify-content: space-between; gap: 16px"
+            >
+              <div>
+                <div style="font-weight: 550">对局提示音</div>
+                <p class="row-desc">落子、骰子、回合与结算等音效（联机对战共用）</p>
+              </div>
+              <input type="checkbox" class="switch" id="sound-switch" checked aria-label="对局提示音" />
+            </div>
+            <div class="volume-row" style="margin-top: 16px">
+              <span class="field-label" style="margin: 0">音量</span>
+              <input type="range" class="slider" id="volume" min="0" max="100" value="80" aria-label="音量" />
+              <span class="mono muted" id="volume-val">80%</span>
+            </div>
+            <button class="btn btn-sm btn-secondary" id="sound-test" style="margin-top: 12px">测试播放</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <nav class="bottomnav safe-bottom" aria-label="底部导航">
+      <a class="bottomnav-item" href="placeholder.html?from=profile&to=survey"><span class="bn-icon">📋</span>问卷</a>
+      <a class="bottomnav-item" href="games.html"><span class="bn-icon">🎮</span>小游戏</a>
+      <a class="bottomnav-item" href="placeholder.html?from=profile&to=plaza"><span class="bn-icon">🌳</span>广场</a>
+      <a class="bottomnav-item" href="placeholder.html?from=profile&to=showcase"><span class="bn-icon">🖼</span>展示</a>
+      <a class="bottomnav-item" href="placeholder.html?from=profile&to=card"><span class="bn-icon">🎫</span>认证卡</a>
+      <a class="bottomnav-item is-active" href="profile.html"><span class="bn-icon">👤</span>我的</a>
+    </nav>
+
+    <!-- 登录/注册 Modal -->
+    <div class="overlay" id="auth-overlay" hidden></div>
+    <div class="modal" id="auth-modal" role="dialog" aria-modal="true" aria-label="登录或注册" hidden>
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <h3 id="auth-title">登录 / 注册</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="seg" id="auth-seg" style="margin-top: 16px">
+        <button class="seg-btn" data-auth="login" aria-selected="true">登录</button>
+        <button class="seg-btn" data-auth="register" aria-selected="false">注册</button>
+      </div>
+      <div class="field" style="margin-top: 16px">
+        <label class="field-label" for="auth-email">邮箱</label>
+        <input class="input" id="auth-email" type="email" placeholder="you@example.com" />
+        <span class="field-help">仅需邮箱即可，原型不发送真实邮件。</span>
+      </div>
+      <div class="field" style="margin-top: 12px">
+        <label class="field-label" for="auth-code">验证码</label>
+        <div style="display: flex; gap: 12px">
+          <input class="input" id="auth-code" inputmode="numeric" placeholder="6 位验证码" />
+          <button class="btn btn-secondary" id="send-code">发送验证码</button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-lg btn-block" id="auth-submit" style="margin-top: 16px">登录（Mock）</button>
+      <p class="field-help" style="margin-top: 10px">原型演示：不会创建真实账号，点击后仅切换登录态展示。</p>
+    </div>
+
+    <!-- 金币明细 Drawer -->
+    <aside
+      class="drawer drawer-right"
+      id="coin-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="金币明细与任务"
+      hidden
+    >
+      <div class="drawer-head">
+        <h3>明细 / 任务</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body">
+        <p class="group-title">明细</p>
+        <div class="notif-row">
+          <span class="dot dot-success" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">每日签到 +5</div>
+            <p class="row-desc">今天 09:12 · Mock</p>
+          </div>
+        </div>
+        <div class="notif-row">
+          <span class="dot dot-info" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">完成问卷《恋爱依恋类型测评》 +20</div>
+            <p class="row-desc">昨天 21:44 · Mock</p>
+          </div>
+        </div>
+        <div class="notif-row">
+          <span class="dot dot-warning" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">报告抽卡 -50</div>
+            <p class="row-desc">昨天 20:30 · Mock</p>
+          </div>
+        </div>
+        <p class="group-title" style="margin-top: 16px">今日任务</p>
+        <div class="notif-row">
+          <div>
+            <div style="color: var(--text-primary)">完成 1 份问卷 <span class="chip chip-gold">+20</span></div>
+            <p class="row-desc">已完成 1/1（Mock）</p>
+          </div>
+        </div>
+        <div class="notif-row">
+          <div>
+            <div style="color: var(--text-primary)">签到 <span class="chip chip-gold">+5</span></div>
+            <p class="row-desc">已完成（Mock）</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 通知 Drawer -->
+    <aside class="drawer drawer-right" id="notif-drawer" role="dialog" aria-modal="true" aria-label="动态与通知" hidden>
+      <div class="drawer-head">
+        <h3>动态与通知</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="notif-row">
+          <span class="dot dot-danger" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">纸条配对成功</div>
+            <p class="row-desc">你放出的纸条被「山茶」抽到，可以开始私聊了（Mock）</p>
+          </div>
+        </div>
+        <div class="notif-row">
+          <span class="dot dot-info" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">连载更新</div>
+            <p class="row-desc">《雾岛一周目》更新至第 4 章（Mock）</p>
+          </div>
+        </div>
+        <div class="notif-row">
+          <span class="dot dot-success" style="margin-top: 6px"></span>
+          <div>
+            <div style="color: var(--text-primary)">审核结果</div>
+            <p class="row-desc">你的投稿《手绘星图》已通过审核（Mock）</p>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-foot"><button class="btn btn-secondary btn-block" id="mark-read">全部已读</button></div>
+    </aside>
+
+    <!-- 足迹 Modal -->
+    <div class="overlay" id="fp-overlay" hidden></div>
+    <div class="modal" id="fp-modal" role="dialog" aria-modal="true" aria-label="答卷足迹" hidden>
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <h3>我的答卷足迹</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="card" style="margin-top: 16px; display: flex; gap: 16px; text-align: center">
+        <div style="flex: 1">
+          <div class="kpi-value" style="font-size: 22px">7</div>
+          <p class="row-desc">完成问卷</p>
+        </div>
+        <div style="flex: 1">
+          <div class="kpi-value" style="font-size: 22px">12</div>
+          <p class="row-desc">结局收集</p>
+        </div>
+        <div style="flex: 1">
+          <div class="kpi-value" style="font-size: 22px">5</div>
+          <p class="row-desc">成就</p>
+        </div>
+      </div>
+      <p class="field-help" style="margin-top: 12px">足迹公开页只包含聚合数字，不含任何答案内容（Mock 链接）。</p>
+      <div style="display: flex; gap: 12px; margin-top: 16px">
+        <button class="btn btn-primary" id="fp-copy" style="flex: 1">复制足迹链接</button>
+        <button class="btn btn-secondary" id="fp-revoke">撤销链接</button>
+      </div>
+      <p class="field-help" id="fp-state" style="margin-top: 10px">当前状态：链接已生成（Mock）。</p>
+    </div>
+
+    <script src="../assets/interactions.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        const params = new URLSearchParams(location.search);
+
+        /* Telegram WebView 帧模拟（共享实现） */
+        ProtoUI.applyTgFrame({ title: "问卷星球", mount: "main.container" });
+
+        /* ---------- 登录态 ---------- */
+        const authBtn = document.getElementById("auth-btn");
+        authBtn.addEventListener("click", () => {
+          if (authBtn.textContent === "退出登录") {
+            document.getElementById("identity-title").textContent = "匿名访客身份";
+            document.getElementById("identity-desc").textContent = "注册或登录（邮箱即可）后，答卷进度才能找回";
+            authBtn.textContent = "去注册 / 登录";
+            document.getElementById("coin-balance").textContent = "0";
+            document.getElementById("coin-streak").textContent = "0";
+            document.getElementById("coin-total").textContent = "0";
+            ProtoUI.toast("已切换为匿名态展示（Mock）");
+            return;
+          }
+          ProtoUI.open("#auth-modal", authBtn);
+        });
+
+        document.getElementById("auth-seg").addEventListener("click", (e) => {
+          const btn = e.target.closest(".seg-btn");
+          if (!btn) return;
+          document
+            .querySelectorAll("#auth-seg .seg-btn")
+            .forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
+          document.getElementById("auth-submit").textContent =
+            btn.dataset.auth === "login" ? "登录（Mock）" : "注册并登录（Mock）";
+        });
+
+        let countdown = null;
+        document.getElementById("send-code").addEventListener("click", (e) => {
+          const email = document.getElementById("auth-email").value;
+          if (!email.includes("@")) {
+            ProtoUI.toast("请输入有效邮箱（Mock 校验）");
+            return;
+          }
+          const btn = e.currentTarget;
+          let n = 30;
+          btn.disabled = true;
+          btn.textContent = n + "s 后重发";
+          countdown = setInterval(() => {
+            n -= 1;
+            if (n <= 0) {
+              clearInterval(countdown);
+              btn.disabled = false;
+              btn.textContent = "发送验证码";
+            } else btn.textContent = n + "s 后重发";
+          }, 1000);
+          ProtoUI.toast("验证码已发送（Mock，不会真实发送）");
+        });
+
+        document.getElementById("auth-submit").addEventListener("click", () => {
+          document.getElementById("identity-title").textContent = "emo***@example.com";
+          document.getElementById("identity-desc").textContent = "邮箱账号 · 已认证";
+          authBtn.textContent = "退出登录";
+          document.getElementById("coin-balance").textContent = "128";
+          document.getElementById("coin-streak").textContent = "3";
+          document.getElementById("coin-total").textContent = "356";
+          ProtoUI.close("#auth-modal");
+          ProtoUI.toast("已切换为登录态展示（Mock，未创建账号）");
+        });
+
+        /* ---------- 签到 ---------- */
+        const checkinBtn = document.getElementById("checkin-btn");
+        checkinBtn.addEventListener("click", () => {
+          if (checkinBtn.disabled) return;
+          checkinBtn.classList.add("is-loading");
+          checkinBtn.textContent = "签到中…";
+          setTimeout(() => {
+            checkinBtn.classList.remove("is-loading");
+            checkinBtn.textContent = "今日已签到 ✓";
+            checkinBtn.disabled = true;
+            const bal = document.getElementById("coin-balance");
+            bal.textContent = String(Number(bal.textContent || "0") + 5);
+            document.getElementById("coin-streak").textContent = "1";
+            ProtoUI.toast("签到成功 +5 金币（Mock，未写入真实账户）");
+          }, 800);
+        });
+
+        /* ---------- 金币/内容入口 ---------- */
+        document.getElementById("coin-detail").addEventListener("click", () => ProtoUI.open("#coin-drawer"));
+        document
+          .getElementById("gacha-btn")
+          .addEventListener("click", () => ProtoUI.toast("报告抽卡（Mock）：正式版消耗金币随机抽取往期报告"));
+        document.getElementById("submit-btn").addEventListener("click", () => {
+          location.href = "placeholder.html?from=profile&to=submissions";
+        });
+        document.getElementById("notes-entry").addEventListener("click", () => {
+          location.href = "placeholder.html?from=profile&to=notes";
+        });
+        document.getElementById("notif-entry").addEventListener("click", () => ProtoUI.open("#notif-drawer"));
+        document
+          .getElementById("achievement-entry")
+          .addEventListener("click", () => ProtoUI.toast("成就徽章墙（Mock）：正式版展示可分享的徽章收集墙"));
+        document.getElementById("mark-read").addEventListener("click", () => {
+          document.getElementById("notes-unread").style.display = "none";
+          document.getElementById("notif-dot").style.display = "none";
+          ProtoUI.close("#notif-drawer");
+          ProtoUI.toast("已全部标记已读（Mock）");
+        });
+
+        /* ---------- 足迹 ---------- */
+        document.getElementById("footprint-btn").addEventListener("click", () => ProtoUI.open("#fp-modal"));
+        document.getElementById("fp-copy").addEventListener("click", async (e) => {
+          const ok = await ProtoUI.copy("https://emoemok.top/footprint/mock-0001");
+          document.getElementById("fp-state").textContent = ok
+            ? "当前状态：链接已复制（Mock）。"
+            : "复制失败，请手动复制（Mock）。";
+        });
+        document.getElementById("fp-revoke").addEventListener("click", () => {
+          document.getElementById("fp-state").textContent = "当前状态：链接已撤销（Mock），他人将无法访问。";
+          ProtoUI.toast("足迹链接已撤销（Mock）");
+        });
+
+        /* ---------- 音效偏好 ---------- */
+        document
+          .getElementById("sound-switch")
+          .addEventListener("change", (e) =>
+            ProtoUI.toast("对局提示音已" + (e.target.checked ? "开启" : "关闭") + "（Mock，未写入设置）"),
+          );
+        document
+          .getElementById("volume")
+          .addEventListener("input", (e) => (document.getElementById("volume-val").textContent = e.target.value + "%"));
+        document
+          .getElementById("sound-test")
+          .addEventListener("click", () => ProtoUI.toast("播放提示音（演示：无真实音频）"));
+
+        /* ---------- 状态机 ---------- */
+        const KPI_DEFAULT = { balance: "0", streak: "0", total: "0" };
+        function applyState(state) {
+          const coinError = document.getElementById("coin-error");
+          const checkin = document.getElementById("checkin-btn");
+          const notifDot = document.getElementById("notif-dot");
+          const notesUnread = document.getElementById("notes-unread");
+          const reportDesc = document.getElementById("report-desc");
+          coinError.classList.add("hidden");
+          checkin.disabled = false;
+          checkin.classList.remove("is-loading");
+          checkin.textContent = "签到";
+          notifDot.style.display = "";
+          notesUnread.style.display = "";
+          reportDesc.textContent = "完成问卷后生成的个人报告会出现在这里。";
+          document.getElementById("coin-balance").textContent = KPI_DEFAULT.balance;
+          document.getElementById("coin-streak").textContent = KPI_DEFAULT.streak;
+          document.getElementById("coin-total").textContent = KPI_DEFAULT.total;
+          document.getElementById("identity-title").textContent = "匿名访客身份";
+          document.getElementById("identity-desc").textContent = "注册或登录（邮箱即可）后，答卷进度才能找回";
+          authBtn.textContent = "去注册 / 登录";
+
+          if (state === "logged") {
+            document.getElementById("coin-balance").textContent = "128";
+            document.getElementById("coin-streak").textContent = "3";
+            document.getElementById("coin-total").textContent = "356";
+            document.getElementById("identity-title").textContent = "emo***@example.com";
+            document.getElementById("identity-desc").textContent = "邮箱账号 · 已认证";
+            authBtn.textContent = "退出登录";
+          }
+          if (state === "coin-error") coinError.classList.remove("hidden");
+          if (state === "signed") {
+            checkin.disabled = true;
+            checkin.textContent = "今日已签到 ✓";
+            document.getElementById("coin-streak").textContent = "1";
+          }
+          if (state === "no-reports")
+            reportDesc.textContent = "还没有报告。完成一份带报告的问卷后，这里会显示你的个人报告（空态演示）。";
+          if (state === "share-revoked") reportDesc.textContent = "答卷足迹分享链接已撤销（Mock），可重新生成。";
+          if (state === "notif-clean") {
+            notifDot.style.display = "none";
+            notesUnread.style.display = "none";
+          }
+        }
+
+        ProtoUI.bindStatePanel(
+          [
+            { value: "normal", label: "匿名访客（默认）" },
+            { value: "logged", label: "已登录" },
+            { value: "coin-error", label: "余额加载失败" },
+            { value: "signed", label: "今日已签到" },
+            { value: "no-reports", label: "无报告" },
+            { value: "share-revoked", label: "足迹链接已撤销" },
+            { value: "notif-clean", label: "通知全部已读" },
+          ],
+          applyState,
+          "normal",
+        );
+
+        if (params.get("logged") === "1") applyState("logged");
+      })();
+    </script>
+  </body>
+</html>

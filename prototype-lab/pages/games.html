@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>小游戏 · Prototype Lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+    <link rel="stylesheet" href="../assets/tokens.css" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+      .nav-active-games {
+      }
+      .rank-num {
+        font-variant-numeric: tabular-nums;
+        font-weight: 650;
+        color: var(--text-primary);
+      }
+      .record-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        background: var(--surface-panel);
+        margin-bottom: var(--space-3);
+      }
+      .detail-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+      }
+      .settings-group {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+      .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+      }
+      .setting-row .field-label {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body class="user-page">
+    <header class="topnav">
+      <span class="topnav-brand">✉️ 问卷星球</span>
+      <nav class="topnav-links" aria-label="全局导航">
+        <a class="topnav-link" href="placeholder.html?from=games&to=survey">📋 问卷</a>
+        <a class="topnav-link is-active" href="games.html">🎮 小游戏</a>
+        <a class="topnav-link" href="placeholder.html?from=games&to=plaza">🌳 广场</a>
+        <a class="topnav-link" href="placeholder.html?from=games&to=showcase">🖼 展示</a>
+        <a class="topnav-link" href="placeholder.html?from=games&to=card">🎫 认证卡</a>
+        <a class="topnav-link" href="profile.html">👤 我的</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <div class="page-head">
+        <div>
+          <h1>小游戏</h1>
+          <p class="lead">选一个玩法和局，开始你的挑战</p>
+        </div>
+        <span class="chip chip-warning">原型演示 · Mock 数据</span>
+      </div>
+
+      <!-- 二级导航：开始 / 我的记录 / 排行榜 -->
+      <div class="seg" id="lobby-seg" role="tablist" aria-label="大厅视图" style="margin-bottom: var(--space-5)">
+        <button class="seg-btn" data-view="play" aria-selected="true" role="tab">🏠 开始</button>
+        <button class="seg-btn" data-view="records" aria-selected="false" role="tab">🗒 我的记录</button>
+        <button class="seg-btn" data-view="ranks" aria-selected="false" role="tab">🏆 排行榜</button>
+      </div>
+
+      <!-- ============ 视图：开始 ============ -->
+      <div data-view-panel="play">
+        <div class="lobby-grid">
+          <!-- 左：分类 -->
+          <div class="lobby-side" id="category-side" aria-label="游戏分类">
+            <span class="lobby-side-title">分类</span>
+            <button class="chip chip-select" data-cat="all" aria-pressed="true">全部</button>
+            <button class="chip chip-select" data-cat="board" aria-pressed="false">棋类</button>
+            <button class="chip chip-select" data-cat="cards" aria-pressed="false">牌类</button>
+            <button class="chip chip-select" data-cat="party" aria-pressed="false">派对</button>
+            <button class="chip chip-select" data-cat="submit" aria-pressed="false">投稿</button>
+          </div>
+
+          <!-- 中：游戏列表 -->
+          <div class="lobby-main">
+            <div id="game-list" style="display: flex; flex-direction: column; gap: var(--space-3)"></div>
+            <div id="game-empty" class="state-block hidden">
+              <span class="state-icon">🎲</span>
+              <h3>该分类暂无游戏</h3>
+              <p>试试其它分类，或到广场看看大家在玩什么。</p>
+            </div>
+
+            <!-- 单人试炼开局设置（对应 TrialScreen 的身份/模式） -->
+            <div class="card" id="trial-settings" style="margin-top: var(--space-5)">
+              <h3>🎯 挑战试炼 · 单人开局设置</h3>
+              <p class="field-help" style="margin-top: 6px">
+                任务按身份文案抽取；地狱模式层数更多、惩罚更强（与联机房间无关）。
+              </p>
+              <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px">
+                <div
+                  class="setting-row"
+                  style="display: flex; align-items: center; justify-content: space-between; gap: 12px"
+                >
+                  <span class="field-label" style="margin: 0">身份</span>
+                  <div class="seg" data-setting="identity">
+                    <button class="seg-btn" aria-selected="true">公</button>
+                    <button class="seg-btn" aria-selected="false">母</button>
+                  </div>
+                </div>
+                <div
+                  class="setting-row"
+                  style="display: flex; align-items: center; justify-content: space-between; gap: 12px"
+                >
+                  <span class="field-label" style="margin: 0">模式</span>
+                  <div class="seg" data-setting="mode">
+                    <button class="seg-btn" aria-selected="true">普通</button>
+                    <button class="seg-btn" aria-selected="false">地狱</button>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary btn-block" id="trial-start" style="margin-top: 16px">开始试炼 →</button>
+            </div>
+          </div>
+
+          <!-- 右：详情面板 -->
+          <aside class="lobby-detail">
+            <div class="card card-elevated" id="detail-card">
+              <div style="display: flex; align-items: center; gap: 12px">
+                <span class="game-icon" id="d-icon">♟️</span>
+                <div>
+                  <h3 id="d-name">五子棋 · 联机对战</h3>
+                  <span class="chip chip-gold" style="margin-top: 4px" id="d-tag">棋类 · 2 人</span>
+                </div>
+              </div>
+              <p style="margin-top: 12px" id="d-desc">黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。</p>
+              <div class="detail-meta" id="d-meta">
+                <span class="chip">👥 2 人</span><span class="chip">⏱ 每步 1 分钟</span
+                ><span class="chip">🌐 联机</span>
+              </div>
+
+              <div
+                style="margin-top: 16px; border-top: 1px solid var(--border-subtle); padding-top: 16px"
+                class="settings-group"
+                id="d-settings"
+              >
+                <span class="lobby-side-title">开局设置</span>
+                <div class="setting-row">
+                  <span class="field-label">身份</span>
+                  <div class="seg" data-setting="identity">
+                    <button class="seg-btn" aria-selected="true">公</button>
+                    <button class="seg-btn" aria-selected="false">母</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <span class="field-label">模式</span>
+                  <div class="seg" data-setting="mode">
+                    <button class="seg-btn" aria-selected="true">普通</button>
+                    <button class="seg-btn" aria-selected="false">地狱</button>
+                  </div>
+                </div>
+                <p class="field-help" id="d-setting-note">仅展示当前游戏可用的设置（Mock）。</p>
+              </div>
+
+              <div style="display: flex; gap: 12px; margin-top: 16px">
+                <button class="btn btn-primary btn-lg" id="d-start" style="flex: 1">创建房间 →</button>
+                <button class="btn btn-secondary btn-lg" id="d-rules">规则</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="font-size: var(--type-body)">最近记录</h3>
+              <div class="record-row" style="margin-top: 12px">
+                <span class="chip chip-success">胜</span>
+                <span style="flex: 1; color: var(--text-primary); font-size: var(--type-caption)"
+                  >五子棋 · vs 山茶</span
+                >
+                <span class="muted" style="font-size: var(--type-caption)">昨天 21:40</span>
+              </div>
+              <div class="record-row">
+                <span class="chip chip-danger">负</span>
+                <span style="flex: 1; color: var(--text-primary); font-size: var(--type-caption)"
+                  >斗地主 · 春天被反</span
+                >
+                <span class="muted" style="font-size: var(--type-caption)">昨天 20:12</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ============ 视图：我的记录 ============ -->
+      <div data-view-panel="records" hidden>
+        <div class="card" style="max-width: 720px">
+          <div class="record-row">
+            <span class="chip chip-success">胜</span>
+            <span style="flex: 1; color: var(--text-primary)">五子棋 · 联机对战</span>
+            <span class="muted" style="font-size: var(--type-caption)">11-21 21:40 · 12 分钟</span>
+          </div>
+          <div class="record-row">
+            <span class="chip chip-danger">负</span>
+            <span style="flex: 1; color: var(--text-primary)">斗地主 · 联机对战</span>
+            <span class="muted" style="font-size: var(--type-caption)">11-21 20:12 · 18 分钟</span>
+          </div>
+          <div class="record-row">
+            <span class="chip chip-success">胜</span>
+            <span style="flex: 1; color: var(--text-primary)">象棋 · 联机对战</span>
+            <span class="muted" style="font-size: var(--type-caption)">11-20 19:03 · 25 分钟</span>
+          </div>
+          <div class="record-row">
+            <span class="chip chip-info">平</span>
+            <span style="flex: 1; color: var(--text-primary)">飞行棋 · 联机对战</span>
+            <span class="muted" style="font-size: var(--type-caption)">11-20 18:20 · 31 分钟</span>
+          </div>
+          <p class="field-help" style="margin-top: 8px">仅展示聚合记录（Mock），不含对局详情。</p>
+        </div>
+      </div>
+
+      <!-- ============ 视图：排行榜 ============ -->
+      <div data-view-panel="ranks" hidden>
+        <div class="card" style="max-width: 720px; padding: 0; overflow: hidden">
+          <div class="table-scroll" style="border: none">
+            <table class="table" id="rank-table">
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>玩家</th>
+                  <th>常玩</th>
+                  <th>场次</th>
+                  <th>胜率</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-label="排名"><span class="rank-num">🥇 1</span></td>
+                  <td data-label="玩家" style="color: var(--text-primary)">山茶</td>
+                  <td data-label="常玩">五子棋</td>
+                  <td data-label="场次" class="num">312</td>
+                  <td data-label="胜率" class="num">68%</td>
+                </tr>
+                <tr>
+                  <td data-label="排名"><span class="rank-num">🥈 2</span></td>
+                  <td data-label="玩家" style="color: var(--text-primary)">夜航星</td>
+                  <td data-label="常玩">狼人杀</td>
+                  <td data-label="场次" class="num">288</td>
+                  <td data-label="胜率" class="num">61%</td>
+                </tr>
+                <tr>
+                  <td data-label="排名"><span class="rank-num">🥉 3</span></td>
+                  <td data-label="玩家" style="color: var(--text-primary)">橘子汽水</td>
+                  <td data-label="常玩">斗地主</td>
+                  <td data-label="场次" class="num">247</td>
+                  <td data-label="胜率" class="num">57%</td>
+                </tr>
+                <tr>
+                  <td data-label="排名"><span class="rank-num">4</span></td>
+                  <td data-label="玩家" style="color: var(--text-primary)">白屿</td>
+                  <td data-label="常玩">象棋</td>
+                  <td data-label="场次" class="num">198</td>
+                  <td data-label="胜率" class="num">54%</td>
+                </tr>
+                <tr>
+                  <td data-label="排名"><span class="rank-num">5</span></td>
+                  <td data-label="玩家" style="color: var(--text-primary)">雾里</td>
+                  <td data-label="常玩">飞行棋</td>
+                  <td data-label="场次" class="num">154</td>
+                  <td data-label="胜率" class="num">49%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="field-help" style="padding: 12px 16px">排行数据为演示（Mock），每周一 04:00 重置。</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- 移动端底部导航 -->
+    <nav class="bottomnav safe-bottom" aria-label="底部导航">
+      <a class="bottomnav-item" href="placeholder.html?from=games&to=survey"><span class="bn-icon">📋</span>问卷</a>
+      <a class="bottomnav-item is-active" href="games.html"><span class="bn-icon">🎮</span>小游戏</a>
+      <a class="bottomnav-item" href="placeholder.html?from=games&to=plaza"><span class="bn-icon">🌳</span>广场</a>
+      <a class="bottomnav-item" href="placeholder.html?from=games&to=showcase"><span class="bn-icon">🖼</span>展示</a>
+      <a class="bottomnav-item" href="placeholder.html?from=games&to=card"><span class="bn-icon">🎫</span>认证卡</a>
+      <a class="bottomnav-item" href="profile.html"><span class="bn-icon">👤</span>我的</a>
+    </nav>
+
+    <!-- 移动端游戏详情 Bottom Sheet -->
+    <div class="overlay" id="gsheet-overlay" style="align-items: flex-end" hidden></div>
+    <div class="sheet" id="game-sheet" role="dialog" aria-modal="true" aria-label="游戏详情" hidden>
+      <div class="sheet-grabber"></div>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span class="game-icon" id="s-icon">♟️</span>
+        <div>
+          <h3 id="s-name">—</h3>
+          <span class="chip chip-gold" style="margin-top: 4px" id="s-tag">—</span>
+        </div>
+      </div>
+      <p style="margin-top: 12px" id="s-desc">—</p>
+      <div style="display: flex; gap: 12px; margin-top: 16px">
+        <button class="btn btn-primary btn-lg" id="s-start" style="flex: 1">创建房间 →</button>
+        <button class="btn btn-secondary btn-lg" data-close>关闭</button>
+      </div>
+    </div>
+
+    <!-- 规则 Modal -->
+    <div class="overlay" id="rules-overlay" hidden></div>
+    <div class="modal" id="rules-modal" role="dialog" aria-modal="true" aria-label="游戏规则" hidden>
+      <div style="display: flex; justify-content: space-between; align-items: center">
+        <h3 id="r-name">游戏规则</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <p style="margin-top: 12px" id="r-body">—</p>
+      <p class="field-help" style="margin-top: 12px">详细规则以游戏内说明为准（原型演示文本）。</p>
+      <div style="margin-top: 16px; display: flex; justify-content: flex-end">
+        <button class="btn btn-secondary" data-close>我知道了</button>
+      </div>
+    </div>
+
+    <script src="../assets/interactions.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        /* Telegram WebView 帧模拟（共享实现） */
+        ProtoUI.applyTgFrame({ title: "问卷星球", mount: "main.container" });
+
+        const GAMES = [
+          {
+            id: "submit",
+            cat: "submit",
+            icon: "📤",
+            name: "网页投稿",
+            tag: "投稿 · 通道",
+            people: "不限",
+            time: "—",
+            online: false,
+            desc: "通过 emoemok.top 投稿你的内容。",
+            rules: "投稿通道入口。提交的内容会进入审核队列，通过后在展示区与素材库出现（原型演示）。",
+            startLabel: "去投稿 →",
+            settings: [],
+          },
+          {
+            id: "gomoku",
+            cat: "board",
+            icon: "♟️",
+            name: "五子棋 · 联机对战",
+            tag: "棋类 · 2 人",
+            people: "2 人",
+            time: "每步 1 分钟",
+            online: true,
+            desc: "黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。",
+            rules:
+              "黑白双方轮流落子，先在横、竖或斜方向连成五子者获胜。每一步限时一分钟，超时判负。房间码可邀请好友加入。",
+            startLabel: "创建房间 →",
+            settings: [],
+          },
+          {
+            id: "chess",
+            cat: "board",
+            icon: "♞",
+            name: "象棋 · 联机对战",
+            tag: "棋类 · 2 人",
+            people: "2 人",
+            time: "每步 1 分钟",
+            online: true,
+            desc: "楚河汉界双人博弈：车马炮兵将士将，将死或困毙对方获胜；每一步限时一分钟。",
+            rules: "标准中国象棋规则。将死或困毙对方获胜，长将判负。每一步限时一分钟。",
+            startLabel: "创建房间 →",
+            settings: [],
+          },
+          {
+            id: "aeroplane",
+            cat: "board",
+            icon: "✈️",
+            name: "飞行棋 · 联机对战",
+            tag: "棋类 · 2–4 人",
+            people: "2–4 人",
+            time: "约 20 分钟",
+            online: true,
+            desc: "经典飞行棋 2–4 人：掷六起飞、同色跳跌、虚线飞行、终点精确反弹；先进全部飞机到者胜。",
+            rules:
+              "掷到 6 才能起飞，同色格跳跃，虚线飞行连线，终点需精确点数否则反弹。先把全部 4 架飞机送到终点者获胜。",
+            startLabel: "创建房间 →",
+            settings: [
+              {
+                key: "players",
+                label: "人数",
+                options: ["2 人", "3 人", "4 人"],
+                note: "不满员可由机器人补位（演示）",
+              },
+            ],
+          },
+          {
+            id: "landlord",
+            cat: "cards",
+            icon: "🃏",
+            name: "斗地主 · 联机对战",
+            tag: "牌类 · 3 人",
+            people: "3 人",
+            time: "约 8 分钟",
+            online: true,
+            desc: "3 人开局:叫分抢地主、底牌公开、炸弹王炸翻倍、春天反春天:积分制对战。",
+            rules: "叫分决定地主，底牌公开。炸弹、王炸翻倍；春天/反春天额外翻倍。积分制累计对战。",
+            startLabel: "创建房间 →",
+            settings: [],
+          },
+          {
+            id: "werewolf",
+            cat: "party",
+            icon: "🐺",
+            name: "狼人杀 · 联机对战",
+            tag: "派对 · 6–12 人",
+            people: "6–12 人",
+            time: "约 15 分钟",
+            online: true,
+            desc: "6–12 人开局:狼人/村民/预言家/女巫/守卫/猎人,黑夜白昼轮转,票选放逐,猎人一枪定音。",
+            rules:
+              "黑夜狼人行动，白天全员发言并票选放逐。预言家查验、女巫用药、守卫守护、猎人出局可开枪。好人放逐全部狼人或狼人屠边即结束。",
+            startLabel: "创建房间 →",
+            settings: [
+              {
+                key: "players",
+                label: "人数",
+                options: ["6 人", "8 人", "10 人", "12 人"],
+                note: "板子随人数自动配置",
+              },
+            ],
+          },
+        ];
+
+        let selected = GAMES[1]; // 默认五子棋
+        const isMobileLayout = () => window.matchMedia("(max-width: 1023.98px)").matches;
+
+        /* ---------- 游戏列表 ---------- */
+        const listEl = document.getElementById("game-list");
+        function renderList() {
+          const cat = document.querySelector('#category-side [aria-pressed="true"]').dataset.cat;
+          const games = GAMES.filter((g) => cat === "all" || g.cat === cat);
+          listEl.innerHTML = games
+            .map(
+              (g) =>
+                '<button class="game-card' +
+                (g.id === selected.id ? " is-selected" : "") +
+                '" data-game="' +
+                g.id +
+                '" aria-pressed="' +
+                (g.id === selected.id) +
+                '">' +
+                '<span class="game-icon">' +
+                g.icon +
+                "</span>" +
+                '<span class="game-card-body"><span class="game-name">' +
+                g.name +
+                "</span>" +
+                '<span class="game-meta"><span class="chip">' +
+                g.tag +
+                "</span>" +
+                (g.online ? '<span class="chip chip-info">联机</span>' : "") +
+                "</span>" +
+                '<span class="game-desc">' +
+                g.desc +
+                "</span></span>" +
+                '<span class="game-arrow" aria-hidden="true">→</span></button>',
+            )
+            .join("");
+          document.getElementById("game-empty").hidden = games.length !== 0;
+        }
+
+        /* ---------- 详情渲染 ---------- */
+        function renderDetail() {
+          document.getElementById("d-icon").textContent = selected.icon;
+          document.getElementById("d-name").textContent = selected.name;
+          document.getElementById("d-tag").textContent = selected.tag;
+          document.getElementById("d-desc").textContent = selected.desc;
+          document.getElementById("d-meta").innerHTML =
+            '<span class="chip">👥 ' +
+            selected.people +
+            "</span>" +
+            '<span class="chip">⏱ ' +
+            selected.time +
+            "</span>" +
+            (selected.online ? '<span class="chip chip-info">🌐 联机</span>' : '<span class="chip">📝 单向</span>');
+          const st = document.getElementById("d-settings");
+          st.style.display = selected.settings.length ? "" : "none";
+          st.innerHTML =
+            '<span class="lobby-side-title">开局设置</span>' +
+            selected.settings
+              .map(
+                (s) =>
+                  '<div class="setting-row"><span class="field-label">' +
+                  s.label +
+                  "</span>" +
+                  '<div class="seg" data-setting="' +
+                  s.key +
+                  '">' +
+                  s.options
+                    .map((o, i) => '<button class="seg-btn" aria-selected="' + (i === 0) + '">' + o + "</button>")
+                    .join("") +
+                  "</div></div>",
+              )
+              .join("") +
+            (selected.settings.length ? '<p class="field-help">' + selected.settings[0].note + "（Mock）</p>" : "");
+          document.getElementById("d-start").textContent = selected.startLabel;
+          document.getElementById("d-rules").style.display = selected.rules ? "" : "none";
+        }
+
+        listEl.addEventListener("click", (e) => {
+          const card = e.target.closest(".game-card");
+          if (!card) return;
+          selected = GAMES.find((g) => g.id === card.dataset.game);
+          renderList();
+          renderDetail();
+          if (isMobileLayout()) {
+            document.getElementById("s-icon").textContent = selected.icon;
+            document.getElementById("s-name").textContent = selected.name;
+            document.getElementById("s-tag").textContent = selected.tag;
+            document.getElementById("s-desc").textContent = selected.desc;
+            document.getElementById("s-start").textContent = selected.startLabel;
+            ProtoUI.open("#game-sheet", card);
+          }
+        });
+
+        document.getElementById("category-side").addEventListener("click", (e) => {
+          const chip = e.target.closest(".chip-select");
+          if (!chip) return;
+          document
+            .querySelectorAll("#category-side .chip-select")
+            .forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+          renderList();
+        });
+
+        /* 设置分段点击 */
+        document.getElementById("detail-card").addEventListener("click", (e) => {
+          const seg = e.target.closest(".seg[data-setting]");
+          if (!seg) return;
+          seg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-selected", String(b === e.target)));
+          ProtoUI.toast("已选择 " + seg.dataset.setting + " 设置（Mock，未写入）");
+        });
+
+        /* 单人试炼设置 */
+        document.getElementById("trial-settings").addEventListener("click", (e) => {
+          const seg = e.target.closest(".seg[data-setting]");
+          if (seg) {
+            seg.querySelectorAll(".seg-btn").forEach((b) => b.setAttribute("aria-selected", String(b === e.target)));
+            return;
+          }
+          if (e.target.closest("#trial-start")) ProtoUI.toast("开始试炼（Mock）：正式版进入单人挑战流程");
+        });
+
+        /* 开始 → 跳转房间页 */
+        function startGame() {
+          if (!selected.online) {
+            ProtoUI.toast("网页投稿为独立通道，正式版将跳转投稿中心（原型演示）");
+            return;
+          }
+          location.href = "room.html?game=" + selected.id + "&theme=" + document.documentElement.dataset.theme;
+        }
+        document.getElementById("d-start").addEventListener("click", startGame);
+        document.getElementById("s-start").addEventListener("click", startGame);
+
+        /* 规则弹窗 */
+        document.getElementById("d-rules").addEventListener("click", () => {
+          document.getElementById("r-name").textContent = selected.name + " · 规则";
+          document.getElementById("r-body").textContent = selected.rules || "暂无规则说明。";
+          ProtoUI.open("#rules-modal");
+        });
+
+        ProtoUI.bindSeg("#lobby-seg");
+        renderList();
+        renderDetail();
+      })();
+    </script>
+  </body>
+</html>

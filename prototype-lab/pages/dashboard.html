@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>运营总览 · 后台 · Prototype Lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+    <link rel="stylesheet" href="../assets/tokens.css" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+      .adm-content {
+        padding: var(--space-5) var(--space-5) var(--space-8);
+      }
+      .banner {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: var(--type-body);
+        margin-bottom: var(--space-4);
+      }
+      .banner-warning {
+        background: var(--status-warning-soft);
+        color: var(--status-warning);
+      }
+      .banner-danger {
+        background: var(--status-danger-soft);
+        color: var(--status-danger);
+      }
+      .queue-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+        align-items: center;
+        margin-bottom: var(--space-3);
+      }
+      .queue-toolbar .input {
+        max-width: 280px;
+      }
+      .batch-inline {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--type-caption);
+        color: var(--text-muted);
+      }
+      .status-chip {
+        white-space: nowrap;
+      }
+      .ws-module-list {
+        display: flex;
+        flex-direction: column;
+      }
+      .ws-module-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) 0;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .ws-module-row:last-child {
+        border-bottom: none;
+      }
+      @media (max-width: 1023.98px) {
+        .adm-content {
+          padding: var(--space-4) var(--space-4) var(--space-8);
+        }
+        #nav-toggle {
+          display: inline-flex;
+        }
+        .queue-toolbar .input {
+          max-width: none;
+          flex: 1;
+        }
+      }
+      /* 手机端 KPI 5→2 列：最后一张卡跨双列，避免孤行 */
+      @media (max-width: 639.98px) {
+        .kpi-grid .kpi:last-child {
+          grid-column: span 2;
+        }
+      }
+      @media (min-width: 1024px) {
+        #nav-toggle {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="adm-shell">
+      <!-- 工作区图标轨 -->
+      <aside class="adm-rail" aria-label="工作区导航">
+        <button class="rail-item is-active" title="总览" aria-label="总览">🏠</button>
+        <button class="rail-item" title="问卷" aria-label="问卷">📋</button>
+        <button class="rail-item" title="内容" aria-label="内容">🌿</button>
+        <button class="rail-item" title="社区" aria-label="社区">🌳</button>
+        <button class="rail-item" title="系统" aria-label="系统">⚙️</button>
+        <div class="rail-spacer"></div>
+        <button class="rail-item" title="设置" aria-label="设置">🛠</button>
+      </aside>
+
+      <div class="adm-main">
+        <!-- 顶栏 -->
+        <header class="adm-topbar">
+          <button id="nav-toggle" class="icon-btn" aria-label="打开导航抽屉" data-open="#nav-drawer">☰</button>
+          <nav class="breadcrumb" aria-label="面包屑">
+            <span>管理后台</span><span>/</span><span class="bc-current">总览</span>
+          </nav>
+          <div class="adm-topbar-spacer"></div>
+          <input
+            id="topbar-search"
+            class="input adm-search queue-search"
+            type="search"
+            placeholder="搜索报告、问卷…"
+            aria-label="搜索报告队列"
+          />
+          <span class="env-chip">● 生产环境</span>
+          <button class="icon-btn" aria-label="设置">⚙️</button>
+        </header>
+
+        <div class="adm-content">
+          <div class="page-head">
+            <div>
+              <h1>运营总览</h1>
+              <p class="lead">查看问卷、答卷与报告交付的实时状态</p>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <span class="chip chip-warning">原型演示 · Mock 数据</span>
+            </div>
+          </div>
+
+          <div id="partial-banner" class="banner banner-warning hidden">
+            ⚠️ 部分接口失败：/api/reports 超时，已展示缓存数据。
+            <button class="btn btn-sm btn-secondary" style="margin-left: auto">重试</button>
+          </div>
+
+          <main id="dash-main">
+            <!-- ① 功能地图 -->
+            <section class="section" id="sec-map" style="margin-top: 0">
+              <div class="section-head">
+                <div>
+                  <h2>功能地图</h2>
+                  <p class="sub">全部功能按编号归入 4 个工作区 · 从任一芯片直达对应页面</p>
+                </div>
+              </div>
+              <div class="workspace-grid" id="workspace-grid">
+                <div class="card card-interactive workspace-card is-primary" data-ws="问卷" tabindex="0" role="button">
+                  <div class="ws-head">
+                    <span class="ws-num">1</span>
+                    <h3>问卷</h3>
+                    <div class="ws-counts">
+                      <span class="chip">问卷 90</span><span class="chip chip-gold">已发布 88</span>
+                    </div>
+                  </div>
+                  <p class="ws-desc">创建与编辑问卷、查看答卷与报告</p>
+                  <div class="ws-modules">
+                    <button class="ws-module-chip">1.1 问卷列表</button>
+                    <button class="ws-module-chip">1.2 分类</button>
+                    <button class="ws-module-chip">1.3 导入</button>
+                    <button class="ws-module-chip">1.4 答卷动态</button>
+                    <button class="ws-module-chip">1.5 报告</button>
+                  </div>
+                </div>
+                <div class="card card-interactive workspace-card" data-ws="内容" tabindex="0" role="button">
+                  <div class="ws-head">
+                    <span class="ws-num">2</span>
+                    <h3>内容</h3>
+                  </div>
+                  <p class="ws-desc">投稿、用户、模板与素材</p>
+                  <div class="ws-modules">
+                    <button class="ws-module-chip">2.1 金币经济</button>
+                    <button class="ws-module-chip">2.2 网页投稿</button>
+                    <button class="ws-module-chip">2.3 用户</button>
+                    <button class="ws-module-chip">2.4 模板</button>
+                    <button class="ws-module-chip">2.5 认证卡内容</button>
+                    <button class="ws-module-chip">2.6 素材库</button>
+                  </div>
+                </div>
+                <div class="card card-interactive workspace-card" data-ws="社区" tabindex="0" role="button">
+                  <div class="ws-head">
+                    <span class="ws-num">3</span>
+                    <h3>社区</h3>
+                  </div>
+                  <p class="ws-desc">树洞、纸条、画廊与展示区</p>
+                  <div class="ws-modules">
+                    <button class="ws-module-chip">3.1 树洞</button>
+                    <button class="ws-module-chip">3.2 纸条复核</button>
+                    <button class="ws-module-chip">3.3 个人画廊</button>
+                    <button class="ws-module-chip">3.4 展示区</button>
+                    <button class="ws-module-chip">3.5 小游戏管理</button>
+                    <button class="ws-module-chip">3.6 网页应用</button>
+                  </div>
+                </div>
+                <div class="card card-interactive workspace-card" data-ws="系统" tabindex="0" role="button">
+                  <div class="ws-head">
+                    <span class="ws-num">4</span>
+                    <h3>系统</h3>
+                  </div>
+                  <p class="ws-desc">审计、回收站、授权与设置</p>
+                  <div class="ws-modules">
+                    <button class="ws-module-chip">4.1 审计</button>
+                    <button class="ws-module-chip">4.2 回收站</button>
+                    <button class="ws-module-chip">4.3 授权</button>
+                    <button class="ws-module-chip">4.4 控制中心</button>
+                    <button class="ws-module-chip">4.5 设置</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ② 数据总览 -->
+            <section class="section" id="sec-kpi">
+              <div class="section-head">
+                <div>
+                  <h2>数据总览</h2>
+                  <p class="sub">核心运营指标 · 更新于 23:42（Mock）</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="refresh-btn">↻ 刷新</button>
+              </div>
+              <div class="kpi-grid" id="kpi-grid">
+                <div class="card kpi" data-kpi="users">
+                  <span class="kpi-label">👥 用户数量</span><span class="kpi-value">1,191</span>
+                </div>
+                <div class="card kpi" data-kpi="surveys">
+                  <span class="kpi-label">📋 问卷数量</span><span class="kpi-value">90</span>
+                </div>
+                <div class="card kpi" data-kpi="published">
+                  <span class="kpi-label">📗 已发布问卷</span><span class="kpi-value">88</span>
+                </div>
+                <div class="card kpi" data-kpi="responses">
+                  <span class="kpi-label">🗂 答卷数量</span><span class="kpi-value">1,803</span>
+                </div>
+                <div class="card kpi" data-kpi="today">
+                  <span class="kpi-label">📈 今日答卷</span><span class="kpi-value">26</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- ③ 报告交付队列 -->
+            <section class="section" id="sec-queue">
+              <div class="section-head">
+                <div>
+                  <h2>报告交付队列</h2>
+                  <p class="sub">Telegram 频道自动归档 · 共 373 份</p>
+                </div>
+                <span class="chip chip-info">373 份累计</span>
+              </div>
+
+              <div id="queue-banner" class="banner banner-danger hidden">
+                🔥 3 份报告投递失败，自动归档已暂停。
+                <button class="btn btn-sm btn-secondary" style="margin-left: auto">批量重试</button>
+              </div>
+
+              <div id="queue-widget">
+                <div class="queue-toolbar">
+                  <input
+                    class="input queue-search"
+                    type="search"
+                    placeholder="搜索报告 / 问卷名"
+                    aria-label="搜索报告队列"
+                  />
+                  <div class="chip-row" id="queue-filters" role="group" aria-label="状态筛选">
+                    <button class="chip chip-select" data-filter="all" aria-pressed="true">全部</button>
+                    <button class="chip chip-select" data-filter="queued" aria-pressed="false">排队中</button>
+                    <button class="chip chip-select" data-filter="running" aria-pressed="false">生成中</button>
+                    <button class="chip chip-select" data-filter="done" aria-pressed="false">已完成</button>
+                    <button class="chip chip-select" data-filter="failed" aria-pressed="false">失败</button>
+                  </div>
+                  <div class="batch-inline">
+                    <span id="sel-count">已选 0 项</span>
+                    <button class="btn btn-ghost btn-sm" id="batch-retry">批量重试</button>
+                    <button class="btn btn-ghost btn-sm" id="batch-download">批量下载</button>
+                  </div>
+                </div>
+
+                <div class="table-scroll">
+                  <table class="table" id="queue-table">
+                    <thead>
+                      <tr>
+                        <th style="width: 36px"><input type="checkbox" id="sel-all" aria-label="全选" /></th>
+                        <th>报告 / 问卷</th>
+                        <th>目标渠道</th>
+                        <th>状态</th>
+                        <th>更新时间</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="queue-body"></tbody>
+                  </table>
+                </div>
+                <div id="queue-empty" class="state-block" style="margin-top: 12px" hidden>
+                  <span class="state-icon">📭</span>
+                  <h3>暂无报告交付记录</h3>
+                  <p>发布问卷并选择自动归档后，生成的报告会出现在这里。</p>
+                </div>
+              </div>
+            </section>
+
+            <p class="muted" style="font-size: var(--type-caption); margin-top: var(--space-6)">
+              原型演示页面 · 所有数据均为 Mock，不请求真实后端。完整页面范围见 docs/design/BASELINE_AUDIT.md。
+            </p>
+          </main>
+
+          <!-- 加载骨架 -->
+          <div id="skeleton-layer" aria-label="加载中" hidden>
+            <div class="card">
+              <div class="skeleton skeleton-text" style="width: 30%"></div>
+              <div class="skeleton skeleton-block"></div>
+            </div>
+            <div class="card" style="margin-top: 16px">
+              <div class="skeleton skeleton-text" style="width: 22%"></div>
+              <div class="kpi-grid" style="margin-top: 12px">
+                <div class="skeleton skeleton-block" style="height: 84px"></div>
+                <div class="skeleton skeleton-block" style="height: 84px"></div>
+                <div class="skeleton skeleton-block" style="height: 84px"></div>
+                <div class="skeleton skeleton-block" style="height: 84px"></div>
+                <div class="skeleton skeleton-block" style="height: 84px"></div>
+              </div>
+            </div>
+            <div class="card" style="margin-top: 16px">
+              <div class="skeleton skeleton-text" style="width: 26%"></div>
+              <div class="skeleton skeleton-block" style="height: 180px"></div>
+            </div>
+          </div>
+
+          <!-- 错误态 -->
+          <div id="error-block" class="state-block" hidden>
+            <span class="state-icon">🛑</span>
+            <h3>请求失败</h3>
+            <p>运营数据接口无响应（Mock 演示），可点击重试或稍后再试。</p>
+            <button class="btn btn-primary" id="error-retry">重试</button>
+          </div>
+
+          <!-- 无权限态 -->
+          <div id="noperm-block" class="state-block" hidden>
+            <span class="state-icon">🔒</span>
+            <h3>无权限访问运营总览</h3>
+            <p>当前账号不是管理员。如需访问请联系管理员授权（原型演示）。</p>
+            <button class="btn btn-secondary">联系管理员</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动端导航抽屉 -->
+    <div class="overlay" id="nav-drawer-overlay" hidden></div>
+    <aside class="drawer drawer-left" id="nav-drawer" role="dialog" aria-modal="true" aria-label="工作区导航" hidden>
+      <div class="drawer-head">
+        <h3>工作区</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body">
+        <ul>
+          <li class="row-item">
+            <span class="row-icon">🏠</span><span class="row-body"><span class="row-title">总览</span></span>
+          </li>
+          <li class="row-item">
+            <span class="row-icon">📋</span
+            ><span class="row-body"
+              ><span class="row-title">问卷</span><span class="row-desc">问卷 90 · 已发布 88</span></span
+            >
+          </li>
+          <li class="row-item">
+            <span class="row-icon">🌿</span
+            ><span class="row-body"
+              ><span class="row-title">内容</span><span class="row-desc">投稿、用户、模板与素材</span></span
+            >
+          </li>
+          <li class="row-item">
+            <span class="row-icon">🌳</span
+            ><span class="row-body"
+              ><span class="row-title">社区</span><span class="row-desc">树洞、纸条、画廊与展示区</span></span
+            >
+          </li>
+          <li class="row-item">
+            <span class="row-icon">⚙️</span
+            ><span class="row-body"
+              ><span class="row-title">系统</span><span class="row-desc">审计、回收站、授权与设置</span></span
+            >
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- 工作区详情抽屉 -->
+    <aside class="drawer drawer-right" id="ws-drawer" role="dialog" aria-modal="true" aria-label="工作区详情" hidden>
+      <div class="drawer-head">
+        <h3 id="ws-drawer-title">工作区详情</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body"><div class="ws-module-list" id="ws-drawer-list"></div></div>
+      <div class="drawer-foot">
+        <a class="btn btn-secondary btn-block" href="placeholder.html?from=dashboard" id="ws-drawer-link"
+          >进入对应页面（占位）</a
+        >
+      </div>
+    </aside>
+
+    <!-- 报告详情抽屉 -->
+    <aside class="drawer drawer-right" id="q-drawer" role="dialog" aria-modal="true" aria-label="报告详情" hidden>
+      <div class="drawer-head">
+        <h3>报告详情</h3>
+        <button class="icon-btn" data-close aria-label="关闭">✕</button>
+      </div>
+      <div class="drawer-body">
+        <div class="field">
+          <span class="field-label">报告 / 问卷</span>
+          <p id="qd-name" style="color: var(--text-primary)">—</p>
+        </div>
+        <div class="field" style="margin-top: 12px">
+          <span class="field-label">目标渠道</span>
+          <p id="qd-channel">—</p>
+        </div>
+        <div class="field" style="margin-top: 12px">
+          <span class="field-label">状态</span>
+          <p><span class="chip" id="qd-status">—</span></p>
+        </div>
+        <div class="field" style="margin-top: 12px">
+          <span class="field-label">更新时间</span>
+          <p id="qd-time" class="mono">—</p>
+        </div>
+        <div class="field" style="margin-top: 12px">
+          <span class="field-label">答卷 ID</span>
+          <p id="qd-rid" class="mono">MOCK-0000</p>
+        </div>
+      </div>
+      <div class="drawer-foot" style="display: flex; gap: 12px">
+        <button class="btn btn-primary" style="flex: 1" onclick="ProtoUI.toast('下载报告（Mock 演示）')">
+          下载报告
+        </button>
+        <button class="btn btn-secondary" style="flex: 1" onclick="ProtoUI.toast('重新投递（Mock 演示）')">
+          重新投递
+        </button>
+      </div>
+    </aside>
+
+    <!-- 移动端批量操作栏 -->
+    <div class="batchbar safe-bottom" id="batchbar">
+      <span id="batchbar-count" style="font-size: var(--type-caption); color: var(--text-secondary)">已选 0 项</span>
+      <div style="flex: 1"></div>
+      <button class="btn btn-secondary btn-sm">批量重试</button>
+      <button class="btn btn-secondary btn-sm">批量下载</button>
+      <button class="btn btn-ghost btn-sm" id="batch-clear">取消</button>
+    </div>
+
+    <script src="../assets/interactions.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        /* ---------- Mock 数据 ---------- */
+        const ROWS = [
+          {
+            name: "恋爱依恋类型测评",
+            channel: "TG 频道 · 自动归档",
+            status: "done",
+            statusLabel: "已完成",
+            time: "23:12",
+            rid: "MOCK-8841",
+          },
+          {
+            name: "十二星座本周运势问卷",
+            channel: "TG 频道 · 自动归档",
+            status: "running",
+            statusLabel: "生成中",
+            time: "23:05",
+            rid: "MOCK-8839",
+          },
+          {
+            name: "压力自测量表 v3",
+            channel: "管理员邮箱",
+            status: "queued",
+            statusLabel: "排队中",
+            time: "22:58",
+            rid: "MOCK-8836",
+          },
+          {
+            name: "社交焦虑筛查",
+            channel: "TG 频道 · 自动归档",
+            status: "done",
+            statusLabel: "已完成",
+            time: "22:41",
+            rid: "MOCK-8830",
+          },
+          {
+            name: "五种爱情语言测试",
+            channel: "TG 频道 · 自动归档",
+            status: "failed",
+            statusLabel: "失败",
+            time: "22:30",
+            rid: "MOCK-8824",
+          },
+          {
+            name: "睡眠质量指数",
+            channel: "管理员邮箱",
+            status: "done",
+            statusLabel: "已完成",
+            time: "21:57",
+            rid: "MOCK-8818",
+          },
+          {
+            name: "内在动机画像",
+            channel: "TG 频道 · 自动归档",
+            status: "queued",
+            statusLabel: "排队中",
+            time: "21:30",
+            rid: "MOCK-8811",
+          },
+          {
+            name: "人格面具测评",
+            channel: "TG 频道 · 自动归档",
+            status: "running",
+            statusLabel: "生成中",
+            time: "21:12",
+            rid: "MOCK-8807",
+          },
+        ];
+        const STATUS_CHIP = {
+          done: "chip-success",
+          running: "chip-info",
+          queued: "chip-warning",
+          failed: "chip-danger",
+        };
+
+        const tbody = document.getElementById("queue-body");
+
+        function statusChip(row) {
+          return '<span class="chip status-chip ' + STATUS_CHIP[row.status] + '">' + row.statusLabel + "</span>";
+        }
+
+        function renderRows() {
+          const kw = (document.querySelectorAll(".queue-search")[0].value || "").trim().toLowerCase();
+          const kw2 = (document.querySelectorAll(".queue-search")[1] || {}).value || "";
+          const keyword = (kw || kw2).trim().toLowerCase();
+          const active = document.querySelector('#queue-filters [aria-pressed="true"]');
+          const filter = active ? active.dataset.filter : "all";
+          const list =
+            currentState === "empty"
+              ? []
+              : ROWS.filter((r) => filter === "all" || r.status === filter).filter(
+                  (r) => !keyword || r.name.toLowerCase().includes(keyword),
+                );
+          tbody.innerHTML = list
+            .map(
+              (r, i) =>
+                '<tr data-idx="' +
+                ROWS.indexOf(r) +
+                '" data-status="' +
+                r.status +
+                '">' +
+                '<td data-label="选择"><input type="checkbox" class="row-sel" aria-label="选择 ' +
+                r.name +
+                '" /></td>' +
+                '<td data-label="报告 / 问卷" style="color:var(--text-primary);">' +
+                r.name +
+                "</td>" +
+                '<td data-label="目标渠道">' +
+                r.channel +
+                "</td>" +
+                '<td data-label="状态">' +
+                statusChip(r) +
+                "</td>" +
+                '<td data-label="更新时间" class="num">' +
+                r.time +
+                "</td>" +
+                '<td data-label="操作">' +
+                (r.status === "failed"
+                  ? '<button class="btn btn-sm btn-secondary row-retry">重试</button>'
+                  : '<button class="btn btn-sm btn-ghost row-view">详情</button>') +
+                "</td></tr>",
+            )
+            .join("");
+          document.getElementById("queue-empty").hidden = list.length !== 0;
+          document.getElementById("queue-table").closest(".table-scroll").hidden = list.length === 0;
+          updateSel();
+        }
+
+        /* ---------- 行为 ---------- */
+        let filter = "all";
+        document.getElementById("queue-filters").addEventListener("click", (e) => {
+          const chip = e.target.closest(".chip-select");
+          if (!chip) return;
+          filter = chip.dataset.filter;
+          document
+            .querySelectorAll("#queue-filters .chip-select")
+            .forEach((c) => c.setAttribute("aria-pressed", String(c === chip)));
+          renderRows();
+        });
+        document.querySelectorAll(".queue-search").forEach((inp) => inp.addEventListener("input", renderRows));
+
+        tbody.addEventListener("click", (e) => {
+          if (e.target.closest("input") || e.target.closest("button")) return;
+          const tr = e.target.closest("tr");
+          if (!tr) return;
+          const r = ROWS[Number(tr.dataset.idx)];
+          document.getElementById("qd-name").textContent = r.name;
+          document.getElementById("qd-channel").textContent = r.channel;
+          const st = document.getElementById("qd-status");
+          st.textContent = r.statusLabel;
+          st.className = "chip " + STATUS_CHIP[r.status];
+          document.getElementById("qd-time").textContent = r.time + "（Mock）";
+          document.getElementById("qd-rid").textContent = r.rid;
+          ProtoUI.open("#q-drawer");
+        });
+        tbody.addEventListener("change", (e) => {
+          if (e.target.classList.contains("row-sel")) updateSel();
+        });
+
+        function selBoxes() {
+          return [...tbody.querySelectorAll(".row-sel:checked")];
+        }
+        function updateSel() {
+          const n = selBoxes().length;
+          document.getElementById("sel-count").textContent = "已选 " + n + " 项";
+          document.getElementById("batchbar-count").textContent = "已选 " + n + " 项";
+          document.getElementById("batchbar").classList.toggle("is-visible", n > 0);
+        }
+        document.getElementById("sel-all").addEventListener("change", (e) => {
+          tbody.querySelectorAll(".row-sel").forEach((b) => (b.checked = e.target.checked));
+          updateSel();
+        });
+        document.getElementById("batch-clear").addEventListener("click", () => {
+          tbody.querySelectorAll(".row-sel").forEach((b) => (b.checked = false));
+          document.getElementById("sel-all").checked = false;
+          updateSel();
+        });
+        ["batch-retry", "batch-download"].forEach((id) =>
+          document
+            .getElementById(id)
+            .addEventListener("click", () => ProtoUI.toast("批量操作为原型演示（Mock），未触达真实队列")),
+        );
+        document.getElementById("batchbar").addEventListener("click", (e) => {
+          if (e.target.closest("button") && !e.target.closest("#batch-clear"))
+            ProtoUI.toast("批量操作为原型演示（Mock）");
+        });
+
+        /* 工作区抽屉 */
+        const WS_MODULES = {
+          问卷: [
+            ["1.1", "问卷列表"],
+            ["1.2", "分类"],
+            ["1.3", "导入"],
+            ["1.4", "答卷动态"],
+            ["1.5", "报告"],
+          ],
+          内容: [
+            ["2.1", "金币经济"],
+            ["2.2", "网页投稿"],
+            ["2.3", "用户"],
+            ["2.4", "模板"],
+            ["2.5", "认证卡内容"],
+            ["2.6", "素材库"],
+          ],
+          社区: [
+            ["3.1", "树洞"],
+            ["3.2", "纸条复核"],
+            ["3.3", "个人画廊"],
+            ["3.4", "展示区"],
+            ["3.5", "小游戏管理"],
+            ["3.6", "网页应用"],
+          ],
+          系统: [
+            ["4.1", "审计"],
+            ["4.2", "回收站"],
+            ["4.3", "授权"],
+            ["4.4", "控制中心"],
+            ["4.5", "设置"],
+          ],
+        };
+        document.getElementById("workspace-grid").addEventListener("click", (e) => {
+          const card = e.target.closest(".workspace-card");
+          if (!card) return;
+          const ws = card.dataset.ws;
+          document.getElementById("ws-drawer-title").textContent = "工作区 · " + ws;
+          document.getElementById("ws-drawer-list").innerHTML = WS_MODULES[ws]
+            .map(
+              (m) =>
+                '<div class="ws-module-row"><span class="mono muted">' +
+                m[0] +
+                "</span>" +
+                '<span style="flex:1; color:var(--text-primary);">' +
+                m[1] +
+                "</span>" +
+                '<a href="placeholder.html?from=dashboard&ws=' +
+                encodeURIComponent(ws) +
+                '" style="font-size:var(--type-caption);">进入 →</a></div>',
+            )
+            .join("");
+          ProtoUI.open("#ws-drawer", card);
+        });
+
+        /* 刷新 */
+        const refreshBtn = document.getElementById("refresh-btn");
+        refreshBtn.addEventListener("click", () => {
+          refreshBtn.classList.add("is-loading");
+          setTimeout(() => {
+            refreshBtn.classList.remove("is-loading");
+            ProtoUI.toast("已刷新（Mock 演示，数据未变化）");
+          }, 700);
+        });
+
+        /* ---------- 状态机 ---------- */
+        let currentState = "normal";
+        const KPI_ZERO = { users: "0", surveys: "0", published: "0", responses: "0", today: "0" };
+        const KPI_DEFAULT = { users: "1,191", surveys: "90", published: "88", responses: "1,803", today: "26" };
+        let refreshTimer = null;
+
+        function setSections(visible) {
+          document.getElementById("dash-main").hidden = !visible;
+          ["skeleton-layer", "error-block", "noperm-block"].forEach((id) => {
+            if (id !== "skeleton-layer") document.getElementById(id).hidden = true;
+          });
+        }
+
+        function applyState(state) {
+          currentState = state;
+          const sk = document.getElementById("skeleton-layer");
+          const eb = document.getElementById("error-block");
+          const nb = document.getElementById("noperm-block");
+          const pb = document.getElementById("partial-banner");
+          const qb = document.getElementById("queue-banner");
+          sk.hidden = state !== "loading";
+          eb.hidden = true;
+          nb.hidden = true;
+          pb.classList.add("hidden");
+          qb.classList.add("hidden");
+
+          if (state === "loading" || state === "error" || state === "noperm") {
+            document.getElementById("dash-main").hidden = true;
+            if (state === "error") eb.hidden = false;
+            if (state === "noperm") nb.hidden = false;
+            clearTimeout(refreshTimer);
+            return;
+          }
+
+          document.getElementById("dash-main").hidden = false;
+          document.querySelectorAll(".kpi").forEach((k) => {
+            k.classList.remove("is-error", "is-refreshing");
+            k.querySelector(".kpi-value").textContent = KPI_DEFAULT[k.dataset.kpi];
+          });
+
+          if (state === "empty") {
+            Object.entries(KPI_ZERO).forEach(([k, v]) => {
+              document.querySelector('.kpi[data-kpi="' + k + '"] .kpi-value').textContent = v;
+            });
+            document.getElementById("queue-empty").hidden = false;
+            document.querySelector("#sec-queue .table-scroll").hidden = true;
+          } else {
+            document.getElementById("queue-empty").hidden = true;
+            document.querySelector("#sec-queue .table-scroll").hidden = false;
+          }
+          if (state === "partial") {
+            pb.classList.remove("hidden");
+            const today = document.querySelector('.kpi[data-kpi="today"]');
+            today.classList.add("is-error");
+            today.querySelector(".kpi-value").textContent = "—";
+          }
+          if (state === "queue-error") qb.classList.remove("hidden");
+          if (state === "refreshing") {
+            document.querySelectorAll(".kpi").forEach((k) => k.classList.add("is-refreshing"));
+            refreshBtn.classList.add("is-loading");
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(() => {
+              refreshBtn.classList.remove("is-loading");
+              applyState("normal");
+              ProtoUI.toast("已刷新（Mock 演示）");
+            }, 1200);
+          }
+          renderRows();
+        }
+
+        document.getElementById("error-retry").addEventListener("click", () => {
+          applyState("loading");
+          setTimeout(() => applyState("normal"), 800);
+        });
+
+        ProtoUI.bindStatePanel(
+          [
+            { value: "normal", label: "正常（默认）" },
+            { value: "loading", label: "加载中" },
+            { value: "empty", label: "零数据" },
+            { value: "error", label: "请求失败" },
+            { value: "partial", label: "部分接口失败" },
+            { value: "noperm", label: "无权限" },
+            { value: "queue-error", label: "报告队列异常" },
+            { value: "refreshing", label: "刷新中" },
+          ],
+          applyState,
+          "normal",
+        );
+
+        renderRows();
+      })();
+    </script>
+  </body>
+</html>

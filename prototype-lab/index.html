@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prototype Lab · 控制台</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="lab.css" />
+  </head>
+  <body>
+    <header class="lab-bar">
+      <span class="lab-brand">🧪 Prototype Lab</span>
+      <span class="chip chip-warning">PROTOTYPE</span>
+      <span class="chip chip-gold">MOCK DATA</span>
+
+      <div class="lab-group">
+        <label class="lab-label" for="ctl-page">页面</label>
+        <select class="lab-select" id="ctl-page">
+          <option value="pages/dashboard.html">Dashboard · 后台运营总览</option>
+          <option value="pages/games.html">Games · 小游戏大厅</option>
+          <option value="pages/room.html">Room · 创建/加入房间</option>
+          <option value="pages/profile.html">Profile · 个人中心</option>
+          <option value="pages/placeholder.html">Placeholder · 占位页</option>
+        </select>
+      </div>
+
+      <div class="lab-group">
+        <label class="lab-label" for="ctl-vp">视口</label>
+        <select class="lab-select" id="ctl-vp">
+          <option value="1440x900">Desktop 1440×900</option>
+          <option value="1280x800">Laptop 1280×800</option>
+          <option value="1024x768">Compact Desktop 1024×768</option>
+          <option value="768x1024">Tablet Portrait 768×1024</option>
+          <option value="1024x768@land">Tablet Landscape 1024×768</option>
+          <option value="390x844">Mobile 390×844</option>
+          <option value="360x800">Narrow 360×800</option>
+          <option value="390x764">TG WebView 390×764</option>
+          <option value="844x390">Mobile Landscape 844×390</option>
+        </select>
+      </div>
+
+      <div class="lab-group">
+        <label class="lab-label" for="ctl-theme">主题</label>
+        <select class="lab-select" id="ctl-theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+
+      <button class="lab-btn" id="ctl-orient" title="切换设备方向">↔ 方向: 竖屏</button>
+      <a class="lab-btn" id="ctl-open" href="pages/dashboard.html" target="_blank" rel="noopener">↗ 新窗口打开</a>
+      <span class="lab-size" id="ctl-size">1440×900 · 100%</span>
+    </header>
+
+    <main class="lab-stage" id="stage">
+      <div class="lab-frame-wrap" id="frame-wrap">
+        <div class="lab-frame" id="frame">
+          <iframe id="proto-iframe" title="原型预览" src="pages/dashboard.html"></iframe>
+        </div>
+      </div>
+    </main>
+
+    <script src="lab.js"></script>
+  </body>
+</html>

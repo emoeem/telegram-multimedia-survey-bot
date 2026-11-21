@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>原型占位页 · Prototype Lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+    <link rel="stylesheet" href="../assets/tokens.css" />
+    <link rel="stylesheet" href="../assets/base.css" />
+  </head>
+  <body>
+    <header class="topnav">
+      <span class="topnav-brand">✉️ 问卷星球</span>
+      <nav class="topnav-links" aria-label="全局导航">
+        <a class="topnav-link is-active" href="dashboard.html">原型导航</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <div class="state-block" style="margin-top: var(--space-7)">
+        <span class="state-icon">🗺️</span>
+        <h3>对应页面原型将在后续批次交付</h3>
+        <p id="ph-desc">
+          M1 原型范围仅包含四个核心页面：后台运营总览、小游戏大厅、创建/加入房间、个人中心。
+          此页仅用于演示工作区卡片/入口的跳转链路，不冒充已完成的设计。
+        </p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center">
+          <a class="btn btn-primary" href="dashboard.html">进入运营总览原型</a>
+          <a class="btn btn-secondary" href="games.html">进入小游戏大厅原型</a>
+          <a class="btn btn-secondary" href="room.html">进入房间原型</a>
+          <a class="btn btn-secondary" href="profile.html">进入个人中心原型</a>
+        </div>
+        <p class="field-help" id="ph-params"></p>
+      </div>
+    </main>
+    <script>
+      const p = new URLSearchParams(location.search);
+      const parts = [];
+      if (p.get("from")) parts.push("来源页面：" + p.get("from"));
+      if (p.get("ws")) parts.push("目标工作区：" + p.get("ws"));
+      if (p.get("to")) parts.push("目标路由：" + p.get("to"));
+      if (parts.length) document.getElementById("ph-params").textContent = parts.join(" · ") + "（Mock 跳转参数）";
+    </script>
+  </body>
+</html>

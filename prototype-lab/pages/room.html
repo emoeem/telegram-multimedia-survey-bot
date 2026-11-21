@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>创建 / 加入房间 · Prototype Lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23e0a458'/%3E%3C/svg%3E"
+    />
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+    <link rel="stylesheet" href="../assets/tokens.css" />
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+      .room-grid {
+        display: grid;
+        grid-template-columns: 5fr 7fr;
+        gap: var(--space-5);
+        align-items: start;
+      }
+      .room-left,
+      .room-right {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+        min-width: 0;
+      }
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--type-caption);
+        color: var(--text-secondary);
+      }
+      .back-link:hover {
+        color: var(--brand-text);
+        text-decoration: none;
+      }
+      .help-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+        padding-left: 0;
+        list-style: none;
+      }
+      .help-list li {
+        position: relative;
+        padding-left: 18px;
+        font-size: var(--type-caption);
+        color: var(--text-secondary);
+      }
+      .help-list li::before {
+        content: "·";
+        position: absolute;
+        left: 6px;
+        color: var(--brand-text);
+        font-weight: 700;
+      }
+      #tab-join.hidden,
+      #tab-create.hidden {
+        display: none;
+      }
+      @media (max-width: 1023.98px) {
+        .room-grid {
+          grid-template-columns: 1fr;
+        }
+        .mobile-tabs {
+          display: inline-flex;
+        }
+      }
+      @media (min-width: 1024px) {
+        .mobile-tabs {
+          display: none;
+        }
+      }
+      /* 手机横屏：棋盘/表单双列压缩 */
+      @media (orientation: landscape) and (max-height: 520px) {
+        .room-grid {
+          grid-template-columns: 1fr 1fr;
+          gap: var(--space-4);
+        }
+        .container {
+          padding-top: var(--space-3);
+        }
+        .page-head .lead {
+          display: none;
+        }
+        .card {
+          padding: var(--space-4);
+        }
+        .bottomnav {
+          display: none !important;
+        }
+        .container {
+          padding-bottom: var(--space-6) !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="user-page">
+    <header class="topnav">
+      <span class="topnav-brand">✉️ 问卷星球</span>
+      <nav class="topnav-links" aria-label="全局导航">
+        <a class="topnav-link" href="placeholder.html?from=room&to=survey">📋 问卷</a>
+        <a class="topnav-link is-active" href="games.html">🎮 小游戏</a>
+        <a class="topnav-link" href="placeholder.html?from=room&to=plaza">🌳 广场</a>
+        <a class="topnav-link" href="placeholder.html?from=room&to=showcase">🖼 展示</a>
+        <a class="topnav-link" href="placeholder.html?from=room&to=card">🎫 认证卡</a>
+        <a class="topnav-link" href="profile.html">👤 我的</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <a class="back-link" href="games.html">← 返回小游戏</a>
+      <div class="page-head" style="margin-top: 8px">
+        <div>
+          <h1 id="page-title">五子棋 · 联机对战</h1>
+          <p class="lead" id="page-lead">黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。</p>
+        </div>
+        <span class="chip chip-warning">原型演示 · Mock 数据</span>
+      </div>
+
+      <div class="room-grid">
+        <!-- 左：规则 + 玩法选择 -->
+        <div class="room-left">
+          <div class="card">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span class="game-icon" id="g-icon">♟️</span>
+              <div>
+                <h3 id="g-name">五子棋 · 联机对战</h3>
+                <span class="chip chip-gold" style="margin-top: 4px" id="g-tag">棋类 · 2 人</span>
+              </div>
+            </div>
+            <p style="margin-top: 12px" id="g-rules">
+              黑白双方轮流落子，先在横、竖或斜方向连成五子者获胜。每一步限时一分钟，超时判负。
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px" id="g-meta">
+              <span class="chip">👥 2 人</span><span class="chip">⏱ 每步 1 分钟</span
+              ><span class="chip chip-info">🌐 联机</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-bottom: 12px">玩法选择</h3>
+            <div style="display: flex; flex-direction: column; gap: var(--space-3)" id="game-options"></div>
+          </div>
+        </div>
+
+        <!-- 右：创建 + 加入 -->
+        <div class="room-right">
+          <div class="seg mobile-tabs" id="mobile-tabs" role="tablist" aria-label="创建或加入">
+            <button class="seg-btn" data-mtab="create" aria-selected="true">✨ 创建房间</button>
+            <button class="seg-btn" data-mtab="join" aria-selected="false">🔗 加入房间</button>
+          </div>
+
+          <!-- 创建房间 -->
+          <div class="card card-elevated" id="tab-create">
+            <h3>✨ 创建房间</h3>
+            <p class="field-help" style="margin-top: 6px">创建后你会拿到一个房间码，发给好友即可加入。</p>
+            <div id="create-settings" style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px"></div>
+            <button class="btn btn-primary btn-lg btn-block" id="create-btn" style="margin-top: 16px">
+              创建五子棋房间
+            </button>
+          </div>
+
+          <!-- 创建成功（Mock） -->
+          <div class="card card-elevated hidden" id="create-success">
+            <div style="text-align: center">
+              <span style="font-size: 34px">🎉</span>
+              <h3 style="margin-top: 8px">
+                房间已创建<span class="chip chip-gold" style="margin-left: 8px; vertical-align: 2px">Mock</span>
+              </h3>
+              <p class="field-help" style="margin-top: 6px">这是演示房间码，未创建真实房间。正式版可直接复制分享。</p>
+            </div>
+            <div class="room-code" id="room-code" style="margin-top: 16px">GOM-4K7Q2</div>
+            <div style="display: flex; gap: 12px; margin-top: 16px">
+              <button class="btn btn-primary" id="copy-code" style="flex: 1">复制房间码</button>
+              <button class="btn btn-secondary" id="copy-link" style="flex: 1">复制邀请链接</button>
+            </div>
+            <div style="margin-top: 16px; border-top: 1px solid var(--border-subtle); padding-top: 16px">
+              <div class="seat-row" id="seat-row">
+                <span class="seat">👑 你（房主）</span>
+                <span class="seat is-empty" id="empty-seat">等待对手加入…</span>
+              </div>
+              <button class="btn btn-primary btn-block btn-lg hidden" id="start-match" style="margin-top: 16px">
+                开始对局 →
+              </button>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="back-create" style="margin-top: 12px">← 返回重新选择玩法</button>
+          </div>
+
+          <!-- 加入房间（桌面常显 / 移动端随 Tab 切换） -->
+          <div class="card" id="tab-join">
+            <h3>🔗 加入房间</h3>
+            <div class="field" style="margin-top: 12px">
+              <label class="field-label" for="join-code">房间码</label>
+              <input class="input" id="join-code" inputmode="numeric" autocomplete="off" placeholder="输入房间码" />
+              <span class="field-error" id="join-error">⚠️ <span id="join-error-text"></span></span>
+              <span class="field-help">直接粘贴好友发来的邀请链接也可以。</span>
+            </div>
+            <button class="btn btn-secondary btn-lg btn-block" id="join-btn" style="margin-top: 16px">加入</button>
+          </div>
+
+          <!-- 房间码说明（仅基于本页已有规则，不虚构新玩法） -->
+          <div class="card" id="room-help">
+            <h3>ℹ️ 房间码与邀请说明</h3>
+            <ul class="help-list">
+              <li>房间码为 4–6 位字符，由创建时生成（如 GOM-4K7Q2）。</li>
+              <li>加入时可直接粘贴好友发来的邀请链接，将自动提取房间码。</li>
+              <li>每一步限时一分钟，超时判负（棋类玩法）。</li>
+              <li>创建与加入均为原型演示流程，不会创建真实房间。</li>
+            </ul>
+          </div>
+
+          <!-- 加入成功（Mock） -->
+          <div class="card card-elevated hidden" id="join-success">
+            <div style="text-align: center">
+              <span style="font-size: 34px">🤝</span>
+              <h3 style="margin-top: 8px">
+                加入成功<span class="chip chip-gold" style="margin-left: 8px; vertical-align: 2px">Mock</span>
+              </h3>
+              <p class="field-help" style="margin-top: 6px">
+                已加入房间 <span class="mono" id="joined-code">—</span>（演示房间）。
+              </p>
+            </div>
+            <div class="seat-row" style="margin-top: 16px; justify-content: center">
+              <span class="seat">👑 房主 · 山茶</span>
+              <span class="seat">你</span>
+            </div>
+            <div class="state-block" style="padding: var(--space-4); margin-top: 16px">
+              <span class="state-icon">⏳</span>
+              <h3 style="font-size: var(--type-body)">等待房主开局</h3>
+              <p style="font-size: var(--type-caption)">对局开始后将自动进入棋盘（原型演示不会真的开局）。</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="leave-room" style="margin-top: 12px">离开房间</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <nav class="bottomnav safe-bottom" aria-label="底部导航">
+      <a class="bottomnav-item" href="placeholder.html?from=room&to=survey"><span class="bn-icon">📋</span>问卷</a>
+      <a class="bottomnav-item is-active" href="games.html"><span class="bn-icon">🎮</span>小游戏</a>
+      <a class="bottomnav-item" href="placeholder.html?from=room&to=plaza"><span class="bn-icon">🌳</span>广场</a>
+      <a class="bottomnav-item" href="placeholder.html?from=room&to=showcase"><span class="bn-icon">🖼</span>展示</a>
+      <a class="bottomnav-item" href="placeholder.html?from=room&to=card"><span class="bn-icon">🎫</span>认证卡</a>
+      <a class="bottomnav-item" href="profile.html"><span class="bn-icon">👤</span>我的</a>
+    </nav>
+
+    <script src="../assets/interactions.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        const GAMES = [
+          {
+            id: "gomoku",
+            icon: "♟️",
+            name: "五子棋 · 联机对战",
+            short: "五子棋",
+            tag: "棋类 · 2 人",
+            desc: "黑白轮流落子，先连成五子的一方获胜；每一步限时一分钟。",
+            rules: "黑白双方轮流落子，先在横、竖或斜方向连成五子者获胜。每一步限时一分钟，超时判负。",
+            meta: ["👥 2 人", "⏱ 每步 1 分钟"],
+            codePrefix: "GOM",
+            settings: [],
+          },
+          {
+            id: "chess",
+            icon: "♞",
+            name: "象棋 · 联机对战",
+            short: "象棋",
+            tag: "棋类 · 2 人",
+            desc: "楚河汉界双人博弈：车马炮兵将士将，将死或困毙对方获胜；每一步限时一分钟。",
+            rules: "标准中国象棋规则。将死或困毙对方获胜，长将判负。每一步限时一分钟。",
+            meta: ["👥 2 人", "⏱ 每步 1 分钟"],
+            codePrefix: "CHS",
+            settings: [],
+          },
+          {
+            id: "aeroplane",
+            icon: "✈️",
+            name: "飞行棋 · 联机对战",
+            short: "飞行棋",
+            tag: "棋类 · 2–4 人",
+            desc: "经典飞行棋 2–4 人：掷六起飞、同色跳跌、虚线飞行、终点精确反弹；先进全部飞机到者胜。",
+            rules:
+              "掷到 6 才能起飞，同色格跳跃，虚线飞行连线，终点需精确点数否则反弹。先把全部 4 架飞机送到终点者获胜。",
+            meta: ["👥 2–4 人", "⏱ 约 20 分钟"],
+            codePrefix: "AIR",
+            settings: [{ key: "players", label: "人数", options: ["2 人", "3 人", "4 人"] }],
+          },
+          {
+            id: "landlord",
+            icon: "🃏",
+            name: "斗地主 · 联机对战",
+            short: "斗地主",
+            tag: "牌类 · 3 人",
+            desc: "3 人开局:叫分抢地主、底牌公开、炸弹王炸翻倍、春天反春天:积分制对战。",
+            rules: "叫分决定地主，底牌公开。炸弹、王炸翻倍；春天/反春天额外翻倍。积分制累计对战。",
+            meta: ["👥 3 人", "⏱ 约 8 分钟"],
+            codePrefix: "DDL",
+            settings: [],
+          },
+          {
+            id: "werewolf",
+            icon: "🐺",
+            name: "狼人杀 · 联机对战",
+            short: "狼人杀",
+            tag: "派对 · 6–12 人",
+            desc: "6–12 人开局:狼人/村民/预言家/女巫/守卫/猎人,黑夜白昼轮转,票选放逐,猎人一枪定音。",
+            rules:
+              "黑夜狼人行动，白天全员发言并票选放逐。预言家查验、女巫用药、守卫守护、猎人出局可开枪。好人放逐全部狼人或狼人屠边即结束。",
+            meta: ["👥 6–12 人", "⏱ 约 15 分钟"],
+            codePrefix: "WW",
+            settings: [{ key: "players", label: "人数", options: ["6 人", "8 人", "10 人", "12 人"] }],
+          },
+        ];
+
+        const params = new URLSearchParams(location.search);
+        let selected = GAMES.find((g) => g.id === params.get("game")) || GAMES[0];
+
+        /* Telegram WebView 帧模拟（共享实现，见 interactions.js） */
+        ProtoUI.applyTgFrame({ title: "问卷星球", mount: "main.container" });
+
+        /* ---------- 玩法选择 ---------- */
+        const optionsEl = document.getElementById("game-options");
+        function renderOptions() {
+          optionsEl.innerHTML = GAMES.map(
+            (g) =>
+              '<button class="game-option' +
+              (g.id === selected.id ? " is-selected" : "") +
+              '" data-game="' +
+              g.id +
+              '" aria-pressed="' +
+              (g.id === selected.id) +
+              '">' +
+              '<span class="game-icon">' +
+              g.icon +
+              "</span>" +
+              '<span class="game-card-body"><span class="game-name">' +
+              g.short +
+              "</span>" +
+              '<span class="game-desc">' +
+              g.desc +
+              "</span></span>" +
+              '<span class="chip chip-gold opt-pick">已选</span></button>',
+          ).join("");
+        }
+
+        function renderSelected() {
+          document.getElementById("page-title").textContent = selected.name;
+          document.getElementById("page-lead").textContent = selected.desc;
+          document.getElementById("g-icon").textContent = selected.icon;
+          document.getElementById("g-name").textContent = selected.name;
+          document.getElementById("g-tag").textContent = selected.tag;
+          document.getElementById("g-rules").textContent = selected.rules;
+          document.getElementById("g-meta").innerHTML =
+            selected.meta.map((m) => '<span class="chip">' + m + "</span>").join("") +
+            '<span class="chip chip-info">🌐 联机</span>';
+          document.getElementById("create-btn").textContent = "创建" + selected.short + "房间";
+          document.getElementById("create-settings").innerHTML =
+            selected.settings
+              .map(
+                (s) =>
+                  '<div class="field"><span class="field-label">' +
+                  s.label +
+                  "</span>" +
+                  '<select class="select" data-setting="' +
+                  s.key +
+                  '">' +
+                  s.options.map((o) => "<option>" + o + "</option>").join("") +
+                  "</select></div>",
+              )
+              .join("") + (selected.settings.length ? "" : '<p class="field-help">该玩法无需额外开局设置。</p>');
+          document.getElementById("room-code").textContent =
+            selected.codePrefix + "-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+        }
+
+        optionsEl.addEventListener("click", (e) => {
+          const btn = e.target.closest(".game-option");
+          if (!btn) return;
+          selected = GAMES.find((g) => g.id === btn.dataset.game);
+          renderOptions();
+          renderSelected();
+          ProtoUI.toast("已选择 " + selected.short + "（Mock）");
+        });
+
+        /* ---------- 创建流程 ---------- */
+        const createBtn = document.getElementById("create-btn");
+        let opponentTimer = null;
+        createBtn.addEventListener("click", () => {
+          createBtn.classList.add("is-loading");
+          createBtn.textContent = "正在创建…";
+          setTimeout(() => {
+            createBtn.classList.remove("is-loading");
+            createBtn.textContent = "创建" + selected.short + "房间";
+            document.getElementById("tab-create").classList.add("hidden");
+            document.getElementById("tab-join").classList.add("hidden");
+            document.getElementById("join-success").classList.add("hidden");
+            document.getElementById("create-success").classList.remove("hidden");
+            document.getElementById("empty-seat").textContent = "等待对手加入…";
+            document.getElementById("start-match").classList.add("hidden");
+            clearTimeout(opponentTimer);
+            opponentTimer = setTimeout(() => {
+              const seat = document.getElementById("empty-seat");
+              seat.className = "seat";
+              seat.textContent = "🪑 对手 · 夜航星（演示加入）";
+              document.getElementById("start-match").classList.remove("hidden");
+            }, 2200);
+          }, 900);
+        });
+
+        document.getElementById("copy-code").addEventListener("click", async () => {
+          const code = document.getElementById("room-code").textContent;
+          const btn = document.getElementById("copy-code");
+          const ok = await ProtoUI.copy(code);
+          btn.textContent = ok ? "已复制 ✓" : "复制失败（请手动复制）";
+          setTimeout(() => (btn.textContent = "复制房间码"), 2000);
+        });
+        document.getElementById("copy-link").addEventListener("click", async () => {
+          const code = document.getElementById("room-code").textContent;
+          const btn = document.getElementById("copy-link");
+          const ok = await ProtoUI.copy("https://emoemok.top/game?room=" + code);
+          btn.textContent = ok ? "链接已复制 ✓" : "复制失败";
+          setTimeout(() => (btn.textContent = "复制邀请链接"), 2000);
+        });
+        document
+          .getElementById("start-match")
+          .addEventListener("click", () => ProtoUI.toast("对局开始（Mock）— 正式版将进入棋盘界面"));
+        document.getElementById("back-create").addEventListener("click", () => {
+          document.getElementById("create-success").classList.add("hidden");
+          document.getElementById("tab-create").hidden = false;
+          if (window.innerWidth >= 1024) {
+            document.getElementById("tab-join").hidden = false;
+          } else {
+            document.querySelector('#mobile-tabs [data-mtab="create"]').setAttribute("aria-selected", "true");
+            document.querySelector('#mobile-tabs [data-mtab="join"]').setAttribute("aria-selected", "false");
+            document.getElementById("tab-join").hidden = true;
+          }
+        });
+
+        /* ---------- 加入流程 ---------- */
+        const joinBtn = document.getElementById("join-btn");
+        const joinInput = document.getElementById("join-code");
+        const joinError = document.getElementById("join-error");
+        const joinErrorText = document.getElementById("join-error-text");
+
+        function showJoinError(msg) {
+          joinErrorText.textContent = msg;
+          joinError.classList.add("is-visible");
+          joinInput.classList.add("is-error");
+        }
+        function clearJoinError() {
+          joinError.classList.remove("is-visible");
+          joinInput.classList.remove("is-error");
+        }
+        joinInput.addEventListener("input", clearJoinError);
+
+        function extractCode(raw) {
+          const m = raw.match(/room=([A-Za-z0-9-]{3,10})/);
+          return m ? m[1] : raw.trim();
+        }
+
+        function attemptJoin() {
+          const raw = joinInput.value;
+          const code = extractCode(raw);
+          if (!raw.trim()) return showJoinError("请输入房间码");
+          if (!/^[A-Za-z]{0,3}-?[0-9A-Z]{4,6}$/.test(code)) return showJoinError("房间码格式不正确（4–6 位）");
+
+          joinBtn.classList.add("is-loading");
+          joinBtn.textContent = "校验中…";
+          setTimeout(() => {
+            joinBtn.classList.remove("is-loading");
+            joinBtn.textContent = "加入";
+            if (code.startsWith("0000")) return showJoinError("房间不存在或已解散");
+            if (code.startsWith("1111")) return showJoinError("房间已满员");
+            if (code.startsWith("2222")) return showJoinError("对局已结束，无法加入");
+            if (code.startsWith("3333")) return showJoinError("网络异常，请重试（Mock）");
+            // 其余任意合法码 → 加入成功（Mock）
+            document.getElementById("tab-create").hidden = true;
+            document.getElementById("create-success").classList.add("hidden");
+            document.getElementById("tab-join").hidden = true;
+            document.getElementById("joined-code").textContent = code;
+            document.getElementById("join-success").classList.remove("hidden");
+          }, 800);
+        }
+        joinBtn.addEventListener("click", attemptJoin);
+        joinInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") attemptJoin();
+        });
+
+        document.getElementById("leave-room").addEventListener("click", () => {
+          document.getElementById("join-success").classList.add("hidden");
+          document.getElementById("tab-create").hidden = false;
+          if (window.innerWidth >= 1024) {
+            document.getElementById("tab-join").hidden = false;
+          } else {
+            document.querySelector('#mobile-tabs [data-mtab="create"]').setAttribute("aria-selected", "true");
+            document.querySelector('#mobile-tabs [data-mtab="join"]').setAttribute("aria-selected", "false");
+            document.getElementById("tab-join").hidden = true;
+          }
+          ProtoUI.toast("已离开房间（Mock）");
+        });
+
+        /* ---------- 移动端 创建/加入 Tabs ---------- */
+        document.getElementById("mobile-tabs").addEventListener("click", (e) => {
+          const btn = e.target.closest(".seg-btn");
+          if (!btn) return;
+          document
+            .querySelectorAll("#mobile-tabs .seg-btn")
+            .forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
+          const mode = btn.dataset.mtab;
+          const creating = document.getElementById("create-success").classList.contains("hidden");
+          const joined = !document.getElementById("join-success").classList.contains("hidden");
+          document.getElementById("tab-create").hidden = !(mode === "create" && creating);
+          document.getElementById("tab-join").hidden = !(mode === "join" && !joined);
+          if (mode === "create" && !creating) document.getElementById("create-success").classList.remove("hidden");
+        });
+
+        renderOptions();
+        renderSelected();
+        /* 移动端初始：加入卡片随 Tab 切换（默认创建） */
+        if (window.innerWidth < 1024) document.getElementById("tab-join").hidden = true;
+      })();
+    </script>
+  </body>
+</html>
