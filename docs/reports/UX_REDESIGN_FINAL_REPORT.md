@@ -5,22 +5,22 @@
 
 ## 1. 阶段完成度总表
 
-| 阶段 | 状态 | 交付 |
-|---|---|---|
-| M0 审计 | ✅ | `BASELINE_AUDIT.md`（四疑点 a/b/c 仍存在、d 部分修复，file:line 佐证） |
-| M1 原型 | ✅ | `prototype-lab/`（4 核心页×9 视口×双主题×双方向，端口 4174，`pnpm proto`/`pnpm test:proto` 86/86） |
-| M2 原型自审 | ✅ | `PROTOTYPE_REVIEW.md`（8 项修复） |
-| M3 设计交接 | ✅ | tokens.json / COMPONENT_INVENTORY / RESPONSIVE_RULES / USER_FLOWS / FIGMA_IMPORT_GUIDE |
-| M4 人工验收 | ✅ | `PROTOTYPE_ACCEPTANCE.md`（19 张逐张验收；2×P1+5×P2 修复复验） |
-| M5 Figma | ✅* | `FIGMA_HANDOFF.md`；*Figma 实际写入=未完成（本环境无写入通道，如实标注；空白文件不得视为交付） |
-| M6 设计系统/基建 | ✅ | `COMPONENT_MAPPING.md`、Sheet 组件、`[hidden]` 纪律、断点决策（1000px）、qa 盲区规格（admin +48 基线、public 16 基线、/game 3 视口+交互） |
-| M7 问卷/用户端 | ✅ | 核查批次：trial/survey 规格功能层全过；大厅 1200px+3 列达标；TrialScreen 三栏与 /s xl 档转后续视觉批次 |
-| M8 游戏/联机 | ✅ | **大厅双区**（≥lg 5fr/7fr，横屏短高双列）+ `/game` 容器 lg 逃逸 + **房间对局双区**（棋盘主列+sticky 聊天）；game.spec 4/4、结构守卫 15/15 |
-| M9 个人中心/社区 | ✅ | MyScreen **lg:12 列分组**（DOM 顺序不变、手机零变化、PageHeader wide 翻转）；8 路由基线就绪；广场网格化转后续批次 |
-| M10 后台 | ✅ | 12 路由入矩阵 + /users 有数据 + 队列展开 + 抽屉开启态；TablePagination 抽取（三页替换，零视觉差）；KPI 均权与原型一致不动 |
-| M11 全设备整合 | ✅ | 全站浏览器巡检 11 路由×2 视口逐张自检；修 QA 服务器两处映射缺口（/notes、/s）；横屏 BottomNav 与 TrialScreen 三栏列后续批次 |
-| M12 安全/CI | ✅ | 安全自查 §4；全门禁本地绿（见 §3）；visual:gate 110 过+余量全为像素失配 |
-| M13 最终交付 | ✅ | 本报告 + 文档全套 + 提交/CI/部署记录（见 §6） |
+| 阶段             | 状态 | 交付                                                                                                                                      |
+| ---------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| M0 审计          | ✅   | `BASELINE_AUDIT.md`（四疑点 a/b/c 仍存在、d 部分修复，file:line 佐证）                                                                    |
+| M1 原型          | ✅   | `prototype-lab/`（4 核心页×9 视口×双主题×双方向，端口 4174，`pnpm proto`/`pnpm test:proto` 86/86）                                        |
+| M2 原型自审      | ✅   | `PROTOTYPE_REVIEW.md`（8 项修复）                                                                                                         |
+| M3 设计交接      | ✅   | tokens.json / COMPONENT_INVENTORY / RESPONSIVE_RULES / USER_FLOWS / FIGMA_IMPORT_GUIDE                                                    |
+| M4 人工验收      | ✅   | `PROTOTYPE_ACCEPTANCE.md`（19 张逐张验收；2×P1+5×P2 修复复验）                                                                            |
+| M5 Figma         | ✅*  | `FIGMA_HANDOFF.md`；*Figma 实际写入=未完成（本环境无写入通道，如实标注；空白文件不得视为交付）                                            |
+| M6 设计系统/基建 | ✅   | `COMPONENT_MAPPING.md`、Sheet 组件、`[hidden]` 纪律、断点决策（1000px）、qa 盲区规格（admin +48 基线、public 16 基线、/game 3 视口+交互） |
+| M7 问卷/用户端   | ✅   | 核查批次：trial/survey 规格功能层全过；大厅 1200px+3 列达标；TrialScreen 三栏与 /s xl 档转后续视觉批次                                    |
+| M8 游戏/联机     | ✅   | **大厅双区**（≥lg 5fr/7fr，横屏短高双列）+ `/game` 容器 lg 逃逸 + **房间对局双区**（棋盘主列+sticky 聊天）；game.spec 4/4、结构守卫 15/15 |
+| M9 个人中心/社区 | ✅   | MyScreen **lg:12 列分组**（DOM 顺序不变、手机零变化、PageHeader wide 翻转）；8 路由基线就绪；广场网格化转后续批次                         |
+| M10 后台         | ✅   | 12 路由入矩阵 + /users 有数据 + 队列展开 + 抽屉开启态；TablePagination 抽取（三页替换，零视觉差）；KPI 均权与原型一致不动                 |
+| M11 全设备整合   | ✅   | 全站浏览器巡检 11 路由×2 视口逐张自检；修 QA 服务器两处映射缺口（/notes、/s）；横屏 BottomNav 与 TrialScreen 三栏列后续批次               |
+| M12 安全/CI      | ✅   | 安全自查 §4；全门禁本地绿（见 §3）；visual:gate 110 过+余量全为像素失配                                                                   |
+| M13 最终交付     | ✅   | 本报告 + 文档全套 + 提交/CI/部署记录（见 §6）                                                                                             |
 
 ## 2. 设计落地映射（原型 → 产品）
 
@@ -29,14 +29,14 @@
 
 ## 3. 测试与门禁证据（本地实测）
 
-| 门禁 | 结果 |
-|---|---|
-| `pnpm test:proto`（原型） | 86/86 |
-| `pnpm test`（vitest） | 302 文件 / 2608 用例全过（含 Sheet 7 项、M8 结构守卫 3 项新增） |
-| `pnpm typecheck` / `lint` / `lint:admin` / `format:check` / `docs:check` | 全绿 |
-| `pnpm build:admin` | 绿（多轮） |
-| `pnpm test:visual:gate`（本地） | 110 过；失败全部为 `toHaveScreenshot` 像素失配（本地字体 vs CI 基线的历史系统性差异，见 IMPLEMENTATION_PROGRESS「QA 工作流铁律」），0 个 pageerror/console/a11y/溢出失败 |
-| 新增基线 | 全部本地清理，仅经 `visual-baseline.yml`（CI 字体环境）再生 |
+| 门禁                                                                     | 结果                                                                                                                                                                     |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm test:proto`（原型）                                                | 86/86                                                                                                                                                                    |
+| `pnpm test`（vitest）                                                    | 302 文件 / 2608 用例全过（含 Sheet 7 项、M8 结构守卫 3 项新增）                                                                                                          |
+| `pnpm typecheck` / `lint` / `lint:admin` / `format:check` / `docs:check` | 全绿                                                                                                                                                                     |
+| `pnpm build:admin`                                                       | 绿（多轮）                                                                                                                                                               |
+| `pnpm test:visual:gate`（本地）                                          | 110 过；失败全部为 `toHaveScreenshot` 像素失配（本地字体 vs CI 基线的历史系统性差异，见 IMPLEMENTATION_PROGRESS「QA 工作流铁律」），0 个 pageerror/console/a11y/溢出失败 |
+| 新增基线                                                                 | 全部本地清理，仅经 `visual-baseline.yml`（CI 字体环境）再生                                                                                                              |
 
 ## 4. 安全自查（M12）
 
