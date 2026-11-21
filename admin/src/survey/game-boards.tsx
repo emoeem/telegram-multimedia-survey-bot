@@ -1,5 +1,8 @@
 import { Gamepad2 } from "lucide-react";
+import { DouDizhuBoardPanel } from "./DouDizhuBoard";
 import { GomokuBoardPanel } from "./GomokuBoardPanel";
+import { LudoBoardPanel } from "./LudoBoardPanel";
+import { WerewolfBoardPanel } from "./WerewolfBoard";
 import { XiangqiBoardPanel } from "./XiangqiBoardPanel";
 import { registerGameBoard, resolveGameBoard, type GameBoardProps } from "./game-board-registry";
 
@@ -15,6 +18,15 @@ import { registerGameBoard, resolveGameBoard, type GameBoardProps } from "./game
  */
 registerGameBoard("gomoku", GomokuBoardPanel);
 registerGameBoard("xiangqi", XiangqiBoardPanel);
+// 飞行棋（游戏批次 X2-C）：服务端引擎已在 X2-B 注册，客户端棋盘这里接上，
+// /trial 与 /app 的入口卡经 GET /api/game/types 自动带上。
+registerGameBoard("ludo", LudoBoardPanel);
+// 斗地主（游戏批次 F2 客户端）：服务端引擎已在 F2 注册，三座位牌桌这里接上；
+// /trial 与 /app 的入口卡经 GET /api/game/types 自动带上（标注「3 人开局」）。
+registerGameBoard("doudizhu", DouDizhuBoardPanel);
+// 狼人杀（游戏批次 R2 客户端）：服务端引擎已在 D2 注册，圆桌牌局这里接上；
+// /trial 与 /app 的入口卡经 GET /api/game/types 自动带上（标注「6-12 人开局」）。
+registerGameBoard("werewolf", WerewolfBoardPanel);
 
 export { resolveGameBoard, type GameBoardProps };
 

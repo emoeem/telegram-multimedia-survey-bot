@@ -20,6 +20,13 @@ import {
   type GameConnectionStatus,
 } from "./game-room-client";
 import { chatTabsFor, mergeChatMessage, normalizeRoomCode, opponentLikelyOffline } from "./game-room-logic";
+import {
+  buildWerewolfRoomConfig,
+  werewolfChatMembership,
+  WEREWOLF_DEFAULT_HOST_CONFIG,
+  type WerewolfHostConfigForm,
+} from "./game-room-logic";
+import { WerewolfHostConfigPanel } from "./WerewolfBoard";
 import type {
   GameChatChannel,
   GameChatMessage,
@@ -76,6 +83,8 @@ export function MultiplayerGameScreen() {
   const [myHash, setMyHash] = useState<string | null>(null);
   /** 房间内聊天：服务端推送的全部消息（跨频道存放，ChatPanel 按页签过滤）。 */
   const [chatMessages, setChatMessages] = useState<GameChatMessage[]>([]);
+  /** 狼人杀建房配置（时限/托管/板子预设）：仅创建狼人杀房间时随 config 下发。 */
+  const [werewolfConfig, setWerewolfConfig] = useState<WerewolfHostConfigForm>(WEREWOLF_DEFAULT_HOST_CONFIG);
 
   const connRef = useRef<GameRoomConnection | null>(null);
   const versionRef = useRef(0);
@@ -270,7 +279,9 @@ export function MultiplayerGameScreen() {
     setBusy(true);
     setError(null);
     try {
-      const result = await createGameRoom(effectiveType, selfDisplayName());
+      // 狼人杀随建房下发房主配置（时限/托管/板子预设）；其它玩法无配置面。
+      const config = effectiveType === "werewolf" ? buildWerewolfRoomConfig(werewolfConfig) : undefined;
+      const result = await createGameRoom(effectiveType, selfDisplayName(), config);
       if (!result.ok) {
         setError(result.error.message);
         return;
@@ -283,7 +294,7 @@ export function MultiplayerGameScreen() {
     } finally {
       setBusy(false);
     }
-  }, [attachConnection, effectiveType]);
+  }, [attachConnection, effectiveType, werewolfConfig]);
 
   const handleJoinInput = useCallback(async () => {
     const id = normalizeRoomCode(joinInput);
@@ -349,10 +360,11 @@ export function MultiplayerGameScreen() {
   const sendChatImage = useCallback((channel: GameChatChannel, dataUrl: string, clientId: string) => {
     connRef.current?.sendChatImage(channel, dataUrl, clientId);
   }, []);
-  /** 可用频道页签：本批五子棋/大厅没有狼人身份，wolves 页签恒不出现；观战
-   * 者另可见「观战·出局」频道。R2 狼人杀批次把引擎视图里的狼人/出局资格
-   * 传进 chatTabsFor 的 membership 参数即可点亮 wolves/dead 页签。 */
-  const chatTabs = useMemo(() => chatTabsFor(role), [role]);
+  /** 可用频道页签：all 恒在；狼人杀把引擎视图里的狼人/出局资格传进
+   * chatTabsFor 的 membership 参数点亮 wolves/dead 页签（存活狼人 → wolves，
+   * 出局玩家 → dead）；其它玩法 membership 恒 false，页签集合与从前一致；
+   * 观战者另可见「观战·出局」频道。 */
+  const chatTabs = useMemo(() => chatTabsFor(role, werewolfChatMembership(view)), [role, view]);
 
   // ------------------------------------------------------------------
   // 渲染
@@ -544,6 +556,11 @@ export function MultiplayerGameScreen() {
             onJoinSubmit={() => void handleJoinInput()}
             onCreate={() => void handleCreate()}
             onDismissError={() => setError(null)}
+            configPanel={
+              effectiveType === "werewolf" ? (
+                <WerewolfHostConfigPanel value={werewolfConfig} onChange={setWerewolfConfig} />
+              ) : null
+            }
           />
         ) : (
           renderRoom()

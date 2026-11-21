@@ -122,15 +122,22 @@ function snapshotFromResponse(payload: Record<string, unknown>): GameApiResult<G
 /**
  * 创建房间（房主）。gameType 由调用方从玩法列表（GET /api/game/types）选择
  * 传入——本层不再硬编码玩法；未注册的 gameType 由服务端以 unknown_game_type
- * 拒绝（错误文案经 gameErrorText 收敛成中文）。
+ * 拒绝（错误文案经 gameErrorText 收敛成中文）。config 是可选的玩法级配置
+ * （如狼人杀的时限/托管/板子预设），原样透传给 POST 体——合法性由服务端
+ * 引擎 createRoom 权威校验，这里不做任何玩法解释。
  */
 export async function createGameRoom(
   gameType: string,
   displayName: string | null,
+  config?: Record<string, unknown>,
 ): Promise<GameApiResult<GameRoomSnapshot>> {
   const result = await callGameApi("/api/game/rooms", {
     method: "POST",
-    body: JSON.stringify({ gameType, ...(displayName ? { displayName } : {}) }),
+    body: JSON.stringify({
+      gameType,
+      ...(displayName ? { displayName } : {}),
+      ...(config !== undefined ? { config } : {}),
+    }),
   });
   if (!result.ok) return result;
   return snapshotFromResponse(result.data);

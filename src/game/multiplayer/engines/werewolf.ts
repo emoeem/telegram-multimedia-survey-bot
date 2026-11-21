@@ -841,8 +841,13 @@ function viewPayload(
   );
 
   const usableAlive = aliveSeats(engine).filter((seat) => seatUsable(state, engine, seat));
+  // participantHash 是信封 players 里已有的公开标识(R2 客户端批次补):圆桌
+  // 座位 → 昵称对位的唯一可靠依据——中途离席后信封「在座行序 ≠ 座位序」,
+  // 按行序猜会错挂别人的名字(doudizhu seats 同款口径)。它不是私有信息,
+  // 不削弱私有视图纪律(本投影仍然没有 role/死因)。
   const seatsPublic = engine.seats.map((seat, index) => ({
     seatIndex: index,
+    participantHash: seat.participantHash,
     alive: seat.alive,
     isYou: index === viewerSeat,
   }));

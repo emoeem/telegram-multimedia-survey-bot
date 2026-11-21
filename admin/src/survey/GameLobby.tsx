@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link2, Swords, Users } from "lucide-react";
 import { SectionHeader } from "./PublicPrimitives";
 import {
@@ -38,6 +39,12 @@ export interface GameLobbyEntryProps {
   onJoinSubmit: () => void;
   onCreate: () => void;
   onDismissError: () => void;
+  /**
+   * 玩法级创建配置面板插槽（可选）：屏层按所选玩法传入（如狼人杀的时限/
+   * 板子预设），渲染在创建按钮之前。本层不解释插槽内容——大厅保持
+   * gameType 无关，玩法私有配置由各玩法屏层提供。
+   */
+  configPanel?: ReactNode;
 }
 
 /** 无房间入口。多玩法时创建卡列出可选玩法；单玩法（现状）与旧版完全一致。 */
@@ -52,6 +59,7 @@ export function GameLobbyEntry({
   onJoinSubmit,
   onCreate,
   onDismissError,
+  configPanel,
 }: GameLobbyEntryProps) {
   const selected = gameTypes.find((game) => game.name === selectedType) ?? gameTypes[0] ?? null;
   return (
@@ -101,6 +109,7 @@ export function GameLobbyEntry({
                 </button>
               );
             })}
+            {configPanel}
             <button
               type="button"
               className="btn btn-primary w-full disabled:opacity-50"
@@ -111,14 +120,17 @@ export function GameLobbyEntry({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            className="btn btn-primary mt-3 w-full disabled:opacity-50"
-            disabled={busy}
-            onClick={onCreate}
-          >
-            {busy ? "正在创建…" : "创建房间"}
-          </button>
+          <>
+            {configPanel}
+            <button
+              type="button"
+              className="btn btn-primary mt-3 w-full disabled:opacity-50"
+              disabled={busy}
+              onClick={onCreate}
+            >
+              {busy ? "正在创建…" : "创建房间"}
+            </button>
+          </>
         )}
       </section>
       <section className="survey-card p-4">
