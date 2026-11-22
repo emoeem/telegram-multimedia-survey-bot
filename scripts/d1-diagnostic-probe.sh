@@ -27,8 +27,11 @@ print_rows_read() { # file — 从 wrangler --json 输出提取每条语句的 m
   jq -r 'if type=="array" then (.[] | select(.meta) | "  rows_read=\(.meta.rows_read) writes=\(.meta.rows_written)") else (if .meta then "  rows_read=\(.meta.rows_read) writes=\(.meta.rows_written)" else empty end) end' "$1" 2>/dev/null
 }
 
-quota_or_auth_error() { # file — 额度耗尽 / 无权访问该库的特征
-  grep -qiE "exceeded d1|daily row (read|write) limit|code: ?7500|authentication|not authorized|unauthorized" "$1"
+quota_or_auth_error() { # file — 额度耗尽 / 无权访问该库的特征。
+  # 注意：不要匹配 "code: 7500"——那是所有 D1 SQLITE_ERROR 的通用码
+  # （no such column / no such table 都带它），2026-11-22 主库探针曾被
+  # telegram_update_dedup 缺 id 列的 SQLITE_ERROR 误判成额度错误而提前停止。
+  grep -qiE "exceeded d1|daily row (read|write) limit|authentication|not authorized|unauthorized" "$1"
 }
 
 run_sql() { # label, sql
