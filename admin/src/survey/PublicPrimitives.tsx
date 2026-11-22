@@ -106,6 +106,7 @@ export function EntryRow({
   onClick,
   trailing,
   external = false,
+  bare = false,
 }: {
   icon: LucideIcon;
   title: string;
@@ -115,6 +116,8 @@ export function EntryRow({
   trailing?: ReactNode;
   /** 外部链接（Telegram 群、投稿机器人）：新窗口打开并带 noreferrer。 */
   external?: boolean;
+  /** 行式变体：无自带卡片外观，用于把多个入口合进同一张分组卡（M9 视觉重排）。 */
+  bare?: boolean;
 }) {
   const content = (
     <>
@@ -128,8 +131,9 @@ export function EntryRow({
       {trailing ?? <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />}
     </>
   );
-  const className =
-    "survey-card group flex w-full items-center gap-3 px-4 py-3 text-left transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]";
+  const className = bare
+    ? "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[var(--survey-primary-soft)]"
+    : "survey-card group flex w-full items-center gap-3 px-4 py-3 text-left transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]";
   if (href) {
     return (
       <a href={href} className={className} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>

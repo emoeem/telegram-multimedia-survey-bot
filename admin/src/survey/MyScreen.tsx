@@ -469,7 +469,7 @@ export function MyScreen() {
                 手机端包装 div 不产生任何视觉差（space-y 语义不变）。 */}
             <div className="lg:col-span-5">
               {/* 身份 */}
-              <section className="flex items-center gap-3 survey-card p-4">
+              <section className="flex h-full items-center gap-3 survey-card p-4">
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
                   <UserRound className="h-6 w-6" />
                 </span>
@@ -503,40 +503,32 @@ export function MyScreen() {
                 )}
               </section>
             </div>
-
-            <div className="lg:col-span-7">
+            <div className="lg:col-span-7 [&>div]:h-full">
               <CoinCard />
             </div>
-
             {/* 纸条聊天（0089）：个人中心的一等入口。 */}
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>*]:h-full">
               <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
             </div>
-
             {/* 动态与通知（B5）：纸条配对、审核结果、连载更新等全站动态，与书架无关——
                 独立成卡，不再嵌在「系列书架」卡片里渲染。 */}
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>section]:h-full">
               <NotificationCenter />
             </div>
-
             {/* 系列书架入口保留原位：分组重排不动入口取舍。 */}
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>*]:h-full">
               <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
             </div>
-
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>div]:h-full">
               <ProfileShareCard />
             </div>
-
             {/* 游戏音效：联机对局提示音总开关与音量（与对局页头小喇叭同源）。 */}
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>div]:h-full">
               <GameSoundSettings />
             </div>
-
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-6 [&>div]:h-full">
               <ReportList />
             </div>
-
             {/* 数据总览 */}
             <div className="lg:col-span-6">
               <section className="grid grid-cols-2 gap-3 h-full">
@@ -558,9 +550,8 @@ export function MyScreen() {
                 </div>
               </section>
             </div>
-
             {/* 我的答卷档案（B5 命名合一）：答卷公开档案统一叫「答卷档案」，
-                与广场页签、档案详情页同一口径。 */}
+                与广场页签、档案详情页同一口径。成就墙缺席时占满整行。 */}
             <div className="lg:col-span-6">
               <section className="survey-card p-4 h-full">
                 <SectionHeader icon={Link2} title="我的答卷档案" />
@@ -639,22 +630,30 @@ export function MyScreen() {
                 ) : null}
               </section>
             </div>
-
             {/* 成就徽章墙（目录与解锁状态都来自服务端） */}
             {overview.achievements?.items?.length ? (
-              <div className="lg:col-span-6">
+              <div className="lg:col-span-12 [&>div]:h-full">
                 <AchievementWall overview={overview.achievements} />
               </div>
             ) : null}
-
-            {/* 入口 */}
-            <div className="space-y-4 lg:col-span-12">
-              <EntryRow href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
-              {/* 应用中心（2026-11-20 P0 加固批次 M1）：四功能区聚合入口，
+            {/* 入口（M9 视觉重排）：三行合一张分组卡，bare 行式 */}{" "}
+            <div className="lg:col-span-12">
+              <section className="survey-card p-2">
+                <EntryRow bare href="/trial" icon={Target} title="挑战任务" subtitle="查看完整对局记录与排行榜" />
+                <div className="mx-3 my-1 border-t border-[var(--survey-card-border)]" role="presentation" />
+                {/* 应用中心（2026-11-20 P0 加固批次 M1）：四功能区聚合入口，
                 后续新入口统一挂到 /app，不再各自散进「我的」。 */}
-              <EntryRow href="/app" icon={LayoutGrid} title="应用中心" subtitle="问卷、小游戏、网页导航与社区" />
-              {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
-              <EntryRow href="/help" icon={CircleHelp} title="帮助中心" subtitle="每一屏是什么、新手第一步点哪里" />
+                <EntryRow bare href="/app" icon={LayoutGrid} title="应用中心" subtitle="问卷、小游戏、网页导航与社区" />
+                <div className="mx-3 my-1 border-t border-[var(--survey-card-border)]" role="presentation" />
+                {/* 帮助中心（2026-11-19 通宵批次 B3）：？ 弹层的整页版，一跳可达。 */}
+                <EntryRow
+                  bare
+                  href="/help"
+                  icon={CircleHelp}
+                  title="帮助中心"
+                  subtitle="每一屏是什么、新手第一步点哪里"
+                />
+              </section>
             </div>
           </>
         )}
