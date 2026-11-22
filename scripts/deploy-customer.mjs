@@ -572,25 +572,41 @@ async function resolveLicenseCenterService({ accountId, apiToken, licenseServerU
   if (!name) return "";
   if (!apiToken) return name;
   const centerSubdomain = new URL(licenseServerUrl).hostname.split(".")[1] ?? "";
-  try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/subdomain`,
-      { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } },
-    );
-    if (!response.ok) {
-      // Cannot confirm. Emitting the binding fails the deploy loudly, which
-      // beats omitting it and silently breaking licensing: a Worker cannot
-      // fetch a same-account Worker over workers.dev (error 1042).
-      console.warn(`⚠️ 无法确认账户 ${accountId} 的 workers.dev 子域（HTTP ${response.status}），按同账户处理。`);
-      return name;
+  // 本机网络对 api.cloudflare.com 的 TLS EOF 抖动是常态：探测失败会落入
+  // 「按同账户处理」兜底并让部署被 10143 拒收，所以先重试。
+  let response = null;
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/subdomain`,
+        { headers: { Authorization: `Bearer ${apiToken}`, Accept: "application/json" } },
+      );
+      break;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
+  }
+  if (!response) {
+    console.warn(`⚠️ 检查账户子域失败（${lastError || "网络错误"}），按同账户处理。`);
+    return name;
+  }
+  if (!response.ok) {
+    // Cannot confirm. Emitting the binding fails the deploy loudly, which
+    // beats omitting it and silently breaking licensing: a Worker cannot
+    // fetch a same-account Worker over workers.dev (error 1042).
+    console.warn(`⚠️ 无法确认账户 ${accountId} 的 workers.dev 子域（HTTP ${response.status}），按同账户处理。`);
+    return name;
+  }
+  try {
     const body = await response.json();
     const subdomain = typeof body?.result?.subdomain === "string" ? body.result.subdomain : "";
     if (!subdomain || subdomain === centerSubdomain) return name;
     console.log(`ℹ️ 目标账户是客户自有账户（${subdomain} ≠ ${centerSubdomain}），改用 HTTPS 与授权中心通信。`);
     return "";
   } catch (error) {
-    console.warn(`⚠️ 检查账户子域失败（${error instanceof Error ? error.message : "网络错误"}），按同账户处理。`);
+    console.warn(`⚠️ 解析账户子域响应失败（${error instanceof Error ? error.message : "网络错误"}），按同账户处理。`);
     return name;
   }
 }
@@ -739,6 +755,20 @@ function buildWranglerConfig({
     `name = ${tomlString("UI")}`,
     `class_name = ${tomlString("UiSessionDO")}`,
     "",
+    // 原子限流（P0 加固批次）：Free 档 KV 每天只有 1,000 次写入，而 KV 限流器
+    // 每个请求都要 get-then-put 一次——中等流量就能烧满额度，整站 503 到
+    // UTC 午夜。DO 把计数器串行化，不再消耗 KV 写入；DO 自身失败时回落
+    // KV 且 fail-open。SQLite-backed，Free 账号可绑。
+    "[[durable_objects.bindings]]",
+    `name = ${tomlString("RATE_LIMIT")}`,
+    `class_name = ${tomlString("RateLimitDO")}`,
+    "",
+    // 多人对局房间（G1）：不绑定时 /api/game/* 返回 not_found，客户看不到
+    // 五款联机游戏。SQLite-backed DO，Free 档可用。
+    "[[durable_objects.bindings]]",
+    `name = ${tomlString("GAME_ROOM")}`,
+    `class_name = ${tomlString("GameRoomDO")}`,
+    "",
     "[[migrations]]",
     `tag = ${tomlString("v1")}`,
     `new_sqlite_classes = [${tomlString("SurveySessionDO")}, ${tomlString("SurveyBuilderDO")}]`,
@@ -746,6 +776,14 @@ function buildWranglerConfig({
     "[[migrations]]",
     `tag = ${tomlString("v2")}`,
     `new_sqlite_classes = [${tomlString("UiSessionDO")}]`,
+    "",
+    "[[migrations]]",
+    `tag = ${tomlString("v3")}`,
+    `new_sqlite_classes = [${tomlString("RateLimitDO")}]`,
+    "",
+    "[[migrations]]",
+    `tag = ${tomlString("v4")}`,
+    `new_sqlite_classes = [${tomlString("GameRoomDO")}]`,
     "",
   ];
   return lines.join("\n");
