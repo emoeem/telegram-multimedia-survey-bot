@@ -122,6 +122,7 @@ export function ResponseActivityPage() {
           <div className="flex flex-wrap items-end gap-2">
             <select
               className="input w-auto"
+              aria-label="答卷状态筛选"
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value as "" | ResponseStatus);

@@ -306,6 +306,16 @@ const API_MOCKS: Record<string, unknown> = {
     totalPages: 1,
     statusSummary: { pending: 0, delivering: 0, delivered: 0, failed: 0 },
   },
+  // /admin/responses（答卷动态）：此前 mock 缺此端点形状 → `{}` 兜底时
+  // `data.items.length` 直接崩（visual-baseline 更新轮在 CI 抓出）。
+  "/api/admin/responses": {
+    items: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+    statusSummary: {},
+  },
   "/api/admin/licenses": { items: [] },
   "/api/admin/releases": { items: [] },
   "/api/admin/trials": { items: [] },
