@@ -67,3 +67,11 @@
 - 工作区不得有未声明的脏文件；接手先 `git status --short` + 对照本账本。
 - 后台 Agent 并发上限 ~2 路：多路审计需分批派发。
 - 未知即查：五路审计报告已浓缩进各阶段前置条目；需要 file:line 细节回看对应 agent 输出（或重派只读 Agent）。
+
+## 2026-11-22 晨间验收与 D1 告警收口（执行补记）
+
+1. **用户验收指出 /trial 未改** → 补做 TrialScreen 桌面三区（`7723674`）：通栏进行中挑战 → 左 7 投稿+联机五卡两列网格+小游戏包 → 右 5 sticky 身份/模式+CTA；header/tabs 加宽 1200。
+2. **浏览器实测（IAB）** 发现 /me 行内卡高参差 → 重排（`699abc5`）：全卡 h-full 等高行、统计+档案同行、成就通栏、入口组合卡（EntryRow bare 变体）。
+3. **D1 读预算告警（9,712,132 行）**：根因 = syncWeakMediaRefs 每问卷 `DELETE media_refs WHERE ref_type/ref_key LIKE` 无索引的 S×M 读放大 + scanJsonRows 窗口未记账。修复（`5d73e76` + `0befb81` 对账补登记）：0107 迁移 `idx_media_refs_ref(ref_type, ref_key)`、ORPHAN_SWEEP_INDEXES 自愈、scanJsonRows 经 recordRowsRead 计入预算。**教训：批量 python 改签名时参数顺序要与调用点逐一对齐（本次 onRow/budget 错位由单测抓出）；清理未跟踪文件必须白名单式，勿用 status 全量循环（曾误删两份规格文件）。**
+4. 发布链：473ba02 → a618309(bot 54 基线) → 064ecf2(空提交) → 8b6b3f7 → 7723674 → 1d69083(bot) → 5d73e76 → ade1670 → 0befb81 → 8b6b3f7 补记。期间恢复被误删的 game.spec.ts/public-screens.spec.ts（`2c2d859`）。CI 全绿（run ade1670/0befb81），deploy 成功，生产 IAB 实测 /game 双区、/me 等高网格、/trial 三区全部上线。
+5. D1 修复生效判定：下一轮 cron（≤30 分钟）应无新告警；maintenance_last_summary.rowsRead 回到 500K 内、truncated=false（可用 d1-diagnostic-probe 工作流复核）。
