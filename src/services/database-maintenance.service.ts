@@ -360,6 +360,15 @@ export const ORPHAN_SWEEP_INDEXES = [
     name: "idx_showcase_items_media_asset",
     create: "CREATE INDEX IF NOT EXISTS idx_showcase_items_media_asset ON showcase_items(media_asset_id)",
   },
+
+  // 0107_media_refs_ref_index.sql（2026-11-22 读预算告警收口）：syncWeakMediaRefs
+  // 对每个含媒体引用的问卷跑 ref_key LIKE 'survey:{id}:%' 的 DELETE，此前
+  // media_refs 无 ref_type/ref_key 索引 → 每问卷一次全表扫，读放大
+  // = 问卷数 × 引用行数（单轮实测 9.7M）。部署先于迁移到达时自愈建索引。
+  {
+    name: "idx_media_refs_ref",
+    create: "CREATE INDEX IF NOT EXISTS idx_media_refs_ref ON media_refs(ref_type, ref_key)",
+  },
 ] as const;
 
 /** 本次维护全部前置索引（retention 步骤 + 孤儿清扫），run 开始前统一自愈。 */
@@ -511,6 +520,11 @@ async function scanJsonRows(
   likeFilter: string,
   shouldStop: () => boolean,
   onRow: (row: { id: number; value: string | null }) => void | Promise<void>,
+  // 2026-11-22 读预算收口：窗口查询此前走裸 .all()，每次最多读
+  // JSON_SCAN_WINDOW_ROWS(20K) 行却不计入预算——answers 全表的 LIKE 过滤扫描
+  // 真实读取远超 summary.rowsRead（告警口径只含已记账部分）。现在计入预算，
+  // 窗口间照常 shouldStop，超预算即停。放在收尾可选位。
+  budget?: ReadBudget,
 ): Promise<{ completed: boolean }> {
   const maxId = await maxRowId(db, table);
   let windowStart = 0;
@@ -525,6 +539,7 @@ async function scanJsonRows(
       )
       .bind(windowStart, windowEnd)
       .all<{ id: number; value: string | null }>();
+    if (budget) recordRowsRead(result, budget);
     for (const row of result.results ?? []) {
       await onRow(row);
     }
@@ -542,6 +557,7 @@ async function scanJsonRows(
 async function loadAnswerJsonMediaIds(
   db: D1Database,
   shouldStop: () => boolean,
+  budget?: ReadBudget,
 ): Promise<{
   ids: Set<number>;
   completed: boolean;
@@ -558,6 +574,7 @@ async function loadAnswerJsonMediaIds(
         ids.add(id);
       }
     },
+    budget,
   );
   return { ids, completed };
 }
@@ -566,6 +583,7 @@ async function loadAnswerJsonMediaIds(
 async function loadSurveySettingsMediaIds(
   db: D1Database,
   shouldStop: () => boolean,
+  budget?: ReadBudget,
 ): Promise<{
   ids: Set<number>;
   completed: boolean;
@@ -586,6 +604,7 @@ async function loadSurveySettingsMediaIds(
         ids.add(id);
       }
     },
+    budget,
   );
   return { ids, completed };
 }
@@ -680,6 +699,7 @@ async function deleteOrphanMediaAssets(
   shouldStop: () => boolean,
   store: OrphanBlobStore | null,
   initialWindowStart = 0,
+  budget?: ReadBudget,
 ): Promise<{ deleted: number; scansComplete: boolean; candidateCompleted: boolean; nextWindowStart: number }> {
   // 预算已耗尽（前面步骤烧完）时直接停：候选扫描与两道 JSON 保护扫描都不可
   // 靠，本步什么都不删；游标保持原值，下一轮从同一位置继续。
@@ -695,8 +715,8 @@ async function deleteOrphanMediaAssets(
       nextWindowStart: candidates.nextWindowStart,
     };
   }
-  const answerScan = await loadAnswerJsonMediaIds(db, shouldStop);
-  const settingsScan = await loadSurveySettingsMediaIds(db, shouldStop);
+  const answerScan = await loadAnswerJsonMediaIds(db, shouldStop, budget);
+  const settingsScan = await loadSurveySettingsMediaIds(db, shouldStop, budget);
   const scansComplete = candidates.completed && answerScan.completed && settingsScan.completed;
   if (!scansComplete) {
     // 修复 2026-11-16 发现的数据丢失窗口：旧实现在预算耗尽后仍会拿「不完整的
@@ -792,8 +812,13 @@ export interface OrphanBlobStore {
  * ref_key='survey:{id}:{assetId}'），素材库页面因此能看到真实引用。
  * 每次全量重建该问卷的登记行：问卷编辑后失效的引用随重建自动消失。
  */
-export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolean): Promise<number> {
+export async function syncWeakMediaRefs(
+  db: D1Database,
+  shouldStop: () => boolean,
+  budget?: ReadBudget,
+): Promise<number> {
   let synced = 0;
+  if (process.env.PROTO_DEBUG) console.info("syncWeak pre-call", { hasBudget: typeof budget });
   const { completed } = await scanJsonRows(
     db,
     "surveys",
@@ -815,6 +840,7 @@ export async function syncWeakMediaRefs(db: D1Database, shouldStop: () => boolea
         synced += 1;
       }
     },
+    budget,
   );
   if (!completed) {
     // 部分同步是安全的：只重建已处理问卷的登记行，未处理问卷保留旧引用
@@ -1161,8 +1187,15 @@ export async function runDatabaseMaintenance(
     },
     async () => {
       // 索引已在 run 开头统一自愈（ensureMaintenanceIndexes），这里直接跑。
-      summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded);
-      const sweep = await deleteOrphanMediaAssets(scoped, previewBefore, () => budget.exceeded, store, sweepCursor);
+      summary.mediaRefsSynced = await syncWeakMediaRefs(scoped, () => budget.exceeded, budget);
+      const sweep = await deleteOrphanMediaAssets(
+        scoped,
+        previewBefore,
+        () => budget.exceeded,
+        store,
+        sweepCursor,
+        budget,
+      );
       summary.orphanAssets = sweep.deleted;
       // 游标持久化：候选扫描被截断就记续扫点（下一轮从上次窗口继续），扫完
       // 重置 0（下一轮从头全覆盖）。游标只影响候选扫描的起点，JSON 保护扫描

@@ -1,0 +1,13 @@
+-- 0107_media_refs_ref_index.sql
+--
+-- 背景（2026-11-22 读预算告警：维护任务单轮读取 9,712,132 行，已提前停止）：
+-- syncWeakMediaRefs 对每个含媒体引用的问卷执行
+--   DELETE FROM media_refs WHERE ref_type = 'survey_settings' AND ref_key LIKE 'survey:{id}:%'
+-- media_refs 此前只有 idx_media_refs_asset(asset_id)，ref_type/ref_key 完全无索引
+-- ——该 DELETE 退化为每问卷一次 media_refs 全表扫，读放大 = 问卷数 × 引用行数，
+-- 单轮累计即可击穿 500K 预算（实测 9.7M）。加 (ref_type, ref_key) 复合索引后
+-- 每问卷的 DELETE 变成前缀范围扫。
+--
+-- 同时已把该索引加进 database-maintenance.service.ts 的 ORPHAN_SWEEP_INDEXES：
+-- 部署先于迁移到达时，维护运行会按清单自愈建索引（与 0098/0091 同机制）。
+CREATE INDEX IF NOT EXISTS idx_media_refs_ref ON media_refs(ref_type, ref_key);
