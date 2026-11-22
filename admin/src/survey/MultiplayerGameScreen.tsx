@@ -18,6 +18,8 @@ import {
   joinGameRoom,
   selfDisplayName,
   type GameConnectionStatus,
+  fetchGameRooms,
+  type GameRoomListItem,
 } from "./game-room-client";
 import { chatTabsFor, mergeChatMessage, normalizeRoomCode, opponentLikelyOffline } from "./game-room-logic";
 import {
@@ -306,6 +308,31 @@ export function MultiplayerGameScreen() {
   }, [selectedType, types]);
   const selectedGame = useMemo(() => findGameType(types, effectiveType), [types, effectiveType]);
 
+  // 0108 房间大厅：所选玩法等待中的公共房间（可点击直加）。挂载/换玩法/手动刷新时拉取。
+  const [roomList, setRoomList] = useState<GameRoomListItem[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState<string | null>(null);
+  const refreshRooms = useCallback(async () => {
+    setRoomsLoading(true);
+    setRoomsError(null);
+    try {
+      const result = await fetchGameRooms("lobby");
+      if (!result.ok) {
+        setRoomsError(result.error.message);
+        setRoomList([]);
+        return;
+      }
+      setRoomList((result.data.rooms ?? []).filter((room) => room.gameType === effectiveType));
+    } catch (error) {
+      setRoomsError(String(error));
+    } finally {
+      setRoomsLoading(false);
+    }
+  }, [effectiveType]);
+  useEffect(() => {
+    if (roomId === null) void refreshRooms();
+  }, [roomId, refreshRooms]);
+
   // ------------------------------------------------------------------
   // 房间信封派生（先于动作回调声明）：我的行 + 在座状态
   // ------------------------------------------------------------------
@@ -333,27 +360,30 @@ export function MultiplayerGameScreen() {
     );
   }, [roomId, toast]);
 
-  const handleCreate = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      // 狼人杀随建房下发房主配置（时限/托管/板子预设）；其它玩法无配置面。
-      const config = effectiveType === "werewolf" ? buildWerewolfRoomConfig(werewolfConfig) : undefined;
-      const result = await createGameRoom(effectiveType, selfDisplayName(), config);
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
+  const handleCreate = useCallback(
+    async (createVisibility: "public" | "private" = "public") => {
+      setBusy(true);
+      setError(null);
+      try {
+        // 狼人杀随建房下发房主配置（时限/托管/板子预设）；其它玩法无配置面。
+        const config = effectiveType === "werewolf" ? buildWerewolfRoomConfig(werewolfConfig) : undefined;
+        const result = await createGameRoom(effectiveType, selfDisplayName(), config, createVisibility);
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        // 建房是唯一不经 enterRoom 的进房路径：这里必须同步落「我的行」锚点
+        // （REST 信封 you），否则 mePlayer 恒 null——房主在 lobby 被渲染成观战
+        // （无准备/开局按钮、房间头无「关闭房间」），建→备→开局链路第一步即断。
+        myHashRef.current = result.data.selfSeatToken;
+        setMyHash(result.data.selfSeatToken);
+        attachConnection(result.data.roomId);
+      } finally {
+        setBusy(false);
       }
-      // 建房是唯一不经 enterRoom 的进房路径：这里必须同步落「我的行」锚点
-      // （REST 信封 you），否则 mePlayer 恒 null——房主在 lobby 被渲染成观战
-      // （无准备/开局按钮、房间头无「关闭房间」），建→备→开局链路第一步即断。
-      myHashRef.current = result.data.selfSeatToken;
-      setMyHash(result.data.selfSeatToken);
-      attachConnection(result.data.roomId);
-    } finally {
-      setBusy(false);
-    }
-  }, [attachConnection, effectiveType, werewolfConfig]);
+    },
+    [attachConnection, effectiveType, werewolfConfig],
+  );
 
   const handleJoinInput = useCallback(async () => {
     const id = normalizeRoomCode(joinInput);
@@ -625,10 +655,10 @@ export function MultiplayerGameScreen() {
         titleIcon={<Swords className="h-4 w-4" />}
         backHref="/trial"
         backLabel="小游戏"
-        wide={false}
+        wide
         actions={<ThemeAction themeState={themeState} />}
       />
-      <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-3xl">
+      <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-[1200px]">
         {roomId === null ? (
           <GameLobbyEntry
             gameTypes={types}
@@ -639,8 +669,13 @@ export function MultiplayerGameScreen() {
             joinInput={joinInput}
             onJoinInputChange={setJoinInput}
             onJoinSubmit={() => void handleJoinInput()}
-            onCreate={() => void handleCreate()}
+            onCreate={(visibility) => void handleCreate(visibility)}
             onDismissError={() => setError(null)}
+            rooms={roomList}
+            roomsLoading={roomsLoading}
+            roomsError={roomsError}
+            onRefreshRooms={() => void refreshRooms()}
+            onJoinRoom={(roomIdTarget) => void enterRoom(roomIdTarget)}
             configPanel={
               effectiveType === "werewolf" ? (
                 <WerewolfHostConfigPanel value={werewolfConfig} onChange={setWerewolfConfig} />

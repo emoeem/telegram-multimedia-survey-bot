@@ -134,6 +134,7 @@ export async function createGameRoom(
   gameType: string,
   displayName: string | null,
   config?: Record<string, unknown>,
+  visibility: "public" | "private" = "public",
 ): Promise<GameApiResult<GameRoomSnapshot>> {
   const result = await callGameApi("/api/game/rooms", {
     method: "POST",
@@ -141,6 +142,7 @@ export async function createGameRoom(
       gameType,
       ...(displayName ? { displayName } : {}),
       ...(config !== undefined ? { config } : {}),
+      visibility,
     }),
   });
   if (!result.ok) return result;
@@ -159,6 +161,27 @@ export async function fetchGameTypes(): Promise<GameApiResult<GameTypeInfo[]>> {
     return { ok: false, error: { code: "bad_response", message: gameErrorText("bad_response") } };
   }
   return { ok: true, data: types };
+}
+
+/** 公共房间列表（0108）：仅 public + 状态过滤；私人房不进列表（仅房间码可入）。 */
+export interface GameRoomListItem {
+  id: number;
+  gameType: string;
+  status: string;
+  visibility: string;
+  createdAt: string;
+  isMine: boolean;
+}
+
+export async function fetchGameRooms(
+  status: "lobby" | "playing" = "lobby",
+): Promise<GameApiResult<{ rooms: GameRoomListItem[] }>> {
+  const result = await callGameApi(`/api/game/rooms?status=${status}&limit=50`, { method: "GET" });
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    data: { rooms: ((result.data as { rooms?: GameRoomListItem[] }).rooms ?? []) as GameRoomListItem[] },
+  };
 }
 
 /** 加入（或重入）房间：已是玩家时服务端幂等返回当前视图。 */

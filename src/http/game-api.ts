@@ -1,6 +1,7 @@
 import type { Env } from "../index";
 import type { GameRoomDO } from "../durable-objects/game-room";
 import { fail, json, resolveParticipant } from "./survey-api";
+import { runSpendBatch } from "../services/coin/ledger.service";
 import { checkRateLimit, rateLimitResponse } from "../services/rate-limit.service";
 import { writeAudit } from "./admin/helpers";
 import { listGameEngines } from "../game/multiplayer/engine-registry";
@@ -97,6 +98,9 @@ function roomNamespace(env: Env): DurableObjectNamespace<GameRoomDO> | null {
 // POST /api/game/rooms —— 创建房间
 // ---------------------------------------------------------------------------
 
+/** 私人房间创建费（积分）：抑制房间滥建、降低 DO/目录行负担（0108）。 */
+export const PRIVATE_ROOM_FEE = 100;
+
 async function handleCreateRoom(request: Request, env: Env, _url: URL): Promise<Response> {
   const participant = await resolveParticipant(request, env);
   if (participant instanceof Response) return participant;
@@ -112,16 +116,44 @@ async function handleCreateRoom(request: Request, env: Env, _url: URL): Promise<
   // 展示名只作展示：长度收口，内容不参与任何鉴权。
   const displayName = typeof body?.displayName === "string" ? body.displayName.trim().slice(0, 24) : null;
   const config = (body?.config ?? null) as Record<string, unknown> | null;
+  // 0108 房间可见性：private 不进公共列表（仅房间码/房间号可入），创建时收
+  // 占位积分（PRIVATE_ROOM_FEE）抑制滥建。visibility 取值 public|private，
+  // 其余值按 public 处理（宽松解析，与 displayName 同口径）。
+  const visibility = body?.visibility === "private" ? "private" : "public";
 
   const now = new Date().toISOString();
   const insert = await env.DB.prepare(
-    "INSERT INTO game_rooms (game_type, status, host_participant_hash, created_at, updated_at) VALUES (?1, 'lobby', ?2, ?3, ?3)",
+    "INSERT INTO game_rooms (game_type, status, host_participant_hash, visibility, created_at, updated_at) VALUES (?1, 'lobby', ?2, ?4, ?3, ?3)",
   )
-    .bind(gameType, participant.participantHash, now)
+    .bind(gameType, participant.participantHash, now, visibility)
     .run();
   const roomId = insert.meta.last_row_id;
   if (!Number.isInteger(roomId) || roomId <= 0) {
     return fail(500, "internal_error", "房间创建失败");
+  }
+
+  // 私人房间占位费：房间行已落库后幂等扣费；余额不足/扣费失败则回收目录行，
+  // 客户端拿到明确的费用错误——不会留下"扣了费却没有房间"或"有房间没扣费"。
+  if (visibility === "private") {
+    const charge = await runSpendBatch(
+      env.DB,
+      {
+        participantHash: participant.participantHash,
+        userId: participant.dbUserId ?? null,
+        amount: -PRIVATE_ROOM_FEE,
+        kind: "game_room_private",
+        idempotencyKey: `game_room_private_fee:${roomId}`,
+        refType: "game_room",
+        refId: String(roomId),
+        note: "私人房间创建费",
+      },
+      // 私人房创建费无 dependent 业务行（房间目录行已先落库）。
+      () => [],
+    );
+    if (!charge.applied && !charge.duplicate) {
+      await env.DB.prepare("DELETE FROM game_rooms WHERE id = ?1").bind(roomId).run();
+      return fail(402, "insufficient_funds", `私人房间需要 ${PRIVATE_ROOM_FEE} 金币，当前余额不足`);
+    }
   }
 
   const roomRef = gameRoomDOName(roomId);
@@ -147,7 +179,7 @@ async function handleCreateRoom(request: Request, env: Env, _url: URL): Promise<
     action: "game_room_create",
     entityType: "game_room",
     entityId: String(roomId),
-    after: { gameType, roomRef },
+    after: { gameType, roomRef, visibility },
   });
 
   // 深链接格式锁定（G1）：https://t.me/<bot>?startapp=room_<id>，
@@ -293,10 +325,18 @@ async function handleListRooms(request: Request, env: Env, url: URL): Promise<Re
     conditions.push(`status = ?${binds.length + 1}`);
     binds.push(status);
   }
+  // 0108：公共列表不出现 private 房间（私人房仅凭房间码/房间号进入）；
+  // mine=1 时主人自己的私人房也在列表里，便于管理。
+  conditions.push(
+    mine
+      ? `(visibility = 'public' OR visibility IS NULL OR host_participant_hash = ?${binds.length + 1})`
+      : `(visibility = 'public' OR visibility IS NULL)`,
+  );
+  if (mine) binds.push(participant.participantHash);
   binds.push(limit);
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = await env.DB.prepare(
-    `SELECT id, game_type, status, host_participant_hash, created_at, updated_at, closed_at FROM game_rooms ${where} ORDER BY created_at DESC, id DESC LIMIT ?${binds.length}`,
+    `SELECT id, game_type, status, host_participant_hash, visibility, created_at, updated_at, closed_at FROM game_rooms ${where} ORDER BY created_at DESC, id DESC LIMIT ?${binds.length}`,
   )
     .bind(...binds)
     .all<{
@@ -304,6 +344,7 @@ async function handleListRooms(request: Request, env: Env, url: URL): Promise<Re
       game_type: string;
       status: string;
       host_participant_hash: string;
+      visibility: string;
       created_at: string;
       updated_at: string;
       closed_at: string | null;
@@ -314,6 +355,7 @@ async function handleListRooms(request: Request, env: Env, url: URL): Promise<Re
       id: row.id,
       gameType: row.game_type,
       status: row.status,
+      visibility: row.visibility,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       closedAt: row.closed_at,

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  BellRing,
   BookOpen,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   FileCheck2,
+  FileText,
   Images,
   LayoutGrid,
   Link2,
@@ -385,6 +388,10 @@ export function MyScreen() {
   const [overview, setOverview] = useState<MyOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  // M9 v3：互动/内容组卡内的可展开内嵌区（通知中心/足迹/报告）。
+  const [inlineSection, setInlineSection] = useState<null | "notifications" | "footprint" | "reports">(null);
+  const toggleInline = (section: "notifications" | "footprint" | "reports") =>
+    setInlineSection((current) => (current === section ? null : section));
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseError, setShowcaseError] = useState<string | null>(null);
   const [hasTelegramIdentity] = useState<boolean>(
@@ -506,28 +513,85 @@ export function MyScreen() {
             <div className="lg:col-span-7 [&>div]:h-full">
               <CoinCard />
             </div>
-            {/* 纸条聊天（0089）：个人中心的一等入口。 */}
-            <div className="lg:col-span-6 [&>*]:h-full">
-              <EntryRow href="/notes" icon={MailCheck} title="纸条聊天" subtitle="放一张纸条，抽到同路的人就开始私聊" />
+            {/* 互动组卡（M9 v3）：纸条 + 通知合一张卡，消除「每功能一张卡」的拼接感；
+                通知行展开内嵌通知中心。 */}
+            <div className="lg:col-span-6">
+              <section className="survey-card p-2 h-full">
+                <EntryRow
+                  bare
+                  href="/notes"
+                  icon={MailCheck}
+                  title="纸条聊天"
+                  subtitle="放一张纸条，抽到同路的人就开始私聊"
+                />
+                <div className="mx-3 my-1 border-t border-[var(--survey-card-border)]" role="presentation" />
+                <EntryRow
+                  bare
+                  icon={BellRing}
+                  title="动态与通知"
+                  subtitle="纸条配对、连载更新、审核结果"
+                  onClick={() => toggleInline("notifications")}
+                  trailing={
+                    <ChevronDown
+                      className={`h-4 w-4 text-[var(--survey-muted)] transition-transform ${inlineSection === "notifications" ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  }
+                />
+                {inlineSection === "notifications" ? (
+                  <div className="px-2 pb-2 pt-1">
+                    <NotificationCenter />
+                  </div>
+                ) : null}
+              </section>
             </div>
-            {/* 动态与通知（B5）：纸条配对、审核结果、连载更新等全站动态，与书架无关——
-                独立成卡，不再嵌在「系列书架」卡片里渲染。 */}
-            <div className="lg:col-span-6 [&>section]:h-full">
-              <NotificationCenter />
-            </div>
-            {/* 系列书架入口保留原位：分组重排不动入口取舍。 */}
-            <div className="lg:col-span-6 [&>*]:h-full">
-              <EntryRow href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
-            </div>
-            <div className="lg:col-span-6 [&>div]:h-full">
-              <ProfileShareCard />
+            {/* 内容组卡：书架行 + 足迹/报告可展开行——内容收进同一张卡。 */}
+            <div className="lg:col-span-6">
+              <section className="survey-card p-2 h-full">
+                <EntryRow bare href="/series" icon={BookOpen} title="系列书架" subtitle="像追小说一样追问卷连载" />
+                <div className="mx-3 my-1 border-t border-[var(--survey-card-border)]" role="presentation" />
+                <EntryRow
+                  bare
+                  icon={Images}
+                  title="答卷足迹"
+                  subtitle="只含聚合数字的可分享公开页"
+                  onClick={() => toggleInline("footprint")}
+                  trailing={
+                    <ChevronDown
+                      className={`h-4 w-4 text-[var(--survey-muted)] transition-transform ${inlineSection === "footprint" ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  }
+                />
+                {inlineSection === "footprint" ? (
+                  <div className="px-2 pb-2 pt-1">
+                    <ProfileShareCard />
+                  </div>
+                ) : null}
+                <div className="mx-3 my-1 border-t border-[var(--survey-card-border)]" role="presentation" />
+                <EntryRow
+                  bare
+                  icon={FileText}
+                  title="我的报告"
+                  subtitle="完成的问卷报告在这里"
+                  onClick={() => toggleInline("reports")}
+                  trailing={
+                    <ChevronDown
+                      className={`h-4 w-4 text-[var(--survey-muted)] transition-transform ${inlineSection === "reports" ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  }
+                />
+                {inlineSection === "reports" ? (
+                  <div className="px-2 pb-2 pt-1">
+                    <ReportList />
+                  </div>
+                ) : null}
+              </section>
             </div>
             {/* 游戏音效：联机对局提示音总开关与音量（与对局页头小喇叭同源）。 */}
             <div className="lg:col-span-6 [&>div]:h-full">
               <GameSoundSettings />
-            </div>
-            <div className="lg:col-span-6 [&>div]:h-full">
-              <ReportList />
             </div>
             {/* 数据总览 */}
             <div className="lg:col-span-6">

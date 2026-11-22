@@ -125,10 +125,15 @@ describe("M8 双区布局（docs/design/IMPLEMENTATION_PROGRESS.md 批次 M8）"
     expect(indexCss).toMatch(/landscape\) and \(max-height: 560px\)[\s\S]{0,80}\.game-lobby-grid/);
   });
 
-  it("选择玩法单选组已从创建卡拆到左区；创建卡保留配置面板插槽", () => {
-    expect(lobby).toContain('aria-label="选择玩法"');
-    expect(lobby.indexOf("选择玩法")).toBeLessThan(lobby.indexOf("创建房间"));
-    // configPanel 必须仍在创建卡内（狼人杀房主配置跟创建走右区）
+  it("房间大厅形态：左区等待中房间列表可点击直加；创建卡含公开/私人选择与配置插槽", () => {
+    expect(lobby).toContain("等待中的房间");
+    expect(lobby).toContain("onJoinRoom(room.id)");
+    // 屏层把列表点击接到 enterRoom（按房间号直加）
+    expect(screen).toContain("onJoinRoom={(roomIdTarget) => void enterRoom(roomIdTarget)}");
+    // 0108：创建卡有 公开/私人 两种可见性，私人房标价 100 金币
+    expect(lobby).toContain("roomVisibility");
+    expect(lobby).toContain("100 金币");
+    // configPanel 仍在创建卡内（狼人杀房主配置跟创建走右区）
     const createBlock = lobby.slice(lobby.indexOf('title="创建房间"'), lobby.indexOf('title="加入房间"'));
     expect(createBlock).toContain("{configPanel}");
   });

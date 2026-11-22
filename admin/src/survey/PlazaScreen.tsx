@@ -75,6 +75,7 @@ function TreeHolePost({
   onSelectTopic: (topic: string) => void;
   onReport: (target: PlazaReportTarget) => void;
 }) {
+  const [contentExpanded, setContentExpanded] = useState(false);
   const [open, setOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [comments, setComments] = useState<PlazaCommentItem[] | null>(null);
@@ -161,7 +162,33 @@ function TreeHolePost({
           </span>
         </div>
       ) : null}
-      <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[var(--survey-body)]">{post.content}</p>
+      {(() => {
+        const long = post.content.length > 160 || post.content.split("\n").length > 6;
+        return (
+          <>
+            <p
+              className={`whitespace-pre-wrap break-words text-[15px] leading-7 text-[var(--survey-body)] ${
+                long && !contentExpanded ? "line-clamp-4" : ""
+              }`}
+            >
+              {post.content}
+            </p>
+            {long ? (
+              <button
+                type="button"
+                onClick={() => setContentExpanded((value) => !value)}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[var(--survey-primary)]"
+              >
+                {contentExpanded ? "收起" : "展开全文"}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${contentExpanded ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+            ) : null}
+          </>
+        );
+      })()}
       {post.imageUrl ? (
         <button
           type="button"

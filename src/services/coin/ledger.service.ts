@@ -26,7 +26,9 @@ export type CoinTxnKind =
   | "note_draw"
   | "admin_adjust"
   /** 0082 身份合并：source 账户余额整笔搬入 canonical 的那笔流水。 */
-  | "merge_in";
+  | "merge_in"
+  /** 0108 联机私人房间：创建私人房间时收取的占位积分。 */
+  | "game_room_private";
 
 export interface CoinLedgerEnv {
   DB: D1Database;

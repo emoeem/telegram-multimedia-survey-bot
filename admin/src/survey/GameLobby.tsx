@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link2, Swords, Users } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Link2, RefreshCw, Swords, Users } from "lucide-react";
 import { SectionHeader } from "./PublicPrimitives";
 import {
   activeRoomPlayers,
@@ -26,10 +26,16 @@ import {
 // 无房间时的入口：玩法简介 + 创建 + 加入
 // ---------------------------------------------------------------------------
 
+export interface GameRoomListEntry {
+  id: number;
+  createdAt: string;
+  isMine: boolean;
+}
+
 export interface GameLobbyEntryProps {
   /** 已注册玩法列表（GET /api/game/types，失败时调用方回退静态列表）。 */
   gameTypes: GameTypeInfo[];
-  /** 本次要创建的玩法（?type= 参数或列表首个）。 */
+  /** 本次要创建/查看的玩法（?type= 参数或列表首个）。 */
   selectedType: string;
   onSelectType: (name: string) => void;
   busy: boolean;
@@ -37,17 +43,24 @@ export interface GameLobbyEntryProps {
   joinInput: string;
   onJoinInputChange: (value: string) => void;
   onJoinSubmit: () => void;
-  onCreate: () => void;
+  /** 创建房间；visibility 由本层的选择给出（公开免费 / 私人收占位积分）。 */
+  onCreate: (visibility: "public" | "private") => void;
   onDismissError: () => void;
-  /**
-   * 玩法级创建配置面板插槽（可选）：屏层按所选玩法传入（如狼人杀的时限/
-   * 板子预设），渲染在创建按钮之前。本层不解释插槽内容——大厅保持
-   * gameType 无关，玩法私有配置由各玩法屏层提供。
-   */
+  /** 玩法级创建配置面板插槽（狼人杀的时限/板子预设），渲染在创建按钮之前。 */
   configPanel?: ReactNode;
+  /** 0108 该玩法当前处于等待中的公共房间（仅 public），点「加入」直接进房。 */
+  rooms: GameRoomListEntry[];
+  roomsLoading: boolean;
+  roomsError: string | null;
+  onRefreshRooms: () => void;
+  onJoinRoom: (roomId: number) => void;
 }
 
-/** 无房间入口。多玩法时创建卡列出可选玩法；单玩法（现状）与旧版完全一致。 */
+/**
+ * 无房间入口（M8 用户验收重设计）：选玩法 → 直接看该玩法等待中的公共房间，
+ * 可一键加入；私人房间走创建卡（收占位积分、不进公共列表），或凭房间码加入。
+ * 左区「房间列表 + 玩法切换」，右区「创建(主) + 加入(次)」；手机纵堆同序。
+ */
 export function GameLobbyEntry({
   gameTypes,
   selectedType,
@@ -60,26 +73,88 @@ export function GameLobbyEntry({
   onCreate,
   onDismissError,
   configPanel,
+  rooms,
+  roomsLoading,
+  roomsError,
+  onRefreshRooms,
+  onJoinRoom,
 }: GameLobbyEntryProps) {
   const selected = gameTypes.find((game) => game.name === selectedType) ?? gameTypes[0] ?? null;
+  const [roomVisibility, setRoomVisibility] = useState<"public" | "private">("public");
   return (
-    /* M8 双区（docs/design/USER_FLOWS.md F4 / BASELINE_AUDIT (a)(b)）：
-     * 桌面 ≥lg 左区「玩法说明 + 选择玩法」、右区「创建(主) + 加入(次)」；
-     * 手机保持原纵堆顺序（intro → 选择玩法 → 创建 → 加入），只改栅格不改流程。
-     * configPanel（狼人杀房主配置）跟创建卡走右区。 */
     <div className="game-lobby-grid">
+      {/* 左区：该玩法等待中的公共房间 + 玩法切换 */}
       <div className="min-w-0 space-y-4">
         <section className="survey-card p-4">
-          <SectionHeader icon={Swords} title={`${selected?.displayName ?? "联机对战"} · 联机对战`} />
-          <p className="mt-2 text-[13px] leading-relaxed text-[var(--survey-muted)]">
-            创建一个房间把房间码发给好友，或输入对方的房间码加入同一局。
-            {selected?.description ? selected.description : ""}
+          <div className="flex items-center justify-between gap-2">
+            <SectionHeader icon={Swords} title="等待中的房间" />
+            <button
+              type="button"
+              onClick={onRefreshRooms}
+              disabled={roomsLoading}
+              className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--survey-primary)] transition-opacity hover:opacity-80 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${roomsLoading ? "animate-spin" : ""}`} aria-hidden="true" />
+              刷新
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-[var(--survey-muted)]">
+            {selected?.displayName ?? "联机对战"} · 房间由玩家创建，点「加入」直接进等待大厅
           </p>
+          {roomsError ? (
+            <p className="mt-2 text-xs text-[var(--app-danger)]">{roomsError}</p>
+          ) : roomsLoading ? (
+            <div className="mt-3 space-y-2">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="animate-pulse rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3"
+                >
+                  <div className="h-3.5 w-24 rounded bg-[var(--survey-card-border)]" />
+                </div>
+              ))}
+            </div>
+          ) : rooms.length === 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-[var(--survey-card-border)] p-4 text-center">
+              <p className="text-[13px] text-[var(--survey-muted)]">还没有等待中的房间</p>
+              <p className="mt-1 text-[11px] text-[var(--survey-muted)]">创建一个，把房间码发给好友就能开玩。</p>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {rooms.map((room) => (
+                <div
+                  key={room.id}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-3 py-2.5"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                      房间 #{room.id}
+                      {room.isMine ? (
+                        <span className="ml-1.5 text-[10px] font-bold text-[var(--survey-primary)]">我的</span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                      {room.createdAt.slice(11, 16)} 创建 · 等待玩家中
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onJoinRoom(room.id)}
+                    className="btn btn-sm shrink-0 disabled:opacity-50"
+                  >
+                    加入
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
+
         {gameTypes.length > 1 ? (
           <section className="survey-card p-4">
             <SectionHeader icon={Users} title="选择玩法" />
-            <div className="mt-3 space-y-2" role="radiogroup" aria-label="选择玩法">
+            <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="选择玩法">
               {gameTypes.map((game) => {
                 const active = game.name === selectedType;
                 return (
@@ -89,47 +164,81 @@ export function GameLobbyEntry({
                     role="radio"
                     aria-checked={active}
                     onClick={() => onSelectType(game.name)}
-                    className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors ${
                       active
-                        ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
-                        : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+                        ? "border-transparent bg-[var(--survey-primary)] text-[var(--survey-primary-content)]"
+                        : "border-[var(--survey-card-border)] text-[var(--survey-muted)] hover:bg-[var(--survey-primary-soft)]"
                     }`}
                   >
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                        {game.displayName}
-                      </span>
-                      {game.description ? (
-                        <span className="mt-0.5 block truncate text-[11px] text-[var(--survey-muted)]">
-                          {game.description}
-                        </span>
-                      ) : null}
-                    </span>
-                    {active ? (
-                      <span className="shrink-0 rounded-full bg-[var(--survey-primary)] px-2 py-0.5 text-[10px] font-bold text-[var(--survey-primary-content)]">
-                        已选
-                      </span>
-                    ) : null}
+                    {game.displayName}
                   </button>
                 );
               })}
             </div>
+            {selected?.description ? (
+              <p className="mt-2 text-[12px] leading-5 text-[var(--survey-muted)]">{selected.description}</p>
+            ) : null}
           </section>
         ) : null}
       </div>
+
+      {/* 右区：创建（公开/私人）+ 房间码加入 */}
       <div className="min-w-0 space-y-4">
         <section className="survey-card p-4">
           <SectionHeader icon={Users} title="创建房间" />
-          <p className="mt-1.5 text-[12px] text-[var(--survey-muted)]">创建后你会拿到一个房间码，发给好友即可加入。</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setRoomVisibility("public")}
+              aria-pressed={roomVisibility === "public"}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                roomVisibility === "public"
+                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
+                  : "border-[var(--survey-card-border)]"
+              }`}
+            >
+              <span className="block text-[13px] font-bold text-[var(--survey-heading)]">公开房间</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                进入公共列表，玩家可直接加入
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoomVisibility("private")}
+              aria-pressed={roomVisibility === "private"}
+              className={`rounded-xl border p-3 text-left transition-colors ${
+                roomVisibility === "private"
+                  ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
+                  : "border-[var(--survey-card-border)]"
+              }`}
+            >
+              <span className="block text-[13px] font-bold text-[var(--survey-heading)]">
+                私人房间
+                <span className="ml-1.5 rounded-full bg-[var(--survey-primary-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--survey-primary)]">
+                  100 金币
+                </span>
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                不进公共列表，仅房间码可入 · 占位积分防滥建
+              </span>
+            </button>
+          </div>
           {configPanel}
           <button
             type="button"
             className="btn btn-primary mt-3 w-full disabled:opacity-50"
             disabled={busy}
-            onClick={onCreate}
+            onClick={() => onCreate(roomVisibility)}
           >
-            {busy ? "正在创建…" : gameTypes.length > 1 ? `创建${selected?.displayName ?? ""}房间` : "创建房间"}
+            {busy
+              ? "正在创建…"
+              : roomVisibility === "private"
+                ? `创建私人${selected?.displayName ?? ""}房间（100 金币）`
+                : `创建${selected?.displayName ?? ""}房间`}
           </button>
+          <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
+            私人房间不进公共列表、仅房间码可入；积分用于抑制房间滥建、降低服务器负担。
+          </p>
         </section>
         <section className="survey-card p-4">
           <SectionHeader icon={Link2} title="加入房间" />

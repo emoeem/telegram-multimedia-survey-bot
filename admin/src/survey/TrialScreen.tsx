@@ -3,8 +3,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
   Coins,
   Dices,
+  Gamepad2,
   House,
   Luggage,
   Medal,
@@ -157,6 +159,7 @@ export function TrialScreen() {
   const [persona, setPersona] = useState<TrialPersona | null>(null);
   const [mode, setMode] = useState<TrialMode>("normal");
   const [packId, setPackId] = useState<number | null>(null);
+  const [expandedPackId, setExpandedPackId] = useState<number | null>(null);
   const [startFloor, setStartFloor] = useState("1");
   const [starting, setStarting] = useState(false);
   const [shopQty, setShopQty] = useState({ skipTickets: 0, boosters: 0, shields: 0 });
@@ -859,340 +862,333 @@ export function TrialScreen() {
     ) : null;
 
   const renderHomeContent = () => (
-    /* M8 小游戏大厅桌面三区（原型 games.html / docs/design/USER_FLOWS.md F3）：
-     * 通栏「管理员/公告/进行中挑战」→ 左 7「投稿 + 联机入口 + 小游戏包」→
-     * 右 5 sticky「身份/模式 + 开局 CTA」。手机保持原纵堆语义（选包 → 选
-     * 身份/模式 → 开始），栅格只在 ≥lg（1000px 导航切换点）生效。 */
-    <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-[1200px] lg:grid lg:grid-cols-12 lg:gap-4 lg:space-y-0">
+    /* M9 用户验收重设计（统一折叠卡）：全部玩法（联机 + 爬塔包）收进同一张
+     * 卡片网格——手机每列一个、PC 两列；卡片默认折叠（图标+名称+元信息+两行
+     * 描述），点击展开该玩法的完整开局内容。联机卡点击即进入该玩法的等待
+     * 大厅（/game?type=x，房间列表可直加）；爬塔包展开后含身份/模式/起始层/
+     * 准备清单与开局 CTA——任务本来就是游戏的一部分，不再另辟侧栏。 */
+    <main className="mx-auto max-w-xl space-y-4 px-5 py-5 lg:max-w-[1200px]">
       {me?.isAdmin ? (
-        <div className="lg:col-span-12">
-          <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--survey-heading)]">
-                  <Settings className="h-4 w-4 text-[var(--survey-muted)]" aria-hidden="true" />
-                  管理员快捷入口
-                </p>
-                <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
-                  在这里手动编写小游戏包与任务文案，保存后玩家端实时生效
-                </p>
-              </div>
-              <a
-                href="/admin/task-packs"
-                className="shrink-0 rounded-full bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-[var(--survey-primary-content)]"
-              >
-                打开小游戏管理
-              </a>
+        <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--survey-heading)]">
+                <Settings className="h-4 w-4 text-[var(--survey-muted)]" aria-hidden="true" />
+                管理员快捷入口
+              </p>
+              <p className="mt-0.5 text-[11px] text-[var(--survey-muted)]">
+                在这里手动编写小游戏包与任务文案，保存后玩家端实时生效
+              </p>
             </div>
-          </section>
-        </div>
+            <a
+              href="/admin/task-packs"
+              className="shrink-0 rounded-full bg-[var(--survey-primary)] px-4 py-2 text-xs font-bold text-[var(--survey-primary-content)]"
+            >
+              打开小游戏管理
+            </a>
+          </div>
+        </section>
       ) : null}
       {notice ? (
-        <div className="lg:col-span-12">
-          <div className="rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-2.5 text-[13px] font-medium text-[var(--survey-primary)]">
-            {notice}
+        <div className="rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-primary-soft)] px-4 py-2.5 text-[13px] font-medium text-[var(--survey-primary)]">
+          {notice}
+        </div>
+      ) : null}
+
+      {activeLoading ? (
+        <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-sm text-[var(--survey-muted)]">
+          检查进行中的挑战…
+        </div>
+      ) : activeRun ? (
+        <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-[var(--survey-heading)]">
+                进行中 · {activePlugin?.run.pluginTitle ?? activeRun.packName}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--survey-muted)]">
+                {activePlugin
+                  ? `进度 ${activePlugin.run.step ?? activePlugin.run.currentFloor}/${
+                      activePlugin.run.total ?? activePlugin.run.maxFloor
+                    } 步 · 积分 ${activeRun.score}`
+                  : activeRun.phase === "shop"
+                    ? "还在开局商店，挑好道具就能出发"
+                    : `第 ${activeRun.currentFloor}/${activeRun.maxFloor} 层 · 积分 ${activeRun.score}`}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              未完成
+            </span>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={busyActive}
+              onClick={() => void resumeRun()}
+              className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
+            >
+              {activePlugin ? "继续小游戏" : activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
+            </button>
+            <button
+              type="button"
+              disabled={busyActive}
+              onClick={() => void abandonFromHome()}
+              className="rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-2 text-sm font-medium text-[var(--survey-muted)] disabled:opacity-50"
+            >
+              放弃
+            </button>
           </div>
         </div>
       ) : null}
-      {activeLoading || activeRun ? (
-        <div className="lg:col-span-12">
-          {activeLoading ? (
-            <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4 text-sm text-[var(--survey-muted)]">
-              检查进行中的挑战…
-            </div>
-          ) : activeRun ? (
-            <div className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-[var(--survey-heading)]">
-                    进行中 · {activePlugin?.run.pluginTitle ?? activeRun.packName}
-                  </p>
-                  <p className="mt-0.5 text-xs text-[var(--survey-muted)]">
-                    {activePlugin
-                      ? `进度 ${activePlugin.run.step ?? activePlugin.run.currentFloor}/${
-                          activePlugin.run.total ?? activePlugin.run.maxFloor
-                        } 步 · 积分 ${activeRun.score}`
-                      : activeRun.phase === "shop"
-                        ? "还在开局商店，挑好道具就能出发"
-                        : `第 ${activeRun.currentFloor}/${activeRun.maxFloor} 层 · 积分 ${activeRun.score}`}
-                  </p>
-                </div>
-                <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                  未完成
-                </span>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  disabled={busyActive}
-                  onClick={() => void resumeRun()}
-                  className="flex-1 rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2 text-sm font-semibold text-[var(--survey-primary-content)] disabled:opacity-50"
-                >
-                  {activePlugin ? "继续小游戏" : activeRun.phase === "shop" ? "进入商店" : "继续挑战"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busyActive}
-                  onClick={() => void abandonFromHome()}
-                  className="rounded-[var(--survey-button-radius)] border border-[var(--survey-card-border)] px-4 py-2 text-sm font-medium text-[var(--survey-muted)] disabled:opacity-50"
-                >
-                  放弃
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+
+      {submissionBotUrl ? (
+        <a
+          href={submissionBotUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+            <Send className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+              {submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+              通过 {submissionTarget?.label ?? ""} 投稿你的内容
+            </span>
+          </span>
+          <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
+        </a>
       ) : null}
 
-      {/* 左区：投稿 + 联机对战入口 + 小游戏包 */}
-      <div className="min-w-0 space-y-4 lg:col-span-7">
-        {submissionBotUrl ? (
-          <a
-            href={submissionBotUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-          >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-              <Send className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
-                {submissionTarget?.kind === "bot" ? "投稿机器人" : "网页投稿"}
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                通过 {submissionTarget?.label ?? ""} 投稿你的内容
-              </span>
-            </span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" />
-          </a>
-        ) : null}
-
-        {/* 联机对战入口卡（Lobby/Board 分层批次）：读 GET /api/game/types 渲染
-          已注册玩法，每款一卡整页跳 /game；拉取失败/部署未升级时回退到静态
-          五子棋入口卡（else 分支），入口在任何部署下都不消失。 */}
+      {/* 游戏网格：联机入口 + 爬塔包，统一折叠卡（手机 1 列 / PC 2 列） */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        {/* 联机对战：点击即进入该玩法的等待大厅（房间列表可直加） */}
         {gameEntries !== null ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {gameEntries.map((game) => (
-              <a
-                key={game.name}
-                href={gameEntryHref(game.name)}
-                className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
-              >
+          gameEntries.map((game) => (
+            <a
+              key={game.name}
+              href={gameEntryHref(game.name)}
+              className="survey-card group flex flex-col p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
+            >
+              <span className="flex items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
                   <Swords className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-[var(--survey-heading)]">
                     {game.displayName} · 联机对战
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                    {game.description || "创建房间或输入房间码，和好友实时对弈"}
+                  <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">
+                    {game.minPlayers ?? 2}–{game.maxPlayers ?? game.minPlayers ?? 2} 人 · 等待大厅有房即加
                   </span>
                 </span>
                 <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
-              </a>
-            ))}
-          </div>
+              </span>
+              {game.description ? (
+                <span className="mt-2.5 line-clamp-2 block text-xs leading-5 text-[var(--survey-muted)]">
+                  {game.description}
+                </span>
+              ) : null}
+            </a>
+          ))
         ) : (
-          /* 五子棋联机对战（批次 W3）：静态回退入口，与爬塔任务并排的实时对战卡，整页跳 /game。 */
           <a
             href="/game"
-            className="flex items-center gap-3 rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] px-4 py-3 transition hover:-translate-y-0.5 hover:shadow-md"
+            className="survey-card group flex flex-col p-4 transition-[transform,box-shadow] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)]"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
-              <Swords className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block text-[13px] font-semibold text-[var(--survey-heading)]">五子棋 · 联机对战</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
-                创建房间或输入房间码，和好友实时对弈
+            <span className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+                <Swords className="h-5 w-5" aria-hidden="true" />
               </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-[var(--survey-heading)]">五子棋 · 联机对战</span>
+                <span className="mt-0.5 block text-[11px] text-[var(--survey-muted)]">等待大厅有房即加</span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
             </span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-[var(--survey-muted)]" aria-hidden="true" />
           </a>
         )}
 
-        <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-          <h2 className="text-[15px] font-bold text-[var(--survey-heading)]">选择小游戏包</h2>
-          <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">小游戏包</p>
-          {packsError ? <p className="mt-2 text-xs text-red-500">{packsError}</p> : null}
-          {packs === null ? (
-            <div className="mt-2 space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="animate-pulse rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3"
-                >
-                  <div className="h-4 w-28 rounded bg-[var(--survey-card-border)]" />
-                  <div className="mt-2 h-3 w-2/3 rounded bg-[var(--survey-card-border)]" />
-                </div>
-              ))}
+        {/* 爬塔/插件小游戏包：折叠卡，展开即完整开局内容（任务=游戏的一部分） */}
+        {packs === null ? (
+          [0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4"
+            >
+              <div className="h-4 w-28 rounded bg-[var(--survey-card-border)]" />
+              <div className="mt-2 h-3 w-2/3 rounded bg-[var(--survey-card-border)]" />
             </div>
-          ) : packs.length === 0 ? (
-            <p className="mt-2 text-sm text-[var(--survey-muted)]">暂无可用小游戏，请联系管理员。</p>
-          ) : (
-            <div className="mt-2 space-y-3">
-              {packGroups.map((group) => (
-                <div key={group.type}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold tracking-wide text-[var(--survey-muted)]">{group.label}</p>
-                    <button
-                      type="button"
-                      onClick={() => openGameTypeBoard(group.type, group.label)}
-                      className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-[var(--survey-primary)] transition-opacity hover:opacity-80"
-                    >
-                      <Trophy className="h-3 w-3" aria-hidden="true" />
-                      玩法总榜
-                    </button>
-                  </div>
-                  {group.description ? (
-                    <p className="mt-1 text-[11px] leading-4 text-[var(--survey-muted)]">{group.description}</p>
-                  ) : null}
-                  <div className="mt-2 space-y-2">
-                    {group.packs.map((pack) => (
-                      <button
-                        key={pack.id}
-                        type="button"
-                        onClick={() => choosePack(pack.id)}
-                        className={`block w-full rounded-xl border p-3 text-left transition-[transform,box-shadow,border-color] duration-[var(--fx-dur)] ease-[var(--fx-ease)] hover:-translate-y-0.5 hover:shadow-[var(--fx-glow-md)] ${
-                          packId === pack.id
-                            ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)] shadow-sm"
-                            : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
-                          {/* 0106 包级 18+ 徽标（修复 3 同源化）：严格渲染包列表
-                            /api/trial/packs 的 pack.adult——该字段与服务端开局闸
-                            （POST /runs 的 isAdultGamePack 校验）同一个来源，
-                            adult=false 的包绝不显示 18+，adult=true 必显示；
-                            开局门（choosePack → startGame 的包级确认弹层）判定
-                            的也是同一 pack.adult——徽标亮 = 门必在。 */}
+          ))
+        ) : packs.length === 0 ? (
+          <div className="rounded-[var(--survey-radius)] border border-dashed border-[var(--survey-card-border)] p-4 text-center lg:col-span-2">
+            <p className="text-[13px] text-[var(--survey-muted)]">暂无可用小游戏，请联系管理员。</p>
+          </div>
+        ) : (
+          packGroups.map((group) =>
+            group.packs.map((pack) => {
+              const isExpanded = packId === pack.id;
+              return (
+                <div
+                  key={pack.id}
+                  className={`rounded-[var(--survey-radius)] border p-4 transition-colors lg:col-span-1 ${
+                    isExpanded
+                      ? "border-[var(--survey-primary)] bg-[var(--survey-card-bg)] shadow-sm"
+                      : "border-[var(--survey-card-border)] bg-[var(--survey-card-bg)]"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      choosePack(pack.id);
+                      if (!isExpanded) setExpandedPackId(pack.id);
+                      else setExpandedPackId(null);
+                    }}
+                    aria-expanded={isExpanded}
+                    className="block w-full text-left"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--survey-primary-soft)] text-[var(--survey-primary)]">
+                        <Gamepad2 className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-[var(--survey-heading)]">{pack.name}</span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--survey-muted)]">
+                          <span className="rounded-full bg-[var(--survey-bg)] px-2 py-0.5">{group.label}</span>
                           {pack.adult ? (
-                            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                               18+
                             </span>
                           ) : null}
-                          <span className="shrink-0 rounded-full bg-[var(--survey-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--survey-muted)]">
+                          <span className="rounded-full bg-[var(--survey-bg)] px-2 py-0.5">
                             {pack.gameType === "tower" ? `${pack.normalFloors}/${pack.hellFloors} 层` : "即开即玩"}
                           </span>
-                        </div>
-                        <span className="mt-1 block text-xs leading-5 text-[var(--survey-muted)]">
-                          {pack.description ?? "（暂无描述）"}
                         </span>
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-[var(--survey-muted)] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span className="mt-2 line-clamp-2 block text-xs leading-5 text-[var(--survey-muted)]">
+                      {pack.description ?? "（暂无描述）"}
+                    </span>
+                  </button>
+                  {isExpanded ? (
+                    <div className="mt-3 border-t border-[var(--survey-card-border)] pt-3">
+                      <p className="text-xs font-semibold text-[var(--survey-muted)]">身份</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {PERSONA_OPTIONS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => choosePersona(option.id)}
+                            className={`rounded-xl border p-2.5 text-left transition-colors ${
+                              persona === option.id
+                                ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
+                                : "border-[var(--survey-card-border)]"
+                            }`}
+                          >
+                            <span className="block text-[13px] font-bold text-[var(--survey-heading)]">
+                              {option.label}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                              {option.hint}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-xs font-semibold text-[var(--survey-muted)]">模式</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {MODE_OPTIONS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => chooseMode(option.id)}
+                            className={`rounded-xl border p-2.5 text-left transition-colors ${
+                              mode === option.id
+                                ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
+                                : "border-[var(--survey-card-border)]"
+                            }`}
+                          >
+                            <span className="block text-[13px] font-bold text-[var(--survey-heading)]">
+                              {option.label}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">
+                              {option.hint}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {!selectedPackIsPlugin ? (
+                        <>
+                          <p className="mt-3 text-xs font-semibold text-[var(--survey-muted)]">
+                            起始层（1–{floorCount}）
+                          </p>
+                          <select
+                            aria-label="起始层"
+                            value={String(normalizedStartFloor)}
+                            onChange={(event) => setStartFloor(event.target.value)}
+                            className="select mt-2 w-full border-[var(--survey-card-border)] text-sm"
+                          >
+                            {floorOptions.map((floor) => (
+                              <option key={floor} value={floor}>
+                                第 {floor} 层开始
+                              </option>
+                            ))}
+                          </select>
+                          {pack.prepItems.length > 0 || pack.prepText ? (
+                            <div className="mt-3 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3 text-left">
+                              <p className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--survey-heading)]">
+                                <Luggage className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
+                                开始前请准备好
+                              </p>
+                              {pack.prepText ? (
+                                <p className="mt-1 text-[11px] leading-5 text-[var(--survey-muted)]">{pack.prepText}</p>
+                              ) : null}
+                              {pack.prepItems.length > 0 ? (
+                                <ul className="mt-2 space-y-1.5">
+                                  {pack.prepItems.map((item) => (
+                                    <li key={item} className="flex items-start gap-2 text-xs text-[var(--survey-body)]">
+                                      <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-[var(--survey-card-border)]" />
+                                      <span>{item}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={starting || !persona}
+                        onClick={() => void startGame()}
+                        className="mt-4 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-2.5 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
+                      >
+                        {starting
+                          ? "正在开局…"
+                          : !persona
+                            ? "先选择身份"
+                            : selectedPackIsPlugin
+                              ? "开始小游戏"
+                              : `以「${personaLabel(persona)} · ${modeLabel(mode)}」开始`}
                       </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selectedPack && !selectedPackIsPlugin ? (
-            <>
-              <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">起始层（1–{floorCount}）</p>
-              <select
-                aria-label="起始层"
-                value={String(normalizedStartFloor)}
-                onChange={(event) => setStartFloor(event.target.value)}
-                className="select mt-2 w-full border-[var(--survey-card-border)] text-sm"
-              >
-                {floorOptions.map((floor) => (
-                  <option key={floor} value={floor}>
-                    第 {floor} 层开始
-                  </option>
-                ))}
-              </select>
-              {selectedPack.prepItems.length > 0 || selectedPack.prepText ? (
-                <div className="mt-4 rounded-xl border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-3 text-left">
-                  <p className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--survey-heading)]">
-                    <Luggage className="h-4 w-4 text-[var(--survey-primary)]" aria-hidden="true" />
-                    开始前请准备好
-                  </p>
-                  {selectedPack.prepText ? (
-                    <p className="mt-1 text-[11px] leading-5 text-[var(--survey-muted)]">{selectedPack.prepText}</p>
-                  ) : null}
-                  {selectedPack.prepItems.length > 0 ? (
-                    <ul className="mt-2 space-y-1.5">
-                      {selectedPack.prepItems.map((item) => (
-                        <li key={item} className="flex items-start gap-2 text-xs text-[var(--survey-body)]">
-                          <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-[var(--survey-card-border)]" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                      {selectedPackIsPlugin ? null : (
+                        <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
+                          开局获得随机金币，商店可买跳过券 / 加倍券 / 护盾 · 进度自动云端保存
+                        </p>
+                      )}
+                    </div>
                   ) : null}
                 </div>
-              ) : null}
-            </>
-          ) : null}
-        </section>
-      </div>
-
-      {/* 右区：身份/模式 + 开局 CTA（sticky，选包后触手可及） */}
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-[76px] lg:col-span-5 lg:self-start">
-        <section className="rounded-[var(--survey-radius)] border border-[var(--survey-card-border)] bg-[var(--survey-card-bg)] p-4">
-          <h2 className="text-[15px] font-bold text-[var(--survey-heading)]">开局设置</h2>
-
-          <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">身份</p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {PERSONA_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => choosePersona(option.id)}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  persona === option.id
-                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
-                    : "border-[var(--survey-card-border)]"
-                }`}
-              >
-                <span className="text-base font-bold text-[var(--survey-heading)]">{option.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">{option.hint}</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="mt-4 text-xs font-semibold text-[var(--survey-muted)]">模式</p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {MODE_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => chooseMode(option.id)}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  mode === option.id
-                    ? "border-[var(--survey-primary)] bg-[var(--survey-primary-soft)]"
-                    : "border-[var(--survey-card-border)]"
-                }`}
-              >
-                <span className="text-base font-bold text-[var(--survey-heading)]">{option.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--survey-muted)]">{option.hint}</span>
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            disabled={starting || packs === null || packs.length === 0 || !persona}
-            onClick={() => void startGame()}
-            className="mt-5 w-full rounded-[var(--survey-button-radius)] bg-[var(--survey-primary)] py-3 text-sm font-bold text-[var(--survey-primary-content)] shadow-lg shadow-[color-mix(in_srgb,var(--survey-primary)_30%,transparent)] disabled:opacity-40"
-          >
-            {starting
-              ? "正在开局…"
-              : !persona
-                ? "先选择身份"
-                : selectedPackIsPlugin
-                  ? "开始小游戏"
-                  : `以「${personaLabel(persona)} · ${modeLabel(mode)}」开始`}
-          </button>
-          {selectedPackIsPlugin ? null : (
-            <p className="mt-2 text-center text-[11px] text-[var(--survey-muted)]">
-              开局获得随机金币，可在商店买跳过券 / 加倍券 / 护盾 · 进度自动云端保存
-            </p>
-          )}
-        </section>
+              );
+            }),
+          )
+        )}
       </div>
     </main>
   );
