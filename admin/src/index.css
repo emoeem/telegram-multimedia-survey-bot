@@ -7455,6 +7455,15 @@ body.hotspot-lock {
   transform: translateY(112%);
 }
 
+/* ---- M11：手机横屏（短高度）隐藏底部导航 --------------------------------
+ * 横屏时纵向空间优先给内容（游戏棋盘/表单/棋盘卡），导航经页面内返回链
+ * 或旋转回竖屏触达；与 prototype-lab 房间页/大厅页的横屏策略一致。 */
+@media (orientation: landscape) and (max-height: 560px) {
+  .bottomnav {
+    display: none !important;
+  }
+}
+
 /* ---- M8：联机游戏大厅双区布局 ------------------------------------------
  * docs/design/USER_FLOWS.md F4 / BASELINE_AUDIT (a)(b)：桌面 ≥lg（1000px，
  * 用户端导航切换点，见 RESPONSIVE_RULES）左区「玩法说明+选择玩法」、右区

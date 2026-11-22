@@ -113,7 +113,7 @@ export function BottomNav() {
     <nav
       data-hidden={hidden || undefined}
       inert={hidden || undefined}
-      className={`fixed inset-x-0 bottom-0 z-40 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_85%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl transition-transform duration-200 ease-[var(--fx-ease)] lg:inset-x-auto lg:bottom-auto lg:top-0 lg:h-14 lg:w-full lg:border-b lg:border-t-0 lg:py-0 ${hidden ? "translate-y-full" : ""}`}
+      className={`bottomnav fixed inset-x-0 bottom-0 z-40 border-t border-[var(--survey-card-border)] bg-[color-mix(in_srgb,var(--survey-card-bg)_85%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl transition-transform duration-200 ease-[var(--fx-ease)] lg:inset-x-auto lg:bottom-auto lg:top-0 lg:h-14 lg:w-full lg:border-b lg:border-t-0 lg:py-0 ${hidden ? "translate-y-full" : ""}`}
       style={{ WebkitBackdropFilter: "blur(12px)" }}
       aria-label="主导航"
     >

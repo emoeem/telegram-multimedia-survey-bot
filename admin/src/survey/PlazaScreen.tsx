@@ -846,7 +846,7 @@ function PlazaFeedScreen() {
           })}
         />
 
-        <main className="mx-auto max-w-xl px-5 pb-28 pt-4 lg:max-w-3xl">
+        <main className="mx-auto max-w-xl px-5 pb-28 pt-4 lg:max-w-[1200px]">
           {tab === "treehole" && (topics.length > 0 || topicFilter) ? (
             <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
               <button
@@ -926,13 +926,14 @@ function PlazaFeedScreen() {
               }
             />
           ) : tab === "treehole" ? (
-            <div className="flex flex-col gap-3">
+            /* M9 社区网格化：≥lg 两列（偏移分页与布局无关，items-start 防拉伸） */
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
               {posts.items.map((post) => (
                 <TreeHolePost key={post.id} post={post} onSelectTopic={setTopicFilter} onReport={openReport} />
               ))}
             </div>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
               {profiles.items.map((profile) => (
                 <ProfileCard key={profile.id} profile={profile} />
               ))}
