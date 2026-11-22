@@ -22,6 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         db:
+          - telegram-survey-db
           - telegram-survey-staging-db
           - survey-111-f6e0a1e2-db
           - survey-customer-398ffcf3-db

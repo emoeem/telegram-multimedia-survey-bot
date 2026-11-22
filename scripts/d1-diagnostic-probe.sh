@@ -78,6 +78,9 @@ run_sql "index-audit" "SELECT name FROM sqlite_master WHERE type='index' AND nam
 
 # ---------- 第 3 组：嫌疑 A 的规模——7 天前的媒体行数（候选扫描每天必读的量，上限 2M） ----------
 run_sql "media-old-count" "SELECT COUNT(*) AS media_older_than_7d_capped FROM (SELECT 1 FROM media_assets WHERE created_at < '$ISO7' LIMIT 2000000)"
+# 维护健康快照 + 0107 引用索引在位性（2026-11-22 读预算告警收口的验证项）
+run_sql "maintenance-summary" "SELECT json_extract(value, '$.at') AS at, json_extract(value, '$.rowsRead') AS rows_read, json_extract(value, '$.truncated') AS truncated, json_extract(value, '$.orphanAssets') AS orphans FROM system_settings WHERE key = 'maintenance_last_summary'"
+run_sql "media-refs-ref-index" "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_media_refs_ref'"
 
 # ---------- 第 4 组：嫌疑 C 的规模——audit_logs 180 天保留段（上限 2M） ----------
 run_sql "audit-old-count" "SELECT COUNT(*) AS audit_before_180d_capped FROM (SELECT 1 FROM audit_logs WHERE created_at < '$ISO180' LIMIT 2000000)"
