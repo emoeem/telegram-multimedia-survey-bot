@@ -36,7 +36,7 @@ const JOIN_LIMIT = 30;
 /** WS 握手限流：60 次/小时/身份（断线重连场景，高于加入）。 */
 const WS_LIMIT = 60;
 
-const ROOM_PATH = /^\/api\/game\/rooms\/(\d+)\/(join|close|state|ws)$/;
+const ROOM_PATH = /^\/api\/game\/rooms\/(\d+)\/(join|close|state|ws|ready|start|leave|action)$/;
 
 /**
  * 路由分发。除本文件的端点外返回 null，落回 router 后续兜底（web-app-api.ts
@@ -79,6 +79,9 @@ export async function handleGameApiRequest(request: Request, env: Env, url: URL)
     if (sub === "close" && request.method === "POST") return handleCloseRoom(request, env, id);
     if (sub === "state" && request.method === "GET") return handleRoomState(request, env, id);
     if (sub === "ws" && request.method === "GET") return handleRoomSocket(request, env, id);
+    if (request.method === "POST" && (sub === "ready" || sub === "start" || sub === "leave" || sub === "action")) {
+      return handleRoomControl(request, env, id, sub);
+    }
     return fail(405, "method_not_allowed", "该房间子端点不支持此方法");
   }
 
@@ -252,6 +255,66 @@ async function handleJoinRoom(request: Request, env: Env, id: number): Promise<R
     ...(payload.rejoined ? { rejoined: true } : {}),
     ...(payload.spectatorFallback ? { spectatorFallback: true } : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/game/rooms/:id/(ready|start|leave|action) —— 轮询降级控制面
+// ---------------------------------------------------------------------------
+
+/** 轮询模式限流：每次动作一条 REST（含一次重试余量），放宽到 WS 场景数倍。 */
+const CONTROL_LIMIT = 240;
+
+/**
+ * 纯 HTTP 的房间控制面（WS 的镜像）：Vercel 中继不转发 WS 升级头，大陆访客
+ * 的联机对局靠「REST 动作 + 轮询 state」降级存活（客户端 game-room-client
+ * 的 GameRoomConnection 在 WS 反复握手失败后自动切到这条通道）。身份与转发
+ * 口径与 join 一致；DO 侧 /ready /start /leave /action 与 WS 共用同一引擎
+ * 分发与广播，轮询客户端的动作照样实时推给 WS 端的对手。
+ */
+async function handleRoomControl(
+  request: Request,
+  env: Env,
+  id: number,
+  path: "ready" | "start" | "leave" | "action",
+): Promise<Response> {
+  const participant = await resolveParticipant(request, env);
+  if (participant instanceof Response) return participant;
+  const namespace = roomNamespace(env);
+  if (!namespace) return gameDisabled();
+
+  const limited = await checkRateLimit(
+    env.CACHE,
+    "game-room-control",
+    participant.participantHash,
+    CONTROL_LIMIT,
+    3600,
+  );
+  if (!limited.allowed) return rateLimitResponse(limited.retryAfterSeconds);
+
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  // DO 控制面身份只在 body.participantHash（requireIdentity），x-game-viewer-hash
+  // 仅用于裁剪视图；payload 字段形状由 DO 侧校验，这里只透传白名单字段。
+  const payload: Record<string, unknown> = { participantHash: participant.participantHash };
+  if (path === "ready") {
+    payload.ready = body.ready === true;
+  } else if (path === "action") {
+    payload.actionId = typeof body.actionId === "string" ? body.actionId : "";
+    payload.action = typeof body.action === "string" ? body.action : "";
+    if (!payload.actionId || !payload.action) return fail(400, "invalid_payload", "缺少 actionId 或 action");
+    if (body.payload !== undefined) payload.payload = body.payload;
+    if (typeof body.baseVersion === "number") payload.baseVersion = body.baseVersion;
+  }
+
+  const roomRef = gameRoomDOName(id);
+  const stub = namespace.get(namespace.idFromName(roomRef));
+  const response = await stub.fetch(`https://game-room/${path}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json", "x-game-viewer-hash": participant.participantHash },
+  });
+  if (!response.ok) return relayDoError(response);
+  // OK 响应是 DO 的 withView 形状（{ok, view, role, youSeatToken…}），原样透传。
+  return response;
 }
 
 // ---------------------------------------------------------------------------

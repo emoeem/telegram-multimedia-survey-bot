@@ -275,7 +275,7 @@ interface PendingAction {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export class GameRoomConnection {
+class GameRoomSocketConnection {
   private socket: WebSocket | null = null;
   private disposed = false;
   /** 当前这次断线后的第几次重连尝试（首次连接为 0）。 */
@@ -543,4 +543,265 @@ function actionErrorText(error: unknown): string {
     );
   }
   return gameErrorText("unknown_error", "操作没有成功，请稍后再试");
+}
+
+// ---------------------------------------------------------------------------
+// REST 轮询通道 + 门面：WS 反复握手失败时自动降级
+// ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 1800;
+const POLL_ERROR_BACKOFF_MS = 6000;
+const POLL_CHAT_NOTICE = "实时通道受限，已切换轮询模式：房间聊天暂不可用，棋步延迟约 2 秒";
+
+/**
+ * REST 轮询传输：GET /state 驱动视图（按 version 去重），动作走纯 HTTP
+ * 控制面（/ready /start /leave /action）。emoemok.top 的 Vercel 中继不转发
+ * WS 升级头（2026-11-22 事故），大陆访客只能从中继域进来——这条通道让
+ * 对局在任何 HTTP 可达的入口都可用；聊天帧只存在于 WS，轮询模式下提示并
+ * 静默丢弃。DO 侧与 WS 共用同一引擎分发与广播，轮询端动作实时推给对手。
+ */
+class GameRoomPollingConnection {
+  private disposed = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private lastVersion: number | null = null;
+  private opened = false;
+  private chatNoticeShown = false;
+
+  constructor(private readonly options: GameRoomConnectionOptions) {}
+
+  connect(): void {
+    if (this.disposed || this.timer !== null) return;
+    this.options.onStatus("connecting", 1);
+    void this.poll();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  async sendAction(action: string, payload?: unknown, baseVersion?: number): Promise<void> {
+    const actionId =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `act-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const result = await callGameApi(`/api/game/rooms/${this.options.roomId}/action`, {
+      method: "POST",
+      body: JSON.stringify({
+        actionId,
+        action,
+        ...(payload === undefined ? {} : { payload }),
+        ...(baseVersion === undefined ? {} : { baseVersion }),
+      }),
+    });
+    if (!result.ok) {
+      if (result.error.code === "room_not_found") {
+        this.options.onFatal(gameErrorText("room_not_found"));
+        this.dispose();
+      }
+      return Promise.reject(actionErrorText(result.error));
+    }
+    // 幂等重放被拒（accepted:false）：与 WS 的 action_result 语义一致，按拒绝处理。
+    if (result.data.accepted === false) {
+      return Promise.reject(
+        actionErrorText({ code: result.data.code, message: result.data.message ?? "动作已被处理过" }),
+      );
+    }
+    this.pollNow();
+  }
+
+  sendReady(ready: boolean): void {
+    void this.sendControl("ready", { ready });
+  }
+
+  sendStart(): void {
+    void this.sendControl("start", {});
+  }
+
+  sendLeave(): void {
+    void this.sendControl("leave", {});
+  }
+
+  sendChatText(_channel: GameChatChannel, _text: string, _clientId: string): void {
+    this.noticeChatUnavailable();
+  }
+
+  sendChatVoice(
+    _channel: GameChatChannel,
+    _voice: { audioBase64: string; durationMs: number; mimeType: string },
+    _clientId: string,
+  ): void {
+    this.noticeChatUnavailable();
+  }
+
+  sendChatImage(_channel: GameChatChannel, _dataUrl: string, _clientId: string): void {
+    this.noticeChatUnavailable();
+  }
+
+  private noticeChatUnavailable(): void {
+    if (this.chatNoticeShown) return;
+    this.chatNoticeShown = true;
+    this.options.onNotice(POLL_CHAT_NOTICE);
+  }
+
+  private async sendControl(path: "ready" | "start" | "leave", body: Record<string, unknown>): Promise<void> {
+    const result = await callGameApi(`/api/game/rooms/${this.options.roomId}/${path}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (this.disposed) return;
+    if (!result.ok) {
+      if (result.error.code === "room_not_found") {
+        this.options.onFatal(gameErrorText("room_not_found"));
+        this.dispose();
+        return;
+      }
+      this.options.onNotice(actionErrorText(result.error));
+      return;
+    }
+    this.pollNow();
+  }
+
+  /** 动作后的即时刷新：清掉在排的定时器，下一拍立刻拉一次 state。 */
+  private pollNow(): void {
+    if (this.disposed) return;
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.poll();
+    }, 50);
+  }
+
+  private async poll(): Promise<void> {
+    if (this.disposed) return;
+    const result = await fetchGameRoomState(this.options.roomId);
+    if (this.disposed) return;
+    if (!result.ok) {
+      if (result.error.code === "room_not_found") {
+        this.options.onFatal(gameErrorText("room_not_found"));
+        this.dispose();
+        return;
+      }
+      this.options.onStatus("closed", 1);
+      this.schedule(POLL_ERROR_BACKOFF_MS);
+      return;
+    }
+    if (!this.opened) {
+      this.opened = true;
+      this.options.onStatus("open", 0);
+    }
+    if (result.data.view.version !== this.lastVersion) {
+      this.lastVersion = result.data.view.version;
+      this.options.onState(result.data.view, result.data.role);
+    }
+    this.schedule(POLL_INTERVAL_MS);
+  }
+
+  private schedule(delay: number): void {
+    if (this.disposed || this.timer !== null) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.poll();
+    }, delay);
+  }
+}
+
+/** WS 连续两次握手失败仍从未开过 → 降级轮询（中继剥升级头的场景，约 1 秒判定）。 */
+const WS_FALLBACK_AFTER_CLOSED = 2;
+
+/**
+ * 对屏幕层公开的连接类（公开 API 与历史版本完全一致）。内部 WS 优先（主机
+ * 候选轮换，见 game-room-logic），WS 反复握手失败仍从未开过时整体切 REST
+ * 轮询；一旦 WS 成功过就粘住 WS 不再降级。房间不存在等真实错误在轮询通道
+ * 会以明确的 HTTP 语义浮出（room_not_found → onFatal）。
+ */
+export class GameRoomConnection {
+  private inner: GameRoomSocketConnection | GameRoomPollingConnection | null = null;
+  private disposed = false;
+  private wsEverOpened = false;
+  private closedWithoutOpen = 0;
+
+  constructor(private readonly options: GameRoomConnectionOptions) {}
+
+  /** 开始连接。重复调用是空操作。 */
+  connect(): void {
+    if (this.disposed || this.inner !== null) return;
+    const socket = new GameRoomSocketConnection({
+      ...this.options,
+      onStatus: (status, attempt) => {
+        if (this.disposed) return;
+        if (status === "open") {
+          this.wsEverOpened = true;
+          this.closedWithoutOpen = 0;
+          this.options.onStatus(status, attempt);
+          return;
+        }
+        if (status === "closed") {
+          this.closedWithoutOpen += 1;
+          if (!this.wsEverOpened && this.closedWithoutOpen >= WS_FALLBACK_AFTER_CLOSED) {
+            this.fallBackToPolling();
+            return;
+          }
+        }
+        this.options.onStatus(status, attempt);
+      },
+    });
+    this.inner = socket;
+    socket.connect();
+  }
+
+  /** 彻底关闭：停止当前通道的一切活动，挂起的动作全部失败。 */
+  dispose(): void {
+    this.disposed = true;
+    this.inner?.dispose();
+    this.inner = null;
+  }
+
+  sendAction(action: string, payload?: unknown, baseVersion?: number): Promise<void> {
+    return this.inner?.sendAction(action, payload, baseVersion) ?? Promise.reject("连接已关闭");
+  }
+
+  sendReady(ready: boolean): void {
+    this.inner?.sendReady(ready);
+  }
+
+  sendStart(): void {
+    this.inner?.sendStart();
+  }
+
+  sendLeave(): void {
+    this.inner?.sendLeave();
+  }
+
+  sendChatText(channel: GameChatChannel, text: string, clientId: string): void {
+    this.inner?.sendChatText(channel, text, clientId);
+  }
+
+  sendChatVoice(
+    channel: GameChatChannel,
+    voice: { audioBase64: string; durationMs: number; mimeType: string },
+    clientId: string,
+  ): void {
+    this.inner?.sendChatVoice(channel, voice, clientId);
+  }
+
+  sendChatImage(channel: GameChatChannel, dataUrl: string, clientId: string): void {
+    this.inner?.sendChatImage(channel, dataUrl, clientId);
+  }
+
+  private fallBackToPolling(): void {
+    if (this.disposed || this.inner === null) return;
+    this.inner.dispose();
+    this.inner = null;
+    const polling = new GameRoomPollingConnection(this.options);
+    this.inner = polling;
+    this.options.onNotice(POLL_CHAT_NOTICE);
+    polling.connect();
+  }
 }
