@@ -1030,7 +1030,7 @@ export function TrialScreen() {
         ) : (
           packGroups.map((group) =>
             group.packs.map((pack) => {
-              const isExpanded = packId === pack.id;
+              const isExpanded = expandedPackId === pack.id;
               return (
                 <div
                   key={pack.id}
