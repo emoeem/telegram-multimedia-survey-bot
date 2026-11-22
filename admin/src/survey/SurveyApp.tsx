@@ -95,6 +95,7 @@ import {
   uploadAnswerMedia,
   uploadAnswerMediaViaStream,
   verifyAccessCode,
+  touchEmailSession,
 } from "./api";
 import { safeGet, safeSet } from "./storage";
 import {
@@ -2261,6 +2262,11 @@ function AccessScreen({
 }
 
 export function SurveyApp() {
+  // 滑动续期：邮箱会话开机换新（本地 24h 节流，见 api.ts）。放在路由分支
+  // 之前——hook 必须无条件执行，早返回分支不影响它的顺序。
+  useEffect(() => {
+    void touchEmailSession();
+  }, []);
   // The plaza ("广场") shares this SPA bundle, entry styles and theme system.
   if (window.location.pathname === "/series" || window.location.pathname.startsWith("/series/")) {
     return (

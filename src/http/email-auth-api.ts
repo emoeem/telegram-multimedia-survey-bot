@@ -106,6 +106,18 @@ export async function handleEmailAuthApiRequest(request: Request, env: Env, url:
     });
   }
 
+  // 滑动续期（邮箱会话）：会话令牌是 30 天硬过期，活跃访客若从不重新登录
+  // 就会周年式摔进「邮箱登录状态已失效」。客户端开机时持有效会话换一枚新
+  // 令牌，exp 随活跃顺延——只有连续 30 天不回来才真正过期。本端点必须持
+  // 有效会话才能换取（无法被未鉴权流量放大），成本只是验签 + 一条 SELECT
+  // + 一次 HMAC 签名；节流由客户端本地 24h 记忆承担。放在下面的 POST
+  // 门之前：本路由不带 email 请求体，身份完全来自 x-email-session 头。
+  if (request.method === "POST" && url.pathname === "/api/auth/email/touch") {
+    const session = await resolveEmailSession(request, env);
+    if (!session) return fail(401, "unauthorized", "未登录或登录已过期");
+    return json({ token: await mintSession(env, session.account.id, session.account.sessionVersion) });
+  }
+
   if (request.method !== "POST") return fail(405, "method_not_allowed", "不支持的请求方法");
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -238,7 +250,7 @@ async function mintSession(env: Env, accountId: number, version: number): Promis
 }
 
 interface EmailSession {
-  account: { id: number; email: string; userId: number | null; verifiedAt: string | null };
+  account: { id: number; email: string; userId: number | null; verifiedAt: string | null; sessionVersion: number };
 }
 
 export async function resolveEmailSession(request: Request, env: Env): Promise<EmailSession | null> {

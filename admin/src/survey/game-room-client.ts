@@ -29,7 +29,7 @@ import type {
 } from "../../../src/game/multiplayer/engine-types";
 import { identityHeaders } from "./api";
 import { sessionParticipantIdentity } from "./participant-token";
-import { gameErrorText, roomCodeToId } from "./game-room-logic";
+import { gameErrorText, nextWsHostIndexOnFailure, roomCodeToId, wsHostCandidateFor } from "./game-room-logic";
 import { parseGameTypes, type GameConnectionStatus, type GameTypeInfo } from "./game-lobby-logic";
 
 /** 动作（落子/悔棋/求和/认输）等待 action_result 的超时：超过即提示连接不稳。 */
@@ -240,10 +240,19 @@ export interface GameRoomConnectionOptions {
   onChatHistory?: (messages: GameChatMessage[]) => void;
 }
 
-/** WS 升级地址：同源 /api/game/rooms/:id/ws（Worker 鉴权后转发到房间 DO）。 */
-export function gameRoomSocketUrl(roomId: number): string {
+/**
+ * 页面会话内记住已验证可用的主机序号：后续进房不再从死源试起。候选表与
+ * 轮换决策在 game-room-logic（纯函数，root tsc 的 WebWorker lib 也能编译，
+ * 单测从这里导入；背景：emoemok.top 中继剥 WS 升级头，联机对局必须能
+ * 直连 Cloudflare 自定义域——详见该处注释）。
+ */
+let preferredWsHostIndex = 0;
+
+/** WS 升级地址：hostIndex 选源（""=同源），路径 /api/game/rooms/:id/ws。 */
+export function gameRoomSocketUrl(roomId: number, hostIndex = 0): string {
+  const host = wsHostCandidateFor(hostIndex);
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/game/rooms/${roomId}/ws`;
+  return `${protocol}//${host || window.location.host}/api/game/rooms/${roomId}/ws`;
 }
 
 /**
@@ -388,9 +397,12 @@ export class GameRoomConnection {
   private openSocket(): void {
     if (this.disposed) return;
     this.options.onStatus("connecting", Math.max(1, this.attempts));
+    // 主机候选轮换：中继源剥 WS 升级头时此处拿到的是同源 URL，握手必败，
+    // onclose 轮换到下一个候选；一旦某源握手成功即粘住（见 onclose）。
+    const hostIndex = preferredWsHostIndex;
     let socket: WebSocket;
     try {
-      socket = new WebSocket(gameRoomSocketUrl(this.options.roomId), gameAuthSubprotocol());
+      socket = new WebSocket(gameRoomSocketUrl(this.options.roomId, hostIndex), gameAuthSubprotocol());
     } catch {
       this.socket = null;
       this.scheduleReconnect();
@@ -414,6 +426,7 @@ export class GameRoomConnection {
         this.options.onStatus("closed", this.attempts);
         return;
       }
+      preferredWsHostIndex = nextWsHostIndexOnFailure(hostIndex, this.everOpened, this.attempts);
       this.options.onStatus("closed", this.attempts);
       this.scheduleReconnect();
     };

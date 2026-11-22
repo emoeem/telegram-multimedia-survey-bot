@@ -2147,3 +2147,41 @@ export function buildWerewolfRoomConfig(form: WerewolfHostConfigForm): Record<st
     ...(form.preset === "auto" ? {} : { rolePlan: werewolfBoard(form.preset) }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// WS 主机候选轮换（2026-11-22 中继剥 WS 升级头事故的修复参数）
+// ---------------------------------------------------------------------------
+
+/**
+ * WS 主机候选表：同源（""）优先，随后直连 Cloudflare 自定义域。
+ *
+ * 为什么必须有第二候选：emoemok.top 是 Vercel 外部重写中继（cn-relay/），
+ * 而 Vercel 对外部源的代理不转发 WS 升级头——升级请求抵达源站时已是普通
+ * GET，Worker 只能回 400 invalid_payload。HTTP 一切正常、唯独 WebSocket
+ * 进不来，而 PUBLIC_ORIGIN 与 bot 链接都指向中继域，大陆访客的联机对局
+ * 必须绕开中继直连 Cloudflare。身份随 WS 子协议传输（不靠 Cookie），跨源
+ * 握手没有 CORS 负担；两个源指向同一个 Worker 部署，路由与身份解析一致。
+ * 纯数据+纯函数放在本文件（root tsc 的 WebWorker lib 编译得到，单测可导入），
+ * URL 拼装留在 game-room-client（需要 window.location）。
+ */
+export const GAME_ROOM_WS_HOST_CANDIDATES = ["", "emoe.eu.cc"] as const;
+
+/** 同一主机连续多次仍连不上时换下一个候选（源整站下线的兜底）。 */
+export const GAME_ROOM_WS_RETRY_BEFORE_SWITCH = 4;
+
+/** 序号 → 主机候选（按候选数取模循环，负数归一）。"" 表示同源。 */
+export function wsHostCandidateFor(index: number): string {
+  const modulo =
+    ((index % GAME_ROOM_WS_HOST_CANDIDATES.length) + GAME_ROOM_WS_HOST_CANDIDATES.length) %
+    GAME_ROOM_WS_HOST_CANDIDATES.length;
+  return GAME_ROOM_WS_HOST_CANDIDATES[modulo] ?? "";
+}
+
+/**
+ * 失败后的主机轮换决策。本源从未成功（中继剥升级头的场景）立即换；成功过
+ * 的源粘住，但连续 GAME_ROOM_WS_RETRY_BEFORE_SWITCH 次连不上也轮换。
+ * attempts 为此前失败次数（onclose 时刻不含本次）。
+ */
+export function nextWsHostIndexOnFailure(current: number, everOpened: boolean, attempts: number): number {
+  return !everOpened || attempts >= GAME_ROOM_WS_RETRY_BEFORE_SWITCH ? current + 1 : current;
+}

@@ -156,6 +156,45 @@ export function identityHeaders(): Record<string, string> {
   return { "x-participant-key": getParticipantKey() };
 }
 
+const EMAIL_SESSION_TOUCH_KEY = "emailSessionTouchAt";
+const EMAIL_SESSION_TOUCH_INTERVAL_MS = 24 * 3600 * 1000;
+
+/**
+ * 滑动续期（邮箱会话）：会话令牌 30 天硬过期，活跃访客若从不重新登录就会
+ * 周年式摔进「邮箱登录状态已失效」。开机用当前会话换一枚新令牌，exp 随
+ * 活跃顺延——只有连续 30 天不回来才真正过期。本地 24h 节流；网络失败清除
+ * 节流标记（下次开机再试），401 保持标记（会话已死，身份门的既有流程会
+ * 引导重新登录，再刷 touch 没有意义）。
+ */
+export async function touchEmailSession(): Promise<void> {
+  const token = safeGet("emailSessionToken");
+  if (!token) return;
+  const now = Date.now();
+  const last = Number(safeGet(EMAIL_SESSION_TOUCH_KEY) ?? "0");
+  if (Number.isFinite(last) && now - last < EMAIL_SESSION_TOUCH_INTERVAL_MS) return;
+  safeSet(EMAIL_SESSION_TOUCH_KEY, String(now));
+  try {
+    const response = await fetch("/api/auth/email/touch", {
+      method: "POST",
+      headers: { "x-email-session": token },
+    });
+    if (!response.ok) {
+      if (response.status === 401) return;
+      // 非 401 的失败（5xx/网络闸门）当作没发生过：撤销节流，下次开机重试。
+      safeSet(EMAIL_SESSION_TOUCH_KEY, "0");
+      return;
+    }
+    const body = (await response.json().catch(() => ({}))) as { token?: unknown };
+    if (typeof body.token === "string" && body.token !== "") {
+      safeSet("emailSessionToken", body.token);
+    } else {
+      safeSet(EMAIL_SESSION_TOUCH_KEY, "0");
+    }
+  } catch {
+    safeSet(EMAIL_SESSION_TOUCH_KEY, "0");
+  }
+}
+
 async function parseJson(response: Response): Promise<Record<string, unknown>> {
   try {
     return (await response.json()) as Record<string, unknown>;
