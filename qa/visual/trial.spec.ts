@@ -114,6 +114,10 @@ for (const viewport of VIEWPORTS) {
 
     // 包级 ack 交互（0106）：未 ack 的 adult 包开局先弹按包确认弹层，确认后
     // 落包级键并携带 adultAck 参数开局，进入商店阶段（ack 后路径）。
+    // M9 手风琴（2026-11-22 用户验收）：包卡默认折叠——先点包卡展开，
+    // 身份/模式等开局内容才挂载。
+    await page.getByText("示例 · 楼道挑战").first().click();
+    await expect(page.getByRole("button", { name: /任务按公向文案抽取/ })).toBeVisible();
     await page.getByRole("button", { name: /任务按公向文案抽取/ }).click();
     await page.getByRole("button", { name: /以「公 · 普通」开始/ }).click();
     await expect(page.getByRole("button", { name: /我已年满 18 周岁/ })).toBeVisible();
