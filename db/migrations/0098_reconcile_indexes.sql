@@ -308,3 +308,6 @@ CREATE INDEX IF NOT EXISTS idx_web_submissions_viewer
   ON web_submissions(viewer_token, id DESC);
 CREATE INDEX IF NOT EXISTS idx_web_threads_submission
   ON web_submission_threads(submission_id, id);
+-- 0107_media_refs_ref_index.sql（对账清单同步：0107 新增，reconcile-indexes 守卫要求逐条在案）
+CREATE INDEX IF NOT EXISTS idx_media_refs_ref
+  ON media_refs(ref_type, ref_key);
