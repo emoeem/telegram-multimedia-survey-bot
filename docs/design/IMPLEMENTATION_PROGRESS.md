@@ -75,3 +75,10 @@
 3. **D1 读预算告警（9,712,132 行）**：根因 = syncWeakMediaRefs 每问卷 `DELETE media_refs WHERE ref_type/ref_key LIKE` 无索引的 S×M 读放大 + scanJsonRows 窗口未记账。修复（`5d73e76` + `0befb81` 对账补登记）：0107 迁移 `idx_media_refs_ref(ref_type, ref_key)`、ORPHAN_SWEEP_INDEXES 自愈、scanJsonRows 经 recordRowsRead 计入预算。**教训：批量 python 改签名时参数顺序要与调用点逐一对齐（本次 onRow/budget 错位由单测抓出）；清理未跟踪文件必须白名单式，勿用 status 全量循环（曾误删两份规格文件）。**
 4. 发布链：473ba02 → a618309(bot 54 基线) → 064ecf2(空提交) → 8b6b3f7 → 7723674 → 1d69083(bot) → 5d73e76 → ade1670 → 0befb81 → 8b6b3f7 补记。期间恢复被误删的 game.spec.ts/public-screens.spec.ts（`2c2d859`）。CI 全绿（run ade1670/0befb81），deploy 成功，生产 IAB 实测 /game 双区、/me 等高网格、/trial 三区全部上线。
 5. D1 修复生效判定：下一轮 cron（≤30 分钟）应无新告警；maintenance_last_summary.rowsRead 回到 500K 内、truncated=false（可用 d1-diagnostic-probe 工作流复核）。
+
+## 2026-11-22 上午验收补充（用户实测驱动的最后一批）
+
+1. 用户 IAB 实测生产 /me 指出"还需要重新设计" → 浏览器逐张走查定案：行内卡高参差/成就行右半空/入口组占纵空间 → 全卡 h-full 等高行 + 档案恒 col-6 与统计同行 + 成就通栏 + 入口组三行合卡（EntryRow bare 变体）→ 生产复验底边对齐。
+2. 用户指出 /trial 仍是旧版 → TrialScreen 三区补齐上线（见晨间补记）。
+3. **D1 告警（9.7M 行）收口**：0107 索引已在生产就位（探针实证）；下一验证点 = 2026-11-23 01:15 UTC 的日维护运行（rowsRead 应回落至 500K 内、truncated=false）。d1-diagnostic-probe 修复两处：7500 是 D1 SQLITE_ERROR 通用码不可作额度特征（曾误判提前停止）；矩阵补主库 telegram-survey-db + 维护摘要/索引在位性两条查询。
+4. 后续批次（全部清零）：原清单中 TrialScreen 三栏、广场网格化、横屏导航均已完成；仅剩房间态真实 WS 视觉回归（双账号本地 Worker）与 Figma 实际写入（无通道）。
